@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>All decks · Runcino</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Pitch deck</a>
+      <a href="#m0">M0 · ship</a>
+      <a href="#future">Future phases</a>
+    </div>
+  </nav>
+
+  <section style="padding:64px 0 32px;">
+    <div class="eyebrow" style="margin-bottom:12px;">All decks</div>
+    <h1 style="font-size:56px;max-width:20ch;margin:0 0 16px;">Every page,<br/><span class="serif-italic">one hub.</span></h1>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      Ten HTML mockups covering the full Runcino vision — from the
+      seven-day Big Sur sprint (M0, shipping now) to the training
+      coach and post-race retrospective (M1, M2, M3). Click any
+      card to open it full-screen.
+    </p>
+  </section>
+
+  <section id="m0" style="padding:32px 0 24px;">
+    <div class="eyebrow" style="margin-bottom:12px;">M0 · Shipping this week (Big Sur)</div>
+    <h2 style="font-size:36px;margin-bottom:24px;">The race pipeline</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+
+      <a href="index.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#C8502A,#E06941);"><span class="deck-emoji">⚡</span></div>
+        <h3 class="deck-title">Pitch deck / landing</h3>
+        <p class="deck-desc">The overview — vision, end-to-end flow, timeline, algorithm rationale.</p>
+      </a>
+
+      <a href="goal-setting.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#1A1815,#3D3833);"><span class="deck-emoji">◎</span></div>
+        <h3 class="deck-title">Claude goal-setting</h3>
+        <p class="deck-desc">Enter fitness summary → Claude proposes an honest goal with reasoning and risk flags.</p>
+      </a>
+
+      <a href="web-upload.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#7A8471,#AEBAA3);"><span class="deck-emoji">↑</span></div>
+        <h3 class="deck-title">Web · upload &amp; config</h3>
+        <p class="deck-desc">GPX drop zone, goal time input, strategy picker, tolerance slider.</p>
+      </a>
+
+      <a href="web-plan.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#C59B48,#E2C985);"><span class="deck-emoji">▱</span></div>
+        <h3 class="deck-title">Web · plan + chart + export</h3>
+        <p class="deck-desc">Six landmark phases, elevation + pace dual-axis chart, JSON export.</p>
+      </a>
+
+      <a href="ios-plan.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#3D3833,#6B635B);"><span class="deck-emoji">◼</span></div>
+        <h3 class="deck-title">iOS · plan &amp; morning brief</h3>
+        <p class="deck-desc">Imported plan on iPhone, morning weather brief, "Add to Apple Watch" CTA.</p>
+      </a>
+
+      <a href="watch-race.html" class="deck-card">
+        <div class="deck-img" style="background:#000;"><span class="deck-emoji" style="color:#ff7a3d;">◎</span></div>
+        <h3 class="deck-title">Apple Watch · race screens</h3>
+        <p class="deck-desc">Mid-phase pace, fueling haptic, landmark cue — Apple's native Workout UI.</p>
+      </a>
+    </div>
+  </section>
+
+  <section id="future" style="padding:48px 0 96px;">
+    <div class="eyebrow" style="margin-bottom:12px;">Future phases · ready to build when approved</div>
+    <h2 style="font-size:36px;margin-bottom:24px;">The rest of the vision</h2>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;">
+
+      <a href="m1-retrospective.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#A83B2B,#C8502A);"><span class="deck-emoji">⬡</span></div>
+        <h3 class="deck-title">M1 · Post-race retrospective</h3>
+        <p class="deck-desc">Import Watch export, Claude writes race report, calibrates your personal GAP model for next race.</p>
+      </a>
+
+      <a href="m2-integrations.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#5E7A4E,#7A8471);"><span class="deck-emoji">⚯</span></div>
+        <h3 class="deck-title">M2 · Data integrations</h3>
+        <p class="deck-desc">HealthKit, Strava, Apple Calendar, NOAA — auto-ingestion replaces the manual fitness form.</p>
+      </a>
+
+      <a href="m3-training.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#1A1815,#C8502A);"><span class="deck-emoji">◧</span></div>
+        <h3 class="deck-title">M3 · Training capability</h3>
+        <p class="deck-desc">Claude writes your weekly plan. Daily workouts sync to the Watch. Replaces Runna.</p>
+      </a>
+
+      <a href="research.html" class="deck-card">
+        <div class="deck-img" style="background:linear-gradient(135deg,#C59B48,#1A1815);"><span class="deck-emoji">◆</span></div>
+        <h3 class="deck-title">Course-facts research workflow</h3>
+        <p class="deck-desc">Any race in the world. Claude searches the official site + secondary sources, proposes facts with citations, you accept line-by-line.</p>
+      </a>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · personal build for David Nitzsche</div>
+    <div>mockups only · code on GitHub</div>
+  </footer>
+
+</div>
+
+<style>
+.deck-card {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--paper);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.deck-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(26,24,21,0.10), 0 8px 16px rgba(26,24,21,0.06);
+  border-color: var(--ink-4);
+}
+.deck-img { height: 140px; display: grid; place-items: center; }
+.deck-emoji { font-family: var(--font-display); font-size: 56px; color: white; opacity: 0.85; }
+.deck-title { font-size: 18px; margin: 20px 20px 8px; }
+.deck-desc { margin: 0 20px 20px; color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+</style>
+
+</body>
+</html>
