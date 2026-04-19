@@ -1,0 +1,128 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-04-19T17:30:00Z",
+  "generator": "runcino-web@0.1.0",
+
+  "race": {
+    "name": "Big Sur International Marathon",
+    "date": "2026-04-26",
+    "distance_mi": 26.22,
+    "distance_m": 42195,
+    "total_gain_ft": 2182,
+    "total_loss_ft": 2050
+  },
+
+  "goal": {
+    "finish_time_s": 13800,
+    "finish_time_display": "3:50:00",
+    "strategy": "even_effort",
+    "warmup": {
+      "enabled": false,
+      "distance_mi": 0,
+      "pace_s_per_mi": null
+    }
+  },
+
+  "tolerance": {
+    "pace_s_per_mi": 10
+  },
+
+  "phases": [
+    {
+      "index": 0,
+      "label": "Redwood descent",
+      "start_mi": 0.0,
+      "end_mi": 5.0,
+      "distance_mi": 5.0,
+      "target_pace_s_per_mi": 520,
+      "target_pace_display": "8:40/mi",
+      "mean_grade_pct": -0.8,
+      "elevation_gain_ft": 95,
+      "elevation_loss_ft": 275,
+      "cumulative_time_s": 2600,
+      "cumulative_time_display": "0:43:20",
+      "cumulative_distance_mi": 5.0,
+      "note": "Fresh legs — hold back. The descent will tempt you to go 15 sec/mi too fast."
+    },
+    {
+      "index": 1,
+      "label": "Rolling to Hurricane base",
+      "start_mi": 5.0,
+      "end_mi": 10.0,
+      "distance_mi": 5.0,
+      "target_pace_s_per_mi": 510,
+      "target_pace_display": "8:30/mi",
+      "mean_grade_pct": -0.3,
+      "elevation_gain_ft": 320,
+      "elevation_loss_ft": 410,
+      "cumulative_time_s": 5150,
+      "cumulative_time_display": "1:25:50",
+      "cumulative_distance_mi": 10.0,
+      "note": "Rolling. Settle into breath. Bixby Bridge at mile 10."
+    },
+    {
+      "index": 2,
+      "label": "Hurricane Point climb",
+      "start_mi": 10.0,
+      "end_mi": 12.0,
+      "distance_mi": 2.0,
+      "target_pace_s_per_mi": 595,
+      "target_pace_display": "9:55/mi",
+      "mean_grade_pct": 4.8,
+      "elevation_gain_ft": 520,
+      "elevation_loss_ft": 30,
+      "cumulative_time_s": 6340,
+      "cumulative_time_display": "1:45:40",
+      "cumulative_distance_mi": 12.0,
+      "note": "Two miles up. Hold effort, don't chase pace. Eyes on Japanese drummers at the top."
+    },
+    {
+      "index": 3,
+      "label": "Descent to Bixby Creek",
+      "start_mi": 12.0,
+      "end_mi": 14.0,
+      "distance_mi": 2.0,
+      "target_pace_s_per_mi": 505,
+      "target_pace_display": "8:25/mi",
+      "mean_grade_pct": -3.2,
+      "elevation_gain_ft": 40,
+      "elevation_loss_ft": 340,
+      "cumulative_time_s": 7350,
+      "cumulative_time_display": "2:02:30",
+      "cumulative_distance_mi": 14.0,
+      "note": "Recovery downhill. Free speed — but protect your quads."
+    },
+    {
+      "index": 4,
+      "label": "Highway 1 bluffs",
+      "start_mi": 14.0,
+      "end_mi": 22.0,
+      "distance_mi": 8.0,
+      "target_pace_s_per_mi": 530,
+      "target_pace_display": "8:50/mi",
+      "mean_grade_pct": 0.1,
+      "elevation_gain_ft": 810,
+      "elevation_loss_ft": 780,
+      "cumulative_time_s": 11590,
+      "cumulative_time_display": "3:13:10",
+      "cumulative_distance_mi": 22.0,
+      "note": "Relentless rolling. Each hill is short — power up, flow down."
+    },
+    {
+      "index": 5,
+      "label": "Carmel Highlands finish",
+      "start_mi": 22.0,
+      "end_mi": 26.22,
+      "distance_mi": 4.22,
+      "target_pace_s_per_mi": 525,
+      "target_pace_display": "8:45/mi",
+      "mean_grade_pct": -0.4,
+      "elevation_gain_ft": 397,
+      "elevation_loss_ft": 215,
+      "cumulative_time_s": 13805,
+      "cumulative_time_display": "3:50:05",
+      "cumulative_distance_mi": 26.22,
+      "note": "Final push. Mile 25 has the last real climb. Empty the tank to the finish."
+    }
+  ]
+}

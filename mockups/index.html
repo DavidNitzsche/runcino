@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runcino — race-day pacing for Apple Watch</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Nav -->
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="web-upload.html">Web app</a>
+      <a href="ios-plan.html">iOS app</a>
+      <a href="#flow">How it works</a>
+      <a class="btn btn--primary" href="web-upload.html">Build my plan</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="pill pill--accent" style="margin-bottom:20px;">
+      <span class="pill-dot"></span>
+      <span>Personal build · Big Sur Marathon 2026</span>
+    </div>
+    <h1>Run the course,<br/><span class="serif-italic">not the clock.</span></h1>
+    <p class="lede">
+      Upload a race GPX. Runcino computes a grade-adjusted pace for every
+      mile of the course and ships it straight to your Apple Watch as a
+      guided workout — so on race day, you run by feel while the Watch
+      holds the plan.
+    </p>
+    <div class="hstack gap-4" style="justify-content:center;">
+      <a class="btn btn--accent btn--lg" href="web-upload.html">Build my Big Sur plan</a>
+      <a class="btn btn--ghost btn--lg" href="#flow">See the flow</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">3:50<span style="color:var(--ink-3);font-size:22px;">:00</span></div>
+        <div class="stat-label">Big Sur goal</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">6</div>
+        <div class="stat-label">Landmark phases</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">2,182<span style="color:var(--ink-3);font-size:22px;"> ft</span></div>
+        <div class="stat-label">Total climb</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">±10<span style="color:var(--ink-3);font-size:22px;"> s/mi</span></div>
+        <div class="stat-label">Watch tolerance</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Flow -->
+  <section id="flow">
+    <div class="section-header center">
+      <div class="eyebrow">From planning to running</div>
+      <h2 style="margin-left:auto;margin-right:auto;">Four touchpoints.<br/><span class="serif-italic">No cloud in between.</span></h2>
+      <p class="lede muted" style="max-width:52ch;margin:0 auto;">
+        Your race plan travels as a single JSON file from your laptop to
+        your wrist. One runner, one race, one artifact.
+      </p>
+    </div>
+
+    <!-- Journey diagram -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;position:relative;">
+      <!-- Step 1 -->
+      <div class="card" style="padding:28px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--terracotta);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:14px;">1</div>
+          <div class="eyebrow" style="color:var(--ink-3);">Laptop</div>
+        </div>
+        <h4 style="margin-bottom:8px;">Plan on the web</h4>
+        <p class="small muted" style="margin-bottom:16px;">Drop a GPX. Set your goal time. See a Minetti-adjusted pace plan in 2 seconds.</p>
+        <div style="padding:10px 12px;background:var(--paper-2);border-radius:8px;font-family:var(--font-mono);font-size:12px;color:var(--ink-3);">
+          localhost:3000
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="card" style="padding:28px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--terracotta);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:14px;">2</div>
+          <div class="eyebrow" style="color:var(--ink-3);">Transport</div>
+        </div>
+        <h4 style="margin-bottom:8px;">AirDrop the JSON</h4>
+        <p class="small muted" style="margin-bottom:16px;">One file, a few KB. AirDrop, iCloud Drive, email — whatever's handy.</p>
+        <div style="padding:10px 12px;background:var(--paper-2);border-radius:8px;font-family:var(--font-mono);font-size:12px;color:var(--ink-3);">
+          bigsur-2026.runcino.json
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="card" style="padding:28px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--terracotta);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:14px;">3</div>
+          <div class="eyebrow" style="color:var(--ink-3);">iPhone</div>
+        </div>
+        <h4 style="margin-bottom:8px;">Open in Runcino</h4>
+        <p class="small muted" style="margin-bottom:16px;">Share sheet → Runcino. Review the plan. Tap "Add to Apple Watch."</p>
+        <div style="padding:10px 12px;background:var(--paper-2);border-radius:8px;font-family:var(--font-mono);font-size:12px;color:var(--ink-3);">
+          WorkoutScheduler.preview()
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="card" style="padding:28px;background:var(--ink);color:var(--paper);border-color:var(--ink);">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--terracotta);color:var(--paper);display:grid;place-items:center;font-weight:700;font-size:14px;">4</div>
+          <div class="eyebrow" style="color:var(--terracotta-2);">Apple Watch</div>
+        </div>
+        <h4 style="margin-bottom:8px;color:var(--paper);">Run the race</h4>
+        <p class="small" style="margin-bottom:16px;color:var(--paper-3);">Start the workout at the gun. Haptics nudge you if you drift. Phones stay home.</p>
+        <div style="padding:10px 12px;background:rgba(255,255,255,0.08);border-radius:8px;font-family:var(--font-mono);font-size:12px;color:var(--paper-3);">
+          Workout · Big Sur 3:50
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why GAP -->
+  <section>
+    <div class="section-header">
+      <div class="eyebrow">Why grade-adjusted pacing</div>
+      <h2>Running Big Sur at even pace<br/><span class="serif-italic">is how you blow up at mile 11.</span></h2>
+    </div>
+
+    <div class="split">
+      <div>
+        <p class="lede" style="margin-bottom:24px;">
+          Hurricane Point climbs 520 ft in 2 miles at mile 10. The
+          rolling bluffs after the descent to Bixby Creek give you
+          7 climbs in the back half. Even pace means you're
+          overcooking every climb and under-using every descent.
+        </p>
+        <p class="lede" style="margin-bottom:24px;">
+          Runcino uses Minetti's cost-of-running curve — the same math
+          Strava uses for GAP — to convert grade to a metabolic cost
+          multiplier. Hold effort constant. Let the pace vary with the
+          course. Hit the finish line with something left.
+        </p>
+        <a class="btn btn--ghost" href="#" onclick="return false;">Read the algorithm notes →</a>
+      </div>
+
+      <div class="card" style="background:var(--paper-2);">
+        <div class="eyebrow" style="margin-bottom:12px;">Minetti adjustment</div>
+        <table style="width:100%;font-family:var(--font-mono);font-size:13px;">
+          <tr style="color:var(--ink-3);border-bottom:1px solid var(--line);">
+            <td style="padding:10px 0;">Grade</td>
+            <td style="padding:10px 0;text-align:right;">Effort at 8:46/mi</td>
+          </tr>
+          <tr><td style="padding:10px 0;">−5%</td><td style="padding:10px 0;text-align:right;color:var(--ok);">feels like 78%</td></tr>
+          <tr><td style="padding:10px 0;">0%</td><td style="padding:10px 0;text-align:right;">baseline</td></tr>
+          <tr><td style="padding:10px 0;">+3%</td><td style="padding:10px 0;text-align:right;color:var(--gold);">feels like 142%</td></tr>
+          <tr><td style="padding:10px 0;">+5%</td><td style="padding:10px 0;text-align:right;color:var(--danger);">feels like 180%</td></tr>
+          <tr><td style="padding:10px 0;">+8%</td><td style="padding:10px 0;text-align:right;color:var(--danger);">feels like 245%</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section>
+    <div class="section-header">
+      <div class="eyebrow">What's in the box</div>
+      <h2>Everything the race needs.<br/><span class="serif-italic">Nothing the race doesn't.</span></h2>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 14 15 20 9"/><polyline points="14 9 20 9 20 15"/></svg>
+        </div>
+        <h4>GPX-aware pacing</h4>
+        <p>Parse a race GPX, smooth elevation, chunk at 800m, compute Minetti-adjusted pace per segment.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
+        </div>
+        <h4>Human-readable phases</h4>
+        <p>Auto-groups 53 segments into 6 landmark phases: Hurricane Point, Bixby, Carmel Highlands.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+        </div>
+        <h4>WorkoutKit-native</h4>
+        <p>Generates a real CustomWorkout with pace-goal IntervalSteps — same API Apple uses for Fitness+.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+        </div>
+        <h4>One JSON, frozen</h4>
+        <p>The .runcino.json schema is the contract. v1.0.0 shipped end of Day 3. Same file works forever.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M12 17h0.01"/></svg>
+        </div>
+        <h4>Offline on the Watch</h4>
+        <p>No phone in the race. Custom workout syncs once, runs offline, logs to Health on the wrist.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="10"/></svg>
+        </div>
+        <h4>No accounts, no cloud</h4>
+        <p>Runs on localhost + a sideloaded iOS build. One runner, one race. Zero infrastructure.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Timeline -->
+  <section>
+    <div class="section-header">
+      <div class="eyebrow">Build plan</div>
+      <h2>Six days from scaffold<br/><span class="serif-italic">to sideloaded race-day app.</span></h2>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:120px 1fr auto;gap:0;">
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);background:var(--paper-2);">Day 0</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);background:var(--paper-2);">
+          <div style="font-weight:600;margin-bottom:4px;">Planning & mockups</div>
+          <div class="small muted">README, schema, algorithm doc, HTML mockups (you're reading one)</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);background:var(--paper-2);"><span class="pill pill--accent">Now</span></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 1</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);">
+          <div style="font-weight:600;margin-bottom:4px;">GPX parser + Minetti + tests</div>
+          <div class="small muted">Pipeline runs on sample Big Sur GPX; prints plan to terminal before any UI</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);"></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 2</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);">
+          <div style="font-weight:600;margin-bottom:4px;">Web UI — upload, plan table, chart</div>
+          <div class="small muted">Next.js 15, Tailwind 4, hand-rolled SVG chart, .runcino.json export</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);"></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 3</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);">
+          <div style="font-weight:600;margin-bottom:4px;">Polish + freeze the JSON schema</div>
+          <div class="small muted">Pixel pass, edge cases, v1.0.0 locked — contract for iOS begins</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);"><span class="pill pill--sage">Gate</span></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 4</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);">
+          <div style="font-weight:600;margin-bottom:4px;">Xcode project + file import</div>
+          <div class="small muted">SwiftUI, iOS 17, .fileImporter, Codable model mirroring the schema</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);"></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 5</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);">
+          <div style="font-weight:600;margin-bottom:4px;">WorkoutKit integration</div>
+          <div class="small muted">CustomWorkout + IntervalStep pace goals, WorkoutScheduler.preview() → Watch</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--line);"></div>
+
+        <div style="padding:20px 24px;border-right:1px solid var(--line);font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);">Day 6</div>
+        <div style="padding:20px 24px;">
+          <div style="font-weight:600;margin-bottom:4px;">Sideload + training-run dry run</div>
+          <div class="small muted">Run the Big Sur plan on a 5-miler, catch bugs, fix, resideload</div>
+        </div>
+        <div style="padding:20px 24px;"><span class="pill pill--sage">Gate</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section style="padding-bottom:48px;">
+    <div class="card" style="text-align:center;padding:64px 32px;background:var(--ink);color:var(--paper);border-color:var(--ink);">
+      <div class="eyebrow" style="color:var(--terracotta-2);margin-bottom:16px;">Next step</div>
+      <h2 style="color:var(--paper);max-width:22ch;margin:0 auto 16px;">Approve the mockups,<br/><span class="serif-italic">and we start building Monday.</span></h2>
+      <p class="lede" style="color:var(--paper-3);max-width:52ch;margin:0 auto 32px;">
+        Click through the web and iOS mockups. If they look right, say
+        the word — PR merges to main and Day 1 starts.
+      </p>
+      <div class="hstack gap-4" style="justify-content:center;">
+        <a class="btn btn--accent btn--lg" href="web-upload.html">Web — upload & plan</a>
+        <a class="btn btn--ghost btn--lg" style="color:var(--paper);border-color:rgba(255,255,255,0.2);" href="ios-plan.html">iOS — import & Watch</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · personal build for David Nitzsche</div>
+    <div>v0.0.1 · Day 0 — mockups</div>
+  </footer>
+
+</div>
+
+</body>
+</html>
