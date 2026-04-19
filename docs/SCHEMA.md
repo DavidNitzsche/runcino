@@ -1,29 +1,48 @@
-# `.runcino.json` Schema — v1.0.0
+# `.runcino.json` Schema — v1.1.0
 
-The contract between the web app (Phase 1, producer) and the iOS app
-(Phase 2, consumer). Once frozen (end of Day 3), any change requires
-a new `schema_version`.
+The contract between the web app (producer) and the iOS app
+(consumer). Any breaking change requires a new `schema_version`.
+
+## v1.1.0 notes
+
+- Added `intervals[]` — flat sequenced list of typed steps (pace /
+  fuel / landmark) that iOS uses to build WorkoutKit `IntervalStep`s.
+- Added `brief` — Claude-authored race-morning narrative.
+- Added `fitness_summary` — the inputs Claude used for the goal
+  recommendation (so we can reproduce and retrospect).
+- `phases[]` stays as the human-readable grouping; `intervals[]` is
+  the machine version. They describe the same race.
+
+---
 
 ## Why a file, not an API
 
 One runner, one race. No server. A `.runcino.json` file travels
-from my laptop to my iPhone via AirDrop / iCloud Drive / Files app.
+from the laptop to the iPhone via AirDrop / iCloud Drive / Files app.
 Zero infrastructure. Zero privacy surface.
+
+---
 
 ## Top-level shape
 
 ```jsonc
 {
-  "schema_version": "1.0.0",        // semver, required
-  "generated_at": "ISO-8601 UTC",   // when the web app built this
-  "generator": "runcino-web@0.1.0", // tool + version that produced it
+  "schema_version": "1.1.0",
+  "generated_at": "ISO-8601 UTC",
+  "generator": "runcino-web@0.1.0",
 
-  "race": { … },     // static race metadata
-  "goal": { … },     // what David is trying to do
-  "tolerance": { … },// how strict the watch alerts are
-  "phases": [ … ]    // 6–8 landmark-anchored phases
+  "race":             { … },   // static race metadata
+  "goal":             { … },   // target finish, strategy, warmup
+  "fitness_summary":  { … },   // inputs Claude saw for the recommendation
+  "tolerance":        { … },   // watch alert strictness
+  "phases":           [ … ],   // 6–8 human-readable groupings
+  "intervals":        [ … ],   // flat ordered steps for WorkoutKit
+  "fueling":          { … },   // gel schedule + total carbs
+  "brief":            null     // populated by race-morning Claude call
 }
 ```
+
+---
 
 ## `race`
 
@@ -38,53 +57,47 @@ Zero infrastructure. Zero privacy surface.
 }
 ```
 
-- `distance_mi` and `distance_m` must agree (±0.01 mi rounding).
-- Gain/loss are from the GPX after a 3-point moving-average smooth
-  on elevation (raw GPS elevation is noisy).
-
 ## `goal`
 
 ```jsonc
 {
-  "finish_time_s": 13800,          // target total duration, seconds
+  "finish_time_s": 13800,
   "finish_time_display": "3:50:00",
-  "strategy": "even_effort",       // "even_effort" | "even_split" | "negative_split"
-  "warmup": {
-    "enabled": false,
-    "distance_mi": 0,
-    "pace_s_per_mi": null
-  }
+  "strategy": "even_effort",        // "even_effort" | "even_split" | "negative_split"
+  "flat_pace_s_per_mi": 526,        // goal / distance
+  "warmup": { "enabled": false, "distance_mi": 0, "pace_s_per_mi": null },
+  "claude_rationale": "Your LA 3:40 extrapolates to a flat-course equivalent…"
 }
 ```
 
-- `strategy` values:
-  - `even_effort` — scale Minetti-adjusted paces to hit goal time.
-    **Default.**
-  - `even_split` — ignore course, target pace = goal / distance
-    everywhere. Useful for flat courses; wrong for Big Sur.
-  - `negative_split` — allocate first half at goal_pace + 5 sec/mi,
-    second half faster to compensate.
-- `warmup.enabled: true` means first `distance_mi` are held at
-  `pace_s_per_mi` regardless of grade; remaining distance is scaled
-  to hit goal time.
+## `fitness_summary`
+
+Inputs Claude saw. Stored so the recommendation is reproducible.
+
+```jsonc
+{
+  "baseline_race": { "name": "LA Marathon", "finish_s": 13200, "months_ago": 5 },
+  "weekly_mileage": 38,
+  "weekly_mileage_trend_6wk": -4,
+  "longest_recent_long_run_mi": 18,
+  "longest_recent_long_run_age_wk": 3,
+  "resting_hr_bpm": 48,
+  "resting_hr_trend_8wk": -2,
+  "age": null,
+  "weight_lb": null,
+  "source": "manual"                // "manual" | "healthkit" | "strava"
+}
+```
 
 ## `tolerance`
 
 ```jsonc
-{
-  "pace_s_per_mi": 10
-}
+{ "pace_s_per_mi": 10 }
 ```
-
-Watch haptic fires if observed pace deviates from target phase pace
-by more than this. Passed to WorkoutKit as `IntervalStep` pace goal
-bounds: `target ± tolerance`.
 
 ## `phases`
 
-Array of 6–8 segments. Contiguous — `phases[i].end_mi ==
-phases[i+1].start_mi`. First phase starts at 0.0, last ends at
-`race.distance_mi`.
+Human-readable groupings for the iOS plan view and the web table.
 
 ```jsonc
 {
@@ -98,30 +111,115 @@ phases[i+1].start_mi`. First phase starts at 0.0, last ends at
   "mean_grade_pct": 4.8,
   "elevation_gain_ft": 520,
   "elevation_loss_ft": 30,
-  "cumulative_time_s": 7580,
-  "cumulative_time_display": "2:06:20",
-  "cumulative_distance_mi": 12.0,
+  "cumulative_time_s": 6340,
+  "cumulative_time_display": "1:45:40",
   "note": "Steady climb. Don't chase pace — hold effort."
 }
 ```
 
-- `target_pace_s_per_mi` is an integer (round to nearest second).
-- `cumulative_time_s` is at `end_mi` (i.e. the projected split time
-  passing that mile marker).
-- `note` is an optional hint shown on the Watch under the pace.
+## `intervals`
+
+Flat ordered list. iOS maps each entry to a `WorkoutKit.IntervalStep`.
+
+**Shared fields:** `index`, `phase_idx`, `at_mi` (start position),
+`kind`, `label`.
+
+**Pace step:**
+```jsonc
+{
+  "index": 5,
+  "phase_idx": 2,
+  "kind": "pace",
+  "at_mi": 10.0,
+  "distance_mi": 2.0,
+  "target_pace_s_per_mi": 595,
+  "tolerance_s_per_mi": 10,
+  "label": "Hurricane climb"
+}
+```
+
+**Fuel step:**
+```jsonc
+{
+  "index": 4,
+  "phase_idx": 1,
+  "kind": "fuel",
+  "at_mi": 8.0,
+  "duration_s": 30,
+  "item": "Maurten gel · water",
+  "gel_number": 2,
+  "label": "Gel 2"
+}
+```
+
+**Landmark step:**
+```jsonc
+{
+  "index": 3,
+  "phase_idx": 1,
+  "kind": "landmark",
+  "at_mi": 10.0,
+  "duration_s": 10,
+  "label": "Bixby Bridge · 0.3 mi"
+}
+```
+
+### Interval ordering rules
+
+- `intervals[]` must be sorted by `at_mi` ascending.
+- `intervals[0].at_mi` must be `0.0`; last pace step's
+  `at_mi + distance_mi` must equal `race.distance_mi` (±0.01 mi).
+- Fuel and landmark steps are "inserted" between pace steps —
+  the preceding pace step's `distance_mi` is shortened so the
+  sequence remains continuous in mile space.
+- iOS builds `CustomWorkout.blocks` from this array directly.
+
+## `fueling`
+
+Summary of the fuel plan — the detailed anchors live in `intervals[]`.
+
+```jsonc
+{
+  "carb_target_g_per_hr": 60,
+  "total_carbs_g": 240,
+  "gel_count": 5,
+  "gel_carbs_g": 40,
+  "gel_brand": "Maurten",
+  "notes": "Gels anchored to phase boundaries, not clock. Mile 8 lands pre-Hurricane for Hurricane-climb absorption."
+}
+```
+
+## `brief`
+
+Race-morning narrative. `null` until generated.
+
+```jsonc
+{
+  "generated_at": "2026-04-26T06:18:00Z",
+  "weather_input": "42°F start, 58°F finish. NW wind 8 mph. Overcast until noon.",
+  "narrative": "Tailwind through the redwoods, turns to light crosswind at Hurricane…",
+  "plan_adjustments": [
+    { "phase_idx": 4, "pace_delta_s_per_mi": +3, "reason": "crosswind exposure mile 14-18" }
+  ]
+}
+```
+
+---
 
 ## Example
 
 See [`example.runcino.json`](example.runcino.json) — a full Big Sur
 3:50:00 plan.
 
-## Validation
+---
 
-The web app must emit only valid files. The iOS app must reject
-anything where:
+## Validation (iOS import)
 
-- `schema_version` is not `1.0.0`
-- `phases` is empty or has > 10 entries
-- Phases are non-contiguous
-- Any `target_pace_s_per_mi` is outside `[240, 900]` (4:00 to 15:00/mi)
-- `finish_time_s` disagrees with the sum of phase times by > 30 s
+Reject any file where:
+
+- `schema_version` major doesn't match app's supported (currently `1.x`)
+- `phases[]` empty or > 10
+- `intervals[]` not sorted or non-continuous in mile space
+- Any `target_pace_s_per_mi` outside `[240, 900]` (4:00 to 15:00/mi)
+- `sum(phase.distance_mi × phase.pace / 3600)` disagrees with
+  `goal.finish_time_s` by > 30 s

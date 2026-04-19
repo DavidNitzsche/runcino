@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "generated_at": "2026-04-19T17:30:00Z",
+  "schema_version": "1.1.0",
+  "generated_at": "2026-04-19T23:30:00Z",
   "generator": "runcino-web@0.1.0",
 
   "race": {
@@ -16,113 +16,66 @@
     "finish_time_s": 13800,
     "finish_time_display": "3:50:00",
     "strategy": "even_effort",
-    "warmup": {
-      "enabled": false,
-      "distance_mi": 0,
-      "pace_s_per_mi": null
-    }
+    "flat_pace_s_per_mi": 526,
+    "warmup": { "enabled": false, "distance_mi": 0, "pace_s_per_mi": null },
+    "claude_rationale": "Your LA 3:40 extrapolates to a flat-course equivalent around 3:37-3:41 today; resting HR trend and mileage drop cancel. Big Sur's 2,182 ft with Hurricane Point at mile 10 adds ~10 min course penalty, making effort-equivalent 3:50-3:52. Start at 3:50, leaves room to push through Carmel if the day's going well."
   },
 
-  "tolerance": {
-    "pace_s_per_mi": 10
+  "fitness_summary": {
+    "baseline_race": { "name": "LA Marathon", "finish_s": 13200, "months_ago": 5 },
+    "weekly_mileage": 38,
+    "weekly_mileage_trend_6wk": -4,
+    "longest_recent_long_run_mi": 18,
+    "longest_recent_long_run_age_wk": 3,
+    "resting_hr_bpm": 48,
+    "resting_hr_trend_8wk": -2,
+    "age": null,
+    "weight_lb": null,
+    "source": "manual"
   },
+
+  "tolerance": { "pace_s_per_mi": 10 },
 
   "phases": [
-    {
-      "index": 0,
-      "label": "Redwood descent",
-      "start_mi": 0.0,
-      "end_mi": 5.0,
-      "distance_mi": 5.0,
-      "target_pace_s_per_mi": 520,
-      "target_pace_display": "8:40/mi",
-      "mean_grade_pct": -0.8,
-      "elevation_gain_ft": 95,
-      "elevation_loss_ft": 275,
-      "cumulative_time_s": 2600,
-      "cumulative_time_display": "0:43:20",
-      "cumulative_distance_mi": 5.0,
-      "note": "Fresh legs — hold back. The descent will tempt you to go 15 sec/mi too fast."
-    },
-    {
-      "index": 1,
-      "label": "Rolling to Hurricane base",
-      "start_mi": 5.0,
-      "end_mi": 10.0,
-      "distance_mi": 5.0,
-      "target_pace_s_per_mi": 510,
-      "target_pace_display": "8:30/mi",
-      "mean_grade_pct": -0.3,
-      "elevation_gain_ft": 320,
-      "elevation_loss_ft": 410,
-      "cumulative_time_s": 5150,
-      "cumulative_time_display": "1:25:50",
-      "cumulative_distance_mi": 10.0,
-      "note": "Rolling. Settle into breath. Bixby Bridge at mile 10."
-    },
-    {
-      "index": 2,
-      "label": "Hurricane Point climb",
-      "start_mi": 10.0,
-      "end_mi": 12.0,
-      "distance_mi": 2.0,
-      "target_pace_s_per_mi": 595,
-      "target_pace_display": "9:55/mi",
-      "mean_grade_pct": 4.8,
-      "elevation_gain_ft": 520,
-      "elevation_loss_ft": 30,
-      "cumulative_time_s": 6340,
-      "cumulative_time_display": "1:45:40",
-      "cumulative_distance_mi": 12.0,
-      "note": "Two miles up. Hold effort, don't chase pace. Eyes on Japanese drummers at the top."
-    },
-    {
-      "index": 3,
-      "label": "Descent to Bixby Creek",
-      "start_mi": 12.0,
-      "end_mi": 14.0,
-      "distance_mi": 2.0,
-      "target_pace_s_per_mi": 505,
-      "target_pace_display": "8:25/mi",
-      "mean_grade_pct": -3.2,
-      "elevation_gain_ft": 40,
-      "elevation_loss_ft": 340,
-      "cumulative_time_s": 7350,
-      "cumulative_time_display": "2:02:30",
-      "cumulative_distance_mi": 14.0,
-      "note": "Recovery downhill. Free speed — but protect your quads."
-    },
-    {
-      "index": 4,
-      "label": "Highway 1 bluffs",
-      "start_mi": 14.0,
-      "end_mi": 22.0,
-      "distance_mi": 8.0,
-      "target_pace_s_per_mi": 530,
-      "target_pace_display": "8:50/mi",
-      "mean_grade_pct": 0.1,
-      "elevation_gain_ft": 810,
-      "elevation_loss_ft": 780,
-      "cumulative_time_s": 11590,
-      "cumulative_time_display": "3:13:10",
-      "cumulative_distance_mi": 22.0,
-      "note": "Relentless rolling. Each hill is short — power up, flow down."
-    },
-    {
-      "index": 5,
-      "label": "Carmel Highlands finish",
-      "start_mi": 22.0,
-      "end_mi": 26.22,
-      "distance_mi": 4.22,
-      "target_pace_s_per_mi": 525,
-      "target_pace_display": "8:45/mi",
-      "mean_grade_pct": -0.4,
-      "elevation_gain_ft": 397,
-      "elevation_loss_ft": 215,
-      "cumulative_time_s": 13805,
-      "cumulative_time_display": "3:50:05",
-      "cumulative_distance_mi": 26.22,
-      "note": "Final push. Mile 25 has the last real climb. Empty the tank to the finish."
-    }
-  ]
+    { "index": 0, "label": "Redwood descent",          "start_mi": 0.0,  "end_mi": 5.0,   "distance_mi": 5.0,  "target_pace_s_per_mi": 520, "target_pace_display": "8:40/mi", "mean_grade_pct": -0.8, "elevation_gain_ft":  95, "elevation_loss_ft": 275, "cumulative_time_s":  2600, "cumulative_time_display": "0:43:20", "note": "Fresh legs — hold back." },
+    { "index": 1, "label": "Rolling to Hurricane base","start_mi": 5.0,  "end_mi": 10.0,  "distance_mi": 5.0,  "target_pace_s_per_mi": 510, "target_pace_display": "8:30/mi", "mean_grade_pct": -0.3, "elevation_gain_ft": 320, "elevation_loss_ft": 410, "cumulative_time_s":  5150, "cumulative_time_display": "1:25:50", "note": "Settle into breath. Bixby at mile 10." },
+    { "index": 2, "label": "Hurricane Point climb",    "start_mi": 10.0, "end_mi": 12.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 595, "target_pace_display": "9:55/mi", "mean_grade_pct":  4.8, "elevation_gain_ft": 520, "elevation_loss_ft":  30, "cumulative_time_s":  6340, "cumulative_time_display": "1:45:40", "note": "Two miles up. Hold effort. Drummers at the top." },
+    { "index": 3, "label": "Descent to Bixby Creek",   "start_mi": 12.0, "end_mi": 14.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 505, "target_pace_display": "8:25/mi", "mean_grade_pct": -3.2, "elevation_gain_ft":  40, "elevation_loss_ft": 340, "cumulative_time_s":  7350, "cumulative_time_display": "2:02:30", "note": "Recovery downhill. Protect quads." },
+    { "index": 4, "label": "Highway 1 bluffs",         "start_mi": 14.0, "end_mi": 22.0,  "distance_mi": 8.0,  "target_pace_s_per_mi": 530, "target_pace_display": "8:50/mi", "mean_grade_pct":  0.1, "elevation_gain_ft": 810, "elevation_loss_ft": 780, "cumulative_time_s": 11590, "cumulative_time_display": "3:13:10", "note": "Relentless rolling. Power up, flow down." },
+    { "index": 5, "label": "Carmel Highlands finish",  "start_mi": 22.0, "end_mi": 26.22, "distance_mi": 4.22, "target_pace_s_per_mi": 525, "target_pace_display": "8:45/mi", "mean_grade_pct": -0.4, "elevation_gain_ft": 397, "elevation_loss_ft": 215, "cumulative_time_s": 13805, "cumulative_time_display": "3:50:05", "note": "Mile 25 has the last real climb. Empty the tank." }
+  ],
+
+  "intervals": [
+    { "index":  0, "phase_idx": 0, "kind": "pace",     "at_mi":  0.0,  "distance_mi": 3.0,  "target_pace_s_per_mi": 520, "tolerance_s_per_mi": 10, "label": "Redwood descent" },
+    { "index":  1, "phase_idx": 0, "kind": "fuel",     "at_mi":  3.0,  "duration_s": 30, "item": "Maurten gel · water", "gel_number": 1, "label": "Gel 1 · fuel check" },
+    { "index":  2, "phase_idx": 0, "kind": "pace",     "at_mi":  3.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 520, "tolerance_s_per_mi": 10, "label": "Redwood descent (cont.)" },
+    { "index":  3, "phase_idx": 1, "kind": "pace",     "at_mi":  5.0,  "distance_mi": 3.0,  "target_pace_s_per_mi": 510, "tolerance_s_per_mi": 10, "label": "Rolling to Hurricane" },
+    { "index":  4, "phase_idx": 1, "kind": "fuel",     "at_mi":  8.0,  "duration_s": 30, "item": "Maurten gel · water", "gel_number": 2, "label": "Gel 2 · pre-Hurricane" },
+    { "index":  5, "phase_idx": 1, "kind": "pace",     "at_mi":  8.0,  "distance_mi": 1.7,  "target_pace_s_per_mi": 510, "tolerance_s_per_mi": 10, "label": "Approach Bixby" },
+    { "index":  6, "phase_idx": 1, "kind": "landmark", "at_mi":  9.7,  "duration_s": 10, "label": "Bixby Bridge · 0.3 mi" },
+    { "index":  7, "phase_idx": 1, "kind": "pace",     "at_mi":  9.7,  "distance_mi": 0.3,  "target_pace_s_per_mi": 510, "tolerance_s_per_mi": 10, "label": "Onto Bixby" },
+    { "index":  8, "phase_idx": 2, "kind": "pace",     "at_mi": 10.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 595, "tolerance_s_per_mi": 10, "label": "Hurricane climb" },
+    { "index":  9, "phase_idx": 2, "kind": "landmark", "at_mi": 12.0,  "duration_s": 10, "label": "Drummers · top of Hurricane" },
+    { "index": 10, "phase_idx": 3, "kind": "pace",     "at_mi": 12.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 505, "tolerance_s_per_mi": 10, "label": "Bixby Creek descent" },
+    { "index": 11, "phase_idx": 3, "kind": "fuel",     "at_mi": 14.0,  "duration_s": 30, "item": "Maurten gel · water", "gel_number": 3, "label": "Gel 3 · post-descent" },
+    { "index": 12, "phase_idx": 4, "kind": "pace",     "at_mi": 14.0,  "distance_mi": 3.0,  "target_pace_s_per_mi": 530, "tolerance_s_per_mi": 10, "label": "Highway 1 bluffs" },
+    { "index": 13, "phase_idx": 4, "kind": "fuel",     "at_mi": 17.0,  "duration_s": 30, "item": "Maurten gel · water", "gel_number": 4, "label": "Gel 4 · sustain" },
+    { "index": 14, "phase_idx": 4, "kind": "pace",     "at_mi": 17.0,  "distance_mi": 3.0,  "target_pace_s_per_mi": 530, "tolerance_s_per_mi": 10, "label": "Bluffs (cont.)" },
+    { "index": 15, "phase_idx": 4, "kind": "fuel",     "at_mi": 20.0,  "duration_s": 30, "item": "Maurten gel · water", "gel_number": 5, "label": "Gel 5 · final push prep" },
+    { "index": 16, "phase_idx": 4, "kind": "pace",     "at_mi": 20.0,  "distance_mi": 2.0,  "target_pace_s_per_mi": 530, "tolerance_s_per_mi": 10, "label": "Bluffs (final)" },
+    { "index": 17, "phase_idx": 5, "kind": "pace",     "at_mi": 22.0,  "distance_mi": 3.0,  "target_pace_s_per_mi": 525, "tolerance_s_per_mi": 10, "label": "Carmel Highlands" },
+    { "index": 18, "phase_idx": 5, "kind": "landmark", "at_mi": 25.0,  "duration_s": 10, "label": "Last climb · empty the tank" },
+    { "index": 19, "phase_idx": 5, "kind": "pace",     "at_mi": 25.0,  "distance_mi": 1.22, "target_pace_s_per_mi": 525, "tolerance_s_per_mi": 10, "label": "Finish" }
+  ],
+
+  "fueling": {
+    "carb_target_g_per_hr": 60,
+    "total_carbs_g": 200,
+    "gel_count": 5,
+    "gel_carbs_g": 40,
+    "gel_brand": "Maurten",
+    "notes": "Anchored to phase boundaries, not clock. Mile 8 lands pre-Hurricane for climb absorption. Mile 20 prep for Carmel final push."
+  },
+
+  "brief": null
 }

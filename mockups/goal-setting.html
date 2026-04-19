@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>What's your honest goal? · Runcino</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="web-upload.html">Upload</a>
+      <a href="web-plan.html">Plan</a>
+    </div>
+  </nav>
+
+  <section style="padding:48px 0 16px;">
+    <div class="pill pill--accent" style="margin-bottom:16px;">
+      <span class="pill-dot"></span>
+      Step 1 · Before you pick a time
+    </div>
+    <h2 style="max-width:22ch;margin-bottom:12px;">
+      What's your <span class="serif-italic">honest</span> goal?
+    </h2>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      Picking a goal time is the hardest part of marathon prep.
+      Pick too fast and you blow up. Too conservative and you
+      leave time. Runcino reads your fitness profile and writes
+      you a second opinion — specific to Big Sur's elevation,
+      grounded in your actual training.
+    </p>
+  </section>
+
+  <section style="padding:24px 0 96px;">
+    <div class="split">
+
+      <!-- Left: fitness summary form -->
+      <div class="card" style="padding:36px;">
+        <div class="hstack" style="justify-content:space-between;margin-bottom:24px;">
+          <h4>Your fitness profile</h4>
+          <span class="pill">Manual for now · HealthKit in M1</span>
+        </div>
+
+        <div class="field">
+          <label>Baseline race</label>
+          <div class="hstack gap-2">
+            <select class="select" style="max-width:220px;">
+              <option>LA Marathon (2025)</option>
+              <option>CIM (2024)</option>
+              <option>Other flat marathon</option>
+            </select>
+            <input class="input" type="text" value="3:40:00" style="max-width:140px;font-family:var(--font-mono);font-size:16px;" />
+          </div>
+          <div class="hint">How long ago? <strong style="color:var(--ink);">5 months</strong></div>
+        </div>
+
+        <div class="field">
+          <label>Current weekly mileage (6-week avg)</label>
+          <div class="hstack gap-2">
+            <input class="input" type="text" value="38" style="max-width:100px;text-align:center;font-family:var(--font-mono);font-size:18px;" />
+            <span class="muted" style="font-size:14px;">mi / week</span>
+          </div>
+          <div class="hint">LA block averaged 42 mi/wk · trend is −4 mi over last 6 weeks</div>
+        </div>
+
+        <div class="field">
+          <label>Longest recent long run</label>
+          <div class="hstack gap-2">
+            <input class="input" type="text" value="18" style="max-width:100px;text-align:center;font-family:var(--font-mono);font-size:18px;" />
+            <span class="muted" style="font-size:14px;">mi, 3 weeks ago</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Resting heart rate</label>
+          <div class="hstack gap-2">
+            <input class="input" type="text" value="48" style="max-width:100px;text-align:center;font-family:var(--font-mono);font-size:18px;" />
+            <span class="muted" style="font-size:14px;">bpm (morning avg)</span>
+          </div>
+          <div class="hint">Trend: −2 bpm over 8 weeks · sharp</div>
+        </div>
+
+        <div class="field">
+          <label>Age / weight (optional)</label>
+          <div class="hstack gap-2">
+            <input class="input" type="text" placeholder="yrs" style="max-width:100px;text-align:center;" />
+            <input class="input" type="text" placeholder="lbs" style="max-width:100px;text-align:center;" />
+          </div>
+        </div>
+
+        <div style="padding:16px;background:var(--paper-2);border-radius:12px;margin-top:24px;">
+          <div class="hstack gap-2" style="margin-bottom:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--terracotta)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            <strong style="font-size:13px;">Why we ask by hand (for now)</strong>
+          </div>
+          <p class="small muted" style="margin:0;">
+            In <strong style="color:var(--ink);">M1 (post-Big Sur)</strong>, this form auto-fills from HealthKit. For the 7-day sprint we enter it once — it takes a minute and we get to the real work.
+          </p>
+        </div>
+
+        <div class="hstack" style="justify-content:flex-end;margin-top:24px;">
+          <button class="btn btn--accent btn--lg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Ask Runcino
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: Claude recommendation -->
+      <div class="vstack" style="gap:16px;">
+
+        <div class="card" style="padding:32px;border-color:var(--terracotta-3);">
+          <div class="hstack" style="gap:12px;margin-bottom:20px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--font-display);font-weight:600;font-style:italic;">C</div>
+            <div>
+              <div class="eyebrow" style="color:var(--ink-3);margin-bottom:2px;">Claude's read</div>
+              <div style="font-size:12px;color:var(--ink-3);">Sonnet 4.6 · 2.1 s · cached prompt</div>
+            </div>
+          </div>
+
+          <h3 style="margin-bottom:16px;font-size:32px;line-height:1.15;">
+            Honest goal: <span style="color:var(--terracotta);">3:48–3:52</span>.<br/>
+            <span class="serif-italic" style="color:var(--ink-3);font-size:24px;">Anchor at 3:50.</span>
+          </h3>
+
+          <p style="color:var(--ink-2);">
+            Your LA 3:40 extrapolates to a flat-course equivalent
+            around <strong>3:37–3:41</strong> today — resting HR is
+            down 2 bpm, so you're a touch fitter than LA day, but
+            weekly mileage is also down 4 mi/wk which cancels the
+            gain. Net: same fitness.
+          </p>
+
+          <p style="color:var(--ink-2);">
+            Big Sur's 2,182 ft of climb with Hurricane Point at mile
+            10 adds a <strong>~10-minute course penalty</strong> vs.
+            LA, so effort-equivalent finish is 3:50–3:52. Your
+            18-miler 3 weeks out is one long run shorter than ideal
+            prep — that's the only soft spot. I'd start at
+            <strong style="color:var(--terracotta);">3:50</strong>:
+            respectful of the course, leaves room to push through
+            Carmel if the day's going well.
+          </p>
+
+          <div style="margin-top:24px;padding:20px;background:var(--paper-2);border-radius:12px;">
+            <div class="eyebrow" style="color:var(--ink-3);margin-bottom:12px;">Risk flags</div>
+            <div class="vstack gap-2">
+              <div class="hstack gap-2">
+                <div style="width:8px;height:8px;background:var(--gold);border-radius:50%;"></div>
+                <span class="small">Only one 18+ mile run in last 6 weeks — durability is the soft spot</span>
+              </div>
+              <div class="hstack gap-2">
+                <div style="width:8px;height:8px;background:var(--gold);border-radius:50%;"></div>
+                <span class="small">Mileage trend is negative — likely 3-week taper ate some of the base</span>
+              </div>
+              <div class="hstack gap-2">
+                <div style="width:8px;height:8px;background:var(--ok);border-radius:50%;"></div>
+                <span class="small">Resting HR trending down is a strong positive signal</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hstack" style="justify-content:space-between;margin-top:24px;padding-top:20px;border-top:1px solid var(--line);">
+            <button class="btn btn--ghost">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9M3 12l4-4M3 12l4 4"/></svg>
+              Ask again
+            </button>
+            <div class="hstack gap-2">
+              <button class="btn btn--ghost">Adjust to 3:45</button>
+              <a class="btn btn--accent" href="web-plan.html">Use 3:50 →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="background:var(--paper-2);padding:24px;">
+          <div class="hstack gap-2" style="margin-bottom:12px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <strong style="font-size:13px;">What Claude sees</strong>
+          </div>
+          <p class="small muted" style="margin:0 0 12px;">
+            Claude gets a cached system prompt describing Runcino's method, Big Sur's course characteristics, and the Minetti model. Your fitness summary is the only per-request payload. Nothing is logged — the response streams to your browser and the API call closes.
+          </p>
+          <div class="hstack gap-4" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);padding-top:12px;border-top:1px solid var(--line);">
+            <span>cache: 94% hit</span>
+            <span>tokens in: 284</span>
+            <span>tokens out: 412</span>
+            <span>cost: $0.003</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · web · localhost:3000</div>
+    <div>v0.0.1 · mockup</div>
+  </footer>
+
+</div>
+</body>
+</html>

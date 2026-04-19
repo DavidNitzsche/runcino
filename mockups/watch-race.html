@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Watch screens · Runcino</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="ios-plan.html">iOS</a>
+      <a href="web-plan.html">Web plan</a>
+    </div>
+  </nav>
+
+  <section style="padding:48px 0 24px;">
+    <div class="eyebrow" style="margin-bottom:12px;">Apple Watch · Workout app</div>
+    <h2 style="max-width:26ch;margin-bottom:12px;">
+      Race day, on your wrist.<br/>
+      <span class="serif-italic">No custom app. No phone.</span>
+    </h2>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      These are Apple's native Workout screens, rendering the
+      CustomWorkout we built. Every pace block, fueling cue, and
+      landmark is an IntervalStep — the Watch handles the rest.
+    </p>
+  </section>
+
+  <section style="padding:48px 0 96px;">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:40px;align-items:start;">
+
+      <!-- Screen 1: Mid-phase pacing -->
+      <div>
+        <div class="eyebrow" style="margin-bottom:12px;color:var(--ink-3);">Screen 1 · Mid-phase</div>
+        <h4 style="margin-bottom:8px;">Running Phase 3</h4>
+        <p class="small muted" style="margin-bottom:24px;">
+          Hurricane Point climb. Pace target on top, HR in the middle,
+          live pace at bottom. Haptic fires if live pace drifts
+          beyond ±10 sec/mi.
+        </p>
+
+        <div style="display:flex;justify-content:center;">
+          <div class="watch">
+            <div class="watch-crown"></div>
+            <div class="watch-screen">
+              <div>
+                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Phase 3 · mi 10.8</div>
+                <div style="font-size:13px;font-weight:600;color:#ff7a3d;margin-top:4px;">Hurricane climb</div>
+              </div>
+
+              <div style="text-align:center;">
+                <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.08em;">Target</div>
+                <div style="font-size:38px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;">9:55</div>
+                <div style="font-size:11px;color:#888;margin-top:-4px;">/ mile</div>
+              </div>
+
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:#888;">
+                  <span>LIVE</span>
+                  <span style="color:#5ee27a;">ON PACE</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;font-variant-numeric:tabular-nums;">
+                  <div>
+                    <div style="font-size:20px;font-weight:600;">9:52</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:14px;color:#ccc;">HR 168</div>
+                    <div style="font-size:10px;color:#888;">Z4</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;padding:16px;background:var(--paper-2);">
+          <div class="small" style="font-family:var(--font-mono);color:var(--ink-3);margin-bottom:6px;">IntervalStep</div>
+          <div class="small">
+            <code style="font-family:var(--font-mono);">IntervalStep(.work, step: .init(goal: .pace(target: 9:55/mi, tolerance: ±10 s/mi)))</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 2: Fueling alert -->
+      <div>
+        <div class="eyebrow" style="margin-bottom:12px;color:var(--ink-3);">Screen 2 · Fueling cue</div>
+        <h4 style="margin-bottom:8px;">Haptic at mile 8</h4>
+        <p class="small muted" style="margin-bottom:24px;">
+          30-second IntervalStep fires a strong haptic and fills the
+          screen with the fueling instruction. Auto-advances to the
+          next pace block when done.
+        </p>
+
+        <div style="display:flex;justify-content:center;">
+          <div class="watch">
+            <div class="watch-crown"></div>
+            <div class="watch-screen" style="background:linear-gradient(180deg, #3d1a10 0%, #000 100%);">
+              <div style="text-align:center;padding-top:4px;">
+                <div style="font-size:32px;line-height:1;">⌯</div>
+              </div>
+
+              <div style="text-align:center;">
+                <div style="font-size:11px;color:#ff7a3d;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;margin-bottom:6px;">Fuel</div>
+                <div style="font-size:22px;font-weight:700;line-height:1.15;">Gel 2 +<br/>water</div>
+                <div style="font-size:12px;color:#aaa;margin-top:12px;line-height:1.3;">Before Hurricane<br/>aid station ahead</div>
+              </div>
+
+              <div style="text-align:center;">
+                <div style="width:100%;height:3px;background:rgba(255,255,255,0.15);border-radius:2px;overflow:hidden;">
+                  <div style="width:60%;height:100%;background:#ff7a3d;"></div>
+                </div>
+                <div style="font-size:10px;color:#888;margin-top:4px;">18s</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;padding:16px;background:var(--paper-2);">
+          <div class="small" style="font-family:var(--font-mono);color:var(--ink-3);margin-bottom:6px;">IntervalStep · fuel</div>
+          <div class="small">
+            <code style="font-family:var(--font-mono);">IntervalStep(.work, step: .init(goal: .time(30, .seconds), alert: .start(.haptic)))</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 3: Landmark cue -->
+      <div>
+        <div class="eyebrow" style="margin-bottom:12px;color:var(--ink-3);">Screen 3 · Landmark cue</div>
+        <h4 style="margin-bottom:8px;">"Bixby Bridge in 0.3 mi"</h4>
+        <p class="small muted" style="margin-bottom:24px;">
+          10-second IntervalStep anchored to distance. Hand-curated
+          for Big Sur — generic geometry-based labels for new courses.
+          Never scraped facts.
+        </p>
+
+        <div style="display:flex;justify-content:center;">
+          <div class="watch">
+            <div class="watch-crown"></div>
+            <div class="watch-screen" style="background:linear-gradient(180deg, #1a2015 0%, #000 100%);">
+              <div style="text-align:center;padding-top:4px;">
+                <div style="font-size:32px;line-height:1;color:#7ea35a;">◆</div>
+              </div>
+
+              <div style="text-align:center;">
+                <div style="font-size:11px;color:#aebaa3;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;margin-bottom:6px;">Landmark</div>
+                <div style="font-size:20px;font-weight:700;line-height:1.15;">Bixby Bridge<br/>0.3 mi ahead</div>
+                <div style="font-size:12px;color:#aaa;margin-top:12px;line-height:1.3;">Photo op · then<br/>Hurricane climb</div>
+              </div>
+
+              <div style="text-align:center;">
+                <div style="width:100%;height:3px;background:rgba(255,255,255,0.15);border-radius:2px;overflow:hidden;">
+                  <div style="width:40%;height:100%;background:#7ea35a;"></div>
+                </div>
+                <div style="font-size:10px;color:#888;margin-top:4px;">6s</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;padding:16px;background:var(--paper-2);">
+          <div class="small" style="font-family:var(--font-mono);color:var(--ink-3);margin-bottom:6px;">IntervalStep · landmark</div>
+          <div class="small">
+            <code style="font-family:var(--font-mono);">IntervalStep(.work, step: .init(goal: .time(10, .seconds), alert: .start(.haptic)))</code>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Step sequence visualization -->
+  <section style="padding:0 0 96px;">
+    <div class="section-header">
+      <div class="eyebrow">How the phases become steps</div>
+      <h2 style="max-width:22ch;">
+        Six phases → <span class="serif-italic">~30 IntervalSteps.</span>
+      </h2>
+      <p class="lede muted" style="max-width:58ch;">
+        Each phase expands into a mix of pace blocks, fuel cues, and landmark pings. The Watch walks through them in order, firing haptics at each transition.
+      </p>
+    </div>
+
+    <div class="card" style="padding:32px;overflow-x:auto;">
+      <div style="display:flex;gap:8px;align-items:stretch;min-width:900px;">
+
+        <!-- Phase 1 -->
+        <div style="flex:5;background:var(--paper-2);border-radius:12px;padding:16px;border-left:4px solid var(--sage);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;">1 · Redwood descent</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:40/mi · 3.0 mi</div>
+            <div style="padding:8px;background:#FBF0EB;border-radius:6px;font-size:11px;border-left:3px solid var(--sage);">⌯ Gel 1 · 30 s</div>
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:40/mi · 2.0 mi</div>
+          </div>
+        </div>
+
+        <!-- Phase 2 -->
+        <div style="flex:5;background:var(--paper-2);border-radius:12px;padding:16px;border-left:4px solid var(--sage);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;">2 · Rolling to Hurricane</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:30/mi · 3.0 mi</div>
+            <div style="padding:8px;background:#FBF0EB;border-radius:6px;font-size:11px;border-left:3px solid var(--sage);">⌯ Gel 2 · 30 s</div>
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:30/mi · 1.7 mi</div>
+            <div style="padding:8px;background:#F0EDE0;border-radius:6px;font-size:11px;border-left:3px solid var(--gold);">◆ Bixby Bridge · 10 s</div>
+          </div>
+        </div>
+
+        <!-- Phase 3 -->
+        <div style="flex:2;background:#FBF0EB;border-radius:12px;padding:16px;border-left:4px solid var(--danger);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;color:var(--danger);">3 · Hurricane</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--danger);">Pace 9:55/mi · 2.0 mi</div>
+            <div style="padding:8px;background:#F0EDE0;border-radius:6px;font-size:11px;border-left:3px solid var(--gold);">◆ Drummers · 10 s</div>
+          </div>
+        </div>
+
+        <!-- Phase 4 -->
+        <div style="flex:2;background:var(--paper-2);border-radius:12px;padding:16px;border-left:4px solid var(--ok);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;color:var(--ok);">4 · Bixby desc.</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--ok);">Pace 8:25/mi · 2.0 mi</div>
+            <div style="padding:8px;background:#FBF0EB;border-radius:6px;font-size:11px;border-left:3px solid var(--sage);">⌯ Gel 3 · 30 s</div>
+          </div>
+        </div>
+
+        <!-- Phase 5 -->
+        <div style="flex:8;background:var(--paper-2);border-radius:12px;padding:16px;border-left:4px solid var(--sage);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;">5 · Highway 1 bluffs</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:50/mi · 3.0 mi</div>
+            <div style="padding:8px;background:#FBF0EB;border-radius:6px;font-size:11px;border-left:3px solid var(--sage);">⌯ Gel 4 · 30 s</div>
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:50/mi · 3.0 mi</div>
+            <div style="padding:8px;background:#FBF0EB;border-radius:6px;font-size:11px;border-left:3px solid var(--sage);">⌯ Gel 5 · 30 s</div>
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:50/mi · 2.0 mi</div>
+          </div>
+        </div>
+
+        <!-- Phase 6 -->
+        <div style="flex:4;background:var(--paper-2);border-radius:12px;padding:16px;border-left:4px solid var(--terracotta);">
+          <div class="small" style="font-weight:600;margin-bottom:8px;">6 · Carmel finish</div>
+          <div class="vstack" style="gap:6px;">
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:45/mi · 3.0 mi</div>
+            <div style="padding:8px;background:#F0EDE0;border-radius:6px;font-size:11px;border-left:3px solid var(--gold);">◆ Last climb · 10 s</div>
+            <div style="padding:8px;background:var(--paper);border-radius:6px;font-size:11px;border-left:3px solid var(--terracotta);">Pace 8:45/mi · 1.22 mi</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="hstack gap-6" style="padding-top:24px;margin-top:24px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);">
+        <div class="hstack gap-2"><span style="width:14px;height:3px;background:var(--terracotta);"></span>Pace goal (target ± tolerance)</div>
+        <div class="hstack gap-2"><span style="width:14px;height:3px;background:var(--sage);"></span>Fueling · 30-sec haptic alert</div>
+        <div class="hstack gap-2"><span style="width:14px;height:3px;background:var(--gold);"></span>Landmark · 10-sec haptic alert</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · Apple Watch · via WorkoutKit CustomWorkout</div>
+    <div>v0.0.1 · mockup</div>
+  </footer>
+
+</div>
+</body>
+</html>
