@@ -1,26 +1,149 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-terracotta:   #C8502A;
+  --color-terracotta-2: #E06941;
+  --color-terracotta-3: #F4E4DC;
+  --color-sage:         #7A8471;
+  --color-sage-2:       #AEBAA3;
+  --color-ink:          #1A1815;
+  --color-ink-2:        #3D3833;
+  --color-ink-3:        #6B635B;
+  --color-ink-4:        #A39A90;
+  --color-paper:        #FAF6F0;
+  --color-paper-2:      #F3EDE4;
+  --color-paper-3:      #E8DFD1;
+  --color-line:         #DFD4C2;
+  --color-gold:         #C59B48;
+  --color-ok:           #5E7A4E;
+  --color-danger:       #A83B2B;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01', 'cv11';
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.serif-italic { font-family: var(--font-display); font-style: italic; font-weight: 400; }
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-terracotta);
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px; height: 32px;
+  background: var(--color-terracotta);
+  color: var(--color-paper);
+  border-radius: 9px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  font-style: italic;
+}
+
+.runcino-card {
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 1px 2px rgba(26,24,21,0.04), 0 1px 3px rgba(26,24,21,0.06);
+}
+
+.runcino-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  color: var(--color-ink-2);
+}
+.runcino-pill-accent { background: var(--color-terracotta-3); color: var(--color-terracotta); border-color: transparent; }
+.runcino-pill-sage   { background: #E8EDE2; color: var(--color-sage); border-color: transparent; }
+
+.runcino-pill-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--color-terracotta); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+  text-decoration: none;
+  font-family: inherit;
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary { background: var(--color-ink); color: var(--color-paper); }
+.btn-primary:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(26,24,21,0.12); }
+.btn-accent  { background: var(--color-terracotta); color: var(--color-paper); }
+.btn-accent:hover:not(:disabled) { background: var(--color-terracotta-2); }
+.btn-ghost   { background: transparent; color: var(--color-ink); border-color: var(--color-line); }
+.btn-ghost:hover:not(:disabled)  { background: var(--color-paper-2); }
+.btn-lg { padding: 16px 30px; font-size: 16px; }
+
+.runcino-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.runcino-input:focus {
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 4px var(--color-terracotta-3);
+}
+
+.runcino-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  margin-bottom: 8px;
+}
+
+.hint { font-size: 12px; color: var(--color-ink-3); margin-top: 8px; }
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--color-ink);
 }
