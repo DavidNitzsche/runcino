@@ -1,0 +1,37 @@
+{
+  "race_name": "Big Sur International Marathon",
+  "race_date": "2026-04-26",
+  "finish_time_s": 13934,
+  "avg_hr_bpm": 164,
+  "peak_hr_bpm": 176,
+  "weather": {
+    "start_temp_f": 42,
+    "finish_temp_f": 58,
+    "wind_mph": 11,
+    "wind_dir": "NW",
+    "cloud_cover": "overcast"
+  },
+  "splits": [
+    { "phaseIdx": 0, "actualPaceSPerMi": 517, "meanHrBpm": 148, "peakHrBpm": 156 },
+    { "phaseIdx": 1, "actualPaceSPerMi": 508, "meanHrBpm": 155, "peakHrBpm": 162 },
+    { "phaseIdx": 2, "actualPaceSPerMi": 645, "meanHrBpm": 169, "peakHrBpm": 176 },
+    { "phaseIdx": 3, "actualPaceSPerMi": 503, "meanHrBpm": 160, "peakHrBpm": 168 },
+    { "phaseIdx": 4, "actualPaceSPerMi": 536, "meanHrBpm": 166, "peakHrBpm": 172 },
+    { "phaseIdx": 5, "actualPaceSPerMi": 532, "meanHrBpm": 170, "peakHrBpm": 176 }
+  ],
+  "series": [
+    { "atMi": 0, "paceSPerMi": 520, "hrBpm": 145 },
+    { "atMi": 2, "paceSPerMi": 515, "hrBpm": 148 },
+    { "atMi": 5, "paceSPerMi": 517, "hrBpm": 150 },
+    { "atMi": 7, "paceSPerMi": 510, "hrBpm": 155 },
+    { "atMi": 10, "paceSPerMi": 580, "hrBpm": 165 },
+    { "atMi": 12, "paceSPerMi": 710, "hrBpm": 176 },
+    { "atMi": 13.1, "paceSPerMi": 495, "hrBpm": 162 },
+    { "atMi": 14, "paceSPerMi": 510, "hrBpm": 160 },
+    { "atMi": 17, "paceSPerMi": 528, "hrBpm": 163 },
+    { "atMi": 19, "paceSPerMi": 542, "hrBpm": 167 },
+    { "atMi": 22, "paceSPerMi": 540, "hrBpm": 170 },
+    { "atMi": 25, "paceSPerMi": 538, "hrBpm": 173 },
+    { "atMi": 26.22, "paceSPerMi": 528, "hrBpm": 171 }
+  ]
+}

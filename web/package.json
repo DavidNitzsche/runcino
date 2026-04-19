@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "build-plan": "tsx scripts/build-plan.ts",
     "research-course": "tsx scripts/research-course.ts",
-    "generate-gpx": "node scripts/make-big-sur-gpx.mjs"
+    "generate-gpx": "node scripts/make-big-sur-gpx.mjs",
+    "retrospective": "tsx scripts/retrospective.ts",
+    "plan-week": "tsx scripts/plan-week.ts",
+    "weather": "tsx scripts/weather.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
