@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Training capability · Runcino M3</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="m1-retrospective.html">M1</a>
+      <a href="m2-integrations.html">M2</a>
+      <a href="research.html">Research</a>
+    </div>
+  </nav>
+
+  <section style="padding:48px 0 16px;">
+    <div class="pill pill--sage" style="margin-bottom:16px;">
+      <span class="pill-dot" style="background:var(--sage);"></span>
+      Milestone M3 · Training capability (post-Big Sur · ~3 months)
+    </div>
+    <h2 style="max-width:24ch;margin-bottom:12px;">
+      No more Runna.<br/>
+      <span class="serif-italic">Runcino coaches every day.</span>
+    </h2>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      Claude plans your week from your goal race, your current fitness
+      (HealthKit), your recovery (HRV), and your life (Calendar). You
+      get a daily workout on your Watch, a reason for every session,
+      and a coach that re-plans when you skip or struggle.
+    </p>
+  </section>
+
+  <!-- Week view -->
+  <section style="padding:32px 0 48px;">
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;">
+      <div class="card" style="padding:32px;">
+        <div class="hstack" style="justify-content:space-between;margin-bottom:8px;">
+          <div>
+            <div class="eyebrow" style="margin-bottom:6px;">Week 14 of 18 · peak block</div>
+            <h3 style="font-size:28px;">This week</h3>
+          </div>
+          <div class="hstack gap-4" style="font-size:13px;color:var(--ink-3);">
+            <div><span style="color:var(--ink);font-weight:600;font-size:18px;" class="mono">42</span> mi planned</div>
+            <div><span style="color:var(--ok);font-weight:600;font-size:18px;" class="mono">38</span> mi done</div>
+            <div><span class="mono" style="font-weight:600;font-size:18px;">−2</span> rest days</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:24px;">
+          <!-- Mon -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--ok);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Mon · Apr 13</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ok);margin-bottom:4px;">✓ Easy 5</div>
+            <div class="small muted mono">5.0 mi · 9:20/mi · Z2</div>
+          </div>
+          <!-- Tue -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--ok);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Tue · Apr 14</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ok);margin-bottom:4px;">✓ Tempo 8</div>
+            <div class="small muted mono">8.0 mi · 5 × 1mi @ 7:20</div>
+          </div>
+          <!-- Wed -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--line);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Wed · Apr 15</div>
+            <div style="font-size:13px;font-weight:500;margin-bottom:4px;color:var(--ink-3);">Rest</div>
+            <div class="small muted">— easy spin optional</div>
+          </div>
+          <!-- Thu -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--ok);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Thu · Apr 16</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ok);margin-bottom:4px;">✓ Intervals 7</div>
+            <div class="small muted mono">6 × 800m @ 6:30</div>
+          </div>
+          <!-- Fri -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--ok);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Fri · Apr 17</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ok);margin-bottom:4px;">✓ Easy 5</div>
+            <div class="small muted mono">5.0 mi · recovery</div>
+          </div>
+          <!-- Sat — today -->
+          <div style="padding:14px 12px;background:var(--terracotta-3);border-radius:12px;border:2px solid var(--terracotta);position:relative;">
+            <div class="small" style="font-weight:700;margin-bottom:6px;color:var(--terracotta);">Sat · TODAY</div>
+            <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px;">Hilly long 16</div>
+            <div class="small mono" style="color:var(--ink-2);">16 mi · 1,500 ft · Big Sur prep</div>
+          </div>
+          <!-- Sun -->
+          <div style="padding:14px 12px;background:var(--paper-2);border-radius:12px;border:1px solid var(--line);">
+            <div class="small muted" style="font-weight:600;margin-bottom:6px;">Sun · Apr 19</div>
+            <div style="font-size:13px;font-weight:500;margin-bottom:4px;color:var(--ink-3);">Rest</div>
+            <div class="small muted">— travel to Carmel</div>
+          </div>
+        </div>
+
+        <!-- Today's detail -->
+        <div style="margin-top:24px;padding:24px;background:#FBF0EB;border-radius:16px;border:1px solid var(--terracotta-3);">
+          <div class="hstack" style="justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <div class="eyebrow" style="color:var(--terracotta);margin-bottom:6px;">Today's workout · ready to start</div>
+              <h4 style="font-size:22px;">Hilly long · 16 mi · 1,500 ft</h4>
+            </div>
+            <button class="btn btn--accent">Start on Watch →</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
+            <div>
+              <div class="eyebrow" style="font-size:10px;color:var(--ink-3);margin-bottom:4px;">Warmup</div>
+              <div class="mono" style="font-weight:500;">2 mi @ 9:20</div>
+            </div>
+            <div>
+              <div class="eyebrow" style="font-size:10px;color:var(--ink-3);margin-bottom:4px;">Steady block</div>
+              <div class="mono" style="font-weight:500;">12 mi @ 8:30</div>
+            </div>
+            <div>
+              <div class="eyebrow" style="font-size:10px;color:var(--ink-3);margin-bottom:4px;">Cooldown</div>
+              <div class="mono" style="font-weight:500;">2 mi easy</div>
+            </div>
+            <div>
+              <div class="eyebrow" style="font-size:10px;color:var(--ink-3);margin-bottom:4px;">Target HR</div>
+              <div class="mono" style="font-weight:500;">Z3 · 152-164</div>
+            </div>
+          </div>
+
+          <div style="padding-top:16px;border-top:1px solid var(--terracotta-3);">
+            <div class="hstack gap-2" style="margin-bottom:8px;">
+              <div style="width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--font-display);font-weight:600;font-style:italic;font-size:11px;">C</div>
+              <strong style="font-size:13px;">Why this workout</strong>
+            </div>
+            <p class="small" style="color:var(--ink-2);margin:0;line-height:1.6;">
+              Big Sur has 2,182 ft gain and a 560 ft climb at Hurricane Point. Griffith Park's north rim gives you 1,500 ft over 16 miles — the closest local match. Run the climbs steady-state (don't surge), descend controlled to simulate race-day quad fatigue. Recovery on Sunday is non-negotiable.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right sidebar -->
+      <div class="vstack" style="gap:16px;">
+        <!-- Readiness -->
+        <div class="card">
+          <div class="eyebrow" style="margin-bottom:12px;">Readiness · today</div>
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-family:var(--font-display);font-size:56px;font-weight:500;color:var(--ok);line-height:1;">84</div>
+            <div class="small muted" style="margin-top:4px;">out of 100 · green light</div>
+          </div>
+          <div class="vstack" style="gap:8px;font-size:12px;">
+            <div class="hstack" style="justify-content:space-between;">
+              <span class="muted">HRV 58 ms</span>
+              <span style="color:var(--ok);">↑ 4 ms</span>
+            </div>
+            <div class="hstack" style="justify-content:space-between;">
+              <span class="muted">Sleep 7h 42m</span>
+              <span style="color:var(--ok);">86%</span>
+            </div>
+            <div class="hstack" style="justify-content:space-between;">
+              <span class="muted">Resting HR 48</span>
+              <span style="color:var(--ok);">→ stable</span>
+            </div>
+            <div class="hstack" style="justify-content:space-between;">
+              <span class="muted">7d load</span>
+              <span style="color:var(--gold);">+12% ↑</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Claude this-week note -->
+        <div class="card" style="background:var(--ink);color:var(--paper);border-color:var(--ink);">
+          <div class="hstack gap-2" style="margin-bottom:10px;">
+            <div style="width:22px;height:22px;border-radius:6px;background:var(--terracotta);color:var(--paper);display:grid;place-items:center;font-family:var(--font-display);font-weight:600;font-style:italic;font-size:12px;">C</div>
+            <div class="eyebrow" style="color:var(--terracotta-2);">This week's logic</div>
+          </div>
+          <p style="color:var(--paper);font-size:14px;line-height:1.55;margin:0;">
+            Peak week. HRV has been climbing since Monday — you're absorbing the load. Big Sur in 7 days means Saturday is the <span class="serif-italic">last hard run</span> before taper. After Saturday, drop to 60% volume, keep intensity on Thursday's short intervals only.
+          </p>
+        </div>
+
+        <!-- Next taper -->
+        <div class="card" style="background:var(--paper-2);">
+          <div class="eyebrow" style="margin-bottom:10px;">Taper starts Sunday</div>
+          <div class="vstack" style="gap:8px;font-size:13px;color:var(--ink-2);">
+            <div class="hstack gap-2">
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--sage);"></span>
+              <span>Week 15: 28 mi, keep intensity</span>
+            </div>
+            <div class="hstack gap-2">
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--sage);"></span>
+              <span>Week 16: 18 mi, race week</span>
+            </div>
+            <div class="hstack gap-2">
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--terracotta);"></span>
+              <span style="font-weight:600;">Apr 26 · Big Sur</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Periodization -->
+  <section style="padding:0 0 48px;">
+    <div class="section-header">
+      <div class="eyebrow">Big Sur build · 18 weeks</div>
+      <h2>Periodization, visible.</h2>
+    </div>
+
+    <div class="card" style="padding:32px;">
+      <svg viewBox="0 0 1000 180" style="width:100%;height:auto;">
+        <!-- phase blocks -->
+        <rect x="0" y="40" width="300" height="60" fill="var(--sage-2)" rx="8"/>
+        <rect x="300" y="40" width="280" height="60" fill="#D4B475" rx="8"/>
+        <rect x="580" y="40" width="280" height="60" fill="var(--terracotta-2)" rx="8"/>
+        <rect x="860" y="40" width="140" height="60" fill="var(--terracotta)" rx="8"/>
+
+        <text x="150" y="72" font-family="Fraunces" font-size="18" fill="white" text-anchor="middle" font-weight="500">Base</text>
+        <text x="150" y="90" font-family="Inter" font-size="11" fill="white" text-anchor="middle" opacity="0.85">6 wk · aerobic volume</text>
+
+        <text x="440" y="72" font-family="Fraunces" font-size="18" fill="white" text-anchor="middle" font-weight="500">Build</text>
+        <text x="440" y="90" font-family="Inter" font-size="11" fill="white" text-anchor="middle" opacity="0.85">6 wk · add intensity</text>
+
+        <text x="720" y="72" font-family="Fraunces" font-size="18" fill="white" text-anchor="middle" font-weight="500">Peak</text>
+        <text x="720" y="90" font-family="Inter" font-size="11" fill="white" text-anchor="middle" opacity="0.85">4 wk · specificity</text>
+
+        <text x="930" y="72" font-family="Fraunces" font-size="18" fill="white" text-anchor="middle" font-weight="500">Taper</text>
+        <text x="930" y="90" font-family="Inter" font-size="11" fill="white" text-anchor="middle" opacity="0.85">2 wk</text>
+
+        <!-- weeks -->
+        <g font-family="Inter" font-size="9" fill="var(--ink-3)" text-anchor="middle">
+          <text x="25" y="30">W1</text>
+          <text x="300" y="30">W7</text>
+          <text x="580" y="30">W13</text>
+          <text x="860" y="30">W17</text>
+          <text x="1000" y="30">W18</text>
+        </g>
+
+        <!-- current position marker -->
+        <g>
+          <line x1="780" y1="30" x2="780" y2="120" stroke="var(--ink)" stroke-width="2"/>
+          <polygon points="772,28 788,28 780,16" fill="var(--ink)"/>
+          <text x="780" y="148" font-family="Inter" font-size="11" fill="var(--ink)" text-anchor="middle" font-weight="600">W14 · peak</text>
+          <text x="780" y="162" font-family="Inter" font-size="10" fill="var(--ink-3)" text-anchor="middle">today</text>
+        </g>
+
+        <!-- mileage line overlay -->
+        <path d="M 20 140 L 60 138 L 100 135 L 140 132 L 180 128 L 220 125 L 260 120 L 300 115 L 340 108 L 380 100 L 420 92 L 460 88 L 500 82 L 540 76 L 580 68 L 620 58 L 660 52 L 700 58 L 740 62 L 780 55 L 820 82 L 860 95 L 900 115 L 940 130"
+              fill="none" stroke="var(--ink)" stroke-width="1.5" opacity="0.4"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Gate features -->
+  <section style="padding:0 0 96px;">
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l18-6-6 18-3-8-9-4z"/></svg>
+        </div>
+        <h4>Adaptive replanning</h4>
+        <p>Skipped Tuesday's tempo because you got sick? Runcino rewrites the week, not just moves runs around. New goals, new volume.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20M2 12h20"/></svg>
+        </div>
+        <h4>Course-specific long runs</h4>
+        <p>Saturday's 20 needs 1,800 ft to simulate Big Sur. Claude picks from your local routes (Strava segments) to match terrain — not just distance.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>
+        </div>
+        <h4>Injury gate</h4>
+        <p>HRV drop + load spike + sleep deficit = Runcino kills tomorrow's tempo before you injure yourself. Says why.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 9l-6 6-4-4"/></svg>
+        </div>
+        <h4>Watch-native daily runs</h4>
+        <p>Every planned run syncs to Apple Watch as a CustomWorkout. Same pipeline as race day — intervals, pace alerts, step labels.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M5 8h14M5 16h14"/></svg>
+        </div>
+        <h4>Weekly "why"</h4>
+        <p>Every Monday, Claude writes 3 paragraphs on what this week is doing for the build. No black-box coaching.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <h4>Pick your philosophy</h4>
+        <p>Pfitzinger, Daniels, Hanson, or custom. Claude operates inside your chosen coaching framework, not against it.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · M3 mockup — ships ~3 months after Big Sur</div>
+    <div>v1.0.0 target</div>
+  </footer>
+
+</div>
+</body>
+</html>

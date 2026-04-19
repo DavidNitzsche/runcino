@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Post-race retrospective · Runcino M1</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="ios-plan.html">Race plan</a>
+      <a href="m2-integrations.html">Integrations</a>
+      <a href="m3-training.html">Training</a>
+    </div>
+  </nav>
+
+  <section style="padding:48px 0 16px;">
+    <div class="pill pill--accent" style="margin-bottom:16px;">
+      <span class="pill-dot"></span>
+      Milestone M1 · Ships 1 week after Big Sur
+    </div>
+    <h2 style="max-width:24ch;margin-bottom:12px;">
+      The race happened.<br/>
+      <span class="serif-italic">Here's what it teaches us.</span>
+    </h2>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      Import the actual workout file from your Watch. Claude compares it
+      to the plan, reads the HR + split drift, writes the retrospective,
+      and calibrates your personal Minetti coefficient for next race.
+    </p>
+  </section>
+
+  <!-- Main retrospective -->
+  <section style="padding:32px 0 48px;">
+
+    <!-- Header card -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+      <div style="padding:32px;display:grid;grid-template-columns:1.2fr 0.8fr;gap:32px;align-items:center;border-bottom:1px solid var(--line);">
+        <div>
+          <div class="eyebrow" style="margin-bottom:10px;">Race report · Big Sur 2026</div>
+          <h3 style="font-size:36px;margin-bottom:8px;">Finished <span class="serif-italic" style="color:var(--ok);">3:52:14</span></h3>
+          <div class="hstack gap-4" style="color:var(--ink-3);font-size:14px;">
+            <span>goal 3:50:00</span>
+            <span>·</span>
+            <span>+2:14 over</span>
+            <span>·</span>
+            <span>8:50/mi avg</span>
+          </div>
+        </div>
+        <div class="vstack gap-2" style="align-items:flex-end;">
+          <span class="pill pill--sage">Negative split · 2nd half −0:48</span>
+          <span class="pill">Avg HR 164 · peak 176</span>
+          <span class="pill">Fueling on schedule</span>
+        </div>
+      </div>
+
+      <!-- Overlay chart: plan vs actual pace -->
+      <div style="padding:32px;background:var(--paper-2);">
+        <div class="hstack" style="justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div class="eyebrow" style="margin-bottom:4px;">Plan vs actual</div>
+            <h4>Where the race diverged.</h4>
+          </div>
+          <div class="hstack gap-4" style="font-size:12px;color:var(--ink-3);">
+            <div class="hstack gap-2"><span style="width:12px;height:2px;background:var(--sage);border-top:1px dashed var(--sage);display:inline-block;"></span>planned pace</div>
+            <div class="hstack gap-2"><span style="width:12px;height:2px;background:var(--terracotta);display:inline-block;"></span>actual pace</div>
+            <div class="hstack gap-2"><span style="width:12px;height:12px;background:var(--terracotta-3);display:inline-block;"></span>over pace</div>
+          </div>
+        </div>
+
+        <svg viewBox="0 0 1000 260" style="width:100%;height:auto;" font-family="Inter">
+          <!-- grid -->
+          <g stroke="var(--line)" stroke-width="1">
+            <line x1="60" y1="40"  x2="960" y2="40"/>
+            <line x1="60" y1="100" x2="960" y2="100"/>
+            <line x1="60" y1="160" x2="960" y2="160"/>
+            <line x1="60" y1="220" x2="960" y2="220"/>
+          </g>
+          <!-- y-labels -->
+          <g font-size="10" fill="var(--ink-3)">
+            <text x="54" y="44"  text-anchor="end">8:00</text>
+            <text x="54" y="104" text-anchor="end">8:40</text>
+            <text x="54" y="164" text-anchor="end">9:20</text>
+            <text x="54" y="224" text-anchor="end">10:00</text>
+          </g>
+
+          <!-- planned pace (stepped) -->
+          <path d="M 60 110 L 232 110 L 232 90 L 404 90 L 404 200 L 476 200 L 476 70 L 516 70 L 516 130 L 820 130 L 820 120 L 960 120"
+                fill="none" stroke="var(--sage)" stroke-width="2" stroke-dasharray="5 4"/>
+
+          <!-- actual pace (wavier, shows drift) -->
+          <path d="M 60 115 L 100 108 L 160 112 L 232 105 L 300 95 L 360 88 L 404 92 L 440 185 L 476 210 L 516 75 L 560 125 L 620 128 L 680 130 L 740 138 L 800 145 L 860 140 L 920 135 L 960 145"
+                fill="none" stroke="var(--terracotta)" stroke-width="2.2"/>
+
+          <!-- overshoot fill where actual > planned (over pace = slower) -->
+          <path d="M 232 105 L 300 95 L 360 88 L 404 92 L 404 90 L 232 90 Z" fill="var(--ok)" opacity="0.15"/>
+          <path d="M 560 125 L 620 128 L 680 130 L 740 138 L 800 145 L 860 140 L 920 135 L 960 145 L 960 120 L 820 120 L 820 130 L 560 130 Z" fill="var(--terracotta-3)" opacity="0.4"/>
+
+          <!-- phase ticks + labels -->
+          <g stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="2 3" opacity="0.3">
+            <line x1="232" y1="30" x2="232" y2="240"/>
+            <line x1="404" y1="30" x2="404" y2="240"/>
+            <line x1="476" y1="30" x2="476" y2="240"/>
+            <line x1="516" y1="30" x2="516" y2="240"/>
+            <line x1="820" y1="30" x2="820" y2="240"/>
+          </g>
+
+          <g font-size="10" fill="var(--ink-3)" text-anchor="middle">
+            <text x="60"  y="252">mi 0</text>
+            <text x="232" y="252">mi 5</text>
+            <text x="404" y="252">mi 10</text>
+            <text x="476" y="252">mi 13</text>
+            <text x="516" y="252">mi 14</text>
+            <text x="820" y="252">mi 22</text>
+            <text x="960" y="252">26.2</text>
+          </g>
+
+          <!-- annotation: crosswind -->
+          <g>
+            <circle cx="700" cy="133" r="4" fill="var(--terracotta)"/>
+            <line x1="700" y1="133" x2="760" y2="80" stroke="var(--terracotta)" stroke-width="1"/>
+            <rect x="758" y="60" width="180" height="40" rx="6" fill="var(--ink)"/>
+            <text x="848" y="78" font-size="10" fill="var(--paper)" text-anchor="middle">Mile 18 headwind started</text>
+            <text x="848" y="92" font-size="9" fill="var(--paper-3)" text-anchor="middle">+7 sec/mi drift through bluffs</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Claude analysis + splits -->
+    <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:16px;margin-bottom:16px;">
+      <!-- Claude narrative -->
+      <div class="card" style="border-color:var(--terracotta-3);">
+        <div class="hstack" style="gap:12px;margin-bottom:20px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--font-display);font-weight:600;font-style:italic;">C</div>
+          <div>
+            <div class="eyebrow" style="color:var(--ink-3);margin-bottom:2px;">Claude's retrospective</div>
+            <div style="font-size:12px;color:var(--ink-3);">Sonnet 4.6 · read Watch export + plan + weather log</div>
+          </div>
+        </div>
+
+        <h3 style="font-size:28px;margin-bottom:16px;">You paced it smart.<br/><span class="serif-italic" style="color:var(--ink-3);font-size:22px;">The back half cost you, not the climbs.</span></h3>
+
+        <p style="color:var(--ink-2);">
+          <strong>Hurricane Point went to plan.</strong> 10:42/mi actual against a 10:38/mi target, HR peaked at 172 which is zone 4 — exactly where even-effort pacing predicted. You didn't overdrive the climb, which is the failure mode that ends most Big Sur debuts.
+        </p>
+
+        <p style="color:var(--ink-2);">
+          <strong>The drift started at mile 17.</strong> Your actual pace slid from 8:47/mi to 8:55/mi through the bluffs. Weather log shows wind picked up to 11 mph NW at 10:40am. That's a real exposure on Highway 1's west-facing sections — the plan's +3 sec/mi crosswind adjustment absorbed half of it, but not enough.
+        </p>
+
+        <p style="color:var(--ink-2);">
+          <strong>Fueling landed right.</strong> All 6 gels taken within 0.3 mi of their anchor. HR didn't spike late, which means you weren't running on fumes.
+        </p>
+
+        <p style="color:var(--ink-2); font-style: italic;">
+          Net: 2 minutes of the 2:14 overrun was the back-half headwind. The plan was honest; the weather exceeded the brief. For CIM in December, I'd add 5-8 sec/mi of headroom on any exposed section and trust the HR envelope you held here.
+        </p>
+
+        <div class="hstack" style="gap:8px;justify-content:flex-end;margin-top:20px;">
+          <button class="btn btn--ghost">Ask a follow-up</button>
+          <button class="btn btn--primary">Save to race log</button>
+        </div>
+      </div>
+
+      <!-- Splits grid -->
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:12px;">Phase-by-phase</div>
+        <h4 style="margin-bottom:16px;">Splits vs target</h4>
+        <div class="vstack" style="gap:12px;">
+          <div style="padding:12px;background:var(--paper-2);border-radius:10px;border-left:3px solid var(--ok);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Redwood descent</span>
+              <span class="mono" style="font-size:13px;color:var(--ok);">−0:06</span>
+            </div>
+            <div class="small muted mono">planned 8:40 · ran 8:37</div>
+          </div>
+          <div style="padding:12px;background:var(--paper-2);border-radius:10px;border-left:3px solid var(--ok);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Rolling to Hurricane</span>
+              <span class="mono" style="font-size:13px;color:var(--ok);">−0:12</span>
+            </div>
+            <div class="small muted mono">planned 8:30 · ran 8:28</div>
+          </div>
+          <div style="padding:12px;background:#FBF0EB;border-radius:10px;border-left:3px solid var(--gold);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Hurricane Point</span>
+              <span class="mono" style="font-size:13px;color:var(--gold);">+0:08</span>
+            </div>
+            <div class="small muted mono">planned 9:55 · ran 9:59</div>
+          </div>
+          <div style="padding:12px;background:var(--paper-2);border-radius:10px;border-left:3px solid var(--ok);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Bixby descent</span>
+              <span class="mono" style="font-size:13px;color:var(--ok);">−0:04</span>
+            </div>
+            <div class="small muted mono">planned 8:25 · ran 8:23</div>
+          </div>
+          <div style="padding:12px;background:#FBF0EB;border-radius:10px;border-left:3px solid var(--danger);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Highway 1 bluffs</span>
+              <span class="mono" style="font-size:13px;color:var(--danger);">+1:44</span>
+            </div>
+            <div class="small muted mono">planned 8:50 · ran 8:58 · wind</div>
+          </div>
+          <div style="padding:12px;background:var(--paper-2);border-radius:10px;border-left:3px solid var(--ok);">
+            <div class="hstack" style="justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:600;font-size:13px;">Carmel finish</span>
+              <span class="mono" style="font-size:13px;color:var(--ok);">+0:44</span>
+            </div>
+            <div class="small muted mono">planned 8:45 · ran 8:53</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HR + calibration -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:12px;">Heart rate</div>
+        <h4 style="margin-bottom:16px;">HR held envelope.</h4>
+        <svg viewBox="0 0 400 160" style="width:100%;height:auto;">
+          <g stroke="var(--line)">
+            <line x1="30" y1="30" x2="390" y2="30"/>
+            <line x1="30" y1="70" x2="390" y2="70"/>
+            <line x1="30" y1="110" x2="390" y2="110"/>
+            <line x1="30" y1="150" x2="390" y2="150"/>
+          </g>
+          <!-- Z4 band -->
+          <rect x="30" y="40" width="360" height="30" fill="var(--terracotta-3)" opacity="0.5"/>
+          <!-- actual HR -->
+          <path d="M 30 90 L 70 85 L 110 82 L 150 80 L 190 55 L 220 48 L 260 70 L 300 75 L 340 72 L 380 78"
+                fill="none" stroke="var(--danger)" stroke-width="2"/>
+          <g font-size="9" fill="var(--ink-3)">
+            <text x="24" y="34" text-anchor="end">180</text>
+            <text x="24" y="74" text-anchor="end">165</text>
+            <text x="24" y="114" text-anchor="end">150</text>
+            <text x="24" y="154" text-anchor="end">135</text>
+            <text x="30" y="158">mi 0</text>
+            <text x="390" y="158" text-anchor="end">26</text>
+          </g>
+          <text x="380" y="60" font-size="9" fill="var(--terracotta)" text-anchor="end">Zone 4 target</text>
+        </svg>
+        <div class="hstack gap-4" style="margin-top:12px;font-size:12px;color:var(--ink-3);">
+          <span>Avg 164</span><span>Peak 176 (Hurricane)</span><span>Z4 time: 73%</span>
+        </div>
+      </div>
+
+      <div class="card" style="background:var(--paper-2);">
+        <div class="eyebrow" style="margin-bottom:12px;">Personal calibration</div>
+        <h4 style="margin-bottom:16px;">Your Minetti fudge factor</h4>
+        <div class="hstack" style="justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);">
+          <span class="small muted">Prior estimate</span>
+          <span class="mono">1.00</span>
+        </div>
+        <div class="hstack" style="justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);">
+          <span class="small muted">Climb coefficient (observed)</span>
+          <span class="mono" style="color:var(--ok);">0.98 ×</span>
+        </div>
+        <div class="hstack" style="justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);">
+          <span class="small muted">Descent coefficient (observed)</span>
+          <span class="mono" style="color:var(--ok);">1.00 ×</span>
+        </div>
+        <div class="hstack" style="justify-content:space-between;padding:12px 0;">
+          <span class="small muted">Headwind sensitivity</span>
+          <span class="mono" style="color:var(--danger);">+6 s/mi @ 10 mph</span>
+        </div>
+        <button class="btn btn--primary" style="width:100%;margin-top:12px;">Apply for CIM 2026</button>
+      </div>
+    </div>
+
+    <!-- Lessons for next race -->
+    <div class="card" style="background:var(--ink);color:var(--paper);border-color:var(--ink);">
+      <div class="eyebrow" style="color:var(--terracotta-2);margin-bottom:12px;">Carry into CIM</div>
+      <h3 style="color:var(--paper);margin-bottom:16px;">Three takeaways for the next race.</h3>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+        <div>
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--terracotta);display:grid;place-items:center;font-weight:700;margin-bottom:12px;">1</div>
+          <h4 style="color:var(--paper);font-size:16px;margin-bottom:6px;">Trust the climb pacing</h4>
+          <p style="color:var(--paper-3);font-size:13px;line-height:1.5;margin:0;">Your Hurricane Point split was within 8 sec of target at HR 172. Don't second-guess the GAP calculation next time.</p>
+        </div>
+        <div>
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--terracotta);display:grid;place-items:center;font-weight:700;margin-bottom:12px;">2</div>
+          <h4 style="color:var(--paper);font-size:16px;margin-bottom:6px;">Buffer for wind on exposed sections</h4>
+          <p style="color:var(--paper-3);font-size:13px;line-height:1.5;margin:0;">CIM is less exposed but still has 4 miles of river levee. Add +5 sec/mi headroom in any forecast showing &gt;8 mph headwind.</p>
+        </div>
+        <div>
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--terracotta);display:grid;place-items:center;font-weight:700;margin-bottom:12px;">3</div>
+          <h4 style="color:var(--paper);font-size:16px;margin-bottom:6px;">Fueling is dialed in</h4>
+          <p style="color:var(--paper-3);font-size:13px;line-height:1.5;margin:0;">240g carbs over 3:52, no late-race fade, HR stable — don't change the gel timing. Your body responds well to phase-anchored fueling.</p>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · M1 mockup — ships ~1 week after Big Sur</div>
+    <div>v0.2.0 target</div>
+  </footer>
+
+</div>
+</body>
+</html>

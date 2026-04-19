@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data integrations · Runcino M2</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+<div class="page">
+
+  <nav class="nav">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">R</span>
+      <span>Runcino</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="m1-retrospective.html">M1</a>
+      <a href="m3-training.html">M3</a>
+      <a href="research.html">Research</a>
+    </div>
+  </nav>
+
+  <section style="padding:48px 0 16px;">
+    <div class="pill pill--sage" style="margin-bottom:16px;">
+      <span class="pill-dot" style="background:var(--sage);"></span>
+      Milestone M2 · Auto-ingestion
+    </div>
+    <h2 style="max-width:24ch;margin-bottom:12px;">
+      Stop typing numbers.<br/>
+      <span class="serif-italic">Your phone already knows them.</span>
+    </h2>
+    <p class="lede" style="max-width:62ch;color:var(--ink-3);">
+      HealthKit, Strava, Apple Calendar, and NOAA together replace the
+      manual fitness summary. Runcino reads once per race-prep session,
+      writes nothing back without permission.
+    </p>
+  </section>
+
+  <section style="padding:32px 0 48px;">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:24px 32px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div class="eyebrow" style="margin-bottom:6px;">Data sources</div>
+          <h4>Four connections. Each is opt-in.</h4>
+        </div>
+        <span class="pill">Last synced · 6 min ago</span>
+      </div>
+
+      <!-- HealthKit -->
+      <div style="padding:28px 32px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:56px 1fr auto;gap:20px;align-items:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#FF4D62,#FF8364);display:grid;place-items:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <div>
+          <div class="hstack gap-2" style="margin-bottom:4px;">
+            <h4 style="font-size:18px;">Apple HealthKit</h4>
+            <span class="pill pill--sage"><span class="pill-dot" style="background:var(--sage);"></span>Connected</span>
+          </div>
+          <p class="small muted" style="margin:0;">Reads: recent runs, HRV, resting HR, VO₂max estimate, sleep, training load. No writes.</p>
+          <div class="hstack gap-4" style="margin-top:10px;font-size:12px;color:var(--ink-3);">
+            <span>38 runs · 6 weeks</span>
+            <span>VO₂max est 52</span>
+            <span>HRV 58 ms (↑)</span>
+            <span>Last 5am · 19 Apr</span>
+          </div>
+        </div>
+        <button class="btn btn--ghost">Manage</button>
+      </div>
+
+      <!-- Strava -->
+      <div style="padding:28px 32px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:56px 1fr auto;gap:20px;align-items:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:#FC4C02;display:grid;place-items:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066M8.75 6.7l2.777 5.464H15.7L8.75 0 1.85 12.164h4.172"/></svg>
+        </div>
+        <div>
+          <div class="hstack gap-2" style="margin-bottom:4px;">
+            <h4 style="font-size:18px;">Strava</h4>
+            <span class="pill pill--sage"><span class="pill-dot" style="background:var(--sage);"></span>Connected · OAuth</span>
+          </div>
+          <p class="small muted" style="margin:0;">Reads: past races, PRs, segment efforts, shoe mileage. Used for race-time extrapolation + shoe rotation suggestions.</p>
+          <div class="hstack gap-4" style="margin-top:10px;font-size:12px;color:var(--ink-3);">
+            <span>LA Marathon 3:40 (2025)</span>
+            <span>Ventura Half 1:38</span>
+            <span>Endorphin 4 · 298 mi</span>
+          </div>
+        </div>
+        <button class="btn btn--ghost">Manage</button>
+      </div>
+
+      <!-- Calendar -->
+      <div style="padding:28px 32px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:56px 1fr auto;gap:20px;align-items:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#FF9500,#FFB340);display:grid;place-items:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div>
+          <div class="hstack gap-2" style="margin-bottom:4px;">
+            <h4 style="font-size:18px;">Apple Calendar</h4>
+            <span class="pill"><span class="pill-dot" style="background:var(--gold);"></span>Read-only</span>
+          </div>
+          <p class="small muted" style="margin:0;">Reads: any calendar you select (defaults: Training, Personal). Used to detect conflicts with planned runs + check travel around race day.</p>
+          <div class="hstack gap-4" style="margin-top:10px;font-size:12px;color:var(--ink-3);">
+            <span>3 calendars selected</span>
+            <span>2 training blocks upcoming</span>
+            <span>Race travel: Apr 24–27</span>
+          </div>
+        </div>
+        <button class="btn btn--ghost">Manage</button>
+      </div>
+
+      <!-- NOAA -->
+      <div style="padding:28px 32px;display:grid;grid-template-columns:56px 1fr auto;gap:20px;align-items:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#4DABE3,#A7CFE8);display:grid;place-items:center;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+        </div>
+        <div>
+          <div class="hstack gap-2" style="margin-bottom:4px;">
+            <h4 style="font-size:18px;">NOAA forecast</h4>
+            <span class="pill pill--sage"><span class="pill-dot" style="background:var(--sage);"></span>Auto · no auth</span>
+          </div>
+          <p class="small muted" style="margin:0;">Fetches race-day forecast 72h / 24h / 3h before gun. Feeds the morning brief's wind + temperature adjustments.</p>
+          <div class="hstack gap-4" style="margin-top:10px;font-size:12px;color:var(--ink-3);">
+            <span>Big Sur 2026-04-26 · 42°F start</span>
+            <span>NW 8 mph</span>
+            <span>Overcast</span>
+          </div>
+        </div>
+        <button class="btn btn--ghost">Manage</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- What it enables -->
+  <section style="padding:0 0 48px;">
+    <div class="section-header">
+      <div class="eyebrow">What this unlocks</div>
+      <h2 style="max-width:20ch;">No more typing numbers<br/><span class="serif-italic">Runcino already reads them.</span></h2>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h4>Fitness summary auto-fills</h4>
+        <p>The goal-setting form shows HealthKit + Strava data already populated. You adjust, not enter.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <h4>HR zones per phase</h4>
+        <p>Phases get target HR bands from your HealthKit history, not population defaults. HR wins if pace and HR disagree.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 0 1 20 0 10 10 0 0 1-20 0z"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+        </div>
+        <h4>Weather folded into the plan</h4>
+        <p>Race-week forecast pulls daily. Day-before: final pace adjustments bake in. Morning-of: you just run.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M5 12 a9 4 0 0 0 14 0"/></svg>
+        </div>
+        <h4>Shoe rotation suggestion</h4>
+        <p>Strava tracks your shoe mileage. Runcino picks the right pair for Big Sur's terrain from what's under 300 miles.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-8"/><path d="M14 9h6v6"/></svg>
+        </div>
+        <h4>Race-equivalent goal</h4>
+        <p>Your LA 3:40 + 5 months of training extrapolates to a specific current-fitness marathon time. No more guessing.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <h4>Calendar-aware</h4>
+        <p>Training runs generated around your actual calendar (travel, work blocks, family). No dumb "Saturday long run" when you're flying.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section style="padding:0 0 96px;">
+    <div class="card" style="background:var(--paper-2);padding:32px;display:grid;grid-template-columns:48px 1fr;gap:20px;align-items:start;">
+      <div style="width:48px;height:48px;border-radius:12px;background:var(--terracotta-3);color:var(--terracotta);display:grid;place-items:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div>
+        <h4 style="margin-bottom:12px;">Privacy model</h4>
+        <div class="vstack" style="gap:10px;color:var(--ink-2);font-size:14px;line-height:1.6;">
+          <div><strong>HealthKit</strong> — read-only permissions. Runcino never writes to Health. Requested scopes are the narrow set above, not "everything."</div>
+          <div><strong>Strava</strong> — OAuth with the <code style="font-family:var(--font-mono);font-size:12px;">activity:read, profile:read_all</code> scopes. Tokens live in iOS keychain. Revocable at any time from strava.com/settings/apps.</div>
+          <div><strong>Calendar</strong> — read-only, scoped to calendars you select. Not synced anywhere, never exported.</div>
+          <div><strong>NOAA</strong> — no auth, no account. Runcino issues an API call with your race location only.</div>
+          <div><strong>Claude API</strong> — the only outbound call. Sends a compact numeric summary (no names, no locations beyond city-level). Cached to reduce token spend.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>Runcino · M2 mockup — ships after M1</div>
+    <div>v0.3.0 target</div>
+  </footer>
+
+</div>
+</body>
+</html>
