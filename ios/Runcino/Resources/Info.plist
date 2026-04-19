@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Runcino</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>com.davidnitzsche.runcino</string>
+
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- Declare .runcino.json as an exported custom UTI that conforms
+         to public.json. The iOS Files app + share sheet will route
+         matching files to this app. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.davidnitzsche.runcino.plan</string>
+            <key>UTTypeDescription</key>
+            <string>Runcino race plan</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.json</string>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>runcino.json</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/vnd.runcino+json</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+
+    <!-- Document types — makes "Open in Runcino" appear in the share sheet. -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Runcino race plan</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.davidnitzsche.runcino.plan</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- HealthKit usage (placeholder for M1; not yet read) -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>Runcino reads fitness history to recommend honest race goals.</string>
+
+    <!-- Required for WorkoutKit / Watch sync to work on device -->
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Runcino saves planned workouts so they sync to your Apple Watch.</string>
+</dict>
+</plist>
