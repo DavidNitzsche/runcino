@@ -7,6 +7,7 @@ import { parseGpx } from '../../../lib/gpx';
 import { buildSegments } from '../../../lib/pacing';
 import { groupPhases } from '../../../lib/grouping';
 import { planFueling } from '../../../lib/fueling';
+import { planFuelingWithClaude } from '../../../lib/fueling-claude';
 import { assemblePlan } from '../../../lib/export';
 import {
   getCourseFacts,
@@ -23,6 +24,7 @@ type Body = {
   goalFinishS: number;
   strategy: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi: number;
+  weatherText?: string;
   fitness: {
     baselineName: string;
     baselineFinish: string;
@@ -76,7 +78,20 @@ export async function POST(req: Request) {
   };
   const segments = buildSegments(track, pacingInput);
   const phases = groupPhases(segments, { courseFacts: facts });
-  const fueling = planFueling({ phases, finishS: body.goalFinishS });
+  const aidStationMiles = facts.landmarks
+    .filter(l => l.kind === 'aid_station')
+    .map(l => l.at_mi);
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const fueling = apiKey
+    ? await planFuelingWithClaude({
+        phases,
+        finishS: body.goalFinishS,
+        apiKey,
+        weather: body.weatherText,
+        aidStationMiles,
+      })
+    : planFueling({ phases, finishS: body.goalFinishS });
   const landmarks = shippableLandmarks(facts).map(l => ({ atMi: l.at_mi, label: l.label }));
 
   const fitnessSummary: FitnessSummary = {
