@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Big Sur 2026 · Master Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f11;
+    --surface: #18181c;
+    --surface2: #1f1f25;
+    --border: #2a2a32;
+    --orange: #f97316;
+    --orange-dim: rgba(249,115,22,0.12);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+    --text: #e8e8ee;
+    --text2: #8888a0;
+    --text3: #55556a;
+    --radius: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "SF Mono", "Fira Code", monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 80px;
+    line-height: 1.5;
+  }
+
+  /* ─── Top bar ─── */
+  .topbar {
+    max-width: 860px;
+    margin: 0 auto 40px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-icon {
+    width: 36px; height: 36px;
+    background: var(--orange);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-style: italic; font-weight: 600;
+    color: white; font-family: Georgia, serif;
+  }
+
+  .brand-name {
+    font-size: 20px; font-weight: 600;
+    font-family: Georgia, serif;
+  }
+
+  .brand-sub {
+    font-size: 12px; color: var(--text2); margin-top: 1px;
+    font-family: var(--mono);
+  }
+
+  .countdown {
+    text-align: right;
+  }
+
+  .countdown-days {
+    font-size: 48px; font-weight: 300;
+    font-family: Georgia, serif; font-style: italic;
+    color: var(--orange); line-height: 1;
+  }
+
+  .countdown-label {
+    font-size: 11px; color: var(--text2);
+    text-transform: uppercase; letter-spacing: 1.5px;
+  }
+
+  /* ─── Summary strip ─── */
+  .summary {
+    max-width: 860px;
+    margin: 0 auto 32px;
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+
+  .summary-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .summary-pill .num { font-weight: 700; color: var(--orange); }
+  .summary-pill .of { color: var(--text2); font-size: 11px; }
+
+  .pill-done .num { color: var(--green); }
+  .pill-blocked .num { color: var(--red); }
+
+  /* ─── Phase block ─── */
+  .phase-block {
+    max-width: 860px;
+    margin: 0 auto 28px;
+  }
+
+  .phase-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .phase-label {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text2);
+  }
+
+  .phase-title {
+    font-size: 15px; font-weight: 600;
+    flex: 1;
+  }
+
+  .phase-progress-wrap {
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .phase-bar-track {
+    width: 80px; height: 4px;
+    background: var(--border); border-radius: 2px; overflow: hidden;
+  }
+
+  .phase-bar-fill {
+    height: 100%; background: var(--orange); border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .phase-bar-fill.complete { background: var(--green); }
+
+  .phase-count {
+    font-size: 11px; color: var(--text2);
+    font-family: var(--mono);
+  }
+
+  .phase-chevron {
+    font-size: 11px; color: var(--text3);
+    transition: transform 0.2s;
+  }
+
+  .phase-block.collapsed .phase-chevron { transform: rotate(-90deg); }
+  .phase-block.collapsed .task-list { display: none; }
+
+  .task-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  /* ─── Task row ─── */
+  .task-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  .task-row:last-child { border-bottom: none; }
+  .task-row:hover { background: var(--surface2); }
+  .task-row.done { opacity: 0.45; }
+
+  /* custom checkbox */
+  .task-check {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 2px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .task-check:hover { border-color: var(--orange); }
+
+  .task-row.done .task-check {
+    background: var(--green); border-color: var(--green);
+  }
+
+  .check-mark {
+    display: none;
+    color: white; font-size: 11px; font-weight: 700;
+  }
+
+  .task-row.done .check-mark { display: block; }
+
+  .task-body { min-width: 0; }
+
+  .task-id {
+    font-family: var(--mono);
+    font-size: 10px; color: var(--text3);
+    margin-bottom: 3px;
+  }
+
+  .task-text {
+    font-size: 14px; line-height: 1.4;
+  }
+
+  .task-row.done .task-text {
+    text-decoration: line-through;
+    color: var(--text2);
+  }
+
+  .task-exit {
+    font-size: 11px; color: var(--text2);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .task-exit em { color: var(--text3); font-style: normal; }
+
+  .task-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  /* priority badges */
+  .badge {
+    font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    padding: 2px 6px; border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .badge-blocker { background: rgba(239,68,68,0.2); color: var(--red); }
+  .badge-high    { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .badge-medium  { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge-low     { background: rgba(88,88,108,0.2); color: var(--text2); }
+
+  /* waiting badge */
+  .badge-waiting { background: rgba(59,130,246,0.15); color: var(--blue); }
+
+  /* ─── Special rows ─── */
+  .task-row.gate {
+    background: var(--orange-dim);
+    border-top: 1px solid rgba(249,115,22,0.25);
+    border-bottom: 1px solid rgba(249,115,22,0.25);
+  }
+
+  .task-row.race-day {
+    background: rgba(34,197,94,0.06);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 8px;
+    padding: 20px 16px;
+    text-align: center;
+    display: block;
+    cursor: default;
+  }
+
+  .race-day-label {
+    font-family: Georgia, serif;
+    font-size: 22px; font-style: italic;
+    color: var(--green);
+    margin-bottom: 4px;
+  }
+
+  .race-day-sub {
+    font-size: 12px; color: var(--text2);
+  }
+
+  /* ─── Notes area ─── */
+  .notes-area {
+    max-width: 860px; margin: 32px auto 0;
+  }
+
+  .notes-label {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text2); margin-bottom: 8px;
+  }
+
+  .notes-box {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 14px 16px;
+    resize: vertical;
+    min-height: 140px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .notes-box:focus { border-color: var(--orange); }
+
+  /* ─── Rules section ─── */
+  .rules {
+    max-width: 860px; margin: 32px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .rules-title {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text2); margin-bottom: 12px;
+  }
+
+  .rules ol {
+    padding-left: 18px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+
+  .rules li { font-size: 13px; color: var(--text2); line-height: 1.5; }
+  .rules li strong { color: var(--text); }
+
+  /* ─── Blocking banner ─── */
+  .blocking-banner {
+    max-width: 860px; margin: 0 auto 28px;
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+
+  .blocking-title {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--blue); margin-bottom: 8px;
+  }
+
+  .blocking-items {
+    display: flex; flex-direction: column; gap: 5px;
+  }
+
+  .blocking-item {
+    font-size: 13px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+
+  .blocking-item .key { font-family: var(--mono); color: var(--text2); font-size: 11px; }
+
+  /* ─── Footer ─── */
+  .footer {
+    max-width: 860px; margin: 48px auto 0;
+    font-size: 11px; color: var(--text3);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+
+  .footer a { color: var(--text3); text-decoration: none; }
+  .footer a:hover { color: var(--text2); }
+
+  /* phase separator for non-sprint phases */
+  .phase-divider {
+    max-width: 860px; margin: 36px auto 28px;
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .phase-divider-line { flex: 1; height: 1px; background: var(--border); }
+
+  .phase-divider-label {
+    font-size: 11px; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 1.5px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Top bar ─────────────────────────── -->
+<div class="topbar">
+  <div>
+    <div class="brand">
+      <div class="brand-icon">R</div>
+      <div>
+        <div class="brand-name">Runcino</div>
+        <div class="brand-sub">Big Sur · 2026-04-26</div>
+      </div>
+    </div>
+  </div>
+  <div class="countdown">
+    <div class="countdown-days" id="days-left">7</div>
+    <div class="countdown-label">days to race</div>
+  </div>
+</div>
+
+<!-- ─── Progress summary ─────────────────── -->
+<div class="summary" id="summary">
+  <!-- filled by JS -->
+</div>
+
+<!-- ─── Blocking inputs banner ───────────── -->
+<div class="blocking-banner">
+  <div class="blocking-title">Still need from David</div>
+  <div class="blocking-items">
+    <div class="blocking-item">
+      <span class="key">Apple Developer Team ID</span>
+      Blocks Phase 1 iOS compile — drop it here or in Xcode Signing
+    </div>
+    <div class="blocking-item">
+      <span class="key">ANTHROPIC_API_KEY</span>
+      Blocks Phase 3 Claude API tests — add to <code style="font-family:var(--mono);font-size:11px;color:var(--text2)">web/.env.local</code>
+    </div>
+    <div class="blocking-item">
+      <span class="key">2024 Big Sur GPX</span>
+      Blocks Phase 2 real data — <code style="font-family:var(--mono);font-size:11px;color:var(--text2)">cp ~/Downloads/gpx_20240428_*.gpx web/public/sample-bigsur.gpx</code>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PHASES ─────────────────────────────────────────────── -->
+
+<div id="phases-container">
+
+<!-- Phase 0 -->
+<div class="phase-block" id="phase-0">
+  <div class="phase-header" onclick="togglePhase('phase-0')">
+    <span class="phase-label">Phase 0</span>
+    <span class="phase-title">Today · Sun 4/19 · Get hands on</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-0"></div></div>
+      <span class="phase-count" id="count-phase-0"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="0.1" data-phase="phase-0">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">0.1</div>
+        <div class="task-text">Clone repo, checkout <code style="font-family:var(--mono);font-size:12px">claude/build-runcino-app-OIRJr</code>, npm install, npm test</div>
+        <div class="task-exit">✓ 75/75 tests pass — done. Fixed vitest exclude pattern for macOS ._* files.</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="0.2" data-phase="phase-0">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">0.2</div>
+        <div class="task-text">Read STATUS.md, docs/MASTER_PLAN.md, docs/CHECKLIST.md</div>
+        <div class="task-exit">✓ Done — can describe 6-phase race plan and M0→M6 roadmap</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="0.3" data-phase="phase-0">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">0.3</div>
+        <div class="task-text">Boot npm run dev, click through all 6 routes</div>
+        <div class="task-exit">✓ All 6 routes 200: / /training /retrospective /research /settings/integrations /training/today</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="0.4" data-phase="phase-0">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">0.4</div>
+        <div class="task-text">Run all 4 CLI scripts (build-plan, retrospective, plan-week, weather)</div>
+        <div class="task-exit">✓ All exit 0 with rich output — 0s drift, live NOAA forecast, plan-vs-actual, taper week</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="0.5" data-phase="phase-0">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">0.5</div>
+        <div class="task-text">Report back: test count, broken routes, proposed first task</div>
+        <div class="task-exit">✓ Full written summary delivered — Swift files pre-read, WorkoutKit risks identified</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 1 -->
+<div class="phase-block" id="phase-1">
+  <div class="phase-header" onclick="togglePhase('phase-1')">
+    <span class="phase-label">Phase 1</span>
+    <span class="phase-title">Day 1 · Mon 4/20 · iOS build</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-1"></div></div>
+      <span class="phase-count" id="count-phase-1"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="1.1" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.1</div>
+        <div class="task-text">David provides Apple Developer Team ID</div>
+        <div class="task-exit"><em>Waiting on David</em></div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span><span class="badge badge-waiting">Waiting</span></div>
+    </div>
+    <div class="task-row" data-id="1.2" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.2</div>
+        <div class="task-text">Create Xcode project per ios/README.md (SwiftUI, iOS 17, <code style="font-family:var(--mono);font-size:12px">com.davidnitzsche.runcino</code>)</div>
+        <div class="task-exit">Project opens in Xcode clean</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="1.3" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.3</div>
+        <div class="task-text">Drag in ios/Runcino/* Swift files, configure Info.plist (Option B), enable WorkoutKit + HealthKit capabilities</div>
+        <div class="task-exit">Builds without errors. Expected: 1–3 WorkoutKit API renames (SpeedRangeAlert params, IntervalBlock). Report red-lines — fixes ready.</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="1.4" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.4</div>
+        <div class="task-text">Build to David's iPhone, first sideload</div>
+        <div class="task-exit">App opens on phone. If signing error: Settings → General → VPN &amp; Device Management → trust profile.</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="1.5" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.5</div>
+        <div class="task-text">AirDrop web/public/big-sur-3-50.runcino.json → iPhone → "Open in Runcino"</div>
+        <div class="task-exit">Plan renders — all 6 phases visible with pace targets</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="1.6" data-phase="phase-1">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">1.6</div>
+        <div class="task-text">Tap "Add to Apple Watch" → confirm sync</div>
+        <div class="task-exit">Workout "Big Sur · 3:50:00" appears in Watch Workout app</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 2 -->
+<div class="phase-block" id="phase-2">
+  <div class="phase-header" onclick="togglePhase('phase-2')">
+    <span class="phase-label">Phase 2</span>
+    <span class="phase-title">Day 2 · Tue 4/21 · Real data + training run</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-2"></div></div>
+      <span class="phase-count" id="count-phase-2"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="2.1" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.1</div>
+        <div class="task-text">Drop ANTHROPIC_API_KEY into web/.env.local</div>
+        <div class="task-exit"><em>Waiting on David</em></div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span><span class="badge badge-waiting">Waiting</span></div>
+    </div>
+    <div class="task-row" data-id="2.2" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.2</div>
+        <div class="task-text">Replace web/public/sample-bigsur.gpx with real 2024 Big Sur GPX</div>
+        <div class="task-exit">Pre-flight validation passes without --force. <code style="font-family:var(--mono);font-size:11px">cp ~/Downloads/gpx_20240428_id8679_race1_20250117093547.gpx web/public/sample-bigsur.gpx</code></div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span><span class="badge badge-waiting">Waiting</span></div>
+    </div>
+    <div class="task-row" data-id="2.3" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.3</div>
+        <div class="task-text">Regenerate plan: npm run build-plan (with real GPX)</div>
+        <div class="task-exit">0-second drift from 3:50:00</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="2.4" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.4</div>
+        <div class="task-text">Re-import updated JSON into iOS, re-sync Watch</div>
+        <div class="task-exit">Plan refreshed on Watch with real course data</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="2.5" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.5</div>
+        <div class="task-text">David runs 2–3 mile training run with Watch workout active</div>
+        <div class="task-exit">Pace haptics fire, phases transition, fueling cues trigger</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="2.6" data-phase="phase-2">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">2.6</div>
+        <div class="task-text">Capture bugs from training run, fix, re-sideload</div>
+        <div class="task-exit">Any Watch issue resolved before Wed</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 3 -->
+<div class="phase-block" id="phase-3">
+  <div class="phase-header" onclick="togglePhase('phase-3')">
+    <span class="phase-label">Phase 3</span>
+    <span class="phase-title">Day 3 · Wed 4/22 · Claude API integration verified</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-3"></div></div>
+      <span class="phase-count" id="count-phase-3"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="3.1" data-phase="phase-3">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">3.1</div>
+        <div class="task-text">Test /api/goal with David's real fitness summary — compare stub vs live Claude</div>
+        <div class="task-exit">Live Claude response reasonable; tone matches spec</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="3.2" data-phase="phase-3">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">3.2</div>
+        <div class="task-text">Test /api/brief with a fake weather forecast</div>
+        <div class="task-exit">Brief generates cleanly, correct JSON shape</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="3.3" data-phase="phase-3">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">3.3</div>
+        <div class="task-text">Tune system prompts in /api/*/route.ts if Claude responses are off</div>
+        <div class="task-exit">All prompts use cache_control: { type: 'ephemeral' } on system message</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+    <div class="task-row" data-id="3.4" data-phase="phase-3">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">3.4</div>
+        <div class="task-text">Run /api/research against CIM to verify course-facts pipeline</div>
+        <div class="task-exit">Draft facts file downloads with citations</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 4 -->
+<div class="phase-block" id="phase-4">
+  <div class="phase-header" onclick="togglePhase('phase-4')">
+    <span class="phase-label">Phase 4</span>
+    <span class="phase-title">Day 4 · Thu 4/23 · Polish + edge cases</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-4"></div></div>
+      <span class="phase-count" id="count-phase-4"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="4.1" data-phase="phase-4">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">4.1</div>
+        <div class="task-text">Exercise all error paths: bad GPX, unrealistic goal, API 500, no network</div>
+        <div class="task-exit">Every error has a useful UI message</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+    <div class="task-row" data-id="4.2" data-phase="phase-4">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">4.2</div>
+        <div class="task-text">Responsive layout check: 1024, 1440, 1920px</div>
+        <div class="task-exit">Layout holds at all three widths</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-low">Low</span></div>
+    </div>
+    <div class="task-row" data-id="4.3" data-phase="phase-4">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">4.3</div>
+        <div class="task-text">Any remaining iOS glitches (plist, entitlements, signing)</div>
+        <div class="task-exit">Clean build, no warnings on signing/entitlements</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 5 -->
+<div class="phase-block" id="phase-5">
+  <div class="phase-header" onclick="togglePhase('phase-5')">
+    <span class="phase-label">Phase 5</span>
+    <span class="phase-title">Day 5 · Fri 4/24 · Schema freeze + final sideload</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-5"></div></div>
+      <span class="phase-count" id="count-phase-5"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="5.1" data-phase="phase-5">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">5.1</div>
+        <div class="task-text">Final build-plan run with real GPX — regenerate plan</div>
+        <div class="task-exit">0-second drift, real course data</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="5.2" data-phase="phase-5">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">5.2</div>
+        <div class="task-text">Freeze docs/SCHEMA.md — no changes without version bump after today</div>
+        <div class="task-exit">SCHEMA.md committed, note added at top of file</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="5.3" data-phase="phase-5">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">5.3</div>
+        <div class="task-text">Final iOS sideload to David's phone</div>
+        <div class="task-exit">App is the version that goes to the start line</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="5.4" data-phase="phase-5">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">5.4</div>
+        <div class="task-text">Tag and merge: git tag v0.1.0-bigsur, merge PR to main</div>
+        <div class="task-exit">Tag on main, David explicitly approved merge</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 6 -->
+<div class="phase-block" id="phase-6">
+  <div class="phase-header" onclick="togglePhase('phase-6')">
+    <span class="phase-label">Phase 6</span>
+    <span class="phase-title">Day 6 · Sat 4/25 · Pre-race verification</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-6"></div></div>
+      <span class="phase-count" id="count-phase-6"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="6.1" data-phase="phase-6">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">6.1</div>
+        <div class="task-text">Walk through docs/PRE_RACE_CHECKLIST.md with David</div>
+        <div class="task-exit">All checkboxes ticked</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="6.2" data-phase="phase-6">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">6.2</div>
+        <div class="task-text">Cross-check every landmark against official BSIM course PDF</div>
+        <div class="task-exit">5/5 landmarks verified with primary-source citations</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="6.3" data-phase="phase-6">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">6.3</div>
+        <div class="task-text">Pull race-morning NOAA forecast, run /api/brief, generate final plan</div>
+        <div class="task-exit">Brief matches actual forecast; paces adjusted if needed</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="6.4" data-phase="phase-6">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">6.4</div>
+        <div class="task-text">Re-sideload if brief changed any paces</div>
+        <div class="task-exit">Watch has the final plan; phone is charged</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Race day -->
+<div class="phase-block" id="phase-7">
+  <div class="phase-header" onclick="togglePhase('phase-7')">
+    <span class="phase-label">Phase 7</span>
+    <span class="phase-title">Sun 4/26 · Race Day</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-7"></div></div>
+      <span class="phase-count" id="count-phase-7"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row race-day">
+      <div class="race-day-label">David runs Big Sur.</div>
+      <div class="race-day-sub">The tool's work is done. Claude waits.<br>Capture: Apple Watch workout export at finish — needed for M1.</div>
+    </div>
+  </div>
+</div>
+
+<!-- divider -->
+<div class="phase-divider">
+  <div class="phase-divider-line"></div>
+  <div class="phase-divider-label">Post-race · M1 onward</div>
+  <div class="phase-divider-line"></div>
+</div>
+
+<!-- Phase 8 -->
+<div class="phase-block collapsed" id="phase-8">
+  <div class="phase-header" onclick="togglePhase('phase-8')">
+    <span class="phase-label">Phase 8</span>
+    <span class="phase-title">Mon 4/27+ · M1 Retrospective</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-8"></div></div>
+      <span class="phase-count" id="count-phase-8"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="8.1" data-phase="phase-8">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">8.1</div>
+        <div class="task-text">Export actual Big Sur workout from Watch → iPhone Health</div>
+        <div class="task-exit">File saved to phone</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="8.2" data-phase="phase-8">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">8.2</div>
+        <div class="task-text">Build converter: real Watch export → ActualRace JSON (lib/retrospective.ts schema)</div>
+        <div class="task-exit">web/fixtures/bigsur-actual.json replaced with real data</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="8.3" data-phase="phase-8">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">8.3</div>
+        <div class="task-text">Run /retrospective with real data, read Claude's narrative</div>
+        <div class="task-exit">Narrative makes sense — reads the race back correctly</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="8.4" data-phase="phase-8">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">8.4</div>
+        <div class="task-text">Accept calibration coefficients into data/runner-profile.json (create file)</div>
+        <div class="task-exit">Personal GAP model saved for CIM</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="8.5" data-phase="phase-8">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">8.5</div>
+        <div class="task-text">Write race journal: docs/races/bigsur-2026.md</div>
+        <div class="task-exit">Permanent record committed</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 9 -->
+<div class="phase-block collapsed" id="phase-9">
+  <div class="phase-header" onclick="togglePhase('phase-9')">
+    <span class="phase-label">Phase 9</span>
+    <span class="phase-title">Week of 4/27 · M1 build-out</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-9"></div></div>
+      <span class="phase-count" id="count-phase-9"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="9.1" data-phase="phase-9">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">9.1</div>
+        <div class="task-text">HealthKit reader (iOS) — scope narrowly to what fitness form needs</div>
+        <div class="task-exit">Fitness form auto-populates from HealthKit</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="9.2" data-phase="phase-9">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">9.2</div>
+        <div class="task-text">Remove manual fitness form entry; keep as fallback</div>
+        <div class="task-exit">Form is auto-filled; manual override still possible</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+    <div class="task-row" data-id="9.3" data-phase="phase-9">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body">
+        <div class="task-id">9.3</div>
+        <div class="task-text">Watch workout export auto-import (iOS share sheet handler)</div>
+        <div class="task-exit">One-tap retrospective from Watch export</div>
+      </div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 10 -->
+<div class="phase-block collapsed" id="phase-10">
+  <div class="phase-header" onclick="togglePhase('phase-10')">
+    <span class="phase-label">Phase 10</span>
+    <span class="phase-title">May 2026 · M2 build-out</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-10"></div></div>
+      <span class="phase-count" id="count-phase-10"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="10.1" data-phase="phase-10">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">10.1</div><div class="task-text">Strava OAuth flow</div><div class="task-exit">Race history auto-loads from Strava</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="10.2" data-phase="phase-10">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">10.2</div><div class="task-text">Calendar (EventKit) reader</div><div class="task-exit">Travel/work conflicts visible in training view</div></div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+    <div class="task-row" data-id="10.3" data-phase="phase-10">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">10.3</div><div class="task-text">Wire /api/weather into /api/brief pre-fill</div><div class="task-exit">No more forecast paste — NOAA auto-fetches</div></div>
+      <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
+    </div>
+    <div class="task-row" data-id="10.4" data-phase="phase-10">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">10.4</div><div class="task-text">HR zones per phase in pacing engine (lib/pacing.ts)</div><div class="task-exit">Intervals emit HR targets alongside pace</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="10.5" data-phase="phase-10">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">10.5</div><div class="task-text">iCloud Drive sync for plans</div><div class="task-exit">Plans roam between devices</div></div>
+      <div class="task-meta"><span class="badge badge-low">Low</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 11 -->
+<div class="phase-block collapsed" id="phase-11">
+  <div class="phase-header" onclick="togglePhase('phase-11')">
+    <span class="phase-label">Phase 11</span>
+    <span class="phase-title">Summer 2026 · M3 Training MVP</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-11"></div></div>
+      <span class="phase-count" id="count-phase-11"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="11.1" data-phase="phase-11">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">11.1</div><div class="task-text">Decide coaching philosophy with David (Pfitzinger / Daniels / Hanson / custom)</div><div class="task-exit">Philosophy locked before any training code is written</div></div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
+    </div>
+    <div class="task-row" data-id="11.2" data-phase="phase-11">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">11.2</div><div class="task-text">Replace rule-based training engine with Claude-driven generation</div><div class="task-exit">lib/training.ts has a Claude path; same schema output</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="11.3" data-phase="phase-11">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">11.3</div><div class="task-text">Adaptive replanning — skipped runs, bad HRV, life intrusions</div><div class="task-exit">Weekly regeneration works from HealthKit signal</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="11.4" data-phase="phase-11">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">11.4</div><div class="task-text">Injury-risk gate — HRV drop + load spike detection</div><div class="task-exit">Tomorrow's workout can be blocked with explanation</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="11.5" data-phase="phase-11">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">11.5</div><div class="task-text">Watch-native daily workouts (CustomWorkout per planned run)</div><div class="task-exit">Every planned run starts from Watch app</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 12 -->
+<div class="phase-block collapsed" id="phase-12">
+  <div class="phase-header" onclick="togglePhase('phase-12')">
+    <span class="phase-label">Phase 12</span>
+    <span class="phase-title">December 2026 · CIM</span>
+    <div class="phase-progress-wrap">
+      <div class="phase-bar-track"><div class="phase-bar-fill" id="bar-phase-12"></div></div>
+      <span class="phase-count" id="count-phase-12"></span>
+    </div>
+    <span class="phase-chevron">▾</span>
+  </div>
+  <div class="task-list">
+    <div class="task-row" data-id="12.1" data-phase="phase-12">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">12.1</div><div class="task-text">Research CIM facts via /research flow; promote to production</div><div class="task-exit">web/data/courses/cim.json with citations</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="12.2" data-phase="phase-12">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">12.2</div><div class="task-text">18-week CIM training build begins ~August 2026</div><div class="task-exit">Weekly plans shipping to Watch by Aug 31</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+    <div class="task-row" data-id="12.3" data-phase="phase-12">
+      <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
+      <div class="task-body"><div class="task-id">12.3</div><div class="task-text">Use M1 Big Sur retrospective coefficients to calibrate CIM goal</div><div class="task-exit">Goal-setting uses learned GAP coefficients from Big Sur</div></div>
+      <div class="task-meta"><span class="badge badge-high">High</span></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end phases-container -->
+
+<!-- ─── Notes ─────────────────────────────── -->
+<div class="notes-area">
+  <div class="notes-label">Shared notes</div>
+  <textarea class="notes-box" id="notes-box" placeholder="Drop notes here — both David and Claude write here. Persists in localStorage."></textarea>
+</div>
+
+<!-- ─── Rules ─────────────────────────────── -->
+<div class="rules">
+  <div class="rules-title">Rules of engagement</div>
+  <ol>
+    <li><strong>Never push to main</strong> without David's explicit approval</li>
+    <li><strong>Never modify docs/SCHEMA.md</strong> without version-bumping (major bump breaks iOS)</li>
+    <li><strong>Never add a landmark</strong> without a primary-source citation — see web/data/courses/big-sur-marathon.json</li>
+    <li><strong>Commit style:</strong> imperative, specific, under 72 chars first line, body explains why</li>
+    <li><strong>Tests stay green.</strong> Fix the test or fix the change. Never comment-out tests.</li>
+    <li><strong>Claude API calls:</strong> use <code style="font-family:var(--mono);font-size:12px">cache_control: &#123; type: 'ephemeral' &#125;</code> on every system message</li>
+    <li><strong>Ask before guessing.</strong> David's time is the bottleneck.</li>
+    <li><strong>Mockups = real code.</strong> If you're writing HTML, stop — make it a React page in web/app/.</li>
+  </ol>
+</div>
+
+<!-- ─── Footer ─────────────────────────────── -->
+<div class="footer">
+  <span>Runcino · claude/build-runcino-app-OIRJr · <a href="https://github.com/DavidNitzsche/runcino/pull/1" target="_blank">PR #1</a></span>
+  <span id="last-saved"></span>
+</div>
+
+<script>
+  // ─── Countdown ───────────────────────────
+  (function() {
+    const race = new Date('2026-04-26T06:00:00-07:00');
+    const now = new Date();
+    const days = Math.ceil((race - now) / 86400000);
+    const el = document.getElementById('days-left');
+    if (el) el.textContent = Math.max(0, days);
+  })();
+
+  // ─── Toggle phase collapse ────────────────
+  function togglePhase(id) {
+    const block = document.getElementById(id);
+    if (!block) return;
+    block.classList.toggle('collapsed');
+    save();
+  }
+
+  // ─── Check/uncheck task ──────────────────
+  function toggle(checkEl) {
+    const row = checkEl.closest('.task-row');
+    if (!row) return;
+    row.classList.toggle('done');
+    save();
+    updateAllBars();
+    updateSummary();
+  }
+
+  // ─── Persist to localStorage ─────────────
+  const STORE_KEY = 'runcino-tracker-v2';
+
+  function save() {
+    const state = {};
+
+    // tasks
+    document.querySelectorAll('.task-row[data-id]').forEach(row => {
+      state[row.dataset.id] = row.classList.contains('done');
+    });
+
+    // collapsed phases
+    state.__collapsed = [];
+    document.querySelectorAll('.phase-block').forEach(block => {
+      if (block.classList.contains('collapsed')) state.__collapsed.push(block.id);
+    });
+
+    // notes
+    const notes = document.getElementById('notes-box');
+    if (notes) state.__notes = notes.value;
+
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+
+    const el = document.getElementById('last-saved');
+    if (el) el.textContent = 'Saved ' + new Date().toLocaleTimeString();
+  }
+
+  function load() {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return;
+    let state;
+    try { state = JSON.parse(raw); } catch(e) { return; }
+
+    // tasks
+    document.querySelectorAll('.task-row[data-id]').forEach(row => {
+      if (state[row.dataset.id]) row.classList.add('done');
+      else row.classList.remove('done');
+    });
+
+    // collapsed
+    if (Array.isArray(state.__collapsed)) {
+      document.querySelectorAll('.phase-block').forEach(block => {
+        if (state.__collapsed.includes(block.id)) block.classList.add('collapsed');
+        else block.classList.remove('collapsed');
+      });
+    }
+
+    // notes
+    const notes = document.getElementById('notes-box');
+    if (notes && state.__notes !== undefined) notes.value = state.__notes;
+  }
+
+  // ─── Progress bars ───────────────────────
+  function updateBar(phaseId) {
+    const block = document.getElementById(phaseId);
+    if (!block) return;
+    const rows = block.querySelectorAll('.task-row[data-id]');
+    if (!rows.length) return;
+    const done = block.querySelectorAll('.task-row[data-id].done').length;
+    const pct = Math.round((done / rows.length) * 100);
+    const fill = document.getElementById('bar-' + phaseId);
+    const count = document.getElementById('count-' + phaseId);
+    if (fill) {
+      fill.style.width = pct + '%';
+      fill.classList.toggle('complete', pct === 100);
+    }
+    if (count) count.textContent = done + '/' + rows.length;
+  }
+
+  function updateAllBars() {
+    for (let i = 0; i <= 12; i++) updateBar('phase-' + i);
+  }
+
+  // ─── Summary pills ───────────────────────
+  function updateSummary() {
+    const allRows = document.querySelectorAll('.task-row[data-id]');
+    const doneRows = document.querySelectorAll('.task-row[data-id].done');
+    const blockerRows = document.querySelectorAll('.task-row[data-id]:not(.done) .badge-blocker');
+
+    const total = allRows.length;
+    const done = doneRows.length;
+    const blockers = blockerRows.length;
+    const remaining = total - done;
+
+    const s = document.getElementById('summary');
+    if (!s) return;
+    s.innerHTML = `
+      <div class="summary-pill pill-done"><span class="num">${done}</span><span class="of">/ ${total}</span> tasks done</div>
+      <div class="summary-pill"><span class="num">${remaining}</span> remaining</div>
+      ${blockers ? `<div class="summary-pill pill-blocked"><span class="num">${blockers}</span> open blockers</div>` : ''}
+    `;
+  }
+
+  // ─── Notes autosave ──────────────────────
+  const notesBox = document.getElementById('notes-box');
+  if (notesBox) {
+    notesBox.addEventListener('input', () => {
+      clearTimeout(notesBox._t);
+      notesBox._t = setTimeout(save, 800);
+    });
+  }
+
+  // ─── Init ────────────────────────────────
+  load();
+  updateAllBars();
+  updateSummary();
+</script>
+</body>
+</html>

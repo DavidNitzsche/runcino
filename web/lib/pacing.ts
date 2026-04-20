@@ -27,6 +27,11 @@ export function segmentCourse(
   let segStart = 0; // index into points[]
 
   for (let boundary = segmentM; boundary <= totalDistanceM + 1; boundary += segmentM) {
+    // Skip boundaries already behind the current start (happens when a GPS
+    // point spans multiple 800m boundaries — sparse GPX files from route
+    // planners like plotaroute can have inter-point gaps of 500-3000m).
+    if (boundary <= points[segStart].distM) continue;
+
     // Find the first point at or past `boundary`
     let end = segStart;
     while (end < points.length - 1 && points[end].distM < boundary) end++;

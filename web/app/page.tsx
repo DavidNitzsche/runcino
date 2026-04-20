@@ -103,10 +103,15 @@ export default function Home() {
   }
 
   async function useSampleGpx() {
-    const res = await fetch('/sample-bigsur.gpx');
-    const text = await res.text();
-    setGpxName('sample-bigsur.gpx (synthesized)');
-    setGpxText(text);
+    try {
+      const res = await fetch('/sample-bigsur.gpx');
+      if (!res.ok) throw new Error(`Could not load sample GPX (${res.status})`);
+      const text = await res.text();
+      setGpxName('sample-bigsur.gpx (synthesized)');
+      setGpxText(text);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load sample GPX');
+    }
   }
 
   async function askClaude() {
@@ -205,7 +210,7 @@ export default function Home() {
         </p>
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 32, paddingBottom: 96 }}>
+      <section className="main-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="runcino-card">
             <div className="eyebrow" style={{ marginBottom: 12 }}>Step 1 · Race course</div>

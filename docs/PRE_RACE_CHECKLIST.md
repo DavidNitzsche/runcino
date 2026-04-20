@@ -10,14 +10,13 @@ fires on race day that I haven't personally verified.
 
 - [ ] On your Mac, copy your 2024 Big Sur GPX into the repo:
       ```
-      cp /Users/david/Downloads/gpx_20240428_id8679_race1_20250117093547.gpx \
-         /home/user/runcino/web/public/sample-bigsur.gpx
+      cp ~/Downloads/gpx_20240428_id8679_race1_20250117093547.gpx \
+         "/Volumes/WP/06 Claude Code/runcino/web/public/sample-bigsur.gpx"
       ```
-      (Or whatever path the real file lives at.)
 
 - [ ] Commit it:
       ```
-      cd /home/user/runcino
+      cd "/Volumes/WP/06 Claude Code/runcino"
       git add web/public/sample-bigsur.gpx
       git commit -m "Swap in real Big Sur 2024 GPX (course unchanged for 2026)"
       git push
@@ -27,7 +26,7 @@ fires on race day that I haven't personally verified.
       ```
       cd web && npm test
       ```
-      All 55 should still pass. If gpx.test fails, the real GPX's point
+      All 75 should still pass. If gpx.test fails, the real GPX's point
       count or distance is outside the synthetic's bounds — update
       the test range and re-run.
 
