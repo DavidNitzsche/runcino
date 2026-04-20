@@ -1,5 +1,10 @@
 # `.runcino.json` Schema — v1.1.0
 
+> **FROZEN 2026-04-19.** No field additions, renames, or removals without
+> bumping `schema_version`. A major-version bump breaks the iOS decoder.
+> Any change to this file requires a corresponding change to
+> `web/lib/types.ts` AND `ios/Runcino/Models/RuncinoPlan.swift`.
+
 The contract between the web app (producer) and the iOS app
 (consumer). Any breaking change requires a new `schema_version`.
 

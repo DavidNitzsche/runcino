@@ -418,8 +418,8 @@
   <div class="blocking-title">Still need from David</div>
   <div class="blocking-items">
     <div class="blocking-item">
-      <span class="key">Apple Developer Team ID</span>
-      Blocks Phase 1 iOS compile — drop it here or in Xcode Signing
+      <span class="key">Xcode build attempt</span>
+      Phase 1 — open Xcode and follow steps 1.2 + 1.3 below. Paste any red compiler errors back to Claude.
     </div>
     <div class="blocking-item">
       <span class="key">ANTHROPIC_API_KEY</span>
@@ -427,7 +427,7 @@
     </div>
     <div class="blocking-item">
       <span class="key">2024 Big Sur GPX</span>
-      Blocks Phase 2 real data — <code style="font-family:var(--mono);font-size:11px;color:var(--text2)">cp ~/Downloads/gpx_20240428_*.gpx web/public/sample-bigsur.gpx</code>
+      Blocks Phase 2 real data — if on Strava/Garmin, export and drop at <code style="font-family:var(--mono);font-size:11px;color:var(--text2)">web/public/sample-bigsur.gpx</code>
     </div>
   </div>
 </div>
@@ -448,7 +448,7 @@
     <span class="phase-chevron">▾</span>
   </div>
   <div class="task-list">
-    <div class="task-row" data-id="0.1" data-phase="phase-0">
+    <div class="task-row done" data-id="0.1" data-phase="phase-0">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.1</div>
@@ -457,7 +457,7 @@
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
     </div>
-    <div class="task-row" data-id="0.2" data-phase="phase-0">
+    <div class="task-row done" data-id="0.2" data-phase="phase-0">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.2</div>
@@ -466,7 +466,7 @@
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
     </div>
-    <div class="task-row" data-id="0.3" data-phase="phase-0">
+    <div class="task-row done" data-id="0.3" data-phase="phase-0">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.3</div>
@@ -475,7 +475,7 @@
       </div>
       <div class="task-meta"><span class="badge badge-high">High</span></div>
     </div>
-    <div class="task-row" data-id="0.4" data-phase="phase-0">
+    <div class="task-row done" data-id="0.4" data-phase="phase-0">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.4</div>
@@ -484,7 +484,7 @@
       </div>
       <div class="task-meta"><span class="badge badge-high">High</span></div>
     </div>
-    <div class="task-row" data-id="0.5" data-phase="phase-0">
+    <div class="task-row done" data-id="0.5" data-phase="phase-0">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.5</div>
@@ -511,27 +511,52 @@
     <div class="task-row" data-id="1.1" data-phase="phase-1">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
-        <div class="task-id">1.1</div>
-        <div class="task-text">David provides Apple Developer Team ID</div>
-        <div class="task-exit"><em>Waiting on David</em></div>
+        <div class="task-id">1.1 · Create Xcode project</div>
+        <div class="task-text">
+          Open Xcode → <strong>File → New → Project → iOS → App → Next</strong><br>
+          Fill in:<br>
+          &nbsp;&nbsp;• Product Name: <code style="font-family:var(--mono);font-size:12px">Runcino</code><br>
+          &nbsp;&nbsp;• Bundle ID: <code style="font-family:var(--mono);font-size:12px">com.davidnitzsche.runcino</code><br>
+          &nbsp;&nbsp;• Interface: <strong>SwiftUI</strong> &nbsp;·&nbsp; Language: <strong>Swift</strong><br>
+          Save location: <code style="font-family:var(--mono);font-size:12px">/Volumes/WP/06 Claude Code/runcino/ios/</code><br>
+          For signing — pick your personal Apple ID team. No paid account needed.
+        </div>
+        <div class="task-exit">Project opens in Xcode with no errors on the navigator</div>
       </div>
-      <div class="task-meta"><span class="badge badge-blocker">Blocker</span><span class="badge badge-waiting">Waiting</span></div>
+      <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
     </div>
     <div class="task-row" data-id="1.2" data-phase="phase-1">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
-        <div class="task-id">1.2</div>
-        <div class="task-text">Create Xcode project per ios/README.md (SwiftUI, iOS 17, <code style="font-family:var(--mono);font-size:12px">com.davidnitzsche.runcino</code>)</div>
-        <div class="task-exit">Project opens in Xcode clean</div>
+        <div class="task-id">1.2 · Add Swift files</div>
+        <div class="task-text">
+          <strong>First:</strong> delete Xcode's generated <code style="font-family:var(--mono);font-size:12px">ContentView.swift</code> and <code style="font-family:var(--mono);font-size:12px">RuncinoApp.swift</code> (right-click → Delete → Move to Trash)<br><br>
+          In the project navigator, right-click the <strong>Runcino</strong> group → <strong>Add Files to "Runcino"</strong><br>
+          Turn <strong>OFF</strong> "Copy items if needed"<br>
+          Add these 6 files:<br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/RuncinoApp.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Models/RuncinoPlan.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/ContentView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/ImportView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/PlanView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Workout/WorkoutBuilder.swift</code>
+        </div>
+        <div class="task-exit">All 6 files visible in navigator, no duplicates</div>
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
     </div>
     <div class="task-row" data-id="1.3" data-phase="phase-1">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
-        <div class="task-id">1.3</div>
-        <div class="task-text">Drag in ios/Runcino/* Swift files, configure Info.plist (Option B), enable WorkoutKit + HealthKit capabilities</div>
-        <div class="task-exit">Builds without errors. Expected: 1–3 WorkoutKit API renames (SpeedRangeAlert params, IntervalBlock). Report red-lines — fixes ready.</div>
+        <div class="task-id">1.3 · Add capabilities + hit ⌘B</div>
+        <div class="task-text">
+          Click the top-level <strong>Runcino</strong> target → <strong>Signing &amp; Capabilities</strong> tab<br>
+          Click <strong>+ Capability</strong> → add <strong>WorkoutKit</strong><br>
+          Click <strong>+ Capability</strong> → add <strong>HealthKit</strong><br><br>
+          Press <strong>⌘B</strong> to build.<br><br>
+          Expected: 1–3 red errors on WorkoutKit API names (<code style="font-family:var(--mono);font-size:12px">SpeedRangeAlert</code>, <code style="font-family:var(--mono);font-size:12px">IntervalBlock</code>). <strong>Copy the exact error text and paste it back to Claude — fixes are ready.</strong>
+        </div>
+        <div class="task-exit">Build succeeds with 0 errors (warnings OK)</div>
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
     </div>
@@ -697,21 +722,21 @@
     <span class="phase-chevron">▾</span>
   </div>
   <div class="task-list">
-    <div class="task-row" data-id="4.1" data-phase="phase-4">
+    <div class="task-row done" data-id="4.1" data-phase="phase-4">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">4.1</div>
         <div class="task-text">Exercise all error paths: bad GPX, unrealistic goal, API 500, no network</div>
-        <div class="task-exit">Every error has a useful UI message</div>
+        <div class="task-exit">✓ Verified: bad GPX → 400 "GPX parse error: too few points", goalFinishS &lt; 600 → 400 "Invalid goalFinishS", invalid JSON → 400 "Invalid JSON". UI surfaces all errors in the Step 4 card.</div>
       </div>
       <div class="task-meta"><span class="badge badge-medium">Medium</span></div>
     </div>
-    <div class="task-row" data-id="4.2" data-phase="phase-4">
+    <div class="task-row done" data-id="4.2" data-phase="phase-4">
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">4.2</div>
         <div class="task-text">Responsive layout check: 1024, 1440, 1920px</div>
-        <div class="task-exit">Layout holds at all three widths</div>
+        <div class="task-exit">✓ Verified: 2-col grid at 1440px + 1024px, collapses to 1-col at 768px (breakpoint 900px). No overflow or truncation.</div>
       </div>
       <div class="task-meta"><span class="badge badge-low">Low</span></div>
     </div>
