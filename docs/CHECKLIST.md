@@ -57,9 +57,12 @@ file is M1 or later.
 - [x] SCHEMA v1.0.0 + example Big Sur JSON
 - [x] Pitch-deck mockup + web-upload + web-plan
 - [x] Master plan (one app, phased capability)
-- [ ] **Mockups for Claude-native features** — goal-setting, iOS plan
-      with fueling + landmarks, Watch race-day screens
-- [ ] **GATE — David approves mockups. PR merges to `main`.**
+- [x] Mockups for Claude-native features — goal-setting, iOS plan with
+      fueling + landmarks, Watch race-day screens
+- [x] All mockups converted to real Next.js pages (M1/M2/M3/research)
+- [x] Pre-race verification checklist
+- [x] Local agent setup verified — 75/75 tests, all routes 200, CLIs green
+- [ ] **GATE — David approves, PR #1 merges to `main`**
 
 ---
 

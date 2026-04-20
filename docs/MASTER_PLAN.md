@@ -61,7 +61,7 @@ of the same planning loop — not a separate feature set.
 | 7 | Claude-written goal recommendation (manual fitness summary input) | ✓ | |
 | 8 | Claude-written race-morning brief (weather + pacing adjustments) | ✓ | |
 | 9 | Manual weather entry (NOAA forecast copy-paste) | ✓ | |
-| 10 | Automatic weather fetch (NOAA API) | | ✓ |
+| 10 | Automatic weather fetch (NOAA API) — web/CLI **live now**; iOS wiring at M2 | partial | ✓ |
 | 11 | HealthKit read — auto-fitness summary | | ✓ |
 | 12 | Strava OAuth — race history auto-ingestion | | ✓ |
 | 13 | HR zones per phase (HR wins if disagrees with pace) | | ✓ |
