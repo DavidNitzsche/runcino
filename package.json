@@ -1,0 +1,12 @@
+{
+  "name": "runcino",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runcino — race-agnostic planning site. Root points the deploy at designs/ (static HTML mockups becoming the real app).",
+  "scripts": {
+    "start": "cd designs && npx --yes serve -l tcp://0.0.0.0:${PORT:-3000} ."
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
