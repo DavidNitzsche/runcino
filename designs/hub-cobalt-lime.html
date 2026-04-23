@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Hub · Cobalt</title>
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:#1a1815; color:#f4f4f6; font-family:"Inter",-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+  body { padding:24px; }
+  .stage { max-width:1440px; margin:0 auto; width:100%; border-radius:20px; overflow:hidden; box-shadow:0 40px 100px rgba(0,0,0,.5); }
+  .caption { max-width:1440px; margin:0 auto 10px; font-family:"SF Mono",monospace; font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(244,244,246,.5); font-weight:700; display:flex; justify-content:space-between; align-items:baseline; padding:0 4px; }
+  .caption span { font-family:Georgia,serif; font-style:italic; font-size:14px; text-transform:none; letter-spacing:-.01em; color:rgba(244,244,246,.35); font-weight:500; }
+
+  /* ─── Palette ─────────────────────────────────────────────────────────
+     bone   #f4f2ec    base canvas
+     ink    #111114    type + dark tiles
+     cobalt #1e4fa6    single structural accent
+     cobalt-l #6b8fd3  soft variant
+     coral  #e85a3d    race signal — used ONCE, for the race tile
+     Every other color removed.                                         */
+
+  .hub { font-family:"Inter",-apple-system,sans-serif; background:#f4f2ec; color:#111114; }
+  .nav { display:flex; align-items:center; justify-content:space-between; padding:20px 32px; border-bottom:1px solid rgba(17,17,20,.06); }
+  .nav-l { display:flex; align-items:center; gap:32px; }
+  .brand { width:34px; height:34px; border-radius:10px; background:#111114; color:#f4f2ec; display:flex; align-items:center; justify-content:center; font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:20px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:4px; border-radius:100px; background:#ece9e0; }
+  .tab { padding:8px 16px; border-radius:100px; font-size:12px; font-weight:600; color:rgba(17,17,20,.55); }
+  .tab.active { background:#111114; color:#f4f2ec; font-weight:700; }
+  .nav-r { display:flex; gap:10px; align-items:center; }
+  .nav-ic { width:32px; height:32px; border-radius:50%; background:#ece9e0; color:rgba(17,17,20,.55); display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .avatar { width:32px; height:32px; border-radius:50%; background:#1e4fa6; }
+
+  .body { padding:28px 32px 32px; }
+  .head { display:grid; grid-template-columns:1fr 2.2fr; gap:28px; align-items:end; margin-bottom:24px; }
+  .greet-hi { font-family:Georgia,serif; font-style:italic; font-size:17px; color:rgba(17,17,20,.5); margin-bottom:6px; font-weight:500; }
+  .greet-nm { font-size:54px; font-weight:800; letter-spacing:-.035em; line-height:1.05; }
+  .greet-tag { margin-top:18px; display:inline-block; }
+  .greet-tag__t { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:34px; line-height:1.35; letter-spacing:-.02em; padding:6px 12px 8px; border-radius:6px; background:#111114; color:#f4f2ec; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+
+  /* ─── Stat row — 4 tiles, each with ONE treatment ─────────────────── */
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .stat { border-radius:18px; padding:18px 20px; min-height:130px; display:flex; flex-direction:column; justify-content:space-between; background:#fafaf4; border:1px solid rgba(17,17,20,.05); }
+  .stat-lbl { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:rgba(17,17,20,.45); font-weight:700; }
+  .stat-num { font-family:"SF Pro Rounded","Inter",sans-serif; font-weight:800; font-size:38px; letter-spacing:-.035em; line-height:1; font-variant-numeric:tabular-nums; }
+  .stat-num small { font-size:.4em; opacity:.45; font-weight:700; margin-left:4px; }
+  .stat-dt { font-family:"SF Mono",monospace; font-size:10px; font-weight:700; color:rgba(17,17,20,.5); letter-spacing:.8px; }
+  /* hero stat · ink */
+  .stat--ink { background:#111114; color:#f4f2ec; border:0; }
+  .stat--ink .stat-lbl { color:rgba(244,242,236,.55); }
+  .stat--ink .stat-dt { color:rgba(107,143,211,.9); }
+  /* race stat · coral accent */
+  .stat--race { background:#111114; color:#f4f2ec; border:0; position:relative; overflow:hidden; }
+  .stat--race .stat-lbl { color:rgba(244,242,236,.55); }
+  .stat--race .stat-num { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:30px; color:#e85a3d; }
+  .stat--race .stat-dt { color:#e85a3d; }
+  .stat-ar { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; font-size:11px; font-weight:700; }
+
+  /* ─── Charts row ──────────────────────────────────────────────────── */
+  .charts { display:grid; grid-template-columns:1.4fr 1fr 1.1fr; gap:10px; margin:10px 0; }
+  .tile { border-radius:18px; padding:20px 22px; background:#fafaf4; border:1px solid rgba(17,17,20,.05); }
+  .tile-h { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
+  .tile-lbl { font-size:14px; font-weight:700; letter-spacing:-.01em; }
+  .tile-sub { font-family:"SF Mono",monospace; font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(17,17,20,.45); font-weight:700; margin-top:3px; }
+  .tile-meta { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.8px; color:rgba(17,17,20,.3); font-weight:700; }
+
+  /* This week */
+  .wk-hero { display:flex; align-items:baseline; gap:16px; margin-bottom:16px; }
+  .wk-tot { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:44px; letter-spacing:-.035em; line-height:1; }
+  .wk-tot small { font-size:11px; font-weight:500; color:rgba(17,17,20,.45); margin-left:10px; font-family:"SF Mono",monospace; letter-spacing:1.2px; text-transform:uppercase; }
+  .wk-prog { display:flex; height:6px; border-radius:3px; overflow:hidden; background:rgba(17,17,20,.06); margin-bottom:14px; }
+  .wk-prog .d { background:#111114; } .wk-prog .t { background:#1e4fa6; } .wk-prog .l { background:rgba(30,79,166,.2); } .wk-prog .r { background:#e85a3d; }
+  .wk-days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .wk-day { border-radius:10px; padding:10px 6px; background:#ece9e0; display:flex; flex-direction:column; align-items:center; gap:3px; min-height:74px; justify-content:space-between; }
+  .wk-day .dow { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:1.3px; text-transform:uppercase; color:rgba(17,17,20,.45); font-weight:700; }
+  .wk-day .dist { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:16px; letter-spacing:-.02em; }
+  .wk-day .kind { font-family:Georgia,serif; font-style:italic; font-size:9.5px; text-align:center; line-height:1.1; font-weight:500; color:rgba(17,17,20,.6); }
+  .wk-day.done { background:#111114; color:#f4f2ec; }
+  .wk-day.done .dow, .wk-day.done .kind { color:rgba(244,242,236,.55); }
+  .wk-day.today { background:#1e4fa6; color:#f4f2ec; }
+  .wk-day.today .dow, .wk-day.today .kind { color:rgba(244,242,236,.75); }
+  .wk-day.rest { background:transparent; border:1px dashed rgba(17,17,20,.18); }
+  .wk-day.rest .dist { color:rgba(17,17,20,.35); font-size:11px; font-weight:700; }
+  .wk-day.rest .kind { color:rgba(17,17,20,.35); }
+  .wk-day.race { background:#111114; color:#e85a3d; }
+  .wk-day.race .dow { color:#e85a3d; }
+  .wk-day.race .kind { color:rgba(244,242,236,.55); font-style:normal; font-family:"SF Mono",monospace; letter-spacing:1.3px; font-size:9px; font-weight:700; }
+
+  /* Today card */
+  .today { background:#111114; color:#f4f2ec; border-radius:18px; padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+  .today .tile-sub { color:rgba(107,143,211,.9); }
+  .today .tile-lbl { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:24px; letter-spacing:-.02em; margin-top:4px; }
+  .kpis { display:flex; gap:18px; padding:12px 0; border-top:1px solid rgba(244,242,236,.12); border-bottom:1px solid rgba(244,242,236,.12); }
+  .kpi b { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:20px; letter-spacing:-.02em; display:block; }
+  .kpi b small { font-size:.55em; opacity:.45; margin-left:2px; }
+  .kpi span { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; color:rgba(244,242,236,.5); font-weight:700; margin-top:2px; display:block; }
+  .start { background:#1e4fa6; color:#f4f2ec; padding:6px 12px; border-radius:100px; font-weight:700; font-family:"SF Mono",monospace; font-size:9.5px; letter-spacing:1.3px; }
+
+  /* ─── Instruments — dark tiles like refs, each ONE accent ──────────── */
+  .insts { display:grid; grid-template-columns:repeat(6,1fr); grid-auto-rows:minmax(180px,1fr); gap:10px; }
+  .inst { border-radius:18px; padding:18px 20px; background:#fafaf4; border:1px solid rgba(17,17,20,.05); display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+  .inst-top { display:flex; justify-content:space-between; align-items:center; }
+  .inst-lbl { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:rgba(17,17,20,.45); font-weight:700; }
+  .inst-chip { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:1.2px; font-weight:700; padding:3px 7px; border-radius:4px; background:rgba(17,17,20,.06); color:rgba(17,17,20,.6); }
+  .inst-num { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:40px; letter-spacing:-.035em; line-height:1; font-variant-numeric:tabular-nums; }
+  .inst-num small { font-size:.35em; opacity:.45; font-weight:700; margin-left:3px; }
+  .inst-viz { margin:auto 0; flex:1; display:flex; align-items:center; }
+  .inst-ft { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:rgba(17,17,20,.4); font-weight:700; display:flex; justify-content:space-between; padding-top:10px; border-top:1px solid rgba(17,17,20,.07); }
+  .inst-ft b { color:#111114; font-weight:800; }
+
+  /* Dark tile variant — most ref widgets are dark */
+  .inst--dark { background:#111114; color:#f4f2ec; border:0; }
+  .inst--dark .inst-lbl { color:rgba(244,242,236,.5); }
+  .inst--dark .inst-chip { background:rgba(244,242,236,.1); color:rgba(244,242,236,.7); }
+  .inst--dark .inst-ft { border-top-color:rgba(244,242,236,.1); color:rgba(244,242,236,.45); }
+  .inst--dark .inst-ft b { color:#f4f2ec; }
+
+  /* Cobalt tile — solid flood */
+  .inst--cobalt { background:#1e4fa6; color:#f4f2ec; border:0; }
+  .inst--cobalt .inst-lbl { color:rgba(244,242,236,.7); }
+  .inst--cobalt .inst-chip { background:rgba(244,242,236,.15); color:#f4f2ec; }
+  .inst--cobalt .inst-ft { border-top-color:rgba(244,242,236,.15); color:rgba(244,242,236,.6); }
+  .inst--cobalt .inst-ft b { color:#f4f2ec; }
+
+  /* Hero (2-wide) */
+  .inst--hero { grid-column:span 2; }
+
+  /* Coral chip for race-related only */
+  .chip-race { background:rgba(232,90,61,.15); color:#e85a3d; }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Cobalt — disciplined, one accent per tile</span><b style="color:#6b8fd3;">BONE · INK · COBALT · CORAL (race only)</b></div>
+<div class="stage hub">
+  <div class="nav">
+    <div class="nav-l"><div class="brand">R</div>
+      <div class="tabs"><div class="tab active">Overview</div><div class="tab">Training</div><div class="tab">Races</div><div class="tab">Health</div><div class="tab">Log</div></div>
+    </div>
+    <div class="nav-r"><div class="nav-ic">⌕</div><div class="nav-ic">◎</div><div class="avatar"></div></div>
+  </div>
+  <div class="body">
+
+    <div class="head">
+      <div>
+        <div class="greet-hi">Good morning,</div>
+        <div class="greet-nm">David Nitzsche.</div>
+        <div class="greet-tag"><span class="greet-tag__t">Taper begins Wednesday.</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-lbl">Miles · April</div>
+          <div><div class="stat-num">142<small>mi</small></div>
+          <div class="stat-dt" style="margin-top:6px;">↗ +18% vs Mar</div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Fastest mile</div>
+          <div><div class="stat-num">5:42</div>
+          <div class="stat-dt" style="margin-top:6px;">PR · 12 Apr</div></div>
+        </div>
+        <div class="stat stat--ink">
+          <div class="stat-lbl">Miles · 2026 YTD</div>
+          <div><div class="stat-num">503<small>mi</small></div>
+          <div class="stat-dt" style="margin-top:6px;">on pace · 1,608/yr</div></div>
+        </div>
+        <div class="stat stat--race">
+          <div class="stat-lbl">Next race · 5 days</div>
+          <div><div class="stat-num">Big Sur</div>
+          <div class="stat-dt" style="margin-top:6px;">3:45 goal · 26 Apr</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <!-- This week -->
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">This week</div><div class="tile-sub">Mon 20 – Sun 26 Apr · race week</div></div><div class="tile-meta">FIG.01</div></div>
+        <div class="wk-hero"><div class="wk-tot">38<small>of 49 mi</small></div></div>
+        <div class="wk-prog"><div class="d" style="flex:11"></div><div class="t" style="flex:6"></div><div class="l" style="flex:6"></div><div class="r" style="flex:26"></div></div>
+        <div class="wk-days">
+          <div class="wk-day done"><span class="dow">Mon</span><span class="dist">5</span><span class="kind">Easy</span></div>
+          <div class="wk-day today"><span class="dow">Tue</span><span class="dist">6</span><span class="kind">8×400m</span></div>
+          <div class="wk-day"><span class="dow">Wed</span><span class="dist">8</span><span class="kind">Z2 long</span></div>
+          <div class="wk-day rest"><span class="dow">Thu</span><span class="dist">—</span><span class="kind">rest</span></div>
+          <div class="wk-day"><span class="dow">Fri</span><span class="dist">4</span><span class="kind">shakeout</span></div>
+          <div class="wk-day rest"><span class="dow">Sat</span><span class="dist">—</span><span class="kind">travel</span></div>
+          <div class="wk-day race"><span class="dow">Sun</span><span class="dist">26.2</span><span class="kind">RACE</span></div>
+        </div>
+      </div>
+
+      <!-- April -->
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">April 2026</div><div class="tile-sub">15 of 21 days · 142 mi</div></div><div class="tile-meta">FIG.02</div></div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px; font-family:'SF Mono',monospace; font-size:8.5px; letter-spacing:1.5px; font-weight:700; text-align:center; margin-bottom:6px; text-transform:uppercase; color:rgba(17,17,20,.35);">
+          <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+        </div>
+        <div id="cal" style="display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:1fr; gap:5px;"></div>
+      </div>
+
+      <!-- Today -->
+      <div class="today">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div><div class="tile-sub">Today · Tue 21 Apr</div><div class="tile-lbl">8 × 400m intervals.</div></div>
+          <span class="inst-chip" style="background:rgba(107,143,211,.2); color:#6b8fd3;">WK14 / D2</span>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><b>6.0<small>mi</small></b><span>Distance</span></div>
+          <div class="kpi"><b>45:00</b><span>Duration</span></div>
+          <div class="kpi"><b>7:40<small>/mi</small></b><span>Avg pace</span></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; color:rgba(244,242,236,.45); letter-spacing:1px; font-weight:700;">0:00</span><span style="color:rgba(244,242,236,.7);">Warm-up · 1.5mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; color:rgba(244,242,236,.7);">9:40</span></div>
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; color:#6b8fd3;"><span style="font-family:'SF Mono',monospace; font-size:9px; letter-spacing:1px; font-weight:700;">0:14</span><span style="font-weight:700;">8 × 400m · 90s rec</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:800;">6:50</span></div>
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; color:rgba(244,242,236,.45); letter-spacing:1px; font-weight:700;">0:34</span><span style="color:rgba(244,242,236,.7);">Cool-down · 1.2mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; color:rgba(244,242,236,.7);">10:00</span></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid rgba(244,242,236,.12); font-family:'SF Mono',monospace; font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700; color:rgba(244,242,236,.45);">
+          <span>↓ Wed · Z2 long 8mi</span><span class="start">▶ Send to watch</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Instrument grid — ref-inspired single-accent tiles ─────── -->
+    <div class="insts">
+
+      <!-- 1 Recovery HERO · cobalt ring on dark, like ring widgets -->
+      <div class="inst inst--dark inst--hero">
+        <div class="inst-top"><div class="inst-lbl">Recovery</div><span class="inst-chip" style="background:rgba(107,143,211,.2); color:#6b8fd3;">READY</span></div>
+        <div style="display:flex; align-items:center; gap:22px; flex:1;">
+          <div style="width:104px; height:104px; position:relative; flex-shrink:0;">
+            <svg viewBox="0 0 104 104" style="transform:rotate(-90deg);">
+              <circle cx="52" cy="52" r="44" fill="none" stroke="rgba(244,242,236,.08)" stroke-width="8"/>
+              <circle cx="52" cy="52" r="44" fill="none" stroke="#1e4fa6" stroke-width="8" stroke-dasharray="276" stroke-dashoffset="44" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+              <div style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:36px; line-height:1; letter-spacing:-.03em;">84</div>
+              <div style="font-family:'SF Mono',monospace; font-size:8px; letter-spacing:1.8px; color:rgba(244,242,236,.4); font-weight:700; margin-top:4px;">/ 100</div>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-family:Georgia,serif; font-style:italic; font-size:20px; font-weight:900; letter-spacing:-.02em; margin-bottom:12px;">Ready to run.</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 18px;">
+              <div><div style="font-family:'SF Mono',monospace; font-size:8px; letter-spacing:1.5px; color:rgba(244,242,236,.4); font-weight:700;">SLEEP</div><div style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:17px; letter-spacing:-.02em; margin-top:2px;">7:42<small style="font-size:.5em; opacity:.5; font-weight:700;">hr</small></div></div>
+              <div><div style="font-family:'SF Mono',monospace; font-size:8px; letter-spacing:1.5px; color:rgba(244,242,236,.4); font-weight:700;">LAST HARD</div><div style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:17px; letter-spacing:-.02em; margin-top:2px;">+46<small style="font-size:.5em; opacity:.5; font-weight:700;">hr</small></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="inst-ft"><span>7d avg</span><b>79 · trending up</b></div>
+      </div>
+
+      <!-- 2 Avg pace — cobalt sparkline on light -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Avg pace · 12wk</div><span class="inst-chip">↘ −14s</span></div>
+        <div class="inst-num">8:14<small>/mi</small></div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 48" preserveAspectRatio="none" style="width:100%; height:48px;">
+            <defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#1e4fa6" stop-opacity=".2"/><stop offset="100%" stop-color="#1e4fa6" stop-opacity="0"/></linearGradient></defs>
+            <path d="M 0 38 L 30 34 L 60 28 L 90 22 L 120 16 L 150 18 L 200 10 L 200 48 L 0 48 Z" fill="url(#g1)"/>
+            <path d="M 0 38 L 30 34 L 60 28 L 90 22 L 120 16 L 150 18 L 200 10" stroke="#1e4fa6" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="10" r="3" fill="#1e4fa6"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Best</span><b>7:48/mi</b></div>
+      </div>
+
+      <!-- 3 Time 7d — simple ink bars -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Time · 7d</div><span class="inst-chip">M T W T F S S</span></div>
+        <div class="inst-num">5:20<small>hr</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:4px;">
+          <div style="flex:1; background:#111114; height:42%; border-radius:2px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:52%; border-radius:2px;"></div>
+          <div style="flex:1; background:#111114; height:70%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.1); height:14%; border-radius:2px;"></div>
+          <div style="flex:1; background:#111114; height:36%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.1); height:10%; border-radius:2px;"></div>
+          <div style="flex:1; background:#e85a3d; height:100%; border-radius:2px;"></div>
+        </div>
+        <div class="inst-ft"><span>Quality 1:42</span><b>Easy 3:38</b></div>
+      </div>
+
+      <!-- 4 Streak — cobalt solid flood like the AAPL card -->
+      <div class="inst inst--cobalt">
+        <div class="inst-top"><div class="inst-lbl">Streak</div><span class="inst-chip">↗ +12%</span></div>
+        <div class="inst-num">18<small>days</small></div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 38" preserveAspectRatio="none" style="width:100%; height:38px;">
+            <path d="M 0 30 L 40 26 L 80 20 L 120 22 L 160 14 L 200 8" stroke="#f4f2ec" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="8" r="3" fill="#f4f2ec"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Longest 34d</span><b>Since 3 Apr</b></div>
+      </div>
+
+      <!-- 5 Marathon prediction — hero ink -->
+      <div class="inst inst--dark">
+        <div class="inst-top"><div class="inst-lbl">Marathon · predicted</div><span class="inst-chip chip-race">GOAL 3:45</span></div>
+        <div class="inst-num">3:41</div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 48" preserveAspectRatio="none" style="width:100%; height:48px;">
+            <defs><linearGradient id="g5" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#6b8fd3" stop-opacity=".35"/><stop offset="100%" stop-color="#6b8fd3" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="14" x2="200" y2="14" stroke="#e85a3d" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>
+            <path d="M 0 8 L 30 14 L 60 22 L 90 26 L 120 30 L 150 34 L 200 38 L 200 48 L 0 48 Z" fill="url(#g5)"/>
+            <path d="M 0 8 L 30 14 L 60 22 L 90 26 L 120 30 L 150 34 L 200 38" stroke="#6b8fd3" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="38" r="3" fill="#6b8fd3"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>6 mo · −8:00</span><b>Under goal</b></div>
+      </div>
+
+      <!-- 6 Conditions — light with compass like the 232° weather -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Conditions · SF</div><span class="inst-chip">06:47</span></div>
+        <div class="inst-num">54<small>°F</small></div>
+        <div class="inst-viz" style="justify-content:center;">
+          <svg viewBox="0 0 110 60" style="width:110px; height:60px;">
+            <path d="M 10 52 Q 55 -8 100 52" stroke="rgba(17,17,20,.08)" stroke-width="5" fill="none" stroke-linecap="round"/>
+            <path d="M 10 52 Q 55 -8 100 52" stroke="#1e4fa6" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="112" stroke-dashoffset="45"/>
+            <circle cx="45" cy="14" r="4" fill="#1e4fa6"/>
+            <text x="10" y="58" font-family="SF Mono, monospace" font-size="8" fill="rgba(17,17,20,.4)" font-weight="700">51</text>
+            <text x="90" y="58" font-family="SF Mono, monospace" font-size="8" fill="rgba(17,17,20,.4)" font-weight="700">68</text>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Cool &amp; clear</span><b>Go</b></div>
+      </div>
+
+      <!-- 7 Longest 30d -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Longest · 30d</div><span class="inst-chip">+3mi</span></div>
+        <div class="inst-num">22.4<small>mi</small></div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 44" preserveAspectRatio="none" style="width:100%; height:44px;">
+            <path d="M 0 38 L 50 30 L 100 24 L 150 16 L 200 6" stroke="#111114" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="6" r="3" fill="#111114"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Apr 13 · Muir</span><b>8:54/mi</b></div>
+      </div>
+
+      <!-- 8 Weekly pace -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Pace · week</div><span class="inst-chip">↘ −6s</span></div>
+        <div class="inst-num">8:28<small>/mi</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:4px;">
+          <div style="flex:1; background:#111114; height:70%; border-radius:2px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:55%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.15); height:38%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.1); height:16%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.15); height:28%; border-radius:2px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.1); height:14%; border-radius:2px;"></div>
+          <div style="flex:1; background:#e85a3d; height:100%; border-radius:2px;"></div>
+        </div>
+        <div class="inst-ft"><span>M T W T F S S</span><b>Race Sun</b></div>
+      </div>
+
+      <!-- 9 Load ACWR — simple ink gauge -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Load · ACWR</div><span class="inst-chip">OPTIMAL</span></div>
+        <div class="inst-num">1.12</div>
+        <div class="inst-viz" style="justify-content:center;">
+          <svg viewBox="0 0 140 70" style="width:140px; height:70px;">
+            <path d="M 15 62 A 55 55 0 0 1 125 62" stroke="rgba(17,17,20,.08)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <path d="M 15 62 A 55 55 0 0 1 92 18" stroke="#1e4fa6" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <line x1="70" y1="62" x2="92" y2="18" stroke="#111114" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="70" cy="62" r="4" fill="#111114"/>
+            <text x="14" y="60" font-family="SF Mono, monospace" font-size="8" fill="rgba(17,17,20,.35)" font-weight="700">0.8</text>
+            <text x="115" y="60" font-family="SF Mono, monospace" font-size="8" fill="rgba(17,17,20,.35)" font-weight="700">1.5</text>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Safe band</span><b>Sweet spot</b></div>
+      </div>
+
+      <!-- 10 Training 12mo — single cobalt bars -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Training · 12mo</div><span class="inst-chip">238 hr</span></div>
+        <div class="inst-num">238<small>hr</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:2px;">
+          <div style="flex:1; background:rgba(30,79,166,.25); height:32%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(30,79,166,.35); height:40%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(30,79,166,.45); height:48%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(30,79,166,.55); height:56%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(30,79,166,.65); height:62%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(30,79,166,.75); height:68%; border-radius:1px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:75%; border-radius:1px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:82%; border-radius:1px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:90%; border-radius:1px;"></div>
+          <div style="flex:1; background:#1e4fa6; height:100%; border-radius:1px;"></div>
+          <div style="flex:1; background:#111114; height:88%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(17,17,20,.1); height:44%; border-radius:1px; border:1px dashed rgba(17,17,20,.25);"></div>
+        </div>
+        <div class="inst-ft"><span>M A M J J A S O N D J F</span><b>Peak Feb · 27hr</b></div>
+      </div>
+
+      <!-- 11 2026 goal — dark ring -->
+      <div class="inst inst--dark">
+        <div class="inst-top"><div class="inst-lbl">2026 · 1,608mi</div><span class="inst-chip" style="background:rgba(107,143,211,.2); color:#6b8fd3;">31%</span></div>
+        <div style="display:flex; align-items:center; gap:14px; flex:1;">
+          <div style="width:64px; height:64px; position:relative; flex-shrink:0;">
+            <svg viewBox="0 0 64 64" style="transform:rotate(-90deg);">
+              <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(244,242,236,.1)" stroke-width="6"/>
+              <circle cx="32" cy="32" r="26" fill="none" stroke="#6b8fd3" stroke-width="6" stroke-dasharray="163.4" stroke-dashoffset="112.7" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:16px;">31%</div>
+          </div>
+          <div>
+            <div style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:28px; letter-spacing:-.03em; line-height:1;">503<small style="font-size:.4em; opacity:.5; font-weight:700; margin-left:3px;">mi</small></div>
+            <div style="font-family:'SF Mono',monospace; font-size:8.5px; letter-spacing:1.3px; color:rgba(244,242,236,.5); font-weight:700; margin-top:4px;">DAY 111 / 365</div>
+          </div>
+        </div>
+        <div class="inst-ft"><span>On pace</span><b>+4mi ahead</b></div>
+      </div>
+
+      <!-- 12 Race countdown — coral accent on ink (race-only color) -->
+      <div class="inst inst--dark">
+        <div class="inst-top"><div class="inst-lbl">Race day · countdown</div><span class="inst-chip chip-race">5 DAYS</span></div>
+        <div class="inst-num" style="color:#e85a3d; font-family:Georgia,serif; font-style:italic; font-size:32px;">Big Sur</div>
+        <div class="inst-viz" style="flex-direction:column; gap:8px; align-items:stretch; justify-content:center;">
+          <div style="display:flex; justify-content:space-between; font-family:'SF Mono',monospace; font-size:8.5px; letter-spacing:1.3px; color:rgba(244,242,236,.5); font-weight:700;">
+            <span>GOAL</span><span>BIB</span><span>START</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:16px; letter-spacing:-.02em;">
+            <span>3:45</span><span>4421</span><span>06:45</span>
+          </div>
+        </div>
+        <div class="inst-ft"><span>Sun 26 Apr</span><b style="color:#e85a3d;">Taper Wed</b></div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+  (function(){
+    var el = document.getElementById('cal'); if (!el) return;
+    var today = 21, days = 30, start = 3;
+    // 0 rest · 1 easy · 2 quality · 3 long · 4 race
+    var plan = { 1:1,2:2,3:0,4:1,5:3,6:0,7:1,8:2,9:1,10:0,11:2,12:3,13:0,14:1,15:2,16:1,17:0,18:2,19:3,20:1,21:2,22:1,23:0,24:1,25:0,26:4,27:0,28:0,29:0,30:0 };
+    var palette = {
+      1: { bg:'rgba(30,79,166,.15)', c:'rgba(17,17,20,.7)' },       // easy · pale cobalt
+      2: { bg:'#6b8fd3', c:'#f4f2ec' },                               // quality · cobalt-light
+      3: { bg:'#1e4fa6', c:'#f4f2ec' },                               // long · cobalt
+      4: { bg:'#111114', c:'#e85a3d' }                                // race
+    };
+    var html = '';
+    for (var e=0;e<start;e++) html += '<div></div>';
+    for (var d=1; d<=days; d++) {
+      var p = plan[d]||0;
+      var bg = '#ece9e0', col = 'rgba(17,17,20,.35)', shadow='';
+      if (d === today) { bg = '#1e4fa6'; col = '#f4f2ec'; shadow='box-shadow:0 0 0 2px #fafaf4, 0 0 0 3px #1e4fa6;'; }
+      else if (d > today) { bg = '#f4f2ec'; col = 'rgba(17,17,20,.28)'; }
+      else if (p === 0) { bg = '#ece9e0'; col = 'rgba(17,17,20,.35)'; }
+      else { bg = palette[p].bg; col = palette[p].c; }
+      html += '<div style="border-radius:7px; background:'+bg+'; color:'+col+'; display:flex; align-items:center; justify-content:center; font-family:\'SF Pro Rounded\',sans-serif; font-weight:700; font-size:12px; min-height:38px;'+shadow+'">'+d+'</div>';
+    }
+    el.innerHTML = html;
+  })();
+</script>
+</body>
+</html>

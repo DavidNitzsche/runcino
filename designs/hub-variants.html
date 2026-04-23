@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Hub · Variants</title>
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:#0a0a0c; color:#f4f4f6; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; }
+  body { padding:24px; display:flex; flex-direction:column; gap:40px; }
+  .stage { max-width:1440px; margin:0 auto; width:100%; border-radius:16px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.45); }
+  .caption { max-width:1440px; margin:0 auto 0; font-family:"SF Mono",monospace; font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(244,244,246,.55); font-weight:700; display:flex; justify-content:space-between; align-items:baseline; padding:0 4px; }
+  .caption b { color:#d6f544; letter-spacing:2.5px; }
+  .caption span { font-family:Georgia,serif; font-style:italic; font-size:14px; text-transform:none; letter-spacing:-.01em; color:rgba(244,244,246,.4); font-weight:500; }
+
+  /* ───────────────────────────────────────────────────────────── */
+  /*  COMMON                                                        */
+  /* ───────────────────────────────────────────────────────────── */
+  .hub { font-family:"Inter",-apple-system,sans-serif; }
+  .nav { display:flex; align-items:center; justify-content:space-between; padding:18px 30px; }
+  .nav-l { display:flex; align-items:center; gap:28px; }
+  .brand { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:20px; }
+  .tabs { display:flex; gap:4px; align-items:center; padding:4px; border-radius:100px; }
+  .tab { padding:7px 16px; border-radius:100px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:7px; }
+  .tab .dot { width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.7; }
+  .nav-r { display:flex; gap:10px; align-items:center; }
+  .nav-ic { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .avatar { width:32px; height:32px; border-radius:50%; }
+
+  .body { padding:24px 30px 28px; }
+  .head { display:grid; grid-template-columns:1fr 2.2fr; gap:22px; align-items:end; margin-bottom:20px; }
+  .greet-hi { font-family:Georgia,serif; font-style:italic; font-size:17px; margin-bottom:6px; font-weight:500; }
+  .greet-nm { font-size:52px; font-weight:800; letter-spacing:-.035em; line-height:1.08; padding-bottom:4px; }
+  .greet-tag { margin-top:14px; display:inline-block; line-height:1.35; }
+  .greet-tag__t { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:36px; line-height:1.35; letter-spacing:-.02em; padding:7px 13px 9px; border-radius:6px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .stat { border-radius:16px; padding:16px 18px; min-height:120px; display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; }
+  .stat-top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .stat-ic { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; }
+  .stat-ar { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; transform:rotate(-45deg); }
+  .stat-lbl { font-size:10px; font-weight:500; }
+  .stat-num { font-family:"SF Pro Rounded","Inter",sans-serif; font-weight:800; font-size:30px; letter-spacing:-.035em; line-height:1; font-variant-numeric:tabular-nums; }
+  .stat-num small { font-size:.45em; opacity:.5; font-weight:700; margin-left:3px; }
+  .stat-dt { font-size:10px; font-weight:600; }
+
+  .charts { display:grid; grid-template-columns:1.5fr 1.2fr 1fr; gap:12px; margin-bottom:12px; }
+  .tile { border-radius:18px; padding:18px 20px; }
+  .tile-h { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+  .tile-lbl { font-size:12px; font-weight:600; }
+  .tile-sub { font-size:10px; margin-top:2px; }
+  .tile-meta { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:2px; text-transform:uppercase; font-weight:700; }
+
+  .wk-hero { display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; margin-bottom:12px; }
+  .wk-tot { display:flex; align-items:baseline; gap:8px; font-variant-numeric:tabular-nums; letter-spacing:-.03em; font-family:"SF Pro Rounded",sans-serif; }
+  .wk-tot b { font-size:44px; font-weight:800; line-height:1; }
+  .wk-tot small { font-size:10px; font-family:"SF Mono",monospace; letter-spacing:1.2px; text-transform:uppercase; font-weight:700; opacity:.6; }
+  .wk-prog { height:9px; border-radius:5px; overflow:hidden; display:flex; }
+  .wk-days { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-top:10px; }
+  .wk-day { border-radius:9px; padding:9px 5px; display:flex; flex-direction:column; align-items:center; gap:2px; min-height:74px; justify-content:center; }
+  .wk-day .dow { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:1.2px; font-weight:700; text-transform:uppercase; }
+  .wk-day .dist { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:15px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .wk-day .kind { font-family:Georgia,serif; font-style:italic; font-size:9.5px; font-weight:700; letter-spacing:-.01em; }
+
+  .insts { display:grid; grid-template-columns:repeat(6,1fr); grid-auto-rows:minmax(150px,1fr); gap:12px; }
+  .inst { border-radius:16px; padding:14px 16px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; overflow:hidden; }
+  .inst-top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .inst-lbl { font-size:9.5px; letter-spacing:2px; text-transform:uppercase; font-weight:700; font-family:"SF Mono",monospace; }
+  .inst-num { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:26px; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .inst-num small { font-size:.45em; opacity:.5; font-weight:700; margin-left:3px; }
+  .inst-viz { height:38px; }
+  .inst-viz svg { width:100%; height:100%; }
+  .inst-dt { font-size:10px; font-weight:600; }
+  .inst-ft { display:flex; justify-content:space-between; font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700; padding-top:7px; }
+  .inst-ft b { font-family:"SF Pro Rounded",sans-serif; font-size:10.5px; letter-spacing:-.01em; font-weight:800; text-transform:none; }
+
+  /* ═══════════════════════════════════════════════════════════════ */
+  /*  R1 · PAPER · editorial cream, one orange accent                */
+  /* ═══════════════════════════════════════════════════════════════ */
+  .r1 { background:#f4f1ea; color:#1a1813; }
+  .r1 .nav { border-bottom:1px solid rgba(26,24,19,.08); }
+  .r1 .brand { background:#1a1813; color:#f4f1ea; }
+  .r1 .tabs { background:#ebe7dc; }
+  .r1 .tab { color:rgba(26,24,19,.55); }
+  .r1 .tab.active { background:#1a1813; color:#f4f1ea; font-weight:700; }
+  .r1 .nav-ic { background:#ebe7dc; color:rgba(26,24,19,.55); }
+  .r1 .avatar { background:linear-gradient(135deg,#f97316,#c2410c); }
+  .r1 .greet-hi { color:rgba(26,24,19,.55); }
+  .r1 .greet-tag__t { color:#f4f1ea; background:#1a1813; }
+  .r1 .stat { background:#ffffff; border:1px solid rgba(26,24,19,.06); }
+  .r1 .stat-ic { background:rgba(26,24,19,.06); }
+  .r1 .stat-ar { background:#1a1813; color:#f4f1ea; }
+  .r1 .stat-lbl { color:rgba(26,24,19,.55); }
+  .r1 .stat-dt { color:rgba(26,24,19,.55); }
+  .r1 .stat--orange { background:#f97316; color:#f4f1ea; border:0; }
+  .r1 .stat--orange .stat-ic { background:rgba(244,241,234,.18); }
+  .r1 .stat--orange .stat-ar { background:#f4f1ea; color:#f97316; }
+  .r1 .stat--orange .stat-lbl { color:rgba(244,241,234,.8); font-weight:700; }
+  .r1 .stat--orange .stat-num { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:26px; }
+  .r1 .stat--orange .stat-dt { color:rgba(244,241,234,.8); font-weight:700; }
+  .r1 .stat--dark { background:#1a1813; color:#f4f1ea; border:0; }
+  .r1 .stat--dark .stat-ic { background:rgba(244,241,234,.12); }
+  .r1 .stat--dark .stat-ar { background:#f97316; color:#1a1813; }
+  .r1 .stat--dark .stat-lbl { color:rgba(244,241,234,.6); }
+  .r1 .tile { background:#ffffff; border:1px solid rgba(26,24,19,.06); }
+  .r1 .tile-sub { color:rgba(26,24,19,.5); }
+  .r1 .tile-meta { color:rgba(26,24,19,.3); }
+  .r1 .wk-tot b { color:#f97316; }
+  .r1 .wk-prog { background:rgba(26,24,19,.06); }
+  .r1 .wk-prog .d { background:#1a1813; }
+  .r1 .wk-prog .t { background:repeating-linear-gradient(45deg,#1a1813,#1a1813 3px,#3a352a 3px,#3a352a 6px); }
+  .r1 .wk-prog .l { background:rgba(26,24,19,.12); }
+  .r1 .wk-prog .r { background:#f97316; }
+  .r1 .wk-day { background:#f4f1ea; }
+  .r1 .wk-day .dow { color:rgba(26,24,19,.45); }
+  .r1 .wk-day.done { background:#1a1813; color:#f4f1ea; }
+  .r1 .wk-day.done .dow { color:rgba(244,241,234,.55); }
+  .r1 .wk-day.done .kind { color:#f4f1ea; }
+  .r1 .wk-day.today { background:#f97316; color:#f4f1ea; }
+  .r1 .wk-day.today .dow { color:rgba(244,241,234,.7); }
+  .r1 .wk-day.rest { background:transparent; border:1px dashed rgba(26,24,19,.18); }
+  .r1 .wk-day.rest .dist, .r1 .wk-day.rest .kind { color:rgba(26,24,19,.4); font-size:10px; }
+  .r1 .wk-day.race { background:#ffffff; border:1.5px solid #f97316; }
+  .r1 .wk-day.race .dow { color:#f97316; }
+  .r1 .wk-day.race .kind { color:#f97316; font-style:normal; font-family:"SF Mono",monospace; letter-spacing:1.5px; font-size:9px; }
+  .r1 .today-card { background:#1a1813; color:#f4f1ea; border-radius:18px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  .r1 .today-card .tile-lbl { font-family:Georgia,serif; font-style:italic; font-size:22px; font-weight:900; letter-spacing:-.02em; }
+  .r1 .today-card .tile-sub { color:rgba(244,241,234,.55); }
+  .r1 .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:10px 0; border-top:1px dashed rgba(244,241,234,.18); border-bottom:1px dashed rgba(244,241,234,.18); }
+  .r1 .kpi b { display:block; font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:20px; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .r1 .kpi b small { font-size:.55em; opacity:.5; font-weight:700; margin-left:2px; }
+  .r1 .kpi span { display:block; font-family:"SF Mono",monospace; font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(244,241,234,.55); font-weight:700; margin-top:3px; }
+  .r1 .start { padding:9px 14px; background:#f97316; color:#1a1813; border-radius:100px; font-family:"SF Mono",monospace; font-size:10px; letter-spacing:1.5px; font-weight:800; white-space:nowrap; }
+  .r1 .inst { background:#ffffff; border:1px solid rgba(26,24,19,.06); }
+  .r1 .inst-lbl { color:rgba(26,24,19,.5); }
+  .r1 .inst-dt { color:#c2410c; }
+  .r1 .inst-ft { border-top:1px dashed rgba(26,24,19,.1); color:rgba(26,24,19,.45); }
+  .r1 .inst-ft b { color:#1a1813; }
+  .r1 .inst--hero { background:#1a1813; color:#f4f1ea; border:0; }
+  .r1 .inst--hero .inst-lbl { color:rgba(244,241,234,.55); }
+  .r1 .inst--hero .inst-ft { border-top-color:rgba(244,241,234,.15); color:rgba(244,241,234,.5); }
+  .r1 .inst--hero .inst-ft b { color:#f4f1ea; }
+
+  /* ═══════════════════════════════════════════════════════════════ */
+  /*  R2 · COBALT · midnight blue, electric cyan                     */
+  /* ═══════════════════════════════════════════════════════════════ */
+  .r2 { background:#0a1228; color:#e4ecff; }
+  .r2 .nav { border-bottom:1px solid rgba(228,236,255,.06); }
+  .r2 .brand { background:#4af0ff; color:#0a1228; }
+  .r2 .tabs { background:#131c3a; }
+  .r2 .tab { color:rgba(228,236,255,.55); }
+  .r2 .tab.active { background:#4af0ff; color:#0a1228; font-weight:700; }
+  .r2 .nav-ic { background:#131c3a; border:1px solid rgba(228,236,255,.06); color:rgba(228,236,255,.6); }
+  .r2 .avatar { background:linear-gradient(135deg,#4af0ff,#1e6690); }
+  .r2 .greet-hi { color:rgba(228,236,255,.55); }
+  .r2 .greet-tag__t { color:#0a1228; background:#4af0ff; }
+  .r2 .stat { background:#131c3a; border:1px solid rgba(228,236,255,.05); }
+  .r2 .stat-ic { background:rgba(228,236,255,.06); }
+  .r2 .stat-ar { background:#0a1228; color:#4af0ff; }
+  .r2 .stat-lbl { color:rgba(228,236,255,.55); }
+  .r2 .stat-dt { color:#4af0ff; }
+  .r2 .stat--accent { background:#4af0ff; color:#0a1228; border:0; }
+  .r2 .stat--accent .stat-ic { background:rgba(10,18,40,.12); }
+  .r2 .stat--accent .stat-ar { background:#0a1228; color:#4af0ff; }
+  .r2 .stat--accent .stat-lbl { color:rgba(10,18,40,.6); }
+  .r2 .stat--accent .stat-dt { color:rgba(10,18,40,.6); }
+  .r2 .stat--race { background:#ff6e3d; color:#0a1228; border:0; }
+  .r2 .stat--race .stat-ic { background:rgba(10,18,40,.14); }
+  .r2 .stat--race .stat-ar { background:#0a1228; color:#ff6e3d; }
+  .r2 .stat--race .stat-lbl { color:rgba(10,18,40,.7); font-weight:700; }
+  .r2 .stat--race .stat-num { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:26px; }
+  .r2 .stat--race .stat-dt { color:rgba(10,18,40,.7); font-weight:700; }
+  .r2 .tile { background:#131c3a; border:1px solid rgba(228,236,255,.05); }
+  .r2 .tile-sub { color:rgba(228,236,255,.5); }
+  .r2 .tile-meta { color:rgba(228,236,255,.3); }
+  .r2 .wk-tot b { color:#4af0ff; }
+  .r2 .wk-prog { background:rgba(228,236,255,.05); }
+  .r2 .wk-prog .d { background:#4af0ff; }
+  .r2 .wk-prog .t { background:repeating-linear-gradient(45deg,#4af0ff,#4af0ff 3px,#1e6690 3px,#1e6690 6px); }
+  .r2 .wk-prog .l { background:rgba(74,240,255,.15); }
+  .r2 .wk-prog .r { background:#ff6e3d; }
+  .r2 .wk-day { background:#1c2749; }
+  .r2 .wk-day .dow { color:rgba(228,236,255,.45); }
+  .r2 .wk-day.done { background:rgba(74,240,255,.14); }
+  .r2 .wk-day.done .kind { color:#4af0ff; }
+  .r2 .wk-day.today { background:#4af0ff; color:#0a1228; box-shadow:0 0 0 2px #0a1228, 0 0 0 3px #4af0ff; }
+  .r2 .wk-day.today .dow { color:rgba(10,18,40,.55); }
+  .r2 .wk-day.rest { background:#131c3a; border:1px dashed rgba(228,236,255,.08); }
+  .r2 .wk-day.rest .dist, .r2 .wk-day.rest .kind { color:rgba(228,236,255,.35); font-size:10px; }
+  .r2 .wk-day.race { background:#0a1228; border:1.5px solid #ff6e3d; }
+  .r2 .wk-day.race .dow { color:#ff6e3d; }
+  .r2 .wk-day.race .kind { color:#ff6e3d; font-style:normal; font-family:"SF Mono",monospace; letter-spacing:1.5px; font-size:9px; }
+  .r2 .today-card { background:#e4ecff; color:#0a1228; border-radius:18px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  .r2 .today-card .tile-lbl { font-family:Georgia,serif; font-style:italic; font-size:22px; font-weight:900; letter-spacing:-.02em; }
+  .r2 .today-card .tile-sub { color:rgba(10,18,40,.55); }
+  .r2 .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:10px 0; border-top:1px dashed rgba(10,18,40,.18); border-bottom:1px dashed rgba(10,18,40,.18); }
+  .r2 .kpi b { display:block; font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:20px; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .r2 .kpi b small { font-size:.55em; opacity:.5; font-weight:700; margin-left:2px; }
+  .r2 .kpi span { display:block; font-family:"SF Mono",monospace; font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(10,18,40,.5); font-weight:700; margin-top:3px; }
+  .r2 .start { padding:9px 14px; background:#0a1228; color:#4af0ff; border-radius:100px; font-family:"SF Mono",monospace; font-size:10px; letter-spacing:1.5px; font-weight:700; white-space:nowrap; }
+  .r2 .inst { background:#131c3a; border:1px solid rgba(228,236,255,.05); }
+  .r2 .inst-lbl { color:rgba(228,236,255,.5); }
+  .r2 .inst-dt { color:#4af0ff; }
+  .r2 .inst-ft { border-top:1px dashed rgba(228,236,255,.08); color:rgba(228,236,255,.4); }
+  .r2 .inst-ft b { color:rgba(228,236,255,.9); }
+
+  /* ═══════════════════════════════════════════════════════════════ */
+  /*  R3 · SPLIT · narrative left column + dense data right          */
+  /* ═══════════════════════════════════════════════════════════════ */
+  .r3 { background:#0f0f12; color:#f4f4f6; }
+  .r3 .nav { border-bottom:1px solid rgba(255,255,255,.06); }
+  .r3 .brand { background:#d6f544; color:#0f0f12; }
+  .r3 .tabs { background:#1a1a1f; }
+  .r3 .tab { color:rgba(244,244,246,.55); }
+  .r3 .tab.active { background:#d6f544; color:#0f0f12; font-weight:700; }
+  .r3 .nav-ic { background:#1a1a1f; border:1px solid rgba(255,255,255,.06); color:rgba(244,244,246,.6); }
+  .r3 .avatar { background:linear-gradient(135deg,#d6f544,#7a8f28); }
+  .r3-split { display:grid; grid-template-columns:1fr 2fr; min-height:900px; }
+  .r3-left { padding:36px 32px; border-right:1px solid rgba(255,255,255,.06); display:flex; flex-direction:column; gap:28px; }
+  .r3-right { padding:28px 30px; display:flex; flex-direction:column; gap:14px; }
+  .r3-eyebrow { font-family:"SF Mono",monospace; font-size:10px; letter-spacing:3px; text-transform:uppercase; color:rgba(214,245,68,.7); font-weight:700; }
+  .r3-hi { font-family:Georgia,serif; font-style:italic; font-size:18px; color:rgba(244,244,246,.55); font-weight:500; margin-top:18px; }
+  .r3-name { font-size:64px; font-weight:800; letter-spacing:-.035em; line-height:1.02; padding-bottom:4px; margin-top:4px; }
+  .r3-tag { margin-top:18px; }
+  .r3-tag__t { font-family:Georgia,"Times New Roman",serif; font-style:italic; font-weight:900; font-size:40px; line-height:1.35; letter-spacing:-.02em; color:#0f0f12; background:#d6f544; padding:8px 14px 10px; border-radius:6px; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+  .r3-race { background:#f97316; color:#0f0f12; border-radius:16px; padding:20px 22px; position:relative; overflow:hidden; }
+  .r3-race::after { content:""; position:absolute; top:-40px; right:-40px; width:140px; height:140px; border-radius:50%; background:radial-gradient(circle,rgba(255,255,255,.18) 0%,transparent 65%); pointer-events:none; }
+  .r3-race__eye { font-family:"SF Mono",monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:800; opacity:.75; }
+  .r3-race__n { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:36px; line-height:1; letter-spacing:-.02em; margin-top:10px; }
+  .r3-race__meta { font-family:"SF Mono",monospace; font-size:10px; letter-spacing:1.5px; font-weight:700; margin-top:8px; }
+  .r3-race__c { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:56px; letter-spacing:-.04em; line-height:.9; margin-top:14px; font-variant-numeric:tabular-nums; }
+  .r3-race__c small { font-family:Georgia,serif; font-style:italic; font-size:.32em; font-weight:800; opacity:.65; margin-left:8px; vertical-align:.3em; }
+  .r3-today { background:#f4f1ea; color:#0f0f12; border-radius:16px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  .r3-today .tile-sub { color:rgba(15,15,18,.55); font-size:10px; }
+  .r3-today .tile-lbl { font-family:Georgia,serif; font-style:italic; font-size:22px; font-weight:900; letter-spacing:-.02em; }
+  .r3-today .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:10px 0; border-top:1px dashed rgba(15,15,18,.18); border-bottom:1px dashed rgba(15,15,18,.18); }
+  .r3-today .kpi b { display:block; font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:20px; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .r3-today .kpi b small { font-size:.55em; opacity:.5; font-weight:700; margin-left:2px; }
+  .r3-today .kpi span { display:block; font-family:"SF Mono",monospace; font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:rgba(15,15,18,.5); font-weight:700; margin-top:3px; }
+  .r3-today .start { padding:9px 14px; background:#0f0f12; color:#d6f544; border-radius:100px; font-family:"SF Mono",monospace; font-size:10px; letter-spacing:1.5px; font-weight:700; white-space:nowrap; text-align:center; }
+  .r3-dense { display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:minmax(130px,1fr); gap:10px; }
+  .r3-dense .inst { background:#1a1a1f; border:1px solid rgba(255,255,255,.05); border-radius:14px; padding:13px 15px; }
+  .r3-dense .inst-lbl { color:rgba(244,244,246,.5); }
+  .r3-dense .inst-dt { color:#a3cc1c; }
+  .r3-dense .inst-ft { border-top:1px dashed rgba(255,255,255,.06); color:rgba(244,244,246,.4); }
+  .r3-dense .inst-ft b { color:rgba(244,244,246,.9); }
+  .r3-dense .inst--big { grid-column:span 2; }
+  .r3-dense .inst--lime { background:#d6f544; color:#0f0f12; border:0; }
+  .r3-dense .inst--lime .inst-lbl { color:rgba(15,15,18,.55); }
+  .r3-dense .inst--lime .inst-ft { border-top-color:rgba(15,15,18,.15); color:rgba(15,15,18,.55); }
+  .r3-dense .inst--lime .inst-ft b { color:#0f0f12; }
+
+  .spark { width:100%; height:100%; }
+</style>
+</head>
+<body>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!--  R1 · PAPER                                                          -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<div class="caption"><span>R1 · Paper</span><b>CREAM / BLACK / ORANGE</b></div>
+<div class="stage hub r1">
+  <div class="nav">
+    <div class="nav-l">
+      <div class="brand">R</div>
+      <div class="tabs">
+        <div class="tab active"><span class="dot"></span>Overview</div>
+        <div class="tab">Training</div><div class="tab">Races</div><div class="tab">Health</div><div class="tab">Log</div>
+      </div>
+    </div>
+    <div class="nav-r"><div class="nav-ic">⌕</div><div class="nav-ic">◎</div><div class="avatar"></div></div>
+  </div>
+
+  <div class="body">
+    <div class="head">
+      <div>
+        <div class="greet-hi">Good morning,</div>
+        <div class="greet-nm">David Nitzsche.</div>
+        <div class="greet-tag"><span class="greet-tag__t">Taper begins Wednesday.</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-top"><div class="stat-ic">◭</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Miles · April</div><div class="stat-num">142<small>mi</small></div><div class="stat-dt">+18.4% vs last month</div></div></div>
+        <div class="stat"><div class="stat-top"><div class="stat-ic">◷</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Fastest mile</div><div class="stat-num">5:42</div><div class="stat-dt">PR · 12 Apr</div></div></div>
+        <div class="stat stat--dark"><div class="stat-top"><div class="stat-ic">☰</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Miles · 2026 YTD</div><div class="stat-num">503<small>mi</small></div><div class="stat-dt">pace: 1,608 / year</div></div></div>
+        <div class="stat stat--orange"><div class="stat-top"><div class="stat-ic">◉</div><div class="stat-ar">→</div></div><div><div class="stat-lbl">Next race · 5 days</div><div class="stat-num">Big Sur</div><div class="stat-dt">3:45 goal · 26 APR</div></div></div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">This week</div><div class="tile-sub">Mon 20 – Sun 26 Apr · race week</div></div><div class="tile-meta">FIG.01</div></div>
+        <div class="wk-hero">
+          <div class="wk-tot"><b>38</b><small>of 49 mi planned</small></div>
+          <div>
+            <div class="wk-prog">
+              <div class="d" style="flex:5"></div><div class="t" style="flex:6"></div><div class="l" style="flex:12"></div><div class="r" style="flex:26"></div>
+            </div>
+          </div>
+        </div>
+        <div class="wk-days">
+          <div class="wk-day done"><span class="dow">Mon</span><span class="dist">5 mi</span><span class="kind">Easy ✓</span></div>
+          <div class="wk-day today"><span class="dow">Tue</span><span class="dist">6 mi</span><span class="kind">8×400m</span></div>
+          <div class="wk-day"><span class="dow">Wed</span><span class="dist">8 mi</span><span class="kind">Z2 long</span></div>
+          <div class="wk-day rest"><span class="dow">Thu</span><span class="dist">rest</span><span class="kind">recover</span></div>
+          <div class="wk-day"><span class="dow">Fri</span><span class="dist">4 mi</span><span class="kind">Shakeout</span></div>
+          <div class="wk-day rest"><span class="dow">Sat</span><span class="dist">rest</span><span class="kind">travel</span></div>
+          <div class="wk-day race"><span class="dow">Sun</span><span class="dist">26.2</span><span class="kind">RACE</span></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">April 2026</div><div class="tile-sub">15 of 21 days · 142 mi</div></div><div class="tile-meta">FIG.02</div></div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px; font-family:'SF Mono',monospace; font-size:8.5px; letter-spacing:1.5px; color:rgba(26,24,19,.4); font-weight:700; text-align:center; margin-bottom:5px; text-transform:uppercase;">
+          <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+        </div>
+        <div id="r1-cal" style="display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:1fr; gap:5px;"></div>
+      </div>
+
+      <div class="today-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div><div class="tile-sub">Today · Tue 21 Apr · 06:47</div><div class="tile-lbl">8 × 400m intervals.</div></div>
+          <div class="tile-meta" style="color:rgba(244,241,234,.3);">WK14 / D2</div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><b>6.0<small>mi</small></b><span>distance</span></div>
+          <div class="kpi"><b>45:00</b><span>duration</span></div>
+          <div class="kpi"><b>7:40</b><span>avg pace</span></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px; font-size:10.5px;">
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.55; letter-spacing:1px; font-weight:700;">0:00</span><span>Warm-up · 1.5mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; font-variant-numeric:tabular-nums;">9:40/mi</span></div>
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center; color:#f97316;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.65; letter-spacing:1px; font-weight:700;">0:14</span><span style="font-weight:700;">8 × 400m · 90s rec</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-variant-numeric:tabular-nums;">6:50/mi</span></div>
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.55; letter-spacing:1px; font-weight:700;">0:34</span><span>Cool-down · 1.2mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; font-variant-numeric:tabular-nums;">10:00/mi</span></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed rgba(244,241,234,.18); font-family:'SF Mono',monospace; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; font-weight:700; color:rgba(244,241,234,.5);">
+          <span>Tomorrow · Wed Z2 long 8mi</span>
+          <span class="start">▶ SEND TO WATCH</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="insts">
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Avg pace</div></div><div class="inst-num">8:14<small>/mi</small></div><div class="inst-viz"><svg class="spark" viewBox="0 0 180 38" preserveAspectRatio="none"><path d="M 0 30 L 30 26 L 60 20 L 90 16 L 120 12 L 150 14 L 180 8" stroke="#f97316" stroke-width="1.8" fill="none"/><circle cx="180" cy="8" r="3" fill="#f97316"/></svg></div><div class="inst-dt">↘ −14s · 12 weeks</div><div class="inst-ft"><span>Best</span><b>7:48/mi</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Time · 7d</div></div><div class="inst-num">5:20<small>hr</small></div><div class="inst-viz" style="display:flex; gap:3px; align-items:end;"><div style="flex:1; background:rgba(249,115,22,.2); height:40%"></div><div style="flex:1; background:rgba(249,115,22,.5); height:70%"></div><div style="flex:1; background:#f97316; height:100%"></div><div style="flex:1; background:rgba(249,115,22,.5); height:60%"></div><div style="flex:1; background:rgba(249,115,22,.3); height:45%"></div></div><div class="inst-dt">Easy · 3:38 hr</div><div class="inst-ft"><span>Quality</span><b>1:42 hr</b></div></div>
+      <div class="inst inst--hero"><div class="inst-top"><div class="inst-lbl">Recovery</div></div><div style="display:flex; align-items:center; gap:12px;"><div style="width:56px; height:56px; position:relative;"><svg viewBox="0 0 56 56" style="transform:rotate(-90deg);"><circle cx="28" cy="28" r="23" fill="none" stroke="rgba(244,241,234,.15)" stroke-width="5"/><circle cx="28" cy="28" r="23" fill="none" stroke="#f97316" stroke-width="5" stroke-dasharray="144.5" stroke-dashoffset="23" stroke-linecap="round"/></svg><div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:18px;">84</div></div><div><div style="font-family:Georgia,serif; font-style:italic; font-size:14px; font-weight:700; color:#f97316;">Ready.</div><div style="font-family:'SF Mono',monospace; font-size:9px; letter-spacing:1px; opacity:.6; font-weight:700; margin-top:2px;">Sleep 7:42 hr</div><div style="font-family:'SF Mono',monospace; font-size:9px; letter-spacing:1px; opacity:.6; font-weight:700;">Last hard +46 hr</div></div></div><div class="inst-ft"><span>7d avg</span><b>79</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Streak</div></div><div class="inst-num">18<small>days</small></div><div class="inst-viz" style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;"><div style="background:rgba(249,115,22,.4); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#fff;">5</div><div style="background:#f97316; border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#fff;">6</div><div style="background:rgba(249,115,22,.35); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#fff;">8</div><div style="background:rgba(26,24,19,.08); border-radius:3px;"></div><div style="background:rgba(249,115,22,.3); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#fff;">4</div><div style="background:rgba(26,24,19,.08); border-radius:3px;"></div><div style="background:#1a1813; color:#f97316; border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700;">26</div></div><div class="inst-dt">Longest · 34 days</div><div class="inst-ft"><span>Since</span><b>3 Apr</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Conditions · now</div></div><div style="display:flex; align-items:baseline; gap:8px;"><div class="inst-num" style="font-size:28px;">54<small>°F</small></div><div style="font-family:'SF Mono',monospace; font-size:9px; opacity:.5; font-weight:700;">H 68 · L 51</div></div><div style="font-family:Georgia,serif; font-style:italic; font-size:12px; font-weight:700; color:#c2410c;">Cool &amp; clear.</div><div class="inst-ft"><span>SF · 06:47</span><b>Go</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Marathon · pred.</div></div><div class="inst-num">3:41</div><div class="inst-viz"><svg class="spark" viewBox="0 0 180 38" preserveAspectRatio="none"><path d="M 0 6 L 30 12 L 60 18 L 90 22 L 120 26 L 150 32 L 180 34" stroke="#f97316" stroke-width="1.6" fill="none"/><circle cx="180" cy="34" r="3" fill="#f97316"/></svg></div><div class="inst-dt">↘ −8:00 · 6 mo</div><div class="inst-ft"><span>Goal</span><b>3:45</b></div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!--  R2 · COBALT                                                         -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<div class="caption"><span>R2 · Cobalt</span><b>MIDNIGHT / CYAN / ORANGE</b></div>
+<div class="stage hub r2">
+  <div class="nav">
+    <div class="nav-l">
+      <div class="brand">R</div>
+      <div class="tabs">
+        <div class="tab active"><span class="dot"></span>Overview</div>
+        <div class="tab">Training</div><div class="tab">Races</div><div class="tab">Health</div><div class="tab">Log</div>
+      </div>
+    </div>
+    <div class="nav-r"><div class="nav-ic">⌕</div><div class="nav-ic">◎</div><div class="avatar"></div></div>
+  </div>
+
+  <div class="body">
+    <div class="head">
+      <div>
+        <div class="greet-hi">Good morning,</div>
+        <div class="greet-nm">David Nitzsche.</div>
+        <div class="greet-tag"><span class="greet-tag__t">Taper begins Wednesday.</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-top"><div class="stat-ic">◭</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Miles · April</div><div class="stat-num">142<small>mi</small></div><div class="stat-dt">+18.4% vs last month</div></div></div>
+        <div class="stat"><div class="stat-top"><div class="stat-ic">◷</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Fastest mile</div><div class="stat-num">5:42</div><div class="stat-dt">PR · 12 Apr</div></div></div>
+        <div class="stat stat--accent"><div class="stat-top"><div class="stat-ic">☰</div><div class="stat-ar">↗</div></div><div><div class="stat-lbl">Miles · 2026 YTD</div><div class="stat-num">503<small>mi</small></div><div class="stat-dt">pace: 1,608 / year</div></div></div>
+        <div class="stat stat--race"><div class="stat-top"><div class="stat-ic">◉</div><div class="stat-ar">→</div></div><div><div class="stat-lbl">Next race · 5 days</div><div class="stat-num">Big Sur</div><div class="stat-dt">3:45 goal · 26 APR</div></div></div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">This week</div><div class="tile-sub">Mon 20 – Sun 26 Apr · race week</div></div><div class="tile-meta">FIG.01</div></div>
+        <div class="wk-hero">
+          <div class="wk-tot"><b>38</b><small>of 49 mi planned</small></div>
+          <div><div class="wk-prog"><div class="d" style="flex:5"></div><div class="t" style="flex:6"></div><div class="l" style="flex:12"></div><div class="r" style="flex:26"></div></div></div>
+        </div>
+        <div class="wk-days">
+          <div class="wk-day done"><span class="dow">Mon</span><span class="dist">5 mi</span><span class="kind">Easy ✓</span></div>
+          <div class="wk-day today"><span class="dow">Tue</span><span class="dist">6 mi</span><span class="kind">8×400m</span></div>
+          <div class="wk-day"><span class="dow">Wed</span><span class="dist">8 mi</span><span class="kind">Z2 long</span></div>
+          <div class="wk-day rest"><span class="dow">Thu</span><span class="dist">rest</span><span class="kind">recover</span></div>
+          <div class="wk-day"><span class="dow">Fri</span><span class="dist">4 mi</span><span class="kind">Shakeout</span></div>
+          <div class="wk-day rest"><span class="dow">Sat</span><span class="dist">rest</span><span class="kind">travel</span></div>
+          <div class="wk-day race"><span class="dow">Sun</span><span class="dist">26.2</span><span class="kind">RACE</span></div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">April 2026</div><div class="tile-sub">15 of 21 days · 142 mi</div></div><div class="tile-meta">FIG.02</div></div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px; font-family:'SF Mono',monospace; font-size:8.5px; letter-spacing:1.5px; color:rgba(228,236,255,.4); font-weight:700; text-align:center; margin-bottom:5px; text-transform:uppercase;">
+          <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+        </div>
+        <div id="r2-cal" style="display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:1fr; gap:5px;"></div>
+      </div>
+
+      <div class="today-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div><div class="tile-sub">Today · Tue 21 Apr · 06:47</div><div class="tile-lbl">8 × 400m intervals.</div></div>
+          <div class="tile-meta" style="color:rgba(10,18,40,.4);">WK14 / D2</div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><b>6.0<small>mi</small></b><span>distance</span></div>
+          <div class="kpi"><b>45:00</b><span>duration</span></div>
+          <div class="kpi"><b>7:40</b><span>avg pace</span></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:5px; font-size:10.5px;">
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.55; letter-spacing:1px; font-weight:700;">0:00</span><span>Warm-up · 1.5mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; font-variant-numeric:tabular-nums;">9:40/mi</span></div>
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center; color:#1e6690;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.65; letter-spacing:1px; font-weight:700;">0:14</span><span style="font-weight:700;">8 × 400m · 90s rec</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-variant-numeric:tabular-nums;">6:50/mi</span></div>
+          <div style="display:grid; grid-template-columns:40px 1fr auto; gap:8px; align-items:center;"><span style="font-family:'SF Mono',monospace; font-size:9px; opacity:.55; letter-spacing:1px; font-weight:700;">0:34</span><span>Cool-down · 1.2mi</span><span style="font-family:'SF Pro Rounded',sans-serif; font-weight:700; font-variant-numeric:tabular-nums;">10:00/mi</span></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed rgba(10,18,40,.18); font-family:'SF Mono',monospace; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; font-weight:700; color:rgba(10,18,40,.5);">
+          <span>Tomorrow · Wed Z2 long 8mi</span>
+          <span class="start">▶ SEND TO WATCH</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="insts">
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Avg pace</div></div><div class="inst-num">8:14<small>/mi</small></div><div class="inst-viz"><svg class="spark" viewBox="0 0 180 38" preserveAspectRatio="none"><path d="M 0 30 L 30 26 L 60 20 L 90 16 L 120 12 L 150 14 L 180 8" stroke="#4af0ff" stroke-width="1.8" fill="none"/><circle cx="180" cy="8" r="3" fill="#4af0ff"/></svg></div><div class="inst-dt">↘ −14s · 12 weeks</div><div class="inst-ft"><span>Best</span><b>7:48/mi</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Time · 7d</div></div><div class="inst-num">5:20<small>hr</small></div><div class="inst-viz" style="display:flex; gap:3px; align-items:end;"><div style="flex:1; background:rgba(74,240,255,.2); height:40%"></div><div style="flex:1; background:rgba(74,240,255,.5); height:70%"></div><div style="flex:1; background:#4af0ff; height:100%"></div><div style="flex:1; background:rgba(74,240,255,.5); height:60%"></div><div style="flex:1; background:rgba(74,240,255,.3); height:45%"></div></div><div class="inst-dt">Easy · 3:38 hr</div><div class="inst-ft"><span>Quality</span><b>1:42 hr</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Recovery</div></div><div style="display:flex; align-items:center; gap:12px;"><div style="width:56px; height:56px; position:relative;"><svg viewBox="0 0 56 56" style="transform:rotate(-90deg);"><circle cx="28" cy="28" r="23" fill="none" stroke="rgba(228,236,255,.08)" stroke-width="5"/><circle cx="28" cy="28" r="23" fill="none" stroke="#4af0ff" stroke-width="5" stroke-dasharray="144.5" stroke-dashoffset="23" stroke-linecap="round"/></svg><div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'SF Pro Rounded',sans-serif; font-weight:800; font-size:18px;">84</div></div><div><div style="font-family:Georgia,serif; font-style:italic; font-size:14px; font-weight:700; color:#4af0ff;">Ready.</div><div style="font-family:'SF Mono',monospace; font-size:9px; letter-spacing:1px; opacity:.55; font-weight:700; margin-top:2px;">Sleep 7:42 hr</div><div style="font-family:'SF Mono',monospace; font-size:9px; letter-spacing:1px; opacity:.55; font-weight:700;">Last hard +46 hr</div></div></div><div class="inst-ft"><span>7d avg</span><b>79</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Streak</div></div><div class="inst-num">18<small>days</small></div><div class="inst-viz" style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;"><div style="background:rgba(74,240,255,.35); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#0a1228;">5</div><div style="background:#4af0ff; border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:#0a1228;">6</div><div style="background:rgba(74,240,255,.3); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:rgba(228,236,255,.8);">8</div><div style="background:rgba(228,236,255,.05); border-radius:3px;"></div><div style="background:rgba(74,240,255,.25); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700; color:rgba(228,236,255,.8);">4</div><div style="background:rgba(228,236,255,.05); border-radius:3px;"></div><div style="background:#0a1228; border:1.5px solid #ff6e3d; color:#ff6e3d; border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:'SF Mono',monospace; font-size:8px; font-weight:700;">26</div></div><div class="inst-dt">Longest · 34 days</div><div class="inst-ft"><span>Since</span><b>3 Apr</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Conditions · now</div></div><div style="display:flex; align-items:baseline; gap:8px;"><div class="inst-num" style="font-size:28px;">54<small>°F</small></div><div style="font-family:'SF Mono',monospace; font-size:9px; opacity:.5; font-weight:700;">H 68 · L 51</div></div><div style="font-family:Georgia,serif; font-style:italic; font-size:12px; font-weight:700; color:#4af0ff;">Cool &amp; clear.</div><div class="inst-ft"><span>SF · 06:47</span><b>Go</b></div></div>
+      <div class="inst"><div class="inst-top"><div class="inst-lbl">Marathon · pred.</div></div><div class="inst-num">3:41</div><div class="inst-viz"><svg class="spark" viewBox="0 0 180 38" preserveAspectRatio="none"><path d="M 0 6 L 30 12 L 60 18 L 90 22 L 120 26 L 150 32 L 180 34" stroke="#4af0ff" stroke-width="1.6" fill="none"/><circle cx="180" cy="34" r="3" fill="#4af0ff"/></svg></div><div class="inst-dt">↘ −8:00 · 6 mo</div><div class="inst-ft"><span>Goal</span><b>3:45</b></div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!--  R3 · SPLIT · asymmetric narrative / dense data                      -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<div class="caption"><span>R3 · Split</span><b>NARRATIVE / DENSE DATA</b></div>
+<div class="stage hub r3">
+  <div class="nav">
+    <div class="nav-l">
+      <div class="brand">R</div>
+      <div class="tabs">
+        <div class="tab active"><span class="dot"></span>Overview</div>
+        <div class="tab">Training</div><div class="tab">Races</div><div class="tab">Health</div><div class="tab">Log</div>
+      </div>
+    </div>
+    <div class="nav-r"><div class="nav-ic">⌕</div><div class="nav-ic">◎</div><div class="avatar"></div></div>
+  </div>
+
+  <div class="r3-split">
+    <!-- LEFT · narrative -->
+    <div class="r3-left">
+      <div>
+        <div class="r3-eyebrow">2026 · W14 · Tue</div>
+        <div class="r3-hi">Good morning,</div>
+        <div class="r3-name">David<br>Nitzsche.</div>
+        <div class="r3-tag"><span class="r3-tag__t">Taper begins Wednesday.</span></div>
+      </div>
+
+      <div class="r3-race">
+        <div class="r3-race__eye">◉ Next race</div>
+        <div class="r3-race__n">Big Sur<br>Marathon.</div>
+        <div class="r3-race__meta">26 APR · 6:45 AM · 3:45 GOAL</div>
+        <div class="r3-race__c">5<small>days</small></div>
+      </div>
+
+      <div class="r3-today">
+        <div><div class="tile-sub">Today · Tue 21 Apr · 06:47</div><div class="tile-lbl">8 × 400m intervals.</div></div>
+        <div class="kpis">
+          <div class="kpi"><b>6.0<small>mi</small></b><span>distance</span></div>
+          <div class="kpi"><b>45:00</b><span>duration</span></div>
+          <div class="kpi"><b>7:40</b><span>avg pace</span></div>
+        </div>
+        <div style="font-family:Georgia,serif; font-style:italic; font-size:12.5px; font-weight:600; line-height:1.35; color:rgba(15,15,18,.7);">Warm up easy, hit eight 400s at <b style="font-style:normal; font-family:'SF Pro Rounded',sans-serif; color:#0f0f12;">6:50/mi</b>, jog 90s between. Last speed before taper.</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed rgba(15,15,18,.18); font-family:'SF Mono',monospace; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; font-weight:700; color:rgba(15,15,18,.5);">
+          <span>Tomorrow · Z2 long 8mi</span>
+          <span class="start">▶ SEND</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT · dense data -->
+    <div class="r3-right">
+      <div class="tile" style="background:#1a1a1f; border:1px solid rgba(255,255,255,.05); border-radius:18px; padding:18px 20px;">
+        <div class="tile-h"><div><div class="tile-lbl">This week · race week</div><div class="tile-sub" style="color:rgba(244,244,246,.5);">Mon 20 – Sun 26 Apr · 38 of 49 mi planned</div></div><div class="tile-meta" style="color:rgba(244,244,246,.3);">FIG.01</div></div>
+        <div class="wk-prog" style="background:rgba(255,255,255,.05);">
+          <div style="flex:5; background:#d6f544;"></div>
+          <div style="flex:6; background:repeating-linear-gradient(45deg,#d6f544,#d6f544 3px,#a3cc1c 3px,#a3cc1c 6px);"></div>
+          <div style="flex:12; background:rgba(214,245,68,.15);"></div>
+          <div style="flex:26; background:#f97316;"></div>
+        </div>
+        <div class="wk-days" style="margin-top:12px;">
+          <div class="wk-day" style="background:rgba(214,245,68,.14);"><span class="dow" style="color:rgba(244,244,246,.45);">Mon</span><span class="dist">5</span><span class="kind" style="color:#d6f544;">Easy ✓</span></div>
+          <div class="wk-day" style="background:#d6f544; color:#0f0f12; box-shadow:0 0 0 2px #0f0f12, 0 0 0 3px #d6f544;"><span class="dow" style="color:rgba(15,15,18,.55);">Tue</span><span class="dist" style="color:#0f0f12;">6</span><span class="kind" style="color:#0f0f12;">8×400m</span></div>
+          <div class="wk-day" style="background:#26262e;"><span class="dow" style="color:rgba(244,244,246,.45);">Wed</span><span class="dist">8</span><span class="kind" style="color:rgba(244,244,246,.55);">Z2 long</span></div>
+          <div class="wk-day" style="background:#1a1a1f; border:1px dashed rgba(255,255,255,.08);"><span class="dow" style="color:rgba(244,244,246,.35);">Thu</span><span class="dist" style="color:rgba(244,244,246,.35); font-size:11px;">rest</span><span class="kind" style="color:rgba(244,244,246,.35); font-size:10px;">recover</span></div>
+          <div class="wk-day" style="background:#26262e;"><span class="dow" style="color:rgba(244,244,246,.45);">Fri</span><span class="dist">4</span><span class="kind" style="color:rgba(244,244,246,.55);">Shake</span></div>
+          <div class="wk-day" style="background:#1a1a1f; border:1px dashed rgba(255,255,255,.08);"><span class="dow" style="color:rgba(244,244,246,.35);">Sat</span><span class="dist" style="color:rgba(244,244,246,.35); font-size:11px;">rest</span><span class="kind" style="color:rgba(244,244,246,.35); font-size:10px;">travel</span></div>
+          <div class="wk-day" style="background:#0f0f12; border:1.5px solid #f97316;"><span class="dow" style="color:#f97316;">Sun</span><span class="dist">26.2</span><span class="kind" style="color:#f97316; font-style:normal; font-family:'SF Mono',monospace; letter-spacing:1.5px; font-size:9px;">RACE</span></div>
+        </div>
+      </div>
+
+      <div class="r3-dense">
+        <div class="inst inst--lime" style="display:flex; flex-direction:column; justify-content:space-between; gap:8px;"><div class="inst-top"><div class="inst-lbl">Miles · April</div></div><div class="inst-num">142<small>mi</small></div><div class="inst-dt" style="color:rgba(15,15,18,.6); font-weight:700;">↗ +18.4% vs Mar</div><div class="inst-ft"><span>YTD</span><b>503 mi</b></div></div>
+        <div class="inst"><div class="inst-top"><div class="inst-lbl">Fastest mile</div></div><div class="inst-num">5:42</div><div class="inst-dt">PR · 12 Apr</div><div class="inst-ft"><span>12wk best</span><b>5:42</b></div></div>
+        <div class="inst inst--big" style="display:flex; flex-direction:column; gap:8px;"><div class="inst-top"><div class="inst-lbl">Marathon · predicted</div></div><div class="inst-num">3:41</div><div class="inst-viz" style="height:40px;"><svg class="spark" viewBox="0 0 300 40" preserveAspectRatio="none"><path d="M 0 6 L 30 9 L 60 13 L 90 17 L 120 20 L 150 23 L 180 26 L 210 29 L 240 31 L 270 33 L 300 34 L 300 40 L 0 40 Z" fill="rgba(214,245,68,.1)"/><path d="M 0 6 L 30 9 L 60 13 L 90 17 L 120 20 L 150 23 L 180 26 L 210 29 L 240 31 L 270 33 L 300 34" stroke="#d6f544" stroke-width="1.6" fill="none"/><circle cx="300" cy="34" r="3" fill="#d6f544"/></svg></div><div class="inst-ft"><span>↘ −8:00 · 6mo</span><b>Goal · 3:45</b></div></div>
+        <div class="inst"><div class="inst-top"><div class="inst-lbl">Avg pace</div></div><div class="inst-num">8:14<small>/mi</small></div><div class="inst-viz"><svg class="spark" viewBox="0 0 180 38" preserveAspectRatio="none"><path d="M 0 30 L 30 26 L 60 20 L 90 16 L 120 12 L 150 14 L 180 8" stroke="#d6f544" stroke-width="1.8" fill="none"/></svg></div><div class="inst-ft"><span>Best</span><b>7:48</b></div></div>
+        <div class="inst"><div class="inst-top"><div class="inst-lbl">Time · 7d</div></div><div class="inst-num">5:20<small>hr</small></div><div class="inst-viz" style="display:flex; gap:3px; align-items:end; height:30px;"><div style="flex:1; background:rgba(214,245,68,.2); height:40%"></div><div style="flex:1; background:rgba(214,245,68,.5); height:70%"></div><div style="flex:1; background:#d6f544; height:100%"></div><div style="flex:1; background:rgba(214,245,68,.5); height:60%"></div><div style="flex:1; background:rgba(214,245,68,.3); height:45%"></div></div><div class="inst-ft"><span>Easy</span><b>3:38 hr</b></div></div>
+        <div class="inst"><div class="inst-top"><div class="inst-lbl">Streak</div></div><div class="inst-num">18<small>days</small></div><div class="inst-dt">Longest · 34</div><div class="inst-ft"><span>Since</span><b>3 Apr</b></div></div>
+        <div class="inst"><div class="inst-top"><div class="inst-lbl">Longest · Apr</div></div><div class="inst-num">21.4<small>mi</small></div><div class="inst-dt">9:16/mi · 5 Apr</div><div class="inst-ft"><span>Time</span><b>3:18</b></div></div>
+        <div class="inst inst--big" style="display:flex; flex-direction:column; gap:8px;"><div class="inst-top"><div class="inst-lbl">Training time · 12 months</div></div><div class="inst-num">238<small>hr</small></div><div class="inst-viz" style="height:40px;"><svg class="spark" viewBox="0 0 300 40" preserveAspectRatio="none"><path d="M 0 32 L 30 30 L 60 28 L 90 24 L 120 22 L 150 18 L 180 16 L 210 13 L 240 10 L 270 8 L 300 6 L 300 40 L 0 40 Z" fill="rgba(214,245,68,.1)"/><path d="M 0 32 L 30 30 L 60 28 L 90 24 L 120 22 L 150 18 L 180 16 L 210 13 L 240 10 L 270 8 L 300 6" stroke="#d6f544" stroke-width="1.8" fill="none"/><circle cx="300" cy="6" r="3" fill="#d6f544"/></svg></div><div class="inst-ft"><span>↗ +42 hr</span><b>Peak · 28 hr</b></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Calendar factory
+  (function(){
+    function cal(id, colors, todayBg, futureBg, emptyBg, textCol, todayTextCol) {
+      var el = document.getElementById(id); if (!el) return;
+      var today = 21, days = 30, start = 3;
+      var plan = { 1:1,2:2,3:0,4:2,5:4,6:0,7:1,8:2,9:3,10:0,11:3,12:4,13:0,14:2,15:3,16:3,17:0,18:2,19:4,20:0,21:1,22:0,23:0,24:0,25:0,26:0,27:0,28:0,29:0,30:0 };
+      var html='';
+      for (var e=0;e<start;e++) html += '<div></div>';
+      for (var d=1; d<=days; d++) {
+        var p = plan[d];
+        var bg = emptyBg, col = textCol, extra = '', boxShadow='';
+        if (d === today) { bg = todayBg; col = todayTextCol; boxShadow='box-shadow:0 0 0 2px #0f0f12,0 0 0 4px '+todayBg+';'; }
+        else if (d > today) { bg = futureBg; col = 'rgba(255,255,255,.25)'; }
+        else if (p === 0) { bg = emptyBg; col = textCol; }
+        else { bg = colors[p-1]; col = p >= 3 ? '#0f0f12' : colors[0].indexOf('#3d')===0 ? '#d6f544' : textCol; }
+        html += '<div style="border-radius:7px; background:'+bg+'; color:'+col+'; display:flex; align-items:center; justify-content:center; font-family:\'SF Pro Rounded\',sans-serif; font-weight:700; font-size:12px; min-height:36px;'+boxShadow+'">'+d+'</div>';
+      }
+      el.innerHTML = html;
+    }
+    // R1 paper
+    cal('r1-cal',
+      ['#e8ddc4','#d9c48f','#f97316','#c2410c'],
+      '#1a1813','#ebe7dc','#f4f1ea','rgba(26,24,19,.5)','#f4f1ea');
+    // R2 cobalt
+    cal('r2-cal',
+      ['#1c3a6a','#2e6aa8','#4af0ff','#7de8ff'],
+      '#4af0ff','#131c3a','#1c2749','rgba(228,236,255,.5)','#0a1228');
+  })();
+</script>
+
+</body>
+</html>

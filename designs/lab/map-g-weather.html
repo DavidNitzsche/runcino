@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map G · Weather-overlaid course</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#0a0d12; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#06080c; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; position:relative; }
+svg{ display:block; width:100%; height:540px; }
+.over-tl{ position:absolute; top:22px; left:26px; text-shadow:0 2px 8px rgba(0,0,0,.9); }
+.over-tr{ position:absolute; top:22px; right:26px; text-align:right; text-shadow:0 2px 8px rgba(0,0,0,.9); }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; }
+.ttl{ font-family:var(--f-display); font-size:36px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-top:4px; }
+.legend{ position:absolute; bottom:22px; left:26px; right:26px; display:flex; gap:20px; font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; color:rgba(255,255,255,.6); text-transform:uppercase; font-weight:700; }
+.legend span b{ color:#fff; font-weight:700; margin-left:6px; }
+.legend i{ display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:-2px; }
+.wstrip{ position:absolute; top:22px; left:50%; transform:translateX(-50%); background:rgba(8,12,18,.85); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:10px 16px; display:flex; gap:20px; font-family:var(--f-data); font-size:10px; color:rgba(255,255,255,.85); letter-spacing:1.4px; text-transform:uppercase; font-weight:700; }
+.wstrip b{ color:#F3AD3B; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <svg viewBox="0 0 1200 540" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="route" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3EBD41"/><stop offset="22%" stop-color="#F3AD3B"/>
+        <stop offset="42%" stop-color="#FC4D54"/><stop offset="62%" stop-color="#008FEC"/>
+        <stop offset="100%" stop-color="#9013FE"/>
+      </linearGradient>
+      <radialGradient id="fog" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="rgba(255,255,255,.28)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+      </radialGradient>
+      <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="rgba(243,173,59,.35)"/>
+        <stop offset="60%" stop-color="rgba(243,173,59,.08)"/>
+        <stop offset="100%" stop-color="rgba(243,173,59,0)"/>
+      </radialGradient>
+      <linearGradient id="wind" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="rgba(0,143,236,0)"/>
+        <stop offset="50%" stop-color="rgba(0,143,236,.4)"/>
+        <stop offset="100%" stop-color="rgba(0,143,236,0)"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="3"/></filter>
+      <filter id="glowBig"><feGaussianBlur stdDeviation="10"/></filter>
+    </defs>
+    <rect width="1200" height="540" fill="#06080c"/>
+    <!-- Fog banks (marine layer) clustered near coast start -->
+    <circle cx="260" cy="210" r="140" fill="url(#fog)"/>
+    <circle cx="180" cy="310" r="160" fill="url(#fog)"/>
+    <circle cx="340" cy="280" r="120" fill="url(#fog)"/>
+    <!-- Sun aura where race will be in direct sun -->
+    <circle cx="820" cy="240" r="200" fill="url(#sun)"/>
+    <!-- Wind streaks along coast -->
+    <g id="wind"></g>
+    <!-- Route -->
+    <g id="routePath"></g>
+    <!-- Weather callouts -->
+    <g id="weatherCallouts"></g>
+    <g id="marks"></g>
+  </svg>
+  <div class="wstrip">
+    <span>⛅ <b>62°F</b> start</span>
+    <span>🌤️ <b>71°F</b> peak</span>
+    <span>💨 <b>12mph</b> NW</span>
+    <span>🌊 <b>Fog</b> first 5mi</span>
+    <span>🌅 Sunrise 6:42 AM</span>
+  </div>
+  <div class="over-tl"><div class="eye">Race-day weather · G</div><div class="ttl">Big Sur<br>Apr 26 · 6:45 AM</div></div>
+  <div class="legend">
+    <span><i style="background:rgba(255,255,255,.4)"></i>Marine fog</span>
+    <span><i style="background:rgba(243,173,59,.5)"></i>Direct sun</span>
+    <span><i style="background:rgba(0,143,236,.5)"></i>Headwind gust zone</span>
+    <span>Course G · forecast at your projected ETA</span>
+  </div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200,H=540;
+  var dense = LAB.densify(LAB.WAYPOINTS, 30);
+  var proj = LAB.project(dense, W, H, { l:120,r:140,t:100,b:110 });
+  var d = LAB.smoothPath(proj);
+
+  // Wind streaks parallel to route at offset
+  var wi = '';
+  for (var i=0;i<8;i++){
+    var yo = 100 + i*50;
+    wi += '<line x1="0" y1="'+yo+'" x2="1200" y2="'+(yo+20)+'" stroke="url(#wind)" stroke-width="1.5" opacity=".5"/>';
+  }
+  document.getElementById('wind').innerHTML = wi;
+
+  document.getElementById('routePath').innerHTML =
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="14" filter="url(#glowBig)" opacity=".65"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="5" filter="url(#glow)" opacity=".85"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  var series = LAB.buildSeries(dense);
+  // Weather callouts along route
+  var wc = '';
+  [
+    { mi:3,    txt:'Fog · 58°F',  icon:'🌫' },
+    { mi:10.6, txt:'Clear · 64°F · headwind', icon:'💨' },
+    { mi:18,   txt:'Sun · 71°F',  icon:'☀️' },
+    { mi:24,   txt:'Cool · 66°F', icon:'🌤' }
+  ].forEach(function(w){
+    var p = LAB.pointAtMi(proj, series.cum, w.mi);
+    wc += '<circle cx="'+p.x+'" cy="'+(p.y-44)+'" r="18" fill="rgba(8,12,18,.85)" stroke="#F3AD3B" stroke-width="1.2"/>' +
+          '<text x="'+p.x+'" y="'+(p.y-40)+'" text-anchor="middle" font-size="16">'+w.icon+'</text>' +
+          '<text x="'+p.x+'" y="'+(p.y-14)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9.5" font-weight="700" letter-spacing="1.4" fill="#fff" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">'+w.txt+'</text>' +
+          '<line x1="'+p.x+'" y1="'+(p.y-22)+'" x2="'+p.x+'" y2="'+p.y+'" stroke="#F3AD3B" stroke-width="1" stroke-dasharray="2 2" opacity=".6"/>';
+  });
+  document.getElementById('weatherCallouts').innerHTML = wc;
+
+  var COLORS = { start:'#3EBD41', peak:'#FC4D54', minor:'#008FEC', finish:'#9013FE' };
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var p = LAB.pointAtMi(proj, series.cum, wp.mi);
+    var col = COLORS[wp.major] || '#F3AD3B';
+    html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="6" fill="'+col+'" stroke="#06080c" stroke-width="2"/>';
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>

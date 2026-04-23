@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<meta http-equiv="refresh" content="0; url=hub.html">
+<script>
+  // Immediate redirect — more reliable than meta refresh in all browsers / on Railway
+  (function(){
+    try { window.location.replace('hub.html'); }
+    catch(e){ window.location.href = 'hub.html'; }
+  })();
+</script>
+<style>
+  body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:0; }
+  .splash { text-align:center; }
+  .splash .brand { width:72px; height:72px; border-radius:20px; background:linear-gradient(135deg, var(--xp), var(--corporate)); display:flex; align-items:center; justify-content:center; margin:0 auto 24px; font-family:var(--f-display); font-weight:700; font-size:42px; color:#fff; }
+  .splash h1 { font-family:var(--f-display); font-size:56px; font-weight:700; letter-spacing:-.015em; text-transform:uppercase; }
+  .splash p { font-family:var(--f-data); font-size:11px; letter-spacing:2.2px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:12px; }
+  .splash a { color:var(--corporate); text-decoration:none; margin-top:20px; display:inline-block; font-family:var(--f-label); font-size:13px; font-weight:700; }
+</style>
+</head>
+<body>
+  <div class="splash">
+    <div class="brand">R</div>
+    <h1>Runcino</h1>
+    <p>Loading overview…</p>
+    <a href="hub.html">Enter app →</a>
+  </div>
+</body>
+</html>

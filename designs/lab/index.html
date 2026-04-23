@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino Lab · All directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+.hub{ max-width:1440px; margin:0 auto; padding:48px 44px 120px; }
+.hub h1{ font-family:var(--f-display); font-size:72px; font-weight:700; text-transform:uppercase; letter-spacing:-.02em; line-height:.9; }
+.hub h1 small{ display:block; font-family:var(--f-data); font-size:11px; letter-spacing:2.4px; color:var(--attn); margin-bottom:14px; text-transform:uppercase; font-weight:700; }
+.hub .sub{ color:var(--t1); font-size:15px; max-width:800px; margin:18px 0 48px; line-height:1.6; }
+
+.sec{ margin-top:56px; border-top:1px solid var(--line); padding-top:30px; }
+.sec h2{ font-family:var(--f-display); font-size:28px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-bottom:6px; }
+.sec .tag{ font-family:var(--f-data); font-size:10px; letter-spacing:2px; color:var(--t2); text-transform:uppercase; font-weight:700; margin-bottom:22px; display:inline-block; }
+
+.grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+@media (max-width:980px){ .grid{ grid-template-columns:repeat(2,1fr); } }
+
+.tile{ background:var(--surf); border:1px solid var(--line); border-radius:14px; overflow:hidden; text-decoration:none; color:inherit; display:flex; flex-direction:column; transition:border .15s, transform .15s; }
+.tile:hover{ border-color:var(--attn); transform:translateY(-2px); }
+.tile .prev{ height:150px; background:#05070b; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; color:var(--t2); font-family:var(--f-data); font-size:10px; letter-spacing:2px; }
+.tile .prev iframe{ width:100%; height:100%; border:0; pointer-events:none; transform:scale(.4); transform-origin:top left; width:250%; height:375%; }
+.tile .prev.has-iframe{ display:block; }
+.tile .body{ padding:14px 16px 16px; }
+.tile .k{ font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; color:var(--attn); text-transform:uppercase; font-weight:700; }
+.tile .t{ font-family:var(--f-display); font-size:17px; font-weight:700; margin-top:4px; text-transform:uppercase; letter-spacing:-.005em; }
+.tile .d{ color:var(--t1); font-size:12.5px; line-height:1.45; margin-top:6px; }
+
+.badge{ display:inline-block; font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; padding:3px 7px; border-radius:3px; background:rgba(246,247,248,.07); color:var(--t2); text-transform:uppercase; font-weight:700; margin-top:8px; margin-right:5px; }
+.badge.live{ color:var(--succ); background:rgba(62,189,65,.1); }
+.badge.stub{ color:var(--attn); background:rgba(243,173,59,.1); }
+</style>
+</head>
+<body>
+<div class="hub">
+  <h1><small>Runcino · Lab</small>Every direction</h1>
+  <div class="sub">Each tile is a self-contained preview of one design direction for the race-detail page — all rendered against the same Big Sur dataset so you can compare at a glance. Click any tile to open the full-size demo. Pick the ones you like, I'll promote them to production.</div>
+
+  <!-- ================== MAP DIRECTIONS ================== -->
+  <div class="sec">
+    <span class="tag">MAP / ROUTE</span>
+    <h2>The course visual</h2>
+    <div class="grid">
+      <a class="tile" href="map-a-topo.html"><div class="prev"><iframe src="map-a-topo.html" loading="lazy"></iframe></div><div class="body"><div class="k">A · TOPOGRAPHIC POSTER</div><div class="t">Muir Way contour print</div><div class="d">Contour lines on cream paper. Analog, framed-print quality.</div></div></a>
+      <a class="tile" href="map-b-hillshade.html"><div class="prev"><iframe src="map-b-hillshade.html" loading="lazy"></iframe></div><div class="body"><div class="k">B · HILLSHADED RELIEF</div><div class="t">Fatmap / Komoot 3D</div><div class="d">Shaded terrain PNG backdrop. Real + magical, no tiles.</div></div></a>
+      <a class="tile" href="map-c-isometric.html"><div class="prev"><iframe src="map-c-isometric.html" loading="lazy"></iframe></div><div class="body"><div class="k">C · ISOMETRIC 3D</div><div class="t">Mountain pops up</div><div class="d">Fake-3D mountain mesh. Route rides across elevation.</div></div></a>
+      <a class="tile" href="map-d-satellite.html"><div class="prev"><iframe src="map-d-satellite.html" loading="lazy"></iframe></div><div class="body"><div class="k">D · CINEMATIC SATELLITE</div><div class="t">Real coastline, darkened</div><div class="d">Single baked satellite image. Dark, cinematic, no tile drama.</div></div></a>
+      <a class="tile" href="map-e-typographic.html"><div class="prev"><iframe src="map-e-typographic.html" loading="lazy"></iframe></div><div class="body"><div class="k">E · TYPOGRAPHIC HERO</div><div class="t">Route weaves through type</div><div class="d">"BIG SUR" as 120pt hero, route threads between letters.</div></div></a>
+      <a class="tile" href="map-f-seismograph.html"><div class="prev"><iframe src="map-f-seismograph.html" loading="lazy"></iframe></div><div class="body"><div class="k">F · SEISMOGRAPH</div><div class="t">1D EKG strip</div><div class="d">Drop geography. Course as a timeline strip — elevation + grade.</div></div></a>
+      <a class="tile" href="map-g-weather.html"><div class="prev"><iframe src="map-g-weather.html" loading="lazy"></iframe></div><div class="body"><div class="k">G · WEATHER-OVERLAID</div><div class="t">Race-day conditions</div><div class="d">Fog, wind, sun position drawn onto the course for your ETA.</div></div></a>
+      <a class="tile" href="map-h-diptych.html"><div class="prev"><iframe src="map-h-diptych.html" loading="lazy"></iframe></div><div class="body"><div class="k">H · DUAL DIPTYCH</div><div class="t">Plan view + cross-section</div><div class="d">Two maps side-by-side. Architectural drawing feel.</div></div></a>
+      <a class="tile" href="map-i-constellation.html"><div class="prev"><iframe src="map-i-constellation.html" loading="lazy"></iframe></div><div class="body"><div class="k">I · REACTIVE CONSTELLATION</div><div class="t">Stars that react to route</div><div class="d">Dot grid dims near route, scatters at peak, clusters at waypoints.</div></div></a>
+      <a class="tile" href="map-j-storyboard.html"><div class="prev"><iframe src="map-j-storyboard.html" loading="lazy"></iframe></div><div class="body"><div class="k">J · MILE STORYBOARD</div><div class="t">26 thumbnail chapters</div><div class="d">Course as a strip of 26 mini-tiles. Chapter-by-chapter.</div></div></a>
+    </div>
+  </div>
+
+  <!-- ================== ELEVATION PROFILE ================== -->
+  <div class="sec">
+    <span class="tag">ELEVATION PROFILE</span>
+    <h2>How we chart the climb</h2>
+    <div class="grid">
+      <a class="tile" href="elev-1-area.html"><div class="prev"><iframe src="elev-1-area.html" loading="lazy"></iframe></div><div class="body"><div class="k">1 · AREA + GRADE</div><div class="t">Filled area, grade-colored</div><div class="d">Classic elevation area chart, fill by grade (green→red).</div></div></a>
+      <a class="tile" href="elev-2-zones.html"><div class="prev"><iframe src="elev-2-zones.html" loading="lazy"></iframe></div><div class="body"><div class="k">2 · EFFORT ZONES</div><div class="t">Terrain + strategy bands</div><div class="d">Warm-up / goal / surge / recovery zones stacked on elevation.</div></div></a>
+      <a class="tile" href="elev-3-hr.html"><div class="prev"><iframe src="elev-3-hr.html" loading="lazy"></iframe></div><div class="body"><div class="k">3 · HR OVERLAY</div><div class="t">Predicted heart rate</div><div class="d">Elevation + projected HR trace. Warns about spikes.</div></div></a>
+      <a class="tile" href="elev-4-dualaxis.html"><div class="prev"><iframe src="elev-4-dualaxis.html" loading="lazy"></iframe></div><div class="body"><div class="k">4 · PACE × ELEV</div><div class="t">Dual-axis race brief</div><div class="d">Elevation area behind, target pace line in front. Strategy at a glance.</div></div></a>
+      <a class="tile" href="elev-5-minimal.html"><div class="prev"><iframe src="elev-5-minimal.html" loading="lazy"></iframe></div><div class="body"><div class="k">5 · MINIMAL</div><div class="t">Peaks labeled editorially</div><div class="d">Thin line, hand-placed call-outs. Magazine graphic feel.</div></div></a>
+      <a class="tile" href="elev-6-vertical.html"><div class="prev"><iframe src="elev-6-vertical.html" loading="lazy"></iframe></div><div class="body"><div class="k">6 · VERTICAL</div><div class="t">Thermometer alongside</div><div class="d">Profile runs vertically beside the map. Saves horizontal space.</div></div></a>
+    </div>
+  </div>
+
+  <!-- ================== COMPOSITION ================== -->
+  <div class="sec">
+    <span class="tag">CARD COMPOSITION</span>
+    <h2>How everything fits together</h2>
+    <div class="grid">
+      <a class="tile" href="comp-alpha-poster.html"><div class="prev"><iframe src="comp-alpha-poster.html" loading="lazy"></iframe></div><div class="body"><div class="k">α · POSTER</div><div class="t">One hero image</div><div class="d">Map dominates 550px tall. Framed-print layout.</div></div></a>
+      <a class="tile" href="comp-beta-magazine.html"><div class="prev"><iframe src="comp-beta-magazine.html" loading="lazy"></iframe></div><div class="body"><div class="k">β · MAGAZINE SPREAD</div><div class="t">2/3 + 1/3 editorial</div><div class="d">Map left 2/3, elevation + stats right 1/3. Running mag feature.</div></div></a>
+      <a class="tile" href="comp-gamma-dashboard.html"><div class="prev"><iframe src="comp-gamma-dashboard.html" loading="lazy"></iframe></div><div class="body"><div class="k">γ · DASHBOARD COCKPIT</div><div class="t">Dense, app-like</div><div class="d">Stats corners + countdown + weather strip. More widget.</div></div></a>
+      <a class="tile" href="comp-delta-scroll.html"><div class="prev"><iframe src="comp-delta-scroll.html" loading="lazy"></iframe></div><div class="body"><div class="k">δ · SCROLLYTELLING</div><div class="t">Scroll to reveal</div><div class="d">Map stays pinned, details reveal mile-by-mile as you scroll.</div></div></a>
+    </div>
+  </div>
+
+  <!-- ================== MOOD ================== -->
+  <div class="sec">
+    <span class="tag">MOOD / AESTHETIC</span>
+    <h2>The vibe everything hangs on</h2>
+    <div class="grid">
+      <a class="tile" href="mood-tattoo.html"><div class="prev"><iframe src="mood-tattoo.html" loading="lazy"></iframe></div><div class="body"><div class="k">🔥 NEON TATTOO</div><div class="t">Pitch black, phase glow</div><div class="d">Current direction. Blade Runner Big Sur.</div></div></a>
+      <a class="tile" href="mood-topo.html"><div class="prev"><iframe src="mood-topo.html" loading="lazy"></iframe></div><div class="body"><div class="k">🗺️ ANALOG TOPO</div><div class="t">Cream paper, brown contours</div><div class="d">Field Notes × Nat Geo. Gift-shop print quality.</div></div></a>
+      <a class="tile" href="mood-alpine.html"><div class="prev"><iframe src="mood-alpine.html" loading="lazy"></iframe></div><div class="body"><div class="k">🏔️ ALPINE</div><div class="t">Dark teal, Swiss precision</div><div class="d">Fatmap aesthetic. Mountaineering-grade tool.</div></div></a>
+      <a class="tile" href="mood-editorial.html"><div class="prev"><iframe src="mood-editorial.html" loading="lazy"></iframe></div><div class="body"><div class="k">📰 EDITORIAL SPORT</div><div class="t">White, black, orange</div><div class="d">Bloomberg × Boston Marathon. Confident, clean.</div></div></a>
+      <a class="tile" href="mood-hud.html"><div class="prev"><iframe src="mood-hud.html" loading="lazy"></iframe></div><div class="body"><div class="k">🎮 GAMER HUD</div><div class="t">Scanlines, monospace, pulse</div><div class="d">Destiny / Death Stranding. Niche but striking.</div></div></a>
+      <a class="tile" href="mood-coastal.html"><div class="prev"><iframe src="mood-coastal.html" loading="lazy"></iframe></div><div class="body"><div class="k">🌊 PACIFIC COASTAL</div><div class="t">Dusty blues, golden hour</div><div class="d">Place-specific. Big Sur lit by a sunset gradient.</div></div></a>
+    </div>
+  </div>
+
+  <!-- ================== FLYOVER ================== -->
+  <div class="sec">
+    <span class="tag">FLYOVER / ANIMATION</span>
+    <h2>Make it move</h2>
+    <div class="grid">
+      <a class="tile" href="fly-a-relive.html"><div class="prev"><iframe src="fly-a-relive.html" loading="lazy"></iframe></div><div class="body"><div class="k">A · RELIVE-STYLE 3D</div><div class="t">Camera flies along route</div><div class="d">Mapbox 3D terrain + satellite. Token-gated but we stub it.</div></div></a>
+      <a class="tile" href="fly-b-drawin.html"><div class="prev"><iframe src="fly-b-drawin.html" loading="lazy"></iframe></div><div class="body"><div class="k">B · ROUTE DRAW-IN</div><div class="t">Glow reveals start→finish</div><div class="d">SVG stroke-dashoffset, 6s reveal. Zero deps.</div></div></a>
+      <a class="tile" href="fly-c-ghost.html"><div class="prev"><iframe src="fly-c-ghost.html" loading="lazy"></iframe></div><div class="body"><div class="k">C · GHOST RUNNER</div><div class="t">Dot runs the course</div><div class="d">Camera pans with a dot, waypoints pop at time.</div></div></a>
+      <a class="tile" href="fly-d-baked.html"><div class="prev"><iframe src="fly-d-baked.html" loading="lazy"></iframe></div><div class="body"><div class="k">D · PRE-BAKED MP4</div><div class="t">Cinematic loop</div><div class="d">Placeholder showing how a pre-rendered video would slot in.</div></div></a>
+      <a class="tile" href="fly-e-threejs.html"><div class="prev"><iframe src="fly-e-threejs.html" loading="lazy"></iframe></div><div class="body"><div class="k">E · THREE.JS CUSTOM</div><div class="t">Full 3D control</div><div class="d">Neon wireframe terrain, custom camera. Max creative control.</div></div></a>
+      <a class="tile" href="fly-combo-drawghost.html"><div class="prev"><iframe src="fly-combo-drawghost.html" loading="lazy"></iframe></div><div class="body"><div class="k">★ B+C COMBO</div><div class="t">Recommended stack</div><div class="d">Draw-in on load + ghost-runner on click. The keeper.</div></div></a>
+    </div>
+  </div>
+
+  <div style="margin-top:60px; padding-top:24px; border-top:1px solid var(--line); color:var(--t3); font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700;">
+    Production race-detail &nbsp;·&nbsp; <a href="../race-detail.html" style="color:var(--attn);">↗ open current race-detail.html</a>
+  </div>
+</div>
+</body>
+</html>

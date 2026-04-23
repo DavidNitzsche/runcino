@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Elevation 2 · Effort zones</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#0a0d12; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#0b1016; border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:28px 32px; }
+.hdr{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px; }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; }
+.ttl{ font-family:var(--f-display); font-size:30px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-top:4px; }
+svg{ display:block; width:100%; height:340px; }
+.zones{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-top:20px; }
+.z{ padding:12px 14px; border-radius:8px; border-left:3px solid; background:#04060a; }
+.z .k{ font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; color:rgba(255,255,255,.5); text-transform:uppercase; font-weight:700; }
+.z .v{ font-family:var(--f-display); font-size:16px; font-weight:700; margin-top:4px; }
+.z .n{ color:rgba(255,255,255,.6); font-size:11px; margin-top:3px; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <div class="hdr"><div><div class="eye">Elevation · 2 · effort zones</div><div class="ttl">Big Sur strategy brief</div></div></div>
+  <svg id="svg" viewBox="0 0 1200 340" preserveAspectRatio="none">
+    <g id="zoneBands"></g>
+    <path id="fill" fill="rgba(255,255,255,.1)"/>
+    <path id="line" fill="none" stroke="#fff" stroke-width="2"/>
+    <g id="marks"></g>
+  </svg>
+  <div class="zones">
+    <div class="z" style="border-color:#3EBD41"><div class="k">Ease in</div><div class="v">mi 0–5.8</div><div class="n">HR 140s · 8:45/mi</div></div>
+    <div class="z" style="border-color:#F3AD3B"><div class="k">Climb effort</div><div class="v">mi 5.8–10.6</div><div class="n">HR 160s · 9:20/mi</div></div>
+    <div class="z" style="border-color:#FC4D54"><div class="k">Hurricane</div><div class="v">mi 10.6–12</div><div class="n">HR 170+ · recover on top</div></div>
+    <div class="z" style="border-color:#008FEC"><div class="k">Cruise</div><div class="v">mi 12–21</div><div class="n">HR 155s · 8:30/mi</div></div>
+    <div class="z" style="border-color:#9013FE"><div class="k">Finish strong</div><div class="v">mi 21–26.2</div><div class="n">HR 165s · 8:20/mi</div></div>
+  </div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200,H=340;
+  var dense = LAB.densify(LAB.WAYPOINTS, 36);
+  var series = LAB.buildSeries(dense);
+  var cum=series.cum, elev=series.elevFt, total=cum[cum.length-1];
+  var maxE=Math.max.apply(null,elev), minE=Math.min.apply(null,elev), r=maxE-minE||1;
+
+  // Zone bands as background strips
+  var zb = '';
+  var zones = [ {p:0.22,c:'#3EBD41'},{p:0.42,c:'#F3AD3B'},{p:0.52,c:'#FC4D54'},{p:0.82,c:'#008FEC'},{p:1,c:'#9013FE'} ];
+  var prev = 0;
+  zones.forEach(function(z){
+    var x1 = prev*W, x2 = z.p*W;
+    zb += '<rect x="'+x1+'" y="0" width="'+(x2-x1)+'" height="'+H+'" fill="'+z.c+'" opacity=".08"/>';
+    prev = z.p;
+  });
+  document.getElementById('zoneBands').innerHTML = zb;
+
+  var d='', fl='M 0 '+H;
+  for (var i=0;i<dense.length;i++){
+    var x = (cum[i]/total)*W;
+    var y = 30 + (1 - (elev[i]-minE)/r)*(H-60);
+    d += (i===0?'M ':'L ')+x.toFixed(1)+' '+y.toFixed(1)+' ';
+    fl += ' L '+x.toFixed(1)+' '+y.toFixed(1);
+  }
+  fl += ' L '+W+' '+H+' Z';
+  document.getElementById('line').setAttribute('d', d);
+  document.getElementById('fill').setAttribute('d', fl);
+
+  var COLORS = { start:'#3EBD41', peak:'#FC4D54', minor:'#008FEC', finish:'#9013FE' };
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var x = (wp.mi/total)*W;
+    var lo=0,hi=cum.length-1;
+    while (lo<hi-1){ var m=(lo+hi)>>1; if (cum[m]<wp.mi) lo=m; else hi=m; }
+    var span=cum[hi]-cum[lo]||1e-9, t=(wp.mi-cum[lo])/span;
+    var e = elev[lo]+(elev[hi]-elev[lo])*t;
+    var y = 30 + (1 - (e-minE)/r)*(H-60);
+    var col = COLORS[wp.major]||'#F3AD3B';
+    html += '<circle cx="'+x+'" cy="'+y+'" r="5" fill="'+col+'" stroke="#0b1016" stroke-width="2"/>' +
+            '<text x="'+x+'" y="'+(y-12)+'" text-anchor="middle" fill="'+col+'" font-family="Oswald,sans-serif" font-size="11" font-weight="700" letter-spacing="1.6">'+wp.label+'</text>';
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>

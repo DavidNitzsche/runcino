@@ -1,0 +1,117 @@
+/* ─── Runcino · shared design system ─────────────────────
+   Pulled from hub.html v.1 · tokens, nav, chrome, primitives.
+   Each page adds its own .page-* styles.                   */
+
+:root {
+  /* Layer scale */
+  --l0:#10131A;
+  --l1:#141820;
+  --l2:#1A212D;
+  --l3:#1D2736;
+  --l4:#21303F;
+  --l5:#2b3a4e;
+
+  /* Type */
+  --t0:#F6F7F8;
+  --t1:rgba(246,247,248,.72);
+  --t2:rgba(246,247,248,.48);
+  --t3:rgba(246,247,248,.32);
+
+  /* Semantic */
+  --corporate:#008FEC;
+  --warning:#FC4D54;
+  --success:#3EBD41;
+  --caution:#F0DF47;
+  --attention:#F3AD3B;
+  --xp:#9013FE;
+
+  /* Data */
+  --lt-blue:#2784E0;
+  --dk-blue:#2264E3;
+  --aqua:#27E087;
+  --yellow:#F0DF47;
+  --pink:#CD317C;
+  --orange:#E88221;
+  --green:#139520;
+  --gray:#646464;
+
+  --f-display: "Oswald", "Headliner", "Bebas Neue", "Helvetica Neue Condensed", "Arial Narrow", sans-serif;
+  --f-body:    "Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", Avenir, sans-serif;
+  --f-label:   "Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", sans-serif;
+  --f-data:    "JetBrains Mono", "SF Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; letter-spacing:.005em; }
+body { padding:24px; }
+
+/* ─── Shell ──────────────────────────────────────────────── */
+.stage { max-width:1440px; margin:0 auto; width:100%; border-radius:20px; overflow:hidden; background:var(--l0); border:1px solid var(--l4); box-shadow:0 40px 100px rgba(0,0,0,.5); }
+.caption { max-width:1440px; margin:0 auto 12px; font-family:var(--f-data); font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:var(--t3); font-weight:700; display:flex; justify-content:space-between; align-items:baseline; padding:0 4px; }
+.caption span { font-family:var(--f-body); font-size:12px; text-transform:none; letter-spacing:.005em; color:var(--t3); font-weight:500; }
+.body { padding:26px 28px 30px; }
+
+/* ─── Nav ────────────────────────────────────────────────── */
+.nav { display:flex; align-items:center; justify-content:space-between; padding:18px 28px; border-bottom:1px solid var(--l4); }
+.nav-l { display:flex; align-items:center; gap:28px; }
+.brand { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, var(--xp), var(--corporate)); color:var(--t0); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:20px; text-decoration:none; }
+.tabs { display:flex; gap:2px; align-items:center; padding:4px; border-radius:100px; background:var(--l1); border:1px solid var(--l4); }
+.tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); letter-spacing:-.01em; text-decoration:none; cursor:pointer; }
+.tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+.tab:hover:not(.active) { color:var(--t1); }
+.nav-r { display:flex; gap:10px; align-items:center; }
+.nav-ic { width:32px; height:32px; border-radius:50%; background:var(--l1); color:var(--t2); border:1px solid var(--l4); display:flex; align-items:center; justify-content:center; font-size:13px; cursor:pointer; }
+.avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--corporate),var(--aqua)); }
+
+/* ─── Chips ──────────────────────────────────────────────── */
+.chip { display:inline-flex; align-items:center; gap:4px; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; font-weight:700; padding:3px 7px; border-radius:4px; background:var(--l3); color:var(--t1); border:1px solid var(--l4); text-transform:uppercase; white-space:nowrap; }
+.chip--success { background:rgba(62,189,65,.12); color:var(--success); border-color:rgba(62,189,65,.3); }
+.chip--warning { background:rgba(252,77,84,.12); color:var(--warning); border-color:rgba(252,77,84,.3); }
+.chip--attention { background:rgba(243,173,59,.12); color:var(--attention); border-color:rgba(243,173,59,.3); }
+.chip--corporate { background:rgba(0,143,236,.14); color:var(--corporate); border-color:rgba(0,143,236,.3); }
+.chip--xp { background:rgba(144,19,254,.15); color:#b873ff; border-color:rgba(144,19,254,.35); }
+.chip--yellow { background:rgba(240,223,71,.15); color:var(--yellow); border-color:rgba(240,223,71,.3); }
+
+/* ─── Page header (shared across non-hub pages) ─────────── */
+.page-head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; padding-bottom:22px; border-bottom:1px solid var(--l4); }
+.page-head h1 { font-family:var(--f-display); font-size:72px; font-weight:700; letter-spacing:-.01em; line-height:.9; text-transform:uppercase; }
+.page-head .eyebrow { font-family:var(--f-data); font-size:10.5px; letter-spacing:2.2px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:10px; }
+.page-head .sub { font-family:var(--f-body); font-size:14px; color:var(--t2); font-weight:500; margin-top:12px; max-width:520px; }
+.page-head .sub b { color:var(--t1); font-weight:700; }
+
+.page-actions { display:flex; gap:8px; align-items:center; }
+.btn { border-radius:100px; padding:10px 16px; font-family:var(--f-label); font-size:13px; font-weight:700; letter-spacing:.005em; border:1px solid var(--l4); background:var(--l2); color:var(--t1); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+.btn:hover { color:var(--t0); border-color:var(--l5); }
+.btn--primary { background:var(--corporate); border-color:var(--corporate); color:#fff; }
+.btn--primary:hover { background:#1ca3f7; }
+.btn--ghost { background:transparent; }
+
+/* ─── Generic tile ───────────────────────────────────────── */
+.tile { border-radius:14px; padding:20px 22px; background:var(--l1); border:1px solid var(--l4); }
+.tile--raised { background:var(--l2); }
+.tile-h { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+.tile-lbl { font-size:17px; font-weight:700; letter-spacing:-.01em; color:var(--t0); }
+.tile-sub { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+
+/* ─── KPI inline ─────────────────────────────────────────── */
+.kpi-num { font-family:var(--f-display); font-weight:800; font-size:54px; letter-spacing:-.035em; line-height:1; color:var(--t0); font-variant-numeric:tabular-nums; }
+.kpi-num small { font-size:.28em; opacity:.45; font-weight:700; margin-left:3px; }
+.kpi-lbl { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+
+/* ─── Data strip ─────────────────────────────────────────── */
+.hrule { border-top:1px solid var(--l4); margin:14px 0; }
+.mono { font-family:var(--f-data); font-variant-numeric:tabular-nums; }
+.cap { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+.cap b { color:var(--t1); font-weight:800; }
+
+/* ─── Table ──────────────────────────────────────────────── */
+.tbl { width:100%; border-collapse:collapse; }
+.tbl th { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:left; padding:10px 14px; border-bottom:1px solid var(--l4); }
+.tbl td { padding:14px; border-bottom:1px solid var(--l4); font-size:14px; color:var(--t1); vertical-align:middle; }
+.tbl tr:last-child td { border-bottom:0; }
+.tbl tr:hover td { background:var(--l2); }
+.tbl .num { font-family:var(--f-data); font-variant-numeric:tabular-nums; color:var(--t0); font-weight:700; }
+
+/* ─── Reusable primitives ────────────────────────────────── */
+.dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.divider { height:1px; background:var(--l4); width:100%; }

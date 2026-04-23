@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map A · Topographic poster</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#f3ede1; color:#2a231a; font-family:var(--f-ui); }
+.card{ max-width:1320px; margin:40px auto; background:#eee3ce; border:1px solid #c7b99a; border-radius:4px; padding:42px 52px 48px; box-shadow:0 16px 40px rgba(0,0,0,.12); position:relative; }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.6px; color:#8a6a3a; font-weight:700; text-transform:uppercase; }
+.ttl{ font-family:var(--f-display); font-weight:700; font-size:52px; letter-spacing:.01em; text-transform:uppercase; color:#2a231a; margin:6px 0 4px; }
+.sub{ font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; color:#6d5a3a; text-transform:uppercase; font-weight:700; margin-bottom:24px; }
+.frame{ border:2px solid #a89374; padding:18px; border-radius:2px; background:#e5d6b3; }
+svg{ display:block; width:100%; height:460px; }
+.stats{ display:flex; justify-content:space-between; margin-top:22px; padding-top:18px; border-top:1px dashed #a89374; }
+.s-l{ font-family:var(--f-data); font-size:9.5px; letter-spacing:1.8px; color:#8a6a3a; text-transform:uppercase; font-weight:700; }
+.s-v{ font-family:var(--f-display); font-size:24px; font-weight:700; color:#2a231a; margin-top:4px; }
+.credit{ margin-top:20px; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; color:#8a6a3a; text-transform:uppercase; font-weight:700; text-align:center; }
+</style></head>
+<body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1320px;margin:22px auto 0;color:#8a6a3a;">← ALL DIRECTIONS</a>
+<div class="card">
+  <div class="eye">Map · A · Topographic poster</div>
+  <div class="ttl">Big Sur Marathon</div>
+  <div class="sub">Highway 1 · Big Sur Station to Carmel · 26.2 miles</div>
+
+  <div class="frame">
+    <svg id="svg" viewBox="0 0 1200 460" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <pattern id="paper" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+          <rect width="4" height="4" fill="#e5d6b3"/>
+          <circle cx="2" cy="2" r=".5" fill="#c6b78f" opacity=".5"/>
+        </pattern>
+      </defs>
+      <rect width="1200" height="460" fill="url(#paper)"/>
+      <g id="contours"></g>
+      <g id="route"></g>
+      <g id="marks"></g>
+    </svg>
+  </div>
+
+  <div class="stats">
+    <div><div class="s-l">Distance</div><div class="s-v">26.2 mi</div></div>
+    <div><div class="s-l">Elevation gain</div><div class="s-v">+2,153 ft</div></div>
+    <div><div class="s-l">Elevation loss</div><div class="s-v">−2,422 ft</div></div>
+    <div><div class="s-l">Peak</div><div class="s-v">568 ft</div></div>
+    <div><div class="s-l">High point</div><div class="s-v">Hurricane Pt · mi 10.6</div></div>
+  </div>
+
+  <div class="credit">RUNCINO · TOPOGRAPHIC SERIES · NO. 1 · BIG SUR · EST. 2026</div>
+</div>
+
+<script src="data.js"></script>
+<script>
+  var W=1200,H=460;
+  var dense = LAB.densify(LAB.WAYPOINTS, 30);
+  var proj = LAB.project(dense, W, H, { l:100,r:100,t:60,b:60 });
+
+  // Contour "echoes" as offset copies of the route, simulating topographic lines
+  var cont = document.getElementById('contours');
+  var contHtml = '';
+  [ -90,-70,-50,-30,30,50,70,90 ].forEach(function(dy,idx){
+    var off = proj.map(function(p,i){
+      var a=proj[Math.max(0,i-1)], b=proj[Math.min(proj.length-1,i+1)];
+      var tx=b.x-a.x, ty=b.y-a.y, L=Math.hypot(tx,ty)||1;
+      return { x:p.x + (-ty/L)*dy, y:p.y + (tx/L)*dy };
+    });
+    var d = LAB.smoothPath(off);
+    var op = (0.35 - Math.abs(dy)/300).toFixed(2);
+    contHtml += '<path d="'+d+'" fill="none" stroke="#8a6a3a" stroke-width=".8" opacity="'+op+'"/>';
+  });
+  // Add some random closed ring contours for terrain feel
+  for (var i=0;i<12;i++){
+    var cx = 200 + Math.random()*800, cy = 80 + Math.random()*300;
+    var rx = 40+Math.random()*80, ry = 25+Math.random()*50, rot = Math.random()*180;
+    contHtml += '<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="none" stroke="#8a6a3a" stroke-width=".6" opacity=".25" transform="rotate('+rot+' '+cx+' '+cy+')"/>';
+  }
+  cont.innerHTML = contHtml;
+
+  // Route in deep brown ink
+  var d = LAB.smoothPath(proj);
+  document.getElementById('route').innerHTML =
+    '<path d="'+d+'" fill="none" stroke="#9c2a1a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  // Waypoints as hand-drawn marks
+  var series = LAB.buildSeries(dense);
+  var marks = document.getElementById('marks');
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var p = LAB.pointAtMi(proj, series.cum, wp.mi);
+    if (wp.major==='start' || wp.major==='finish'){
+      html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="6" fill="#9c2a1a"/>' +
+              '<circle cx="'+p.x+'" cy="'+p.y+'" r="10" fill="none" stroke="#9c2a1a" stroke-width="1.5"/>' +
+              '<text x="'+p.x+'" y="'+(p.y+26)+'" text-anchor="middle" fill="#2a231a" font-family="Oswald,sans-serif" font-size="13" font-weight="700" letter-spacing="2">'+wp.label+'</text>';
+    } else if (wp.major==='peak'){
+      html += '<polygon points="'+(p.x-8)+','+(p.y+6)+' '+p.x+','+(p.y-10)+' '+(p.x+8)+','+(p.y+6)+'" fill="#9c2a1a"/>' +
+              '<text x="'+p.x+'" y="'+(p.y-18)+'" text-anchor="middle" fill="#9c2a1a" font-family="Oswald,sans-serif" font-size="12" font-weight="700" letter-spacing="2">'+wp.label+'</text>';
+    } else {
+      html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="#9c2a1a"/>' +
+              '<text x="'+(p.x+10)+'" y="'+(p.y+4)+'" fill="#6d5a3a" font-family="JetBrains Mono,monospace" font-size="10" font-weight="700">'+wp.label+'</text>';
+    }
+  });
+  marks.innerHTML = html;
+</script>
+</body></html>

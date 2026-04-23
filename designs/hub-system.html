@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Hub · System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* ─── Layer scale ──────────────────────────────────────── */
+    --l0:#10131A;       /* basement · page canvas */
+    --l1:#141820;       /* background · default tile */
+    --l2:#1A212D;       /* first · raised tile */
+    --l3:#1D2736;       /* second · inset (cells, tracks) */
+    --l4:#21303F;       /* third · border / stroke */
+    --l5:#2b3a4e;       /* hairline highlight */
+
+    /* ─── Type ─────────────────────────────────────────────── */
+    --t0:#F6F7F8;       /* primary */
+    --t1:rgba(246,247,248,.72);
+    --t2:rgba(246,247,248,.48);
+    --t3:rgba(246,247,248,.32);
+
+    /* ─── System / semantic ────────────────────────────────── */
+    --corporate:#008FEC;
+    --warning:#FC4D54;
+    --success:#3EBD41;
+    --attention:#F3AD3B;
+    --xp:#9013FE;
+
+    /* ─── Additional / data ────────────────────────────────── */
+    --lt-blue:#2784E0;
+    --dk-blue:#2264E3;
+    --aqua:#27E087;
+    --yellow:#F0DF47;
+    --pink:#CD317C;
+    --orange:#E88221;
+    --green:#139520;
+    --gray:#646464;
+  }
+
+  /* ─── Type system · Headliner + Futura ────────────────────
+     --display   Headliner (condensed) · hero numbers, race names, countdowns
+     --body      Futura · UI text, KPIs, sub-headlines
+     --label     Futura Medium uppercase · tracked labels
+     --data      SF Mono · technical readouts where monospace matters
+     The condensed display stacks tight vertically — perfect for
+     big pace times and race headlines. Futura handles everything else. */
+  :root {
+    --f-display: "Oswald", "Headliner", "Bebas Neue", "Helvetica Neue Condensed", "Arial Narrow", sans-serif;
+    --f-body:    "Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", Avenir, sans-serif;
+    --f-label:   "Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", sans-serif;
+    --f-data:    "JetBrains Mono", "SF Mono", "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; letter-spacing:.005em; }
+  body { padding:24px; }
+
+  .stage { max-width:1440px; margin:0 auto; width:100%; border-radius:20px; overflow:hidden; background:var(--l0); border:1px solid var(--l4); box-shadow:0 40px 100px rgba(0,0,0,.5); }
+  .caption { max-width:1440px; margin:0 auto 12px; font-family:var(--f-data); font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:var(--t3); font-weight:700; display:flex; justify-content:space-between; align-items:baseline; padding:0 4px; }
+  .caption span { font-family:var(--f-body); font-size:12px; text-transform:none; letter-spacing:.005em; color:var(--t3); font-weight:500; }
+
+  /* ─── Nav ───────────────────────────────────────────────── */
+  .nav { display:flex; align-items:center; justify-content:space-between; padding:18px 28px; border-bottom:1px solid var(--l4); }
+  .nav-l { display:flex; align-items:center; gap:28px; }
+  .brand { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, var(--xp), var(--corporate)); color:var(--t0); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:20px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:4px; border-radius:100px; background:var(--l1); border:1px solid var(--l4); }
+  .tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); letter-spacing:-.01em; }
+  .tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .nav-r { display:flex; gap:10px; align-items:center; }
+  .nav-ic { width:32px; height:32px; border-radius:50%; background:var(--l1); color:var(--t2); border:1px solid var(--l4); display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--corporate),var(--aqua)); }
+
+  /* ─── Body ──────────────────────────────────────────────── */
+  .body { padding:26px 28px 30px; }
+  .head { display:grid; grid-template-columns:1fr 2.2fr; gap:28px; align-items:end; margin-bottom:22px; }
+  .greet-hi { font-family:var(--f-label); font-size:11px; text-transform:uppercase; letter-spacing:2px; color:var(--t2); margin-bottom:14px; font-weight:500; }
+  .greet-nm { font-family:var(--f-display); font-size:68px; font-weight:600; letter-spacing:-.005em; line-height:.95; color:var(--t0); text-transform:uppercase; }
+  .greet-tag { margin-top:18px; display:flex; align-items:center; gap:12px; }
+  .greet-tag__bar { width:32px; height:3px; background:var(--attention); border-radius:2px; flex-shrink:0; }
+  .greet-tag__t { font-family:var(--f-label); font-weight:500; font-size:14px; letter-spacing:2.5px; text-transform:uppercase; color:var(--attention); }
+
+  /* ─── Stat row ──────────────────────────────────────────── */
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .stat { border-radius:14px; padding:16px 18px; min-height:124px; display:flex; flex-direction:column; justify-content:space-between; background:var(--l1); border:1px solid var(--l4); }
+  .stat-top { display:flex; justify-content:space-between; align-items:center; }
+  .stat-lbl { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .stat-num { font-family:var(--f-display); font-weight:800; font-size:46px; letter-spacing:-.01em; line-height:1; font-variant-numeric:tabular-nums; color:var(--t0); }
+  .stat-num small { font-size:.38em; opacity:.5; font-weight:700; margin-left:4px; }
+  .stat-dt { font-family:var(--f-data); font-size:11.5px; font-weight:700; color:var(--t1); letter-spacing:.5px; margin-top:8px; }
+  .stat--gradient { background:linear-gradient(135deg, var(--xp) 0%, var(--corporate) 100%); border:0; }
+  .stat--gradient .stat-lbl { color:rgba(246,247,248,.75); }
+  .stat--gradient .stat-dt { color:rgba(246,247,248,.85); }
+  .stat--race { background:var(--l1); border:1px solid var(--warning); position:relative; overflow:hidden; }
+  .stat--race::after { content:""; position:absolute; top:-50%; right:-30%; width:200px; height:200px; border-radius:50%; background:radial-gradient(circle, rgba(252,77,84,.18) 0%, transparent 60%); pointer-events:none; }
+  .stat--race .stat-num { font-family:var(--f-display); font-weight:600; text-transform:uppercase; letter-spacing:.01em; font-size:32px; color:var(--warning); }
+  .stat--race .stat-dt { color:var(--warning); }
+
+  /* ─── Chips ─────────────────────────────────────────────── */
+  .chip { display:inline-flex; align-items:center; gap:4px; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; font-weight:700; padding:3px 7px; border-radius:4px; background:var(--l3); color:var(--t1); border:1px solid var(--l4); text-transform:uppercase; }
+  .chip--success { background:rgba(62,189,65,.12); color:var(--success); border-color:rgba(62,189,65,.3); }
+  .chip--warning { background:rgba(252,77,84,.12); color:var(--warning); border-color:rgba(252,77,84,.3); }
+  .chip--attention { background:rgba(243,173,59,.12); color:var(--attention); border-color:rgba(243,173,59,.3); }
+  .chip--corporate { background:rgba(0,143,236,.14); color:var(--corporate); border-color:rgba(0,143,236,.3); }
+  .chip--xp { background:rgba(144,19,254,.15); color:#b873ff; border-color:rgba(144,19,254,.35); }
+  .chip--yellow { background:rgba(240,223,71,.15); color:var(--yellow); border-color:rgba(240,223,71,.3); }
+
+  /* ─── Charts row ────────────────────────────────────────── */
+  .charts { display:grid; grid-template-columns:1.4fr 1fr 1.1fr; gap:10px; margin:10px 0; }
+  .tile { border-radius:14px; padding:18px 20px; background:var(--l1); border:1px solid var(--l4); }
+  .tile-h { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+  .tile-lbl { font-size:13px; font-weight:700; letter-spacing:-.01em; color:var(--t0); }
+  .tile-sub { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:3px; }
+  .tile-meta { font-family:var(--f-data); font-size:9px; letter-spacing:1.8px; color:var(--t3); font-weight:700; }
+
+  /* This week */
+  .wk-hero { display:flex; align-items:baseline; gap:14px; margin-bottom:14px; }
+  .wk-tot { font-family:var(--f-display); font-weight:800; font-size:42px; letter-spacing:-.035em; line-height:1; }
+  .wk-tot small { font-size:11px; font-weight:500; color:var(--t2); margin-left:10px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase; }
+  .wk-prog { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--l3); margin-bottom:14px; }
+  .wk-prog .d { background:var(--success); }
+  .wk-prog .t { background:var(--corporate); }
+  .wk-prog .l { background:var(--l4); }
+  .wk-prog .r { background:var(--warning); }
+  .wk-days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .wk-day { border-radius:10px; padding:10px 6px; background:var(--l3); display:flex; flex-direction:column; align-items:center; gap:3px; min-height:76px; justify-content:space-between; border:1px solid transparent; }
+  .wk-day .dow { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .wk-day .dist { font-family:var(--f-display); font-weight:800; font-size:16px; letter-spacing:-.02em; color:var(--t0); }
+  .wk-day .kind { font-family:var(--f-label); font-size:9.5px; text-align:center; line-height:1.15; font-weight:500; color:var(--t2); letter-spacing:.2px; }
+  .wk-day.done { background:rgba(62,189,65,.1); border-color:rgba(62,189,65,.25); }
+  .wk-day.done .dow, .wk-day.done .kind { color:var(--success); }
+  .wk-day.today { background:var(--corporate); border-color:var(--corporate); box-shadow:0 0 0 3px rgba(0,143,236,.2); }
+  .wk-day.today .dow, .wk-day.today .kind { color:rgba(246,247,248,.85); }
+  .wk-day.today .dist { color:#fff; }
+  .wk-day.rest { background:transparent; border:1px dashed var(--l4); }
+  .wk-day.rest .dist { color:var(--t3); font-size:12px; }
+  .wk-day.rest .kind { color:var(--t3); }
+  .wk-day.race { background:var(--l0); border-color:var(--warning); }
+  .wk-day.race .dow { color:var(--warning); }
+  .wk-day.race .kind { color:var(--warning); font-style:normal; font-family:var(--f-data); letter-spacing:1.3px; font-size:9px; font-weight:700; }
+
+  /* Today card */
+  .today { background:var(--l2); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; border:1px solid var(--l4); position:relative; overflow:hidden; }
+  .today::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--corporate); }
+  .today .tile-sub { color:var(--corporate); }
+  .today .tile-lbl { font-family:var(--f-display); font-weight:600; font-size:28px; letter-spacing:.005em; text-transform:uppercase; margin-top:4px; line-height:1; }
+  .kpis { display:flex; gap:18px; padding:12px 0; border-top:1px solid var(--l4); border-bottom:1px solid var(--l4); }
+  .kpi b { font-family:var(--f-display); font-weight:800; font-size:19px; letter-spacing:-.02em; display:block; color:var(--t0); }
+  .kpi b small { font-size:.55em; opacity:.45; margin-left:2px; }
+  .kpi span { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:3px; display:block; }
+  .start { background:var(--corporate); color:var(--t0); padding:6px 12px; border-radius:100px; font-weight:700; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; }
+
+  /* ─── Instrument grid ───────────────────────────────────── */
+  .insts { display:grid; grid-template-columns:repeat(6,1fr); grid-auto-rows:minmax(172px,1fr); gap:10px; }
+  .inst { border-radius:14px; padding:16px 18px; background:var(--l1); border:1px solid var(--l4); display:flex; flex-direction:column; gap:8px; position:relative; overflow:hidden; }
+  .inst-top { display:flex; justify-content:space-between; align-items:center; }
+  .inst-lbl { font-family:var(--f-data); font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .inst-num { font-family:var(--f-display); font-weight:800; font-size:38px; letter-spacing:-.035em; line-height:1; font-variant-numeric:tabular-nums; color:var(--t0); }
+  .inst-num small { font-size:.32em; opacity:.45; font-weight:700; margin-left:3px; }
+  .inst-viz { margin:auto 0; flex:1; display:flex; align-items:center; }
+  .inst-ft { font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--l4); }
+  .inst-ft b { color:var(--t1); font-weight:800; }
+  .inst--hero { grid-column:span 2; }
+  .inst--raised { background:var(--l2); }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Hub · built on the system palette</span><b>DARK LAYERS · CORPORATE · WARNING · SUCCESS · ATTENTION · XP</b></div>
+<div class="stage">
+  <div class="nav">
+    <div class="nav-l"><div class="brand">R</div>
+      <div class="tabs"><div class="tab active">Overview</div><div class="tab">Training</div><div class="tab">Races</div><div class="tab">Health</div><div class="tab">Log</div></div>
+    </div>
+    <div class="nav-r"><div class="nav-ic">⌕</div><div class="nav-ic">◎</div><div class="avatar"></div></div>
+  </div>
+  <div class="body">
+
+    <div class="head">
+      <div>
+        <div class="greet-hi">Good morning,</div>
+        <div class="greet-nm">David Nitzsche</div>
+        <div class="greet-tag"><span class="greet-tag__bar"></span><span class="greet-tag__t">Taper begins Wednesday</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-top"><div class="stat-lbl">Miles · April</div><span class="chip chip--success">↗ +18%</span></div>
+          <div><div class="stat-num">142<small>mi</small></div><div class="stat-dt">vs Mar · 120 mi</div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-top"><div class="stat-lbl">Fastest mile</div><span class="chip chip--yellow">PR</span></div>
+          <div><div class="stat-num">5:42</div><div class="stat-dt">12 Apr · Kezar</div></div>
+        </div>
+        <div class="stat stat--gradient">
+          <div class="stat-top"><div class="stat-lbl">Miles · 2026 YTD</div><span class="chip" style="background:rgba(246,247,248,.15); color:#fff; border-color:rgba(246,247,248,.25);">31%</span></div>
+          <div><div class="stat-num">503<small>mi</small></div><div class="stat-dt">on pace · 1,608 / yr</div></div>
+        </div>
+        <div class="stat stat--race">
+          <div class="stat-top"><div class="stat-lbl">Next race</div><span class="chip chip--warning">5 DAYS</span></div>
+          <div><div class="stat-num">Big Sur</div><div class="stat-dt">3:45 goal · 26 Apr</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <!-- This week -->
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">This week</div><div class="tile-sub">Mon 20 – Sun 26 Apr · race week</div></div><div class="tile-meta">FIG.01</div></div>
+        <div class="wk-hero"><div class="wk-tot">38<small>of 49 mi</small></div></div>
+        <div class="wk-prog"><div class="d" style="flex:11"></div><div class="t" style="flex:6"></div><div class="l" style="flex:6"></div><div class="r" style="flex:26"></div></div>
+        <div class="wk-days">
+          <div class="wk-day done"><span class="dow">Mon</span><span class="dist">5</span><span class="kind">Easy ✓</span></div>
+          <div class="wk-day today"><span class="dow">Tue</span><span class="dist">6</span><span class="kind">8×400m</span></div>
+          <div class="wk-day"><span class="dow">Wed</span><span class="dist">8</span><span class="kind">Z2 long</span></div>
+          <div class="wk-day rest"><span class="dow">Thu</span><span class="dist">—</span><span class="kind">rest</span></div>
+          <div class="wk-day"><span class="dow">Fri</span><span class="dist">4</span><span class="kind">shakeout</span></div>
+          <div class="wk-day rest"><span class="dow">Sat</span><span class="dist">—</span><span class="kind">travel</span></div>
+          <div class="wk-day race"><span class="dow">Sun</span><span class="dist">26.2</span><span class="kind">RACE</span></div>
+        </div>
+      </div>
+
+      <!-- April calendar -->
+      <div class="tile">
+        <div class="tile-h"><div><div class="tile-lbl">April 2026</div><div class="tile-sub">15 of 21 days · 142 mi</div></div><div class="tile-meta">FIG.02</div></div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.5px; font-weight:700; text-align:center; margin-bottom:6px; text-transform:uppercase; color:var(--t3);">
+          <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+        </div>
+        <div id="cal" style="display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:1fr; gap:5px;"></div>
+        <div style="display:flex; gap:10px; margin-top:12px; font-family:var(--f-data); font-size:7.5px; letter-spacing:1px; color:var(--t3); font-weight:700;">
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:var(--lt-blue);"></span>EASY</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:var(--aqua);"></span>QUALITY</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:var(--dk-blue);"></span>LONG</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; border-radius:2px; background:var(--warning);"></span>RACE</span>
+        </div>
+      </div>
+
+      <!-- Today -->
+      <div class="today">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div><div class="tile-sub">Today · Tue 21 Apr · 06:47</div><div class="tile-lbl">8 × 400m intervals</div></div>
+          <span class="chip chip--corporate">WK14 / D2</span>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><b>6.0<small>mi</small></b><span>Distance</span></div>
+          <div class="kpi"><b>45:00</b><span>Duration</span></div>
+          <div class="kpi"><b>7:40<small>/mi</small></b><span>Avg pace</span></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; color:var(--t2);"><span style="font-family:var(--f-data); font-size:9px; letter-spacing:1px; font-weight:700;">0:00</span><span>Warm-up · 1.5mi</span><span style="font-family:var(--f-display); font-weight:700;">9:40</span></div>
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; color:var(--corporate);"><span style="font-family:var(--f-data); font-size:9px; letter-spacing:1px; font-weight:700;">0:14</span><span style="font-weight:700;">8 × 400m · 90s rec</span><span style="font-family:var(--f-display); font-weight:800;">6:50</span></div>
+          <div style="display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; color:var(--t2);"><span style="font-family:var(--f-data); font-size:9px; letter-spacing:1px; font-weight:700;">0:34</span><span>Cool-down · 1.2mi</span><span style="font-family:var(--f-display); font-weight:700;">10:00</span></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--l4); font-family:var(--f-data); font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700; color:var(--t3);">
+          <span>↓ Wed · Z2 long 8mi</span><span class="start">▶ Send to watch</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Instrument grid ─────────────────────────────────── -->
+    <div class="insts">
+
+      <!-- 1 Recovery HERO · Success ring -->
+      <div class="inst inst--raised inst--hero">
+        <div class="inst-top"><div class="inst-lbl">Recovery</div><span class="chip chip--success">READY</span></div>
+        <div style="display:flex; align-items:center; gap:22px; flex:1;">
+          <div style="width:100px; height:100px; position:relative; flex-shrink:0;">
+            <svg viewBox="0 0 100 100" style="transform:rotate(-90deg);">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--l4)" stroke-width="7"/>
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--success)" stroke-width="7" stroke-dasharray="263.9" stroke-dashoffset="42.2" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+              <div style="font-family:var(--f-display); font-weight:800; font-size:34px; line-height:1; letter-spacing:-.03em;">84</div>
+              <div style="font-family:var(--f-data); font-size:8px; letter-spacing:1.8px; color:var(--t3); font-weight:700; margin-top:4px;">/ 100</div>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-family:var(--f-display); font-size:26px; font-weight:600; letter-spacing:.005em; text-transform:uppercase; margin-bottom:14px; color:var(--success); line-height:1;">Ready to run</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 18px;">
+              <div><div style="font-family:var(--f-data); font-size:8px; letter-spacing:1.5px; color:var(--t3); font-weight:700;">SLEEP</div><div style="font-family:var(--f-display); font-weight:800; font-size:17px; letter-spacing:-.02em; margin-top:2px;">7:42<small style="font-size:.5em; opacity:.45; font-weight:700;">hr</small></div></div>
+              <div><div style="font-family:var(--f-data); font-size:8px; letter-spacing:1.5px; color:var(--t3); font-weight:700;">LAST HARD</div><div style="font-family:var(--f-display); font-weight:800; font-size:17px; letter-spacing:-.02em; margin-top:2px;">+46<small style="font-size:.5em; opacity:.45; font-weight:700;">hr</small></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="inst-ft"><span>7d avg</span><b>79 · trending up</b></div>
+      </div>
+
+      <!-- 2 Avg pace -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Avg pace · 12wk</div><span class="chip chip--success">↘ −14s</span></div>
+        <div class="inst-num">8:14<small>/mi</small></div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 48" preserveAspectRatio="none" style="width:100%; height:48px;">
+            <defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#008FEC" stop-opacity=".35"/><stop offset="100%" stop-color="#008FEC" stop-opacity="0"/></linearGradient></defs>
+            <path d="M 0 38 L 30 34 L 60 28 L 90 22 L 120 16 L 150 18 L 200 10 L 200 48 L 0 48 Z" fill="url(#g1)"/>
+            <path d="M 0 38 L 30 34 L 60 28 L 90 22 L 120 16 L 150 18 L 200 10" stroke="#008FEC" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="10" r="3" fill="#008FEC"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Best</span><b>7:48/mi</b></div>
+      </div>
+
+      <!-- 3 Time · 7d -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Time · 7d</div><span class="chip">M T W T F S S</span></div>
+        <div class="inst-num">5:20<small>hr</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:4px;">
+          <div style="flex:1; background:var(--lt-blue); height:42%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--corporate); height:52%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--lt-blue); height:70%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:14%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--lt-blue); height:36%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:10%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--warning); height:100%; border-radius:2px;"></div>
+        </div>
+        <div class="inst-ft"><span>Quality 1:42</span><b>Easy 3:38</b></div>
+      </div>
+
+      <!-- 4 Streak · Attention -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Streak</div><span class="chip chip--attention">🔥 18D</span></div>
+        <div class="inst-num" style="color:var(--attention);">18<small>days</small></div>
+        <div class="inst-viz" style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;">
+          <div style="aspect-ratio:1; background:rgba(243,173,59,.4); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:8px; font-weight:800; color:var(--t0);">5</div>
+          <div style="aspect-ratio:1; background:var(--attention); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:8px; font-weight:800; color:var(--l0);">6</div>
+          <div style="aspect-ratio:1; background:rgba(243,173,59,.7); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:8px; font-weight:800; color:var(--l0);">8</div>
+          <div style="aspect-ratio:1; background:var(--l3); border-radius:3px;"></div>
+          <div style="aspect-ratio:1; background:rgba(243,173,59,.4); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:8px; font-weight:800; color:var(--t0);">4</div>
+          <div style="aspect-ratio:1; background:var(--l3); border-radius:3px;"></div>
+          <div style="aspect-ratio:1; background:var(--warning); border-radius:3px; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:8px; font-weight:800; color:var(--t0);">26</div>
+        </div>
+        <div class="inst-ft"><span>Longest 34d</span><b>Since 3 Apr</b></div>
+      </div>
+
+      <!-- 5 Marathon prediction · XP gradient -->
+      <div class="inst inst--hero" style="background:linear-gradient(135deg, var(--l2) 0%, rgba(144,19,254,.15) 100%); border-color:rgba(144,19,254,.3);">
+        <div class="inst-top"><div class="inst-lbl">Marathon · predicted</div><span class="chip chip--xp">GOAL 3:45</span></div>
+        <div class="inst-num">3:41</div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 400 48" preserveAspectRatio="none" style="width:100%; height:48px;">
+            <defs><linearGradient id="g5" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#9013FE" stop-opacity=".4"/><stop offset="100%" stop-color="#9013FE" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="14" x2="400" y2="14" stroke="#9013FE" stroke-width="1" stroke-dasharray="3 4" opacity=".5"/>
+            <path d="M 0 8 L 60 14 L 120 22 L 180 26 L 240 30 L 300 34 L 400 38 L 400 48 L 0 48 Z" fill="url(#g5)"/>
+            <path d="M 0 8 L 60 14 L 120 22 L 180 26 L 240 30 L 300 34 L 400 38" stroke="#b873ff" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="400" cy="38" r="4" fill="#b873ff"/>
+          </svg>
+        </div>
+        <div class="inst-ft" style="border-top-color:rgba(144,19,254,.2);"><span>6 mo · −8:00 improvement</span><b style="color:#b873ff;">Under goal · taper locks it in</b></div>
+      </div>
+
+      <!-- 6 Conditions · Attention weather -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Conditions · SF</div><span class="chip chip--attention">☀ 06:47</span></div>
+        <div class="inst-num">54<small>°F</small></div>
+        <div class="inst-viz" style="justify-content:center;">
+          <svg viewBox="0 0 120 60" style="width:120px; height:60px;">
+            <path d="M 10 52 Q 60 -8 110 52" stroke="var(--l4)" stroke-width="5" fill="none" stroke-linecap="round"/>
+            <path d="M 10 52 Q 60 -8 110 52" stroke="var(--attention)" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="122" stroke-dashoffset="50"/>
+            <circle cx="50" cy="14" r="4" fill="var(--attention)"/>
+            <text x="10" y="58" font-family="JetBrains Mono, SF Mono, monospace" font-size="8" fill="var(--t3)" font-weight="700">51</text>
+            <text x="100" y="58" font-family="JetBrains Mono, SF Mono, monospace" font-size="8" fill="var(--t3)" font-weight="700">68</text>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Cool &amp; clear</span><b style="color:var(--success);">Go</b></div>
+      </div>
+
+      <!-- 7 Longest 30d · Aqua -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Longest · 30d</div><span class="chip" style="background:rgba(39,224,135,.12); color:var(--aqua); border-color:rgba(39,224,135,.3);">+3mi</span></div>
+        <div class="inst-num">22.4<small>mi</small></div>
+        <div class="inst-viz">
+          <svg viewBox="0 0 200 44" preserveAspectRatio="none" style="width:100%; height:44px;">
+            <path d="M 0 38 L 50 30 L 100 24 L 150 16 L 200 6" stroke="var(--aqua)" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <circle cx="200" cy="6" r="3.5" fill="var(--aqua)"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>Apr 13 · Muir</span><b>8:54/mi</b></div>
+      </div>
+
+      <!-- 8 Pace · week -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Pace · week</div><span class="chip chip--success">↘ −6s</span></div>
+        <div class="inst-num">8:28<small>/mi</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:4px;">
+          <div style="flex:1; background:var(--success); height:70%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--corporate); height:55%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:38%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:16%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:28%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--l3); height:14%; border-radius:2px;"></div>
+          <div style="flex:1; background:var(--warning); height:100%; border-radius:2px;"></div>
+        </div>
+        <div class="inst-ft"><span>M T W T F S S</span><b>Race Sun</b></div>
+      </div>
+
+      <!-- 9 Load ACWR · gauge -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Load · ACWR</div><span class="chip chip--success">OPTIMAL</span></div>
+        <div class="inst-num">1.12</div>
+        <div class="inst-viz" style="justify-content:center;">
+          <svg viewBox="0 0 140 70" style="width:140px; height:70px;">
+            <path d="M 15 62 A 55 55 0 0 1 125 62" stroke="var(--l4)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <path d="M 15 62 A 55 55 0 0 1 38 22" stroke="var(--corporate)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <path d="M 38 22 A 55 55 0 0 1 92 22" stroke="var(--success)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <path d="M 92 22 A 55 55 0 0 1 125 62" stroke="var(--warning)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <line x1="70" y1="62" x2="82" y2="18" stroke="var(--t0)" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="70" cy="62" r="4" fill="var(--t0)"/>
+          </svg>
+        </div>
+        <div class="inst-ft"><span>0.8 – 1.3 safe</span><b style="color:var(--success);">Sweet spot</b></div>
+      </div>
+
+      <!-- 10 Training 12mo -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">Training · 12mo</div><span class="chip chip--corporate">238 HR</span></div>
+        <div class="inst-num">238<small>hr</small></div>
+        <div class="inst-viz" style="align-items:flex-end; gap:2px;">
+          <div style="flex:1; background:rgba(0,143,236,.25); height:32%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(0,143,236,.35); height:40%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(0,143,236,.45); height:48%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(0,143,236,.6); height:58%; border-radius:1px;"></div>
+          <div style="flex:1; background:rgba(0,143,236,.7); height:66%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--corporate); height:74%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--corporate); height:82%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--corporate); height:90%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--aqua); height:96%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--aqua); height:100%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--warning); height:88%; border-radius:1px;"></div>
+          <div style="flex:1; background:var(--l3); height:44%; border-radius:1px; border:1px dashed var(--l4);"></div>
+        </div>
+        <div class="inst-ft"><span>M A M J J A S O N D J F</span><b>Peak Feb · 27hr</b></div>
+      </div>
+
+      <!-- 11 2026 goal · Corporate ring -->
+      <div class="inst">
+        <div class="inst-top"><div class="inst-lbl">2026 · 1,608mi</div><span class="chip chip--corporate">31%</span></div>
+        <div style="display:flex; align-items:center; gap:14px; flex:1;">
+          <div style="width:62px; height:62px; position:relative; flex-shrink:0;">
+            <svg viewBox="0 0 62 62" style="transform:rotate(-90deg);">
+              <circle cx="31" cy="31" r="26" fill="none" stroke="var(--l4)" stroke-width="5"/>
+              <circle cx="31" cy="31" r="26" fill="none" stroke="var(--corporate)" stroke-width="5" stroke-dasharray="163.4" stroke-dashoffset="112.7" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:800; font-size:15px;">31%</div>
+          </div>
+          <div>
+            <div style="font-family:var(--f-display); font-weight:800; font-size:26px; letter-spacing:-.03em; line-height:1;">503<small style="font-size:.4em; opacity:.45; font-weight:700; margin-left:3px;">mi</small></div>
+            <div style="font-family:var(--f-data); font-size:8.5px; letter-spacing:1.3px; color:var(--t2); font-weight:700; margin-top:4px;">DAY 111 / 365</div>
+          </div>
+        </div>
+        <div class="inst-ft"><span>On pace</span><b style="color:var(--success);">+4mi ahead</b></div>
+      </div>
+
+      <!-- 12 Race countdown · Warning -->
+      <div class="inst" style="background:linear-gradient(135deg, var(--l2) 0%, rgba(252,77,84,.12) 100%); border-color:rgba(252,77,84,.3);">
+        <div class="inst-top"><div class="inst-lbl">Race day · countdown</div><span class="chip chip--warning">5 DAYS</span></div>
+        <div class="inst-num" style="font-family:var(--f-display); font-weight:600; font-size:38px; text-transform:uppercase; letter-spacing:.005em; color:var(--warning);">Big Sur</div>
+        <div class="inst-viz" style="flex-direction:column; gap:8px; align-items:stretch; justify-content:center;">
+          <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.3px; color:var(--t3); font-weight:700;">
+            <span>GOAL</span><span>BIB</span><span>START</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:var(--f-display); font-weight:800; font-size:16px; letter-spacing:-.02em;">
+            <span>3:45</span><span>4421</span><span>06:45</span>
+          </div>
+        </div>
+        <div class="inst-ft" style="border-top-color:rgba(252,77,84,.2);"><span>Sun 26 Apr</span><b style="color:var(--warning);">Taper Wed</b></div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+  (function(){
+    var el = document.getElementById('cal'); if (!el) return;
+    var today = 21, days = 30, start = 3;
+    // 0 rest · 1 easy (lt-blue) · 2 quality (aqua) · 3 long (dk-blue) · 4 race (warning)
+    var plan = { 1:1,2:2,3:0,4:1,5:3,6:0,7:1,8:2,9:1,10:0,11:2,12:3,13:0,14:1,15:2,16:1,17:0,18:2,19:3,20:1,21:2,22:1,23:0,24:1,25:0,26:4,27:0,28:0,29:0,30:0 };
+    var palette = {
+      1: { bg:'rgba(39,132,224,.25)', c:'#7ab6f0' },
+      2: { bg:'#27E087', c:'#10131A' },
+      3: { bg:'#2264E3', c:'#F6F7F8' },
+      4: { bg:'#FC4D54', c:'#10131A' }
+    };
+    var html = '';
+    for (var e=0;e<start;e++) html += '<div></div>';
+    for (var d=1; d<=days; d++) {
+      var p = plan[d]||0;
+      var bg = '#1D2736', col = 'rgba(246,247,248,.32)', shadow='';
+      if (d === today) { bg = '#008FEC'; col = '#F6F7F8'; shadow='box-shadow:0 0 0 2px #10131A, 0 0 0 3.5px #008FEC;'; }
+      else if (d > today) { bg = '#141820'; col = 'rgba(246,247,248,.28)'; }
+      else if (p === 0) { bg = '#1D2736'; col = 'rgba(246,247,248,.3)'; }
+      else { bg = palette[p].bg; col = palette[p].c; }
+      html += '<div style="border-radius:7px; background:'+bg+'; color:'+col+'; display:flex; align-items:center; justify-content:center; font-family:\'SF Pro Rounded\',sans-serif; font-weight:700; font-size:12px; min-height:38px;'+shadow+'">'+d+'</div>';
+    }
+    el.innerHTML = html;
+  })();
+</script>
+</body>
+</html>

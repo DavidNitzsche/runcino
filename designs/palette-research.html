@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Palette Research</title>
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:#1a1815; color:#f4f4f6; font-family:"Inter",-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+  body { padding:40px 24px 60px; max-width:1400px; margin:0 auto; }
+
+  .intro { margin-bottom:48px; max-width:720px; }
+  .intro h1 { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:44px; letter-spacing:-.03em; line-height:1.05; margin-bottom:16px; }
+  .intro p { font-size:14px; line-height:1.6; color:rgba(244,244,246,.65); margin-bottom:10px; }
+  .intro b { color:#f4f4f6; font-weight:700; }
+
+  .crit { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; padding:16px 20px; background:rgba(244,244,246,.04); border-radius:10px; border:1px solid rgba(244,244,246,.08); }
+  .crit div { font-family:"SF Mono",monospace; font-size:10.5px; line-height:1.5; letter-spacing:.3px; color:rgba(244,244,246,.7); }
+  .crit b { color:#f4f4f6; display:block; font-size:10px; letter-spacing:1.8px; margin-bottom:4px; font-weight:700; }
+
+  /* ─── Palette card ───────────────────────────────────────────────── */
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
+  .card { background:rgba(244,244,246,.03); border:1px solid rgba(244,244,246,.08); border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:18px; }
+  .card-h { display:flex; justify-content:space-between; align-items:baseline; }
+  .card-t { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:26px; letter-spacing:-.02em; }
+  .card-n { font-family:"SF Mono",monospace; font-size:10px; letter-spacing:2px; color:rgba(244,244,246,.4); font-weight:700; }
+  .card-why { font-size:12.5px; line-height:1.55; color:rgba(244,244,246,.7); }
+  .card-why b { color:#f4f4f6; font-weight:700; }
+
+  .swatches { display:grid; grid-template-columns:repeat(6,1fr); gap:4px; border-radius:8px; overflow:hidden; }
+  .sw { aspect-ratio:1.4/1; display:flex; flex-direction:column; justify-content:flex-end; padding:8px 10px; position:relative; }
+  .sw-n { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:1px; font-weight:700; opacity:.65; text-transform:uppercase; }
+  .sw-h { font-family:"SF Mono",monospace; font-size:9px; letter-spacing:.5px; font-weight:700; margin-top:1px; }
+
+  /* ─── Mini demo (actual tile preview) ───────────────────────────── */
+  .demo { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:6px; border-radius:10px; padding:10px; }
+  .demo-tile { border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-height:110px; justify-content:space-between; }
+  .demo-lbl { font-family:"SF Mono",monospace; font-size:8px; letter-spacing:1.5px; font-weight:700; text-transform:uppercase; opacity:.55; }
+  .demo-num { font-family:"SF Pro Rounded",sans-serif; font-weight:800; font-size:26px; line-height:1; letter-spacing:-.03em; }
+  .demo-num small { font-size:.4em; opacity:.45; margin-left:2px; font-weight:700; }
+  .demo-dt { font-family:"SF Mono",monospace; font-size:8.5px; letter-spacing:.8px; font-weight:700; opacity:.55; }
+  .demo-chip { display:inline-block; font-family:"SF Mono",monospace; font-size:7.5px; letter-spacing:1px; font-weight:700; padding:2px 6px; border-radius:3px; align-self:flex-start; }
+  .demo svg { width:100%; height:26px; }
+
+  .nav { display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding:8px 14px; border-radius:10px; font-family:"SF Mono",monospace; font-size:9px; letter-spacing:1.5px; font-weight:700; text-transform:uppercase; }
+  .brand { font-family:Georgia,serif; font-style:italic; font-size:14px; font-weight:900; letter-spacing:-.02em; text-transform:none; }
+  .tabs-dmo { display:flex; gap:10px; }
+  .tabs-dmo span { opacity:.5; }
+  .tabs-dmo span.a { opacity:1; }
+
+  /* ─── footer summary ─────────────────────────────────────────────── */
+  .summary { margin-top:48px; padding:28px; background:rgba(244,244,246,.04); border:1px solid rgba(244,244,246,.08); border-radius:16px; }
+  .summary h2 { font-family:Georgia,serif; font-style:italic; font-weight:900; font-size:22px; margin-bottom:14px; }
+  .summary p { font-size:13px; line-height:1.6; color:rgba(244,244,246,.7); }
+  .summary ol { margin-top:14px; padding-left:22px; }
+  .summary li { font-size:13px; line-height:1.7; color:rgba(244,244,246,.75); margin-bottom:6px; }
+  .summary li b { color:#f4f4f6; }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <div style="font-family:'SF Mono',monospace; font-size:10px; letter-spacing:3px; font-weight:700; color:rgba(244,244,246,.4); margin-bottom:14px;">RUNCINO · PALETTE RESEARCH · 8 DIRECTIONS</div>
+  <h1>Back to first principles.</h1>
+  <p>Eight palette directions, each anchored to a real reference tradition — newsprint, trail maps, stadium graphics, swiss, riso, dusk, medical, vintage sport. Same demo tiles in each so you can compare apples to apples.</p>
+  <div class="crit">
+    <div><b>WHAT MUST HOLD</b>Editorial restraint · one accent per tile · data-first · typography carries weight · never Halloween</div>
+    <div><b>WHERE COLOR WORKS</b>Hero numbers · active states · race signal · sparse highlight in data viz · never in base chrome</div>
+    <div><b>WHAT WE'RE TESTING</b>Base mood · accent confidence · race-signal legibility · calendar color-coding headroom</div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- 01 NEWSPRINT -->
+  <div class="card" style="--bg:#f5f1e8; --ink:#0d0c0a; --sub:#6a655c; --line:rgba(13,12,10,.1); --acc:#c4321f; --acc2:#1e3a5f;">
+    <div class="card-h"><div class="card-t">01 · Newsprint</div><div class="card-n">NYT SPORTS · RESTRAINED</div></div>
+    <div class="card-why"><b>Reference:</b> broadsheet sports section. Warm paper, deep ink, one red for scoring + urgency, one navy for secondary data. <b>Why it works:</b> centuries of editorial validation — red has permission to be loud because everything else is calm.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#f5f1e8; color:#0d0c0a;"><span class="sw-n">Paper</span><span class="sw-h">#F5F1E8</span></div>
+      <div class="sw" style="background:#e8e2d3; color:#0d0c0a;"><span class="sw-n">Tone</span><span class="sw-h">#E8E2D3</span></div>
+      <div class="sw" style="background:#0d0c0a; color:#f5f1e8;"><span class="sw-n">Ink</span><span class="sw-h">#0D0C0A</span></div>
+      <div class="sw" style="background:#1e3a5f; color:#f5f1e8;"><span class="sw-n">Navy</span><span class="sw-h">#1E3A5F</span></div>
+      <div class="sw" style="background:#c4321f; color:#f5f1e8;"><span class="sw-n">Red</span><span class="sw-h">#C4321F</span></div>
+      <div class="sw" style="background:#9c9588; color:#f5f1e8;"><span class="sw-n">Mute</span><span class="sw-h">#9C9588</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#fafaf3; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(30,58,95,.1); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#1e3a5f" stroke-width="1.6" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#f5f1e8;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(245,241,232,.15);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.6;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#f5f1e8;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(196,50,31,.2); color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px; color:var(--acc);">3:45</div>
+        <div class="demo-dt" style="color:var(--acc); opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:var(--bg); color:var(--ink);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 02 TOPOGRAPHIC -->
+  <div class="card" style="--bg:#ebe5d3; --ink:#2a2512; --sub:#7a7258; --line:rgba(42,37,18,.12); --acc:#8a5a2c; --acc2:#4a6b3c;">
+    <div class="card-h"><div class="card-t">02 · Topographic</div><div class="card-n">USGS MAP · OUTDOOR</div></div>
+    <div class="card-why"><b>Reference:</b> hiking maps, field guides, REI catalogs. Oatmeal base, forest green, bark brown, rust accents. <b>Why it works:</b> the running context IS terrain — this palette feels like belonging outdoors without being literal.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#ebe5d3; color:#2a2512;"><span class="sw-n">Oat</span><span class="sw-h">#EBE5D3</span></div>
+      <div class="sw" style="background:#d9d0b6; color:#2a2512;"><span class="sw-n">Tone</span><span class="sw-h">#D9D0B6</span></div>
+      <div class="sw" style="background:#2a2512; color:#ebe5d3;"><span class="sw-n">Bark</span><span class="sw-h">#2A2512</span></div>
+      <div class="sw" style="background:#4a6b3c; color:#ebe5d3;"><span class="sw-n">Moss</span><span class="sw-h">#4A6B3C</span></div>
+      <div class="sw" style="background:#8a5a2c; color:#ebe5d3;"><span class="sw-n">Rust</span><span class="sw-h">#8A5A2C</span></div>
+      <div class="sw" style="background:#a89a78; color:#2a2512;"><span class="sw-n">Dune</span><span class="sw-h">#A89A78</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#f2ecdc; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(74,107,60,.12); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#4a6b3c" stroke-width="1.6" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc2); color:#ebe5d3;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(235,229,211,.2);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.65;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#ebe5d3;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(138,90,44,.25); color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px; color:var(--acc);">3:45</div>
+        <div class="demo-dt" style="color:var(--acc); opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:var(--bg); color:var(--ink);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 03 STADIUM -->
+  <div class="card" style="--bg:#f0ebe0; --ink:#1a1a1a; --sub:#6a6a6a; --line:rgba(26,26,26,.1); --acc:#d4a017; --acc2:#2d5f3f;">
+    <div class="card-h"><div class="card-t">03 · Stadium</div><div class="card-n">FIELD PAINT · COLLEGIATE</div></div>
+    <div class="card-why"><b>Reference:</b> athletic department graphics, scoreboards, old track-meet programs. Chalk white, field green, yardline white, signal mustard. <b>Why it works:</b> explicitly sports, but pre-digital sports — no screaming modern saturation.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#f0ebe0; color:#1a1a1a;"><span class="sw-n">Chalk</span><span class="sw-h">#F0EBE0</span></div>
+      <div class="sw" style="background:#e2dccd; color:#1a1a1a;"><span class="sw-n">Tone</span><span class="sw-h">#E2DCCD</span></div>
+      <div class="sw" style="background:#1a1a1a; color:#f0ebe0;"><span class="sw-n">Coal</span><span class="sw-h">#1A1A1A</span></div>
+      <div class="sw" style="background:#2d5f3f; color:#f0ebe0;"><span class="sw-n">Field</span><span class="sw-h">#2D5F3F</span></div>
+      <div class="sw" style="background:#d4a017; color:#1a1a1a;"><span class="sw-n">Mustard</span><span class="sw-h">#D4A017</span></div>
+      <div class="sw" style="background:#8a8580; color:#f0ebe0;"><span class="sw-n">Concrete</span><span class="sw-h">#8A8580</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#f7f3e8; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(45,95,63,.12); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#2d5f3f" stroke-width="1.6" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#f0ebe0;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(212,160,23,.2); color:var(--acc);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.55;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc2); color:#f0ebe0;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(212,160,23,.25); color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px; color:var(--acc);">3:45</div>
+        <div class="demo-dt" style="opacity:.75;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:var(--bg); color:var(--ink);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 04 DUSK -->
+  <div class="card" style="--bg:#14161f; --ink:#ece6d3; --sub:rgba(236,230,211,.55); --line:rgba(236,230,211,.1); --acc:#d98a44; --acc2:#7b9eb3;">
+    <div class="card-h"><div class="card-t">04 · Dusk</div><div class="card-n">LATE LIGHT · WARM DARK</div></div>
+    <div class="card-why"><b>Reference:</b> the 30 minutes after sunset on a long run. Blue-purple dark, warm cream type, copper accent, dusty slate blue. <b>Why it works:</b> most ref widgets are dark — this is dark-mode done warmly so it doesn't feel like a VS Code clone.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#14161f; color:#ece6d3;"><span class="sw-n">Dusk</span><span class="sw-h">#14161F</span></div>
+      <div class="sw" style="background:#1f2230; color:#ece6d3;"><span class="sw-n">Tone</span><span class="sw-h">#1F2230</span></div>
+      <div class="sw" style="background:#ece6d3; color:#14161f;"><span class="sw-n">Cream</span><span class="sw-h">#ECE6D3</span></div>
+      <div class="sw" style="background:#7b9eb3; color:#14161f;"><span class="sw-n">Slate</span><span class="sw-h">#7B9EB3</span></div>
+      <div class="sw" style="background:#d98a44; color:#14161f;"><span class="sw-n">Copper</span><span class="sw-h">#D98A44</span></div>
+      <div class="sw" style="background:#5a5f72; color:#ece6d3;"><span class="sw-n">Smoke</span><span class="sw-h">#5A5F72</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#1f2230; color:var(--ink); border:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl" style="opacity:.5;">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(123,158,179,.2); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#7b9eb3" stroke-width="1.6" fill="none"/></svg>
+        <div class="demo-dt" style="opacity:.45;">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#14161f;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(20,22,31,.12);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.55;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:#1f2230; color:var(--ink); border:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl" style="opacity:.5;">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(217,138,68,.18); color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px; color:var(--acc);">3:45</div>
+        <div class="demo-dt" style="color:var(--acc); opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:#1f2230; color:var(--ink); border:1px solid var(--line);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 05 RISO -->
+  <div class="card" style="--bg:#efe9df; --ink:#1e1a16; --sub:#6a655c; --line:rgba(30,26,22,.12); --acc:#d84a5c; --acc2:#2550d6;">
+    <div class="card-h"><div class="card-t">05 · Riso</div><div class="card-n">DUOTONE PRINT · BOLD</div></div>
+    <div class="card-why"><b>Reference:</b> risograph zines, indie print, Are.na. Uncoated cream + one fluorescent pink + one electric blue. <b>Why it works:</b> two bold inks against warm paper — every tile is instantly readable, feels printed not rendered.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#efe9df; color:#1e1a16;"><span class="sw-n">Stock</span><span class="sw-h">#EFE9DF</span></div>
+      <div class="sw" style="background:#e2dccd; color:#1e1a16;"><span class="sw-n">Tone</span><span class="sw-h">#E2DCCD</span></div>
+      <div class="sw" style="background:#1e1a16; color:#efe9df;"><span class="sw-n">Ink</span><span class="sw-h">#1E1A16</span></div>
+      <div class="sw" style="background:#2550d6; color:#efe9df;"><span class="sw-n">Blue</span><span class="sw-h">#2550D6</span></div>
+      <div class="sw" style="background:#d84a5c; color:#efe9df;"><span class="sw-n">Pink</span><span class="sw-h">#D84A5C</span></div>
+      <div class="sw" style="background:#9c9588; color:#efe9df;"><span class="sw-n">Mute</span><span class="sw-h">#9C9588</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#f7f1e7; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:var(--acc2); color:#efe9df;">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#2550d6" stroke-width="2" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc2); color:#efe9df;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:#efe9df; color:var(--acc2);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.75;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc); color:#efe9df;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:#efe9df; color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px;">3:45</div>
+        <div class="demo-dt" style="opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:var(--bg); color:var(--ink);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 06 SWISS -->
+  <div class="card" style="--bg:#f4f4f4; --ink:#0a0a0a; --sub:#8a8a8a; --line:rgba(10,10,10,.08); --acc:#e11414; --acc2:#0a0a0a;">
+    <div class="card-h"><div class="card-t">06 · Swiss</div><div class="card-n">MÜLLER-BROCKMANN · AUSTERE</div></div>
+    <div class="card-why"><b>Reference:</b> Swiss graphic design, Helvetica posters, Müller-Brockmann grids. Near-white, absolute black, one pure red. <b>Why it works:</b> the data IS the design — zero color means every red dot means something. Most disciplined possible option.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#f4f4f4; color:#0a0a0a;"><span class="sw-n">White</span><span class="sw-h">#F4F4F4</span></div>
+      <div class="sw" style="background:#e8e8e8; color:#0a0a0a;"><span class="sw-n">Gray</span><span class="sw-h">#E8E8E8</span></div>
+      <div class="sw" style="background:#0a0a0a; color:#f4f4f4;"><span class="sw-n">Black</span><span class="sw-h">#0A0A0A</span></div>
+      <div class="sw" style="background:#e11414; color:#f4f4f4;"><span class="sw-n">Red</span><span class="sw-h">#E11414</span></div>
+      <div class="sw" style="background:#8a8a8a; color:#f4f4f4;"><span class="sw-n">Mid</span><span class="sw-h">#8A8A8A</span></div>
+      <div class="sw" style="background:#c0c0c0; color:#0a0a0a;"><span class="sw-n">Light</span><span class="sw-h">#C0C0C0</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#fff; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:#0a0a0a; color:#f4f4f4;">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#0a0a0a" stroke-width="1.8" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--ink); color:#f4f4f4;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(244,244,244,.15);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.55;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc); color:#f4f4f4;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:#f4f4f4; color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px;">3:45</div>
+        <div class="demo-dt" style="opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:#fff; color:var(--ink); border:1px solid var(--line);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 07 TERMINAL -->
+  <div class="card" style="--bg:#0c0e0a; --ink:#c8d4b8; --sub:rgba(200,212,184,.55); --line:rgba(200,212,184,.1); --acc:#f2b44a; --acc2:#7bc47f;">
+    <div class="card-h"><div class="card-t">07 · Terminal</div><div class="card-n">PHOSPHOR · DATA DENSITY</div></div>
+    <div class="card-why"><b>Reference:</b> Bloomberg, CRT monochrome terminals, old trading desks. Near-black olive base, pale phosphor-green type, amber for alerts, muted green for positive deltas. <b>Why it works:</b> the most data-forward of all — feels like professional instrumentation.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#0c0e0a; color:#c8d4b8;"><span class="sw-n">CRT</span><span class="sw-h">#0C0E0A</span></div>
+      <div class="sw" style="background:#18201a; color:#c8d4b8;"><span class="sw-n">Tone</span><span class="sw-h">#18201A</span></div>
+      <div class="sw" style="background:#c8d4b8; color:#0c0e0a;"><span class="sw-n">Phos</span><span class="sw-h">#C8D4B8</span></div>
+      <div class="sw" style="background:#7bc47f; color:#0c0e0a;"><span class="sw-n">Green</span><span class="sw-h">#7BC47F</span></div>
+      <div class="sw" style="background:#f2b44a; color:#0c0e0a;"><span class="sw-n">Amber</span><span class="sw-h">#F2B44A</span></div>
+      <div class="sw" style="background:#546048; color:#c8d4b8;"><span class="sw-n">Dim</span><span class="sw-h">#546048</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#18201a; color:var(--ink); border:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl" style="opacity:.5;">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(123,196,127,.2); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num" style="font-family:'SF Mono',monospace;">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#7bc47f" stroke-width="1.6" fill="none"/></svg>
+        <div class="demo-dt" style="opacity:.45;">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:#18201a; color:var(--ink); border:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl" style="opacity:.5;">RECOVERY</span><span class="demo-chip" style="background:rgba(123,196,127,.2); color:var(--acc2);">READY</span></div>
+        <div class="demo-num" style="font-family:'SF Mono',monospace; color:var(--acc2);">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.45;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:#18201a; color:var(--ink); border:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl" style="opacity:.5;">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(242,180,74,.18); color:var(--acc);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:'SF Mono',monospace; color:var(--acc);">3:45</div>
+        <div class="demo-dt" style="color:var(--acc); opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:#18201a; color:var(--ink); border:1px solid var(--line);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+  <!-- 08 VINTAGE SPORTSWEAR -->
+  <div class="card" style="--bg:#ebdfc9; --ink:#1a1812; --sub:#6a6252; --line:rgba(26,24,18,.12); --acc:#a62432; --acc2:#1e2f4a;">
+    <div class="card-h"><div class="card-t">08 · Varsity</div><div class="card-n">PENN · PRINCETON · HERITAGE</div></div>
+    <div class="card-why"><b>Reference:</b> Ivy League athletic programs, 1950s track club pennants, Dapper Dan catalogs. Aged cream, deep crimson, midnight navy, warm ink. <b>Why it works:</b> unashamedly a sports product — crimson has heritage weight, navy is structural, cream warms the whole thing.</div>
+    <div class="swatches">
+      <div class="sw" style="background:#ebdfc9; color:#1a1812;"><span class="sw-n">Pennant</span><span class="sw-h">#EBDFC9</span></div>
+      <div class="sw" style="background:#ddd0b4; color:#1a1812;"><span class="sw-n">Tone</span><span class="sw-h">#DDD0B4</span></div>
+      <div class="sw" style="background:#1a1812; color:#ebdfc9;"><span class="sw-n">Ink</span><span class="sw-h">#1A1812</span></div>
+      <div class="sw" style="background:#1e2f4a; color:#ebdfc9;"><span class="sw-n">Navy</span><span class="sw-h">#1E2F4A</span></div>
+      <div class="sw" style="background:#a62432; color:#ebdfc9;"><span class="sw-n">Crimson</span><span class="sw-h">#A62432</span></div>
+      <div class="sw" style="background:#968870; color:#ebdfc9;"><span class="sw-n">Khaki</span><span class="sw-h">#968870</span></div>
+    </div>
+    <div class="demo" style="background:var(--bg);">
+      <div class="demo-tile" style="background:#f2e8d4; border:1px solid var(--line); color:var(--ink);">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">AVG PACE · 12WK</span><span class="demo-chip" style="background:rgba(30,47,74,.12); color:var(--acc2);">↘ −14s</span></div>
+        <div class="demo-num">8:14<small>/mi</small></div>
+        <svg viewBox="0 0 200 26" preserveAspectRatio="none"><path d="M 0 22 L 50 18 L 100 12 L 150 10 L 200 4" stroke="#1e2f4a" stroke-width="1.8" fill="none"/></svg>
+        <div class="demo-dt" style="color:var(--sub);">BEST 7:48/MI</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc2); color:#ebdfc9;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">RECOVERY</span><span class="demo-chip" style="background:rgba(235,223,201,.2);">READY</span></div>
+        <div class="demo-num">84<small>/100</small></div>
+        <div class="demo-dt" style="opacity:.65;">SLEEP 7:42</div>
+      </div>
+      <div class="demo-tile" style="background:var(--acc); color:#ebdfc9;">
+        <div style="display:flex; justify-content:space-between;"><span class="demo-lbl">NEXT RACE · 5D</span><span class="demo-chip" style="background:rgba(235,223,201,.22);">BIG SUR</span></div>
+        <div class="demo-num" style="font-family:Georgia,serif; font-style:italic; font-size:22px;">3:45</div>
+        <div class="demo-dt" style="opacity:.85;">26 APR · BIB 4421</div>
+      </div>
+    </div>
+    <div class="nav" style="background:var(--bg); color:var(--ink);"><span class="brand">Runcino</span><div class="tabs-dmo"><span class="a">Overview</span><span>Training</span><span>Races</span><span>Health</span></div></div>
+  </div>
+
+</div>
+
+<div class="summary">
+  <h2>How to read this.</h2>
+  <p>Each palette holds a single identity — a mood + a rule for where color lives. The same three demo tiles (pace spark / recovery / race countdown) appear in every card so you can compare identically, not imagine.</p>
+  <ol>
+    <li><b>Base temperature</b> (warm paper vs. cool paper vs. dark) sets the emotional floor. Warm paper reads analog/editorial; cool paper reads clinical/tech; dark reads instrument panel.</li>
+    <li><b>Accent count</b> ranges from one (Swiss) to two (most) to "two inks" (Riso). More than two gets loud — which is the lesson from the last iteration.</li>
+    <li><b>Race signal</b> should be the most distinctive color — that's the whole event. In Newsprint it's red, Topographic it's rust, Stadium it's mustard, Dusk it's copper, Riso it's pink, Swiss it's red, Terminal it's amber, Varsity it's crimson.</li>
+    <li><b>Calendar headroom</b>: the palette needs to color-code 4+ workout types without new hues. Solved via shade ramps of the accent (pale→mid→deep) rather than rainbow.</li>
+  </ol>
+  <p style="margin-top:18px;">Pick one (or two to combine) and I'll build the full hub + tabs against it.</p>
+</div>
+
+</body>
+</html>

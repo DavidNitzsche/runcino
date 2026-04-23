@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map C · Isometric 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#0a0d12; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#06080c; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; position:relative; }
+.card svg{ display:block; width:100%; height:560px; }
+.over-tl{ position:absolute; top:22px; left:26px; pointer-events:none; text-shadow:0 2px 8px rgba(0,0,0,.9); }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; }
+.ttl{ font-family:var(--f-display); font-size:38px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-top:4px; }
+.sub{ font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; color:rgba(255,255,255,.6); text-transform:uppercase; font-weight:700; margin-top:6px; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <svg id="svg" viewBox="0 0 1200 560" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1a2230"/><stop offset="100%" stop-color="#05080c"/>
+      </linearGradient>
+      <linearGradient id="mtnFace" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#2a3646"/><stop offset="100%" stop-color="#1a2230"/>
+      </linearGradient>
+      <linearGradient id="route" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3EBD41"/><stop offset="22%" stop-color="#F3AD3B"/>
+        <stop offset="42%" stop-color="#FC4D54"/><stop offset="62%" stop-color="#008FEC"/>
+        <stop offset="100%" stop-color="#9013FE"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="4"/></filter>
+    </defs>
+    <rect width="1200" height="560" fill="url(#groundGrad)"/>
+    <g id="mountains"></g>
+    <g id="gridGround" stroke="rgba(255,255,255,.06)" fill="none"></g>
+    <g id="routePath"></g>
+    <g id="marks"></g>
+  </svg>
+  <div class="over-tl">
+    <div class="eye">Isometric 3D · GPX</div>
+    <div class="ttl">Big Sur<br>Marathon</div>
+    <div class="sub">Elevation as actual height · camera 25°</div>
+  </div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200,H=560;
+  var dense = LAB.densify(LAB.WAYPOINTS, 28);
+  var proj = LAB.project(dense, W, H, { l:80,r:80,t:260,b:80 });
+  var series = LAB.buildSeries(dense);
+  var elev = series.elevFt;
+  var maxE = Math.max.apply(null, elev);
+  // Project to isometric: take 2D (x,y) and add -z where z = elevation scaled
+  function iso(p, e){
+    var dy = 0; // camera angle implicit in y squash
+    return { x: p.x, y: p.y - (e/maxE)*180 };
+  }
+
+  // Ground grid (perspective-ish)
+  var gg = '';
+  for (var i=0;i<=20;i++){
+    var y0 = 280 + i*14;
+    gg += '<line x1="'+(40+i*3)+'" y1="'+y0+'" x2="'+(1160-i*3)+'" y2="'+y0+'"/>';
+  }
+  for (var i=0;i<=16;i++){
+    var x = 100 + i*62;
+    gg += '<line x1="'+x+'" y1="280" x2="'+x+'" y2="560"/>';
+  }
+  document.getElementById('gridGround').innerHTML = gg;
+
+  // Mountain silhouette: build a "ribbon" of extruded slabs under the route
+  var mtn = '';
+  for (var i=0;i<proj.length-1;i++){
+    var a = proj[i], b = proj[i+1];
+    var ea = elev[i], eb = elev[i+1];
+    var aTop = iso(a, ea), bTop = iso(b, eb);
+    var pts = a.x+','+a.y+' '+aTop.x+','+aTop.y+' '+bTop.x+','+bTop.y+' '+b.x+','+b.y;
+    mtn += '<polygon points="'+pts+'" fill="url(#mtnFace)" stroke="rgba(255,255,255,.05)" stroke-width=".5"/>';
+  }
+  document.getElementById('mountains').innerHTML = mtn;
+
+  // Route rides along the top
+  var iProj = proj.map(function(p,i){ return iso(p, elev[i]); });
+  var d = LAB.smoothPath(iProj);
+  document.getElementById('routePath').innerHTML =
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="14" opacity=".5" filter="url(#glow)"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  var COLORS = { start:'#3EBD41', peak:'#FC4D54', minor:'#008FEC', finish:'#9013FE' };
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var total = series.cum[series.cum.length-1];
+    var target = Math.min(Math.max(wp.mi,0), total);
+    var lo=0, hi=series.cum.length-1;
+    while (lo<hi-1){ var m=(lo+hi)>>1; if (series.cum[m]<target) lo=m; else hi=m; }
+    var span = series.cum[hi]-series.cum[lo]||1e-9, t=(target-series.cum[lo])/span;
+    var e = elev[lo]+(elev[hi]-elev[lo])*t;
+    var base = { x:proj[lo].x+(proj[hi].x-proj[lo].x)*t, y:proj[lo].y+(proj[hi].y-proj[lo].y)*t };
+    var top = iso(base, e);
+    var col = COLORS[wp.major] || '#F3AD3B';
+    html += '<line x1="'+base.x+'" y1="'+base.y+'" x2="'+top.x+'" y2="'+top.y+'" stroke="'+col+'" stroke-width="1" opacity=".5" stroke-dasharray="2 3"/>' +
+            '<circle cx="'+top.x+'" cy="'+top.y+'" r="14" fill="'+col+'" opacity=".2"/>' +
+            '<circle cx="'+top.x+'" cy="'+top.y+'" r="5" fill="'+col+'" stroke="#06080c" stroke-width="2"/>' +
+            '<text x="'+top.x+'" y="'+(top.y-14)+'" text-anchor="middle" fill="#fff" font-family="Oswald,sans-serif" font-size="11" font-weight="700" letter-spacing="1.6" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">'+wp.label+'</text>';
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>

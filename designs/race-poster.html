@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Runcino · Race poster (editorial mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&family=Oswald:wght@400;500;600;700&family=Archivo+Black&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<style>
+  :root {
+    --ed-serif: "Fraunces", serif;
+    --ed-italic: "Cormorant Garamond", serif;
+    --ed-sans: "Inter", sans-serif;
+    --ed-mono: "JetBrains Mono", monospace;
+    --paper: #0b0d12;
+    --ink: #ece6d6;            /* warm cream (poster ink) */
+    --ink-dim: rgba(236,230,214,.62);
+    --ink-ghost: rgba(236,230,214,.28);
+    --red: #d94033;            /* landmark pin red */
+    --amber: #e8a23b;
+  }
+  body { background:#06080c; }
+  .stage { max-width:1440px; }
+  .back-link { display:inline-flex; align-items:center; gap:6px; color:var(--t2); text-decoration:none; font-family:var(--ed-mono); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; margin-bottom:14px; }
+
+  /* ─── Identity strip (thin, unchanged) ─── */
+  .id-strip { display:grid; grid-template-columns:1.2fr auto auto auto auto auto; gap:34px; align-items:center;
+    background:#0a0e14; border:1px solid rgba(246,247,248,.08); border-radius:14px; padding:18px 26px; margin-bottom:10px; }
+  .id-name { font-family:var(--ed-serif); font-size:30px; font-weight:700; letter-spacing:-.005em; line-height:1; color:var(--ink); font-variation-settings:"opsz" 144,"SOFT" 0; }
+  .id-name em { font-style:italic; font-weight:400; color:var(--amber); }
+  .id-name small { display:block; font-family:var(--ed-mono); font-size:10px; letter-spacing:2px; color:var(--amber); font-weight:700; margin-bottom:8px; text-transform:uppercase; font-style:normal; }
+  .id-cell { display:flex; flex-direction:column; gap:4px; }
+  .id-l { font-family:var(--ed-mono); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; }
+  .id-v { font-family:var(--ed-serif); font-size:26px; font-weight:700; letter-spacing:-.01em; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums; }
+  .id-v.big { font-size:40px; color:var(--amber); }
+  .id-v.small { font-size:18px; font-weight:600; }
+  .id-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 11px; border-radius:8px; font-family:var(--ed-mono); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; background:rgba(62,189,65,.1); border:1px solid rgba(62,189,65,.3); color:#7dd685; }
+  .id-chip::before { content:""; width:6px; height:6px; border-radius:50%; background:#7dd685; box-shadow:0 0 0 3px rgba(62,189,65,.2); }
+
+  /* ─── The POSTER ─── */
+  .poster {
+    position:relative; border-radius:18px; overflow:hidden;
+    background: radial-gradient(ellipse at 30% 20%, rgba(217,64,51,.08) 0%, transparent 55%),
+                radial-gradient(ellipse at 80% 80%, rgba(232,162,59,.05) 0%, transparent 55%),
+                linear-gradient(180deg, #0d1017 0%, #080a0e 100%);
+    border:1px solid rgba(236,230,214,.09);
+    padding:36px 44px 32px;
+    min-height:740px;
+  }
+  .poster::before {
+    /* grain overlay */
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.55; mix-blend-mode:screen;
+  }
+  .poster::after {
+    /* inner hairline frame, like a plate-mark */
+    content:""; position:absolute; inset:26px; border:1px solid rgba(236,230,214,.08); border-radius:10px; pointer-events:none;
+  }
+  .poster-inner { position:relative; z-index:1; display:grid; grid-template-columns:1.1fr 1fr; gap:40px; min-height:680px; }
+
+  /* Brand marks top corners */
+  .poster .brand-tl { position:absolute; top:18px; left:30px; font-family:var(--ed-mono); font-size:10px; letter-spacing:2.6px; text-transform:uppercase; color:var(--ink-dim); font-weight:700; z-index:2; }
+  .poster .brand-tl .logo { display:inline-block; width:16px; height:16px; background:var(--amber); border-radius:3px; vertical-align:-3px; margin-right:8px; }
+  .poster .brand-tr { position:absolute; top:18px; right:30px; font-family:var(--ed-italic); font-style:italic; font-size:15px; color:var(--ink-dim); z-index:2; }
+
+  /* LEFT column: editorial type */
+  .p-left { display:flex; flex-direction:column; gap:22px; padding:38px 0 0 18px; color:var(--ink); }
+  .p-eye { font-family:var(--ed-mono); font-size:10.5px; letter-spacing:2.6px; text-transform:uppercase; color:var(--amber); font-weight:700; }
+  .p-title {
+    font-family:var(--ed-serif); font-weight:600;
+    font-size:96px; line-height:.88; letter-spacing:-.025em; color:var(--ink);
+    font-variation-settings:"opsz" 144, "SOFT" 0;
+  }
+  .p-title em { font-family:var(--ed-italic); font-style:italic; font-weight:500; font-size:.95em; color:var(--amber); letter-spacing:-.015em; }
+  .p-sub { font-family:var(--ed-italic); font-style:italic; font-size:22px; color:var(--ink-dim); line-height:1.35; max-width:480px; margin-top:-4px; }
+
+  .p-route-stats { display:flex; gap:40px; margin-top:8px; }
+  .p-route-stats .cell { display:flex; flex-direction:column; gap:4px; }
+  .p-route-stats .l { font-family:var(--ed-mono); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; }
+  .p-route-stats .v { font-family:var(--ed-serif); font-weight:700; font-size:32px; letter-spacing:-.01em; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums; }
+  .p-route-stats .v small { font-family:var(--ed-mono); font-size:11px; color:var(--ink-ghost); margin-left:4px; font-weight:700; }
+
+  /* Elevation sparkline frame — bottom-left of left column */
+  .p-spark {
+    margin-top:auto;
+    border:1px solid var(--ink-ghost); border-radius:4px;
+    padding:14px 16px; max-width:360px;
+    background:rgba(236,230,214,.02);
+  }
+  .p-spark .sh { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .p-spark .sh .l { font-family:var(--ed-italic); font-style:italic; font-size:15px; color:var(--ink-dim); }
+  .p-spark .sh .pk { font-family:var(--ed-mono); font-size:10px; letter-spacing:1.4px; color:var(--red); font-weight:700; text-transform:uppercase; }
+  .p-spark svg { width:100%; height:60px; display:block; }
+  .p-spark .notes { display:flex; justify-content:space-between; font-family:var(--ed-mono); font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-ghost); margin-top:6px; font-weight:700; }
+
+  /* Bottom-left tag: Difficulty + mode */
+  .p-tags { display:flex; gap:32px; padding-top:12px; }
+  .p-tags .cell { display:flex; flex-direction:column; gap:2px; }
+  .p-tags .l { font-family:var(--ed-mono); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; }
+  .p-tags .v { font-family:var(--ed-italic); font-style:italic; font-size:16px; color:var(--ink); }
+
+  /* RIGHT column: the beaded route */
+  .p-right { position:relative; display:flex; align-items:stretch; }
+  .p-right svg { width:100%; height:100%; display:block; }
+
+  /* Stats strip at bottom, spanning */
+  .p-strip {
+    position:relative; z-index:1;
+    display:grid; grid-template-columns:repeat(5,1fr); gap:0;
+    border-top:1px solid var(--ink-ghost);
+    margin-top:20px; padding-top:22px;
+  }
+  .p-strip .s { display:flex; flex-direction:column; gap:4px; padding:0 22px; border-right:1px solid rgba(236,230,214,.1); }
+  .p-strip .s:last-child { border-right:0; }
+  .p-strip .s:first-child { padding-left:18px; }
+  .p-strip .l { font-family:var(--ed-mono); font-size:9.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; }
+  .p-strip .v { font-family:var(--ed-serif); font-weight:700; font-size:28px; letter-spacing:-.01em; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums; }
+  .p-strip .v em { font-style:italic; font-family:var(--ed-italic); font-weight:500; color:var(--amber); }
+  .p-strip .v small { font-family:var(--ed-mono); font-size:10px; color:var(--ink-ghost); margin-left:3px; font-weight:700; }
+
+  /* ─── VARIANT TOGGLE TABS ─── */
+  .variant-tabs { display:flex; gap:6px; margin:28px 0 14px; padding:6px; background:#0a0e14; border:1px solid rgba(236,230,214,.08); border-radius:12px; width:fit-content; }
+  .variant-tabs a { font-family:var(--ed-mono); font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:700;
+    padding:10px 18px; border-radius:8px; text-decoration:none; color:var(--ink-dim); }
+  .variant-tabs a.on { background:rgba(232,162,59,.12); color:var(--amber); }
+  .variant-label { font-family:var(--ed-mono); font-size:10px; letter-spacing:2.2px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; margin:30px 0 10px; padding-left:4px; }
+  .variant-label em { font-family:var(--ed-italic); font-style:italic; color:var(--amber); text-transform:none; letter-spacing:0; font-size:14px; }
+
+  /* ─── POSTER B — "BIG SUR" road-network / minimalist (the one you called PERFECT) ─── */
+  .poster-b {
+    position:relative; overflow:hidden; border-radius:18px;
+    background:#07080b; border:1px solid rgba(255,255,255,.07);
+    padding:0; min-height:820px;
+  }
+  .poster-b::after { content:""; position:absolute; inset:22px; border:1px solid rgba(255,255,255,.06); border-radius:10px; pointer-events:none; }
+  .poster-b::before { /* grain */
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.7; mix-blend-mode:screen; z-index:3;
+  }
+  .pb-map { position:absolute; inset:0; width:100%; height:100%; z-index:1; }
+  .pb-corner { position:absolute; z-index:2; font-family:"Inter", sans-serif; font-size:10px; letter-spacing:2.6px; text-transform:uppercase; color:rgba(255,255,255,.45); font-weight:700; }
+  .pb-corner.tl { top:34px; left:42px; }
+  .pb-corner.tr { top:34px; right:42px; text-align:right; }
+  .pb-corner.bl { bottom:34px; left:42px; }
+  .pb-corner.br { bottom:34px; right:42px; text-align:right; }
+  .pb-corner .accent { color:#ff3b30; display:block; margin-top:4px; }
+  .pb-wordmark {
+    position:absolute; z-index:2; bottom:100px; left:42px; right:42px;
+    pointer-events:none;
+  }
+  .pb-wordmark .eyebrow { font-family:"Inter", sans-serif; font-size:11px; letter-spacing:4px; text-transform:uppercase; color:#ff3b30; font-weight:700; margin-bottom:14px; }
+  .pb-wordmark .title {
+    font-family:"Archivo Black", "Inter", sans-serif; font-weight:900;
+    font-size:210px; line-height:.82; letter-spacing:-.04em;
+    color:#ffffff; white-space:nowrap;
+    text-shadow:0 2px 40px rgba(0,0,0,.6);
+  }
+  .pb-wordmark .meta { display:flex; gap:34px; margin-top:18px; font-family:"Inter", sans-serif; font-size:12px; letter-spacing:2.6px; text-transform:uppercase; color:rgba(255,255,255,.75); font-weight:600; }
+  .pb-wordmark .meta span { display:flex; align-items:center; gap:10px; }
+  .pb-wordmark .meta span::before { content:""; display:inline-block; width:6px; height:6px; background:#ff3b30; border-radius:50%; }
+  .pb-side {
+    position:absolute; right:42px; top:50%; transform:translateY(-50%) rotate(90deg); transform-origin:right center;
+    z-index:2; font-family:"Inter", sans-serif; font-size:11px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.5); font-weight:700;
+    white-space:nowrap;
+  }
+
+  /* ─── POSTER C — Grand Prix style (phase-sector track, body copy) ─── */
+  .poster-c {
+    position:relative; overflow:hidden; border-radius:18px;
+    background:linear-gradient(180deg,#0d1218 0%,#070a0e 100%);
+    border:1px solid rgba(255,255,255,.07);
+    padding:44px 52px 40px; min-height:860px;
+  }
+  .poster-c::before { /* grain */
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:3;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.8' numOctaves='2' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.55; mix-blend-mode:screen;
+  }
+  .pc-head { display:flex; justify-content:space-between; align-items:flex-start; position:relative; z-index:2; margin-bottom:10px; }
+  .pc-head .rd { font-family:"Oswald", sans-serif; font-weight:600; font-size:14px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.55); }
+  .pc-head .rd b { color:#ff3b30; font-weight:700; }
+  .pc-head .flag {
+    display:flex; align-items:center; gap:12px;
+    font-family:"Oswald", sans-serif; font-weight:500; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.7);
+  }
+  .pc-head .flag .chip {
+    width:38px; height:26px; border-radius:3px;
+    background:linear-gradient(180deg,#b22234 0%,#b22234 33%,#fff 33%,#fff 66%,#3c3b6e 66%,#3c3b6e 100%);
+    position:relative; overflow:hidden;
+  }
+
+  .pc-title {
+    font-family:"Oswald", sans-serif; font-weight:700; color:#ffffff;
+    font-size:148px; line-height:.88; letter-spacing:-.01em; text-transform:uppercase;
+    margin:6px 0 6px; position:relative; z-index:2;
+  }
+  .pc-subtitle { font-family:"Oswald", sans-serif; font-weight:400; font-size:22px; letter-spacing:8px; text-transform:uppercase; color:rgba(255,255,255,.55); position:relative; z-index:2; margin-bottom:28px; }
+
+  .pc-grid { display:grid; grid-template-columns:1fr 1.2fr; gap:48px; position:relative; z-index:2; }
+  .pc-track { position:relative; min-height:500px; }
+  .pc-track svg { width:100%; height:100%; display:block; }
+
+  .pc-body { display:flex; flex-direction:column; gap:20px; color:rgba(255,255,255,.8); }
+  .pc-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; border-top:1px solid rgba(255,255,255,.14); border-bottom:1px solid rgba(255,255,255,.14); padding:18px 0; }
+  .pc-stats .s { display:flex; flex-direction:column; gap:6px; padding:0 20px; border-right:1px solid rgba(255,255,255,.1); }
+  .pc-stats .s:first-child { padding-left:0; }
+  .pc-stats .s:last-child { border-right:0; }
+  .pc-stats .l { font-family:"Oswald", sans-serif; font-size:10px; letter-spacing:2.2px; text-transform:uppercase; color:rgba(255,255,255,.45); font-weight:500; }
+  .pc-stats .v { font-family:"Oswald", sans-serif; font-weight:600; font-size:34px; letter-spacing:-.005em; color:#fff; line-height:1; font-variant-numeric:tabular-nums; }
+  .pc-stats .v small { font-family:"Inter", sans-serif; font-size:11px; color:rgba(255,255,255,.5); margin-left:5px; font-weight:600; letter-spacing:1.3px; }
+  .pc-stats .v.accent { color:#ff3b30; }
+
+  .pc-lede { font-family:"Inter", sans-serif; font-size:15px; line-height:1.6; color:rgba(255,255,255,.85); font-weight:500; }
+  .pc-para { font-family:"Inter", sans-serif; font-size:13px; line-height:1.7; color:rgba(255,255,255,.65); }
+  .pc-para b { color:#fff; font-weight:600; }
+  .pc-para em { color:#ff3b30; font-style:normal; font-weight:600; }
+
+  .pc-legend { display:flex; flex-direction:column; gap:10px; margin-top:14px; padding-top:16px; border-top:1px solid rgba(255,255,255,.1); }
+  .pc-legend .row { display:grid; grid-template-columns:28px 90px 1fr auto; gap:12px; align-items:center; font-family:"Inter", sans-serif; font-size:12px; color:rgba(255,255,255,.8); }
+  .pc-legend .bar { height:4px; border-radius:2px; }
+  .pc-legend .name { font-family:"Oswald", sans-serif; font-weight:600; font-size:13px; letter-spacing:1.5px; text-transform:uppercase; color:#fff; }
+  .pc-legend .mi { color:rgba(255,255,255,.5); font-size:11px; letter-spacing:.5px; }
+  .pc-legend .pace { font-family:"JetBrains Mono", monospace; font-weight:700; font-size:12px; color:#fff; font-variant-numeric:tabular-nums; letter-spacing:0; }
+
+  /* Elevation strip — full-width under the GP grid */
+  .pc-elev {
+    position:relative; z-index:2; margin-top:34px;
+    border-top:1px solid rgba(255,255,255,.14);
+    padding-top:18px;
+  }
+  .pc-elev .head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+  .pc-elev .head .l { font-family:"Oswald", sans-serif; font-weight:500; font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.55); }
+  .pc-elev .head .r { font-family:"JetBrains Mono", monospace; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:rgba(255,255,255,.4); }
+  .pc-elev .head .r em { color:#ff3b30; font-style:normal; }
+  .pc-elev svg { width:100%; height:160px; display:block; }
+  .pc-elev .axis { display:flex; justify-content:space-between; margin-top:6px; font-family:"JetBrains Mono", monospace; font-size:9.5px; letter-spacing:1.4px; color:rgba(255,255,255,.4); font-weight:700; }
+
+  /* ─── PHASE CARDS (editorial — from your "Five phases, named" screenshot) ─── */
+  .sec-head { padding:36px 4px 18px; }
+  .sec-eye { font-family:var(--ed-mono); font-size:10px; letter-spacing:2.6px; text-transform:uppercase; color:var(--amber); font-weight:700; }
+  .sec-eye::before { content:"§ "; color:var(--amber); }
+  .sec-title { font-family:var(--ed-serif); font-weight:600; font-size:56px; line-height:.95; letter-spacing:-.015em; color:var(--ink); margin-top:6px; font-variation-settings:"opsz" 144; }
+  .sec-title em { font-family:var(--ed-italic); font-style:italic; color:var(--amber); font-weight:500; }
+
+  .phases { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .phase {
+    background:#0a0e14; border:1px solid rgba(236,230,214,.07);
+    border-radius:14px; padding:22px 24px 24px;
+    display:flex; flex-direction:column; gap:12px; min-height:240px; position:relative;
+  }
+  .phase::before { content:""; position:absolute; top:0; left:18px; right:18px; height:2px; border-radius:2px; }
+  .phase.a::before { background:#3EBD41; }
+  .phase.b::before { background:#F3AD3B; }
+  .phase.c::before { background:#FC4D54; }
+  .phase.d::before { background:#008FEC; }
+  .phase.e::before { background:#9013FE; }
+  .phase .p-num { font-family:var(--ed-mono); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; }
+  .phase .p-name { font-family:var(--ed-serif); font-weight:700; font-size:28px; line-height:1.05; letter-spacing:-.01em; color:var(--ink); }
+  .phase .p-name em { font-family:var(--ed-italic); font-style:italic; font-weight:500; color:var(--amber); }
+  .phase .p-mi { font-family:var(--ed-mono); font-size:11px; letter-spacing:1.3px; color:var(--amber); font-weight:700; }
+  .phase .p-pace { font-family:var(--ed-serif); font-weight:700; font-size:38px; letter-spacing:-.02em; color:var(--ink); line-height:1; font-variant-numeric:tabular-nums; }
+  .phase .p-pace small { font-size:.38em; opacity:.55; margin-left:3px; font-weight:500; font-family:var(--ed-mono); }
+  .phase .p-note { font-family:var(--ed-sans); font-size:12.5px; line-height:1.55; color:var(--ink-dim); margin-top:auto; }
+
+  /* ─── FUEL PLAN (timeline dots, from screenshot) ─── */
+  .fuel-lane {
+    position:relative; height:120px; margin-top:18px;
+    border-top:1px solid rgba(236,230,214,.1);
+    border-bottom:1px solid rgba(236,230,214,.1);
+  }
+  .fuel-lane::before {
+    content:""; position:absolute; top:58px; left:0; right:0; height:1px;
+    background:repeating-linear-gradient(90deg, rgba(236,230,214,.18) 0, rgba(236,230,214,.18) 4px, transparent 4px, transparent 10px);
+  }
+  .gel {
+    position:absolute; top:0; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center;
+    font-family:var(--ed-mono);
+  }
+  .gel .mi { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--amber); font-weight:700; padding:6px 0; }
+  .gel .dot { width:14px; height:14px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 4px rgba(232,162,59,.15); margin-top:36px; }
+  .gel .h { font-family:var(--ed-sans); font-weight:700; font-size:14px; color:var(--ink); margin-top:10px; letter-spacing:.01em; }
+  .gel .n { font-family:var(--ed-mono); font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; margin-top:3px; }
+
+  /* ─── reasoning ─── */
+  .reasoning { background:#0a0e14; border:1px solid rgba(236,230,214,.07); border-radius:14px; padding:24px 30px; margin-top:10px; color:var(--ink-dim); }
+  .reasoning h3 { font-family:var(--ed-serif); font-size:22px; font-weight:600; letter-spacing:-.005em; margin-bottom:14px; color:var(--ink); }
+  .reasoning h3 em { font-family:var(--ed-italic); font-style:italic; color:var(--amber); }
+  .reasoning .row { display:grid; grid-template-columns:200px 1fr; gap:20px; padding:10px 0; border-top:1px solid rgba(236,230,214,.06); }
+  .reasoning .row:first-of-type { border-top:0; }
+  .reasoning .k { font-family:var(--ed-mono); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-ghost); font-weight:700; padding-top:4px; }
+  .reasoning .v { font-family:var(--ed-sans); font-size:13.5px; line-height:1.65; }
+  .reasoning .v b { color:var(--ink); font-weight:600; }
+  .reasoning .v em { font-family:var(--ed-italic); font-style:italic; color:var(--amber); font-size:1.05em; }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Runcino · race poster</span><b>EDITORIAL · 2026.04.23</b></div>
+
+<div class="stage">
+  <div class="nav">
+    <div class="nav-l">
+      <a class="brand" href="hub.html">R</a>
+      <div class="tabs">
+        <a class="tab" href="hub.html">Overview</a>
+        <a class="tab" href="training.html">Training</a>
+        <a class="tab active" href="races.html">Races</a>
+        <a class="tab" href="health.html">Health</a>
+        <a class="tab" href="log.html">Log</a>
+      </div>
+    </div>
+    <div class="nav-r">
+      <div class="nav-ic">⌕</div>
+      <div class="nav-ic">◎</div>
+      <div class="avatar"></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <a class="back-link" href="races.html">← All races</a>
+
+    <div class="id-strip">
+      <div>
+        <div class="id-name"><small>Race day · Sun Apr 26 · 06:45</small>Big <em>Sur</em> Marathon</div>
+      </div>
+      <div class="id-cell"><div class="id-l">Days to gun</div><div class="id-v big">3</div></div>
+      <div class="id-cell"><div class="id-l">Goal</div><div class="id-v">3:45</div></div>
+      <div class="id-cell"><div class="id-l">Predicted</div><div class="id-v" style="color:#7dd685;">3:41</div></div>
+      <div class="id-cell"><div class="id-l">Weather</div><div class="id-v small">52° · clear · 3mph</div></div>
+      <div class="id-cell"><div class="id-l">Readiness</div><div><span class="id-chip">Trained · tapered</span></div></div>
+    </div>
+
+    <!-- THE POSTER -->
+    <div class="poster">
+      <div class="brand-tl"><span class="logo"></span>RUNCINO · No. 026</div>
+      <div class="brand-tr">From Big Sur Station, <em>to Carmel</em></div>
+
+      <div class="poster-inner">
+        <!-- Left column: editorial type -->
+        <div class="p-left">
+          <div class="p-eye">The Course · Point-to-point · California State Route 1</div>
+          <div class="p-title">Big <em>Sur</em><br/>Marathon</div>
+          <div class="p-sub">Twenty-six miles of Pacific edge, one named climb, and a tailwind if the ocean is kind. You run north, the coast runs with you.</div>
+
+          <div class="p-route-stats">
+            <div class="cell"><div class="l">Start</div><div class="v">06:45<small>AM</small></div></div>
+            <div class="cell"><div class="l">Cutoff</div><div class="v">6:00<small>HRS</small></div></div>
+            <div class="cell"><div class="l">Field</div><div class="v">4,500</div></div>
+          </div>
+
+          <div class="p-spark">
+            <div class="sh"><span class="l"><em>elevation</em></span><span class="pk">Peak · 568 ft · mi 10.6</span></div>
+            <svg id="spark" viewBox="0 0 360 60" preserveAspectRatio="none"></svg>
+            <div class="notes"><span>↑ 2,153 ft</span><span>↓ 2,422 ft</span></div>
+          </div>
+
+          <div class="p-tags">
+            <div class="cell"><div class="l">Difficulty</div><div class="v"><em>Hilly · hard</em></div></div>
+            <div class="cell"><div class="l">Terrain</div><div class="v"><em>Paved highway</em></div></div>
+            <div class="cell"><div class="l">Mode</div><div class="v"><em>On foot</em></div></div>
+          </div>
+        </div>
+
+        <!-- Right column: the beaded route -->
+        <div class="p-right">
+          <svg id="routeSvg" viewBox="0 0 680 700" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+
+      <!-- Stats strip across the bottom -->
+      <div class="p-strip">
+        <div class="s"><span class="l">Distance</span><span class="v">26.2<small>MI</small></span></div>
+        <div class="s"><span class="l">Elevation gain</span><span class="v">+2,153<small>FT</small></span></div>
+        <div class="s"><span class="l">Goal time</span><span class="v"><em>3:45</em></span></div>
+        <div class="s"><span class="l">Average pace</span><span class="v">8:35<small>/MI</small></span></div>
+        <div class="s"><span class="l">Weather window</span><span class="v">52<small>°F</small></span></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ VARIANT B — "BIG SUR" road-network poster ═══════════════ -->
+    <div class="variant-label">Variant B · <em>the style you called "perfect"</em> — road-network / bold wordmark</div>
+    <div class="poster-b">
+      <svg class="pb-map" id="pbMap" viewBox="0 0 1360 820" preserveAspectRatio="xMidYMid slice"></svg>
+
+      <div class="pb-corner tl">Runcino<br/><span style="color:rgba(255,255,255,.25);">No. 026 · 2026</span></div>
+      <div class="pb-corner tr">Pacific Coast Highway<br/><span class="accent">California</span></div>
+      <div class="pb-side">26.2 Miles · North by Northwest</div>
+
+      <div class="pb-wordmark">
+        <div class="eyebrow">The 41st Big Sur International Marathon · Sunday 26 April 2026</div>
+        <div class="title">BIG SUR</div>
+        <div class="meta">
+          <span>Big Sur, California</span>
+          <span>26.2 Miles</span>
+          <span>Elevation: 2,153 ft</span>
+          <span>Goal 3:45</span>
+        </div>
+      </div>
+
+      <div class="pb-corner bl" style="bottom:34px;">Start · Big Sur Station<br/><span style="color:rgba(255,255,255,.25);">36.252°N · 121.779°W</span></div>
+      <div class="pb-corner br">Finish · Carmel-by-the-Sea<br/><span style="color:rgba(255,255,255,.25);">36.555°N · 121.923°W</span></div>
+    </div>
+
+    <!-- ═══════════════ VARIANT C — Grand Prix style (phase sector track) ═══════════════ -->
+    <div class="variant-label">Variant C · <em>Grand Prix circuit</em> — phase-sectored, body copy below</div>
+    <div class="poster-c">
+      <div class="pc-head">
+        <div class="rd">Round 01 · <b>2026 SEASON</b> · Coastal Division</div>
+        <div class="flag"><span class="chip"></span> USA · California</div>
+      </div>
+
+      <div class="pc-title">BIG SUR</div>
+      <div class="pc-subtitle">International · Marathon</div>
+
+      <div class="pc-grid">
+        <div class="pc-track">
+          <svg id="pcTrack" viewBox="0 0 580 580" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+
+        <div class="pc-body">
+          <div class="pc-stats">
+            <div class="s"><span class="l">Distance</span><span class="v">26.2<small>MI</small></span></div>
+            <div class="s"><span class="l">Elevation</span><span class="v">2,153<small>FT</small></span></div>
+            <div class="s"><span class="l">Goal Time</span><span class="v accent">3:45</span></div>
+          </div>
+
+          <p class="pc-lede">One of the most scenic road marathons on the continent — a point-to-point course carved into the Pacific edge, from redwoods at Big Sur Station to the coastal village of Carmel-by-the-Sea.</p>
+
+          <p class="pc-para">The course is <b>five sectors</b>. It opens under the redwood canopy, unfolds into rolling coastal approach, steepens into the <em>Hurricane Point climb</em> at mile 10.6 — a two-mile, 560-foot ascent into a prevailing headwind — then releases into a long descent past <b>Bixby Bridge</b> and the cruise miles to Carmel Highlands.</p>
+
+          <p class="pc-para">First run in 1986. Historic records: <b>2:16:39</b> men (2019) · <b>2:38:36</b> women (1993). Typical field: 4,500 runners. Cutoff: 6 hours. Weather window this year: <em>52°F · clear · 3 mph SSE</em>.</p>
+
+          <div class="pc-legend" id="pcLegend"></div>
+        </div>
+      </div>
+
+      <!-- Full-width elevation profile -->
+      <div class="pc-elev">
+        <div class="head">
+          <div class="l">Elevation Profile · Left to Right</div>
+          <div class="r">Gain +2,153 ft · Loss −2,422 ft · Peak <em>568 ft @ MI 10.6</em></div>
+        </div>
+        <svg id="pcElev" viewBox="0 0 1200 160" preserveAspectRatio="none"></svg>
+        <div class="axis">
+          <span>MI 0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>26.2</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE CARDS -->
+    <div class="sec-head">
+      <div class="sec-eye">Race Strategy</div>
+      <div class="sec-title">Five <em>phases</em>, named.</div>
+    </div>
+    <div class="phases">
+      <div class="phase a">
+        <div class="p-num">Phase 01</div>
+        <div class="p-name">Ease <em>in</em></div>
+        <div class="p-mi">mi 0 – 4</div>
+        <div class="p-pace">8:35<small>/mi</small></div>
+        <div class="p-note">Redwood corridor, gently rolling. Relaxed shoulders, long stride, no heroics. The crowd will lure you under 8:20 — don't go. Buy the climb ahead.</div>
+      </div>
+      <div class="phase b">
+        <div class="p-num">Phase 02</div>
+        <div class="p-name">Coast <em>climb</em></div>
+        <div class="p-mi">mi 4 – 10</div>
+        <div class="p-pace">9:05<small>/mi</small></div>
+        <div class="p-note">Ocean opens up on the left. Rolling approach to Hurricane. Effort over pace; the gradient builds. Gel 2 at mile 8, caffeine for what comes next.</div>
+      </div>
+      <div class="phase c">
+        <div class="p-num">Phase 03</div>
+        <div class="p-name">Hurricane</div>
+        <div class="p-mi">mi 10 – 12</div>
+        <div class="p-pace">10:17<small>/mi</small></div>
+        <div class="p-note">Two miles of real climb into a headwind. Zone 4 ceiling — walk thirty seconds if HR spikes past 172. Drums at the top. Recover on the descent to Bixby.</div>
+      </div>
+      <div class="phase d">
+        <div class="p-num">Phase 04</div>
+        <div class="p-name">Cruise <em>miles</em></div>
+        <div class="p-mi">mi 12 – 24</div>
+        <div class="p-pace">8:15<small>/mi</small></div>
+        <div class="p-note">Rolling with net descent. This is the race. Lock cadence at 178; run by the ocean on your left. Do not hammer — every hammered mile here costs two at 23.</div>
+      </div>
+      <div class="phase e">
+        <div class="p-num">Phase 05</div>
+        <div class="p-name">Finish <em>strong</em></div>
+        <div class="p-mi">mi 24 – 26.2</div>
+        <div class="p-pace">8:00<small>/mi</small></div>
+        <div class="p-note">One bump at 22, take it. From the crest, turn the engine up. Final mile flat, Carmel from here. Sarah at Rio &amp; Carmelo. Empty the tank.</div>
+      </div>
+    </div>
+
+    <!-- GELS -->
+    <div class="sec-head">
+      <div class="sec-eye">Fuel Plan</div>
+      <div class="sec-title">Seven <em>gels</em>.</div>
+    </div>
+    <div class="fuel-lane">
+      <div class="gel" style="left:15.27%;"><span class="mi">MI 4</span><span class="dot"></span><span class="h">Opener</span><span class="n">SIS Tropical · 25g</span></div>
+      <div class="gel" style="left:30.53%;"><span class="mi">MI 8</span><span class="dot"></span><span class="h">Pre-climb</span><span class="n">Maurten Caf · 100mg</span></div>
+      <div class="gel" style="left:45.80%;"><span class="mi">MI 12</span><span class="dot"></span><span class="h">Post-Hurricane</span><span class="n">SIS Berry · 25g</span></div>
+      <div class="gel" style="left:61.07%;"><span class="mi">MI 16</span><span class="dot"></span><span class="h">Halfway home</span><span class="n">SIS Tropical · 25g</span></div>
+      <div class="gel" style="left:76.34%;"><span class="mi">MI 20</span><span class="dot"></span><span class="h">Kick prep</span><span class="n">Maurten Caf · 100mg</span></div>
+      <div class="gel" style="left:87.79%;"><span class="mi">MI 23</span><span class="dot"></span><span class="h">Final push</span><span class="n">SIS Berry · 25g</span></div>
+    </div>
+
+    <div class="reasoning">
+      <h3>What this mockup is <em>arguing</em></h3>
+      <div class="row">
+        <div class="k">The poster, not the dashboard</div>
+        <div class="v">Treat the hero like a travel print. Beaded route (your <em>Northing</em> ref), red landmark pins with italic serif labels, plate-mark frame, grain, brand marks at the corners. It's a <b>keepsake</b>, not an infographic — the thing you'd want framed after the race. The data still lives on the page, but the hero <em>earns</em> its size.</div>
+      </div>
+      <div class="row">
+        <div class="k">Beads over a line</div>
+        <div class="v">A single stroke says "route." A string of dots says "steps taken" — one bead per half-mile. You can feel the distance accumulate. Size the beads slightly unevenly and the route reads handmade, not machined.</div>
+      </div>
+      <div class="row">
+        <div class="k">Typography does the work</div>
+        <div class="v">Fraunces for display (the <em>Sur</em> italic is the move), Cormorant Garamond italic for landmark labels and quieter voice, JetBrains Mono for data, Inter for body. No decorative UI chrome — the type is the design language. Paper color is warm cream on near-black, not pure white.</div>
+      </div>
+      <div class="row">
+        <div class="k">Phases and gels return</div>
+        <div class="v">The sections you already liked — <b>Five phases, named</b> and the gel timeline — are kept. They extend the poster voice into the working sections of the page. Phase names get italic accents ("Coast <em>climb</em>", "Ease <em>in</em>"). Feels like a unified object.</div>
+      </div>
+      <div class="row">
+        <div class="k">What's next if this lands</div>
+        <div class="v">The Adidas-style clean basemap version becomes the <em>other</em> view — one toggle: <b>Poster</b> ↔ <b>Live map</b>. Race morning on your phone = live map. Planning at your desk / sharing with a coach = poster. Same data, two registers.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ======================================================================
+// Data — Big Sur waypoints (lat, lon, ele_ft). Same as elsewhere.
+// ======================================================================
+var WAYPOINTS = [
+  { mi:0.0,  lat:36.2520, lon:-121.7790, ele:20,  name:'Big Sur Station', role:'start' },
+  { mi:2.0,  lat:36.2720, lon:-121.7998, ele:180 },
+  { mi:4.0,  lat:36.2920, lon:-121.8210, ele:160 },
+  { mi:6.0,  lat:36.3120, lon:-121.8480, ele:240 },
+  { mi:8.0,  lat:36.3300, lon:-121.8780, ele:340 },
+  { mi:10.6, lat:36.3726, lon:-121.9031, ele:568, name:'Hurricane Point', role:'peak' },
+  { mi:12.0, lat:36.3910, lon:-121.8970, ele:360 },
+  { mi:13.2, lat:36.4040, lon:-121.8972, ele:260, name:'Bixby Bridge',     role:'landmark' },
+  { mi:14.0, lat:36.4170, lon:-121.8975, ele:250 },
+  { mi:17.0, lat:36.4620, lon:-121.9200, ele:205, name:'Point Sur',        role:'landmark' },
+  { mi:20.0, lat:36.5150, lon:-121.9440, ele:230, name:'Carmel Highlands', role:'landmark' },
+  { mi:23.0, lat:36.5380, lon:-121.9290, ele:160 },
+  { mi:26.2, lat:36.5552, lon:-121.9233, ele:12,  name:'Carmel-by-the-Sea', role:'finish' }
+];
+
+// ======================================================================
+// Densify → smooth curve through waypoints
+// ======================================================================
+function densify(wps, stepsPer){
+  var out = [];
+  for (var i=0;i<wps.length-1;i++){
+    var a = wps[i], b = wps[i+1];
+    for (var k=0;k<stepsPer;k++){
+      var t = k/stepsPer;
+      var u = 0.5 - 0.5*Math.cos(t*Math.PI);
+      // small perpendicular wobble for organic look
+      var rnd = ((i*91+k*37)%100)/100 - 0.5;
+      var dLat = b.lat-a.lat, dLon = b.lon-a.lon, L = Math.hypot(dLat,dLon)||1;
+      var nLat = -dLon/L, nLon = dLat/L;
+      var amp = 0.0012 * Math.sin(t*Math.PI) * rnd;
+      out.push({
+        lat: a.lat + dLat*u + nLat*amp,
+        lon: a.lon + dLon*u + nLon*amp,
+        mi:  a.mi + (b.mi-a.mi)*u
+      });
+    }
+  }
+  out.push({ lat:wps[wps.length-1].lat, lon:wps[wps.length-1].lon, mi:wps[wps.length-1].mi });
+  return out;
+}
+
+// ======================================================================
+// Project lat/lon → SVG xy (fit inside box)
+// ======================================================================
+function projector(pts, box){
+  var latC = 0; pts.forEach(function(p){ latC += p.lat; }); latC /= pts.length;
+  var kx = Math.cos(latC*Math.PI/180);
+  var proj = pts.map(function(p){ return { x: p.lon*kx, y: -p.lat }; }); // invert so north = up
+  var mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+  proj.forEach(function(p){ if(p.x<mnX)mnX=p.x; if(p.x>mxX)mxX=p.x; if(p.y<mnY)mnY=p.y; if(p.y>mxY)mxY=p.y; });
+  var spanX = mxX-mnX || 1e-9, spanY = mxY-mnY || 1e-9;
+  var availW = box.w - box.padL - box.padR;
+  var availH = box.h - box.padT - box.padB;
+  var s = Math.min(availW/spanX, availH/spanY);
+  var offX = box.padL + (availW - spanX*s)/2;
+  var offY = box.padT + (availH - spanY*s)/2;
+  return function(p){
+    var q = { x: p.lon*kx, y: -p.lat };
+    return {
+      x: offX + (q.x - mnX)*s,
+      y: offY + (q.y - mnY)*s
+    };
+  };
+}
+
+// ======================================================================
+// Render the beaded route poster
+// ======================================================================
+(function(){
+  var svgEl = document.getElementById('routeSvg');
+  var box = { w: 680, h: 700, padL: 120, padR: 100, padT: 60, padB: 40 };
+
+  var dense = densify(WAYPOINTS, 40); // ~480 points
+  var proj = projector(dense, box);
+  var pts = dense.map(proj);
+
+  // Landmark positions (project each separately)
+  var landmarks = WAYPOINTS.filter(function(w){ return w.name; }).map(function(w){
+    var p = proj({ lat:w.lat, lon:w.lon });
+    return { x:p.x, y:p.y, name:w.name, role:w.role, mi:w.mi, ele:w.ele };
+  });
+
+  // Bead sampling — one every N points
+  var BEAD_STEP = 6;
+  var beads = '';
+  for (var i=0;i<pts.length;i+=BEAD_STEP){
+    var p = pts[i];
+    // vary size slightly for handmade feel
+    var r = 3.2 + ((i*13)%5)/7;
+    beads += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="'+r.toFixed(2)+'" fill="#ece6d6" opacity="'+(0.75 + ((i*7)%5)/20).toFixed(2)+'"/>';
+  }
+  // Ensure last bead
+  var last = pts[pts.length-1];
+  beads += '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="3.6" fill="#ece6d6"/>';
+
+  // Landmark pins + italic labels
+  function labelFor(lm, i){
+    // offset based on which side of map
+    var leftSide = lm.x < box.w*0.5;
+    var tx, tAnchor;
+    if (leftSide){ tx = lm.x - 18; tAnchor = 'end'; }
+    else         { tx = lm.x + 18; tAnchor = 'start'; }
+    var ty = lm.y;
+    var subLines = [];
+    if (lm.role === 'start')    subLines.push('Mile 0 · 20 ft · 06:45');
+    if (lm.role === 'finish')   subLines.push('Mile 26.2 · 12 ft');
+    if (lm.role === 'peak')     subLines.push('Mile ' + lm.mi.toFixed(1) + ' · ' + lm.ele + ' ft · peak');
+    if (lm.role === 'landmark') subLines.push('Mile ' + lm.mi.toFixed(1) + (lm.ele ? ' · ' + lm.ele + ' ft' : ''));
+
+    // "Starting & Ending Point" style header for start
+    var headerText = (lm.role === 'start') ? 'Starting point' :
+                     (lm.role === 'finish') ? 'Finish line' :
+                     (lm.role === 'peak') ? 'Summit' : 'Landmark';
+    var nameSize = (lm.role === 'peak' || lm.role === 'start' || lm.role === 'finish') ? 22 : 18;
+
+    var s = '';
+    // pin circle (outer ring + solid)
+    s += '<circle cx="'+lm.x+'" cy="'+lm.y+'" r="9" fill="#d94033" opacity=".18"/>';
+    s += '<circle cx="'+lm.x+'" cy="'+lm.y+'" r="5" fill="#d94033" stroke="#ece6d6" stroke-width="1.2"/>';
+    // header (small mono)
+    s += '<text x="'+tx+'" y="'+(ty-nameSize-8)+'" text-anchor="'+tAnchor+'" font-family="JetBrains Mono, monospace" font-size="9.5" letter-spacing="1.6" fill="rgba(236,230,214,.55)" font-weight="700">'+headerText.toUpperCase()+'</text>';
+    // name (Fraunces)
+    s += '<text x="'+tx+'" y="'+(ty+2)+'" text-anchor="'+tAnchor+'" font-family="Fraunces, serif" font-size="'+nameSize+'" font-weight="600" fill="#ece6d6" letter-spacing="-.01em">'+lm.name+'</text>';
+    // subline (italic)
+    if (subLines.length){
+      s += '<text x="'+tx+'" y="'+(ty+nameSize+2)+'" text-anchor="'+tAnchor+'" font-family="Cormorant Garamond, serif" font-style="italic" font-size="13" fill="rgba(236,230,214,.55)">'+subLines[0]+'</text>';
+    }
+    return s;
+  }
+
+  var defs = '<defs>' +
+    '<filter id="beadGlow" x="-50%" y="-50%" width="200%" height="200%">' +
+      '<feGaussianBlur stdDeviation="1.4"/>' +
+    '</filter>' +
+    '<radialGradient id="starGlow" cx="50%" cy="50%" r="50%">' +
+      '<stop offset="0%" stop-color="rgba(236,230,214,.12)"/>' +
+      '<stop offset="100%" stop-color="rgba(236,230,214,0)"/>' +
+    '</radialGradient>' +
+    '</defs>';
+
+  // Subtle starfield stars behind the route for texture
+  var stars = '';
+  for (var j=0;j<90;j++){
+    var sx = (j*97%box.w), sy = (j*173%box.h), sr = 0.6 + (j%5)/5;
+    var op = 0.1 + (j%7)/50;
+    stars += '<circle cx="'+sx+'" cy="'+sy+'" r="'+sr.toFixed(2)+'" fill="rgba(236,230,214,'+op.toFixed(2)+')"/>';
+  }
+
+  // Compass mark in top-right
+  var compass = '<g transform="translate('+(box.w-48)+',50)">' +
+    '<circle cx="0" cy="0" r="14" fill="none" stroke="rgba(236,230,214,.35)" stroke-width="1"/>' +
+    '<circle cx="0" cy="0" r="10" fill="none" stroke="rgba(236,230,214,.2)" stroke-width="1"/>' +
+    '<path d="M 0 -14 L 3 0 L 0 14 L -3 0 Z" fill="rgba(236,230,214,.5)"/>' +
+    '<text x="0" y="-18" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" letter-spacing="1.4" fill="rgba(236,230,214,.7)" font-weight="700">N</text>' +
+    '</g>';
+
+  // Scale bar bottom-right
+  var scale = '<g transform="translate('+(box.w-140)+','+(box.h-30)+')">' +
+    '<line x1="0" y1="0" x2="100" y2="0" stroke="rgba(236,230,214,.5)" stroke-width="1"/>' +
+    '<line x1="0" y1="-4" x2="0" y2="4" stroke="rgba(236,230,214,.5)" stroke-width="1"/>' +
+    '<line x1="100" y1="-4" x2="100" y2="4" stroke="rgba(236,230,214,.5)" stroke-width="1"/>' +
+    '<line x1="50" y1="-3" x2="50" y2="3" stroke="rgba(236,230,214,.3)" stroke-width="1"/>' +
+    '<text x="50" y="-8" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.2" fill="rgba(236,230,214,.6)" font-weight="700">10 MI</text>' +
+    '</g>';
+
+  var pinsHtml = landmarks.map(labelFor).join('');
+
+  svgEl.innerHTML = defs + stars + compass + scale + beads + pinsHtml;
+})();
+
+// ======================================================================
+// VARIANT B — "BIG SUR" road-network poster
+//   Procedural road grid (faint white lines) + bold red route stroke
+//   We don't have OSM data, so we fake a coastal road network by drawing:
+//     • a coastline curve offset from the route
+//     • perpendicular side-streets at intervals
+//     • a few parallel tertiary roads inland
+//   Route itself is one thick red stroke through the densified waypoints.
+// ======================================================================
+(function(){
+  var svg = document.getElementById('pbMap');
+  if (!svg) return;
+  var box = { w: 1360, h: 820, padL: 70, padR: 70, padT: 90, padB: 240 };
+
+  var dense = densify(WAYPOINTS, 40);
+  var proj = projector(dense, box);
+  var pts = dense.map(proj);
+
+  // --- Build a faint road-network backdrop ---
+  // 1) inland parallel roads: offset the route perpendicularly by a range of amounts
+  function offsetPath(pts, offsetPx){
+    var out = [];
+    for (var i=0;i<pts.length;i++){
+      var a = pts[Math.max(0,i-2)], c = pts[Math.min(pts.length-1,i+2)];
+      var dx = c.x-a.x, dy = c.y-a.y, L = Math.hypot(dx,dy)||1;
+      // perpendicular (nx,ny) pointing to inland (positive x side generally)
+      var nx = -dy/L, ny = dx/L;
+      out.push({ x: pts[i].x + nx*offsetPx, y: pts[i].y + ny*offsetPx });
+    }
+    return out;
+  }
+  function toPath(a){
+    var d = '';
+    for (var i=0;i<a.length;i++){ d += (i===0?'M ':'L ') + a[i].x.toFixed(1) + ' ' + a[i].y.toFixed(1) + ' '; }
+    return d;
+  }
+
+  var netHtml = '';
+  // Coastline (offset seaward)
+  var coast = offsetPath(pts, -85);
+  netHtml += '<path d="'+toPath(coast)+'" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1.2"/>';
+  // Parallel inland roads
+  [28, 58, 110, 180, 260].forEach(function(off, i){
+    var p = offsetPath(pts, off);
+    netHtml += '<path d="'+toPath(p)+'" fill="none" stroke="rgba(255,255,255,'+(0.09 - i*0.012).toFixed(3)+')" stroke-width="1"/>';
+  });
+  // Perpendicular side streets every ~20th point
+  for (var i=4;i<pts.length;i+=14){
+    var a = pts[Math.max(0,i-2)], c = pts[Math.min(pts.length-1,i+2)];
+    var dx = c.x-a.x, dy = c.y-a.y, L = Math.hypot(dx,dy)||1;
+    var nx = -dy/L, ny = dx/L;
+    var len = 80 + ((i*37)%140);
+    var x1 = pts[i].x - nx*30, y1 = pts[i].y - ny*30;
+    var x2 = pts[i].x + nx*len, y2 = pts[i].y + ny*len;
+    netHtml += '<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="rgba(255,255,255,.07)" stroke-width="1"/>';
+    // random branching
+    if (i%3===0){
+      var bx = (x1+x2)/2, by = (y1+y2)/2;
+      netHtml += '<line x1="'+bx.toFixed(1)+'" y1="'+by.toFixed(1)+'" x2="'+(bx+nx*40).toFixed(1)+'" y2="'+(by+ny*40+((i*11)%30-15)).toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
+    }
+  }
+  // Scattered minor grid lines in the interior (to suggest inland towns)
+  for (var g=0; g<80; g++){
+    var gx = 80 + (g*51)%1200, gy = 60 + (g*97)%700;
+    var gl = 20 + (g%6)*8;
+    var ang = (g%4)*Math.PI/4;
+    var gx2 = gx + Math.cos(ang)*gl, gy2 = gy + Math.sin(ang)*gl;
+    netHtml += '<line x1="'+gx+'" y1="'+gy+'" x2="'+gx2.toFixed(1)+'" y2="'+gy2.toFixed(1)+'" stroke="rgba(255,255,255,.04)" stroke-width="1"/>';
+  }
+
+  // --- The route in red ---
+  var routeD = toPath(pts);
+  var routeHtml = '';
+  routeHtml += '<path d="'+routeD+'" fill="none" stroke="#ff3b30" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round" opacity=".28" filter="url(#pbBlur)"/>';
+  routeHtml += '<path d="'+routeD+'" fill="none" stroke="#ff3b30" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  // Mile markers — every 5 miles
+  var markers = '';
+  for (var m=5; m<=25; m+=5){
+    // find closest point
+    var best = pts[0], bestD = Infinity;
+    dense.forEach(function(p,idx){ if (Math.abs(p.mi - m) < bestD){ bestD = Math.abs(p.mi-m); best = pts[idx]; }});
+    markers += '<circle cx="'+best.x+'" cy="'+best.y+'" r="4" fill="#07080b" stroke="#ff3b30" stroke-width="2"/>';
+    markers += '<text x="'+(best.x+10)+'" y="'+(best.y-8)+'" font-family="Inter, sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" fill="rgba(255,255,255,.7)">MI '+m+'</text>';
+  }
+
+  // Start & Finish markers (larger)
+  var s = pts[0], f = pts[pts.length-1];
+  markers += '<circle cx="'+s.x+'" cy="'+s.y+'" r="9" fill="#ff3b30"/>';
+  markers += '<circle cx="'+s.x+'" cy="'+s.y+'" r="4" fill="#07080b"/>';
+  markers += '<text x="'+(s.x+16)+'" y="'+(s.y+4)+'" font-family="Inter, sans-serif" font-size="11" font-weight="800" letter-spacing="2.5" fill="#ffffff">START</text>';
+  markers += '<circle cx="'+f.x+'" cy="'+f.y+'" r="9" fill="none" stroke="#ff3b30" stroke-width="2.5"/>';
+  markers += '<circle cx="'+f.x+'" cy="'+f.y+'" r="4" fill="#ff3b30"/>';
+  markers += '<text x="'+(f.x-16)+'" y="'+(f.y+4)+'" text-anchor="end" font-family="Inter, sans-serif" font-size="11" font-weight="800" letter-spacing="2.5" fill="#ffffff">FINISH</text>';
+
+  // Hurricane Point label (peak)
+  var hp = WAYPOINTS.filter(function(w){ return w.role==='peak'; })[0];
+  if (hp){
+    var hpp = proj({ lat:hp.lat, lon:hp.lon });
+    markers += '<line x1="'+hpp.x+'" y1="'+hpp.y+'" x2="'+(hpp.x-60)+'" y2="'+(hpp.y-40)+'" stroke="rgba(255,255,255,.5)" stroke-width="1"/>';
+    markers += '<text x="'+(hpp.x-66)+'" y="'+(hpp.y-46)+'" text-anchor="end" font-family="Inter, sans-serif" font-size="10" font-weight="700" letter-spacing="2" fill="rgba(255,255,255,.8)">HURRICANE POINT</text>';
+    markers += '<text x="'+(hpp.x-66)+'" y="'+(hpp.y-33)+'" text-anchor="end" font-family="Inter, sans-serif" font-size="9" font-weight="500" letter-spacing="1.4" fill="rgba(255,255,255,.45)">MI 10.6 · 568 FT · PEAK</text>';
+  }
+
+  var defs = '<defs><filter id="pbBlur"><feGaussianBlur stdDeviation="3"/></filter></defs>';
+  svg.innerHTML = defs + netHtml + routeHtml + markers;
+})();
+
+// ======================================================================
+// VARIANT C — Grand Prix sector track
+//   Route rendered as 5 colored sectors (phase colors), numbered chips at
+//   phase boundaries, start/finish line, and a legend table on the side.
+// ======================================================================
+(function(){
+  var svg = document.getElementById('pcTrack');
+  if (!svg) return;
+  var box = { w:580, h:580, padL:50, padR:60, padT:40, padB:60 };
+
+  var dense = densify(WAYPOINTS, 40);
+  var proj = projector(dense, box);
+  var pts = dense.map(proj);
+
+  var PHASES = [
+    { n:'01', name:'EASE IN',      start:0,    end:4,    color:'#3EBD41', pace:'8:35' },
+    { n:'02', name:'COAST CLIMB',  start:4,    end:10,   color:'#F3AD3B', pace:'9:05' },
+    { n:'03', name:'HURRICANE',    start:10,   end:12,   color:'#FC4D54', pace:'10:17' },
+    { n:'04', name:'CRUISE MILES', start:12,   end:24,   color:'#008FEC', pace:'8:15' },
+    { n:'05', name:'FINISH STRONG',start:24,   end:26.2, color:'#9013FE', pace:'8:00' }
+  ];
+
+  function ptsForRange(mi0, mi1){
+    var out = [];
+    for (var i=0;i<dense.length;i++){
+      if (dense[i].mi >= mi0 && dense[i].mi <= mi1) out.push(pts[i]);
+    }
+    // guarantee at least 2
+    if (out.length < 2) out = pts.slice(0,2);
+    return out;
+  }
+  function toPath(a){
+    var d = '';
+    for (var i=0;i<a.length;i++){ d += (i===0?'M ':'L ') + a[i].x.toFixed(1) + ' ' + a[i].y.toFixed(1) + ' '; }
+    return d;
+  }
+
+  var html = '';
+  html += '<defs></defs>';
+
+  // Core ink — phase-colored stroke (no glow)
+  PHASES.forEach(function(ph){
+    var seg = ptsForRange(ph.start, ph.end);
+    var d = toPath(seg);
+    html += '<path d="'+d+'" fill="none" stroke="'+ph.color+'" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+
+  // Cream centerline shine (thin, keeps the tattoo "ink with a highlight" feel without glow)
+  PHASES.forEach(function(ph){
+    var seg = ptsForRange(ph.start, ph.end);
+    var d = toPath(seg);
+    html += '<path d="'+d+'" fill="none" stroke="rgba(255,240,225,.5)" stroke-width=".9" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+
+  // --- PASS 5: Beads along the route (tattoo "stitched" feel) ---
+  // sample every ~12th densified point, vary size deterministically
+  var allPts = [];
+  PHASES.forEach(function(ph){ allPts = allPts.concat(ptsForRange(ph.start, ph.end)); });
+  for (var b=0; b<pts.length; b+=12){
+    var bp = pts[b];
+    // find which phase we're in
+    var mi = dense[b].mi;
+    var phaseCol = '#fff';
+    for (var pi=0;pi<PHASES.length;pi++){ if (mi >= PHASES[pi].start && mi <= PHASES[pi].end){ phaseCol = PHASES[pi].color; break; } }
+    var r = 2.4 + ((b*13)%5)/6;
+    html += '<circle cx="'+bp.x.toFixed(1)+'" cy="'+bp.y.toFixed(1)+'" r="'+r.toFixed(2)+'" fill="'+phaseCol+'" opacity=".9"/>';
+    html += '<circle cx="'+bp.x.toFixed(1)+'" cy="'+bp.y.toFixed(1)+'" r="'+(r*0.45).toFixed(2)+'" fill="rgba(255,245,230,.8)"/>';
+  }
+
+  // Sector number chips — tattoo-style: glowing ring, bold numeral
+  PHASES.forEach(function(ph, i){
+    var seg = ptsForRange(ph.start, ph.end);
+    var midIdx = Math.floor(seg.length/2);
+    var mp = seg[midIdx] || seg[0];
+    var a = seg[Math.max(0, midIdx-3)], c = seg[Math.min(seg.length-1, midIdx+3)];
+    var dx = c.x-a.x, dy = c.y-a.y, L = Math.hypot(dx,dy)||1;
+    var nx = -dy/L, ny = dx/L;
+    var cx = box.w/2, cy = box.h/2;
+    var toCenter = (mp.x - cx)*nx + (mp.y - cy)*ny;
+    if (toCenter < 0){ nx = -nx; ny = -ny; }
+    var cxOut = mp.x + nx*40, cyOut = mp.y + ny*40;
+    html += '<line x1="'+mp.x.toFixed(1)+'" y1="'+mp.y.toFixed(1)+'" x2="'+cxOut.toFixed(1)+'" y2="'+cyOut.toFixed(1)+'" stroke="'+ph.color+'" stroke-width="1" opacity=".4" stroke-dasharray="2 2"/>';
+    html += '<circle cx="'+cxOut.toFixed(1)+'" cy="'+cyOut.toFixed(1)+'" r="15" fill="#0d1218" stroke="'+ph.color+'" stroke-width="1.6"/>';
+    html += '<text x="'+cxOut.toFixed(1)+'" y="'+(cyOut+4).toFixed(1)+'" text-anchor="middle" font-family="Oswald, sans-serif" font-weight="700" font-size="14" fill="'+ph.color+'" letter-spacing=".5">'+ph.n+'</text>';
+  });
+
+  // Start / Finish
+  var s = pts[0], f = pts[pts.length-1];
+  // start — chequered patch
+  html += '<g transform="translate('+s.x+','+s.y+')">';
+  html += '<circle r="13" fill="#0d1218" stroke="#fff" stroke-width="2"/>';
+  html += '<path d="M -6 -6 L 0 -6 L 0 0 L 6 0 L 6 6 L 0 6 L 0 0 L -6 0 Z" fill="#fff"/>';
+  html += '</g>';
+  html += '<text x="'+(s.x+20)+'" y="'+(s.y-10)+'" font-family="Oswald, sans-serif" font-weight="600" font-size="11" letter-spacing="2.5" fill="rgba(255,255,255,.85)">START</text>';
+
+  html += '<g transform="translate('+f.x+','+f.y+')">';
+  html += '<circle r="13" fill="#ff3b30" stroke="#fff" stroke-width="2"/>';
+  html += '</g>';
+  html += '<text x="'+(f.x-20)+'" y="'+(f.y-10)+'" text-anchor="end" font-family="Oswald, sans-serif" font-weight="600" font-size="11" letter-spacing="2.5" fill="rgba(255,255,255,.85)">FINISH</text>';
+
+  // Compass + scale in corner (minimal)
+  html += '<g transform="translate('+(box.w-44)+',44)">';
+  html += '<circle r="12" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1"/>';
+  html += '<path d="M 0 -12 L 2 0 L 0 12 L -2 0 Z" fill="rgba(255,255,255,.55)"/>';
+  html += '<text y="-16" text-anchor="middle" font-family="Oswald, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="rgba(255,255,255,.7)">N</text>';
+  html += '</g>';
+
+  svg.innerHTML = html;
+
+  // Build legend
+  var leg = document.getElementById('pcLegend');
+  if (leg){
+    leg.innerHTML = PHASES.map(function(ph){
+      return '<div class="row">'
+           +   '<div class="bar" style="background:'+ph.color+';"></div>'
+           +   '<div class="name">'+ph.name+'</div>'
+           +   '<div class="mi">MI '+ph.start+' – '+ph.end+'</div>'
+           +   '<div class="pace">'+ph.pace+'/mi</div>'
+           + '</div>';
+    }).join('');
+  }
+
+  // ────────── ELEVATION STRIP (full width, phase-colored) ──────────
+  var elevSvg = document.getElementById('pcElev');
+  if (!elevSvg) return;
+  var EW = 1200, EH = 160, ePadT = 10, ePadB = 26, ePadL = 0, ePadR = 0;
+  var mnE = 0, mxE = 620, total = 26.2;
+
+  function eleAt(mi){
+    for (var i=0;i<WAYPOINTS.length-1;i++){
+      var a = WAYPOINTS[i], b = WAYPOINTS[i+1];
+      if (mi >= a.mi && mi <= b.mi){
+        var t = (mi-a.mi)/(b.mi-a.mi), u = 0.5 - 0.5*Math.cos(t*Math.PI);
+        return a.ele + (b.ele-a.ele)*u;
+      }
+    }
+    return 0;
+  }
+  function xFor(mi){ return ePadL + (mi/total)*(EW-ePadL-ePadR); }
+  function yFor(e){ return ePadT + (EH-ePadT-ePadB) - ((e-mnE)/(mxE-mnE))*(EH-ePadT-ePadB); }
+
+  var ehtml = '';
+  // defs: glow + gradient for each phase + grain
+  ehtml += '<defs>';
+  PHASES.forEach(function(ph,i){
+    ehtml += '<linearGradient id="eg'+i+'" x1="0" y1="0" x2="0" y2="1">'
+          +   '<stop offset="0%" stop-color="'+ph.color+'" stop-opacity=".65"/>'
+          +   '<stop offset="100%" stop-color="'+ph.color+'" stop-opacity=".05"/>'
+          + '</linearGradient>';
+  });
+  ehtml += '</defs>';
+
+  // Horizontal gridlines
+  [0, 200, 400, 600].forEach(function(e){
+    var y = yFor(e);
+    ehtml += '<line x1="0" y1="'+y.toFixed(1)+'" x2="'+EW+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.06)" stroke-width="1"/>';
+    ehtml += '<text x="6" y="'+(y-4).toFixed(1)+'" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" letter-spacing="1.2" fill="rgba(255,255,255,.3)">'+e+' FT</text>';
+  });
+
+  // Build filled area per phase
+  var STEPS_PER_MILE = 14;
+  PHASES.forEach(function(ph, pi){
+    var d = '';
+    var s = xFor(ph.start), eX = xFor(ph.end);
+    var steps = Math.max(4, Math.floor((ph.end - ph.start) * STEPS_PER_MILE));
+    for (var i=0;i<=steps;i++){
+      var mi = ph.start + (i/steps)*(ph.end-ph.start);
+      var x = xFor(mi), y = yFor(eleAt(mi));
+      d += (i===0?'M ':'L ') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    }
+    var fill = d + 'L '+eX.toFixed(1)+' '+(EH-ePadB)+' L '+s.toFixed(1)+' '+(EH-ePadB)+' Z';
+    // fill
+    ehtml += '<path d="'+fill+'" fill="url(#eg'+pi+')"/>';
+    // top stroke
+    ehtml += '<path d="'+d+'" fill="none" stroke="'+ph.color+'" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>';
+    // cream shine
+    ehtml += '<path d="'+d+'" fill="none" stroke="rgba(255,245,230,.5)" stroke-width=".6" stroke-linejoin="round" stroke-linecap="round"/>';
+  });
+
+  // Phase boundary markers + sector numbers
+  PHASES.forEach(function(ph, i){
+    var x = xFor(ph.start);
+    if (i>0){
+      ehtml += '<line x1="'+x.toFixed(1)+'" y1="'+ePadT+'" x2="'+x.toFixed(1)+'" y2="'+(EH-ePadB)+'" stroke="rgba(255,255,255,.15)" stroke-width="1" stroke-dasharray="2 3"/>';
+    }
+    var midX = (xFor(ph.start) + xFor(ph.end))/2;
+    ehtml += '<circle cx="'+midX.toFixed(1)+'" cy="'+(ePadT+14)+'" r="11" fill="#0d1218" stroke="'+ph.color+'" stroke-width="1.4"/>';
+    ehtml += '<text x="'+midX.toFixed(1)+'" y="'+(ePadT+18)+'" text-anchor="middle" font-family="Oswald, sans-serif" font-weight="700" font-size="11" fill="'+ph.color+'">'+ph.n+'</text>';
+  });
+
+  // Peak marker
+  var pX = xFor(10.6), pY = yFor(568);
+  ehtml += '<line x1="'+pX.toFixed(1)+'" y1="'+pY.toFixed(1)+'" x2="'+pX.toFixed(1)+'" y2="'+(EH-ePadB)+'" stroke="#ff3b30" stroke-width="1" stroke-dasharray="2 3" opacity=".7"/>';
+  ehtml += '<circle cx="'+pX.toFixed(1)+'" cy="'+pY.toFixed(1)+'" r="5" fill="#ff3b30" stroke="#0d1218" stroke-width="1.5"/>';
+  ehtml += '<text x="'+(pX+8).toFixed(1)+'" y="'+(pY-8).toFixed(1)+'" font-family="Oswald, sans-serif" font-weight="600" font-size="10" letter-spacing="1.5" fill="#ff3b30">HURRICANE POINT · 568 FT</text>';
+
+  // Baseline
+  ehtml += '<line x1="0" y1="'+(EH-ePadB)+'" x2="'+EW+'" y2="'+(EH-ePadB)+'" stroke="rgba(255,255,255,.2)" stroke-width="1"/>';
+
+  elevSvg.innerHTML = ehtml;
+})();
+
+// ======================================================================
+// Elevation sparkline (inside the poster)
+// ======================================================================
+(function(){
+  var svg = document.getElementById('spark');
+  var W = 360, H = 60, padL = 0, padR = 0, padT = 6, padB = 6;
+  var mnE = 12, mxE = 568, total = 26.2;
+
+  function eleAt(mi){
+    for (var i=0;i<WAYPOINTS.length-1;i++){
+      var a = WAYPOINTS[i], b = WAYPOINTS[i+1];
+      if (mi >= a.mi && mi <= b.mi){
+        var t = (mi-a.mi)/(b.mi-a.mi), u = 0.5 - 0.5*Math.cos(t*Math.PI);
+        return a.ele + (b.ele-a.ele)*u;
+      }
+    }
+    return 0;
+  }
+
+  var STEPS = 180, d = '';
+  for (var i=0;i<=STEPS;i++){
+    var mi = (i/STEPS)*total;
+    var x = padL + (mi/total)*(W-padL-padR);
+    var y = padT + (H-padT-padB) - ((eleAt(mi)-mnE)/(mxE-mnE))*(H-padT-padB);
+    d += (i===0?'M ':'L ') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  }
+  // Fill
+  var fill = d + 'L '+W+' '+(H-padB)+' L 0 '+(H-padB)+' Z';
+
+  var html = '';
+  html += '<path d="'+fill+'" fill="rgba(236,230,214,.09)"/>';
+  html += '<path d="'+d+'" fill="none" stroke="rgba(236,230,214,.85)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  // peak marker
+  var pX = (10.6/total)*W, pY = padT + (H-padT-padB) - ((568-mnE)/(mxE-mnE))*(H-padT-padB);
+  html += '<line x1="'+pX+'" y1="'+padT+'" x2="'+pX+'" y2="'+(H-padB)+'" stroke="#d94033" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
+  html += '<circle cx="'+pX+'" cy="'+pY+'" r="3" fill="#d94033" stroke="#0b0d12" stroke-width="1"/>';
+  svg.innerHTML = html;
+})();
+</script>
+</body>
+</html>

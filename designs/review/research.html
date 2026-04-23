@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Runcino · Research & reasoning</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400;9..144,600;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:#F6F2E9; color:#1A1F26; font-family:'Inter',system-ui,sans-serif; line-height:1.55; }
+  a{ color:inherit; }
+
+  /* ----- Layout ----- */
+  .page{ max-width:1240px; margin:0 auto; padding:72px 64px 120px; }
+  .mast{ padding-bottom:40px; border-bottom:2px solid #1A1F26; margin-bottom:56px; }
+  .mast .tag{ font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:2.4px; font-weight:700; color:#B03030; text-transform:uppercase; }
+  .mast h1{ font-family:'Fraunces',serif; font-weight:900; font-size:72px; line-height:.94; letter-spacing:-.025em; margin-top:12px; }
+  .mast h1 em{ font-style:italic; color:#B03030; }
+  .mast .sub{ font-family:'Fraunces',serif; font-size:21px; font-style:italic; max-width:720px; margin-top:20px; color:rgba(26,31,38,.8); line-height:1.45; }
+  .mast .toc{ margin-top:32px; display:flex; flex-wrap:wrap; gap:8px 16px; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.6px; text-transform:uppercase; font-weight:600; }
+  .mast .toc a{ color:rgba(26,31,38,.6); text-decoration:none; padding:5px 10px; border:1px solid rgba(26,31,38,.2); border-radius:3px; transition:.15s; }
+  .mast .toc a:hover{ color:#fff; background:#1A1F26; }
+
+  /* ----- Section ----- */
+  section{ margin:88px 0; }
+  section > .n{ font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:2.4px; color:#B03030; font-weight:700; text-transform:uppercase; }
+  section > h2{ font-family:'Fraunces',serif; font-size:46px; font-weight:700; letter-spacing:-.02em; line-height:1.02; margin-top:10px; max-width:900px; }
+  section > h2 em{ font-style:italic; color:#B03030; }
+  section > .lede{ font-family:'Fraunces',serif; font-size:20px; font-style:italic; max-width:720px; margin-top:14px; color:rgba(26,31,38,.75); line-height:1.5; }
+  section > .rule{ height:1px; background:rgba(26,31,38,.25); margin:28px 0 36px; }
+
+  p{ font-family:'Fraunces',serif; font-size:17px; line-height:1.65; max-width:720px; margin-top:14px; }
+  .mono{ font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.02em; }
+
+  /* ----- Data table ----- */
+  .data-grid{ display:grid; grid-template-columns:1fr 1fr; gap:36px; margin-top:32px; }
+  table{ width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:12px; }
+  table thead th{ text-align:left; padding:8px 10px; border-bottom:1.5px solid #1A1F26; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; }
+  table td{ padding:6px 10px; border-bottom:1px solid rgba(26,31,38,.15); font-variant-numeric:tabular-nums; }
+  table tr:hover td{ background:rgba(176,48,48,.05); }
+  .kstat{ display:grid; grid-template-columns:1fr 1fr; gap:24px 36px; }
+  .kstat .k{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:rgba(26,31,38,.55); font-weight:700; }
+  .kstat .v{ font-family:'Fraunces',serif; font-size:32px; font-weight:700; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+  .kstat .n{ font-size:13px; color:rgba(26,31,38,.65); margin-top:2px; }
+
+  /* ----- Reference card ----- */
+  .refs{ display:flex; flex-direction:column; gap:56px; margin-top:40px; }
+  .ref{ display:grid; grid-template-columns:1.3fr 1fr; gap:40px; align-items:start; padding:32px; background:#EFE8D9; border:1px solid rgba(26,31,38,.12); border-radius:6px; }
+  .ref .rleft .n{ font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:2.4px; color:#B03030; font-weight:700; text-transform:uppercase; }
+  .ref .rleft h3{ font-family:'Fraunces',serif; font-size:34px; font-weight:700; letter-spacing:-.015em; line-height:1.05; margin-top:4px; }
+  .ref .rleft h3 em{ font-style:italic; color:#B03030; }
+  .ref .rleft .url{ margin-top:14px; display:inline-block; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1px; color:#1A1F26; border-bottom:1.5px solid #B03030; padding-bottom:2px; text-decoration:none; font-weight:600; }
+  .ref .rleft .url:hover{ color:#B03030; }
+  .ref .rleft .what{ font-family:'Fraunces',serif; font-size:16px; line-height:1.6; margin-top:18px; color:rgba(26,31,38,.85); }
+  .ref .rleft .extract{ margin-top:20px; padding-top:18px; border-top:1px solid rgba(26,31,38,.2); }
+  .ref .rleft .extract .h{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:#B03030; font-weight:700; margin-bottom:10px; }
+  .ref .rleft .extract ul{ list-style:none; }
+  .ref .rleft .extract li{ font-family:'Inter',sans-serif; font-size:13px; line-height:1.55; padding:6px 0 6px 20px; position:relative; color:rgba(26,31,38,.9); }
+  .ref .rleft .extract li::before{ content:'§'; position:absolute; left:0; top:6px; color:#B03030; font-family:'Fraunces',serif; font-weight:700; }
+  .ref .rleft .risk{ margin-top:16px; padding:12px 14px; background:rgba(176,48,48,.07); border-left:2px solid #B03030; font-family:'Fraunces',serif; font-style:italic; font-size:14px; line-height:1.5; color:rgba(26,31,38,.85); }
+  .ref .rleft .risk b{ font-style:normal; color:#B03030; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:700; display:block; margin-bottom:4px; }
+
+  .ref .rright .sketchcap{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:rgba(26,31,38,.55); font-weight:700; margin-bottom:10px; }
+  .ref .rright svg{ display:block; width:100%; height:auto; border:1px solid rgba(26,31,38,.15); background:#F6F2E9; }
+  .ref .rright .sketchnote{ font-family:'Fraunces',serif; font-style:italic; font-size:13px; color:rgba(26,31,38,.7); margin-top:10px; line-height:1.55; }
+
+  /* ----- Pattern matrix ----- */
+  .matrix{ margin-top:32px; border-top:2px solid #1A1F26; border-bottom:2px solid #1A1F26; }
+  .matrix .row{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:20px; padding:18px 0; border-bottom:1px solid rgba(26,31,38,.15); align-items:center; }
+  .matrix .row:last-child{ border-bottom:none; }
+  .matrix .row.hd{ font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; font-weight:700; color:#B03030; padding-bottom:14px; }
+  .matrix .row .p{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; }
+  .matrix .row .p small{ display:block; font-family:'Inter',sans-serif; font-weight:400; font-size:12.5px; color:rgba(26,31,38,.6); margin-top:3px; line-height:1.4; }
+  .matrix .dot{ width:14px; height:14px; border-radius:50%; display:inline-block; }
+  .matrix .yes{ background:#B03030; }
+  .matrix .maybe{ background:#D8A040; }
+  .matrix .no{ background:transparent; border:1.5px solid rgba(26,31,38,.25); }
+
+  .jtbd{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:32px; }
+  .jtbd .j{ background:#EFE8D9; border:1px solid rgba(26,31,38,.15); padding:24px 22px; border-top:3px solid #B03030; }
+  .jtbd .j .when{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.8px; color:#B03030; text-transform:uppercase; font-weight:700; }
+  .jtbd .j h4{ font-family:'Fraunces',serif; font-size:22px; font-weight:700; letter-spacing:-.01em; margin-top:4px; line-height:1.15; }
+  .jtbd .j .q{ font-family:'Fraunces',serif; font-style:italic; font-size:14.5px; color:rgba(26,31,38,.8); margin-top:12px; line-height:1.5; }
+  .jtbd .j ul{ list-style:none; margin-top:14px; padding-top:12px; border-top:1px solid rgba(26,31,38,.2); }
+  .jtbd .j li{ font-family:'Inter',sans-serif; font-size:12.5px; line-height:1.6; padding:2px 0 2px 16px; position:relative; color:rgba(26,31,38,.85); }
+  .jtbd .j li::before{ content:'→'; position:absolute; left:0; color:#B03030; font-weight:700; }
+
+  /* Final proposal cards */
+  .proposals{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:32px; }
+  .prop{ background:#1A1F26; color:#F6F2E9; padding:32px 28px; border-radius:4px; transition:.2s; position:relative; overflow:hidden; }
+  .prop .letter{ position:absolute; top:14px; right:18px; font-family:'Fraunces',serif; font-size:72px; font-weight:900; color:rgba(246,242,233,.08); line-height:1; }
+  .prop .tag{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:2px; color:#D8A040; text-transform:uppercase; font-weight:700; }
+  .prop h4{ font-family:'Fraunces',serif; font-size:28px; font-weight:700; letter-spacing:-.01em; margin-top:6px; line-height:1.1; }
+  .prop .refs{ margin:14px 0; font-family:'Inter',sans-serif; font-size:12px; color:rgba(246,242,233,.6); display:flex; flex-direction:column; gap:4px; }
+  .prop .combines{ font-family:'Fraunces',serif; font-style:italic; font-size:14.5px; margin-top:12px; color:rgba(246,242,233,.85); line-height:1.55; }
+  .prop a{ display:inline-block; margin-top:20px; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:#D8A040; border-bottom:1.5px solid #D8A040; padding-bottom:3px; text-decoration:none; font-weight:700; }
+  .prop a:hover{ color:#fff; border-color:#fff; }
+
+  .anchor{ scroll-margin-top:30px; }
+</style>
+</head><body>
+
+<div class="page">
+
+  <header class="mast">
+    <div class="tag">Design research · Runcino · Big Sur Int'l Marathon</div>
+    <h1>How a race plan should <em>look</em>.</h1>
+    <div class="sub">Before any more mockups — the data, the job, the references, and the reasoning that connects them. Read top to bottom. Every claim either links to a source or shows its math.</div>
+    <nav class="toc">
+      <a href="#data">01 · The data</a>
+      <a href="#job">02 · The job</a>
+      <a href="#fail">03 · Why current fails</a>
+      <a href="#refs">04 · Reference library</a>
+      <a href="#patterns">05 · Pattern matrix</a>
+      <a href="#proposals">06 · Directions</a>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <section id="data" class="anchor">
+    <div class="n">§ 01 · The data</div>
+    <h2>What we <em>actually have</em>.</h2>
+    <div class="lede">Before designing, anchor to the numbers. Everything below is real — measured from the USGS 3DEP DEM sampled along the official 2026 course, hysteresis-reduced at 3 ft.</div>
+    <div class="rule"></div>
+
+    <div class="kstat">
+      <div><div class="k">Distance</div><div class="v">26.2 mi</div><div class="n">Point-to-point · south → north</div></div>
+      <div><div class="k">Peak elevation</div><div class="v">568 ft</div><div class="n">Hurricane Point · mile 10.6</div></div>
+      <div><div class="k">Total gain</div><div class="v">2,153 ft</div><div class="n">Hysteresis, 3 ft threshold</div></div>
+      <div><div class="k">Total loss</div><div class="v">2,161 ft</div><div class="n">Net −8 ft (coast-to-coast)</div></div>
+      <div><div class="k">Start / Finish</div><div class="v">20 ft / 12 ft</div><div class="n">Big Sur Station → Carmel</div></div>
+      <div><div class="k">Goal time</div><div class="v">3:45:00</div><div class="n">8:34/mi even-pace equivalent</div></div>
+    </div>
+
+    <p style="margin-top:40px">The course is not a rolling marathon with uniform effort demands. It's a <b>single-mountain race</b>: ten miles of easy opening, two miles of real climb, and fourteen miles of consequence. Any visualization that treats Hurricane Point as "just another waypoint" has failed the course.</p>
+
+    <div class="data-grid" style="margin-top:36px">
+      <div>
+        <div class="mono" style="font-size:10px; letter-spacing:2px; font-weight:700; color:#B03030; text-transform:uppercase; margin-bottom:8px">Waypoints · course sample</div>
+        <table>
+          <thead><tr><th>mi</th><th>lat</th><th>lon</th><th>ft</th><th>notable</th></tr></thead>
+          <tbody>
+            <tr><td>0.0</td><td>36.2520</td><td>-121.7790</td><td>66</td><td>Big Sur Station · START</td></tr>
+            <tr><td>5.2</td><td>36.3500</td><td>-121.8600</td><td>157</td><td></td></tr>
+            <tr><td>8.5</td><td>36.3650</td><td>-121.8800</td><td>262</td><td>climb begins</td></tr>
+            <tr><td>10.6</td><td>36.3726</td><td>-121.9031</td><td>568</td><td>Hurricane Pt · PEAK</td></tr>
+            <tr><td>13.1</td><td>36.3900</td><td>-121.9050</td><td>394</td><td>Bixby Bridge · halfway</td></tr>
+            <tr><td>16.0</td><td>36.4300</td><td>-121.9100</td><td>180</td><td>Carmel Highlands</td></tr>
+            <tr><td>22.0</td><td>36.4900</td><td>-121.9190</td><td>213</td><td>"The Wall"</td></tr>
+            <tr><td>26.2</td><td>36.5552</td><td>-121.9233</td><td>39</td><td>Carmel · FINISH</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="mono" style="font-size:10px; letter-spacing:2px; font-weight:700; color:#B03030; text-transform:uppercase; margin-bottom:8px">The shape · vertically exaggerated 6×</div>
+        <svg viewBox="0 0 600 240" style="width:100%;height:auto;border:1px solid rgba(26,31,38,.15); background:#F6F2E9">
+          <defs>
+            <linearGradient id="elG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#B03030" stop-opacity=".25"/>
+              <stop offset="100%" stop-color="#B03030" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g id="bigsur-shape"></g>
+        </svg>
+        <div style="font-family:'Fraunces',serif; font-style:italic; font-size:13px; color:rgba(26,31,38,.65); margin-top:10px; line-height:1.5">The profile has <b>one signature</b>: the Hurricane Point climb between miles 9 and 11. Good design puts that shape front and center.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="job" class="anchor">
+    <div class="n">§ 02 · The job</div>
+    <h2>Three users, <em>three moments</em>.</h2>
+    <div class="lede">The same runner opens this page at three very different times. What they need is not the same. Design for the worst of the three, not the average.</div>
+    <div class="rule"></div>
+    <div class="jtbd">
+      <div class="j">
+        <div class="when">T−4 weeks · desk</div>
+        <h4>The planner.</h4>
+        <div class="q">"Do I have the fitness for 3:45? If not, what's the realistic goal?"</div>
+        <ul>
+          <li>Compare goal pace to projected pace across the course</li>
+          <li>Identify which miles will hurt disproportionately</li>
+          <li>Commit a fueling / pacing strategy to memory</li>
+        </ul>
+      </div>
+      <div class="j">
+        <div class="when">T−1 week · rehearsal</div>
+        <h4>The visualizer.</h4>
+        <div class="q">"What does mile 11 look like? What am I doing when I get to Bixby?"</div>
+        <ul>
+          <li>Build a mental map of named landmarks in order</li>
+          <li>Internalize where the gels go and why</li>
+          <li>Rehearse the narrative: "climb → crest → cruise → wall → finish"</li>
+        </ul>
+      </div>
+      <div class="j">
+        <div class="when">Race morning · phone</div>
+        <h4>The reciter.</h4>
+        <div class="q">"What am I supposed to do in the first five miles so I don't blow up?"</div>
+        <ul>
+          <li>Re-read the core rule in 15 seconds at the start line</li>
+          <li>Confirm the fuel plan one more time</li>
+          <li>Screenshot the phase strategy for the lock screen</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="fail" class="anchor">
+    <div class="n">§ 03 · Why the current design fails</div>
+    <h2>Specifically, what's <em>broken</em>.</h2>
+    <div class="lede">Not vague — enumerated. Each failure below ties to a specific design pattern we'll either fix or borrow from a reference.</div>
+    <div class="rule"></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:16px">
+      <div style="padding:22px 24px; background:#EFE8D9; border-left:3px solid #B03030">
+        <div class="mono" style="font-size:10px;letter-spacing:2px;font-weight:700;color:#B03030;text-transform:uppercase">fail 01</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;margin-top:4px">Flat tables don't pace Big Sur.</div>
+        <p style="margin-top:10px;font-size:15px">A 26-row table showing 8:34/mi for every mile is a lie. Mile 11 is not 8:34. On the actual terrain, the same effort produces 9:45 at the peak and 8:05 on the Bixby descent. <b>Fix:</b> grade-adjusted pace, visible per-mile, colored by effort.</p>
+      </div>
+      <div style="padding:22px 24px; background:#EFE8D9; border-left:3px solid #B03030">
+        <div class="mono" style="font-size:10px;letter-spacing:2px;font-weight:700;color:#B03030;text-transform:uppercase">fail 02</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;margin-top:4px">Unnamed peaks mean nothing.</div>
+        <p style="margin-top:10px;font-size:15px">A squiggly line from 0 to 568 ft with "mile 10.6" as the label is a data point. "Hurricane Point · 520 ft over 2 mi · Cat 2 climb" is a narrative. <b>Fix:</b> categorize and name every climb, FT-style.</p>
+      </div>
+      <div style="padding:22px 24px; background:#EFE8D9; border-left:3px solid #B03030">
+        <div class="mono" style="font-size:10px;letter-spacing:2px;font-weight:700;color:#B03030;text-transform:uppercase">fail 03</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;margin-top:4px">Generic basemaps bury the story.</div>
+        <p style="margin-top:10px;font-size:15px">Mapbox default grey makes a 26-mile coastal marathon look like a suburban 10K. Big Sur's identity is the Pacific on one side and a ridgeline on the other. <b>Fix:</b> either no basemap (poster) or a warm hillshade that foregrounds terrain.</p>
+      </div>
+      <div style="padding:22px 24px; background:#EFE8D9; border-left:3px solid #B03030">
+        <div class="mono" style="font-size:10px;letter-spacing:2px;font-weight:700;color:#B03030;text-transform:uppercase">fail 04</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:700;margin-top:4px">No hierarchy between map and elevation.</div>
+        <p style="margin-top:10px;font-size:15px">Current treatment gives equal weight to the route and the profile. But they answer different questions. <b>Fix:</b> one is the hero (map-as-portrait), the other is the functional overlay (profile-with-annotations).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="refs" class="anchor">
+    <div class="n">§ 04 · Reference library</div>
+    <h2>Eight sources, one <em>pattern extracted</em> from each.</h2>
+    <div class="lede">Each card below: the source (click through to verify), what they do, the specific pattern I'm borrowing, a sketch of that pattern applied to Big Sur, and the failure mode if we copy it badly.</div>
+    <div class="rule"></div>
+
+    <div class="refs">
+
+      <!-- REF 1: Muir Way -->
+      <article class="ref" id="ref-muir">
+        <div class="rleft">
+          <div class="n">R01 · poster discipline</div>
+          <h3>Muir Way <em>relief maps</em>.</h3>
+          <a class="url" href="https://muir-way.com/products/big-sur-1956-relief-map" target="_blank">muir-way.com ↗</a>
+          <div class="what">Muir Way sells archival-grade topographic posters — two-color palette per piece, off-white or dark canvas, the geography centered as the hero, a single stat strip at the foot. A poster reads from across a room because it commits to one shape and one contrast pair. No basemap clutter; the terrain is the subject.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Two-color palette discipline. One canvas color, one ink, one accent.</li>
+              <li>Subject-as-silhouette. The route/coastline IS the artwork. No basemap noise behind it.</li>
+              <li>Stat strip at the foot with tabular numerals and tiny caps labels — "distance / gain / goal" as typographic rhythm, not a UI.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>Poster aesthetics are for looking, not operating. If we go full poster, the runner can't actually use it on race morning. Reserve this for the hero block; keep functional data elsewhere.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · what it becomes for Big Sur</div>
+          <svg viewBox="0 0 520 320">
+            <rect width="520" height="320" fill="#EFE8D9"/>
+            <text x="30" y="50" font-family="Fraunces,serif" font-size="11" letter-spacing="3" font-weight="700" fill="#B03030">APRIL 26 · 2026</text>
+            <text x="30" y="100" font-family="Fraunces,serif" font-size="46" font-weight="900" fill="#1A1F26" letter-spacing="-1.5">Big Sur</text>
+            <text x="30" y="128" font-family="Fraunces,serif" font-size="18" font-style="italic" fill="#B03030">International.</text>
+            <!-- route silhouette -->
+            <path d="M 80 230 Q 140 225 180 235 Q 220 245 240 215 Q 260 175 290 155 Q 320 135 340 170 Q 360 215 400 220 Q 440 225 470 240" fill="none" stroke="#1A1F26" stroke-width="2.5"/>
+            <circle cx="80" cy="230" r="4" fill="#B03030"/>
+            <circle cx="470" cy="240" r="4" fill="#B03030"/>
+            <circle cx="310" cy="143" r="5" fill="none" stroke="#B03030" stroke-width="1.5"/>
+            <line x1="310" y1="130" x2="310" y2="110" stroke="#1A1F26" stroke-width=".6"/>
+            <text x="310" y="102" font-family="Fraunces,serif" font-size="12" font-style="italic" font-weight="700" text-anchor="middle" fill="#1A1F26">Hurricane Pt.</text>
+            <line x1="30" y1="275" x2="490" y2="275" stroke="#1A1F26" stroke-width=".8"/>
+            <text x="30" y="298" font-family="Fraunces,serif" font-size="22" font-weight="700" fill="#1A1F26">26.2</text>
+            <text x="30" y="310" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" font-weight="700" fill="#B03030">DISTANCE</text>
+            <text x="160" y="298" font-family="Fraunces,serif" font-size="22" font-weight="700" fill="#1A1F26">2,153</text>
+            <text x="160" y="310" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" font-weight="700" fill="#B03030">GAIN</text>
+            <text x="310" y="298" font-family="Fraunces,serif" font-size="22" font-weight="700" fill="#1A1F26">3:45</text>
+            <text x="310" y="310" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" font-weight="700" fill="#B03030">GOAL</text>
+            <text x="430" y="298" font-family="Fraunces,serif" font-size="22" font-weight="700" fill="#1A1F26">54°</text>
+            <text x="430" y="310" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" font-weight="700" fill="#B03030">TEMP</text>
+          </svg>
+          <div class="sketchnote">Ink + terracotta, route as silhouette, one peak labeled, stat strip at foot. Two colors carry the whole composition.</div>
+        </div>
+      </article>
+
+      <!-- REF 2: FT Tour de France -->
+      <article class="ref" id="ref-ft">
+        <div class="rleft">
+          <div class="n">R02 · climb categorization</div>
+          <h3>FT Tour de France <em>stage profiles</em>.</h3>
+          <a class="url" href="https://ig.ft.com/tour-de-france/" target="_blank">ig.ft.com/tour-de-france ↗</a>
+          <div class="what">The Financial Times' cycling graphics team treats each mountain as a character with a name and a rank. Every climb gets a category badge (HC, Cat 1–4), length, average gradient, and summit elevation inline with the profile. The elevation curve is filled in the FT's signature salmon pink; climbs rise out of it as labeled triangles with attached data.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Every climb gets a badge category — HC / Cat 1–4 — treating a marathon like a cycling race.</li>
+              <li>Each badge carries length · gradient · summit elevation right at the peak.</li>
+              <li>The profile is the hero chart, not an afterthought chart below the map.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>Marathons don't use HC/Cat 1 terminology. We have to invent plausible categories ("HC = race-defining", "Cat 3 = recoverable bump"). If we're lazy with the taxonomy, it reads as affectation. Calibrate categories to marathon intuition, not cycling grades.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · climb-as-character on Big Sur</div>
+          <svg viewBox="0 0 520 320">
+            <rect width="520" height="320" fill="#FFF1E5"/>
+            <text x="22" y="36" font-family="Fraunces,serif" font-size="13" font-style="italic" font-weight="700" fill="#33302E">Stage profile · miles 0–26.2</text>
+            <!-- profile filled area -->
+            <path d="M 30 240 L 80 235 L 140 225 L 180 230 L 220 210 L 260 190 L 285 170 L 300 110 L 320 145 L 350 190 L 380 200 L 410 175 L 430 195 L 460 210 L 500 230 L 500 280 L 30 280 Z" fill="#FF8676" fill-opacity=".45"/>
+            <path d="M 30 240 L 80 235 L 140 225 L 180 230 L 220 210 L 260 190 L 285 170 L 300 110 L 320 145 L 350 190 L 380 200 L 410 175 L 430 195 L 460 210 L 500 230" fill="none" stroke="#D8481C" stroke-width="2"/>
+            <!-- HC badge -->
+            <rect x="270" y="50" width="72" height="22" fill="#D8481C"/>
+            <text x="306" y="65" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" letter-spacing="2" font-weight="700" fill="#FFF1E5">HC · MI 10.6</text>
+            <line x1="306" y1="72" x2="306" y2="108" stroke="#33302E" stroke-width=".8" stroke-dasharray="1 3"/>
+            <text x="306" y="90" font-family="Fraunces,serif" font-size="13" font-weight="700" fill="#33302E" text-anchor="middle">Hurricane Point</text>
+            <text x="306" y="104" font-family="JetBrains Mono,monospace" font-size="9" fill="#33302E" text-anchor="middle">568 FT · 4.9% · 2.0 MI</text>
+            <!-- Cat 3 -->
+            <rect x="380" y="120" width="58" height="18" fill="#33302E"/>
+            <text x="409" y="133" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="1.6" font-weight="700" fill="#FFF1E5">CAT 3 · 16</text>
+            <line x1="409" y1="138" x2="409" y2="170" stroke="#33302E" stroke-width=".7" stroke-dasharray="1 3"/>
+            <text x="409" y="160" font-family="Fraunces,serif" font-size="11" font-weight="700" fill="#33302E" text-anchor="middle">Highlands</text>
+            <!-- Cat 4 -->
+            <rect x="440" y="155" width="58" height="18" fill="#33302E"/>
+            <text x="469" y="168" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="1.6" font-weight="700" fill="#FFF1E5">CAT 4 · 22</text>
+            <line x1="469" y1="173" x2="469" y2="195" stroke="#33302E" stroke-width=".7" stroke-dasharray="1 3"/>
+            <text x="469" y="210" font-family="Fraunces,serif" font-size="11" font-weight="700" fill="#33302E" text-anchor="middle">The Wall</text>
+            <!-- axis -->
+            <line x1="30" y1="280" x2="500" y2="280" stroke="#33302E" stroke-width=".6"/>
+            <text x="30" y="296" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" fill="#33302E" font-weight="700">MI 0</text>
+            <text x="500" y="296" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" fill="#33302E" font-weight="700">MI 26.2</text>
+          </svg>
+          <div class="sketchnote">Salmon canvas (FT signature), one HC climb with summit stats inline, two lower cats annotated. Elevation is the hero chart.</div>
+        </div>
+      </article>
+
+      <!-- REF 3: Swisstopo -->
+      <article class="ref" id="ref-swiss">
+        <div class="rleft">
+          <div class="n">R03 · cartographic restraint</div>
+          <h3>Swisstopo <em>hillshade</em>.</h3>
+          <a class="url" href="https://map.geo.admin.ch" target="_blank">map.geo.admin.ch ↗</a>
+          <div class="what">The Swiss federal mapping agency has the most refined cartographic style in the world. Hand-shaded relief in warm sepia and ochre, brown contour lines at 20m intervals, italic serif labels curved along ridgelines and valleys, water in pale cyan. Their maps feel analog — painted, not rendered. Labels respect hierarchy: major peaks in larger italic, minor features in smaller upright.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Warm sepia hillshade (not grey Mapbox) as the basemap. Terrain reads warm.</li>
+              <li>Curved italic serif place labels along natural features — "Pacific Ocean" arcs along the coast, not a pin.</li>
+              <li>Muted, restrained palette: 4 hues total (paper / ink / water / accent).</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>We can't match Swisstopo's hand-drawn craft at runtime. A procedural hillshade from radial gradients will always feel fake. Either commit to a real DEM-based hillshade tile service (Stamen Terrain, Mapbox Outdoors styled warm) or embrace a stylized interpretation that doesn't pretend to be the real thing.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · warm-paper Big Sur, curved labels</div>
+          <svg viewBox="0 0 520 320">
+            <defs>
+              <radialGradient id="rsH1"><stop offset="0%" stop-color="#A07040" stop-opacity=".7"/><stop offset="100%" stop-color="#A07040" stop-opacity="0"/></radialGradient>
+              <radialGradient id="rsH2"><stop offset="0%" stop-color="#8B6B3E" stop-opacity=".5"/><stop offset="100%" stop-color="#8B6B3E" stop-opacity="0"/></radialGradient>
+            </defs>
+            <rect width="520" height="320" fill="#E4D5B7"/>
+            <!-- ocean -->
+            <path d="M 0 0 L 520 0 L 520 100 Q 400 130 280 140 Q 160 150 0 170 Z" fill="#B8CFD4" opacity=".55"/>
+            <!-- hillshade blobs -->
+            <circle cx="150" cy="210" r="80" fill="url(#rsH1)"/>
+            <circle cx="280" cy="230" r="100" fill="url(#rsH2)"/>
+            <circle cx="410" cy="250" r="70" fill="url(#rsH1)"/>
+            <!-- contour ellipses at peak -->
+            <ellipse cx="280" cy="220" rx="60" ry="28" fill="none" stroke="#5A3A20" stroke-width=".4" opacity=".4"/>
+            <ellipse cx="280" cy="220" rx="42" ry="20" fill="none" stroke="#5A3A20" stroke-width=".4" opacity=".4"/>
+            <ellipse cx="280" cy="220" rx="24" ry="12" fill="none" stroke="#5A3A20" stroke-width=".4" opacity=".5"/>
+            <!-- route dotted red -->
+            <path id="coastPath" d="M 40 220 Q 120 210 180 200 Q 240 195 280 185 Q 320 175 360 195 Q 400 210 470 200" fill="none" stroke="#8A2820" stroke-width="2" stroke-dasharray="1.5 3"/>
+            <!-- curved italic label along coast -->
+            <path id="coastLabel" d="M 40 140 Q 200 120 480 135" fill="none"/>
+            <text font-family="Fraunces,serif" font-style="italic" font-size="20" fill="#3A2818" opacity=".7"><textPath href="#coastLabel">Pacific Ocean</textPath></text>
+            <!-- labels -->
+            <text x="280" y="175" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="14" font-weight="700" fill="#3A2818">Hurricane Pt.</text>
+            <text x="280" y="189" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="11" fill="#5A3A20">(568 ft)</text>
+            <circle cx="280" cy="203" r="4" fill="#8A2820"/>
+            <text x="40" y="243" font-family="Fraunces,serif" font-style="italic" font-size="11" fill="#3A2818">Big Sur Stn.</text>
+            <text x="470" y="215" font-family="Fraunces,serif" font-style="italic" font-size="11" fill="#3A2818" text-anchor="end">Carmel</text>
+            <!-- neatline -->
+            <rect x="10" y="10" width="500" height="300" fill="none" stroke="#3A2818" stroke-width=".6"/>
+          </svg>
+          <div class="sketchnote">Warm paper, ochre hillshade, italic serif "Pacific Ocean" arcing along the coast, dotted red trail overlay — Nat Geo/Swisstopo vocabulary.</div>
+        </div>
+      </article>
+
+      <!-- REF 4: NYT interactives -->
+      <article class="ref" id="ref-nyt">
+        <div class="rleft">
+          <div class="n">R04 · annotated editorial</div>
+          <h3>NYT marathon <em>interactives</em>.</h3>
+          <a class="url" href="https://www.nytimes.com/interactive/2023/11/03/sports/nyc-marathon-course-elevation.html" target="_blank">nytimes.com · NYC marathon graphics ↗</a>
+          <div class="what">The NYT Graphics team treats a race course as a story with mile-by-mile annotations. Off-white canvas (#F7F6F2 — not pure white), Cheltenham serif annotations with thin leader lines pointing to specific points ("Mile 16: Queensboro Bridge, +80 ft"). Each annotation earns its place by naming something specific that happens there — not "mile marker" but "the 5th Ave hill, where most runners bonk."</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Warm off-white canvas. Pure white is clinical; #F7F6F2 is editorial.</li>
+              <li>Inline annotations with leader lines — each one names a specific event at that mile, not just the mile number.</li>
+              <li>Serif body copy for prose; tabular mono only for stats.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>NYT's annotations feel earned because each sentence is newsworthy. If we pad annotations with generic copy ("mile 8: keep running"), the device collapses into template. Every annotation must reveal something the reader didn't know.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · every climb earns an annotation</div>
+          <svg viewBox="0 0 520 320">
+            <rect width="520" height="320" fill="#F7F6F2"/>
+            <!-- profile -->
+            <path d="M 30 240 L 80 238 L 140 226 L 180 232 L 220 212 L 260 190 L 285 172 L 300 112 L 320 145 L 350 188 L 380 200 L 410 172 L 430 195 L 460 215 L 500 230" fill="none" stroke="#B03030" stroke-width="1.8"/>
+            <path d="M 30 240 L 80 238 L 140 226 L 180 232 L 220 212 L 260 190 L 285 172 L 300 112 L 320 145 L 350 188 L 380 200 L 410 172 L 430 195 L 460 215 L 500 230 L 500 280 L 30 280 Z" fill="#B03030" fill-opacity=".12"/>
+            <!-- annotations -->
+            <line x1="80" y1="238" x2="80" y2="200" stroke="#1A1F26" stroke-width=".5"/>
+            <text x="80" y="193" text-anchor="middle" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Mile 3</text>
+            <text x="80" y="180" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="10" fill="#4A4A4A">the fog lifts here</text>
+
+            <line x1="300" y1="112" x2="180" y2="60" stroke="#1A1F26" stroke-width=".5"/>
+            <text x="180" y="52" text-anchor="middle" font-family="Fraunces,serif" font-size="14" font-weight="700" fill="#1A1F26">Mile 10.6 — Hurricane Point</text>
+            <text x="180" y="68" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="11" fill="#4A4A4A">"the race begins here"</text>
+
+            <line x1="320" y1="145" x2="380" y2="95" stroke="#1A1F26" stroke-width=".5"/>
+            <text x="380" y="87" text-anchor="middle" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Bixby Bridge</text>
+            <text x="380" y="101" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="10" fill="#4A4A4A">a grand piano plays</text>
+
+            <line x1="430" y1="195" x2="480" y2="155" stroke="#1A1F26" stroke-width=".5"/>
+            <text x="478" y="148" text-anchor="end" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Mile 22 — The Wall</text>
+            <text x="478" y="162" text-anchor="end" font-family="Fraunces,serif" font-style="italic" font-size="10" fill="#4A4A4A">the only climb left</text>
+
+            <line x1="30" y1="280" x2="500" y2="280" stroke="#1A1F26" stroke-width=".5"/>
+          </svg>
+          <div class="sketchnote">Off-white, salmon profile fill, four hand-placed annotations — each one revealing something specific about what happens there.</div>
+        </div>
+      </article>
+
+      <!-- REF 5: Strava -->
+      <article class="ref" id="ref-strava">
+        <div class="rleft">
+          <div class="n">R05 · big-number tiles</div>
+          <h3>Strava <em>stat cards</em>.</h3>
+          <a class="url" href="https://www.strava.com/athletes/1/stats" target="_blank">strava.com ↗</a>
+          <div class="what">Strava's entire UI runs on oversized tabular numerals paired with tiny caps labels, on a near-black or pure-white card. Orange (#FC4C02) is the single accent — never more than one color in the decoration. The route is rendered as a 2px orange line on a desaturated grey Mapbox base, which makes it the only bright thing on the screen. Year-in-Sport extends this with editorial scale jumps: 48pt headline sitting directly next to 10pt caption.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Big number / tiny label stat tile — the core Strava idiom.</li>
+              <li>Desaturate the basemap so the route is the only bright thing.</li>
+              <li>One warm accent color; everything else is monochrome.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>The orange accent only works because Strava is relentlessly disciplined about using nothing else. The moment we add a second accent (say, green for descents), the whole system degrades to generic SaaS. Pick one warm, hold the line.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · stat tile + dark map</div>
+          <svg viewBox="0 0 520 320">
+            <rect width="520" height="320" fill="#0F0F12"/>
+            <!-- four stat tiles -->
+            <g font-family="Inter,sans-serif">
+              <line x1="130" y1="50" x2="130" y2="130" stroke="#fff" stroke-width=".3" opacity=".15"/>
+              <line x1="260" y1="50" x2="260" y2="130" stroke="#fff" stroke-width=".3" opacity=".15"/>
+              <line x1="390" y1="50" x2="390" y2="130" stroke="#fff" stroke-width=".3" opacity=".15"/>
+              <text x="30" y="68" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="2" fill="#FC4C02" font-weight="700">DISTANCE</text>
+              <text x="30" y="112" font-family="Fraunces,serif" font-size="38" font-weight="700" fill="#fff">26.2</text>
+              <text x="150" y="68" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="2" fill="#FC4C02" font-weight="700">GAIN</text>
+              <text x="150" y="112" font-family="Fraunces,serif" font-size="38" font-weight="700" fill="#fff">2,153</text>
+              <text x="280" y="68" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="2" fill="#FC4C02" font-weight="700">GOAL</text>
+              <text x="280" y="112" font-family="Fraunces,serif" font-size="38" font-weight="700" fill="#fff">3:45</text>
+              <text x="410" y="68" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="2" fill="#FC4C02" font-weight="700">TEMP</text>
+              <text x="410" y="112" font-family="Fraunces,serif" font-size="38" font-weight="700" fill="#fff">54°</text>
+            </g>
+            <line x1="0" y1="150" x2="520" y2="150" stroke="#fff" stroke-width=".3" opacity=".15"/>
+            <!-- desaturated dark map with orange route -->
+            <rect x="30" y="170" width="460" height="130" fill="#1a1a20"/>
+            <g stroke="#2a2a35" stroke-width=".4">
+              <line x1="30" y1="200" x2="490" y2="200"/>
+              <line x1="30" y1="240" x2="490" y2="240"/>
+              <line x1="30" y1="280" x2="490" y2="280"/>
+              <line x1="130" y1="170" x2="130" y2="300"/>
+              <line x1="260" y1="170" x2="260" y2="300"/>
+              <line x1="390" y1="170" x2="390" y2="300"/>
+            </g>
+            <path d="M 60 260 Q 130 250 180 240 Q 230 230 270 200 Q 310 180 350 220 Q 390 260 440 270" fill="none" stroke="#FC4C02" stroke-width="5" opacity=".25" filter="blur(2px)"/>
+            <path d="M 60 260 Q 130 250 180 240 Q 230 230 270 200 Q 310 180 350 220 Q 390 260 440 270" fill="none" stroke="#FC4C02" stroke-width="2"/>
+            <circle cx="60" cy="260" r="4" fill="#FC4C02"/>
+            <circle cx="440" cy="270" r="4" fill="#FC4C02"/>
+          </svg>
+          <div class="sketchnote">Four-up stat bar with mono caps + display serif numerals. Dark desaturated map with orange-only route. Ruthless color discipline.</div>
+        </div>
+      </article>
+
+      <!-- REF 6: Komoot -->
+      <article class="ref" id="ref-komoot">
+        <div class="rleft">
+          <div class="n">R06 · linked map + elevation</div>
+          <h3>Komoot <em>tour detail</em>.</h3>
+          <a class="url" href="https://www.komoot.com" target="_blank">komoot.com ↗</a>
+          <div class="what">Komoot's tour page is the most functional route-detail UI on the web. Three columns: stat stack / map / highlights list. The elevation profile below the map is <b>linked</b> to it — hover a mile on the profile, a pin drops on the map. Surface composition shown as a thin horizontal stacked bar ("62% paved, 28% gravel, 10% trail"). Warm greige background, forest green as the accent, orange route line.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Map ↔ elevation are linked. Scrubbing the profile moves a pin on the map.</li>
+              <li>Surface/grade composition as a thin horizontal stacked bar — a single glanceable summary.</li>
+              <li>Highlight list to the side, keyed to miles, with short notes. Not a table — a narrative timeline.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>The scrub interaction is lovely on desktop and irrelevant on a phone. If the linking is the primary affordance, mobile degrades. Design the static composition to work without the interaction, then layer hover as enhancement.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · map + linked profile + timeline</div>
+          <svg viewBox="0 0 520 320">
+            <rect width="520" height="320" fill="#F1EEE4"/>
+            <!-- map -->
+            <rect x="20" y="20" width="300" height="160" fill="#D9D2BF"/>
+            <path d="M 40 130 Q 100 120 140 100 Q 180 80 220 50 Q 260 30 300 50" fill="none" stroke="#E89B3C" stroke-width="2.5"/>
+            <circle cx="40" cy="130" r="4" fill="#3A7A3F"/>
+            <circle cx="300" cy="50" r="4" fill="#3A7A3F"/>
+            <!-- link pin -->
+            <circle cx="180" cy="80" r="8" fill="none" stroke="#E89B3C" stroke-width="2"/>
+            <circle cx="180" cy="80" r="3" fill="#E89B3C"/>
+            <!-- elevation below -->
+            <rect x="20" y="200" width="300" height="60" fill="#D9D2BF"/>
+            <path d="M 25 250 L 80 245 L 140 240 L 170 220 L 180 190 L 200 215 L 240 230 L 280 245 L 315 250 L 315 260 L 25 260 Z" fill="#E89B3C" fill-opacity=".4"/>
+            <path d="M 25 250 L 80 245 L 140 240 L 170 220 L 180 190 L 200 215 L 240 230 L 280 245 L 315 250" fill="none" stroke="#D8481C" stroke-width="1.4"/>
+            <line x1="180" y1="190" x2="180" y2="260" stroke="#1A1F26" stroke-width=".7" stroke-dasharray="1 2"/>
+            <!-- sync indicator -->
+            <text x="180" y="275" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" font-weight="700" fill="#3A7A3F">← synced →</text>
+            <!-- surface bar -->
+            <text x="20" y="295" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1.5" fill="#1A1F26" font-weight="700">SURFACE</text>
+            <rect x="100" y="287" width="136" height="8" fill="#8A7A5A"/>
+            <rect x="236" y="287" width="62" height="8" fill="#B8A888"/>
+            <rect x="298" y="287" width="22" height="8" fill="#D4C8A4"/>
+            <!-- highlights column -->
+            <g font-family="Inter,sans-serif">
+              <text x="340" y="40" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="2" fill="#3A7A3F" font-weight="700">HIGHLIGHTS</text>
+              <rect x="340" y="50" width="160" height="1" fill="#1A1F26" opacity=".2"/>
+              <text x="340" y="68" font-size="9" font-weight="700" fill="#E89B3C">MI 0</text>
+              <text x="340" y="80" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Big Sur Station</text>
+
+              <text x="340" y="108" font-size="9" font-weight="700" fill="#E89B3C">MI 10.6</text>
+              <text x="340" y="120" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Hurricane Pt.</text>
+
+              <text x="340" y="148" font-size="9" font-weight="700" fill="#E89B3C">MI 13.1</text>
+              <text x="340" y="160" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Bixby Bridge</text>
+
+              <text x="340" y="188" font-size="9" font-weight="700" fill="#E89B3C">MI 22</text>
+              <text x="340" y="200" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">The Wall</text>
+
+              <text x="340" y="228" font-size="9" font-weight="700" fill="#E89B3C">MI 26.2</text>
+              <text x="340" y="240" font-family="Fraunces,serif" font-size="12" font-weight="700" fill="#1A1F26">Carmel Finish</text>
+            </g>
+          </svg>
+          <div class="sketchnote">Map + profile vertically linked (dashed sync line). Surface composition bar. Highlight timeline to the right, keyed to miles.</div>
+        </div>
+      </article>
+
+      <!-- REF 7: Outside Magazine -->
+      <article class="ref" id="ref-outside">
+        <div class="rleft">
+          <div class="n">R07 · editorial hero</div>
+          <h3>Outside Magazine <em>features</em>.</h3>
+          <a class="url" href="https://www.outsideonline.com/running/" target="_blank">outsideonline.com/running ↗</a>
+          <div class="what">Outside's long-form features open with a full-bleed photograph of landscape + figure, with a dramatic serif headline overlaid bottom-left. No logo clutter, no nav competing with the hero. A four-cell stat bar runs directly below — distance / vert / record / date — with hairline dividers as the transition into body copy. Pull quotes are set in oversized italic serif, treated like graphic elements rather than text.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Photo-first hero with overlaid serif headline — the image does the emotional work.</li>
+              <li>Four-cell stat bar as the structural transition between hero and body.</li>
+              <li>Oversized italic pull quotes treated as visual beats, not text.</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>The hero requires a real photograph. A procedural SVG gradient "sky" doesn't land the same way. Either we source a licensed Big Sur photo, or we commit to illustration (not photorealism) as the hero idiom.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · photo hero + stat bar transition</div>
+          <svg viewBox="0 0 520 320">
+            <defs>
+              <linearGradient id="heroG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#294058"/>
+                <stop offset="60%" stop-color="#0F2238"/>
+                <stop offset="100%" stop-color="#000"/>
+              </linearGradient>
+            </defs>
+            <rect width="520" height="220" fill="url(#heroG)"/>
+            <!-- ridges -->
+            <path d="M 0 170 Q 100 150 200 165 Q 320 180 520 155 L 520 220 L 0 220 Z" fill="#0A1624" opacity=".8"/>
+            <path d="M 0 195 Q 150 175 300 190 Q 420 200 520 180 L 520 220 L 0 220 Z" fill="#050D18"/>
+            <!-- overlay headline -->
+            <text x="30" y="130" font-family="Fraunces,serif" font-size="10" letter-spacing="3" fill="#D8A040" font-weight="700">APRIL 26 · 2026</text>
+            <text x="30" y="175" font-family="Fraunces,serif" font-size="42" font-weight="700" fill="#F6F2E9" letter-spacing="-1">The long road</text>
+            <text x="30" y="212" font-family="Fraunces,serif" font-size="42" font-style="italic" font-weight="700" fill="#D8A040" letter-spacing="-1">north.</text>
+            <!-- stat bar -->
+            <rect x="0" y="220" width="520" height="50" fill="#F6F2E9"/>
+            <g font-family="JetBrains Mono,monospace">
+              <text x="30" y="238" font-size="8" letter-spacing="2" fill="#B03030" font-weight="700">DISTANCE</text>
+              <text x="30" y="260" font-family="Fraunces,serif" font-size="20" font-weight="700" fill="#1A1F26">26.2</text>
+              <line x1="130" y1="225" x2="130" y2="265" stroke="#1A1F26" stroke-width=".3"/>
+              <text x="155" y="238" font-size="8" letter-spacing="2" fill="#B03030" font-weight="700">GAIN</text>
+              <text x="155" y="260" font-family="Fraunces,serif" font-size="20" font-weight="700" fill="#1A1F26">2,153 ft</text>
+              <line x1="270" y1="225" x2="270" y2="265" stroke="#1A1F26" stroke-width=".3"/>
+              <text x="295" y="238" font-size="8" letter-spacing="2" fill="#B03030" font-weight="700">GOAL</text>
+              <text x="295" y="260" font-family="Fraunces,serif" font-size="20" font-weight="700" fill="#1A1F26">3:45:00</text>
+              <line x1="400" y1="225" x2="400" y2="265" stroke="#1A1F26" stroke-width=".3"/>
+              <text x="425" y="238" font-size="8" letter-spacing="2" fill="#B03030" font-weight="700">TEMP</text>
+              <text x="425" y="260" font-family="Fraunces,serif" font-size="20" font-weight="700" fill="#1A1F26">54°F</text>
+            </g>
+            <!-- pull quote start -->
+            <text x="30" y="298" font-family="Fraunces,serif" font-style="italic" font-size="15" fill="#1A1F26">"Big Sur is a race about one climb..."</text>
+          </svg>
+          <div class="sketchnote">Dark cinematic hero with overlaid display serif, amber italic accent. Clean four-cell stat bar as transition. Pull quote sets the opening.</div>
+        </div>
+      </article>
+
+      <!-- REF 8: Relive -->
+      <article class="ref" id="ref-relive">
+        <div class="rleft">
+          <div class="n">R08 · 3D flyover (use sparingly)</div>
+          <h3>Relive <em>flyovers</em>.</h3>
+          <a class="url" href="https://www.relive.cc" target="_blank">relive.cc ↗</a>
+          <div class="what">Relive renders post-run 3D flyovers — satellite terrain tilted obliquely, the route drawn as a bright magenta-to-red polyline with soft bloom, photos popping up along the track as rounded thumbnails. The camera banks into turns and pulls up for summits. Pacing is staccato — 3–5 seconds between "moments." The chrome is minimal: distance and elevation readout in a bottom HUD.</div>
+          <div class="extract">
+            <div class="h">Pattern extracted</div>
+            <ul>
+              <li>Oblique 3D terrain (not top-down) — preserves the physicality of a climb.</li>
+              <li>Glowing route as the only bright element on a dark terrain — pure luminance.</li>
+              <li>Moments, not continuous scroll — animate between 3–5 narrative beats (start, climb, peak, descent, finish).</li>
+            </ul>
+          </div>
+          <div class="risk"><b>Failure mode if copied badly</b>Relive works because it's an animation with audio. Static screenshots of Relive-style 3D terrain look like a cheap mobile game. If we want flyover energy, it must animate. Otherwise we're better off with a 2D poster.</div>
+        </div>
+        <div class="rright">
+          <div class="sketchcap">Sketch · oblique 3D terrain moment</div>
+          <svg viewBox="0 0 520 320">
+            <defs>
+              <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#1a2644"/>
+                <stop offset="100%" stop-color="#0a1020"/>
+              </linearGradient>
+              <linearGradient id="terG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3a4a5e"/>
+                <stop offset="100%" stop-color="#0d1420"/>
+              </linearGradient>
+              <radialGradient id="glowG"><stop offset="0%" stop-color="#FC3D5E" stop-opacity=".8"/><stop offset="100%" stop-color="#FC3D5E" stop-opacity="0"/></radialGradient>
+            </defs>
+            <rect width="520" height="320" fill="url(#skyG)"/>
+            <!-- stars -->
+            <circle cx="100" cy="40" r=".8" fill="#fff" opacity=".6"/>
+            <circle cx="250" cy="30" r=".6" fill="#fff" opacity=".5"/>
+            <circle cx="400" cy="60" r=".9" fill="#fff" opacity=".7"/>
+            <circle cx="450" cy="25" r=".6" fill="#fff" opacity=".4"/>
+            <!-- oblique terrain plane -->
+            <path d="M 0 180 L 520 140 L 520 320 L 0 320 Z" fill="url(#terG)"/>
+            <!-- peaks -->
+            <path d="M 100 200 L 180 120 L 260 190 Z" fill="#0F1E30" stroke="#2a3850" stroke-width=".5"/>
+            <path d="M 240 210 L 330 100 L 420 200 Z" fill="#1A2A40" stroke="#3a4e6a" stroke-width=".5"/>
+            <path d="M 380 230 L 460 170 L 500 225 Z" fill="#121E30" stroke="#2a3850" stroke-width=".5"/>
+            <!-- glowing route -->
+            <path d="M 30 280 Q 100 250 180 220 Q 240 190 330 140 Q 380 170 420 205 Q 460 235 500 260" fill="none" stroke="#FC3D5E" stroke-width="14" opacity=".25" filter="blur(5px)"/>
+            <path d="M 30 280 Q 100 250 180 220 Q 240 190 330 140 Q 380 170 420 205 Q 460 235 500 260" fill="none" stroke="#FC3D5E" stroke-width="5" opacity=".5"/>
+            <path d="M 30 280 Q 100 250 180 220 Q 240 190 330 140 Q 380 170 420 205 Q 460 235 500 260" fill="none" stroke="#FFEFC0" stroke-width="2"/>
+            <!-- runner dot at peak -->
+            <circle cx="330" cy="140" r="16" fill="url(#glowG)"/>
+            <circle cx="330" cy="140" r="4" fill="#FFEFC0"/>
+            <!-- HUD -->
+            <text x="22" y="302" font-family="JetBrains Mono,monospace" font-size="10" letter-spacing="2" fill="#FFEFC0" font-weight="700">10.6 MI · 568 FT · HURRICANE</text>
+          </svg>
+          <div class="sketchnote">Oblique terrain (not top-down), stars, glowing pink-to-cream route ribbon, runner dot at peak. Works as a 3-beat animation, not a static image.</div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="patterns" class="anchor">
+    <div class="n">§ 05 · Pattern matrix</div>
+    <h2>Which references support <em>which moves</em>.</h2>
+    <div class="lede">Every design move below is traceable to at least two references. Patterns supported by only one source are flagged as risky (style borrowing ≠ system).</div>
+    <div class="rule"></div>
+
+    <div class="matrix">
+      <div class="row hd">
+        <div>Design move</div>
+        <div>A · Poster</div>
+        <div>B · Map</div>
+        <div>C · Editorial</div>
+      </div>
+      <div class="row">
+        <div class="p">Two-color palette discipline<small>One canvas, one ink, one accent — no more</small></div>
+        <div><span class="dot yes" title="Muir Way"></span></div>
+        <div><span class="dot maybe"></span></div>
+        <div><span class="dot yes"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Climbs as characters (HC / Cat 1–4)<small>Each climb named, ranked, annotated with summit stats</small></div>
+        <div><span class="dot yes" title="FT"></span></div>
+        <div><span class="dot yes"></span></div>
+        <div><span class="dot yes"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Route as silhouette (no basemap)<small>The shape alone, on a warm canvas</small></div>
+        <div><span class="dot yes"></span></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot no"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Warm hillshade basemap<small>Sepia/ochre terrain vs. grey Mapbox default</small></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot yes" title="Swisstopo"></span></div>
+        <div><span class="dot maybe"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Inline annotations with leaders<small>Each marker names something specific, not just "mile 10"</small></div>
+        <div><span class="dot yes"></span></div>
+        <div><span class="dot yes"></span></div>
+        <div><span class="dot yes" title="NYT"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Big-number / tiny-caps stat tile<small>Display serif numerals + mono caps labels</small></div>
+        <div><span class="dot yes"></span></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot yes" title="Strava + Outside"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Map ↔ elevation linked<small>Hover/scrub one, the other highlights</small></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot maybe"></span></div>
+        <div><span class="dot yes" title="Komoot"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Curved italic serif place labels<small>"Pacific Ocean" arcing along the coast</small></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot yes" title="Swisstopo"></span></div>
+        <div><span class="dot no"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Photo-first hero with serif overlay<small>Landscape photo, headline overlaid bottom-left</small></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot yes" title="Outside"></span></div>
+      </div>
+      <div class="row">
+        <div class="p">Oblique 3D terrain (animated)<small>Flyover perspective with glowing route</small></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot no"></span></div>
+        <div><span class="dot maybe" title="Relive — only works animated"></span></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:20px; margin-top:18px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px; color:rgba(26,31,38,.65); font-weight:600; text-transform:uppercase">
+      <span><span class="dot yes" style="width:10px;height:10px;display:inline-block;border-radius:50%;vertical-align:middle;margin-right:6px"></span>Central to this direction</span>
+      <span><span class="dot maybe" style="width:10px;height:10px;display:inline-block;border-radius:50%;vertical-align:middle;margin-right:6px"></span>Supporting role</span>
+      <span><span class="dot no" style="width:10px;height:10px;display:inline-block;border-radius:50%;vertical-align:middle;margin-right:6px;border:1.5px solid rgba(26,31,38,.25);background:transparent"></span>Deliberately absent</span>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="proposals" class="anchor">
+    <div class="n">§ 06 · Three directions</div>
+    <h2>Each direction has a <em>thesis</em>.</h2>
+    <div class="lede">Not just three styles — three different answers to "what is this page for?" Each one is grounded in specific references, with specific compromises. Click through to the built version.</div>
+    <div class="rule"></div>
+
+    <div class="proposals">
+      <div class="prop">
+        <div class="letter">A</div>
+        <div class="tag">Direction A</div>
+        <h4>Poster.</h4>
+        <div class="refs">
+          <span>R01 · Muir Way</span>
+          <span>R02 · FT Tour de France</span>
+          <span>R04 · NYT annotations</span>
+        </div>
+        <div class="combines">For the runner who wants something they'd print, frame, and look at the morning of. Thesis: a race plan can be an object. Two-color discipline, climbs categorized, annotations earn their place.</div>
+        <a href="index.html#A">See built ↗</a>
+      </div>
+      <div class="prop">
+        <div class="letter">B</div>
+        <div class="tag">Direction B</div>
+        <h4>Cartographic.</h4>
+        <div class="refs">
+          <span>R03 · Swisstopo hillshade</span>
+          <span>Nat Geo Trails Illustrated</span>
+          <span>R04 · NYT annotations</span>
+        </div>
+        <div class="combines">For the runner who wants to feel the land under the route. Thesis: terrain is the story. Warm paper, italic curved labels, hand-feel hillshade, cross-section as a geological object rather than a chart.</div>
+        <a href="index.html#B">See built ↗</a>
+      </div>
+      <div class="prop">
+        <div class="letter">C</div>
+        <div class="tag">Direction C</div>
+        <h4>Dark editorial.</h4>
+        <div class="refs">
+          <span>R07 · Outside Magazine</span>
+          <span>R05 · Strava Year in Sport</span>
+          <span>R06 · Komoot</span>
+        </div>
+        <div class="combines">For the runner who wants the story AND the tool. Thesis: race planning is long-form journalism. Cinematic hero, four-cell stat bar, linked map+elevation, phase cards. Most functional of the three.</div>
+        <a href="index.html#C">See built ↗</a>
+      </div>
+    </div>
+
+    <p style="margin-top:48px; max-width:760px; font-size:16px"><b>Ask me next:</b> which thesis to pursue. Once you pick a direction, I'll go deeper on that one — specifying photo sourcing (for C), tile layer options (for B), printable-vs-web variants (for A), and mobile breakpoints. I won't build the other two further.</p>
+  </section>
+
+</div>
+
+<script>
+  // Render the Big Sur shape preview in the data section
+  (function(){
+    var waypts = [
+      [0,66],[2,49],[4,115],[5,200],[7,82],[8.5,262],[9,316],[10.6,568],[12,460],
+      [13.1,394],[15,246],[16,180],[17,295],[19,131],[21,213],[23,98],[26.2,39]
+    ];
+    var W=600, H=240, pad={l:30,r:20,t:20,b:30};
+    var maxE=Math.max.apply(null, waypts.map(function(w){return w[1];}));
+    var minE=0;
+    var total=26.2;
+    // smooth area
+    var pts=[], line=[];
+    waypts.forEach(function(w){
+      var x = pad.l + (w[0]/total)*(W-pad.l-pad.r);
+      var y = pad.t + (1 - (w[1]-minE)/(maxE-minE))*(H-pad.t-pad.b);
+      pts.push([x,y]);
+      line.push([x,y]);
+    });
+    function cr(pts){
+      var d='M '+pts[0][0]+' '+pts[0][1];
+      for (var i=0;i<pts.length-1;i++){
+        var p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||pts[i+1];
+        var c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+        var c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+        d+=' C '+c1x.toFixed(1)+' '+c1y.toFixed(1)+', '+c2x.toFixed(1)+' '+c2y.toFixed(1)+', '+p2[0]+' '+p2[1];
+      }
+      return d;
+    }
+    var lineD = cr(pts);
+    var fillD = lineD + ' L '+(W-pad.r)+' '+(H-pad.b)+' L '+pad.l+' '+(H-pad.b)+' Z';
+    var g = document.getElementById('bigsur-shape');
+    var html = '<path d="'+fillD+'" fill="url(#elG)"/>';
+    html += '<path d="'+lineD+'" fill="none" stroke="#B03030" stroke-width="2"/>';
+    // baseline
+    html += '<line x1="'+pad.l+'" y1="'+(H-pad.b)+'" x2="'+(W-pad.r)+'" y2="'+(H-pad.b)+'" stroke="#1A1F26" stroke-width=".5" opacity=".5"/>';
+    // mile ticks
+    [0,5,10,15,20,26.2].forEach(function(m){
+      var x = pad.l + (m/total)*(W-pad.l-pad.r);
+      html += '<line x1="'+x+'" y1="'+(H-pad.b)+'" x2="'+x+'" y2="'+(H-pad.b+5)+'" stroke="#1A1F26" stroke-width=".6"/>';
+      html += '<text x="'+x+'" y="'+(H-pad.b+16)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" letter-spacing="1" font-weight="600" fill="#1A1F26">MI '+m+'</text>';
+    });
+    // Hurricane callout
+    var hp = pts[7]; // mile 10.6
+    html += '<circle cx="'+hp[0]+'" cy="'+hp[1]+'" r="4" fill="#B03030"/>';
+    html += '<line x1="'+hp[0]+'" y1="'+hp[1]+'" x2="'+hp[0]+'" y2="'+(pad.t+8)+'" stroke="#1A1F26" stroke-width=".5" stroke-dasharray="1 2"/>';
+    html += '<text x="'+hp[0]+'" y="'+(pad.t+4)+'" text-anchor="middle" font-family="Fraunces,serif" font-size="11" font-style="italic" font-weight="700" fill="#1A1F26">Hurricane · 568 ft</text>';
+    // Wall callout
+    var wl = pts[14]; // mile 21
+    html += '<circle cx="'+wl[0]+'" cy="'+wl[1]+'" r="3" fill="#B03030" opacity=".7"/>';
+    html += '<text x="'+wl[0]+'" y="'+(wl[1]-8)+'" text-anchor="middle" font-family="Fraunces,serif" font-size="10" font-style="italic" fill="#1A1F26">"The Wall"</text>';
+    // Y axis labels
+    html += '<text x="8" y="'+pad.t+'" font-family="JetBrains Mono,monospace" font-size="9" font-weight="700" fill="#1A1F26">600</text>';
+    html += '<text x="8" y="'+(H-pad.b-2)+'" font-family="JetBrains Mono,monospace" font-size="9" font-weight="700" fill="#1A1F26">0</text>';
+    g.innerHTML = html;
+  })();
+</script>
+
+</body></html>

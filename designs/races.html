@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Races</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<style>
+  /* ─── Races page ─────────────────────────────────────── */
+
+  /* Next race hero — dark tattoo */
+  .race-hero { border-radius:20px; padding:38px 42px; margin-bottom:14px; position:relative; overflow:hidden; background:radial-gradient(ellipse at 75% 30%, rgba(252,77,84,.10) 0%, rgba(10,14,20,0) 55%), radial-gradient(ellipse at 20% 85%, rgba(62,189,65,.08) 0%, rgba(10,14,20,0) 55%), #0a0e14; border:1px solid rgba(246,247,248,.08); min-height:300px; display:grid; grid-template-columns:1.2fr 1fr; gap:40px; }
+  .race-hero::after { content:""; position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); pointer-events:none; }
+  .rh-bg { position:absolute; inset:0; z-index:0; opacity:.9; pointer-events:none; }
+  .rh-bg svg { width:100%; height:100%; display:block; }
+  .rh-l, .rh-r { position:relative; z-index:1; }
+  .rh-l { display:flex; flex-direction:column; justify-content:space-between; gap:20px; position:relative; z-index:1; }
+  .rh-r { display:flex; flex-direction:column; justify-content:space-between; gap:18px; position:relative; z-index:1; }
+  .rh-eye { font-family:var(--f-data); font-size:10.5px; letter-spacing:2.2px; text-transform:uppercase; color:var(--attention); font-weight:700; display:flex; align-items:center; gap:10px; }
+  .rh-eye::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--attention); box-shadow:0 0 0 3px rgba(243,173,59,.18); }
+  .rh-name { font-family:var(--f-display); font-size:88px; font-weight:700; letter-spacing:-.01em; line-height:.88; text-transform:uppercase; }
+  .rh-meta { display:grid; grid-template-columns:repeat(3,auto); gap:36px; }
+  .rh-meta .l { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .rh-meta .v { font-family:var(--f-display); font-weight:800; font-size:28px; letter-spacing:-.02em; line-height:1; margin-top:6px; color:var(--t0); }
+  .rh-countdown { font-family:var(--f-display); font-weight:800; font-size:156px; letter-spacing:-.04em; line-height:.85; color:var(--attention); font-variant-numeric:tabular-nums; }
+  .rh-countdown small { font-family:var(--f-data); font-size:12px; letter-spacing:2.2px; text-transform:uppercase; color:var(--t2); font-weight:700; display:block; margin-top:8px; letter-spacing:2.2px; }
+  .rh-goal { display:flex; gap:20px; align-items:baseline; }
+  .rh-goal .glbl { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .rh-goal .gval { font-family:var(--f-display); font-size:44px; font-weight:800; letter-spacing:-.02em; color:var(--attention); }
+  .rh-cta { display:flex; gap:10px; }
+
+  /* Upcoming grid */
+  .race-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .race-card { border-radius:14px; background:#0a0e14; border:1px solid rgba(246,247,248,.08); padding:22px 24px; display:flex; flex-direction:column; gap:12px; cursor:pointer; transition:border-color 120ms, transform 120ms; min-height:240px; text-decoration:none; color:inherit; position:relative; overflow:hidden; }
+  .race-card:hover { border-color:rgba(246,247,248,.2); }
+  .race-card .rc-bg { position:absolute; inset:0; z-index:0; opacity:.75; pointer-events:none; }
+  .race-card .rc-bg svg { width:100%; height:100%; display:block; }
+  .race-card > *:not(.rc-bg) { position:relative; z-index:1; }
+  .race-card .rc-ft { border-top:1px solid rgba(246,247,248,.08); }
+  .race-card .rc-top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .race-card .rc-date { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .race-card .rc-name { font-family:var(--f-display); font-weight:700; font-size:32px; letter-spacing:-.005em; line-height:.95; text-transform:uppercase; margin-top:8px; }
+  .race-card .rc-loc { font-family:var(--f-label); font-size:13px; color:var(--t2); font-weight:500; margin-top:4px; }
+  .race-card .rc-ft { display:flex; justify-content:space-between; align-items:flex-end; margin-top:auto; font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t3); padding-top:16px; border-top:1px solid var(--l4); }
+  .race-card .rc-ft b { font-family:var(--f-display); font-size:18px; letter-spacing:-.01em; color:var(--t0); font-weight:800; }
+  .race-card--add { border:1px dashed var(--l4); background:transparent; align-items:center; justify-content:center; color:var(--t2); text-align:center; min-height:220px; cursor:pointer; }
+  .race-card--add:hover { color:var(--t0); border-color:var(--l5); background:var(--l1); }
+  .race-card--add .plus { font-family:var(--f-display); font-size:56px; font-weight:500; line-height:1; color:var(--t2); }
+  .race-card--add .t { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:10px; }
+
+  /* Past races table */
+  .past-tbl { width:100%; border-collapse:collapse; }
+  .past-tbl th { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:left; padding:12px 18px; border-bottom:1px solid var(--l4); }
+  .past-tbl td { padding:18px; border-bottom:1px solid var(--l4); font-size:14px; color:var(--t1); vertical-align:middle; }
+  .past-tbl tr:last-child td { border-bottom:0; }
+  .past-tbl tr:hover td { background:var(--l2); cursor:pointer; }
+  .past-tbl .num { font-family:var(--f-data); font-variant-numeric:tabular-nums; color:var(--t0); font-weight:700; }
+  .past-tbl .race-n { font-family:var(--f-display); font-weight:700; font-size:20px; letter-spacing:-.005em; text-transform:uppercase; color:var(--t0); }
+  .past-tbl .pr { color:var(--attention); font-weight:700; }
+
+  .section-h { display:flex; justify-content:space-between; align-items:flex-end; margin:26px 4px 14px; }
+  .section-h h2 { font-family:var(--f-display); font-weight:700; font-size:28px; letter-spacing:-.01em; text-transform:uppercase; }
+
+  /* Stat strip */
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
+  .stat-box { border-radius:14px; padding:22px 24px; background:var(--l1); border:1px solid var(--l4); }
+  .stat-box .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .stat-box .v { font-family:var(--f-display); font-weight:800; font-size:46px; letter-spacing:-.025em; line-height:1; color:var(--t0); margin-top:14px; font-variant-numeric:tabular-nums; }
+  .stat-box .v small { font-size:.35em; opacity:.55; font-weight:700; margin-left:3px; }
+  .stat-box .c { font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; margin-top:10px; }
+  .stat-box .c b { color:var(--t1); font-weight:800; }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Runcino · races &amp; season plan</span><b>RACES · V.1 · 2026.04.21</b></div>
+
+<div class="stage">
+  <div class="nav">
+    <div class="nav-l">
+      <a class="brand" href="hub.html">R</a>
+      <div class="tabs">
+        <a class="tab" href="hub.html">Overview</a>
+        <a class="tab" href="training.html">Training</a>
+        <a class="tab active" href="races.html">Races</a>
+        <a class="tab" href="health.html">Health</a>
+        <a class="tab" href="log.html">Log</a>
+      </div>
+    </div>
+    <div class="nav-r">
+      <div class="nav-ic">⌕</div>
+      <div class="nav-ic">◎</div>
+      <div class="avatar"></div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Your season · 2026</div>
+        <h1>Races</h1>
+        <div class="sub"><b>1 race this weekend.</b> 3 upcoming · 8 completed this year. Goal season ends in July at SF Marathon.</div>
+      </div>
+      <div class="page-actions">
+        <label class="btn btn--ghost" for="racesGpxIn" style="cursor:pointer;">⇡ Upload GPX</label>
+        <input type="file" id="racesGpxIn" accept=".gpx,.tcx,.fit" style="display:none;" />
+        <button class="btn btn--ghost">Find a race</button>
+        <button class="btn btn--primary">+ Add race</button>
+      </div>
+    </div>
+
+    <div id="gpxStatus" style="font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; margin:-10px 4px 14px; padding:10px 14px; background:var(--l1); border:1px dashed var(--l4); border-radius:10px;">Drop a .gpx/.tcx/.fit file to attach course data — unlocks terrain-aware pacing + elevation profile for any race</div>
+
+    <!-- Quick stats -->
+    <div class="stats">
+      <div class="stat-box">
+        <div class="l">Races this year</div>
+        <div class="v">9</div>
+        <div class="c"><b>8 complete</b> · 1 this weekend</div>
+      </div>
+      <div class="stat-box">
+        <div class="l">Race miles logged</div>
+        <div class="v">71<small>mi</small></div>
+        <div class="c"><b>158</b> career</div>
+      </div>
+      <div class="stat-box">
+        <div class="l">PRs set in 2026</div>
+        <div class="v" style="color:var(--attention);">5</div>
+        <div class="c"><b>1 pending</b> · Sunday</div>
+      </div>
+      <div class="stat-box">
+        <div class="l">Avg finish vs field</div>
+        <div class="v" style="color:var(--success);">Top 18%</div>
+        <div class="c"><b>Up from 24%</b> last year</div>
+      </div>
+    </div>
+
+    <!-- Next race hero -->
+    <div class="race-hero" data-tattoo-seed="bigsur">
+      <div class="rh-bg"></div>
+      <div class="rh-l">
+        <div>
+          <div class="rh-eye">Next race · Sunday</div>
+          <div class="rh-name">Big Sur<br/>Marathon</div>
+        </div>
+        <div class="rh-meta">
+          <div><div class="l">Date</div><div class="v">Apr 26</div></div>
+          <div><div class="l">Distance</div><div class="v">26.2 mi</div></div>
+          <div><div class="l">Start</div><div class="v">06:45</div></div>
+        </div>
+        <div class="rh-goal">
+          <div>
+            <div class="glbl">Goal time</div>
+            <div class="gval">3:45</div>
+          </div>
+          <div style="font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); font-weight:700; padding-bottom:6px;">
+            Predicted <b style="color:var(--t0);">3:41</b> · under goal
+          </div>
+        </div>
+      </div>
+      <div class="rh-r">
+        <div style="text-align:right;">
+          <div class="rh-countdown">5<small>Days to gun</small></div>
+        </div>
+        <div style="background:rgba(243,173,59,.1); border:1px solid rgba(243,173,59,.25); border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
+          <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--attention); font-weight:700;">Race week focus</div>
+          <div style="font-size:13.5px; line-height:1.55; color:var(--t1);">Taper locks it in. Hurricane Point climbs at mile 10–12 — run the flats, walk the steep, save it for the last 10K. Weather looks favorable: 52°, clear, 3 mph tailwind.</div>
+        </div>
+        <div class="rh-cta">
+          <a class="btn" href="race-detail.html">View course</a>
+          <a class="btn btn--primary" href="race-detail.html">Race plan →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming section -->
+    <div class="section-h">
+      <div>
+        <div class="tile-sub" style="margin-bottom:4px;">Season calendar</div>
+        <h2>Upcoming races</h2>
+      </div>
+      <a class="btn btn--ghost" href="races.html">View all →</a>
+    </div>
+    <div class="race-grid">
+      <a class="race-card" href="#">
+        <div class="rc-top">
+          <span class="rc-date">Sun · May 17</span>
+          <span class="chip">TUNE-UP</span>
+        </div>
+        <div>
+          <div class="rc-name">Bay to<br/>Breakers</div>
+          <div class="rc-loc">San Francisco · 12K</div>
+        </div>
+        <div class="rc-ft"><span>GOAL</span><b>45:00</b></div>
+      </a>
+      <a class="race-card" href="#">
+        <div class="rc-top">
+          <span class="rc-date">Sat · Jun 14</span>
+          <span class="chip chip--success">C-RACE</span>
+        </div>
+        <div>
+          <div class="rc-name">Pride Run</div>
+          <div class="rc-loc">Oakland · 10K</div>
+        </div>
+        <div class="rc-ft"><span>GOAL</span><b>39:00</b></div>
+      </a>
+      <a class="race-card" href="#" style="border-color:rgba(144,19,254,.4); background:linear-gradient(135deg, rgba(144,19,254,.08) 0%, var(--l1) 80%);">
+        <div class="rc-top">
+          <span class="rc-date" style="color:#b873ff;">Sun · Jul 26</span>
+          <span class="chip chip--xp">A-RACE</span>
+        </div>
+        <div>
+          <div class="rc-name">SF<br/>Marathon</div>
+          <div class="rc-loc">San Francisco · 26.2 mi</div>
+        </div>
+        <div class="rc-ft"><span>SEASON GOAL</span><b style="color:#b873ff;">3:35</b></div>
+      </a>
+    </div>
+
+    <!-- Past races section -->
+    <div class="section-h">
+      <div>
+        <div class="tile-sub" style="margin-bottom:4px;">Past results · 2026 season</div>
+        <h2>Completed</h2>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn--ghost">This year</button>
+        <button class="btn btn--ghost">All time</button>
+        <button class="btn btn--ghost">PRs only</button>
+      </div>
+    </div>
+
+    <div class="tile" style="padding:0; overflow:hidden;">
+      <table class="past-tbl">
+        <thead>
+          <tr>
+            <th style="width:90px;">Date</th>
+            <th>Race</th>
+            <th style="width:110px;">Distance</th>
+            <th style="width:120px;">Finish</th>
+            <th style="width:120px;">Pace</th>
+            <th style="width:120px;">Place</th>
+            <th style="width:100px;">Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">Apr 5</td>
+            <td><span class="race-n">Kezar 1-mile</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">San Francisco</div></td>
+            <td class="num">1 mi</td>
+            <td class="num pr">5:42</td>
+            <td class="num">5:42 /mi</td>
+            <td class="num">14 / 208</td>
+            <td><span class="chip chip--attention">PR</span></td>
+          </tr>
+          <tr>
+            <td class="num">Mar 22</td>
+            <td><span class="race-n">Crissy 5K</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">San Francisco</div></td>
+            <td class="num">5K</td>
+            <td class="num pr">18:45</td>
+            <td class="num">6:02 /mi</td>
+            <td class="num">38 / 612</td>
+            <td><span class="chip chip--attention">PR</span></td>
+          </tr>
+          <tr>
+            <td class="num">Mar 8</td>
+            <td><span class="race-n">Marin Hill Climb</span><div style="font-size:11px; color:var(--t2). margin-top:2px;">Mill Valley · +1,800 ft</div></td>
+            <td class="num">8 mi</td>
+            <td class="num">55:12</td>
+            <td class="num">6:54 /mi</td>
+            <td class="num">22 / 148</td>
+            <td><span class="chip chip--success">TOP 15%</span></td>
+          </tr>
+          <tr>
+            <td class="num">Feb 15</td>
+            <td><span class="race-n">SF Marathon 10K</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">San Francisco</div></td>
+            <td class="num">10K</td>
+            <td class="num pr">39:20</td>
+            <td class="num">6:20 /mi</td>
+            <td class="num">52 / 894</td>
+            <td><span class="chip chip--attention">PR</span></td>
+          </tr>
+          <tr>
+            <td class="num">Feb 2</td>
+            <td><span class="race-n">Kaiser Half</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">San Francisco</div></td>
+            <td class="num">13.1 mi</td>
+            <td class="num pr">1:28:07</td>
+            <td class="num">6:43 /mi</td>
+            <td class="num">88 / 2,014</td>
+            <td><span class="chip chip--attention">PR</span></td>
+          </tr>
+          <tr>
+            <td class="num">Jan 18</td>
+            <td><span class="race-n">Resolution 5K</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">Golden Gate Park</div></td>
+            <td class="num">5K</td>
+            <td class="num">19:21</td>
+            <td class="num">6:14 /mi</td>
+            <td class="num">18 / 342</td>
+            <td><span class="chip">FINISHER</span></td>
+          </tr>
+          <tr>
+            <td class="num">Jan 11</td>
+            <td><span class="race-n">Brazen Bear Creek</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">Fremont · Trail</div></td>
+            <td class="num">10 mi</td>
+            <td class="num">1:12:48</td>
+            <td class="num">7:17 /mi</td>
+            <td class="num">12 / 104</td>
+            <td><span class="chip chip--success">TOP 12%</span></td>
+          </tr>
+          <tr>
+            <td class="num">Dec 8 ’24</td>
+            <td><span class="race-n">CIM</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">Sacramento</div></td>
+            <td class="num">26.2 mi</td>
+            <td class="num pr">3:52:14</td>
+            <td class="num">8:51 /mi</td>
+            <td class="num">1,248 / 9,214</td>
+            <td><span class="chip chip--attention">PR</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-h">
+      <div>
+        <div class="tile-sub" style="margin-bottom:4px;">Want to race more?</div>
+        <h2>Recommended</h2>
+      </div>
+    </div>
+    <div class="race-grid">
+      <a class="race-card race-card--add" href="#">
+        <div class="plus">+</div>
+        <div class="t">Add a race</div>
+      </a>
+      <a class="race-card" href="#">
+        <div class="rc-top">
+          <span class="rc-date">Sat · Jun 7</span>
+          <span class="chip">SUGGESTED</span>
+        </div>
+        <div>
+          <div class="rc-name">Dipsea</div>
+          <div class="rc-loc">Mill Valley → Stinson · 7.4 mi trail</div>
+        </div>
+        <div class="rc-ft"><span>FITS YOUR PROFILE</span><b style="color:var(--success);">★ 9/10</b></div>
+      </a>
+      <a class="race-card" href="#">
+        <div class="rc-top">
+          <span class="rc-date">Sun · Aug 23</span>
+          <span class="chip">SUGGESTED</span>
+        </div>
+        <div>
+          <div class="rc-name">Wharf<br/>to Wharf</div>
+          <div class="rc-loc">Santa Cruz → Capitola · 10K</div>
+        </div>
+        <div class="rc-ft"><span>GOAL TUNE-UP</span><b style="color:var(--success);">★ 8/10</b></div>
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  function flash(txt, ok){
+    var s = document.getElementById('gpxStatus');
+    if (!s) return;
+    s.textContent = txt;
+    s.style.color = ok ? 'var(--success)' : 'var(--t3)';
+  }
+  function haversine(a, b){
+    var R = 3958.8; // miles
+    var toRad = function(x){ return x * Math.PI / 180; };
+    var dLat = toRad(b.lat - a.lat);
+    var dLon = toRad(b.lon - a.lon);
+    var la1 = toRad(a.lat), la2 = toRad(b.lat);
+    var x = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.sin(dLon/2)*Math.sin(dLon/2) * Math.cos(la1)*Math.cos(la2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function parseGPX(text){
+    var doc = new DOMParser().parseFromString(text, 'text/xml');
+    var pts = [];
+    var nodes = doc.getElementsByTagName('trkpt');
+    if (!nodes.length) nodes = doc.getElementsByTagName('rtept');
+    for (var i=0; i<nodes.length; i++){
+      var n = nodes[i];
+      var lat = parseFloat(n.getAttribute('lat'));
+      var lon = parseFloat(n.getAttribute('lon'));
+      if (isNaN(lat) || isNaN(lon)) continue;
+      var eleNode = n.getElementsByTagName('ele')[0];
+      var ele = eleNode ? parseFloat(eleNode.textContent) : null;
+      pts.push({lat:lat, lon:lon, ele:ele});
+    }
+    return pts;
+  }
+  function stats(pts){
+    var dist = 0, gain = 0, loss = 0;
+    for (var i=1; i<pts.length; i++){
+      dist += haversine(pts[i-1], pts[i]);
+      if (pts[i].ele != null && pts[i-1].ele != null){
+        var d = pts[i].ele - pts[i-1].ele;
+        // ele is meters; convert diff to ft (1m = 3.28084 ft)
+        if (d > 0) gain += d * 3.28084;
+        else loss += -d * 3.28084;
+      }
+    }
+    return {dist:dist, gain:gain, loss:loss, points:pts.length};
+  }
+  var inp = document.getElementById('racesGpxIn');
+  if (!inp) return;
+  inp.addEventListener('change', function(){
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    flash('⏳ Parsing ' + f.name + '…', false);
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var pts = parseGPX(r.result);
+        if (!pts.length) { flash('✗ ' + f.name + ' · no trackpoints found', false); return; }
+        var s = stats(pts);
+        var box = document.getElementById('gpxStatus');
+        box.style.color = 'var(--t1)';
+        box.style.borderStyle = 'solid';
+        box.style.borderColor = 'rgba(62,189,65,.35)';
+        box.style.background = 'linear-gradient(135deg, rgba(62,189,65,.06) 0%, var(--l1) 60%)';
+        box.innerHTML = '<span style="color:var(--success);">✓ ' + f.name + '</span>' +
+          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
+          '<span style="color:var(--t2);">DISTANCE</span> <b style="color:var(--t0); margin-left:6px;">' + s.dist.toFixed(2) + ' MI</b>' +
+          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
+          '<span style="color:var(--t2);">GAIN</span> <b style="color:var(--attention); margin-left:6px;">+' + Math.round(s.gain) + ' FT</b>' +
+          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
+          '<span style="color:var(--t2);">LOSS</span> <b style="color:var(--corporate); margin-left:6px;">−' + Math.round(s.loss) + ' FT</b>' +
+          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
+          '<span style="color:var(--t2);">POINTS</span> <b style="color:var(--t0); margin-left:6px;">' + s.points.toLocaleString() + '</b>';
+      } catch(e){
+        flash('✗ ' + f.name + ' · parse error', false);
+      }
+    };
+    r.readAsText(f);
+  });
+})();
+
+// ===== Phase-colored elevation-profile thumbnails (no glow, no squiggle) =====
+(function(){
+  function hashSeed(str){ var h=2166136261; for (var i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0)||1; }
+  function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+  var PHASES = [
+    { start:0.00, end:0.15, color:'#3EBD41' }, // Ease in
+    { start:0.15, end:0.38, color:'#F3AD3B' }, // Coast climb
+    { start:0.38, end:0.48, color:'#FC4D54' }, // Peak
+    { start:0.48, end:0.92, color:'#008FEC' }, // Cruise
+    { start:0.92, end:1.00, color:'#9013FE' }  // Finish
+  ];
+
+  // Deterministic elevation profile: 0-1 x, 0-1 y (1=high)
+  // Each race gets a different peak position + height for variety without wobble.
+  function buildProfile(seed){
+    var rnd = mulberry32(hashSeed(seed));
+    var peakX = 0.30 + rnd()*0.40;   // 0.30–0.70 — where the high point sits
+    var peakY = 0.55 + rnd()*0.40;   // 0.55–0.95 — how tall
+    var startY = 0.05 + rnd()*0.15;
+    var endY   = 0.05 + rnd()*0.20;
+    var midDip = 0.55 + rnd()*0.25;  // a gentle dip between peak and end
+    var midX   = peakX + (1-peakX)*(0.45 + rnd()*0.20);
+    // Anchor points we'll cosine-interp between
+    return [
+      { x:0.00, y:startY },
+      { x:peakX*0.55, y:startY + (peakY-startY)*0.35 },
+      { x:peakX, y:peakY },
+      { x:(peakX+midX)/2, y:peakY*0.55 },
+      { x:midX, y:midDip*0.55 },
+      { x:0.90, y:endY*1.4 },
+      { x:1.00, y:endY }
+    ];
+  }
+
+  function eleAt(profile, t){
+    for (var i=0;i<profile.length-1;i++){
+      var a=profile[i], b=profile[i+1];
+      if (t>=a.x && t<=b.x){
+        var u=(t-a.x)/(b.x-a.x||1), s=0.5-0.5*Math.cos(u*Math.PI);
+        return a.y + (b.y-a.y)*s;
+      }
+    }
+    return profile[profile.length-1].y;
+  }
+
+  // Build the SVG — clean phase-colored elevation strip.
+  function profileSVG(seed, W, H, opts){
+    opts = opts || {};
+    var padL = opts.padL||0, padR = opts.padR||0, padT = opts.padT||12, padB = opts.padB||0;
+    var baseline = H - padB;
+    var chartH  = H - padT - padB;
+    var profile = buildProfile(seed);
+    var gid = 'sp_'+hashSeed(seed).toString(36);
+
+    function xFor(t){ return padL + t*(W-padL-padR); }
+    function yFor(v){ return padT + (1-v)*chartH; }
+
+    var defs = '<defs>';
+    PHASES.forEach(function(ph,i){
+      defs += '<linearGradient id="'+gid+'_g'+i+'" x1="0" y1="0" x2="0" y2="1">'+
+              '<stop offset="0%" stop-color="'+ph.color+'" stop-opacity=".55"/>'+
+              '<stop offset="100%" stop-color="'+ph.color+'" stop-opacity=".03"/>'+
+              '</linearGradient>';
+    });
+    defs += '</defs>';
+
+    var body = '';
+    var STEPS = 40;
+    PHASES.forEach(function(ph,i){
+      var d='';
+      var sX=xFor(ph.start), eX=xFor(ph.end);
+      for (var k=0;k<=STEPS;k++){
+        var t = ph.start + (k/STEPS)*(ph.end-ph.start);
+        var x=xFor(t), y=yFor(eleAt(profile,t));
+        d += (k===0?'M ':'L ')+x.toFixed(1)+' '+y.toFixed(1)+' ';
+      }
+      var fill = d + 'L '+eX.toFixed(1)+' '+baseline+' L '+sX.toFixed(1)+' '+baseline+' Z';
+      body += '<path d="'+fill+'" fill="url(#'+gid+'_g'+i+')"/>';
+      body += '<path d="'+d+'" fill="none" stroke="'+ph.color+'" stroke-width="'+(opts.strokeMain||1.8)+'" stroke-linejoin="round" stroke-linecap="round"/>';
+    });
+
+    // Baseline hairline
+    body += '<line x1="'+padL+'" y1="'+baseline+'" x2="'+(W-padR)+'" y2="'+baseline+'" stroke="rgba(255,255,255,.08)" stroke-width="1"/>';
+
+    return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'+defs+body+'</svg>';
+  }
+
+  // Hero backdrop — lives in right half of the hero card
+  var hero = document.querySelector('.race-hero .rh-bg');
+  if (hero){
+    hero.innerHTML = profileSVG('bigsur-hero', 1200, 360, { padL: 560, padR: 60, padT: 80, padB: 40, strokeMain: 2.4 });
+  }
+
+  // Race-card thumbnails
+  document.querySelectorAll('a.race-card').forEach(function(card, i){
+    if (card.classList.contains('race-card--add')) return;
+    var nameEl = card.querySelector('.rc-name');
+    var seed = (nameEl ? nameEl.textContent : 'card')+'_'+i;
+    var bg = document.createElement('div');
+    bg.className = 'rc-bg';
+    bg.innerHTML = profileSVG(seed, 320, 240, { padL:10, padR:10, padT:70, padB:10, strokeMain:1.6 });
+    card.insertBefore(bg, card.firstChild);
+  });
+})();
+
+// Page-wide button + card wiring
+(function(){
+  function flashMsg(txt){
+    var t = document.getElementById('rcFlash');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'rcFlash';
+      t.style.cssText = 'position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:9999; background:var(--l2); border:1px solid var(--l5); padding:10px 18px; border-radius:10px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t1); box-shadow:0 8px 24px rgba(0,0,0,.35); transition:opacity .3s;';
+      document.body.appendChild(t);
+    }
+    t.textContent = txt;
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+  }
+  // Completed filter buttons: toggle active
+  var filterBtns = Array.prototype.filter.call(
+    document.querySelectorAll('.section-h + .tile + .section-h button, .section-h button'),
+    function(b){ return /This year|All time|PRs only/i.test(b.textContent); }
+  );
+  filterBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      filterBtns.forEach(function(x){ x.classList.remove('btn--primary'); });
+      b.classList.add('btn--primary');
+      flashMsg('Filter · ' + b.textContent.trim());
+    });
+  });
+  // Find a race / + Add race / Edit list etc
+  document.querySelectorAll('button.btn').forEach(function(btn){
+    if (!btn.getAttribute('onclick') && !filterBtns.includes(btn)) {
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        flashMsg(btn.textContent.trim() + ' · queued');
+      });
+    }
+  });
+  // Upcoming + recommended race cards — flash on click (they keep href="#")
+  document.querySelectorAll('a.race-card').forEach(function(card){
+    if (card.getAttribute('href') === '#') {
+      card.addEventListener('click', function(e){
+        e.preventDefault();
+        var name = card.querySelector('.rc-name');
+        var t = card.querySelector('.t');
+        flashMsg('Open · ' + (name ? name.textContent.replace(/\s+/g,' ') : (t ? t.textContent : 'race')));
+      });
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
+

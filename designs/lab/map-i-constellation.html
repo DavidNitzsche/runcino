@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map I · Reactive constellation</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#03040a; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#03040a; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; position:relative; }
+svg{ display:block; width:100%; height:540px; }
+.over-tl{ position:absolute; top:22px; left:26px; text-shadow:0 2px 8px rgba(0,0,0,.9); }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; }
+.ttl{ font-family:var(--f-display); font-size:36px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-top:4px; }
+.sub{ font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; color:rgba(255,255,255,.6); text-transform:uppercase; font-weight:700; margin-top:6px; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <svg viewBox="0 0 1200 540" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="route" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3EBD41"/><stop offset="22%" stop-color="#F3AD3B"/>
+        <stop offset="42%" stop-color="#FC4D54"/><stop offset="62%" stop-color="#008FEC"/>
+        <stop offset="100%" stop-color="#9013FE"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="4"/></filter>
+      <filter id="glowBig"><feGaussianBlur stdDeviation="14"/></filter>
+    </defs>
+    <rect width="1200" height="540" fill="#03040a"/>
+    <g id="stars"></g>
+    <g id="routePath"></g>
+    <g id="marks"></g>
+  </svg>
+  <div class="over-tl"><div class="eye">Constellation · I</div><div class="ttl">Big Sur<br>Marathon</div><div class="sub">Stars dim near route, scatter at peak</div></div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200,H=540;
+  var dense = LAB.densify(LAB.WAYPOINTS, 30);
+  var proj = LAB.project(dense, W, H, { l:100,r:100,t:100,b:100 });
+  var series = LAB.buildSeries(dense);
+
+  // Find peak position for scatter effect
+  var peakP = LAB.pointAtMi(proj, series.cum, 10.6);
+
+  // Stars with reactive density — farther from route = brighter, near peak = scatter
+  function distToRoute(x,y){
+    var d = Infinity;
+    for (var i=0;i<proj.length;i++){
+      var dx=proj[i].x-x, dy=proj[i].y-y;
+      var dd = dx*dx+dy*dy;
+      if (dd<d) d=dd;
+    }
+    return Math.sqrt(d);
+  }
+  var starHtml = '';
+  for (var i=0;i<400;i++){
+    var x = Math.random()*W, y = Math.random()*H;
+    var dR = distToRoute(x,y);
+    var dPeak = Math.sqrt((x-peakP.x)*(x-peakP.x) + (y-peakP.y)*(y-peakP.y));
+    // Reactivity: close to route = dim. close to peak = scattered explosion.
+    var op;
+    if (dPeak < 120){
+      op = 0.7 - dPeak/200;  // bright scatter near peak
+    } else if (dR < 60){
+      op = 0.05;  // dim near route
+    } else {
+      op = 0.15 + Math.min(dR, 300)/1200;
+    }
+    var r = 0.6 + Math.random()*1.4;
+    if (Math.random() > 0.95) r += 1; // occasional brighter star
+    var col = dPeak < 100 ? '#FC4D54' : (Math.random() > 0.93 ? '#F3AD3B' : '#ffffff');
+    starHtml += '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r.toFixed(2)+'" fill="'+col+'" opacity="'+op.toFixed(3)+'"/>';
+  }
+  // Connect some near-peak stars with thin lines (constellation feel)
+  var close = [];
+  for (var i=0;i<200;i++){
+    var x = peakP.x + (Math.random()-0.5)*180;
+    var y = peakP.y + (Math.random()-0.5)*140;
+    close.push({x:x,y:y});
+  }
+  // Nothing drawn here, just keep it minimal
+  document.getElementById('stars').innerHTML = starHtml;
+
+  var d = LAB.smoothPath(proj);
+  document.getElementById('routePath').innerHTML =
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="18" filter="url(#glowBig)" opacity=".65"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="6" filter="url(#glow)" opacity=".85"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  var COLORS = { start:'#3EBD41', peak:'#FC4D54', minor:'#008FEC', finish:'#9013FE' };
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var p = LAB.pointAtMi(proj, series.cum, wp.mi);
+    var col = COLORS[wp.major] || '#F3AD3B';
+    if (wp.major==='peak'){
+      html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="22" fill="'+col+'" opacity=".2"/>' +
+              '<line x1="'+p.x+'" y1="'+(p.y-100)+'" x2="'+p.x+'" y2="'+p.y+'" stroke="'+col+'" stroke-width="1" opacity=".6"/>' +
+              '<text x="'+p.x+'" y="'+(p.y-110)+'" text-anchor="middle" fill="'+col+'" font-family="Oswald,sans-serif" font-size="12" font-weight="700" letter-spacing="2">'+wp.label+'</text>';
+    }
+    html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="6" fill="'+col+'" stroke="#03040a" stroke-width="2"/>';
+    if (wp.major==='start' || wp.major==='finish'){
+      html += '<text x="'+p.x+'" y="'+(p.y+26)+'" text-anchor="middle" fill="#fff" font-family="Oswald,sans-serif" font-size="11" font-weight="700" letter-spacing="2" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">'+wp.label+'</text>';
+    }
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>

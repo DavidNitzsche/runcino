@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map F · Seismograph</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#0a0d12; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#07090e; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; padding:28px 36px; }
+.hdr{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+.ttl{ font-family:var(--f-display); font-size:30px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; margin-bottom:4px; }
+.meta{ font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; color:rgba(255,255,255,.6); text-transform:uppercase; font-weight:700; }
+.seismo{ background:#04060a; border-radius:10px; padding:20px 22px; position:relative; }
+svg{ display:block; width:100%; height:200px; }
+.axis{ display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:rgba(255,255,255,.35); text-transform:uppercase; margin-top:10px; font-weight:700; }
+.strat{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-top:22px; }
+.strat div{ background:#04060a; border-radius:8px; padding:14px 16px; border-left:3px solid; }
+.strat .k{ font-family:var(--f-data); font-size:9px; letter-spacing:1.6px; color:rgba(255,255,255,.5); text-transform:uppercase; font-weight:700; }
+.strat .v{ font-family:var(--f-display); font-size:17px; font-weight:700; margin-top:4px; }
+.strat .n{ color:rgba(255,255,255,.6); font-size:11px; margin-top:4px; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <div class="hdr">
+    <div>
+      <div class="eye">Seismograph · F</div>
+      <div class="ttl">Big Sur Marathon</div>
+    </div>
+    <div class="meta">26.27 mi · +2,153 / −2,422 ft</div>
+  </div>
+  <div class="seismo">
+    <svg id="svg" viewBox="0 0 1200 200" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="route" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#3EBD41"/><stop offset="22%" stop-color="#F3AD3B"/>
+          <stop offset="42%" stop-color="#FC4D54"/><stop offset="62%" stop-color="#008FEC"/>
+          <stop offset="100%" stop-color="#9013FE"/>
+        </linearGradient>
+        <filter id="glow"><feGaussianBlur stdDeviation="2"/></filter>
+      </defs>
+      <!-- horizontal baseline -->
+      <line x1="0" y1="100" x2="1200" y2="100" stroke="rgba(255,255,255,.08)" stroke-width="1"/>
+      <!-- mile ticks -->
+      <g id="ticks"></g>
+      <!-- elevation as vertical spikes above / below baseline -->
+      <g id="spikes"></g>
+      <!-- phase markers along top -->
+      <g id="phaseMarks"></g>
+      <!-- Landmarks as triangle callouts -->
+      <g id="marks"></g>
+    </svg>
+    <div class="axis"><span>MI 0 · START</span><span>MI 10.6 · PEAK</span><span>MI 20</span><span>MI 26.2 · FINISH</span></div>
+  </div>
+  <div class="strat">
+    <div style="border-color:#3EBD41"><div class="k">Opening</div><div class="v">mi 0–5.8</div><div class="n">Easy start · +80 ft</div></div>
+    <div style="border-color:#F3AD3B"><div class="k">Climb</div><div class="v">mi 5.8–10.6</div><div class="n">Hurricane · +520 ft</div></div>
+    <div style="border-color:#FC4D54"><div class="k">Peak</div><div class="v">mi 10.6–16.2</div><div class="n">Descent · −440 ft</div></div>
+    <div style="border-color:#008FEC"><div class="k">Cruise</div><div class="v">mi 16.2–21.5</div><div class="n">Rolling · −60 ft</div></div>
+    <div style="border-color:#9013FE"><div class="k">Finish</div><div class="v">mi 21.5–26.2</div><div class="n">Descending · −180 ft</div></div>
+  </div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200, H=200, midY=100;
+  var dense = LAB.densify(LAB.WAYPOINTS, 36);
+  var series = LAB.buildSeries(dense);
+  var cum = series.cum, elev = series.elevFt, total = cum[cum.length-1];
+  var maxE = Math.max.apply(null, elev), minE = Math.min.apply(null, elev);
+  var range = maxE - minE || 1;
+
+  // Spikes
+  var sp = '';
+  for (var i=0;i<dense.length;i++){
+    var x = (cum[i]/total) * W;
+    var norm = (elev[i]-minE)/range;
+    var amp = norm * 80;  // max spike height
+    sp += '<line x1="'+x.toFixed(1)+'" y1="'+midY+'" x2="'+x.toFixed(1)+'" y2="'+(midY-amp).toFixed(1)+'" stroke="url(#route)" stroke-width="1" opacity=".65"/>';
+  }
+  document.getElementById('spikes').innerHTML = sp;
+
+  // Mile ticks every 1mi
+  var tk = '';
+  for (var m=0; m<=26; m++){
+    var x = (m/total)*W;
+    var major = m%5===0;
+    tk += '<line x1="'+x+'" y1="'+(midY+(major?8:4))+'" x2="'+x+'" y2="'+(midY+(major?18:12))+'" stroke="rgba(255,255,255,'+(major?.4:.2)+')" stroke-width="1"/>';
+    if (major) tk += '<text x="'+x+'" y="'+(midY+30)+'" text-anchor="middle" fill="rgba(255,255,255,.45)" font-family="JetBrains Mono,monospace" font-size="9" font-weight="700">'+m+'</text>';
+  }
+  document.getElementById('ticks').innerHTML = tk;
+
+  // Phase top strip
+  var ph = '';
+  var phases = LAB.PHASES;
+  var prev = 0;
+  phases.forEach(function(p){
+    var x1 = prev*W, x2 = Math.min(p.pct,1)*W;
+    ph += '<rect x="'+x1+'" y="6" width="'+(x2-x1)+'" height="3" fill="'+p.color+'" opacity=".85"/>';
+    prev = Math.min(p.pct,1);
+  });
+  document.getElementById('phaseMarks').innerHTML = ph;
+
+  // Landmarks
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var x = (wp.mi/total)*W;
+    var col = wp.major==='peak' ? '#FC4D54' : wp.major==='start' ? '#3EBD41' : wp.major==='finish' ? '#9013FE' : '#008FEC';
+    html += '<line x1="'+x+'" y1="0" x2="'+x+'" y2="'+midY+'" stroke="'+col+'" stroke-width="1" opacity=".4" stroke-dasharray="2 3"/>' +
+            '<polygon points="'+(x-6)+',30 '+x+',18 '+(x+6)+',30" fill="'+col+'"/>' +
+            '<text x="'+x+'" y="16" text-anchor="middle" fill="'+col+'" font-family="Oswald,sans-serif" font-size="10" font-weight="700" letter-spacing="1.4">'+wp.label+'</text>';
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>

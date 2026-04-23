@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Health</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<style>
+  /* ─── Health page ─────────────────────────────────────── */
+
+  /* Readiness hero */
+  .ready-hero { border-radius:20px; background:var(--l1); border:1px solid var(--l4); padding:32px 36px; margin-bottom:14px; display:grid; grid-template-columns:280px 1fr 1fr; gap:40px; align-items:center; min-height:240px; position:relative; overflow:hidden; }
+  .ready-hero::after { content:""; position:absolute; top:-120px; right:-100px; width:400px; height:400px; border-radius:50%; background:radial-gradient(circle, rgba(62,189,65,.10) 0%, transparent 65%); pointer-events:none; }
+  .ring { width:240px; height:240px; position:relative; }
+  .ring svg { transform:rotate(-90deg); width:100%; height:100%; }
+  .ring__v { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ring__v .num { font-family:var(--f-display); font-weight:800; font-size:88px; letter-spacing:-.04em; line-height:1; color:var(--success); font-variant-numeric:tabular-nums; }
+  .ring__v .lbl { font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:6px; }
+  .ring__v .tag { font-family:var(--f-data); font-size:9px; letter-spacing:1.8px; color:var(--success); font-weight:700; margin-top:8px; padding:3px 8px; border-radius:4px; background:rgba(62,189,65,.14); border:1px solid rgba(62,189,65,.3); }
+
+  .rh-txt .eye { font-family:var(--f-data); font-size:10.5px; letter-spacing:2.2px; text-transform:uppercase; color:var(--success); font-weight:700; display:flex; align-items:center; gap:10px; position:relative; z-index:1; }
+  .rh-txt .eye::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 0 3px rgba(62,189,65,.18); }
+  .rh-txt h2 { font-family:var(--f-display); font-size:52px; font-weight:700; letter-spacing:-.015em; line-height:.95; text-transform:uppercase; margin-top:14px; position:relative; z-index:1; }
+  .rh-txt p { font-size:13.5px; color:var(--t2); margin-top:12px; line-height:1.55; max-width:360px; position:relative; z-index:1; }
+
+  .rh-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; position:relative; z-index:1; }
+  .rh-kpi { background:var(--l2); border:1px solid var(--l4); border-radius:12px; padding:16px 18px; }
+  .rh-kpi .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .rh-kpi .v { font-family:var(--f-display); font-weight:800; font-size:34px; letter-spacing:-.02em; line-height:1; margin-top:8px; font-variant-numeric:tabular-nums; }
+  .rh-kpi .v small { font-size:.42em; opacity:.55; font-weight:700; margin-left:3px; }
+  .rh-kpi .d { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:8px; }
+
+  /* KPI strip */
+  .hstat { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
+  .hstat-box { border-radius:14px; padding:22px 24px; background:var(--l1); border:1px solid var(--l4); }
+  .hstat-box .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .hstat-box .v { font-family:var(--f-display); font-weight:800; font-size:46px; letter-spacing:-.025em; line-height:1; color:var(--t0); margin-top:14px; font-variant-numeric:tabular-nums; }
+  .hstat-box .v small { font-size:.32em; opacity:.55; font-weight:700; margin-left:3px; }
+  .hstat-box .trend { display:flex; align-items:center; gap:6px; font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; margin-top:10px; }
+  .hstat-box .trend b { color:var(--success); font-weight:800; }
+  .hstat-box .trend b.down { color:var(--warning); }
+
+  /* 2-col row */
+  .row-2 { display:grid; grid-template-columns:1.3fr 1fr; gap:10px; margin-bottom:10px; }
+  .row-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:10px; }
+
+  /* Trend chart */
+  .trend-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
+  .trend-head h3 { font-family:var(--f-display); font-weight:700; font-size:22px; letter-spacing:-.005em; text-transform:uppercase; }
+  .trend-head .meta { display:flex; gap:22px; margin-top:10px; }
+  .trend-head .meta div { }
+  .trend-head .meta .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .trend-head .meta .v { font-family:var(--f-display); font-weight:800; font-size:22px; letter-spacing:-.01em; line-height:1; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .trend-head .range { display:flex; gap:4px; background:var(--l2); padding:4px; border-radius:100px; border:1px solid var(--l4); }
+  .trend-head .range button { padding:5px 12px; border-radius:100px; font-family:var(--f-data); font-size:10px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; background:transparent; color:var(--t2); border:0; cursor:pointer; }
+  .trend-head .range button.on { background:var(--l4); color:var(--t0); }
+
+  .trend-chart { height:180px; position:relative; }
+  .trend-chart svg { width:100%; height:100%; display:block; }
+  .trend-legend { display:flex; gap:16px; margin-top:14px; font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; text-transform:uppercase; font-weight:700; color:var(--t3); }
+  .trend-legend span { display:inline-flex; align-items:center; gap:6px; }
+  .trend-legend i { width:10px; height:2px; background:var(--corporate); display:inline-block; }
+
+  /* Injury risk / flags */
+  .flag-list { display:flex; flex-direction:column; gap:10px; }
+  .flag { padding:14px 16px; border-radius:10px; background:var(--l2); border:1px solid var(--l4); display:flex; gap:14px; align-items:flex-start; }
+  .flag.warn { background:rgba(252,77,84,.08); border-color:rgba(252,77,84,.3); }
+  .flag.caution { background:rgba(240,223,71,.08); border-color:rgba(240,223,71,.3); }
+  .flag.ok { background:rgba(62,189,65,.06); border-color:rgba(62,189,65,.25); }
+  .flag-ic { width:32px; height:32px; border-radius:50%; background:var(--l3); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:800; font-size:16px; flex-shrink:0; }
+  .flag.warn .flag-ic { background:rgba(252,77,84,.2); color:var(--warning); }
+  .flag.caution .flag-ic { background:rgba(240,223,71,.2); color:var(--caution); }
+  .flag.ok .flag-ic { background:rgba(62,189,65,.2); color:var(--success); }
+  .flag-body { flex:1; min-width:0; }
+  .flag-body .t { font-family:var(--f-display); font-weight:700; font-size:16px; letter-spacing:-.005em; text-transform:uppercase; }
+  .flag-body .d { font-size:13px; color:var(--t2); margin-top:4px; line-height:1.5; }
+  .flag-val { font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; flex-shrink:0; text-align:right; }
+  .flag.warn .flag-val { color:var(--warning); }
+  .flag.caution .flag-val { color:var(--caution); }
+  .flag.ok .flag-val { color:var(--success); }
+
+  /* Body tests */
+  .test-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .test { padding:16px 18px; border-radius:10px; background:var(--l2); border:1px solid var(--l4); }
+  .test .th { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .test .th .name { font-family:var(--f-display); font-weight:700; font-size:15px; text-transform:uppercase; letter-spacing:-.005em; }
+  .test .th .date { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .test .val-row { display:flex; gap:14px; align-items:baseline; }
+  .test .val { font-family:var(--f-display); font-weight:800; font-size:32px; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  .test .val small { font-size:.42em; opacity:.55; font-weight:700; margin-left:3px; }
+  .test .delta { font-family:var(--f-data); font-size:11px; letter-spacing:1.3px; text-transform:uppercase; color:var(--success); font-weight:700; }
+  .test .delta.down { color:var(--warning); }
+  .test .bar { height:4px; border-radius:2px; background:var(--l4); margin-top:14px; position:relative; overflow:hidden; }
+  .test .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:2px; background:var(--success); }
+  .test .scale { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); margin-top:6px; font-weight:700; text-transform:uppercase; }
+
+  /* Sleep */
+  .sleep-wk { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-top:18px; }
+  .sl-cell { background:var(--l2); border:1px solid var(--l4); border-radius:10px; padding:12px 10px; text-align:center; }
+  .sl-cell .d { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .sl-cell .bar-c { height:100px; display:flex; align-items:flex-end; justify-content:center; margin:10px 0 8px; }
+  .sl-cell .bar-c i { width:18px; border-radius:3px 3px 0 0; background:linear-gradient(to top, var(--corporate), #66bffc); }
+  .sl-cell .v { font-family:var(--f-display); font-weight:800; font-size:16px; letter-spacing:-.01em; line-height:1; font-variant-numeric:tabular-nums; }
+  .sl-cell .t { font-family:var(--f-data); font-size:9.5px; color:var(--t2); font-weight:700; margin-top:4px; }
+  .sl-cell.low .bar-c i { background:linear-gradient(to top, var(--caution), #f6e87d); }
+  .sl-cell.poor .bar-c i { background:linear-gradient(to top, var(--warning), #ff7b82); }
+
+  /* HRV bars */
+  .hrv-chart { height:160px; display:flex; align-items:flex-end; gap:4px; margin-top:10px; }
+  .hrv-chart .bar { flex:1; border-radius:3px 3px 0 0; background:var(--corporate); position:relative; opacity:.85; min-height:12px; }
+  .hrv-chart .bar.low { background:var(--warning); }
+  .hrv-chart .bar.today { background:var(--success); opacity:1; box-shadow:0 0 0 2px rgba(62,189,65,.2); }
+  .hrv-scale { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); margin-top:8px; font-weight:700; text-transform:uppercase; }
+
+  /* Load / ACWR */
+  .load-block { padding-top:14px; }
+  .load-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--l4); }
+  .load-row:last-child { border-bottom:0; }
+  .load-row .l { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .load-row .v { font-family:var(--f-display); font-weight:800; font-size:22px; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+  .load-row .bar-mini { height:6px; width:120px; background:var(--l4); border-radius:3px; overflow:hidden; position:relative; }
+  .load-row .bar-mini i { position:absolute; left:0; top:0; bottom:0; background:var(--success); border-radius:3px; }
+  .acwr-gauge { text-align:center; padding:20px 0; }
+  .acwr-gauge .v { font-family:var(--f-display); font-weight:800; font-size:64px; letter-spacing:-.03em; line-height:1; color:var(--success); font-variant-numeric:tabular-nums; }
+  .acwr-gauge .lbl { font-family:var(--f-data); font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:8px; }
+  .acwr-zones { display:flex; margin-top:20px; height:8px; border-radius:4px; overflow:hidden; }
+  .acwr-zones i { flex:1; }
+  .acwr-zones .z1 { background:var(--warning); }
+  .acwr-zones .z2 { background:var(--caution); }
+  .acwr-zones .z3 { background:var(--success); }
+  .acwr-zones .z4 { background:var(--caution); }
+  .acwr-zones .z5 { background:var(--warning); }
+  .acwr-scale { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); margin-top:6px; font-weight:700; }
+
+  /* History table */
+  .hist-tbl { width:100%; border-collapse:collapse; }
+  .hist-tbl th { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:left; padding:12px 16px; border-bottom:1px solid var(--l4); }
+  .hist-tbl td { padding:16px; border-bottom:1px solid var(--l4); font-size:13px; color:var(--t1); vertical-align:middle; }
+  .hist-tbl tr:last-child td { border-bottom:0; }
+  .hist-tbl .num { font-family:var(--f-data); font-variant-numeric:tabular-nums; color:var(--t0); font-weight:700; }
+
+  .section-h { display:flex; justify-content:space-between; align-items:flex-end; margin:26px 4px 14px; }
+  .section-h h2 { font-family:var(--f-display); font-weight:700; font-size:28px; letter-spacing:-.01em; text-transform:uppercase; }
+  .section-h .sub { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Runcino · health &amp; recovery</span><b>HEALTH · V.1 · 2026.04.21</b></div>
+
+<div class="stage">
+  <div class="nav">
+    <div class="nav-l">
+      <a class="brand" href="hub.html">R</a>
+      <div class="tabs">
+        <a class="tab" href="hub.html">Overview</a>
+        <a class="tab" href="training.html">Training</a>
+        <a class="tab" href="races.html">Races</a>
+        <a class="tab active" href="health.html">Health</a>
+        <a class="tab" href="log.html">Log</a>
+      </div>
+    </div>
+    <div class="nav-r">
+      <div class="nav-ic">⌕</div>
+      <div class="nav-ic">◎</div>
+      <div class="avatar"></div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Recovery & resilience · Last sync 4 min ago</div>
+        <h1>Health</h1>
+        <div class="sub"><b>You're primed.</b> HRV trending up 9%, sleep consistency tight, load ratio in the sweet spot. One soft flag: left calf tightness after Tuesday's hills.</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn--ghost">Log symptom</button>
+        <button class="btn btn--ghost">Export PDF</button>
+        <button class="btn btn--primary">Run check-in</button>
+      </div>
+    </div>
+
+    <!-- Readiness hero -->
+    <div class="ready-hero">
+      <div class="ring">
+        <svg viewBox="0 0 220 220">
+          <circle cx="110" cy="110" r="96" fill="none" stroke="#21303F" stroke-width="14"/>
+          <circle cx="110" cy="110" r="96" fill="none" stroke="#3EBD41" stroke-width="14" stroke-linecap="round"
+                  stroke-dasharray="603" stroke-dashoffset="96"/>
+        </svg>
+        <div class="ring__v">
+          <div class="num">84</div>
+          <div class="lbl">Readiness</div>
+          <div class="tag">PRIMED</div>
+        </div>
+      </div>
+      <div class="rh-txt">
+        <div class="eye">Today · Tuesday</div>
+        <h2>Green light<br/>for quality</h2>
+        <p>Autonomic balance favorable. You can hit Thursday's tempo at goal effort. Reinforce: 8h sleep tonight, protein before bed.</p>
+      </div>
+      <div class="rh-grid">
+        <div class="rh-kpi">
+          <div class="l">HRV</div>
+          <div class="v">62<small>ms</small></div>
+          <div class="d" style="color:var(--success);">+4 vs 7-day</div>
+        </div>
+        <div class="rh-kpi">
+          <div class="l">Resting HR</div>
+          <div class="v">48<small>bpm</small></div>
+          <div class="d" style="color:var(--success);">−2 vs baseline</div>
+        </div>
+        <div class="rh-kpi">
+          <div class="l">Sleep</div>
+          <div class="v">7:42</div>
+          <div class="d">87% efficiency</div>
+        </div>
+        <div class="rh-kpi">
+          <div class="l">ACWR</div>
+          <div class="v">1.12</div>
+          <div class="d" style="color:var(--success);">Sweet spot</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI strip -->
+    <div class="hstat">
+      <div class="hstat-box">
+        <div class="l">7-day HRV avg</div>
+        <div class="v">58<small>ms</small></div>
+        <div class="trend">▲ <b>+9%</b> · vs prior week</div>
+      </div>
+      <div class="hstat-box">
+        <div class="l">Sleep consistency</div>
+        <div class="v" style="color:var(--success);">92<small>%</small></div>
+        <div class="trend">▲ <b>+3pts</b> · bedtime ±18min</div>
+      </div>
+      <div class="hstat-box">
+        <div class="l">Weekly load (TSS)</div>
+        <div class="v">412</div>
+        <div class="trend">▼ <b class="down">−34%</b> · taper begins</div>
+      </div>
+      <div class="hstat-box">
+        <div class="l">Injury risk index</div>
+        <div class="v" style="color:var(--caution);">LOW<small>·2</small></div>
+        <div class="trend">● <b style="color:var(--caution);">1 soft flag</b> · left calf</div>
+      </div>
+    </div>
+
+    <!-- HRV trend + Injury flags -->
+    <div class="row-2">
+      <div class="tile">
+        <div class="trend-head">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Autonomic balance</div>
+            <h3>HRV · 28-day</h3>
+            <div class="meta">
+              <div><div class="l">AVG</div><div class="v">58<small style="font-size:.5em; opacity:.5;">ms</small></div></div>
+              <div><div class="l">7-DAY</div><div class="v" style="color:var(--success);">62<small style="font-size:.5em; opacity:.5;">ms</small></div></div>
+              <div><div class="l">BASELINE</div><div class="v" style="color:var(--t2);">54</div></div>
+              <div><div class="l">COEF VAR</div><div class="v">11%</div></div>
+            </div>
+          </div>
+          <div class="range">
+            <button>7D</button>
+            <button class="on">28D</button>
+            <button>90D</button>
+            <button>1Y</button>
+          </div>
+        </div>
+        <div class="hrv-chart" id="hrvChart"></div>
+        <div class="hrv-scale">
+          <span>Mar 25</span><span>Apr 1</span><span>Apr 8</span><span>Apr 15</span><span>Apr 21</span>
+        </div>
+        <div class="trend-legend">
+          <span><i style="background:var(--corporate);"></i> Daily HRV</span>
+          <span><i style="background:var(--warning);"></i> Below threshold</span>
+          <span><i style="background:var(--success);"></i> Today</span>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Risk monitor</div>
+            <div class="tile-lbl">Injury flags</div>
+          </div>
+          <div class="cap"><b>2 active</b></div>
+        </div>
+        <div class="flag-list">
+          <div class="flag caution">
+            <div class="flag-ic">!</div>
+            <div class="flag-body">
+              <div class="t">Left calf tightness</div>
+              <div class="d">Logged after Tue hills. Cadence asymmetry 2.1% on descents. Roll + heel raises 3×15.</div>
+            </div>
+            <div class="flag-val">2d</div>
+          </div>
+          <div class="flag caution">
+            <div class="flag-ic">◐</div>
+            <div class="flag-body">
+              <div class="t">Hip ROM — right side</div>
+              <div class="d">Internal rotation down 4° vs baseline. Add 90/90 mobility before easy runs.</div>
+            </div>
+            <div class="flag-val">−4°</div>
+          </div>
+          <div class="flag ok">
+            <div class="flag-ic">✓</div>
+            <div class="flag-body">
+              <div class="t">Plantar fascia</div>
+              <div class="d">Previously flagged Feb 8 — fully resolved. Keep morning rolls as prevention.</div>
+            </div>
+            <div class="flag-val">OK</div>
+          </div>
+          <div class="flag ok">
+            <div class="flag-ic">✓</div>
+            <div class="flag-body">
+              <div class="t">Knee tracking</div>
+              <div class="d">Single-leg squat video: quiet, neutral. No ITB flags this cycle.</div>
+            </div>
+            <div class="flag-val">OK</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sleep + Load -->
+    <div class="row-2">
+      <div class="tile">
+        <div class="trend-head">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Recovery fuel</div>
+            <h3>Sleep · last 7 nights</h3>
+            <div class="meta">
+              <div><div class="l">AVG</div><div class="v">7:28</div></div>
+              <div><div class="l">DEEP</div><div class="v">1:24</div></div>
+              <div><div class="l">REM</div><div class="v">1:48</div></div>
+              <div><div class="l">EFFICIENCY</div><div class="v" style="color:var(--success);">87%</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="sleep-wk">
+          <div class="sl-cell"><div class="d">Tue</div><div class="bar-c"><i style="height:84%;"></i></div><div class="v">8:02</div><div class="t">92%</div></div>
+          <div class="sl-cell"><div class="d">Wed</div><div class="bar-c"><i style="height:78%;"></i></div><div class="v">7:28</div><div class="t">88%</div></div>
+          <div class="sl-cell low"><div class="d">Thu</div><div class="bar-c"><i style="height:62%;"></i></div><div class="v">5:54</div><div class="t">74%</div></div>
+          <div class="sl-cell"><div class="d">Fri</div><div class="bar-c"><i style="height:82%;"></i></div><div class="v">7:52</div><div class="t">90%</div></div>
+          <div class="sl-cell"><div class="d">Sat</div><div class="bar-c"><i style="height:88%;"></i></div><div class="v">8:22</div><div class="t">91%</div></div>
+          <div class="sl-cell"><div class="d">Sun</div><div class="bar-c"><i style="height:80%;"></i></div><div class="v">7:36</div><div class="t">85%</div></div>
+          <div class="sl-cell"><div class="d">Mon</div><div class="bar-c"><i style="height:81%;"></i></div><div class="v">7:42</div><div class="t">87%</div></div>
+        </div>
+        <div class="hrule"></div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px; padding-top:4px;">
+          <div>
+            <div class="cap">Bedtime variance</div>
+            <div style="font-family:var(--f-display); font-weight:800; font-size:28px; letter-spacing:-.02em; margin-top:6px; color:var(--success);">±18<small style="font-size:.4em; opacity:.55;">min</small></div>
+          </div>
+          <div>
+            <div class="cap">Wake variance</div>
+            <div style="font-family:var(--f-display); font-weight:800; font-size:28px; letter-spacing:-.02em; margin-top:6px;">±12<small style="font-size:.4em; opacity:.55;">min</small></div>
+          </div>
+          <div>
+            <div class="cap">Debt carried</div>
+            <div style="font-family:var(--f-display); font-weight:800; font-size:28px; letter-spacing:-.02em; margin-top:6px; color:var(--caution);">1:08</div>
+          </div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Training stress</div>
+            <div class="tile-lbl">Load balance</div>
+          </div>
+          <div class="cap"><b style="color:var(--success);">Sweet spot</b></div>
+        </div>
+        <div class="acwr-gauge">
+          <div class="v">1.12</div>
+          <div class="lbl">Acute : Chronic ratio</div>
+          <div class="acwr-zones">
+            <i class="z1"></i><i class="z2"></i><i class="z3"></i><i class="z4"></i><i class="z5"></i>
+          </div>
+          <div class="acwr-scale"><span>0.5</span><span>0.8</span><span>1.3</span><span>1.5</span><span>2.0+</span></div>
+        </div>
+        <div class="hrule"></div>
+        <div class="load-block">
+          <div class="load-row">
+            <div class="l">Acute load (7d)</div>
+            <div class="bar-mini"><i style="width:68%;"></i></div>
+            <div class="v">412</div>
+          </div>
+          <div class="load-row">
+            <div class="l">Chronic load (28d)</div>
+            <div class="bar-mini"><i style="width:62%;"></i></div>
+            <div class="v">368</div>
+          </div>
+          <div class="load-row">
+            <div class="l">Monotony</div>
+            <div class="bar-mini"><i style="width:45%; background:var(--caution);"></i></div>
+            <div class="v" style="color:var(--caution);">1.4</div>
+          </div>
+          <div class="load-row">
+            <div class="l">Strain (7d)</div>
+            <div class="bar-mini"><i style="width:58%;"></i></div>
+            <div class="v">577</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Physical tests -->
+    <div class="section-h">
+      <div>
+        <div class="sub">Body check · updated 2 days ago</div>
+        <h2>Physical tests</h2>
+      </div>
+      <button class="btn btn--ghost">+ Log test</button>
+    </div>
+
+    <div class="row-3">
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Calf endurance</div>
+            <div class="tile-lbl">Single-leg heel raise</div>
+          </div>
+        </div>
+        <div class="test-grid">
+          <div class="test">
+            <div class="th">
+              <div class="name">Left</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val" style="color:var(--caution);">24</div>
+              <div class="delta down">−3 vs R</div>
+            </div>
+            <div class="bar"><i style="width:60%; background:var(--caution);"></i></div>
+            <div class="scale"><span>0</span><span>Target 30</span><span>40+</span></div>
+          </div>
+          <div class="test">
+            <div class="th">
+              <div class="name">Right</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val" style="color:var(--success);">27</div>
+              <div class="delta">hold</div>
+            </div>
+            <div class="bar"><i style="width:68%;"></i></div>
+            <div class="scale"><span>0</span><span>Target 30</span><span>40+</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Balance & stability</div>
+            <div class="tile-lbl">Single-leg balance (eyes closed)</div>
+          </div>
+        </div>
+        <div class="test-grid">
+          <div class="test">
+            <div class="th">
+              <div class="name">Left</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val">38<small>s</small></div>
+              <div class="delta">+4s</div>
+            </div>
+            <div class="bar"><i style="width:76%;"></i></div>
+            <div class="scale"><span>0s</span><span>Target 30s</span><span>60s+</span></div>
+          </div>
+          <div class="test">
+            <div class="th">
+              <div class="name">Right</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val">42<small>s</small></div>
+              <div class="delta">+6s</div>
+            </div>
+            <div class="bar"><i style="width:84%;"></i></div>
+            <div class="scale"><span>0s</span><span>Target 30s</span><span>60s+</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:4px;">Hip mobility</div>
+            <div class="tile-lbl">Internal rotation (90/90)</div>
+          </div>
+        </div>
+        <div class="test-grid">
+          <div class="test">
+            <div class="th">
+              <div class="name">Left</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val">42<small>°</small></div>
+              <div class="delta">hold</div>
+            </div>
+            <div class="bar"><i style="width:84%;"></i></div>
+            <div class="scale"><span>20°</span><span>Target 40°</span><span>55°</span></div>
+          </div>
+          <div class="test">
+            <div class="th">
+              <div class="name">Right</div>
+              <div class="date">Apr 19</div>
+            </div>
+            <div class="val-row">
+              <div class="val" style="color:var(--caution);">36<small>°</small></div>
+              <div class="delta down">−4°</div>
+            </div>
+            <div class="bar"><i style="width:65%; background:var(--caution);"></i></div>
+            <div class="scale"><span>20°</span><span>Target 40°</span><span>55°</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vitals + history -->
+    <div class="section-h">
+      <div>
+        <div class="sub">Vitals log · last 14 days</div>
+        <h2>Daily check-ins</h2>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn--ghost">14 days</button>
+        <button class="btn btn--ghost">90 days</button>
+        <button class="btn btn--ghost">Export</button>
+      </div>
+    </div>
+
+    <div class="tile" style="padding:0; overflow:hidden;">
+      <table class="hist-tbl">
+        <thead>
+          <tr>
+            <th style="width:100px;">Date</th>
+            <th style="width:90px;">HRV</th>
+            <th style="width:90px;">RHR</th>
+            <th style="width:110px;">Sleep</th>
+            <th style="width:100px;">SpO₂</th>
+            <th style="width:110px;">Weight</th>
+            <th style="width:110px;">Readiness</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">Tue · Apr 21</td>
+            <td class="num" style="color:var(--success);">62ms</td>
+            <td class="num">48</td>
+            <td class="num">7:42</td>
+            <td class="num">97%</td>
+            <td class="num">152.4</td>
+            <td><span class="chip chip--success">84 · PRIMED</span></td>
+            <td>Easy 6mi Z2 planned. Calf OK on warmup.</td>
+          </tr>
+          <tr>
+            <td class="num">Mon · Apr 20</td>
+            <td class="num">59ms</td>
+            <td class="num">50</td>
+            <td class="num">7:36</td>
+            <td class="num">96%</td>
+            <td class="num">152.1</td>
+            <td><span class="chip chip--success">79 · READY</span></td>
+            <td>Recovery jog. Felt flat first mile, opened up.</td>
+          </tr>
+          <tr>
+            <td class="num">Sun · Apr 19</td>
+            <td class="num">55ms</td>
+            <td class="num">52</td>
+            <td class="num">8:22</td>
+            <td class="num">97%</td>
+            <td class="num">151.8</td>
+            <td><span class="chip">72 · STEADY</span></td>
+            <td>18mi long run. Body tests logged — hip ROM down 4°.</td>
+          </tr>
+          <tr>
+            <td class="num">Sat · Apr 18</td>
+            <td class="num">58ms</td>
+            <td class="num">49</td>
+            <td class="num">7:52</td>
+            <td class="num">97%</td>
+            <td class="num">152.0</td>
+            <td><span class="chip chip--success">81 · READY</span></td>
+            <td>Shakeout 4mi + strides. Shoes felt fast.</td>
+          </tr>
+          <tr>
+            <td class="num">Fri · Apr 17</td>
+            <td class="num" style="color:var(--caution);">48ms</td>
+            <td class="num" style="color:var(--caution);">55</td>
+            <td class="num" style="color:var(--warning);">5:54</td>
+            <td class="num">96%</td>
+            <td class="num">151.6</td>
+            <td><span class="chip chip--attention">61 · LIGHT DAY</span></td>
+            <td>Work late night. Swap tempo → easy. Good call.</td>
+          </tr>
+          <tr>
+            <td class="num">Thu · Apr 16</td>
+            <td class="num">56ms</td>
+            <td class="num">50</td>
+            <td class="num">7:28</td>
+            <td class="num">97%</td>
+            <td class="num">152.2</td>
+            <td><span class="chip chip--success">78 · READY</span></td>
+            <td>Tempo 6×1mi @ 6:32. Nailed splits.</td>
+          </tr>
+          <tr>
+            <td class="num">Wed · Apr 15</td>
+            <td class="num">54ms</td>
+            <td class="num">51</td>
+            <td class="num">8:02</td>
+            <td class="num">97%</td>
+            <td class="num">152.5</td>
+            <td><span class="chip">70 · STEADY</span></td>
+            <td>Hill repeats · left calf tightened late set.</td>
+          </tr>
+          <tr>
+            <td class="num">Tue · Apr 14</td>
+            <td class="num">60ms</td>
+            <td class="num">48</td>
+            <td class="num">7:18</td>
+            <td class="num">97%</td>
+            <td class="num">152.3</td>
+            <td><span class="chip chip--success">82 · READY</span></td>
+            <td>Easy + strides. Light breeze, felt smooth.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // HRV bar chart — 28 days
+  (function(){
+    const el = document.getElementById('hrvChart');
+    if(!el) return;
+    const data = [52,54,56,51,48,55,58,60,57,54,50,46,53,56,58,55,57,59,54,52,48,51,56,58,60,55,59,62];
+    const threshold = 50;
+    const max = 70;
+    data.forEach((v,i) => {
+      const h = Math.round((v/max)*100);
+      const b = document.createElement('div');
+      b.className = 'bar' + (v < threshold ? ' low' : '') + (i === data.length-1 ? ' today' : '');
+      b.style.height = h + '%';
+      b.title = v + 'ms';
+      el.appendChild(b);
+    });
+  })();
+
+  // Wire range buttons + page buttons
+  (function(){
+    var flashMsg = function(txt){
+      var t = document.getElementById('hFlash');
+      if (!t) {
+        t = document.createElement('div');
+        t.id = 'hFlash';
+        t.style.cssText = 'position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:9999; background:var(--l2); border:1px solid var(--l5); padding:10px 18px; border-radius:10px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t1); box-shadow:0 8px 24px rgba(0,0,0,.35); transition:opacity .3s;';
+        document.body.appendChild(t);
+      }
+      t.textContent = txt;
+      t.style.opacity = '1';
+      clearTimeout(t._to);
+      t._to = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+    };
+    document.querySelectorAll('.range').forEach(function(grp){
+      var btns = grp.querySelectorAll('button');
+      btns.forEach(function(b){
+        b.addEventListener('click', function(){
+          btns.forEach(function(x){ x.classList.remove('on'); });
+          b.classList.add('on');
+          flashMsg('Range · ' + b.textContent.trim());
+        });
+      });
+    });
+    document.querySelectorAll('.btn').forEach(function(btn){
+      if (btn.tagName === 'BUTTON' && !btn.getAttribute('onclick')) {
+        btn.addEventListener('click', function(e){
+          e.preventDefault();
+          flashMsg(btn.textContent.trim() + ' · queued');
+        });
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

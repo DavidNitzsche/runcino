@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<title>Runcino · Training</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<style>
+  /* ─── Training page ───────────────────────────────────── */
+  .row { display:grid; gap:10px; margin-bottom:10px; }
+  .row--4 { grid-template-columns:repeat(4,1fr); }
+  .row--2 { grid-template-columns:2fr 1fr; }
+
+  .kstat { display:flex; flex-direction:column; justify-content:space-between; min-height:148px; }
+  .kstat .k-top { display:flex; justify-content:space-between; align-items:center; }
+  .kstat .k-num { font-family:var(--f-display); font-weight:800; font-size:54px; letter-spacing:-.03em; line-height:1; color:var(--t0); }
+  .kstat .k-num small { font-size:.3em; opacity:.5; font-weight:700; margin-left:4px; }
+  .kstat .k-ft { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; display:flex; justify-content:space-between; padding-top:12px; border-top:1px solid var(--l4); }
+  .kstat .k-ft b { color:var(--t1); font-weight:800; }
+  .kstat .k-cap { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:8px; }
+
+  /* 4-week calendar */
+  .cal-head { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px; }
+  .cal-head span { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:center; padding:6px 0; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal-cell { border-radius:8px; background:var(--l2); border:1px solid var(--l4); padding:10px 12px; min-height:88px; display:flex; flex-direction:column; gap:4px; cursor:pointer; position:relative; transition:border-color 120ms; }
+  .cal-cell:hover { border-color:var(--l5); }
+  .cal-cell .cal-d { font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; color:var(--t3); font-weight:700; }
+  .cal-cell .cal-k { font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.02em; line-height:1; color:var(--t0); margin-top:2px; }
+  .cal-cell .cal-k small { font-size:.42em; opacity:.55; margin-left:2px; }
+  .cal-cell .cal-kind { font-family:var(--f-label); font-size:11px; color:var(--t2); margin-top:auto; }
+  .cal-cell.today { background:var(--corporate); border-color:var(--corporate); }
+  .cal-cell.today .cal-d, .cal-cell.today .cal-kind { color:rgba(255,255,255,.85); }
+  .cal-cell.today .cal-k { color:#fff; }
+  .cal-cell.done { background:rgba(62,189,65,.07); border-color:rgba(62,189,65,.22); }
+  .cal-cell.done .cal-d { color:var(--success); }
+  .cal-cell.rest { background:var(--l1); }
+  .cal-cell.rest .cal-k { color:var(--t3); font-size:20px; }
+  .cal-cell.rest .cal-kind { color:var(--t3); font-style:italic; }
+  .cal-cell.race { background:rgba(243,173,59,.1); border-color:rgba(243,173,59,.4); }
+  .cal-cell.race .cal-d, .cal-cell.race .cal-k, .cal-cell.race .cal-kind { color:var(--attention); }
+  .cal-cell .phase-tag { position:absolute; top:8px; right:10px; width:6px; height:6px; border-radius:50%; }
+  .cal-cell .phase-tag.base { background:rgba(180,195,215,.5); }
+  .cal-cell .phase-tag.build { background:var(--success); }
+  .cal-cell .phase-tag.peak { background:var(--xp); }
+  .cal-cell .phase-tag.taper { background:var(--corporate); }
+
+  /* Phase bar */
+  .phase-prog { height:10px; background:var(--l3); border-radius:5px; overflow:hidden; display:flex; margin-top:14px; }
+  .phase-prog div { height:100%; }
+  .phase-legend { display:flex; gap:16px; margin-top:12px; flex-wrap:wrap; }
+  .phase-legend span { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; display:inline-flex; align-items:center; gap:6px; }
+  .phase-legend span::before { content:""; width:10px; height:10px; border-radius:2px; }
+  .phase-legend .base::before { background:rgba(180,195,215,.5); }
+  .phase-legend .build::before { background:var(--success); }
+  .phase-legend .peak::before { background:var(--xp); }
+  .phase-legend .taper::before { background:var(--corporate); }
+  .phase-legend .race::before { background:var(--attention); }
+
+  /* Week row (schedule) */
+  .wk-row { display:grid; grid-template-columns:44px 1fr auto; gap:12px; align-items:center; padding:10px 12px; border-radius:8px; margin-bottom:2px; }
+  .wk-row .dow { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .wk-row .kind { font-family:var(--f-label); font-size:14px; font-weight:500; color:var(--t1); }
+  .wk-row.now { background:rgba(0,143,236,.1); border:1px solid rgba(0,143,236,.3); }
+  .wk-row.now .dow { color:var(--corporate); }
+  .wk-row.now .kind { color:#fff; font-weight:700; }
+  .wk-row.rest .kind { color:var(--t3); font-style:italic; }
+  .wk-row.race { background:rgba(243,173,59,.08); border:1px solid rgba(243,173,59,.35); padding:14px 12px; }
+  .wk-row.race .dow { color:var(--attention); }
+  .wk-row.race .kind { font-family:var(--f-display); font-weight:700; font-size:18px; color:var(--attention); text-transform:uppercase; letter-spacing:-.01em; }
+
+  /* Workout library */
+  .lib { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .lib-card { border-radius:12px; background:var(--l1); border:1px solid var(--l4); padding:18px 20px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color 120ms; }
+  .lib-card:hover { border-color:var(--l5); background:var(--l2); }
+  .lib-card .lib-top { display:flex; justify-content:space-between; align-items:baseline; }
+  .lib-card .lib-name { font-family:var(--f-display); font-weight:700; font-size:22px; letter-spacing:-.005em; color:var(--t0); text-transform:uppercase; }
+  .lib-card .lib-desc { font-size:13px; color:var(--t2); line-height:1.55; }
+  .lib-card .lib-meta { display:flex; gap:10px; margin-top:4px; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; flex-wrap:wrap; }
+  .lib-card .lib-meta b { color:var(--t1); font-weight:800; }
+
+  /* Pace zones */
+  .zones { display:grid; gap:4px; }
+  .zone { display:grid; grid-template-columns:110px 1fr 110px 100px 120px; gap:14px; align-items:center; padding:14px 18px; background:var(--l2); border-radius:10px; border:1px solid var(--l4); }
+  .zone .z-bar { height:8px; border-radius:4px; }
+  .zone .z-name { font-family:var(--f-display); font-weight:700; font-size:20px; text-transform:uppercase; color:var(--t0); letter-spacing:-.005em; }
+  .zone .z-desc { font-size:13px; color:var(--t1); }
+  .zone .z-pace { font-family:var(--f-data); font-size:14px; font-weight:700; color:var(--t0); font-variant-numeric:tabular-nums; }
+  .zone .z-tag { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+
+  .section-h { display:flex; justify-content:space-between; align-items:flex-end; margin:26px 4px 12px; }
+  .section-h h2 { font-family:var(--f-display); font-weight:700; font-size:28px; letter-spacing:-.01em; text-transform:uppercase; }
+</style>
+</head>
+<body>
+
+<div class="caption"><span>Runcino · training plan</span><b>TRAINING · V.1 · 2026.04.21</b></div>
+
+<div class="stage">
+  <div class="nav">
+    <div class="nav-l">
+      <a class="brand" href="hub.html">R</a>
+      <div class="tabs">
+        <a class="tab" href="hub.html">Overview</a>
+        <a class="tab active" href="training.html">Training</a>
+        <a class="tab" href="races.html">Races</a>
+        <a class="tab" href="health.html">Health</a>
+        <a class="tab" href="log.html">Log</a>
+      </div>
+    </div>
+    <div class="nav-r">
+      <div class="nav-ic">⌕</div>
+      <div class="nav-ic">◎</div>
+      <div class="avatar"></div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- Page head -->
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Training block · Big Sur Marathon</div>
+        <h1>The Arc</h1>
+        <div class="sub"><b>Week 16 of 16 · Taper begins Wednesday.</b> The hay is in the barn — this week is about preserving fitness and freshening legs.</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn--ghost">Swap week</button>
+        <button class="btn">Workout library</button>
+        <button class="btn btn--primary">+ Add workout</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="row row--4">
+      <div class="tile kstat">
+        <div class="k-top">
+          <span class="kpi-lbl">Current phase</span>
+          <span class="chip chip--attention">TAPER</span>
+        </div>
+        <div>
+          <div class="k-num" style="color:var(--attention);">Taper</div>
+          <div class="k-cap">Race Sunday · 5 days</div>
+        </div>
+        <div class="k-ft"><span>Week 16 / 16</span><b>On plan</b></div>
+      </div>
+      <div class="tile kstat">
+        <div class="k-top">
+          <span class="kpi-lbl">Week load</span>
+          <span class="chip chip--corporate">−34% vs peak</span>
+        </div>
+        <div>
+          <div class="k-num">49<small>mi</small></div>
+          <div class="k-cap">Peak was 74 · step-down complete</div>
+        </div>
+        <div class="k-ft"><span>38 of 49 logged</span><b>77%</b></div>
+      </div>
+      <div class="tile kstat">
+        <div class="k-top">
+          <span class="kpi-lbl">ACWR · load ratio</span>
+          <span class="chip chip--success">SWEET SPOT</span>
+        </div>
+        <div>
+          <div class="k-num">1.12</div>
+          <div class="k-cap">7d ÷ 28d · target 0.8–1.3</div>
+        </div>
+        <div class="k-ft"><span>Safe zone</span><b style="color:var(--success);">Absorbing</b></div>
+      </div>
+      <div class="tile kstat">
+        <div class="k-top">
+          <span class="kpi-lbl">Readiness</span>
+          <span class="chip chip--success">READY</span>
+        </div>
+        <div>
+          <div class="k-num" style="color:var(--success);">84<small>/100</small></div>
+          <div class="k-cap">HRV ↗ · Sleep 7:38 · Legs clear</div>
+        </div>
+        <div class="k-ft"><span>5-day trend</span><b style="color:var(--success);">↗ Rising</b></div>
+      </div>
+    </div>
+
+    <!-- Phase progress -->
+    <div class="tile" style="margin-bottom:10px;">
+      <div class="tile-h">
+        <div>
+          <div class="tile-sub" style="margin-bottom:6px;">16-week block · Dec 30 → Apr 26</div>
+          <div class="tile-lbl" style="font-size:22px;">Big Sur build · phase progression</div>
+        </div>
+        <div class="cap"><b>15 weeks complete</b> · 94%</div>
+      </div>
+      <div class="phase-prog">
+        <div style="background:rgba(180,195,215,.5); width:31.25%;" title="Base · 5 weeks"></div>
+        <div style="background:var(--success); width:31.25%;" title="Build · 5 weeks"></div>
+        <div style="background:var(--xp); width:12.5%;" title="Peak · 2 weeks"></div>
+        <div style="background:var(--corporate); width:18.75%;" title="Taper · 3 weeks"></div>
+        <div style="background:var(--attention); width:6.25%;" title="Race"></div>
+      </div>
+      <div class="phase-legend">
+        <span class="base">Base · W1–5 · 30–45 mi</span>
+        <span class="build">Build · W6–10 · 50–68 mi</span>
+        <span class="peak">Peak · W11–12 · 72–74 mi</span>
+        <span class="taper">Taper · W13–15 · 56–49 mi</span>
+        <span class="race">Race · W16 · 49 mi</span>
+      </div>
+    </div>
+
+    <!-- Calendar + schedule -->
+    <div class="row row--2">
+      <div class="tile">
+        <div class="tile-h">
+          <div>
+            <div class="tile-sub" style="margin-bottom:6px;">Schedule · last 2 + next 2 weeks</div>
+            <div class="tile-lbl" style="font-size:22px;">April 6 – May 3</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn--ghost" style="padding:6px 10px; font-size:11px;">‹</button>
+            <button class="btn btn--ghost" style="padding:6px 10px; font-size:11px;">Today</button>
+            <button class="btn btn--ghost" style="padding:6px 10px; font-size:11px;">›</button>
+          </div>
+        </div>
+        <div class="cal-head">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="cal-grid" id="cal"></div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="tile">
+          <div class="tile-h">
+            <div>
+              <div class="tile-sub" style="margin-bottom:6px;">This week · race week</div>
+              <div class="tile-lbl">Mon 20 – Sun 26</div>
+            </div>
+            <span class="chip chip--attention">RACE WEEK</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <div class="wk-row"><span class="dow">Mon</span><span class="kind">Easy shakeout · 5mi</span><span class="chip chip--success">DONE</span></div>
+            <div class="wk-row now"><span class="dow">Tue</span><span class="kind">8 × 400m intervals · 6mi</span><span class="chip chip--corporate">TODAY</span></div>
+            <div class="wk-row"><span class="dow">Wed</span><span class="kind">Z2 long · 8mi</span><span class="cap">LONG</span></div>
+            <div class="wk-row rest"><span class="dow">Thu</span><span class="kind">Rest</span><span class="cap">—</span></div>
+            <div class="wk-row"><span class="dow">Fri</span><span class="kind">Pre-race shakeout · 4mi</span><span class="cap">EASY</span></div>
+            <div class="wk-row rest"><span class="dow">Sat</span><span class="kind">Travel to Monterey</span><span class="cap">REST</span></div>
+            <div class="wk-row race"><span class="dow">Sun</span><span class="kind">Big Sur · 26.2</span><span class="chip chip--attention">RACE</span></div>
+          </div>
+        </div>
+
+        <div class="tile tile--raised" style="border-left:2px solid var(--attention);">
+          <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--attention); margin-bottom:6px;">Taper rules</div>
+          <div style="font-size:13px; line-height:1.55; color:var(--t1);">
+            Volume drops 35%. Intensity stays. Keep the shape of easy → quality → rest your body expects. Resist the urge to test fitness — trust the work in the bank.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workout library -->
+    <div class="section-h">
+      <div>
+        <div class="tile-sub" style="margin-bottom:4px;">Workout library</div>
+        <h2>Session types</h2>
+      </div>
+      <a class="btn btn--ghost" href="log.html">Browse all 42 →</a>
+    </div>
+    <div class="lib">
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Easy run</span><span class="chip chip--success">Z2</span></div><div class="lib-desc">Conversational pace. Builds aerobic base and promotes recovery between hard sessions. The foundation of any plan.</div><div class="lib-meta"><span>3–10 mi</span><b>·</b><span>30–80 min</span><b>·</b><span>HR 130–145</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Long run</span><span class="chip">Z2</span></div><div class="lib-desc">Weekly endurance builder. Mitochondrial density, glycogen storage, and mental durability. Keep the pace honest.</div><div class="lib-meta"><span>10–22 mi</span><b>·</b><span>90–180 min</span><b>·</b><span>HR 140–155</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Tempo</span><span class="chip chip--corporate">Z3</span></div><div class="lib-desc">Comfortably hard. Pushes lactate threshold — the pace you could hold for about an hour. Key marathon stimulus.</div><div class="lib-meta"><span>3–8 mi</span><b>·</b><span>25–50 min</span><b>·</b><span>HR 160–170</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Intervals</span><span class="chip chip--xp">Z4</span></div><div class="lib-desc">400m–1600m repeats with recovery. Develops VO₂ max and neuromuscular power. The top end that makes everything else easier.</div><div class="lib-meta"><span>4–12 reps</span><b>·</b><span>40–60 min</span><b>·</b><span>HR 170–180</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Hill repeats</span><span class="chip chip--attention">POWER</span></div><div class="lib-desc">Short, steep climbs done hard. Builds leg strength and run economy without the injury risk of flat speed work.</div><div class="lib-meta"><span>6–12 reps</span><b>·</b><span>30–45 min</span><b>·</b><span>HR 170+</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Fartlek</span><span class="chip">PLAY</span></div><div class="lib-desc">Unstructured speed play. Surges of 30s–4min by feel inside an easy run. Sharpens the top-end without a formal workout.</div><div class="lib-meta"><span>4–8 mi</span><b>·</b><span>35–60 min</span><b>·</b><span>Mixed</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Marathon pace</span><span class="chip chip--xp">GOAL</span></div><div class="lib-desc">Extended segments at target race pace. Dials in pace memory, fueling, and gear. Peaks 3–5 weeks out.</div><div class="lib-meta"><span>6–14 mi</span><b>·</b><span>50–110 min</span><b>·</b><span>HR 150–162</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Recovery</span><span class="chip chip--success">Z1</span></div><div class="lib-desc">Very easy, very short. The day after a hard effort. Increases blood flow without adding stress. Almost a walk.</div><div class="lib-meta"><span>2–4 mi</span><b>·</b><span>20–35 min</span><b>·</b><span>HR &lt; 130</span></div></div>
+      <div class="lib-card"><div class="lib-top"><span class="lib-name">Race</span><span class="chip chip--attention">GOAL</span></div><div class="lib-desc">The real thing or a tune-up. A 5K–10K 4–6 weeks out sharpens fitness. Anything longer should be treated as a workout.</div><div class="lib-meta"><span>5K–26.2</span><b>·</b><span>Full effort</span><b>·</b><span>Varies</span></div></div>
+    </div>
+
+    <!-- Pace zones -->
+    <div class="section-h">
+      <div>
+        <div class="tile-sub" style="margin-bottom:4px;">Personalized pace zones · based on threshold 6:58/mi</div>
+        <h2>Your pace zones</h2>
+      </div>
+      <span class="cap"><b>Last updated</b> · Apr 14 (LTHR test)</span>
+    </div>
+    <div class="zones">
+      <div class="zone"><div class="z-name" style="color:var(--success);">Easy</div><div class="z-desc">Conversational. Foundation pace for 70–80% of weekly miles.</div><div class="z-pace">8:45–9:40 /mi</div><div class="z-tag">HR 130–148</div><div class="z-bar" style="background:linear-gradient(90deg, var(--success), rgba(62,189,65,.3));"></div></div>
+      <div class="zone"><div class="z-name" style="color:var(--corporate);">Marathon</div><div class="z-desc">Target race pace. Steady, focused, controllable breathing.</div><div class="z-pace">8:35 /mi</div><div class="z-tag">HR 150–162</div><div class="z-bar" style="background:linear-gradient(90deg, var(--corporate), rgba(0,143,236,.3));"></div></div>
+      <div class="zone"><div class="z-name" style="color:var(--corporate);">Threshold</div><div class="z-desc">Comfortably hard. LTHR tempo — pace you could hold for an hour.</div><div class="z-pace">6:58–7:15 /mi</div><div class="z-tag">HR 160–170</div><div class="z-bar" style="background:linear-gradient(90deg, var(--corporate), var(--xp));"></div></div>
+      <div class="zone"><div class="z-name" style="color:#b873ff;">Interval</div><div class="z-desc">VO₂ max work. 3–5 min at pace with equal recovery.</div><div class="z-pace">6:18–6:35 /mi</div><div class="z-tag">HR 170–178</div><div class="z-bar" style="background:linear-gradient(90deg, var(--xp), rgba(144,19,254,.3));"></div></div>
+      <div class="zone"><div class="z-name" style="color:var(--attention);">Repetition</div><div class="z-desc">Short &amp; sharp. 200–400m fast. Form, economy, neuromuscular.</div><div class="z-pace">5:42–6:00 /mi</div><div class="z-tag">HR 180+</div><div class="z-bar" style="background:linear-gradient(90deg, var(--attention), rgba(243,173,59,.3));"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var cells = [
+    // Apr 6–12 (Build)
+    {d:6, kind:'Easy · 6mi', phase:'build', state:'done'},
+    {d:7, kind:'Tempo · 8mi', phase:'build', state:'done'},
+    {d:8, kind:'Easy · 5mi', phase:'build', state:'done'},
+    {d:9, kind:'Rest', phase:'build', state:'rest'},
+    {d:10, kind:'Intervals · 7mi', phase:'build', state:'done'},
+    {d:11, kind:'Easy · 6mi', phase:'build', state:'done'},
+    {d:12, kind:'Long · 16mi', phase:'build', state:'done'},
+    // Apr 13–19 (Taper begins)
+    {d:13, kind:'Easy · 5mi', phase:'taper', state:'done'},
+    {d:14, kind:'MP workout · 7mi', phase:'taper', state:'done'},
+    {d:15, kind:'Easy · 5mi', phase:'taper', state:'done'},
+    {d:16, kind:'Rest', phase:'taper', state:'rest'},
+    {d:17, kind:'Threshold · 6mi', phase:'taper', state:'done'},
+    {d:18, kind:'Easy · 4mi', phase:'taper', state:'done'},
+    {d:19, kind:'Long · 12mi', phase:'taper', state:'done'},
+    // Apr 20–26 (Race week)
+    {d:20, kind:'Easy · 5mi', phase:'taper', state:'done'},
+    {d:21, kind:'8 × 400m · 6mi', phase:'taper', state:'today'},
+    {d:22, kind:'Z2 long · 8mi', phase:'taper', state:''},
+    {d:23, kind:'Rest', phase:'taper', state:'rest'},
+    {d:24, kind:'Shakeout · 4mi', phase:'taper', state:''},
+    {d:25, kind:'Travel', phase:'taper', state:'rest'},
+    {d:26, kind:'Big Sur · 26.2', phase:'', state:'race'},
+    // Apr 27 – May 3 (Recovery)
+    {d:27, kind:'Rest', phase:'', state:'rest'},
+    {d:28, kind:'Rest', phase:'', state:'rest'},
+    {d:29, kind:'Walk · 30min', phase:'', state:''},
+    {d:30, kind:'Walk · 30min', phase:'', state:''},
+    {d:1, kind:'Easy · 3mi', phase:'', state:'', may:true},
+    {d:2, kind:'Rest', phase:'', state:'rest', may:true},
+    {d:3, kind:'Easy · 4mi', phase:'', state:'', may:true}
+  ];
+  var el = document.getElementById('cal');
+  var html = '';
+  cells.forEach(function(c){
+    var cls = 'cal-cell ' + (c.state || '');
+    var phase = c.phase ? '<span class="phase-tag '+c.phase+'"></span>' : '';
+    var distMatch = c.kind.match(/(\d+(?:\.\d+)?)\s*mi/);
+    var dist = distMatch ? '<div class="cal-k">'+distMatch[1]+'<small>mi</small></div>' : '<div class="cal-k">—</div>';
+    if (c.state === 'race') dist = '<div class="cal-k">26.2<small>mi</small></div>';
+    if (c.kind === 'Walk · 30min') dist = '<div class="cal-k">Walk</div>';
+    var label = c.kind.replace(/\s*·\s*\d+(\.\d+)?\s*mi/,'').replace(/^(\d+)\s*×\s*/,'$1 × ');
+    html += '<div class="'+cls+'">'+phase+'<span class="cal-d">'+c.d+(c.may?' MAY':'')+'</span>'+dist+'<span class="cal-kind">'+label+'</span></div>';
+  });
+  el.innerHTML = html;
+})();
+
+// Wire page buttons to give visible feedback
+(function(){
+  var flashMsg = function(txt){
+    var t = document.getElementById('trFlash');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'trFlash';
+      t.style.cssText = 'position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:9999; background:var(--l2); border:1px solid var(--l5); padding:10px 18px; border-radius:10px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t1); box-shadow:0 8px 24px rgba(0,0,0,.35); transition:opacity .3s;';
+      document.body.appendChild(t);
+    }
+    t.textContent = txt;
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+  };
+  document.querySelectorAll('.btn').forEach(function(btn){
+    if (btn.tagName === 'BUTTON' && !btn.onclick && !btn.getAttribute('onclick')) {
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        flashMsg(btn.textContent.trim() + ' · queued');
+      });
+    }
+  });
+  document.querySelectorAll('.lib-card').forEach(function(c){
+    c.style.cursor = 'pointer';
+    c.addEventListener('click', function(){
+      var n = c.querySelector('.lib-name');
+      flashMsg('Open workout · ' + (n ? n.textContent : ''));
+    });
+  });
+})();
+</script>
+</body>
+</html>

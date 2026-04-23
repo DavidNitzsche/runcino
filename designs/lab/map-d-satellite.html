@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=1400">
+<title>Map D · Cinematic satellite</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Jost:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<style>
+body{ background:#0a0d12; }
+.frame{ max-width:1440px; margin:22px auto; padding:0 44px; }
+.card{ background:#000; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; position:relative; height:520px; }
+.sat{ position:absolute; inset:0; background-image:url('https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/-121.85,36.4,10,0/1440x520@2x?attribution=false&logo=false&access_token=YOUR_MAPBOX_TOKEN'); background-size:cover; background-position:center; filter:brightness(.55) saturate(.9) contrast(1.15); }
+.sat.stub{ background:
+  radial-gradient(ellipse 60% 80% at 70% 45%, #3a4a38 0%, #202820 30%, #0a0e08 70%),
+  radial-gradient(ellipse 40% 60% at 15% 70%, #1a2238 0%, #0a0f1a 60%, #000 100%),
+  #000; }
+.overlay::after{ content:""; position:absolute; inset:0; background:
+  linear-gradient(135deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.2) 30%, transparent 55%),
+  linear-gradient(225deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.2) 30%, transparent 55%),
+  radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,.6) 100%); pointer-events:none; }
+.card svg{ position:absolute; inset:0; width:100%; height:100%; }
+.over-tl{ position:absolute; top:22px; left:26px; pointer-events:none; text-shadow:0 2px 8px rgba(0,0,0,.9); z-index:3; }
+.over-tr{ position:absolute; top:22px; right:26px; text-align:right; pointer-events:none; text-shadow:0 2px 8px rgba(0,0,0,.9); z-index:3; }
+.eye{ font-family:var(--f-data); font-size:10px; letter-spacing:2.2px; color:#F3AD3B; text-transform:uppercase; font-weight:700; }
+.ttl{ font-family:var(--f-display); font-size:38px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; margin-top:4px; color:#fff;}
+.sub{ font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; color:rgba(255,255,255,.6); text-transform:uppercase; font-weight:700; margin-top:6px; }
+.s-row{ display:flex; gap:28px; justify-content:flex-end; margin-bottom:12px; }
+.s-l{ font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; color:rgba(255,255,255,.55); text-transform:uppercase; font-weight:700; }
+.s-v{ font-family:var(--f-display); font-size:22px; font-weight:800; margin-top:4px; color:#fff; }
+.note{ position:absolute; bottom:14px; left:26px; right:26px; z-index:3; display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:rgba(255,255,255,.45); text-transform:uppercase; font-weight:700; }
+</style></head><body>
+<a class="lab-back" href="index.html" style="display:block;max-width:1440px;margin:22px auto 0;padding:0 44px;">← ALL DIRECTIONS</a>
+<div class="frame"><div class="card">
+  <div class="sat stub overlay"></div>
+  <svg viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="route" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3EBD41"/><stop offset="22%" stop-color="#F3AD3B"/>
+        <stop offset="42%" stop-color="#FC4D54"/><stop offset="62%" stop-color="#008FEC"/>
+        <stop offset="100%" stop-color="#9013FE"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="5"/></filter>
+      <filter id="glowBig"><feGaussianBlur stdDeviation="14"/></filter>
+    </defs>
+    <g id="routePath"></g>
+    <g id="marks"></g>
+  </svg>
+  <div class="over-tl">
+    <div class="eye">Cinematic satellite · GPX</div>
+    <div class="ttl">Big Sur<br>Marathon</div>
+    <div class="sub">Highway 1 · real geography</div>
+  </div>
+  <div class="over-tr">
+    <div class="s-row"><div><div class="s-l">Distance</div><div class="s-v">26.27 mi</div></div><div><div class="s-l">Gain</div><div class="s-v" style="color:#f9a87c;">+2,153 ft</div></div></div>
+    <div class="s-row"><div><div class="s-l">Loss</div><div class="s-v" style="color:#7fd6a1;">−2,422 ft</div></div><div><div class="s-l">Peak</div><div class="s-v">568 ft</div></div></div>
+  </div>
+  <div class="note">
+    <span>36.40°N · 121.85°W</span>
+    <span>Imagery · Mapbox / Maxar (stub in demo)</span>
+  </div>
+</div></div>
+<script src="data.js"></script>
+<script>
+  var W=1200,H=520;
+  var dense = LAB.densify(LAB.WAYPOINTS, 32);
+  var proj = LAB.project(dense, W, H, { l:300,r:320,t:110,b:110 });
+  var d = LAB.smoothPath(proj);
+
+  document.getElementById('routePath').innerHTML =
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="22" filter="url(#glowBig)" opacity=".6"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="9" filter="url(#glow)" opacity=".85"/>' +
+    '<path d="'+d+'" fill="none" stroke="url(#route)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  var series = LAB.buildSeries(dense);
+  var COLORS = { start:'#3EBD41', peak:'#FC4D54', minor:'#008FEC', finish:'#9013FE' };
+  var html = '';
+  LAB.LANDMARKS.forEach(function(wp){
+    var p = LAB.pointAtMi(proj, series.cum, wp.mi);
+    var col = COLORS[wp.major] || '#F3AD3B';
+    html += '<circle cx="'+p.x+'" cy="'+p.y+'" r="16" fill="'+col+'" opacity=".22"/>' +
+            '<circle cx="'+p.x+'" cy="'+p.y+'" r="6" fill="'+col+'" stroke="#000" stroke-width="2"/>' +
+            '<text x="'+p.x+'" y="'+(p.y-14)+'" text-anchor="middle" fill="#fff" font-family="Oswald,sans-serif" font-size="12" font-weight="700" letter-spacing="2" style="text-shadow:0 1px 3px rgba(0,0,0,.95)">'+wp.label+'</text>';
+  });
+  document.getElementById('marks').innerHTML = html;
+</script>
+</body></html>
