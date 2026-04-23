@@ -141,7 +141,6 @@
 
     <!-- Next race hero -->
     <div class="race-hero" data-tattoo-seed="bigsur">
-      <div class="rh-bg"></div>
       <div class="rh-l">
         <div>
           <div class="rh-eye">Next race · Sunday</div>
@@ -164,7 +163,7 @@
       </div>
       <div class="rh-r">
         <div style="text-align:right;">
-          <div class="rh-countdown">5<small>Days to gun</small></div>
+          <div class="rh-countdown">5<small>Days to go</small></div>
         </div>
         <div style="background:rgba(243,173,59,.1); border:1px solid rgba(243,173,59,.25); border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
           <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--attention); font-weight:700;">Race week focus</div>
@@ -531,22 +530,8 @@
     return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'+defs+body+'</svg>';
   }
 
-  // Hero backdrop — lives in right half of the hero card
-  var hero = document.querySelector('.race-hero .rh-bg');
-  if (hero){
-    hero.innerHTML = profileSVG('bigsur-hero', 1200, 360, { padL: 560, padR: 60, padT: 80, padB: 40, strokeMain: 2.4 });
-  }
-
-  // Race-card thumbnails
-  document.querySelectorAll('a.race-card').forEach(function(card, i){
-    if (card.classList.contains('race-card--add')) return;
-    var nameEl = card.querySelector('.rc-name');
-    var seed = (nameEl ? nameEl.textContent : 'card')+'_'+i;
-    var bg = document.createElement('div');
-    bg.className = 'rc-bg';
-    bg.innerHTML = profileSVG(seed, 320, 240, { padL:10, padR:10, padT:70, padB:10, strokeMain:1.6 });
-    card.insertBefore(bg, card.firstChild);
-  });
+  // Elevation profile backdrops disabled — cluttered the hero + card layouts.
+  // (Kept profileSVG() above in case we want it elsewhere later.)
 })();
 
 // Page-wide button + card wiring
