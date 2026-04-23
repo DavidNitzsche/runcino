@@ -199,11 +199,11 @@
   .splits-tbl .phase-dot { width:6px; height:20px; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:8px; }
 
   /* Fueling */
-  .fuel-lane { position:relative; height:44px; background:var(--l3); border-radius:22px; margin:22px 0 16px; overflow:visible; }
-  .fuel-lane::before { content:""; position:absolute; inset:20px 20px auto; height:4px; border-radius:2px; background:linear-gradient(90deg, var(--success) 0%, var(--corporate) 35%, var(--attention) 70%, var(--xp) 100%); top:20px; }
-  .fuel-pin { position:absolute; top:-4px; width:40px; height:52px; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%); }
-  .fuel-pin .dot { width:14px; height:14px; border-radius:50%; background:var(--attention); border:3px solid var(--l0); box-shadow:0 0 0 2px var(--attention); margin-top:15px; }
-  .fuel-pin .mi { font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t2); font-weight:700; margin-top:6px; white-space:nowrap; }
+  .fuel-lane { position:relative; height:44px; background:var(--l3); border-radius:22px; margin:22px 0 24px; overflow:visible; }
+  .fuel-lane::before { content:""; position:absolute; left:20px; right:20px; top:50%; height:4px; margin-top:-2px; border-radius:2px; background:linear-gradient(90deg, var(--success) 0%, var(--corporate) 35%, var(--attention) 70%, var(--xp) 100%); }
+  .fuel-pin { position:absolute; top:0; bottom:0; width:0; transform:translateX(0); pointer-events:none; }
+  .fuel-pin .dot { position:absolute; left:0; top:50%; width:14px; height:14px; border-radius:50%; background:var(--attention); border:3px solid var(--l0); box-shadow:0 0 0 2px var(--attention); transform:translate(-50%, -50%); box-sizing:content-box; }
+  .fuel-pin .mi { position:absolute; left:0; top:100%; transform:translateX(-50%); margin-top:8px; font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t2); font-weight:700; white-space:nowrap; }
   .fuel-row { display:grid; grid-template-columns:54px 60px 1fr 110px 110px; gap:14px; align-items:center; padding:14px 18px; background:var(--l2); border-radius:10px; border:1px solid var(--l4); margin-bottom:4px; }
   .fuel-row .mn { font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
   .fuel-row .mi-n { font-family:var(--f-display); font-weight:800; font-size:22px; color:var(--attention); line-height:1; }
