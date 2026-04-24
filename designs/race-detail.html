@@ -614,7 +614,7 @@
 
     <div class="phases">
       <div class="phase-card opening" data-phase="0" data-name="Opening miles" data-note="Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase." data-from="0" data-to="4"></div>
-      <div class="phase-card climb" data-phase="1" data-name="Coast climb" data-note="Rolling climbs, headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." data-from="4" data-to="10"></div>
+      <div class="phase-card climb" data-phase="1" data-name="Rolling approach" data-note="Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." data-from="4" data-to="10"></div>
       <div class="phase-card hurricane" data-phase="2" data-name="Hurricane Pt" data-note="The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR &gt; 172. Drums at the top." data-from="10" data-to="12"></div>
       <div class="phase-card cruise" data-phase="3" data-name="Cruise miles" data-note="Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21. Headwind possible." data-from="12" data-to="24"></div>
       <div class="phase-card finish" data-phase="4" data-name="Final push" data-note="Carmel is close. Empty the tank from mile 25. You've trained for this — the crowds carry you to the line." data-from="24" data-to="26.2"></div>
@@ -1013,7 +1013,7 @@ window.RACE_PLAN = (function(){
     return 4;
   }
   var phaseColors = ['var(--success)','var(--attention)','var(--warning)','var(--corporate)','var(--xp)'];
-  var phaseLabels = ['Opening','Climb','Hurricane','Cruise','Final'];
+  var phaseLabels = ['Opening','Rolling','Hurricane','Cruise','Final'];
 
   // --- Core: given goal seconds + per-mile grades, compute pace per mile so total == goal.
   function computePaces(miles, goalSec){
@@ -1042,7 +1042,7 @@ window.RACE_PLAN = (function(){
   function computePhases(paced){
     var phases = [
       { idx:0, name:'Opening miles', from:0,  to:4,    note:"Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase." },
-      { idx:1, name:'Coast climb',   from:4,  to:10,   note:"Rolling climbs, headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." },
+      { idx:1, name:'Rolling approach', from:4,  to:10,   note:"Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." },
       { idx:2, name:'Hurricane Pt',  from:10, to:12,   note:"The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top." },
       { idx:3, name:'Cruise miles',  from:12, to:24,   note:"Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21." },
       { idx:4, name:'Final push',    from:24, to:26.2, note:"Carmel is close. Empty the tank from mile 25. The crowds carry you to the line." }
@@ -1840,16 +1840,43 @@ window.RACE_PLAN = (function(){
     setSource('default');
   }
 
+  // Render the bundled real-Garmin Big Sur GPX as the default course
+  // (keeps the default framing, unlike handleGpxText which is for user uploads).
+  function loadBundledBigSurGpx(text){
+    var pts;
+    try { pts = parseGPX(text); } catch(e){ pts = []; }
+    if (pts.length < 5) return;
+    var series = buildSeries(pts);
+    document.getElementById('ccTtl').innerHTML = 'Big Sur<br/>Marathon';
+    document.getElementById('ccSub').textContent = pts.length.toLocaleString() + ' track points · 2024 Garmin';
+    document.getElementById('ccEye').textContent = 'Course · point-to-point';
+    renderAll(series, { peakLabel: 'HURRICANE' });
+    setSource('default');
+  }
+
   // ------- Wire up -------
   function init(){
     loadDefault();
+    // Prefer saved GPX from a prior upload; otherwise fetch the real Garmin
+    // Big Sur 2024 track bundled with the site. Only falls back to the
+    // stylized waypoints from loadDefault() if both fail.
+    var loadedFromCache = false;
     try {
       var saved = localStorage.getItem(STORAGE_KEY);
       if (saved){
         var obj = JSON.parse(saved);
-        if (obj && obj.text && obj.name) handleGpxText(obj.text, obj.name, false);
+        if (obj && obj.text && obj.name){
+          handleGpxText(obj.text, obj.name, false);
+          loadedFromCache = true;
+        }
       }
     } catch(e){}
+    if (!loadedFromCache){
+      fetch('./sample-bigsur.gpx', { cache: 'force-cache' })
+        .then(function(r){ return r.ok ? r.text() : null; })
+        .then(function(text){ if (text) loadBundledBigSurGpx(text); })
+        .catch(function(){ /* keep stylized fallback */ });
+    }
 
     var input = document.getElementById('gpxInput');
     if (input){
@@ -2416,7 +2443,7 @@ window.RACE_PLAN = (function(){
   // Notes auto-generated from course phase at that mile.
   function phaseAtMile(mi){
     if (mi < 4) return { name:'Opening miles', note:'Steady sipping' };
-    if (mi < 10) return { name:'Coast climb', note:'Before the climb' };
+    if (mi < 10) return { name:'Rolling approach', note:'Before the climb' };
     if (mi <= 12) return { name:'Hurricane Pt', note:'Power through' };
     if (mi < 20) return { name:'Cruise miles', note:'Recover the quads' };
     if (mi < 24) return { name:'Kick zone', note:'Prime for the push' };
