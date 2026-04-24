@@ -409,7 +409,7 @@
 
           <p class="pc-lede">One of the most scenic road marathons on the continent — a point-to-point course carved into the Pacific edge, from redwoods at Big Sur Station to the coastal village of Carmel-by-the-Sea.</p>
 
-          <p class="pc-para">The course is <b>five sectors</b>. It opens under the redwood canopy, unfolds into rolling coastal approach, steepens into the <em>Hurricane Point climb</em> at mile 10.6 — a two-mile, 546-foot ascent into a prevailing headwind — then releases into a long descent past <b>Bixby Bridge</b> and the cruise miles to Carmel Highlands.</p>
+          <p class="pc-para">The course is <b>five sectors</b>. It opens under the redwood canopy, unfolds into rolling coastal approach, steepens into the <em>Hurricane Point climb</em> at mile <span id="pcProsePeakMi">—</span> — a <span id="pcProseClimbLen">—</span>-mile, <span id="pcProseClimbGain">—</span>-foot ascent into a prevailing headwind — then releases into a long descent past <b>Bixby Bridge</b> and the cruise miles to Carmel Highlands.</p>
 
           <p class="pc-para">First run in 1986. Start 06:45 AM · Cutoff 6:00 · Field 4,500. Weather window: <em>52°F · clear · 3 mph SSE</em>. PR to beat: <b>3:52</b>.</p>
 
@@ -1761,6 +1761,29 @@ window.RACE_PLAN = (function(){
       if (pcGain) pcGain.innerHTML = '+' + fmtFt(stats.gainFt) + '<small>FT</small>';
       var pcPeak = document.getElementById('pcElevPeakStat');
       if (pcPeak) pcPeak.innerHTML = 'Peak <em>' + fmtFt(stats.peakFt) + ' ft · MI ' + stats.peakMi.toFixed(1) + '</em>';
+      // Prose description: climb length × climb gain, ending at peakMi.
+      // "2 miles before peak" is the Big Sur convention and matches the
+      // hardcoded Phase 3 window; close enough for any course where the
+      // climb to high point is within the last ~2 miles of positive grade.
+      var proseMi = document.getElementById('pcProsePeakMi');
+      var proseLen = document.getElementById('pcProseClimbLen');
+      var proseGain = document.getElementById('pcProseClimbGain');
+      if (proseMi || proseLen || proseGain){
+        function eleAtMi(m){
+          if (m <= series.cum[0]) return series.elevFt[0];
+          if (m >= series.cum[series.cum.length-1]) return series.elevFt[series.elevFt.length-1];
+          var lo=0, hi=series.cum.length-1;
+          while (lo < hi-1){ var md=(lo+hi)>>1; if (series.cum[md] < m) lo=md; else hi=md; }
+          var span = series.cum[hi]-series.cum[lo] || 1e-9;
+          var t = (m - series.cum[lo]) / span;
+          return series.elevFt[lo] + (series.elevFt[hi]-series.elevFt[lo]) * t;
+        }
+        var climbStartMi = Math.max(0, stats.peakMi - 2);
+        var climbGain = Math.max(0, Math.round(stats.peakFt - eleAtMi(climbStartMi)));
+        if (proseMi) proseMi.textContent = stats.peakMi.toFixed(1);
+        if (proseLen) proseLen.textContent = (stats.peakMi - climbStartMi).toFixed(0);
+        if (proseGain) proseGain.textContent = climbGain.toLocaleString();
+      }
     } catch(e){ console.warn('Poster update failed:', e); }
 
     try {
