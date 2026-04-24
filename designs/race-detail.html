@@ -1053,6 +1053,9 @@ window.RACE_PLAN = (function(){
         if (m.gel) p.gels++;
       });
       p.avgPaceSec = p.lenMi > 0 ? p.durSec / p.lenMi : 0;
+      // Actual end mile from data, clipped to phase boundary — so a short
+      // course (e.g. 25.8 mi GPX) doesn't display a fake "Mi 24 – 26.2" label.
+      p.endMi = p.lenMi > 0 ? Math.min(p.to, p.from + p.lenMi) : p.from;
     });
     return phases;
   }
@@ -1061,7 +1064,10 @@ window.RACE_PLAN = (function(){
   function renderHero(goalSec, paced){
     var el = document.getElementById('hPredicted');
     if (el) el.textContent = secToHMShort(goalSec);
-    var avgPaceSec = goalSec / 26.2;
+    var totalMi = 0;
+    if (paced && paced.miles) paced.miles.forEach(function(m){ totalMi += m.len; });
+    if (totalMi <= 0) totalMi = 26.2;
+    var avgPaceSec = goalSec / totalMi;
     var cap = document.getElementById('phasesCap');
     if (cap) cap.innerHTML = '<b>Predicted</b> ' + secToHMShort(goalSec) + ' · average ' + secToPace(avgPaceSec) + '/mi';
   }
@@ -1076,7 +1082,7 @@ window.RACE_PLAN = (function(){
       var gColor = m.grade > 3 ? 'var(--warning)' : m.grade > 1 ? 'var(--attention)' : m.grade < -1 ? 'var(--corporate)' : 'var(--t2)';
       var pIdx = phaseIndexForMile(m.mi);
       html += '<tr'+(m.gel?' class="gel"':'')+'>' +
-              '<td><span class="phase-dot" style="background:'+phaseColors[pIdx]+'"></span><span class="num">'+(m.mi===26.2?'26.2':m.mi)+'</span></td>' +
+              '<td><span class="phase-dot" style="background:'+phaseColors[pIdx]+'"></span><span class="num">'+(m.mi % 1 === 0 ? m.mi : m.mi.toFixed(1))+'</span></td>' +
               '<td><span style="font-family:var(--f-label); color:var(--t2); font-size:11px; letter-spacing:.5px; text-transform:uppercase; font-weight:600;">'+phaseLabels[pIdx]+'</span></td>' +
               '<td><span style="color:'+gColor+'; font-family:var(--f-data); font-weight:700;">'+grade+'</span></td>' +
               '<td class="num">'+secToMS(m.paceSec)+'</td>' +
@@ -1091,17 +1097,20 @@ window.RACE_PLAN = (function(){
 
   // --- Render phase cards ---
   function renderPhases(phases){
+    function fmtMi(x){ return x % 1 === 0 ? String(x) : x.toFixed(1); }
     document.querySelectorAll('.phase-card').forEach(function(card){
       var idx = parseInt(card.getAttribute('data-phase'), 10);
       var p = phases[idx];
       if (!p) return;
       var name = card.getAttribute('data-name') || p.name;
       var note = card.getAttribute('data-note') || p.note;
-      var from = parseFloat(card.getAttribute('data-from'));
-      var to   = parseFloat(card.getAttribute('data-to'));
+      // Prefer data-derived range (p.from / p.endMi) so a short or long
+      // course doesn't display a stale static range from HTML attrs.
+      var from = (p.from != null) ? p.from : parseFloat(card.getAttribute('data-from'));
+      var to   = (p.endMi != null) ? p.endMi : parseFloat(card.getAttribute('data-to'));
       var netFt = Math.round(p.gainFt - p.lossFt);
       var netStr = (netFt >= 0 ? '+' : '−') + Math.abs(netFt) + 'ft';
-      var miRange = 'Mi ' + (from % 1 === 0 ? from : from.toFixed(1)) + ' – ' + (to % 1 === 0 ? to : to.toFixed(1));
+      var miRange = 'Mi ' + fmtMi(from) + ' – ' + fmtMi(to);
       card.innerHTML =
         '<div>' +
           '<div class="pc-num">PHASE ' + (idx+1) + '</div>' +
@@ -1311,6 +1320,10 @@ window.RACE_PLAN = (function(){
   }
 
   // Expand default waypoints into a dense track (for map + elevation rendering).
+  // Declared waypoint `mi` values are the source of truth for course distance:
+  // the stylized lat/lon are for the map shape only, and their haversine sum
+  // underestimates the winding Highway 1 route by ~2 mi. Attaching mi here
+  // lets buildSeries use the race's actual distance instead.
   function densifyDefault(){
     var pts = [];
     var N_PER_SEG = 24; // interior points per waypoint segment
@@ -1323,11 +1336,12 @@ window.RACE_PLAN = (function(){
         // Smooth elevation via cosine interpolation between waypoints
         var u = 0.5 - 0.5*Math.cos(t * Math.PI);
         var ele = a[3] + (b[3]-a[3])*u;
-        pts.push({ lat: lat, lon: lon, ele: ele / M_PER_FT }); // ele in meters
+        var mi  = a[0] + (b[0]-a[0])*t;
+        pts.push({ lat: lat, lon: lon, ele: ele / M_PER_FT, mi: mi }); // ele in meters
       }
     }
     var last = DEFAULT_WAYPOINTS[DEFAULT_WAYPOINTS.length-1];
-    pts.push({ lat: last[1], lon: last[2], ele: last[3] / M_PER_FT });
+    pts.push({ lat: last[1], lon: last[2], ele: last[3] / M_PER_FT, mi: last[0] });
     return pts;
   }
 
@@ -1344,8 +1358,15 @@ window.RACE_PLAN = (function(){
     var w = Math.max(2, Math.min(12, Math.floor(pts.length/600)));
     eleM = smooth(eleM, w);
     var elevFt = eleM.map(function(e){ return e * M_PER_FT; });
-    var cum = [0];
-    for (var i=1;i<pts.length;i++) cum.push(cum[i-1] + haversine(pts[i-1], pts[i]));
+    var cum;
+    if (pts.length && pts[0].mi != null){
+      // Default course: trust the declared mi values (stylized lat/lon underestimate).
+      cum = pts.map(function(p){ return p.mi; });
+    } else {
+      // Uploaded GPX: haversine of real coords is the true distance.
+      cum = [0];
+      for (var i=1;i<pts.length;i++) cum.push(cum[i-1] + haversine(pts[i-1], pts[i]));
+    }
     return { pts: pts, cum: cum, elevFt: elevFt };
   }
 
@@ -2517,7 +2538,8 @@ window.RACE_PLAN = (function(){
     var goalSec = (window.RACE_PLAN && window.RACE_PLAN.getState && window.RACE_PLAN.getState().goalSec) || 13500;
     var rate = Math.round(totalC / (goalSec/3600));
     if (head){
-      var avgGap = fuel.length > 1 ? Math.round(26.2/fuel.length*10) : 0;
+      var courseMi = WPS_TOTAL();
+      var avgGap = fuel.length > 1 ? Math.round(courseMi/fuel.length*10) : 0;
       head.textContent = fuel.length + ' gels · ' + totalC + 'g carbs';
     }
     var chip = document.querySelector('#fuelEditBtn').parentElement.querySelector('.chip');
@@ -2527,7 +2549,17 @@ window.RACE_PLAN = (function(){
     if (t2) t2.textContent = rate + ' g/hr';
   }
   function WPS_TOTAL(){
-    // Prefer course length from default waypoints (26.2)
+    // Prefer actual course length from RACE_PLAN (reflects uploaded GPX).
+    try {
+      if (window.RACE_PLAN && window.RACE_PLAN.getState){
+        var st = window.RACE_PLAN.getState();
+        if (st && st.miles && st.miles.length){
+          var t = 0; st.miles.forEach(function(m){ t += m.len; });
+          if (t > 0) return t;
+        }
+      }
+    } catch(e){}
+    // Fallback: declared distance from default waypoints.
     try { if (typeof DEFAULT_WAYPOINTS !== 'undefined') return DEFAULT_WAYPOINTS[DEFAULT_WAYPOINTS.length-1][0]; } catch(e){}
     return 26.2;
   }
