@@ -1118,21 +1118,34 @@ window.RACE_PLAN = (function(){
     ];
     phases.forEach(function(p){
       p.lenMi = 0; p.durSec = 0; p.gainFt = 0; p.lossFt = 0; p.gels = 0;
-      paced.miles.forEach(function(m){
-        // Inclusive of endpoint to avoid gaps: assign by phase of mi
-        var pIdx = phaseIndexForMile(m.mi);
-        if (pIdx !== p.idx) return;
-        p.lenMi  += m.len;
-        p.durSec += m.durSec;
-        // Per-mile delta is a fallback when no raw trace is attached; the
-        // hysteresis pass below overwrites these with the real values.
-        var dFt = m.grade * m.len * 5280 / 100;
-        if (dFt > 0) p.gainFt += dFt; else p.lossFt += -dFt;
-        if (m.gel) p.gels++;
+    });
+    // Prorate each paced mile across phases it overlaps. Without this,
+    // a mile whose endpoint barely crosses a boundary gets assigned
+    // entirely to the next phase — making Phase 3 show "3.0 mi" for a
+    // real 2.2-mi range, etc.
+    paced.miles.forEach(function(m){
+      var segStart = m.mi - m.len;
+      var segEnd   = m.mi;
+      var segPace  = m.durSec / (m.len || 1);
+      var segDFt   = m.grade * m.len * 5280 / 100;
+      var dFtPerMi = segDFt / (m.len || 1);
+      phases.forEach(function(p){
+        var oStart = Math.max(segStart, p.from);
+        var oEnd   = Math.min(segEnd,   p.to);
+        var overlap = oEnd - oStart;
+        if (overlap <= 0) return;
+        p.lenMi  += overlap;
+        p.durSec += segPace * overlap;
+        // Fallback gain/loss contribution — overwritten by the hysteresis
+        // pass below whenever a raw elevation trace is attached.
+        var d = dFtPerMi * overlap;
+        if (d > 0) p.gainFt += d; else p.lossFt += -d;
+        // Only credit the gel to the phase containing the mile endpoint
+        if (m.gel && p.from < segEnd && segEnd <= p.to) p.gels++;
       });
+    });
+    phases.forEach(function(p){
       p.avgPaceSec = p.lenMi > 0 ? p.durSec / p.lenMi : 0;
-      // Use the detected boundary as the phase's end (clipped to actual
-      // course length if the GPX is shorter than the last boundary).
       var courseTotal = state.trace && state.trace.cum
         ? state.trace.cum[state.trace.cum.length - 1]
         : (b[b.length-1] ? b[b.length-1].to : p.to);
@@ -2451,13 +2464,14 @@ window.RACE_PLAN = (function(){
 
   // ─── LEGEND ─── (pace is pulled from RACE_PLAN so it matches phase cards + goal time)
   function secToMS(s){ s=Math.round(s); var m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
+  function fmtMi(x){ return Math.abs(x - Math.round(x)) < 0.05 ? String(Math.round(x)) : (Math.round(x*10)/10).toFixed(1); }
   function renderLegend(){
     var leg=document.getElementById('pcLegend'); if (!leg) return;
     var computed = (window.RACE_PLAN && window.RACE_PLAN.getState && window.RACE_PLAN.getState().phases) || null;
     leg.innerHTML=PHASES.map(function(ph, idx){
       var pace = ph.pace;
       if (computed && computed[idx] && computed[idx].avgPaceSec) pace = secToMS(computed[idx].avgPaceSec);
-      return '<div class="row"><div class="bar" style="background:'+ph.color+';"></div><div class="name">'+ph.name+'</div><div class="mi">MI '+ph.start+' – '+ph.end+'</div><div class="pace">'+pace+'/mi</div></div>';
+      return '<div class="row"><div class="bar" style="background:'+ph.color+';"></div><div class="name">'+ph.name+'</div><div class="mi">MI '+fmtMi(ph.start)+' – '+fmtMi(ph.end)+'</div><div class="pace">'+pace+'/mi</div></div>';
     }).join('');
   }
   renderLegend();
