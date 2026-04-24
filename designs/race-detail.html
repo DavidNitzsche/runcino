@@ -1055,15 +1055,61 @@ window.RACE_PLAN = (function(){
         if (pIdx !== p.idx) return;
         p.lenMi  += m.len;
         p.durSec += m.durSec;
+        // Per-mile delta is a fallback when no raw trace is attached; the
+        // hysteresis pass below overwrites these with the real values.
         var dFt = m.grade * m.len * 5280 / 100;
         if (dFt > 0) p.gainFt += dFt; else p.lossFt += -dFt;
         if (m.gel) p.gels++;
       });
       p.avgPaceSec = p.lenMi > 0 ? p.durSec / p.lenMi : 0;
-      // Actual end mile from data, clipped to phase boundary — so a short
-      // course (e.g. 25.8 mi GPX) doesn't display a fake "Mi 24 – 26.2" label.
       p.endMi = p.lenMi > 0 ? Math.min(p.to, p.from + p.lenMi) : p.from;
     });
+
+    // If the raw elevation trace is available, recompute each phase's
+    // gain/loss with hysteresis over the full-resolution samples. This
+    // captures rolling terrain that per-mile grades miss (e.g. a "flat"
+    // mile can hide +30/-35 ft of rollers) and gives a climb-to-peak
+    // number that isn't truncated by the phase boundary.
+    if (state.trace && state.trace.cum.length >= 2){
+      var cum = state.trace.cum, elev = state.trace.elevFt;
+      var total = cum[cum.length - 1];
+      function hystSlice(iStart, iEnd){
+        if (iEnd <= iStart) return { gain:0, loss:0 };
+        var THRESH = 3; // ft, matches the poster's stats algorithm
+        var gain=0, loss=0;
+        var anchor = elev[iStart], dir = 0;
+        var peakSince = elev[iStart], valleySince = elev[iStart];
+        for (var i = iStart + 1; i <= iEnd; i++){
+          var e = elev[i];
+          if (e > peakSince) peakSince = e;
+          if (e < valleySince) valleySince = e;
+          if (dir !== -1 && (peakSince - e) >= THRESH){
+            gain += peakSince - anchor;
+            anchor = peakSince; valleySince = e; dir = -1;
+          } else if (dir !== 1 && (e - valleySince) >= THRESH){
+            loss += anchor - valleySince;
+            anchor = valleySince; peakSince = e; dir = 1;
+          }
+        }
+        if (dir === 1) gain += peakSince - anchor;
+        else if (dir === -1) loss += anchor - valleySince;
+        return { gain: gain, loss: loss };
+      }
+      function indexAtMi(mi){
+        mi = Math.max(0, Math.min(total, mi));
+        var lo = 0, hi = cum.length - 1;
+        while (lo < hi - 1){ var md = (lo + hi) >> 1; if (cum[md] < mi) lo = md; else hi = md; }
+        return (mi - cum[lo]) < (cum[hi] - mi) ? lo : hi;
+      }
+      phases.forEach(function(p){
+        if (p.lenMi <= 0) return;
+        var miStart = p.from;
+        var miEnd   = Math.min(p.endMi != null ? p.endMi : p.to, total);
+        var gl = hystSlice(indexAtMi(miStart), indexAtMi(miEnd));
+        p.gainFt = gl.gain;
+        p.lossFt = gl.loss;
+      });
+    }
     return phases;
   }
 
@@ -1115,14 +1161,14 @@ window.RACE_PLAN = (function(){
       // course doesn't display a stale static range from HTML attrs.
       var from = (p.from != null) ? p.from : parseFloat(card.getAttribute('data-from'));
       var to   = (p.endMi != null) ? p.endMi : parseFloat(card.getAttribute('data-to'));
-      var netFt = Math.round(p.gainFt - p.lossFt);
-      var netStr = (netFt >= 0 ? '+' : '−') + Math.abs(netFt) + 'ft';
+      var gainFt = Math.round(p.gainFt), lossFt = Math.round(p.lossFt);
+      var eleStr = '+' + gainFt + ' / −' + lossFt + 'ft';
       var miRange = 'Mi ' + fmtMi(from) + ' – ' + fmtMi(to);
       card.innerHTML =
         '<div>' +
           '<div class="pc-num">PHASE ' + (idx+1) + '</div>' +
           '<div class="pc-name">' + name + '</div>' +
-          '<div class="pc-mi">' + miRange + ' · ' + netStr + '</div>' +
+          '<div class="pc-mi">' + miRange + ' · ' + eleStr + '</div>' +
         '</div>' +
         '<div>' +
           '<div class="pc-pace">' + secToMS(p.avgPaceSec) + '<small>/mi</small></div>' +
@@ -1165,11 +1211,31 @@ window.RACE_PLAN = (function(){
   }
   function resetMiles(){
     state.miles = defaultMiles.slice();
+    state.trace = null;
+    rebuild();
+  }
+
+  // Raw elevation trace (cum mi + elev ft, parallel arrays). When provided,
+  // per-phase gain/loss is computed with hysteresis over the full-resolution
+  // trace instead of summed per-mile deltas (which wash out rolling bumps
+  // and mis-count climbs that straddle integer-mile or phase boundaries).
+  function setElevationTrace(cum, elevFt){
+    if (!cum || !elevFt || cum.length !== elevFt.length || cum.length < 2){
+      state.trace = null;
+    } else {
+      state.trace = { cum: cum, elevFt: elevFt };
+    }
     rebuild();
   }
 
   rebuild();
-  return { rebuild: rebuild, setMiles: setMilesFromGpx, reset: resetMiles, getState: getState };
+  return {
+    rebuild: rebuild,
+    setMiles: setMilesFromGpx,
+    setElevationTrace: setElevationTrace,
+    reset: resetMiles,
+    getState: getState
+  };
 })();
 
 // Mirror GPX upload filename into the visible hero status pill
@@ -1787,8 +1853,17 @@ window.RACE_PLAN = (function(){
     } catch(e){ console.warn('Poster update failed:', e); }
 
     try {
-      if (window.RACE_PLAN && typeof window.RACE_PLAN.setMiles === 'function'){
-        window.RACE_PLAN.setMiles(derivePerMileGrades(series.cum, series.elevFt));
+      if (window.RACE_PLAN){
+        // Hand the raw trace to RACE_PLAN first so computePhases uses
+        // hysteresis over the full-resolution samples instead of summed
+        // per-mile deltas (which under-count rolling terrain and truncate
+        // climbs that straddle a phase boundary).
+        if (typeof window.RACE_PLAN.setElevationTrace === 'function'){
+          window.RACE_PLAN.setElevationTrace(series.cum.slice(), series.elevFt.slice());
+        }
+        if (typeof window.RACE_PLAN.setMiles === 'function'){
+          window.RACE_PLAN.setMiles(derivePerMileGrades(series.cum, series.elevFt));
+        }
       }
     } catch(e){}
   }
