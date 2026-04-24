@@ -401,8 +401,8 @@
 
         <div class="pc-body">
           <div class="pc-stats">
-            <div class="s"><span class="l">Distance</span><span class="v">26.2<small>MI</small></span></div>
-            <div class="s"><span class="l">Elevation</span><span class="v">+2,182<small>FT</small></span></div>
+            <div class="s"><span class="l">Distance</span><span class="v" id="pcStatDist">—</span></div>
+            <div class="s"><span class="l">Elevation</span><span class="v" id="pcStatElev">—</span></div>
             <div class="s"><span class="l">Goal Time</span><span class="v accent" id="hGoal" data-goal-sec="13500">3:45</span></div>
             <div class="s"><span class="l">Predicted</span><span class="v" id="hPredicted">—</span></div>
           </div>
@@ -421,7 +421,7 @@
         <div class="head">
           <div class="l">Elevation Profile</div>
           <div class="r" style="display:flex; align-items:center; gap:14px;">
-            <span>Peak <em>546 ft · MI 10.6</em></span>
+            <span id="pcElevPeakStat">Peak <em>—</em></span>
             <span style="opacity:.3;">·</span>
             <label for="gpxInput" style="cursor:pointer; font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; font-weight:700; color:var(--t2); text-transform:uppercase; padding:5px 10px; border:1px solid var(--l4); border-radius:999px; transition:all .15s;" onmouseover="this.style.color='var(--t0)';this.style.borderColor='var(--t2)';" onmouseout="this.style.color='var(--t2)';this.style.borderColor='var(--l4)';">⇡ Upload GPX</label>
             <span id="gpxStatusHero" style="font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700;"></span>
@@ -1718,9 +1718,10 @@ window.RACE_PLAN = (function(){
     var stats = computeStats(series);
     // Auto-pick waypoints: start, finish, peak, +one mile-20 marker
     var total = stats.distMi;
+    var peakLabel = opts.peakLabel || 'PEAK';
     var waypoints = [
       { mi: 0,           major: 'start',  label: 'START'    },
-      { mi: stats.peakMi, major:'peak',   label: (opts.peakLabel || 'PEAK') + ' · ' + fmtFt(stats.peakFt) + ' FT' },
+      { mi: stats.peakMi, major:'peak',   label: peakLabel + ' · ' + fmtFt(stats.peakFt) + ' FT' },
       { mi: Math.min(20, total*0.76), major:'minor', label: 'MI 20' },
       { mi: total,       major: 'finish', label: 'FINISH'   }
     ];
@@ -1729,6 +1730,38 @@ window.RACE_PLAN = (function(){
     renderElevation(series, stats);
     renderStats(stats);
     renderGradeBar(series);
+
+    // Drive the visible poster (map + elevation) from real GPX data so
+    // what the user sees matches what the calculations use.
+    try {
+      if (window.POSTER){
+        var dense = [];
+        for (var i=0; i<series.pts.length; i++){
+          dense.push({ lat: series.pts[i].lat, lon: series.pts[i].lon, mi: series.cum[i] });
+        }
+        window.POSTER.renderTrack(dense, {
+          peakLabel: peakLabel,
+          peakMi: stats.peakMi,
+          peakFt: stats.peakFt,
+          total: total
+        });
+        window.POSTER.renderElev({
+          cum: series.cum,
+          elevFt: series.elevFt,
+          peakMi: stats.peakMi,
+          peakFt: stats.peakFt,
+          lowFt: stats.lowFt,
+          total: total,
+          peakLabel: peakLabel
+        });
+      }
+      var pcDist = document.getElementById('pcStatDist');
+      if (pcDist) pcDist.innerHTML = fmtMi(total).replace(/\.00$/,'.0') + '<small>MI</small>';
+      var pcGain = document.getElementById('pcStatElev');
+      if (pcGain) pcGain.innerHTML = '+' + fmtFt(stats.gainFt) + '<small>FT</small>';
+      var pcPeak = document.getElementById('pcElevPeakStat');
+      if (pcPeak) pcPeak.innerHTML = 'Peak <em>' + fmtFt(stats.peakFt) + ' ft · MI ' + stats.peakMi.toFixed(1) + '</em>';
+    } catch(e){ console.warn('Poster update failed:', e); }
 
     try {
       if (window.RACE_PLAN && typeof window.RACE_PLAN.setMiles === 'function'){
@@ -1996,16 +2029,17 @@ window.RACE_PLAN = (function(){
   }
 
   // ─── TRACK ───
-  var svg=document.getElementById('pcTrack');
-  if (svg){
+  // Renders the poster map into #pcTrack.
+  //   dense: [{lat, lon, mi}] — either WPS-densified (stylized fallback) or GPX trackpoints
+  //   opts:  { peakLabel, peakMi, peakFt, total, showMi20 }
+  function renderPcTrack(dense, opts){
+    var svg = document.getElementById('pcTrack');
+    if (!svg || !dense || dense.length < 2) return;
+    opts = opts || {};
+    var total = opts.total || dense[dense.length-1].mi || 26.2;
+
     var box={ w:580, h:580, padL:50, padR:60, padT:40, padB:60 };
-    var dense=densify(WPS,40), proj=projector(dense,box), pts=dense.map(proj);
-    function ptsForRange(m0,m1){
-      var out=[];
-      for (var i=0;i<dense.length;i++){ if (dense[i].mi>=m0 && dense[i].mi<=m1) out.push(pts[i]); }
-      if (out.length<2) out=pts.slice(0,2);
-      return out;
-    }
+    var proj=projector(dense,box), pts=dense.map(proj);
     function toPath(a){ var d=''; for (var i=0;i<a.length;i++){ d+=(i===0?'M ':'L ')+a[i].x.toFixed(1)+' '+a[i].y.toFixed(1)+' '; } return d; }
 
     var html = '<defs></defs>';
@@ -2019,7 +2053,7 @@ window.RACE_PLAN = (function(){
     // Colour stops anchored at each phase's MIDPOINT. Interpolating between
     // consecutive stops produces a single continuous gradient across the
     // whole route (not 5 solid blocks with narrow blend bands).
-    var raceTotal = WPS[WPS.length-1].mi;
+    var raceTotal = total;
     var STOPS = PHASES.map(function(ph){
       return { mi: (ph.start + ph.end)/2, color: hexToRgb(ph.color) };
     });
@@ -2053,7 +2087,7 @@ window.RACE_PLAN = (function(){
     html += '<path d="'+fullD+'" fill="none" stroke="rgba(255,255,255,.35)" stroke-width=".8" stroke-linecap="round" stroke-linejoin="round"/>';
 
     // Subtle mile beads — small bright dots every mile for rhythm
-    for (var mi=1; mi<Math.floor(WPS[WPS.length-1].mi); mi++){
+    for (var mi=1; mi<Math.floor(total); mi++){
       var bp=null, bestD=Infinity;
       for (var ii=0;ii<dense.length;ii++){ var d=Math.abs(dense[ii].mi-mi); if (d<bestD){ bestD=d; bp=pts[ii]; } }
       if (!bp) continue;
@@ -2179,23 +2213,50 @@ window.RACE_PLAN = (function(){
     placedBoxes.push({ x:f.x-18, y:f.y-18, w:36, h:36 });
     renderLabel(f, 'FINISH', 14, '#fff', 700, 3);
 
-    // Waypoints (PEAK, MI 20 …)
-    WPS.forEach(function(w){
-      if (!w.label || w.label==='START' || w.label==='FINISH') return;
+    // Waypoints (PEAK, MI 20 …) — driven by opts (GPX stats) when provided,
+    // otherwise by WPS as stylized fallback.
+    var wpLabels = [];
+    if (opts.peakMi != null && opts.peakFt != null){
+      wpLabels.push({ mi: opts.peakMi, label: (opts.peakLabel || 'PEAK') + ' · ' + Math.round(opts.peakFt) + ' FT', kind: 'peak' });
+    }
+    if (opts.showMi20 !== false && total >= 20){
+      wpLabels.push({ mi: Math.min(20, total*0.76), label: 'MI 20', kind: 'minor' });
+    }
+    if (wpLabels.length === 0){
+      // Fallback: labelled WPS markers (only used when called without opts)
+      WPS.forEach(function(w){
+        if (!w.label || w.label==='START' || w.label==='FINISH') return;
+        var isPeak = w.label === 'HURRICANE';
+        wpLabels.push({ mi: w.mi, label: isPeak ? ('PEAK · '+w.ele+' FT') : w.label, kind: isPeak ? 'peak' : 'minor' });
+      });
+    }
+    wpLabels.forEach(function(w){
       var p=ptAtMi(w.mi);
-      var isPeak = w.label === 'HURRICANE';
+      var isPeak = w.kind === 'peak';
       var col = isPeak ? '#FC4D54' : '#008FEC';
-      var txt = isPeak ? ('PEAK · '+w.ele+' FT') : w.label;
       html += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="12" fill="none" stroke="'+col+'" stroke-width="1.5" opacity=".5"/>';
       html += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="7" fill="'+col+'" stroke="#0d1218" stroke-width="2.5"/>';
       placedBoxes.push({ x:p.x-14, y:p.y-14, w:28, h:28 });
-      renderLabel(p, txt, 13, isPeak ? '#FC4D54' : 'rgba(255,255,255,.9)', 700, 1.8);
+      renderLabel(p, w.label, 13, isPeak ? '#FC4D54' : 'rgba(255,255,255,.9)', 700, 1.8);
     });
 
     // Compass (kept, subtle)
     html += '<g transform="translate('+(box.w-44)+',44)"><circle r="12" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1"/><path d="M 0 -12 L 2 0 L 0 12 L -2 0 Z" fill="rgba(255,255,255,.45)"/><text y="-16" text-anchor="middle" font-family="Oswald, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="rgba(255,255,255,.6)">N</text></g>';
     svg.innerHTML=html;
   }
+
+  // Initial stylized paint (replaced as soon as GPX loads). Pass WPS peak
+  // through explicitly so the fallback is coherent for that one frame.
+  (function(){
+    var peakWp = null;
+    WPS.forEach(function(w){ if (!peakWp || w.ele > peakWp.ele) peakWp = w; });
+    renderPcTrack(densify(WPS,40), {
+      peakLabel: 'HURRICANE',
+      peakMi: peakWp ? peakWp.mi : null,
+      peakFt: peakWp ? peakWp.ele : null,
+      total: WPS[WPS.length-1].mi
+    });
+  })();
 
   // ─── LEGEND ─── (pace is pulled from RACE_PLAN so it matches phase cards + goal time)
   function secToMS(s){ s=Math.round(s); var m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
@@ -2212,34 +2273,67 @@ window.RACE_PLAN = (function(){
   document.addEventListener('race-plan-updated', renderLegend);
 
   // ─── ELEVATION STRIP (phase-gradient silhouette + terrain-grade bar below) ───
-  var eSvg=document.getElementById('pcElev');
-  if (eSvg){ renderPcElev(); }
-  function renderPcElev(){
+  // data (optional): { cum:[mi], elevFt:[ft], peakMi, peakFt, lowFt, total, peakLabel }
+  //   — when provided, silhouette comes from real GPX samples (the authoritative source)
+  //   — when omitted, falls back to stylized WPS + multi-octave sine noise
+  //     (only visible for the ~1 frame before the bundled GPX fetch resolves)
+  function renderPcElev(data){
+    var eSvg = document.getElementById('pcElev');
+    if (!eSvg) return;
     var EW=1200, EH=220, eT=18, eB=18, eL=46, eR=14;
-    var peak=0; WPS.forEach(function(w){ if (w.ele>peak) peak=w.ele; });
-    var mnE=0, mxE=Math.ceil((peak+40)/50)*50, total=WPS[WPS.length-1].mi;
 
-    // Smooth waypoint trend (no noise) — used for grade breakdown
-    function eleTrend(mi){
-      for (var i=0;i<WPS.length-1;i++){
-        var a=WPS[i], b=WPS[i+1];
-        if (mi>=a.mi && mi<=b.mi){ var t=(mi-a.mi)/(b.mi-a.mi), u=0.5-0.5*Math.cos(t*Math.PI); return a.ele+(b.ele-a.ele)*u; }
+    var total, peak, low, peakMi, peakLabel, eleAt, STEPS;
+    if (data && data.cum && data.elevFt && data.cum.length >= 2){
+      total = data.total || data.cum[data.cum.length-1];
+      peak = data.peakFt != null ? data.peakFt : Math.max.apply(null, data.elevFt);
+      low  = data.lowFt  != null ? data.lowFt  : Math.min.apply(null, data.elevFt);
+      peakMi = data.peakMi != null ? data.peakMi : data.cum[data.elevFt.indexOf(peak)];
+      peakLabel = data.peakLabel || 'PEAK';
+      var cum = data.cum, elev = data.elevFt;
+      // Linear interpolate GPX samples at any mile
+      eleAt = function(mi){
+        if (mi <= cum[0]) return elev[0];
+        if (mi >= cum[cum.length-1]) return elev[elev.length-1];
+        var lo=0, hi=cum.length-1;
+        while (lo < hi-1){ var md=(lo+hi)>>1; if (cum[md] < mi) lo=md; else hi=md; }
+        var span = cum[hi]-cum[lo] || 1e-9;
+        var t = (mi - cum[lo]) / span;
+        return elev[lo] + (elev[hi]-elev[lo]) * t;
+      };
+      STEPS = Math.min(1200, Math.max(400, cum.length));
+    } else {
+      // Stylized fallback — WPS cosine trend + multi-octave noise (no GPX yet)
+      total = WPS[WPS.length-1].mi;
+      peak = 0; WPS.forEach(function(w){ if (w.ele>peak) peak=w.ele; });
+      low = WPS[0].ele;
+      var peakWp = null; WPS.forEach(function(w){ if (w.ele===peak) peakWp=w; });
+      peakMi = peakWp ? peakWp.mi : 0;
+      peakLabel = 'PEAK';
+      function eleTrend(mi){
+        for (var i=0;i<WPS.length-1;i++){
+          var a=WPS[i], b=WPS[i+1];
+          if (mi>=a.mi && mi<=b.mi){ var t=(mi-a.mi)/(b.mi-a.mi), u=0.5-0.5*Math.cos(t*Math.PI); return a.ele+(b.ele-a.ele)*u; }
+        }
+        return 0;
       }
-      return 0;
+      function terrainNoise(mi){
+        return 18.0 * Math.sin(mi * 2.31 + 0.73)
+             + 12.0 * Math.sin(mi * 5.09 + 1.91)
+             +  7.5 * Math.sin(mi * 11.73 + 3.14)
+             +  4.2 * Math.sin(mi * 23.41 + 0.42)
+             +  2.1 * Math.sin(mi * 47.19 + 2.07);
+      }
+      eleAt = function(mi){
+        var t = mi/total;
+        var edgeDamp = Math.min(1, Math.min(t, 1-t) * 8);
+        return eleTrend(mi) + terrainNoise(mi)*edgeDamp;
+      };
+      STEPS = 620;
     }
-    // Multi-octave noise for the silhouette so it reads like real GPX, not a cosine curve
-    function terrainNoise(mi){
-      return 18.0 * Math.sin(mi * 2.31 + 0.73)
-           + 12.0 * Math.sin(mi * 5.09 + 1.91)
-           +  7.5 * Math.sin(mi * 11.73 + 3.14)
-           +  4.2 * Math.sin(mi * 23.41 + 0.42)
-           +  2.1 * Math.sin(mi * 47.19 + 2.07);
-    }
-    function eleAt(mi){
-      var t = mi/total;
-      var edgeDamp = Math.min(1, Math.min(t, 1-t) * 8);
-      return eleTrend(mi) + terrainNoise(mi)*edgeDamp;
-    }
+
+    var mnE = Math.floor(low/50)*50;
+    var mxE = Math.ceil((peak+40)/50)*50;
+    if (mxE - mnE < 50) mxE = mnE + 50;
     function xFor(mi){ return eL + (mi/total)*(EW-eL-eR); }
     function yFor(e){ return eT + (1-(e-mnE)/(mxE-mnE))*(EH-eT-eB); }
 
@@ -2266,8 +2360,7 @@ window.RACE_PLAN = (function(){
       h += '<line x1="'+eL+'" y1="'+y.toFixed(1)+'" x2="'+(EW-eR)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.06)" stroke-width="1" stroke-dasharray="2 4"/>';
     });
 
-    // Build silhouette path with dense noisy sampling
-    var STEPS = 620;
+    // Build silhouette path — sample uniformly in mile space
     var topD = '';
     for (var i=0;i<=STEPS;i++){
       var mi = (i/STEPS)*total;
@@ -2284,16 +2377,15 @@ window.RACE_PLAN = (function(){
     h += '<path d="'+topD+'" fill="none" stroke="url(#pcElevTint)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
 
     // Y axis labels (min / peak)
-    h += '<text x="'+(eL-8)+'" y="'+(yFor(peak)+3).toFixed(1)+'" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="rgba(255,255,255,.45)" font-weight="700">'+peak+'</text>';
-    h += '<text x="'+(eL-8)+'" y="'+(EH-eB-2)+'" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="rgba(255,255,255,.3)" font-weight="700">'+WPS[0].ele+'</text>';
+    h += '<text x="'+(eL-8)+'" y="'+(yFor(peak)+3).toFixed(1)+'" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="rgba(255,255,255,.45)" font-weight="700">'+Math.round(peak)+'</text>';
+    h += '<text x="'+(eL-8)+'" y="'+(EH-eB-2)+'" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="rgba(255,255,255,.3)" font-weight="700">'+Math.round(low)+'</text>';
 
     // Peak marker + label
-    var pWp=null; WPS.forEach(function(w){ if (w.ele===peak) pWp=w; });
-    if (pWp){
-      var pX=xFor(pWp.mi), pY=yFor(pWp.ele);
+    if (peakMi != null && isFinite(peakMi)){
+      var pX=xFor(peakMi), pY=yFor(peak);
       h+='<line x1="'+pX.toFixed(1)+'" y1="'+pY.toFixed(1)+'" x2="'+pX.toFixed(1)+'" y2="'+(EH-eB)+'" stroke="rgba(255,255,255,.3)" stroke-width="1" stroke-dasharray="2 3"/>';
       h+='<circle cx="'+pX.toFixed(1)+'" cy="'+pY.toFixed(1)+'" r="5" fill="#FC4D54" stroke="#0d1218" stroke-width="1.5"/>';
-      h+='<text x="'+(pX+10).toFixed(1)+'" y="'+(pY+4).toFixed(1)+'" font-family="Oswald, sans-serif" font-weight="600" font-size="11" letter-spacing="1.5" fill="#F3AD3B">PEAK · '+pWp.ele+' FT</text>';
+      h+='<text x="'+(pX+10).toFixed(1)+'" y="'+(pY+4).toFixed(1)+'" font-family="Oswald, sans-serif" font-weight="600" font-size="11" letter-spacing="1.5" fill="#F3AD3B">'+peakLabel+' · '+Math.round(peak)+' FT</text>';
     }
 
     // Baseline
@@ -2305,7 +2397,7 @@ window.RACE_PLAN = (function(){
     // - Bar: a single smooth gradient with color stops at phase boundaries
     // - Legend: grid columns proportional to phase length, so each label sits
     //   directly under its own bar segment
-    var raceLen = WPS[WPS.length-1].mi;
+    var raceLen = total;
     var stops = [];
     PHASES.forEach(function(ph){
       var s = (ph.start/raceLen)*100, e = (ph.end/raceLen)*100;
@@ -2330,6 +2422,16 @@ window.RACE_PLAN = (function(){
       }).join('');
     }
   }
+
+  // Initial stylized paint — replaced as soon as the GPX-driven renderAll()
+  // in the other IIFE calls window.POSTER.renderElev/renderTrack with real data.
+  renderPcElev();
+
+  // Expose renderers so the GPX pipeline (other IIFE) can drive the poster.
+  window.POSTER = {
+    renderTrack: renderPcTrack,
+    renderElev:  renderPcElev
+  };
 })();
 </script>
 
