@@ -970,7 +970,75 @@ window.RACE_PLAN = (function(){
     {mi:26.2, len:0.2, grade:-0.4, gel:false}
   ];
 
-  var state = { miles: defaultMiles.slice() };
+  // Fallback boundaries used when no elevation trace is loaded yet (or the
+  // course is too flat for detection to matter). Matches the original
+  // hardcoded Big Sur breakdown.
+  var DEFAULT_BOUNDARIES = [
+    { from: 0,  to: 4    },
+    { from: 4,  to: 10   },
+    { from: 10, to: 12   },
+    { from: 12, to: 24   },
+    { from: 24, to: 26.2 }
+  ];
+
+  var state = { miles: defaultMiles.slice(), boundaries: DEFAULT_BOUNDARIES.slice() };
+
+  // Derive 5 phase boundaries from the raw elevation trace:
+  //   1. Opening  — start → early split (4 mi or half the pre-climb, whichever is less)
+  //   2. Approach — early split → climb base (detected)
+  //   3. Climb    — climb base → peak
+  //   4. Cruise   — peak → final-push start
+  //   5. Final    — last 2.2 mi (or last 8.5% if shorter)
+  // Returns null if the course is too flat / too short for detection; the
+  // caller then falls back to DEFAULT_BOUNDARIES.
+  function detectBoundaries(cum, elevFt){
+    if (!cum || !elevFt || cum.length < 10) return null;
+    var total = cum[cum.length - 1];
+    // Locate global peak (index + mile + elevation)
+    var peakIdx = 0;
+    for (var i = 1; i < elevFt.length; i++){
+      if (elevFt[i] > elevFt[peakIdx]) peakIdx = i;
+    }
+    var peakMi = cum[peakIdx];
+    var peakFt = elevFt[peakIdx];
+
+    // Walk backward from peak for the climb base: running minimum, cap
+    // lookback at 6 mi or until we'd cross the start of the course.
+    var baseIdx = peakIdx, minFt = peakFt;
+    for (var j = peakIdx; j >= 0; j--){
+      if (peakMi - cum[j] > 6) break;
+      if (elevFt[j] < minFt){ minFt = elevFt[j]; baseIdx = j; }
+    }
+    var climbBaseMi = cum[baseIdx];
+    var climbGain = peakFt - minFt;
+
+    // Too flat / too small a climb to justify a dedicated climb phase —
+    // fall back to fixed equal-ish boundaries.
+    if (climbGain < 120 || peakMi - climbBaseMi < 0.4) return null;
+
+    // Final push: last 2.2 mi, floor at 1 mi, ceil at 10% of course
+    var finalLen = Math.min(2.2, Math.max(1, total * 0.10));
+    var finalStartMi = Math.max(peakMi + 0.5, total - finalLen);
+    if (finalStartMi >= total) finalStartMi = total - 0.5;
+
+    // Opening: first 4 mi or half the pre-climb, whichever is less;
+    // but never more than 35% of the whole course.
+    var openingEnd = Math.min(4, climbBaseMi * 0.5, total * 0.35);
+    if (openingEnd >= climbBaseMi) openingEnd = climbBaseMi * 0.5;
+
+    // Sanity: ensure strict monotonic increase
+    var b = [
+      { from: 0,              to: openingEnd  },
+      { from: openingEnd,     to: climbBaseMi },
+      { from: climbBaseMi,    to: peakMi      },
+      { from: peakMi,         to: finalStartMi },
+      { from: finalStartMi,   to: total       }
+    ];
+    for (var k = 1; k < b.length; k++){
+      if (b[k].from >= b[k].to || b[k].from < b[k-1].to){ return null; }
+    }
+    return b;
+  }
 
   // Grade-Adjusted-Pace multiplier. Approximates Minetti energy cost curve.
   // g: grade in percent (e.g. 5.8 for 5.8%).
@@ -1006,11 +1074,11 @@ window.RACE_PLAN = (function(){
   }
 
   function phaseIndexForMile(mi){
-    if (mi <= 4)  return 0;
-    if (mi <= 10) return 1;
-    if (mi <= 12) return 2;
-    if (mi <= 24) return 3;
-    return 4;
+    var b = state.boundaries || DEFAULT_BOUNDARIES;
+    for (var i = 0; i < b.length; i++){
+      if (mi <= b[i].to) return i;
+    }
+    return b.length - 1;
   }
   var phaseColors = ['var(--success)','var(--attention)','var(--warning)','var(--corporate)','var(--xp)'];
   var phaseLabels = ['Opening','Rolling','Hurricane','Cruise','Final'];
@@ -1040,12 +1108,13 @@ window.RACE_PLAN = (function(){
 
   // --- Phase aggregates computed from the per-mile data ---
   function computePhases(paced){
+    var b = state.boundaries || DEFAULT_BOUNDARIES;
     var phases = [
-      { idx:0, name:'Opening miles', from:0,  to:4,    note:"Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase." },
-      { idx:1, name:'Rolling approach', from:4,  to:10,   note:"Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." },
-      { idx:2, name:'Hurricane Pt',  from:10, to:12,   note:"The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top." },
-      { idx:3, name:'Cruise miles',  from:12, to:24,   note:"Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21." },
-      { idx:4, name:'Final push',    from:24, to:26.2, note:"Carmel is close. Empty the tank from mile 25. The crowds carry you to the line." }
+      { idx:0, name:'Opening miles',    from:b[0].from, to:b[0].to, note:"Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase." },
+      { idx:1, name:'Rolling approach', from:b[1].from, to:b[1].to, note:"Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard." },
+      { idx:2, name:'Hurricane Pt',     from:b[2].from, to:b[2].to, note:"The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top." },
+      { idx:3, name:'Cruise miles',     from:b[3].from, to:b[3].to, note:"Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21." },
+      { idx:4, name:'Final push',       from:b[4].from, to:b[4].to, note:"Carmel is close. Empty the tank from mile 25. The crowds carry you to the line." }
     ];
     phases.forEach(function(p){
       p.lenMi = 0; p.durSec = 0; p.gainFt = 0; p.lossFt = 0; p.gels = 0;
@@ -1062,7 +1131,12 @@ window.RACE_PLAN = (function(){
         if (m.gel) p.gels++;
       });
       p.avgPaceSec = p.lenMi > 0 ? p.durSec / p.lenMi : 0;
-      p.endMi = p.lenMi > 0 ? Math.min(p.to, p.from + p.lenMi) : p.from;
+      // Use the detected boundary as the phase's end (clipped to actual
+      // course length if the GPX is shorter than the last boundary).
+      var courseTotal = state.trace && state.trace.cum
+        ? state.trace.cum[state.trace.cum.length - 1]
+        : (b[b.length-1] ? b[b.length-1].to : p.to);
+      p.endMi = p.lenMi > 0 ? Math.min(p.to, courseTotal) : p.from;
     });
 
     // If the raw elevation trace is available, recompute each phase's
@@ -1222,8 +1296,11 @@ window.RACE_PLAN = (function(){
   function setElevationTrace(cum, elevFt){
     if (!cum || !elevFt || cum.length !== elevFt.length || cum.length < 2){
       state.trace = null;
+      state.boundaries = DEFAULT_BOUNDARIES.slice();
     } else {
       state.trace = { cum: cum, elevFt: elevFt };
+      var detected = detectBoundaries(cum, elevFt);
+      state.boundaries = detected || DEFAULT_BOUNDARIES.slice();
     }
     rebuild();
   }
@@ -1797,6 +1874,19 @@ window.RACE_PLAN = (function(){
     renderStats(stats);
     renderGradeBar(series);
 
+    // Feed RACE_PLAN first so phase boundaries are detected before the
+    // poster re-renders (its color gradient and phase bar depend on them).
+    try {
+      if (window.RACE_PLAN){
+        if (typeof window.RACE_PLAN.setElevationTrace === 'function'){
+          window.RACE_PLAN.setElevationTrace(series.cum.slice(), series.elevFt.slice());
+        }
+        if (typeof window.RACE_PLAN.setMiles === 'function'){
+          window.RACE_PLAN.setMiles(derivePerMileGrades(series.cum, series.elevFt));
+        }
+      }
+    } catch(e){}
+
     // Drive the visible poster (map + elevation) from real GPX data so
     // what the user sees matches what the calculations use.
     try {
@@ -1852,20 +1942,6 @@ window.RACE_PLAN = (function(){
       }
     } catch(e){ console.warn('Poster update failed:', e); }
 
-    try {
-      if (window.RACE_PLAN){
-        // Hand the raw trace to RACE_PLAN first so computePhases uses
-        // hysteresis over the full-resolution samples instead of summed
-        // per-mile deltas (which under-count rolling terrain and truncate
-        // climbs that straddle a phase boundary).
-        if (typeof window.RACE_PLAN.setElevationTrace === 'function'){
-          window.RACE_PLAN.setElevationTrace(series.cum.slice(), series.elevFt.slice());
-        }
-        if (typeof window.RACE_PLAN.setMiles === 'function'){
-          window.RACE_PLAN.setMiles(derivePerMileGrades(series.cum, series.elevFt));
-        }
-      }
-    } catch(e){}
   }
 
   // ------- Hero backdrop: route re-projected onto 1200x360 canvas, offset right -------
@@ -2096,6 +2172,23 @@ window.RACE_PLAN = (function(){
     { n:'04', name:'CRUISE MILES',  start:12, end:24,   color:'#008FEC', pace:'8:15' },
     { n:'05', name:'FINISH STRONG', start:24, end:26.2, color:'#9013FE', pace:'8:00' }
   ];
+
+  // Keep PHASES aligned with RACE_PLAN's detected boundaries so the map's
+  // color gradient, the elevation strip's phase bar, and the legend all
+  // describe the same mile ranges as the phase cards below.
+  function syncPhasesFromRacePlan(){
+    var st = window.RACE_PLAN && window.RACE_PLAN.getState && window.RACE_PLAN.getState();
+    if (!st || !st.boundaries || st.boundaries.length !== PHASES.length) return false;
+    var changed = false;
+    for (var i = 0; i < PHASES.length; i++){
+      if (PHASES[i].start !== st.boundaries[i].from || PHASES[i].end !== st.boundaries[i].to){
+        PHASES[i].start = st.boundaries[i].from;
+        PHASES[i].end   = st.boundaries[i].to;
+        changed = true;
+      }
+    }
+    return changed;
+  }
 
   function densify(wps, stepsPer){
     var out = [];
@@ -2368,7 +2461,30 @@ window.RACE_PLAN = (function(){
     }).join('');
   }
   renderLegend();
-  document.addEventListener('race-plan-updated', renderLegend);
+  document.addEventListener('race-plan-updated', function(){
+    // RACE_PLAN may have detected new phase boundaries from the GPX.
+    // Sync them into our PHASES array, then re-render every poster piece
+    // that references phase ranges (legend, elevation phase bar, map
+    // gradient stops) so the whole poster tells one coherent story.
+    var boundariesChanged = syncPhasesFromRacePlan();
+    renderLegend();
+    if (boundariesChanged){
+      if (typeof renderPcElev === 'function'){
+        var st = window.RACE_PLAN && window.RACE_PLAN.getState && window.RACE_PLAN.getState();
+        if (st && st.trace){
+          renderPcElev({
+            cum:       st.trace.cum,
+            elevFt:    st.trace.elevFt,
+            total:     st.trace.cum[st.trace.cum.length-1],
+            peakLabel: 'HURRICANE'
+          });
+        } else {
+          renderPcElev();
+        }
+      }
+      // Track is redrawn whenever renderAll() runs; no need to trigger it here.
+    }
+  });
 
   // ─── ELEVATION STRIP (phase-gradient silhouette + terrain-grade bar below) ───
   // data (optional): { cum:[mi], elevFt:[ft], peakMi, peakFt, lowFt, total, peakLabel }
