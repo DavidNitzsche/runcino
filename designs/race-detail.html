@@ -930,6 +930,13 @@
 //          averages/durations/gain computed from those, cumulative
 //          splits, hero "predicted" label.
 // =====================================================================
+
+// Canonical certified distance for this race page. Avg pace is displayed
+// against this (26.2 for marathon, 13.1 for half, 3.1 for 5K, etc.) so
+// a slightly-short GPX doesn't nudge the pace off. Other race pages
+// should set this to their own certified distance.
+window.RACE_COURSE_MI = 26.2;
+
 window.RACE_PLAN = (function(){
   // --- Static per-mile grades for Big Sur (replaced when GPX uploaded) ---
   // (mi = end-of-segment mile marker. Last row is a 0.2mi partial.)
@@ -1064,10 +1071,10 @@ window.RACE_PLAN = (function(){
   function renderHero(goalSec, paced){
     var el = document.getElementById('hPredicted');
     if (el) el.textContent = secToHMShort(goalSec);
-    var totalMi = 0;
-    if (paced && paced.miles) paced.miles.forEach(function(m){ totalMi += m.len; });
-    if (totalMi <= 0) totalMi = 26.2;
-    var avgPaceSec = goalSec / totalMi;
+    // Avg pace is against the race's certified distance (26.2 for marathon,
+    // 13.1 for half, etc.) — a slightly-off GPX shouldn't nudge the pace.
+    var raceMi = (typeof window !== 'undefined' && window.RACE_COURSE_MI) || 26.2;
+    var avgPaceSec = goalSec / raceMi;
     var cap = document.getElementById('phasesCap');
     if (cap) cap.innerHTML = '<b>Predicted</b> ' + secToHMShort(goalSec) + ' · average ' + secToPace(avgPaceSec) + '/mi';
   }
@@ -1259,24 +1266,27 @@ window.RACE_PLAN = (function(){
   var ELEV_PAD_L = 32, ELEV_PAD_R = 24, ELEV_PAD_T = 14, ELEV_PAD_B = 24;
 
   // ------- Default Big Sur course (waypoints + elevation profile) -------
-  // Real-ish lat/lon for projection; elevation samples generated
-  // analytically so the profile peaks at Hurricane Point.
+  // Elevation values match the official course: Hurricane Point summit is
+  // at mile 12 (not 10.6), and the climb rises ~560 ft over miles 10–12 at
+  // a ~5% grade (bigsurmarathon.org/marathon-course-info). Bixby Bridge
+  // is the halfway point at mile 13.1.
   var DEFAULT_NAME = 'Big Sur Marathon';
   var DEFAULT_SUB  = 'Big Sur Station → Carmel';
   var DEFAULT_WAYPOINTS = [
     // mi, lat, lon,     ele_ft, label (null = no marker)
-    [0.0,  36.2520, -121.7790, 200,  'START'],
+    [0.0,  36.2520, -121.7790, 250,  'START'],
     [2.0,  36.2720, -121.7998, 180,  null],
-    [4.0,  36.2920, -121.8210, 160,  null],
-    [6.0,  36.3120, -121.8480, 240,  null],
-    [8.0,  36.3300, -121.8780, 340,  null],
-    [10.6, 36.3726, -121.9031, 546,  'HURRICANE'],
-    [12.0, 36.3910, -121.8970, 360,  null],
-    [14.0, 36.4170, -121.8975, 250,  null],
-    [17.0, 36.4620, -121.9200, 200,  null],
-    [20.0, 36.5150, -121.9440, 160,  'MI 20'],
-    [23.0, 36.5380, -121.9290, 110,  null],
-    [26.2, 36.5552, -121.9233,  80,  'FINISH']
+    [4.0,  36.2920, -121.8210, 100,  null],
+    [6.0,  36.3120, -121.8480, 120,  null],
+    [8.0,  36.3300, -121.8780,  80,  null],
+    [10.0, 36.3700, -121.9100,   0,  null],             // base of Hurricane climb
+    [12.0, 36.3910, -121.8970, 560,  'HURRICANE'],      // summit — verified primary source
+    [13.1, 36.3980, -121.8985, 260,  null],             // Bixby Bridge (halfway)
+    [14.0, 36.4170, -121.8975, 220,  null],
+    [17.0, 36.4620, -121.9200, 240,  null],
+    [20.0, 36.5150, -121.9440, 170,  'MI 20'],
+    [23.0, 36.5380, -121.9290, 120,  null],
+    [26.2, 36.5552, -121.9233,  30,  'FINISH']
   ];
 
   // ------- Utilities -------
