@@ -1,13 +1,13 @@
 import Link from 'next/link';
 
-export function Nav({ active }: { active?: 'plan' | 'retrospective' | 'training' | 'research' | 'settings' | 'overview' }) {
+export function Nav({ active }: { active?: 'plan' | 'races' | 'retrospective' | 'training' | 'research' | 'settings' | 'overview' }) {
   const links: Array<{ href: string; key: string; label: string; pill?: string }> = [
     { href: '/',                        key: 'plan',          label: 'Build plan' },
+    { href: '/races',                   key: 'races',         label: 'Races' },
     { href: '/training',                key: 'training',      label: 'Training' , pill: 'M3' },
     { href: '/retrospective',           key: 'retrospective', label: 'Retrospective', pill: 'M1' },
     { href: '/research',                key: 'research',      label: 'Research' },
     { href: '/settings/integrations',   key: 'settings',      label: 'Data' , pill: 'M2' },
-    { href: '/overview',                key: 'overview',      label: 'Overview' },
   ];
   return (
     <nav style={{

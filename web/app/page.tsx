@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Nav, Footer } from '../components/nav';
 
 type GoalRecommendation = {
   recommendedFinishS: number;
@@ -66,10 +68,20 @@ const COURSES = [
   { slug: 'big-sur-marathon' as const, label: 'Big Sur International Marathon', date: '2026-04-26' },
 ];
 
+function defaultRaceSlug(courseSlug: string, raceDate: string): string {
+  const year = raceDate.slice(0, 4);
+  return year ? `${courseSlug}-${year}` : courseSlug;
+}
+
 export default function Home() {
+  const router = useRouter();
   const [gpxName, setGpxName] = useState<string | null>(null);
   const [gpxText, setGpxText] = useState<string | null>(null);
   const [courseSlug, setCourseSlug] = useState<'big-sur-marathon'>('big-sur-marathon');
+  const initialCourse = COURSES[0];
+  const [raceDate, setRaceDate] = useState(initialCourse.date);
+  const [raceSlug, setRaceSlug] = useState(defaultRaceSlug(initialCourse.slug, initialCourse.date));
+  const [raceName, setRaceName] = useState(initialCourse.label);
   const [goalHMS, setGoalHMS] = useState('3:50:00');
   const [strategy, setStrategy] = useState<'even_effort' | 'even_split' | 'negative_split'>('even_effort');
   const [tolerance, setTolerance] = useState(10);
@@ -79,6 +91,7 @@ export default function Home() {
   const [building, setBuilding] = useState(false);
   const [build, setBuild] = useState<BuildResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -148,7 +161,7 @@ export default function Home() {
         body: JSON.stringify({
           gpxText,
           courseSlug,
-          raceDate: courseMeta.date,
+          raceDate,
           goalFinishS,
           strategy,
           toleranceSPerMi: tolerance,
@@ -175,29 +188,51 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${courseSlug}-${goalHMS.replace(/:/g, '-')}.runcino.json`;
+    a.download = `${raceSlug || courseSlug}.runcino.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
+  async function saveToRaces() {
+    if (!build) return;
+    if (!raceSlug || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(raceSlug)) {
+      setError('Race slug must be lowercase letters, digits, and hyphens (e.g. cim-2026).');
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const res = await fetch('/api/races', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          slug: raceSlug,
+          name: raceName,
+          courseSlug,
+          raceDate,
+          status: 'planned',
+          plan: JSON.parse(build.planJsonText),
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Save failed: ${text}`);
+      }
+      router.push(`/races/${raceSlug}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const canBuild = Boolean(gpxText && goalFinishS);
 
   return (
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: '0 32px' }}>
-      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 0', borderBottom: '1px solid var(--color-line)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="brand-mark">R</div>
-          <div className="font-display" style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-0.02em' }}>Runcino</div>
-        </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 14, color: 'var(--color-ink-3)' }}>
-          <span>localhost · v0.1</span>
-          <span className="runcino-pill runcino-pill-sage">
-            <span className="runcino-pill-dot" style={{ background: 'var(--color-sage)' }} /> M0 · Big Sur sprint
-          </span>
-        </div>
-      </nav>
+      <Nav active="plan" />
 
       <section style={{ padding: '56px 0 24px' }}>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Build a race plan</div>
@@ -206,7 +241,7 @@ export default function Home() {
           <span className="serif-italic">not the clock.</span>
         </h1>
         <p style={{ fontSize: 18, color: 'var(--color-ink-3)', maxWidth: '58ch', lineHeight: 1.5 }}>
-          Upload a race GPX. Enter a fitness summary. Get a Minetti-adjusted pacing plan with fueling cues and Watch-ready intervals. Exported as a single <span className="font-mono" style={{ color: 'var(--color-ink)', fontSize: 14 }}>.runcino.json</span> file to AirDrop to your phone.
+          Upload a race GPX. Enter a fitness summary. Get a Minetti-adjusted pacing plan with fueling cues and Watch-ready intervals. Save it to your races, or export a <span className="font-mono" style={{ color: 'var(--color-ink)', fontSize: 14 }}>.runcino.json</span> to AirDrop to your phone.
         </p>
       </section>
 
@@ -273,7 +308,14 @@ export default function Home() {
                 <select
                   className="runcino-input"
                   value={courseSlug}
-                  onChange={e => setCourseSlug(e.target.value as 'big-sur-marathon')}
+                  onChange={e => {
+                    const next = e.target.value as 'big-sur-marathon';
+                    setCourseSlug(next);
+                    const c = COURSES.find(x => x.slug === next)!;
+                    setRaceName(c.label);
+                    setRaceDate(c.date);
+                    setRaceSlug(defaultRaceSlug(c.slug, c.date));
+                  }}
                 >
                   {COURSES.map(c => <option key={c.slug} value={c.slug}>{c.label}</option>)}
                 </select>
@@ -291,6 +333,28 @@ export default function Home() {
                 <div className="hint">
                   {goalFinishS ? `= ${(goalFinishS / 60).toFixed(1)} min` : 'invalid — use h:mm:ss'}
                 </div>
+              </div>
+              <div>
+                <label className="runcino-label">Race date</label>
+                <input
+                  className="runcino-input font-mono"
+                  type="date"
+                  value={raceDate}
+                  onChange={e => {
+                    setRaceDate(e.target.value);
+                    setRaceSlug(defaultRaceSlug(courseSlug, e.target.value));
+                  }}
+                />
+              </div>
+              <div>
+                <label className="runcino-label">Race slug</label>
+                <input
+                  className="runcino-input font-mono"
+                  value={raceSlug}
+                  onChange={e => setRaceSlug(e.target.value)}
+                  placeholder="cim-2026"
+                />
+                <div className="hint">Used in the URL: /races/{raceSlug || 'your-slug'}</div>
               </div>
             </div>
 
@@ -446,7 +510,12 @@ export default function Home() {
                   <h3 style={{ fontSize: 22, marginTop: 6 }}>{build.summary.raceName}</h3>
                   <div className="font-mono" style={{ fontSize: 14, color: 'var(--color-ink-3)' }}>{build.summary.goalDisplay}</div>
                 </div>
-                <button className="btn btn-accent" onClick={downloadPlan}>Download .runcino.json</button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-accent" onClick={saveToRaces} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save to my races'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={downloadPlan}>Download JSON</button>
+                </div>
               </div>
 
               {build.summary.geometryWarnings.length > 0 && (
@@ -496,19 +565,16 @@ export default function Home() {
             <div className="eyebrow" style={{ marginBottom: 8 }}>The loop</div>
             <ol style={{ margin: 0, paddingLeft: 20, fontSize: 14, color: 'var(--color-ink-2)', lineHeight: 1.8 }}>
               <li>Drop GPX (or use sample)</li>
-              <li>Pick race + goal time</li>
+              <li>Pick race + goal time + slug</li>
               <li>Fill fitness summary, ask Claude</li>
-              <li>Build plan, download JSON</li>
-              <li>AirDrop to iPhone → Runcino app → Watch</li>
+              <li>Build plan</li>
+              <li>Save to your races (or AirDrop the JSON)</li>
             </ol>
           </div>
         </div>
       </section>
 
-      <footer style={{ padding: '32px 0', borderTop: '1px solid var(--color-line)', color: 'var(--color-ink-3)', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-        <div>Runcino · localhost · personal build</div>
-        <div>v0.1.0 · M0 sprint</div>
-      </footer>
+      <Footer tag="build plan" />
     </main>
   );
 }

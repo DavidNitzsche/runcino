@@ -9,9 +9,7 @@
 import { formatHMS } from './time';
 import type {
   FitnessSummary,
-  FuelingSummary,
   GpxTrack,
-  Interval,
   PacingInput,
   Phase,
   RuncinoPlan,
@@ -40,7 +38,7 @@ export function buildIntervals(
   fueling: FuelPlan,
   landmarks: Array<{ atMi: number; label: string }> = [],
   toleranceSPerMi: number
-): Interval[] {
+): RuncinoPlan['intervals'] {
   // Collect non-pace "insertion" events sorted by mile
   type Insertion =
     | { atMi: number; kind: 'fuel'; durationS: number; item: string; gelNumber: number; label: string; phaseIdx: number }
@@ -68,7 +66,7 @@ export function buildIntervals(
   }
   insertions.sort((a, b) => a.atMi - b.atMi);
 
-  const intervals: Interval[] = [];
+  const intervals: RuncinoPlan['intervals'] = [];
   let nextIdx = 0;
 
   const phaseIdxFor = (mi: number): number => {
