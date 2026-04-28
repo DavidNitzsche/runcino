@@ -4,7 +4,7 @@
   "private": true,
   "description": "Runcino — race-agnostic planning site. Root delegates to web/ (Next.js).",
   "scripts": {
-    "build": "cd web && npm ci && npm run build",
+    "build": "cd web && npm ci --include=dev && npm run build",
     "start": "cd web && npm run start:prod"
   },
   "engines": {

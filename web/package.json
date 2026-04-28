@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "start:prod": "npm run migrate && npm run seed && next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "start:prod": "npm run migrate && npm run seed && next start",
     "migrate": "tsx scripts/migrate.ts",
     "migrate:generate": "drizzle-kit generate",
     "seed": "tsx scripts/seed.ts",
@@ -27,7 +27,8 @@
     "next": "16.2.4",
     "pg": "^8.20.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -39,7 +40,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.1.4"
   }
