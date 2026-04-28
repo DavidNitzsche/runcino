@@ -2,9 +2,10 @@
   "name": "runcino",
   "version": "0.1.0",
   "private": true,
-  "description": "Runcino — race-agnostic planning site. Root points the deploy at designs/ (static HTML mockups becoming the real app).",
+  "description": "Runcino — race-agnostic planning site. Root delegates to web/ (Next.js).",
   "scripts": {
-    "start": "cd designs && npx --yes serve -l tcp://0.0.0.0:${PORT:-3000} ."
+    "build": "cd web && npm ci && npm run build",
+    "start": "cd web && npm run start:prod"
   },
   "engines": {
     "node": ">=18"
