@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>Runcino · iPhone prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="runcino.css">
+<style>
+  body { padding: 56px 32px 80px; min-width: 1600px; background: var(--l0); }
+
+  .doc-head { max-width: 1500px; margin: 0 auto 56px; text-align: center; }
+  .doc-head .eye { font-family: var(--f-data); font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .doc-head h1 { font-family: var(--f-display); font-size: 56px; font-weight: 700; letter-spacing: -.01em; text-transform: uppercase; margin-top: 14px; }
+  .doc-head p { font-family: var(--f-body); font-size: 14px; color: var(--t2); margin-top: 14px; max-width: 680px; margin-left: auto; margin-right: auto; line-height: 1.55; }
+
+  /* ── Phone frame ──────────────────────────────────────── */
+  .row { display: flex; gap: 36px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .phone-label { font-family: var(--f-data); font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .phone-label b { color: var(--t1); font-weight: 700; }
+  .phone {
+    width: 320px;
+    background: #1c1c1e;
+    border-radius: 50px;
+    padding: 11px;
+    box-shadow:
+      0 0 0 1px #3a3a3c,
+      0 0 0 2.5px #1c1c1e,
+      0 0 0 3.5px #48484a,
+      0 30px 80px rgba(0,0,0,.85),
+      inset 0 1px 0 rgba(255,255,255,.06);
+    position: relative;
+  }
+  .phone-side-btn { position: absolute; background: #2c2c2e; border-radius: 2px; }
+  .phone-side-btn.power  { right: -3px; top: 110px; width: 3px; height: 64px; }
+  .phone-side-btn.vol-up { left: -3px;  top: 86px;  width: 3px; height: 38px; }
+  .phone-side-btn.vol-dn { left: -3px;  top: 134px; width: 3px; height: 38px; }
+  .phone-side-btn.silent { left: -3px;  top: 56px;  width: 3px; height: 22px; border-radius: 2px 0 0 2px; }
+  .phone-screen { background: #000; border-radius: 42px; overflow: hidden; height: 660px; position: relative; }
+
+  /* ── Status bar + dynamic island ────────────────────── */
+  .di { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 110px; height: 32px; background: #000; border-radius: 20px; z-index: 100; }
+  .sb { display: flex; justify-content: space-between; align-items: center; padding: 14px 22px 0; font-size: 13px; font-weight: 700; color: #fff; position: relative; z-index: 50; height: 52px; }
+  .sb .t { font-size: 15px; font-weight: 700; font-family: var(--f-body); letter-spacing: 0; }
+  .sb .ic { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--f-data); }
+
+  /* ── App-level chrome ───────────────────────────────── */
+  .app { background: var(--l0); height: calc(100% - 52px); overflow: hidden; color: var(--t0); padding: 6px 18px 80px; font-family: var(--f-body); position: relative; }
+  .app-h { display: flex; justify-content: space-between; align-items: center; padding: 6px 0 16px; }
+  .app-h .brand-mini { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--xp), var(--corporate)); display: flex; align-items: center; justify-content: center; font-family: var(--f-display); font-weight: 700; font-size: 16px; color: #fff; }
+  .app-h .nav-ic-sm { width: 28px; height: 28px; border-radius: 50%; background: var(--l2); border: 1px solid var(--l4); display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--t2); }
+
+  /* ── Tab bar (bottom) ───────────────────────────────── */
+  .tabbar { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(20,24,32,.92); backdrop-filter: blur(16px); border-top: 1px solid var(--l4); display: flex; justify-content: space-around; padding: 10px 0 26px; }
+  .tabbar .tab-i { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; color: var(--t3); font-family: var(--f-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; font-weight: 700; }
+  .tabbar .tab-i .ic { font-size: 18px; line-height: 1; }
+  .tabbar .tab-i.active { color: var(--attention); }
+
+  /* ── Section headers ────────────────────────────────── */
+  .sect-h { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--t3); font-weight: 700; margin: 18px 0 8px; }
+  .sect-h.first { margin-top: 4px; }
+
+  /* ── Race-card list (Screen 1) ──────────────────────── */
+  .race-card {
+    background: var(--l1);
+    border: 1px solid var(--l4);
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+    margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: stretch; gap: 14px;
+  }
+  .race-card.up { border-color: rgba(243,173,59,.4); background: linear-gradient(135deg, rgba(243,173,59,.06) 0%, var(--l1) 70%); }
+  .race-card .l { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+  .race-card .date { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .race-card .name { font-family: var(--f-display); font-weight: 700; font-size: 22px; letter-spacing: -.005em; line-height: 1; text-transform: uppercase; }
+  .race-card .meta { font-family: var(--f-body); font-size: 11px; color: var(--t2); margin-top: 4px; }
+  .race-card .r { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 8px; }
+  .race-card .countdown { font-family: var(--f-display); font-weight: 800; font-size: 36px; line-height: 1; color: var(--attention); font-variant-numeric: tabular-nums; }
+  .race-card.done .countdown { color: var(--t2); font-size: 22px; }
+  .race-card .goal-label { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .race-card .goal { font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: -.01em; color: var(--t1); }
+
+  .add-cta {
+    border: 1.5px dashed var(--l5);
+    border-radius: 14px;
+    padding: 22px;
+    text-align: center;
+    color: var(--t2);
+    font-family: var(--f-data);
+    font-size: 11px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .add-cta .plus { font-family: var(--f-display); font-size: 32px; font-weight: 500; line-height: 1; color: var(--attention); margin-bottom: 6px; }
+
+  /* ── Race detail header (Screen 2) ──────────────────── */
+  .rd-back { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); font-weight: 700; margin-bottom: 10px; }
+  .rd-eyebrow { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--attention); font-weight: 700; }
+  .rd-title { font-family: var(--f-display); font-weight: 700; font-size: 38px; letter-spacing: -.01em; line-height: .9; text-transform: uppercase; margin-top: 6px; }
+  .rd-sub { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--t3); font-weight: 700; margin-top: 8px; }
+  .rd-stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 14px 0 14px; }
+  .rd-stat { background: var(--l1); border: 1px solid var(--l4); border-radius: 10px; padding: 10px 12px; }
+  .rd-stat .l { font-family: var(--f-data); font-size: 8.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .rd-stat .v { font-family: var(--f-display); font-weight: 800; font-size: 19px; letter-spacing: -.01em; margin-top: 4px; line-height: 1; }
+  .rd-goal-tile { background: linear-gradient(135deg, rgba(243,173,59,.14), var(--l1)); border: 1px solid rgba(243,173,59,.3); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .rd-goal-tile .l { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--t2); font-weight: 700; }
+  .rd-goal-tile .v { font-family: var(--f-display); font-weight: 800; font-size: 30px; letter-spacing: -.02em; color: var(--attention); }
+
+  /* Mini elev chart */
+  .elev-mini { background: var(--l1); border: 1px solid var(--l4); border-radius: 12px; padding: 10px; margin-bottom: 12px; }
+  .elev-mini svg { width: 100%; height: 80px; display: block; }
+  .elev-mini .row { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); font-weight: 700; display: flex; justify-content: space-between; padding: 0 4px 6px; }
+
+  .phase-strip-app { display: flex; gap: 0; height: 6px; margin-top: 8px; border-radius: 3px; overflow: hidden; }
+  .phase-strip-app span { display: block; height: 100%; }
+
+  /* Phase chip list */
+  .phase-row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--l4); }
+  .phase-row:last-child { border-bottom: 0; }
+  .phase-row .swatch { width: 4px; height: 28px; border-radius: 2px; flex-shrink: 0; }
+  .phase-row .l { flex: 1; min-width: 0; }
+  .phase-row .nm { font-family: var(--f-display); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: -.005em; line-height: 1.1; }
+  .phase-row .meta-line { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.3px; color: var(--t3); font-weight: 700; text-transform: uppercase; margin-top: 3px; }
+  .phase-row .pace { font-family: var(--f-display); font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
+
+  /* ── Live race screen (Screen 3) ────────────────────── */
+  .live { background: var(--l0); height: 100%; padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+  .live-head { display: flex; justify-content: space-between; align-items: center; }
+  .live-head .race { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .live-head .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(62,189,65,.18); }
+  .live-elapsed { text-align: center; padding: 14px 0 6px; }
+  .live-elapsed .lbl { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .live-elapsed .v { font-family: var(--f-display); font-size: 64px; font-weight: 800; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .live-section { background: var(--l1); border: 1px solid var(--l4); border-radius: 12px; padding: 14px; }
+  .live-section.now { border-color: rgba(252,77,84,.4); background: linear-gradient(135deg, rgba(252,77,84,.08), var(--l1)); }
+  .live-section .lbl { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--warning); font-weight: 700; }
+  .live-section .nm { font-family: var(--f-display); font-size: 26px; font-weight: 700; text-transform: uppercase; letter-spacing: -.005em; margin-top: 4px; line-height: .95; }
+  .live-section .row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; gap: 10px; }
+  .live-section .target { font-family: var(--f-display); font-size: 28px; font-weight: 800; color: var(--warning); letter-spacing: -.02em; line-height: 1; }
+  .live-section .actual { font-family: var(--f-display); font-size: 28px; font-weight: 800; color: var(--t0); letter-spacing: -.02em; line-height: 1; }
+  .live-section .micro { font-family: var(--f-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); font-weight: 700; margin-top: 4px; display: block; }
+
+  .live-coming { display: flex; gap: 8px; padding: 8px 0; overflow-x: hidden; }
+  .live-coming .next-card { background: var(--l2); border: 1px solid var(--l4); border-radius: 10px; padding: 10px 12px; flex: 1; }
+  .live-coming .next-card .lbl { font-family: var(--f-data); font-size: 8.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t3); font-weight: 700; }
+  .live-coming .next-card .nm { font-family: var(--f-display); font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 3px; line-height: 1.05; }
+  .live-coming .next-card .pace { font-family: var(--f-data); font-size: 11px; color: var(--t1); font-weight: 700; margin-top: 4px; }
+
+  .live-fuel { background: rgba(243,173,59,.08); border: 1px solid rgba(243,173,59,.3); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; }
+  .live-fuel .l { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--attention); font-weight: 700; }
+  .live-fuel .v { font-family: var(--f-display); font-size: 16px; font-weight: 800; color: var(--attention); }
+
+  /* ── Watch sync screen (Screen 4) ───────────────────── */
+  .sync { display: flex; flex-direction: column; height: 100%; padding: 18px; background: var(--l0); }
+  .sync-eye { font-family: var(--f-data); font-size: 9.5px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--success); font-weight: 700; }
+  .sync h2 { font-family: var(--f-display); font-size: 30px; font-weight: 700; text-transform: uppercase; letter-spacing: -.01em; margin-top: 8px; line-height: .95; }
+  .sync p { font-family: var(--f-body); font-size: 13px; color: var(--t2); margin-top: 10px; line-height: 1.55; }
+  .sync .check-tile { background: var(--l1); border: 1px solid var(--l4); border-radius: 12px; padding: 14px; margin-top: 14px; }
+  .sync .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-family: var(--f-data); font-size: 11px; color: var(--t1); font-weight: 600; letter-spacing: -.005em; }
+  .sync .row b { color: var(--success); font-family: var(--f-data); font-size: 13px; font-weight: 700; }
+  .sync .watch-vis { margin: 18px auto 6px; width: 160px; height: 200px; display: grid; place-items: center; }
+  .sync .watch-vis svg { width: 100%; height: 100%; }
+  .sync .cta { margin-top: auto; padding: 14px; background: var(--attention); color: var(--l0); border-radius: 12px; text-align: center; font-family: var(--f-display); font-weight: 700; font-size: 16px; text-transform: uppercase; letter-spacing: .01em; }
+  .sync .cta-ghost { margin-top: 8px; padding: 12px; border: 1px solid var(--l4); color: var(--t2); border-radius: 12px; text-align: center; font-family: var(--f-data); font-size: 10.5px; letter-spacing: 1.6px; text-transform: uppercase; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="doc-head">
+  <div class="eye">Runcino · iOS prototype · v0.1</div>
+  <h1>Phone surface, four screens</h1>
+  <p>Mirrors the dark Runcino design language from <code style="font-family:var(--f-data); color:var(--t1);">designs/race-detail-sombrero.html</code> for the iPhone form factor. The first three screens are the daily-use surface; the fourth is the one-tap Watch sync that lands the plan as a native WorkoutKit CustomWorkout.</p>
+</div>
+
+<div class="row">
+
+  <!-- ─── SCREEN 1 · Races index ──────────────────────── -->
+  <div class="phone-wrap">
+    <div class="phone-label">Screen 1 · <b>Races index</b></div>
+    <div class="phone">
+      <span class="phone-side-btn silent"></span><span class="phone-side-btn vol-up"></span><span class="phone-side-btn vol-dn"></span><span class="phone-side-btn power"></span>
+      <div class="phone-screen">
+        <div class="di"></div>
+        <div class="sb"><span class="t">9:41</span><span class="ic">●●●●● ▮ 100</span></div>
+        <div class="app">
+          <div class="app-h">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="brand-mini">R</div>
+              <div style="font-family:var(--f-display); font-size:18px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em;">Runcino</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <div class="nav-ic-sm">⌕</div>
+              <div class="nav-ic-sm">+</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--f-data); font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700;">Your season · 2026</div>
+          <div style="font-family:var(--f-display); font-size:36px; font-weight:700; text-transform:uppercase; letter-spacing:-.01em; line-height:.9; margin-top:4px;">Races</div>
+          <div style="font-family:var(--f-body); font-size:12px; color:var(--t2); margin-top:6px;"><b style="color:var(--t1);">Sombrero Half tomorrow.</b> Big Sur in the books.</div>
+
+          <div class="sect-h" style="margin-top:18px;">Upcoming</div>
+
+          <a class="race-card up">
+            <div class="l">
+              <span class="date">Sun · May 3</span>
+              <div class="name">Sombrero<br/>Half</div>
+              <span class="meta">Santa Clarita · 13.1 mi</span>
+            </div>
+            <div class="r">
+              <div style="display:flex; align-items:baseline; gap:4px;">
+                <span class="countdown">1</span>
+                <span style="font-family:var(--f-data); font-size:8.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700;">d</span>
+              </div>
+              <div style="text-align:right;">
+                <div class="goal-label">Goal</div>
+                <div class="goal">1:32</div>
+              </div>
+            </div>
+          </a>
+
+          <div class="add-cta">
+            <div class="plus">+</div>
+            Add a race
+          </div>
+
+          <div class="sect-h">Completed · 2026</div>
+
+          <a class="race-card done">
+            <div class="l">
+              <span class="date">Sun · Apr 26</span>
+              <div class="name">Big Sur<br/>Marathon</div>
+              <span class="meta">Big Sur → Carmel · 26.2 mi</span>
+            </div>
+            <div class="r">
+              <span class="countdown">3:41</span>
+              <div style="text-align:right;">
+                <div class="goal-label">Result</div>
+                <div class="goal" style="color:var(--success);">+4 vs goal</div>
+              </div>
+            </div>
+          </a>
+
+          <div class="tabbar">
+            <div class="tab-i active"><span class="ic">◎</span><span>Races</span></div>
+            <div class="tab-i"><span class="ic">∿</span><span>Train</span></div>
+            <div class="tab-i"><span class="ic">♥</span><span>Health</span></div>
+            <div class="tab-i"><span class="ic">≡</span><span>Log</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SCREEN 2 · Race detail ──────────────────────── -->
+  <div class="phone-wrap">
+    <div class="phone-label">Screen 2 · <b>Race detail (pre-race)</b></div>
+    <div class="phone">
+      <span class="phone-side-btn silent"></span><span class="phone-side-btn vol-up"></span><span class="phone-side-btn vol-dn"></span><span class="phone-side-btn power"></span>
+      <div class="phone-screen">
+        <div class="di"></div>
+        <div class="sb"><span class="t">9:41</span><span class="ic">●●●●● ▮ 100</span></div>
+        <div class="app" style="overflow-y:auto; padding-bottom:90px;">
+          <div class="rd-back">← Races</div>
+          <div class="rd-eyebrow">● Tomorrow · Sun May 3</div>
+          <div class="rd-title">Sombrero<br/>Half</div>
+          <div class="rd-sub">Heritage Park · Santa Clarita · 07:15 start</div>
+
+          <div class="rd-goal-tile">
+            <div>
+              <div class="l">Goal</div>
+              <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; margin-top:4px;">7:01 /mi avg</div>
+            </div>
+            <div class="v">1:32</div>
+          </div>
+
+          <div class="rd-stat-row">
+            <div class="rd-stat"><div class="l">Distance</div><div class="v">13.1 <span style="font-size:.55em; opacity:.55;">mi</span></div></div>
+            <div class="rd-stat"><div class="l">Gain</div><div class="v" style="color:#f9a87c;">+283<span style="font-size:.55em; opacity:.55;"> ft</span></div></div>
+            <div class="rd-stat"><div class="l">Peak</div><div class="v">1,246<span style="font-size:.55em; opacity:.55;"> ft</span></div></div>
+          </div>
+
+          <div class="elev-mini">
+            <div class="row"><span>Elevation</span><span>Peak mi 8.3</span></div>
+            <svg viewBox="0 0 320 80" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="phaseT2" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#3EBD41"/>
+                  <stop offset="15%" stop-color="#3EBD41"/>
+                  <stop offset="15%" stop-color="#F3AD3B"/>
+                  <stop offset="46%" stop-color="#F3AD3B"/>
+                  <stop offset="46%" stop-color="#FC4D54"/>
+                  <stop offset="65%" stop-color="#FC4D54"/>
+                  <stop offset="65%" stop-color="#008FEC"/>
+                  <stop offset="91%" stop-color="#008FEC"/>
+                  <stop offset="91%" stop-color="#9013FE"/>
+                  <stop offset="100%" stop-color="#9013FE"/>
+                </linearGradient>
+                <linearGradient id="vfade2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#fff" stop-opacity=".55"/>
+                  <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+                </linearGradient>
+                <mask id="silMask2">
+                  <path d="M 0 65 L 14 60 L 28 62 L 42 64 L 56 58 L 70 56 L 84 50 L 100 46 L 116 44 L 134 40 L 150 30 L 168 18 L 186 14 L 200 24 L 218 32 L 240 40 L 260 50 L 280 56 L 300 60 L 320 64 L 320 80 L 0 80 Z" fill="url(#vfade2)"/>
+                </mask>
+              </defs>
+              <rect x="0" y="0" width="320" height="80" fill="url(#phaseT2)" mask="url(#silMask2)" opacity=".75"/>
+              <path d="M 0 65 L 14 60 L 28 62 L 42 64 L 56 58 L 70 56 L 84 50 L 100 46 L 116 44 L 134 40 L 150 30 L 168 18 L 186 14 L 200 24 L 218 32 L 240 40 L 260 50 L 280 56 L 300 60 L 320 64" fill="none" stroke="url(#phaseT2)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <circle cx="186" cy="14" r="4" fill="#FC4D54"/>
+            </svg>
+            <div class="phase-strip-app">
+              <span style="background:#3EBD41; flex:0 0 15%;"></span>
+              <span style="background:#F3AD3B; flex:0 0 31%;"></span>
+              <span style="background:#FC4D54; flex:0 0 19%;"></span>
+              <span style="background:#008FEC; flex:0 0 26%;"></span>
+              <span style="background:#9013FE; flex:0 0 9%;"></span>
+            </div>
+          </div>
+
+          <div class="sect-h first" style="margin-top:14px;">Five phases</div>
+          <div style="background:var(--l1); border:1px solid var(--l4); border-radius:12px; padding:0 14px;">
+            <div class="phase-row">
+              <div class="swatch" style="background:#3EBD41;"></div>
+              <div class="l">
+                <div class="nm">Heritage opener</div>
+                <div class="meta-line">Mi 0–2 · −0.2%</div>
+              </div>
+              <div class="pace">7:00</div>
+            </div>
+            <div class="phase-row">
+              <div class="swatch" style="background:#F3AD3B;"></div>
+              <div class="l">
+                <div class="nm">River-trail rollers</div>
+                <div class="meta-line">Mi 2–6 · +0.4% · gel mi 4</div>
+              </div>
+              <div class="pace">7:03</div>
+            </div>
+            <div class="phase-row">
+              <div class="swatch" style="background:#FC4D54;"></div>
+              <div class="l">
+                <div class="nm">Peak push</div>
+                <div class="meta-line">Mi 6–8.5 · +1.0% · gel mi 8</div>
+              </div>
+              <div class="pace" style="color:var(--warning);">7:18</div>
+            </div>
+            <div class="phase-row">
+              <div class="swatch" style="background:#008FEC;"></div>
+              <div class="l">
+                <div class="nm">Cruise back</div>
+                <div class="meta-line">Mi 8.5–12 · −0.7%</div>
+              </div>
+              <div class="pace">6:52</div>
+            </div>
+            <div class="phase-row">
+              <div class="swatch" style="background:#9013FE;"></div>
+              <div class="l">
+                <div class="nm">Finish strong</div>
+                <div class="meta-line">Mi 12–13.1 · +0.1%</div>
+              </div>
+              <div class="pace">7:01</div>
+            </div>
+          </div>
+
+          <div class="tabbar">
+            <div class="tab-i active"><span class="ic">◎</span><span>Races</span></div>
+            <div class="tab-i"><span class="ic">∿</span><span>Train</span></div>
+            <div class="tab-i"><span class="ic">♥</span><span>Health</span></div>
+            <div class="tab-i"><span class="ic">≡</span><span>Log</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SCREEN 3 · Live (race day) ──────────────────── -->
+  <div class="phone-wrap">
+    <div class="phone-label">Screen 3 · <b>Live (race day)</b></div>
+    <div class="phone">
+      <span class="phone-side-btn silent"></span><span class="phone-side-btn vol-up"></span><span class="phone-side-btn vol-dn"></span><span class="phone-side-btn power"></span>
+      <div class="phone-screen">
+        <div class="di"></div>
+        <div class="sb"><span class="t">7:48</span><span class="ic">●●●●● ▮ 92</span></div>
+        <div class="live">
+          <div class="live-head">
+            <div class="race">Sombrero Half · Mi 4.2 / 13.1</div>
+            <div class="pulse"></div>
+          </div>
+
+          <div class="live-elapsed">
+            <div class="lbl">Elapsed</div>
+            <div class="v">29:42</div>
+            <div class="lbl" style="color:var(--success); margin-top:4px;">+8 sec ahead of plan</div>
+          </div>
+
+          <div class="live-section now">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div>
+                <div class="lbl">Now · Phase 2 of 5</div>
+                <div class="nm">River-trail rollers</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Phase ends</div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:14px; color:var(--t1); margin-top:2px;">mi 6.0</div>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <div class="micro" style="margin-top:0;">Target</div>
+                <div class="target">7:03</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="micro" style="margin-top:0;">Current mile</div>
+                <div class="actual">7:01</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="live-fuel">
+            <div class="l">⚡ Gel 2 in 1.8 mi</div>
+            <div class="v">≈ 13:00</div>
+          </div>
+
+          <div class="sect-h" style="margin-top:0; padding-top:0;">Coming up</div>
+          <div class="live-coming">
+            <div class="next-card">
+              <div class="lbl" style="color:#FC4D54;">Phase 3 · Peak push</div>
+              <div class="nm">Mi 6–8.5</div>
+              <div class="pace" style="color:#FC4D54;">7:18</div>
+            </div>
+            <div class="next-card">
+              <div class="lbl" style="color:#008FEC;">Phase 4 · Cruise</div>
+              <div class="nm">Mi 8.5–12</div>
+              <div class="pace" style="color:#008FEC;">6:52</div>
+            </div>
+          </div>
+
+          <div style="background:var(--l1); border:1px solid var(--l4); border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Predicted finish</div>
+              <div style="font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.02em; margin-top:2px;">1:31:48</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--success); font-weight:700; text-transform:uppercase;">vs Goal 1:32</div>
+              <div style="font-family:var(--f-display); font-weight:800; font-size:18px; letter-spacing:-.02em; color:var(--success); margin-top:2px;">−12 s</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SCREEN 4 · Watch sync ───────────────────────── -->
+  <div class="phone-wrap">
+    <div class="phone-label">Screen 4 · <b>Watch sync</b></div>
+    <div class="phone">
+      <span class="phone-side-btn silent"></span><span class="phone-side-btn vol-up"></span><span class="phone-side-btn vol-dn"></span><span class="phone-side-btn power"></span>
+      <div class="phone-screen">
+        <div class="di"></div>
+        <div class="sb"><span class="t">9:41</span><span class="ic">●●●●● ▮ 100</span></div>
+        <div class="sync">
+          <div class="sync-eye">● Plan ready</div>
+          <h2>Send to<br/>Apple Watch</h2>
+          <p>Pushes a native WorkoutKit CustomWorkout with 13 paced miles, 3 fueling cues, and 5 phase transitions. Buzzes when you step out of pace ±10s/mi.</p>
+
+          <div class="watch-vis">
+            <svg viewBox="0 0 160 200">
+              <!-- Watch case -->
+              <rect x="22" y="32" width="116" height="148" rx="28" fill="#1c1c1e" stroke="#48484a" stroke-width="2"/>
+              <rect x="22" y="36" width="116" height="138" rx="24" fill="#000"/>
+              <!-- Crown -->
+              <rect x="138" y="78" width="6" height="22" rx="2" fill="#48484a"/>
+              <rect x="138" y="106" width="6" height="14" rx="2" fill="#48484a"/>
+              <!-- Band hint -->
+              <path d="M 50 32 L 60 0 L 100 0 L 110 32" fill="#444" opacity=".5"/>
+              <path d="M 50 180 L 60 212 L 100 212 L 110 180" fill="#444" opacity=".5"/>
+              <!-- Workout face -->
+              <text x="80" y="64" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6" fill="#F3AD3B" letter-spacing="1.2" font-weight="700">SOMBRERO HALF</text>
+              <text x="80" y="96" text-anchor="middle" font-family="Oswald, sans-serif" font-size="34" fill="#fff" font-weight="700">7:03</text>
+              <text x="80" y="108" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="5" fill="#aaa" letter-spacing="1.1" font-weight="700">TARGET /MI</text>
+              <text x="80" y="138" text-anchor="middle" font-family="Oswald, sans-serif" font-size="17" fill="#3EBD41" font-weight="700">29:42</text>
+              <text x="80" y="148" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="4.5" fill="#aaa" letter-spacing="1.1" font-weight="700">ELAPSED · MI 4.2</text>
+              <rect x="32" y="160" width="96" height="4" rx="1" fill="#222"/>
+              <rect x="32" y="160" width="30" height="4" rx="1" fill="#F3AD3B"/>
+            </svg>
+          </div>
+
+          <div class="check-tile">
+            <div class="row"><span>13 paced miles</span><b>✓</b></div>
+            <div class="row"><span>3 fueling cues</span><b>✓</b></div>
+            <div class="row"><span>5 phase transitions</span><b>✓</b></div>
+            <div class="row"><span>±10 s/mi tolerance</span><b>✓</b></div>
+          </div>
+
+          <div class="cta">Send to Watch →</div>
+          <div class="cta-ghost">Export .runcino.json</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="doc-head" style="margin-top:80px; opacity:.7;">
+  <div class="eye">Foundation</div>
+  <p style="margin-top:12px;">Inherits the <code style="font-family:var(--f-data); color:var(--t1);">designs/runcino.css</code> token set: layer-scale backgrounds (l0–l5), semantic palette (attention/warning/success/corporate/xp), Oswald + Jost + JetBrains Mono. Phase coloring matches the web app's elevation chart. The Watch face is intentionally a stub; final treatment depends on WorkoutKit's native UI which we don't control.</p>
+</div>
+
+</body>
+</html>

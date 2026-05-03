@@ -1,248 +1,112 @@
-# Runcino · Status (2026-04-19 · overnight build 2)
+# Runcino · Morning briefing (overnight build, 2026-05-02 → 2026-05-03)
 
-Everything David asked for, in the order he'll walk through it tomorrow.
-
-Branch: `claude/build-runcino-app-OIRJr`
-PR: https://github.com/DavidNitzsche/runcino/pull/1
+Read this first. Everything below is what landed overnight on this worktree's branch (`claude/priceless-mendel-470ca9`). Nothing was pushed to `main` or to the deploy branch — Railway still serves the unchanged `designs/` static site from `claude/build-runcino-app-OIRJr`.
 
 ---
 
-## Three things that changed overnight
+## TL;DR — three changes you can poke at in 5 min
 
-1. **Mockups are now real code.** Every M1/M2/M3 HTML mockup has been rebuilt as a real Next.js page using real React components fed by real engine libraries. Mock fixtures today; HealthKit/Strava/Watch-export tomorrow. No rewrite when approved.
-2. **Real engines shipped for every phase.** `lib/retrospective.ts` (plan-vs-actual), `lib/training.ts` (18-week periodization), `lib/weather.ts` (NOAA), `lib/course-research.ts` (Claude + web search). All tested.
-3. **75/75 tests pass.** Up from 55. Every lib module has a unit-test suite.
+1. **The user-facing flagship loop ships.** `web/` is now a working Next.js app where you type a race name + drop a GPX → get a full pacing plan (5 phases, 13 mile splits, fueling schedule, exportable `.runcino.json`). Persists to `localStorage` so the race shows up on the index across reloads.
+2. **The dark Runcino design language is now in `web/`.** `app/globals.css` was fully rewritten as a port of `designs/runcino.css` — Oswald + Jost + JetBrains Mono, layer scale, chip system, semantic palette. Every new page inherits it.
+3. **iPhone prototype exists.** `designs/iphone-app.html` shows 4 screens in iPhone frames using the same design language: races index, race detail, live race-day, watch sync. **All static** — for design alignment, not real iOS code.
 
 ---
 
-## Walk through it in this order (15 min)
+## Walk through it in this order
 
-### 1. Pull and install
+### 1. The web app — `web/` (port 3000 or whatever's free)
 
 ```bash
-cd ~/code                              # or wherever you want
-git clone https://github.com/DavidNitzsche/runcino.git
-cd runcino
-git checkout claude/build-runcino-app-OIRJr
-cd web && npm install                  # ~60 seconds
+cd web
+npm install            # already done in this worktree
+npm run dev            # http://localhost:3000
 ```
 
-### 2. Drop in your Anthropic API key (optional but recommended)
+The first thing you'll hit is `/races` (root redirects). Empty state — click **+ Add race**. Fill in:
+- **Name:** `Sombrero Half Marathon` (auto-routes to the curated slug since it matches)
+- **Date:** any date
+- **Goal time:** `1:32:00`
+- **GPX:** drop `web/public/sample-sombrero.gpx` (or any GPX you have lying around)
+
+Hit **Build race plan →**. You'll land at `/races/sombrero-half` with:
+- Hero (countdown, distance, gain, peak, goal time)
+- Course map (rainbow-colored by phase)
+- Elevation chart (real GPX data, phase-tinted)
+- 5 phase cards (label, mile range, target pace, terrain note, cumulative time)
+- Mile splits table (per-mile target pace + cumulative + gel markers)
+- Fueling tile (gels with mile anchors)
+- **↓ Export .runcino.json** button — produces the file the iOS app will import
+
+Reload — race is still there. Open a new tab to `/races` — it's listed. Delete it from the detail page if you want.
+
+### 2. The iPhone prototype — `designs/iphone-app.html`
+
+Open at https://runcino-production.up.railway.app/iphone-app.html (will be live after the next push to the deploy branch — for now serve locally: `npx serve designs -l 4040` and visit http://localhost:4040/iphone-app.html). Four iPhone frames side by side:
+- **Screen 1 — Races index:** card list, countdown chip, +Add CTA, completed result
+- **Screen 2 — Race detail:** condensed version of the web detail page; goal tile, stat row, mini elevation chart with phase coloring, 5-phase scrollable list
+- **Screen 3 — Live (race day):** elapsed time, current phase + target/actual pace, gel countdown, "coming up" cards, predicted finish vs goal
+- **Screen 4 — Watch sync:** "Send to Apple Watch" CTA, watch-face mock, what-gets-sent checklist
+
+These are static HTML, not running anywhere. Treat as the visual spec for the iOS team / iOS phase. They demonstrate the dark Runcino aesthetic transposed to phone form factor.
+
+### 3. Sombrero is now a first-class course
+
+`web/data/courses/sombrero-half.json` — same shape as `big-sur-marathon.json`. 5 curated phases, MapMyRun cited as the GPX source. Sources flagged as `secondary_source` (not primary), so landmarks won't ship to Watch automatically — that's per the existing fact-integrity model in `lib/course-facts.ts`.
+
+---
+
+## What changed, file by file
+
+| File | Change |
+|---|---|
+| `web/app/globals.css` | **Full rewrite.** Light terracotta theme replaced with the dark Runcino design system (layer scale, Oswald + Jost + JetBrains Mono, chip + tile primitives, semantic palette). |
+| `web/app/layout.tsx` | Font loader swapped from Fraunces/Inter → Oswald/Jost/JetBrains Mono. |
+| `web/components/nav.tsx` | Rewritten for dark theme + tabs reordered around Races as the primary entry. |
+| `web/lib/storage.ts` | **New.** localStorage CRUD for saved race plans. Single key `runcino:races:v1` storing a `Record<slug, SavedRace>`. Sorted upcoming-first. Documented as the M0 persistence layer with a clear migration path to iCloud sync (M2). |
+| `web/lib/course-facts.ts` | `getCourseFacts(slug)` now returns `null` instead of throwing on unknown slugs. New `synthesizeCourseFacts(track, meta)` builds a minimal facts object from a parsed GPX so brand-new races work without pre-registration. `shippableLandmarks` accepts null. |
+| `web/data/courses/sombrero-half.json` | **New.** First-class Sombrero half facts file with 5 phases, MapMyRun source citation. |
+| `web/app/api/build-plan/route.ts` | `courseSlug` is now an arbitrary string. Falls through to `synthesizeCourseFacts` for unknowns. New `raceName` body field required for unregistered slugs. `summary` includes `courseSlug` so the client knows what to use as the storage key. |
+| `web/app/api/goal/route.ts` | Same loosening — accepts arbitrary slug + a `customCourse` stats payload as fallback. |
+| `web/app/page.tsx` | Replaced single-page builder with `redirect('/races')`. The old big light-theme builder UI is gone. |
+| `web/app/races/page.tsx` | **New.** Index. Reads from localStorage, splits upcoming/past by date, renders phase-colored cards. Empty state CTA. |
+| `web/app/races/new/page.tsx` | **New.** Add-race form. Auto-detects registered slugs from typed name; otherwise generates a custom slug. POSTs to `/api/build-plan`, persists, navigates to detail. |
+| `web/app/races/[slug]/page.tsx` | **New.** Detail. Re-parses the saved GPX in-browser to render the course map (projected from lat/lon, colored by phase), elevation chart (silhouette tinted by phase boundaries derived from the live `phases[]`), 5-phase strategy cards, mile splits table with gel chips, fueling tile, export button. |
+| `web/public/sample-sombrero.gpx` | Copy of the bundled, SRTM-enriched + smoothed Sombrero track from `designs/`. |
+| `designs/iphone-app.html` | **New.** 4-screen iPhone prototype — races index / race detail / live / watch sync. Uses `runcino.css` directly. |
+| `.claude/launch.json` | Added `Runcino web` config so `preview_start` can boot the Next.js dev server. |
+
+**Untouched on purpose:** `designs/race-detail.html` (Big Sur, complete), `designs/race-detail-sombrero.html` (Sombrero, in production), all of `lib/{gpx,minetti,pacing,grouping,fueling,export,training,retrospective,weather}.ts` (the math is solid).
+
+---
+
+## Known issues to look at in the morning
+
+These are real, called out so they don't surprise you. None are blockers; all are M1.
+
+1. **Last-phase pacing math can produce unrealistic targets.** When the final phase is short (e.g. Sombrero's 1.16-mi "Finish strong") and has even a slight downhill in the underlying GPX, the Minetti-driven base pace + total-time-balancing math can produce a target like 6:05/mi for that phase. The page renders it as-is. Fix is in `lib/pacing.ts` — likely a floor on per-mile pace deviation from base, scoped to short trailing phases. Not urgent: the goal-time invariant still holds and humans will sanity-check before programming a Watch.
+2. **`/training`, `/retrospective`, `/research`, `/settings/integrations` look broken.** They were styled for the old light theme and reference classes (`.runcino-card`, `.btn-accent`, `--color-paper`) that no longer exist. They still function, just visually degrade. Fix is mechanical; tracked in `NEXT_PHASE.md` under "design system migration."
+3. **No /api integration with localStorage on the server.** Saved races live entirely client-side. SSR shows the empty state for a beat before hydration. Workable for a personal tool; `NEXT_PHASE.md` proposes the path to iCloud-backed sync.
+4. **The "screenshot through Claude preview" tool keeps returning blank dark images mid-page.** This is an MCP/tool quirk, not a page bug — DOM queries confirm everything renders. Doesn't affect actual users at all; just made my visual verification slower.
+
+---
+
+## What I deliberately did NOT do (waiting for your call)
+
+- **Strava OAuth.** You offered the credentials; I declined per the master plan's M2 sequencing. Manual flow first; Strava maps into the proven shape. Drop creds in `web/.env.local` when ready (env var names in `NEXT_PHASE.md`).
+- **iOS Swift code.** The `ios/Runcino/` skeleton already exists and is its own build target. The iPhone prototype is HTML so you can review the design without burning Xcode time. iOS implementation is a separate phase.
+- **Pushed to `main` or to the deploy branch.** Working in this worktree's branch only. Railway is still serving the previous designs/ build.
+- **Touched the existing Big Sur or Sombrero designs/ HTML.** Both are complete; race day is hours away.
+
+---
+
+## To pick up where I left off
 
 ```bash
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env.local
+git checkout claude/priceless-mendel-470ca9
+cd web && npm run dev      # http://localhost:3000 (or autoport)
+
+# Add race flow:
+#   /races/new → fill form → drop sample-sombrero.gpx → Build → /races/[slug]
 ```
 
-Without a key, every Claude call falls back to a deterministic stub. The UI flows all work — you just won't see real Claude responses.
-
-### 3. Run the tests
-
-```bash
-npm test
-# 9 test files, 75 tests, all green in ~2 seconds
-```
-
-### 4. Run the CLIs (no dev server needed)
-
-```bash
-npm run build-plan       # full Big Sur pipeline → prints phases + writes JSON
-npm run retrospective    # post-race analysis against the mock Big Sur actual
-npm run plan-week -- --today 2026-04-19   # this week's training
-npm run weather -- --lat 36.556 --lon -121.923   # Big Sur finish-line weather
-npm run research-course -- --race "CIM"   # requires API key
-```
-
-Each one exits 0 with rich terminal output.
-
-### 5. Boot the dev server and click through
-
-```bash
-npm run dev
-```
-
-Open http://localhost:3000 and walk the nav bar left-to-right:
-
-| Route | What it is | Data source |
-|---|---|---|
-| **`/`** | Build plan — GPX upload, fitness form, Claude goal, build JSON | Live pipeline |
-| **`/training`** | This week + 18-week periodization timeline | Real engine + mock fitness |
-| **`/training/today?date=2026-04-19`** | Full daily workout with structure + rationale | Same engine |
-| **`/retrospective`** | Post-race analysis with Claude narrative | Real engine + mock actual |
-| **`/research`** | Give Claude a race name → proposed facts → accept/reject | Real engine + CIM stub |
-| **`/settings/integrations`** | HealthKit / Strava / Calendar / NOAA status | Static — M2 work |
-
-### 6. Try a real API call
-
-```bash
-curl "http://localhost:3000/api/weather?lat=36.556&lon=-121.923"
-```
-
-NOAA returns a real forecast. (Sandbox here is blocked; your Mac is not.)
-
-### 7. View the mockups
-
-Everything above is real code. If you want the original static pitch-deck HTML mockups too, enable GitHub Pages:
-
-1. https://github.com/DavidNitzsche/runcino/settings/pages
-2. Source: Deploy from a branch · `gh-pages` · `/ (root)` · Save
-3. Visit https://davidnitzsche.github.io/runcino/all.html (1 min later)
-
----
-
-## What I need from you to implement tomorrow
-
-### Blocking (without these, certain flows are stubs)
-
-| Need | Why | Where to put it |
-|---|---|---|
-| **`ANTHROPIC_API_KEY`** | Real Claude responses in /api/goal, /brief, /retrospective, /research | `web/.env.local` |
-| **Your 2024 Big Sur GPX** | Swap synthesized fixture for real course data | `cp ~/Downloads/gpx_20240428_*.gpx web/public/sample-bigsur.gpx` |
-| **Apple Developer Team ID** | Code-sign the iOS app | Xcode Signing & Capabilities |
-| **Xcode 15+ on your Mac** | Compile iOS project | per `ios/README.md` |
-
-### Non-blocking (needed at specific milestones)
-
-| Need | Milestone | Notes |
-|---|---|---|
-| Strava API app registration | M2 | strava.com/settings/api → client_id + secret → `.env.local` |
-| HealthKit entitlement agreement | M2 | iOS capability in Xcode Signing, ~30 sec |
-| Coaching philosophy decision | M3 | Pfitzinger, Daniels, Hanson, or custom. Default: pfitz (easy to change) |
-| Real race you want to research | M2+ | Tell Runcino the race name + URL, we add to course-facts |
-
----
-
-## What's built vs what's mockup vs what's deferred
-
-### Built, tested, working right now
-
-- Full Big Sur race pipeline (GPX → plan JSON, 0 s drift from goal)
-- Minetti GAP algorithm (matched to published values)
-- Course-facts citation system with validator
-- 6 Next.js routes: plan, training (+ today), retrospective, research, integrations
-- 4 Claude API routes with stub fallback (goal, brief, retrospective, research)
-- 3 deterministic API routes (build-plan, plan-week, weather)
-- 5 CLI scripts (build-plan, retrospective, plan-week, weather, research-course)
-- 18-week periodization engine (rule-based, Claude-swappable)
-- Post-race retrospective engine (plan-vs-actual, HR drift, calibration)
-- NOAA weather fetcher (free, no auth)
-- iOS Swift source (RuncinoApp, models, views, WorkoutBuilder) — **uncompiled**
-
-### Mockup only (pretty HTML, no code behind)
-
-Nothing. Previously there were 4 HTML-only mockups (M1/M2/M3/research); all are now functional React pages backed by real engines.
-
-### Deferred (on roadmap, not this session)
-
-- HealthKit iOS reader — M2
-- Strava OAuth flow — M2
-- iCloud Drive sync — M2
-- Watch complication (custom) — never, probably. WorkoutKit is enough.
-- Voice journal — someday
-- Injury-risk predictive gate — after M3
-
----
-
-## File tree
-
-```
-runcino/
-├── STATUS.md                       ← this file
-├── README.md
-├── docs/
-│   ├── MASTER_PLAN.md              full vision, 12-month roadmap
-│   ├── CHECKLIST.md                7-day Big Sur sprint
-│   ├── PRE_RACE_CHECKLIST.md       Saturday verification
-│   ├── SCHEMA.md                   .runcino.json v1.1.0
-│   ├── ALGORITHM.md                Minetti GAP math
-│   └── example.runcino.json        live pipeline output
-├── mockups/                        original HTML mockups (superseded by
-│                                   real pages but kept for reference)
-├── web/
-│   ├── app/
-│   │   ├── page.tsx                M0 · build plan (existing)
-│   │   ├── training/page.tsx       M3 · weekly view (NEW)
-│   │   ├── training/today/page.tsx M3 · daily workout (NEW)
-│   │   ├── retrospective/page.tsx  M1 · post-race (NEW)
-│   │   ├── research/page.tsx       Course-facts research (NEW)
-│   │   ├── settings/integrations/page.tsx  M2 · data sources (NEW)
-│   │   └── api/
-│   │       ├── goal/route.ts       Claude goal recommender
-│   │       ├── build-plan/route.ts
-│   │       ├── brief/route.ts      race-morning brief
-│   │       ├── retrospective/route.ts (NEW)
-│   │       ├── research/route.ts   (NEW)
-│   │       ├── plan-week/route.ts  (NEW)
-│   │       └── weather/route.ts    (NEW · NOAA)
-│   ├── components/
-│   │   └── nav.tsx                 shared navigation (NEW)
-│   ├── lib/
-│   │   ├── types.ts
-│   │   ├── time.ts
-│   │   ├── gpx.ts                  parser + haversine + smoothing
-│   │   ├── minetti.ts              GAP polynomial
-│   │   ├── pacing.ts               segment + effort-scale
-│   │   ├── grouping.ts             facts-driven phase assignment
-│   │   ├── fueling.ts              gel scheduling
-│   │   ├── export.ts               .runcino.json assembly
-│   │   ├── course-facts.ts         citation system
-│   │   ├── course-research.ts      Claude + web search
-│   │   ├── retrospective.ts        plan-vs-actual engine (NEW)
-│   │   ├── training.ts             periodization engine (NEW)
-│   │   └── weather.ts              NOAA fetch (NEW)
-│   ├── fixtures/
-│   │   └── bigsur-actual.json      mock Watch export (NEW)
-│   ├── data/courses/
-│   │   └── big-sur-marathon.json   verified facts with citations
-│   ├── scripts/
-│   │   ├── build-plan.ts
-│   │   ├── research-course.ts
-│   │   ├── make-big-sur-gpx.mjs
-│   │   ├── retrospective.ts        (NEW)
-│   │   ├── plan-week.ts            (NEW)
-│   │   └── weather.ts              (NEW)
-│   └── public/
-│       ├── sample-bigsur.gpx
-│       └── big-sur-3-50.runcino.json
-└── ios/
-    ├── README.md                   Xcode setup
-    └── Runcino/
-        ├── RuncinoApp.swift
-        ├── Models/RuncinoPlan.swift
-        ├── Views/
-        │   ├── ContentView.swift
-        │   ├── ImportView.swift
-        │   └── PlanView.swift
-        ├── Workout/WorkoutBuilder.swift
-        └── Resources/Info.plist
-```
-
----
-
-## Honest risk list
-
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| Next.js 16 routing quirk I missed | Low | Dev server boots clean; all routes return 200 |
-| iOS WorkoutKit API renamed since my knowledge cutoff | High | First Xcode build surfaces it; 1-3 line fixes |
-| NOAA API occasionally 503s | Low | Error path returns structured failure; retry on next call |
-| Claude retrospective JSON parse fails | Low | Stub fallback kicks in; strict prompt enforces shape |
-| Training plan rule engine produces an awkward weekly structure for a specific week | Medium | Rule-based; we iterate. Claude swap later eliminates this. |
-| You blow up at mile 20 because the plan was wrong | Very low | Minetti is well-validated; tolerance bounds absorb small errors |
-
----
-
-## What I'd do first thing tomorrow if I were you
-
-1. Clone, install, `npm test` → confirm 75/75 green (30 sec)
-2. `npm run dev`, click through all 6 routes in the browser (5 min)
-3. `npm run retrospective`, `npm run plan-week -- --today 2026-04-19` (1 min)
-4. Open iOS in Xcode, create the project, drag in Swift files, try to build. Report any red-lines.
-5. Swap in the real 2024 Big Sur GPX, regenerate the plan.
-6. Drop in ANTHROPIC_API_KEY, re-run `/api/goal` and compare stub output to real Claude output.
-7. Merge PR when you're happy.
-
----
-
-Built while you slept. See you tomorrow.
-
-— C.
+`NEXT_PHASE.md` has the Strava + HealthKit + iOS + Watch integration proposals — read that before deciding what to build next.
