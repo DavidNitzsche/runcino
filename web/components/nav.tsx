@@ -1,69 +1,64 @@
+/**
+ * Top nav — mirrors the dark Runcino design system from designs/runcino.css.
+ * Tabs map to Next.js routes; pills indicate milestones not yet shipped.
+ */
+
 import Link from 'next/link';
 
-export function Nav({ active }: { active?: 'plan' | 'retrospective' | 'training' | 'research' | 'settings' | 'overview' }) {
-  const links: Array<{ href: string; key: string; label: string; pill?: string }> = [
-    { href: '/',                        key: 'plan',          label: 'Build plan' },
-    { href: '/training',                key: 'training',      label: 'Training' , pill: 'M3' },
-    { href: '/retrospective',           key: 'retrospective', label: 'Retrospective', pill: 'M1' },
-    { href: '/research',                key: 'research',      label: 'Research' },
-    { href: '/settings/integrations',   key: 'settings',      label: 'Data' , pill: 'M2' },
-    { href: '/overview',                key: 'overview',      label: 'Overview' },
-  ];
+type NavKey = 'races' | 'training' | 'retrospective' | 'research' | 'data';
+
+const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
+  { key: 'races',         href: '/races',                    label: 'Races' },
+  { key: 'training',      href: '/training',                 label: 'Training',     pill: 'M3' },
+  { key: 'retrospective', href: '/retrospective',            label: 'Retrospective', pill: 'M1' },
+  { key: 'research',      href: '/research',                 label: 'Research' },
+  { key: 'data',          href: '/settings/integrations',    label: 'Data',         pill: 'M2' },
+];
+
+export function Nav({ active }: { active?: NavKey }) {
   return (
-    <nav style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '20px 0',
-      borderBottom: '1px solid var(--color-line)',
-    }}>
-      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
-        <div className="brand-mark">R</div>
-        <span className="font-display" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em', color: 'var(--color-ink)' }}>Runcino</span>
-      </Link>
-      <div style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14 }}>
-        {links.map(l => {
-          const isActive = l.key === active;
-          return (
-            <Link key={l.key} href={l.href} style={{
-              color: isActive ? 'var(--color-terracotta)' : 'var(--color-ink-2)',
-              textDecoration: 'none',
-              fontWeight: isActive ? 600 : 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              {l.label}
-              {l.pill && (
+    <div className="nav">
+      <div className="nav-l">
+        <Link href="/races" className="brand">R</Link>
+        <div className="tabs">
+          {TABS.map(t => (
+            <Link
+              key={t.key}
+              href={t.href}
+              className={`tab${t.key === active ? ' active' : ''}`}
+            >
+              {t.label}
+              {t.pill && (
                 <span style={{
-                  padding: '2px 6px',
-                  background: 'var(--color-paper-2)',
+                  marginLeft: 6,
+                  padding: '1px 5px',
                   borderRadius: 4,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: 'var(--color-ink-3)',
-                }}>{l.pill}</span>
+                  background: 'var(--color-l3)',
+                  color: 'var(--color-t3)',
+                  fontFamily: 'var(--font-data)',
+                  fontSize: 8.5,
+                  letterSpacing: '1.2px',
+                  fontWeight: 700,
+                }}>{t.pill}</span>
               )}
             </Link>
-          );
-        })}
+          ))}
+        </div>
       </div>
-    </nav>
+      <div className="nav-r">
+        <div className="nav-ic" title="Search">⌕</div>
+        <div className="nav-ic" title="Notifications">◎</div>
+        <div className="avatar" />
+      </div>
+    </div>
   );
 }
 
-export function Footer({ tag }: { tag?: string }) {
+export function Caption({ left, right }: { left?: string; right?: string }) {
   return (
-    <footer style={{
-      padding: '32px 0',
-      borderTop: '1px solid var(--color-line)',
-      color: 'var(--color-ink-3)',
-      fontSize: 13,
-      display: 'flex',
-      justifyContent: 'space-between',
-    }}>
-      <div>Runcino · localhost · personal build</div>
-      <div>{tag ?? 'v0.1.0'}</div>
-    </footer>
+    <div className="caption">
+      <span>{left ?? 'Runcino · localhost'}</span>
+      <b>{right ?? 'v0.1 · M0'}</b>
+    </div>
   );
 }

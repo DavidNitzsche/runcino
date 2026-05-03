@@ -10,7 +10,15 @@
  */
 
 import bigSur from '../data/courses/big-sur-marathon.json';
+import sombreroHalf from '../data/courses/sombrero-half.json';
 import type { GpxTrack } from './types';
+
+/** Slugs of courses with curated facts files. Add a new entry here +
+ *  drop a JSON in data/courses/ to register a new race with first-class
+ *  landmark/phase support. Anything else falls through to synthesized
+ *  facts derived from the uploaded GPX. */
+export const REGISTERED_COURSES = ['big-sur-marathon', 'sombrero-half'] as const;
+export type RegisteredCourseSlug = typeof REGISTERED_COURSES[number];
 
 export interface SourceCitation {
   url: string;
@@ -72,18 +80,65 @@ export interface CourseFacts {
   warnings: Record<string, string>;
 }
 
-/** Strongly-typed access to a registered course. */
-export function getCourseFacts(slug: 'big-sur-marathon'): CourseFacts {
+/** Returns the curated facts file for a known course, or null if the slug
+ *  is unrecognized — callers can then fall back to synthesizeCourseFacts(). */
+export function getCourseFacts(slug: string): CourseFacts | null {
   switch (slug) {
-    case 'big-sur-marathon':
-      return bigSur as CourseFacts;
-    default:
-      throw new Error(`Unknown course: ${slug}`);
+    case 'big-sur-marathon': return bigSur as CourseFacts;
+    case 'sombrero-half':    return sombreroHalf as CourseFacts;
+    default:                 return null;
   }
 }
 
+/** Build a minimal CourseFacts object from a parsed GPX + user-supplied
+ *  metadata. Used when the user types in a brand-new race that doesn't
+ *  yet have a curated facts file. The auto-grouping in groupPhases will
+ *  invent geometry-based phase labels; landmarks are empty (we never
+ *  invent landmark names). */
+export function synthesizeCourseFacts(
+  track: GpxTrack,
+  meta: { name: string; slug: string; date: string; type?: 'point_to_point' | 'loop' | 'out_and_back' }
+): CourseFacts {
+  const distMi = track.totalDistanceM / 1609.344;
+  const isLoop = meta.type === 'loop' || isLoopShape(track);
+  return {
+    race: {
+      name: meta.name,
+      slug: meta.slug,
+      description: `${meta.name} (custom course — synthesized from uploaded GPX).`,
+      course_type: meta.type ?? (isLoop ? 'loop' : 'point_to_point'),
+      typical_date: meta.date,
+      expected_facts: {
+        distance_mi: Math.round(distMi * 100) / 100,
+        distance_m: Math.round(track.totalDistanceM),
+        total_gain_ft: Math.round(track.smoothedGainFt),
+        total_loss_ft: Math.round(track.smoothedLossFt),
+        net_ft: Math.round(track.smoothedGainFt - track.smoothedLossFt),
+      },
+      // Permissive tolerances so the synthesized "expected" never errors
+      // its own GPX out — this validation is meaningful only for curated
+      // courses where expected_facts come from primary sources.
+      expected_tolerances: { distance_mi: 99, gain_ft: 99999, loss_ft: 99999 },
+      sources: [],
+    },
+    phases: [],     // empty → groupPhases falls back to geometric labels
+    landmarks: [],  // never invent landmark names
+    notes_from_sources: {},
+    warnings: { synthesized: 'Auto-generated from uploaded GPX. Add a curated facts file to register this course first-class.' },
+  };
+}
+
+function isLoopShape(track: GpxTrack): boolean {
+  if (track.points.length < 2) return false;
+  const a = track.points[0];
+  const b = track.points[track.points.length - 1];
+  // Compare lat/lon directly: a loop closes within ~0.005° (~500 m at most latitudes)
+  return Math.abs(a.lat - b.lat) < 0.005 && Math.abs(a.lon - b.lon) < 0.005;
+}
+
 /** Return only landmarks whose sources include at least one primary_source_verified citation. */
-export function shippableLandmarks(facts: CourseFacts): LandmarkFact[] {
+export function shippableLandmarks(facts: CourseFacts | null): LandmarkFact[] {
+  if (!facts) return [];
   return facts.landmarks.filter(l =>
     l.sources.some(s => s.confidence === 'primary_source_verified')
   );

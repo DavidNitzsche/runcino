@@ -45,7 +45,16 @@ Warm, direct, a little wry. Like a coach who's watched you train for a year and 
 `;
 
 type GoalRequestBody = {
-  courseSlug: 'big-sur-marathon';
+  courseSlug: string;
+  /** When courseSlug isn't a registered course, the caller passes the
+   *  pre-parsed track stats so the goal recommender still has a course
+   *  to talk about. */
+  customCourse?: {
+    name: string;
+    distance_mi: number;
+    total_gain_ft: number;
+    total_loss_ft: number;
+  } | null;
   fitness: {
     baselineName: string;
     baselineFinish: string;
@@ -108,7 +117,33 @@ export async function POST(req: Request) {
     return new Response('Invalid JSON', { status: 400 });
   }
 
+  // For unregistered courses, the caller passes customCourse stats so we
+  // still have something concrete to give Claude. The shape mirrors the
+  // course_facts subset Claude actually reads.
   const facts = getCourseFacts(body.courseSlug);
+  const courseInfo = facts
+    ? {
+        name: facts.race.name,
+        distance_mi: facts.race.expected_facts.distance_mi,
+        total_gain_ft: facts.race.expected_facts.total_gain_ft,
+        total_loss_ft: facts.race.expected_facts.total_loss_ft,
+        phases: facts.phases.map(p => ({
+          label: p.label,
+          start_mi: p.start_mi,
+          end_mi: p.end_mi,
+          expected_mean_grade_pct: p.expected_mean_grade_pct,
+          expected_gain_ft: p.expected_gain_ft,
+        })),
+      }
+    : body.customCourse
+      ? { ...body.customCourse, phases: [] }
+      : null;
+  if (!courseInfo) {
+    return new Response(
+      'Unknown courseSlug and no customCourse provided',
+      { status: 400 }
+    );
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -123,19 +158,7 @@ export async function POST(req: Request) {
 
   const client = new Anthropic({ apiKey });
   const userPayload = {
-    course_facts: {
-      name: facts.race.name,
-      distance_mi: facts.race.expected_facts.distance_mi,
-      total_gain_ft: facts.race.expected_facts.total_gain_ft,
-      total_loss_ft: facts.race.expected_facts.total_loss_ft,
-      phases: facts.phases.map(p => ({
-        label: p.label,
-        start_mi: p.start_mi,
-        end_mi: p.end_mi,
-        expected_mean_grade_pct: p.expected_mean_grade_pct,
-        expected_gain_ft: p.expected_gain_ft,
-      })),
-    },
+    course_facts: courseInfo,
     fitness: body.fitness,
   };
 

@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Designs static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "designs", "-l", "4040"],
+      "port": 4040,
+      "autoPort": true
+    },
+    {
+      "name": "Runcino web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "web", "run", "dev"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

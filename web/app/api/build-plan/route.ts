@@ -12,6 +12,7 @@ import { assemblePlan } from '../../../lib/export';
 import {
   getCourseFacts,
   shippableLandmarks,
+  synthesizeCourseFacts,
   validateGpxAgainstCourse,
 } from '../../../lib/course-facts';
 import { formatHMS } from '../../../lib/time';
@@ -19,7 +20,13 @@ import type { FitnessSummary } from '../../../lib/types';
 
 type Body = {
   gpxText: string;
-  courseSlug: 'big-sur-marathon';
+  /** A registered course slug ('big-sur-marathon', 'sombrero-half') OR a
+   *  custom slug for a brand-new race the user just typed in. When the
+   *  slug isn't recognized, raceName + raceDate must be supplied and the
+   *  facts are synthesized from the GPX. */
+  courseSlug: string;
+  /** Required when courseSlug is unrecognized; ignored otherwise. */
+  raceName?: string;
   raceDate: string;
   goalFinishS: number;
   strategy: 'even_effort' | 'even_split' | 'negative_split';
@@ -59,13 +66,25 @@ export async function POST(req: Request) {
     return new Response('Invalid goalFinishS', { status: 400 });
   }
 
-  const facts = getCourseFacts(body.courseSlug);
-
   let track;
   try {
     track = parseGpx(body.gpxText);
   } catch (err) {
     return new Response(`GPX parse error: ${err instanceof Error ? err.message : err}`, { status: 400 });
+  }
+
+  // Look up the registered course; if unknown, synthesize facts from the
+  // GPX so the user can drop in a brand-new race without pre-registration.
+  let facts = getCourseFacts(body.courseSlug);
+  if (!facts) {
+    if (!body.raceName) {
+      return new Response('raceName required for custom (unregistered) courseSlug', { status: 400 });
+    }
+    facts = synthesizeCourseFacts(track, {
+      name: body.raceName,
+      slug: body.courseSlug,
+      date: body.raceDate,
+    });
   }
 
   const check = validateGpxAgainstCourse(track, facts);
@@ -77,7 +96,12 @@ export async function POST(req: Request) {
     segmentDistanceM: 800,
   };
   const segments = buildSegments(track, pacingInput);
-  const phases = groupPhases(segments, { courseFacts: facts });
+  // Synthesized facts have empty phases[] — fall back to geometric grouping
+  // so a brand-new course still gets a sensible 5-6 phase breakdown.
+  const phases = groupPhases(
+    segments,
+    facts.phases.length > 0 ? { courseFacts: facts } : {}
+  );
   const aidStationMiles = facts.landmarks
     .filter(l => l.kind === 'aid_station')
     .map(l => l.at_mi);
@@ -112,7 +136,7 @@ export async function POST(req: Request) {
   };
 
   const plan = assemblePlan({
-    race: { name: facts.race.name, date: body.raceDate },
+    race: { name: body.raceName ?? facts.race.name, date: body.raceDate },
     track,
     pacing: pacingInput,
     phases,
@@ -126,7 +150,8 @@ export async function POST(req: Request) {
   const planJsonText = JSON.stringify(plan, null, 2);
 
   const summary = {
-    raceName: facts.race.name,
+    raceName: body.raceName ?? facts.race.name,
+    courseSlug: body.courseSlug,
     goalDisplay: formatHMS(body.goalFinishS),
     phases: phases.map(p => ({
       label: p.label,
