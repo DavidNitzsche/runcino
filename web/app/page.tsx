@@ -16,7 +16,7 @@ import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
-import { rollupYear, weeklyMiles, currentWeekDays, funStats } from '../lib/strava-stats';
+import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -79,6 +79,10 @@ export default function OverviewPage() {
             <ThisWeekTile runs={runs} now={now} />
             <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
+
+          {runs && runs.length > 0 && (
+            <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
+          )}
 
           <FunStatsSection runs={runs} />
 
@@ -426,6 +430,121 @@ function TodayTile({ now, next, daysToNext, runs }: { now: Date; next: SavedRace
         )}
       </div>
     </div>
+  );
+}
+
+/* ── Training pulse ─────────────────────────────────────────
+   "Living" training summary that adapts to the runner's actual
+   state: phase chip (BUILDING / TAPER / etc), 8-week mileage
+   trend, week-over-week delta, long-run progression, quality-
+   day count this week. Lives between Today and Fun Stats so
+   the dashboard always tells you "where you're at" before
+   diving into vanity numbers. */
+function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import('../lib/strava-activities').NormalizedActivity[] }) {
+  const weeks = weeklyMiles(runs, 8);
+  const max = Math.max(...weeks.map(w => w.miles), 1);
+  const phaseColor: Record<TrainingPulse['phase'], string> = {
+    'TAPER':       'var(--color-attention)',
+    'PEAK':        'var(--color-attention)',
+    'RACE MONTH':  'var(--color-attention)',
+    'BUILDING':    'var(--color-success)',
+    'MAINTAINING': 'var(--color-corporate)',
+    'DETRAINING':  'var(--color-warning)',
+    'OFF SEASON':  'var(--color-t3)',
+  };
+  const phaseDescriptor = (() => {
+    if (pulse.phase === 'TAPER')        return pulse.daysToRace === 0 ? 'Race day' : pulse.daysToRace === 1 ? 'Race tomorrow' : `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'}`;
+    if (pulse.phase === 'PEAK')         return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — peak block`;
+    if (pulse.phase === 'RACE MONTH')   return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'}`;
+    if (pulse.phase === 'BUILDING')     return 'Mileage trending up over the last 4 weeks';
+    if (pulse.phase === 'DETRAINING')   return 'Mileage off — recovery, injury, or a break';
+    if (pulse.phase === 'OFF SEASON')   return 'No recent runs — off-season or just back';
+    return 'Holding steady — base maintained';
+  })();
+  const deltaText = pulse.deltaPct == null
+    ? null
+    : (pulse.deltaPct > 0 ? '+' : '') + Math.round(pulse.deltaPct * 100) + '%';
+  const deltaColor = pulse.deltaPct == null ? 'var(--color-t3)'
+    : pulse.deltaPct > 0.10 ? 'var(--color-success)'
+    : pulse.deltaPct < -0.15 ? 'var(--color-warning)'
+    : 'var(--color-t2)';
+
+  return (
+    <>
+      <SectionHeader title="Training pulse" sub={phaseDescriptor} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+        {/* Phase + 8-week mileage trend */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 180 }}>
+          <div className="tile-h">
+            <div>
+              <div className="tile-sub">Phase</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.01em', color: phaseColor[pulse.phase], marginTop: 4, lineHeight: 1, textTransform: 'uppercase' }}>
+                {pulse.phase}
+              </div>
+            </div>
+            <span className="chip" style={{ fontSize: 9 }}>LAST 8 WEEKS</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 56, flex: 1 }}>
+            {weeks.map((w, i) => {
+              const isRecent = i >= 4;
+              const h = w.miles > 0 ? Math.max(4, (w.miles / max) * 56) : 0;
+              return (
+                <div key={w.weekStart} title={`Week of ${w.weekStart}: ${w.miles} mi`} style={{
+                  flex: 1,
+                  height: h ? `${h}px` : '4px',
+                  background: h ? (isRecent ? 'var(--color-corporate)' : 'var(--color-l4)') : 'var(--color-l3)',
+                  borderRadius: 2,
+                }} />
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+            <span>{weeks[0]?.weekStart ? new Date(weeks[0].weekStart + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase() : ''}</span>
+            <span>NOW</span>
+          </div>
+        </div>
+
+        {/* Weekly avg + delta vs prior 4w */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+          <div className="tile-sub">Weekly avg</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {pulse.weeklyAvg.toFixed(1)}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 4 }}>mi</small>
+          </div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 4 weeks</div>
+          {deltaText && (
+            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: deltaColor }}>
+              {deltaText} VS PRIOR 4 WEEKS
+            </div>
+          )}
+        </div>
+
+        {/* Long run trend */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+          <div className="tile-sub">Long run avg</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {pulse.longRunAvgMi != null ? pulse.longRunAvgMi.toFixed(1) : '—'}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 4 }}>mi</small>
+          </div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Longest 4 / last 4 weeks</div>
+          {pulse.longestRecentMi > 0 && (
+            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t2)' }}>
+              PEAK {pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS
+            </div>
+          )}
+        </div>
+
+        {/* Quality day count this week */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+          <div className="tile-sub">Quality days</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: pulse.qualityDaysThisWeek > 0 ? 'var(--color-attention)' : 'var(--color-t3)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {pulse.qualityDaysThisWeek}
+          </div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Workouts logged this week</div>
+          <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+            STRAVA WORKOUT TYPE
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

@@ -123,6 +123,106 @@ export function currentWeekDays(activities: NormalizedActivity[]): Array<{ date:
   return out;
 }
 
+/** Training "pulse" — phase inference + recent vs prior mileage delta +
+ *  long-run progression + quality-day count. Drives the Training tile
+ *  on the Overview page so the dashboard breathes with state instead of
+ *  showing the same blank chips year-round.
+ *
+ *  Phase rules (race-aware first, then trend-based):
+ *    daysToRace ≤ 7         → TAPER
+ *    daysToRace 8-21        → PEAK
+ *    daysToRace 22-56       → RACE MONTH
+ *    Else, by 4w/4w mileage delta:
+ *      > +10 %              → BUILDING
+ *      < −15 %              → DETRAINING
+ *      otherwise            → MAINTAINING
+ */
+export interface TrainingPulse {
+  phase: 'TAPER' | 'PEAK' | 'RACE MONTH' | 'BUILDING' | 'MAINTAINING' | 'DETRAINING' | 'OFF SEASON';
+  recent4wkMi: number;          // sum of last 4 weeks
+  prior4wkMi: number;           // sum of weeks 4–7 ago
+  deltaPct: number | null;      // recent vs prior (null if prior is 0)
+  weeklyAvg: number;            // last 4 weeks avg
+  longRunAvgMi: number | null;  // avg of last 4 longest weekly runs
+  longestRecentMi: number;      // longest run last 28 days
+  qualityDaysThisWeek: number;  // workout_type === 3 in current calendar week
+  daysToRace: number | null;
+  raceName: string | null;
+}
+
+export function trainingPulse(
+  activities: NormalizedActivity[],
+  nextRaceDate: string | null,
+  nextRaceName: string | null,
+): TrainingPulse {
+  const weeks = weeklyMiles(activities, 8);
+  const recent4 = weeks.slice(-4);
+  const prior4  = weeks.slice(0, 4);
+  const recent4wkMi = Math.round(recent4.reduce((s, w) => s + w.miles, 0) * 10) / 10;
+  const prior4wkMi  = Math.round(prior4.reduce((s, w) => s + w.miles, 0) * 10) / 10;
+  const deltaPct = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
+  const weeklyAvg = Math.round((recent4wkMi / 4) * 10) / 10;
+
+  // Last 28 days of activities for long-run analysis
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 28);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+  const last28 = activities.filter(a => a.date >= cutoffISO);
+  const longestRecentMi = last28.length > 0 ? Math.round(Math.max(...last28.map(a => a.distanceMi)) * 10) / 10 : 0;
+
+  // Long-run avg: take the longest run from each of the last 4 weeks
+  const longestPerWeek = recent4.map(w => {
+    const start = w.weekStart;
+    const endDate = new Date(start); endDate.setDate(endDate.getDate() + 7);
+    const end = endDate.toISOString().slice(0, 10);
+    const inWeek = activities.filter(a => a.date >= start && a.date < end);
+    return inWeek.length > 0 ? Math.max(...inWeek.map(a => a.distanceMi)) : 0;
+  }).filter(mi => mi > 0);
+  const longRunAvgMi = longestPerWeek.length > 0
+    ? Math.round((longestPerWeek.reduce((s, m) => s + m, 0) / longestPerWeek.length) * 10) / 10
+    : null;
+
+  // Current calendar-week quality day count (Strava workout_type === 3)
+  const wkStart = (() => {
+    const d = new Date(today);
+    const dow = d.getDay();
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+    return d.toISOString().slice(0, 10);
+  })();
+  const qualityDaysThisWeek = activities.filter(a => a.date >= wkStart && a.workoutType === 3).length;
+
+  // Days to next race
+  let daysToRace: number | null = null;
+  if (nextRaceDate) {
+    const target = new Date(nextRaceDate + 'T12:00:00Z');
+    daysToRace = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  }
+
+  // Phase inference — race window first, then trend.
+  let phase: TrainingPulse['phase'];
+  if (daysToRace != null && daysToRace >= 0 && daysToRace <= 7)       phase = 'TAPER';
+  else if (daysToRace != null && daysToRace > 7 && daysToRace <= 21)  phase = 'PEAK';
+  else if (daysToRace != null && daysToRace > 21 && daysToRace <= 56) phase = 'RACE MONTH';
+  else if (recent4wkMi === 0 && prior4wkMi === 0)                     phase = 'OFF SEASON';
+  else if (deltaPct != null && deltaPct > 0.10)                       phase = 'BUILDING';
+  else if (deltaPct != null && deltaPct < -0.15)                      phase = 'DETRAINING';
+  else                                                                 phase = 'MAINTAINING';
+
+  return {
+    phase,
+    recent4wkMi,
+    prior4wkMi,
+    deltaPct,
+    weeklyAvg,
+    longRunAvgMi,
+    longestRecentMi,
+    qualityDaysThisWeek,
+    daysToRace,
+    raceName: nextRaceName,
+  };
+}
+
 /** Avg HR per week (mile-weighted) for the last `weeks` weeks. */
 export function weeklyAvgHr(activities: NormalizedActivity[], weeks = 12): Array<{ weekStart: string; avgHr: number | null }> {
   const buckets = weeklyMiles(activities, weeks).map(b => ({ ...b, avgHr: null as number | null }));
