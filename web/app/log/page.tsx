@@ -83,12 +83,23 @@ export default function LogPage() {
               that distance." Good enough as a top-level summary. */}
           {runs.length > 0 && <PRShelf prs={prs} />}
 
-          {/* Race results inline — these are the rows that ALSO live in
-              /races. Surface them here too so /log is the one place to
-              scan everything that happened. */}
-          {races.filter(r => r.actualResult).length > 0 && (
-            <RacesShelf races={races.filter(r => r.actualResult)} />
-          )}
+          {/* Race results — merge the two sources so every race YTD
+              shows up: (a) saved races with plans + recorded results,
+              (b) Strava activities flagged workout_type=1 that don\'t
+              correspond to a saved race. Dedup is by stravaActivityId. */}
+          {(() => {
+            const savedActIds = new Set(
+              races.filter(r => r.actualResult?.stravaActivityId).map(r => r.actualResult!.stravaActivityId!),
+            );
+            const savedRows: RaceRow[] = races
+              .filter(r => r.actualResult)
+              .map(r => ({ kind: 'saved', race: r, date: r.meta.date }));
+            const stravaOnly: RaceRow[] = runs
+              .filter(r => r.workoutType === 1 && !savedActIds.has(r.id))
+              .map(a => ({ kind: 'strava', activity: a, date: a.date }));
+            const allRows = [...savedRows, ...stravaOnly].sort((a, b) => b.date.localeCompare(a.date));
+            return allRows.length > 0 ? <RacesShelf rows={allRows} /> : null;
+          })()}
 
           {sortedRuns.length > 0 && <RunFeed runs={sortedRuns} />}
 
@@ -154,10 +165,19 @@ function PRShelf({ prs }: { prs: ReturnType<typeof naivePRs> }) {
   );
 }
 
-function RacesShelf({ races }: { races: SavedRace[] }) {
+/** A unified row in the race-results shelf. Either a saved race
+ *  (has plan + goal + delta-vs-goal) or a Strava activity flagged
+ *  workout_type=1 with no saved plan (just date / distance / finish). */
+type RaceRow =
+  | { kind: 'saved';  race: SavedRace; date: string }
+  | { kind: 'strava'; activity: NormalizedActivity; date: string };
+
+function RacesShelf({ rows }: { rows: RaceRow[] }) {
+  const total = rows.length;
+  const totalMi = rows.reduce((s, r) => s + (r.kind === 'saved' ? r.race.meta.distanceMi : r.activity.distanceMi), 0);
   return (
     <>
-      <SectionHeader title="Race results" sub={`${races.length} race${races.length === 1 ? '' : 's'} on the books`} />
+      <SectionHeader title="Race results" sub={`${total} race${total === 1 ? '' : 's'} this year · ${totalMi.toFixed(1)} race miles`} />
       <div className="tile" style={{ padding: 0, overflow: 'hidden', marginBottom: 10 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -171,40 +191,77 @@ function RacesShelf({ races }: { races: SavedRace[] }) {
             </tr>
           </thead>
           <tbody>
-            {races.map(r => {
-              const result = r.actualResult!;
-              const goalS = parseGoal(r.meta.goalDisplay);
-              const delta = goalS != null ? result.finishS - goalS : null;
-              return (
-                <tr key={r.slug} style={{ borderTop: '1px solid var(--color-l4)' }}>
-                  <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-                    {formatShort(r.meta.date)}
-                  </td>
-                  <td style={{ padding: '14px 0' }}>
-                    <Link href={`/races/${r.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{r.meta.name}</div>
-                    </Link>
-                    {result.isPR && <span className="chip chip--attention" style={{ marginTop: 4, fontSize: 8 }}>PR</span>}
-                  </td>
-                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                    {r.meta.distanceMi.toFixed(1)} mi
-                  </td>
-                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.meta.goalDisplay}
-                  </td>
-                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                    {result.finishDisplay}
-                  </td>
-                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
-                    {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtT(Math.abs(delta)))}
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map(r => r.kind === 'saved' ? <SavedRaceRow key={`s-${r.race.slug}`} race={r.race} /> : <StravaRaceRow key={`a-${r.activity.id}`} activity={r.activity} />)}
           </tbody>
         </table>
       </div>
     </>
+  );
+}
+
+function SavedRaceRow({ race }: { race: SavedRace }) {
+  const result = race.actualResult!;
+  const goalS = parseGoal(race.meta.goalDisplay);
+  const delta = goalS != null ? result.finishS - goalS : null;
+  return (
+    <tr style={{ borderTop: '1px solid var(--color-l4)' }}>
+      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+        {formatShort(race.meta.date)}
+      </td>
+      <td style={{ padding: '14px 0' }}>
+        <Link href={`/races/${race.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{race.meta.name}</div>
+        </Link>
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          {result.isPR && <span className="chip chip--attention" style={{ fontSize: 8 }}>PR</span>}
+          <span className="chip" style={{ fontSize: 8, background: 'rgba(0,143,236,.12)', color: 'var(--color-corporate)', borderColor: 'rgba(0,143,236,.3)' }}>PLAN</span>
+        </div>
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+        {race.meta.distanceMi.toFixed(1)} mi
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
+        {race.meta.goalDisplay}
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+        {result.finishDisplay}
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
+        {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtT(Math.abs(delta)))}
+      </td>
+    </tr>
+  );
+}
+
+function StravaRaceRow({ activity }: { activity: NormalizedActivity }) {
+  return (
+    <tr style={{ borderTop: '1px solid var(--color-l4)' }}>
+      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+        {formatShort(activity.date)}
+      </td>
+      <td style={{ padding: '14px 0' }}>
+        <Link href={`/runs/${activity.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{activity.name}</div>
+        </Link>
+        {activity.achievementCount > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <span className="chip chip--attention" style={{ fontSize: 8 }}>{activity.achievementCount}× ACHIEVE</span>
+          </div>
+        )}
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+        {activity.distanceMi.toFixed(1)} mi
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
+        —
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+        {fmtT(activity.movingTimeS)}
+      </td>
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
+        —
+      </td>
+    </tr>
   );
 }
 
