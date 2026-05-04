@@ -190,6 +190,16 @@ export default function NewRacePage() {
       }
       const data: BuildResult = await res.json();
       const plan = JSON.parse(data.planJsonText) as RuncinoPlan;
+      // If the user picked a canonical distance (Marathon / Half / 10K /
+      // 5K), use that as the headline distance instead of the GPX-
+      // measured value. GPS routinely measures a half at 13.16-13.25mi
+      // due to drift + tangent-cutting; the runner thinks of it as
+      // "13.1mi" and so should the app. The plan internals still use
+      // GPX distance for terrain pacing — that 0.5% gap is within noise.
+      const canonical = distanceId && distanceId !== 'custom'
+        ? DISTANCES.find(d => d.id === distanceId)?.mi
+        : null;
+      const headlineDistance = canonical ?? plan.race.distance_mi;
       const saved: SavedRace = {
         slug: data.summary.courseSlug,
         plan,
@@ -198,7 +208,7 @@ export default function NewRacePage() {
         meta: {
           name: data.summary.raceName,
           date: raceDate,
-          distanceMi: plan.race.distance_mi,
+          distanceMi: headlineDistance,
           goalDisplay: data.summary.goalDisplay,
           courseSlug: data.summary.courseSlug,
         },

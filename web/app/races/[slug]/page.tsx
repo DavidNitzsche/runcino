@@ -477,7 +477,7 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
   const scale = Math.min((W - 2 * padX) / spanLon, (H - 2 * padY) / spanLat);
   const offX = padX + ((W - 2 * padX) - spanLon * scale) / 2;
   const offY = padY + ((H - 2 * padY) - spanLat * scale) / 2;
-  const proj = (p: ParsedPoint) => [
+  const proj = (p: ParsedPoint): [number, number] => [
     offX + (p.lon - minLon) * cosLat * scale,
     offY + (maxLat - p.lat) * scale,
   ];
@@ -509,22 +509,80 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
   const endP = proj(points[points.length - 1]);
   const peakIdx = points.findIndex(p => p.cumMi >= peakMi);
   const peakP = peakIdx >= 0 ? proj(points[peakIdx]) : null;
+
+  // Pre-project every route point once. Used to figure out which side
+  // of each label dot has empty space, so we can place the label on
+  // that side instead of running the text into the route line.
+  const routePts: Array<[number, number]> = points.map(p => {
+    const r = proj(p); return [r[0], r[1]];
+  });
+
+  // For each anchor dot, pick the side (N/E/S/W) with the fewest route
+  // points within ~60px — that's the "empty" side, where the label
+  // goes. Cheap O(N) per anchor, runs once per render.
+  const startSide = pickEmptySide(startP, routePts, 60);
+  const endSide   = pickEmptySide(endP,   routePts, 60);
+  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 60) : 'E';
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
       {segs.map((s, i) => (
         <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round" />
       ))}
+
       <circle cx={startP[0]} cy={startP[1]} r="9" fill="#3EBD41" stroke="#0d1218" strokeWidth="3" />
-      <text x={startP[0]} y={startP[1] + 22} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#3EBD41" textAnchor="middle" fontWeight="700">START</text>
+      <SideLabel anchor={startP} side={startSide} text="START" color="#3EBD41" />
+
       <circle cx={endP[0]} cy={endP[1]} r="9" fill="#9013FE" stroke="#0d1218" strokeWidth="3" />
-      <text x={endP[0]} y={endP[1] - 14} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#9013FE" textAnchor="middle" fontWeight="700">FINISH</text>
+      <SideLabel anchor={endP} side={endSide} text="FINISH" color="#9013FE" />
+
       {peakP && (
         <>
           <circle cx={peakP[0]} cy={peakP[1]} r="7" fill="#FC4D54" stroke="#0d1218" strokeWidth="3" />
-          <text x={peakP[0] + 14} y={peakP[1] + 4} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#FC4D54" fontWeight="700">PEAK · {Math.round(peakFt)} FT</text>
+          <SideLabel anchor={peakP} side={peakSide} text={`PEAK · ${Math.round(peakFt)} FT`} color="#FC4D54" />
         </>
       )}
     </svg>
+  );
+}
+
+type Side = 'N' | 'E' | 'S' | 'W';
+
+/** Bucket nearby route points into N/E/S/W quadrants relative to the
+ *  anchor and pick the quadrant with the fewest hits — that's the
+ *  side with the most empty space, where the label can sit without
+ *  reading into the route. */
+function pickEmptySide(anchor: [number, number], routePts: Array<[number, number]>, radius: number): Side {
+  const counts: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
+  const [ax, ay] = anchor;
+  for (const [rx, ry] of routePts) {
+    const dx = rx - ax;
+    const dy = ry - ay;
+    if (Math.hypot(dx, dy) > radius) continue;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (dx >= 0) counts.E++; else counts.W++;
+    } else {
+      if (dy >= 0) counts.S++; else counts.N++;
+    }
+  }
+  // Pick the quadrant with the fewest route points. Tie-break order
+  // prefers cardinal sides users expect labels on (S for start,
+  // N for finish, E for peak — the caller's preferred order).
+  const order: Side[] = ['N', 'S', 'E', 'W'];
+  return order.slice().sort((a, b) => counts[a] - counts[b])[0];
+}
+
+function SideLabel({ anchor, side, text, color }: { anchor: [number, number]; side: Side; text: string; color: string }) {
+  const offset = 18;
+  let x = anchor[0], y = anchor[1], textAnchor: 'start' | 'middle' | 'end' = 'middle';
+  switch (side) {
+    case 'N': y = anchor[1] - offset; textAnchor = 'middle'; break;
+    case 'S': y = anchor[1] + offset + 4; textAnchor = 'middle'; break;
+    case 'E': x = anchor[0] + offset; y = anchor[1] + 4; textAnchor = 'start'; break;
+    case 'W': x = anchor[0] - offset; y = anchor[1] + 4; textAnchor = 'end'; break;
+  }
+  return (
+    <text x={x} y={y} fontFamily="JetBrains Mono, monospace" fontSize="11" fill={color} textAnchor={textAnchor} fontWeight="700">{text}</text>
   );
 }
 
@@ -701,11 +759,13 @@ function MileSplits({ race }: { race: SavedRace }) {
       }
     }
   }
-  // Tail partial mile
+  // Tail partial mile — labeled with the official race distance (the
+  // value in race.meta.distanceMi) instead of the raw GPX-measured
+  // remainder, so a half marathon shows "13.1" not "12.93".
   if (curMileTime > 0) {
     const len = cumMi - curMileStartMi;
     miles.push({
-      mi: Math.round(cumMi * 100) / 100,
+      mi: race.meta.distanceMi,
       phaseIdx: race.plan.phases.length - 1,
       phaseLabel: race.plan.phases[race.plan.phases.length - 1].label,
       paceS: curMileTime / Math.max(1e-9, len),
@@ -728,7 +788,7 @@ function MileSplits({ race }: { race: SavedRace }) {
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
-            <th style={{ textAlign: 'left', padding: '12px 18px', width: 60 }}>Mile</th>
+            <th style={{ textAlign: 'left', padding: '12px 18px', width: 96, whiteSpace: 'nowrap' }}>Mile</th>
             <th style={{ textAlign: 'left', padding: '12px 0' }}>Segment</th>
             <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Target</th>
             <th style={{ textAlign: 'right', padding: '12px 18px', width: 110 }}>Cumulative</th>
@@ -738,9 +798,11 @@ function MileSplits({ race }: { race: SavedRace }) {
         <tbody>
           {miles.map((m, i) => (
             <tr key={i} style={{ borderTop: '1px solid var(--color-l4)' }}>
-              <td style={{ padding: '14px 18px' }}>
-                <span style={{ display: 'inline-block', width: 5, height: 18, background: PHASE_COLORS[m.phaseIdx] ?? '#444', borderRadius: 1.5, marginRight: 10, verticalAlign: 'middle' }} />
-                <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)', fontWeight: 700 }}>{m.mi}</span>
+              <td style={{ padding: '14px 18px', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ display: 'inline-block', width: 5, height: 18, background: PHASE_COLORS[m.phaseIdx] ?? '#444', borderRadius: 1.5, flexShrink: 0 }} />
+                  <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)', fontWeight: 700 }}>{m.mi}</span>
+                </span>
               </td>
               <td style={{ padding: '14px 0', fontFamily: 'var(--font-data)', fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700 }}>
                 {m.phaseLabel}

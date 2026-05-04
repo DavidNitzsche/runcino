@@ -69,6 +69,42 @@ export function segmentCourse(
   return segments;
 }
 
+/** Hard pace bounds applied AFTER the strategy assigns per-segment
+ *  targets. Without this, Minetti's grade-adjusted pace produces
+ *  unrealistic targets on steep descents (like 5:45/mi for a 6:52
+ *  goal) — physically possible but tactically suicidal: a runner who
+ *  banks 60s of "free" speed on a 2-mile downhill blows their quads
+ *  before the next climb. Likewise we cap the upside so absurdly slow
+ *  uphill targets don't get baked in either. */
+const PACE_FLOOR_S_PER_MI = 60;   // never more than 60s/mi faster than flatPace
+const PACE_CEIL_S_PER_MI  = 120;  // never more than 120s/mi slower than flatPace
+
+/** Clamp every segment's pace into [flatPace - FLOOR, flatPace + CEIL]
+ *  and redistribute the surplus/deficit time across un-clamped segments
+ *  so the total expected time still equals input.goalFinishS. Iterates
+ *  until no segment is out of bounds (or budget runs out). */
+function clampAndRedistribute(segments: Segment[], flatPace: number, goalFinishS: number): void {
+  const floor = flatPace - PACE_FLOOR_S_PER_MI;
+  const ceil  = flatPace + PACE_CEIL_S_PER_MI;
+  for (let iter = 0; iter < 6; iter++) {
+    const free: Segment[] = [];
+    let dirty = false;
+    for (const seg of segments) {
+      if (seg.targetPaceSPerMi < floor) { seg.targetPaceSPerMi = floor; dirty = true; }
+      else if (seg.targetPaceSPerMi > ceil) { seg.targetPaceSPerMi = ceil; dirty = true; }
+      else free.push(seg);
+    }
+    if (!dirty) break;
+    const totalTime = segments.reduce((s, seg) => s + (seg.distanceM / M_PER_MI) * seg.targetPaceSPerMi, 0);
+    const deficit = goalFinishS - totalTime;
+    if (Math.abs(deficit) < 0.5) break;
+    const freeMi = free.reduce((s, seg) => s + seg.distanceM / M_PER_MI, 0);
+    if (freeMi <= 0) break;
+    const deltaPerMi = deficit / freeMi;
+    for (const seg of free) seg.targetPaceSPerMi += deltaPerMi;
+  }
+}
+
 /**
  * Mutates segments to fill `targetPaceSPerMi` according to the chosen
  * strategy and goal finish time.
@@ -83,6 +119,7 @@ export function applyStrategy(
 
   if (input.strategy === 'even_split') {
     for (const seg of segments) seg.targetPaceSPerMi = flatPace;
+    clampAndRedistribute(segments, flatPace, input.goalFinishS);
     return;
   }
 
@@ -99,6 +136,7 @@ export function applyStrategy(
     for (const seg of segments) {
       seg.targetPaceSPerMi = flatPace * seg.gaf * k;
     }
+    clampAndRedistribute(segments, flatPace, input.goalFinishS);
     return;
   }
 
@@ -138,6 +176,7 @@ export function applyStrategy(
     for (const seg of secondHalf) {
       seg.targetPaceSPerMi = secondFlat * seg.gaf * kSecond;
     }
+    clampAndRedistribute(segments, flatPace, input.goalFinishS);
     return;
   }
 
