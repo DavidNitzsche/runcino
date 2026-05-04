@@ -152,6 +152,11 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
 
           <PhaseCards race={race} />
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+            <WeatherTile points={points} />
+            <BriefTile race={race} />
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10, marginTop: 10 }}>
             <MileSplits race={race} />
             <FuelingTile race={race} />
@@ -591,6 +596,211 @@ function FuelingTile({ race }: { race: SavedRace }) {
       {f.notes && (
         <div style={{ marginTop: 12, padding: 12, background: 'var(--color-l2)', borderRadius: 8, fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5 }}>
           {f.notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Weather tile ────────────────────────────────────────────
+   Calls /api/weather with the GPX start lat/lon and renders
+   NOAA's first two forecast periods (typically race-day morning
+   and afternoon). Shows the start temperature, wind, and short
+   forecast — enough to inform the Claude brief below it. */
+type WeatherSummary = {
+  start_period: WeatherPeriod;
+  second_period: WeatherPeriod | null;
+  narrative: string;
+};
+type WeatherPeriod = {
+  name: string;
+  temperature_f: number;
+  wind_speed_mph_min: number | null;
+  wind_speed_mph_max: number | null;
+  wind_direction: string;
+  short_forecast: string;
+  precipitation_pct: number;
+};
+
+function WeatherTile({ points }: { points: ParsedPoint[] }) {
+  const [data, setData] = useState<WeatherSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const lat = points[0]?.lat;
+  const lon = points[0]?.lon;
+
+  async function fetchWeather() {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setErr('No GPX coordinates'); return;
+    }
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
+      if (!res.ok) throw new Error(await res.text());
+      setData(await res.json());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="tile">
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Race-day weather</div>
+          <div className="tile-lbl">{data ? `${Math.round(data.start_period.temperature_f)}°F · ${data.start_period.short_forecast}` : 'NOAA forecast'}</div>
+        </div>
+        <button className="btn btn--ghost" onClick={fetchWeather} disabled={loading}>
+          {loading ? 'Fetching…' : data ? '↻ Refresh' : '↓ Fetch forecast'}
+        </button>
+      </div>
+      {err && (
+        <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
+          {err}
+        </div>
+      )}
+      {data && (
+        <>
+          <PeriodRow p={data.start_period} primary />
+          {data.second_period && <PeriodRow p={data.second_period} />}
+          {data.narrative && (
+            <div style={{ marginTop: 8, padding: 12, background: 'var(--color-l2)', borderRadius: 8, fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.5 }}>
+              {data.narrative}
+            </div>
+          )}
+        </>
+      )}
+      {!data && !loading && !err && (
+        <div className="hint" style={{ padding: 14 }}>NOAA forecast is CONUS-only; Big Sur + Santa Clarita are covered. Fetch when you&apos;re within a week of race day for best accuracy.</div>
+      )}
+    </div>
+  );
+}
+
+function PeriodRow({ p, primary }: { p: WeatherPeriod; primary?: boolean }) {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '10px 14px',
+      background: primary ? 'var(--color-l2)' : 'transparent',
+      border: primary ? '1px solid var(--color-l4)' : '1px solid transparent',
+      borderTop: !primary ? '1px solid var(--color-l4)' : undefined,
+      borderRadius: primary ? 8 : 0,
+    }}>
+      <div>
+        <div className="tile-sub">{p.name}</div>
+        <div style={{ fontSize: 13, color: 'var(--color-t1)', marginTop: 4 }}>{p.short_forecast}</div>
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: primary ? 28 : 20, color: 'var(--color-t0)', letterSpacing: '-.02em', lineHeight: 1 }}>
+          {Math.round(p.temperature_f)}°
+        </div>
+        <div className="tile-sub" style={{ marginTop: 2 }}>
+          {p.wind_speed_mph_max != null ? `${p.wind_direction} ${p.wind_speed_mph_max} mph` : 'calm'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Claude race-morning brief tile ─────────────────────────
+   Calls /api/brief with the plan's phases + a weather text
+   description. Returns a short narrative + optional pace deltas
+   per phase. Output is a stub when ANTHROPIC_API_KEY isn't set. */
+type BriefResponse = {
+  narrative: string;
+  plan_adjustments: Array<{ phase_idx: number; pace_delta_s_per_mi: number; reason: string }>;
+  stub?: boolean;
+};
+
+function BriefTile({ race }: { race: SavedRace }) {
+  const [weather, setWeather] = useState('');
+  const [brief, setBrief] = useState<BriefResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function generate() {
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          courseSlug: race.meta.courseSlug,
+          weatherText: weather || 'no specific forecast — assume seasonal norms',
+          phases: race.plan.phases.map(p => ({
+            index: p.index,
+            label: p.label,
+            startMi: p.start_mi,
+            endMi: p.end_mi,
+            paceSPerMi: p.target_pace_s_per_mi,
+            grade: p.mean_grade_pct,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setBrief(await res.json());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="tile">
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Race-morning brief</div>
+          <div className="tile-lbl">{brief ? 'Claude says:' : 'Generate brief'}</div>
+        </div>
+        {brief?.stub && <span className="chip">STUB · NO API KEY</span>}
+      </div>
+      {!brief && (
+        <>
+          <textarea
+            className="runcino-input"
+            placeholder="Paste forecast (e.g., '52°F start, 60°F finish, NW wind 8 mph, overcast') — or leave blank for seasonal default."
+            value={weather}
+            onChange={e => setWeather(e.target.value)}
+            rows={3}
+            style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
+          />
+          <button className="btn btn--primary" onClick={generate} disabled={loading} style={{ alignSelf: 'flex-start' }}>
+            {loading ? 'Asking Claude…' : '✦ Generate'}
+          </button>
+        </>
+      )}
+      {brief && (
+        <>
+          <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55 }}>
+            {brief.narrative}
+          </div>
+          {brief.plan_adjustments.length > 0 && (
+            <div>
+              <div className="tile-sub" style={{ marginBottom: 8 }}>Suggested pace tweaks</div>
+              {brief.plan_adjustments.map((a, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: i > 0 ? '1px solid var(--color-l4)' : 'none', fontSize: 12.5 }}>
+                  <span style={{ color: 'var(--color-t1)' }}>
+                    Phase {a.phase_idx + 1} · {race.plan.phases[a.phase_idx]?.label}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, color: a.pace_delta_s_per_mi >= 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                    {a.pace_delta_s_per_mi >= 0 ? '+' : ''}{a.pace_delta_s_per_mi}s/mi · {a.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="btn btn--ghost" onClick={() => setBrief(null)} style={{ alignSelf: 'flex-start' }}>↻ Regenerate</button>
+        </>
+      )}
+      {err && (
+        <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
+          {err}
         </div>
       )}
     </div>
