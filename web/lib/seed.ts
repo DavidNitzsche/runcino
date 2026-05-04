@@ -20,13 +20,12 @@
 import { getRace, saveRace, type SavedRace } from './storage';
 import type { RuncinoPlan } from './types';
 
-// Bumped from v1 → v2 when the seed runcino.json files were rebuilt
-// to use the canonical 5-phase structure (Opening miles / Rolling
-// approach / Hurricane Pt or Peak push / Cruise miles / Final push)
-// instead of the earlier 6-phase course-facts shape. Existing browsers
-// re-seed the new plans on next load while preserving any user-entered
-// actualResult on those slugs (saveRace merges, doesn't overwrite).
-const SEEDED_FLAG = 'runcino:seeded:v2';
+// Bumped on every seed-content change so existing browsers refresh:
+//   v1 → v2 — 5-phase structure (Opening / Rolling / Hurricane / Cruise / Final)
+//   v2 → v3 — Big Sur goal corrected from 3:50 → 3:40
+// Re-seed preserves any user-entered actualResult (saveRace via the
+// migration-aware path in seedIfNeeded — see below).
+const SEEDED_FLAG = 'runcino:seeded:v3';
 
 interface SeedSpec {
   slug: string;
@@ -38,13 +37,13 @@ interface SeedSpec {
 const SEEDS: SeedSpec[] = [
   {
     slug: 'big-sur-marathon',
-    planUrl: '/big-sur-3-50.runcino.json',
+    planUrl: '/big-sur-3-40.runcino.json',
     gpxUrl:  '/sample-bigsur.gpx',
     meta: {
       name: 'Big Sur Marathon',
       date: '2026-04-26',
       distanceMi: 26.2,
-      goalDisplay: '3:50:00',
+      goalDisplay: '3:40:00',
       courseSlug: 'big-sur-marathon',
     },
   },

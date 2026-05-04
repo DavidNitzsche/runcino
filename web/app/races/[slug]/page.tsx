@@ -217,7 +217,7 @@ function narrativeFor(slug: string, race: SavedRace, peakMi: number, peakFt: num
       subtitle: 'International · Marathon · Sunday 26 April',
       lede: 'One of the most scenic road marathons on the continent — a point-to-point course carved into the Pacific edge, from redwoods at Big Sur Station to the coastal village of Carmel-by-the-Sea.',
       para1: <>The course is <b>five sectors</b>. It opens under the redwood canopy, unfolds into rolling coastal approach, steepens into the <em>Hurricane Point climb</em> at mile {peakMi.toFixed(1)} — a {climbLen}-mile, {climbGain}-foot ascent into a prevailing headwind — then releases into a long descent past <b>Bixby Bridge</b> and the cruise miles to Carmel Highlands.</>,
-      para2: <>First run in 1986. Start 06:45 AM · Cutoff 6:00 · Field 4,500. Weather window: <em>52°F · clear · 3 mph SSE</em>. PR to beat: <b>3:52</b>.</>,
+      para2: <>First run in 1986. Start 06:45 AM · Cutoff 6:00 · Field 4,500.</>,
     };
   }
   if (slug === 'sombrero-half') {

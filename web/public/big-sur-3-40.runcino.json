@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "generated_at": "2026-05-04T19:35:37.548Z",
+  "generated_at": "2026-05-04T21:18:41.308Z",
   "generator": "runcino-web@0.1.0",
   "race": {
     "name": "Big Sur Marathon",
@@ -11,10 +11,10 @@
     "total_loss_ft": 1233
   },
   "goal": {
-    "finish_time_s": 13800,
-    "finish_time_display": "3:50:00",
+    "finish_time_s": 13200,
+    "finish_time_display": "3:40:00",
     "strategy": "even_effort",
-    "flat_pace_s_per_mi": 524,
+    "flat_pace_s_per_mi": 501,
     "warmup": {
       "enabled": false,
       "distance_mi": 0,
@@ -48,13 +48,13 @@
       "start_mi": 0,
       "end_mi": 4,
       "distance_mi": 4,
-      "target_pace_s_per_mi": 519,
-      "target_pace_display": "8:39/mi",
+      "target_pace_s_per_mi": 496,
+      "target_pace_display": "8:16/mi",
       "mean_grade_pct": -0.6,
       "elevation_gain_ft": 39,
       "elevation_loss_ft": 176,
-      "cumulative_time_s": 2074,
-      "cumulative_time_display": "0:34:34",
+      "cumulative_time_s": 1984,
+      "cumulative_time_display": "0:33:04",
       "note": "Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase."
     },
     {
@@ -63,13 +63,13 @@
       "start_mi": 4,
       "end_mi": 10,
       "distance_mi": 6,
-      "target_pace_s_per_mi": 533,
-      "target_pace_display": "8:53/mi",
+      "target_pace_s_per_mi": 510,
+      "target_pace_display": "8:30/mi",
       "mean_grade_pct": 0.1,
       "elevation_gain_ft": 135,
       "elevation_loss_ft": 108,
-      "cumulative_time_s": 5271,
-      "cumulative_time_display": "1:27:51",
+      "cumulative_time_s": 5042,
+      "cumulative_time_display": "1:24:02",
       "note": "Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard."
     },
     {
@@ -78,13 +78,13 @@
       "start_mi": 10,
       "end_mi": 12,
       "distance_mi": 2,
-      "target_pace_s_per_mi": 617,
-      "target_pace_display": "10:17/mi",
+      "target_pace_s_per_mi": 590,
+      "target_pace_display": "9:50/mi",
       "mean_grade_pct": 1.9,
       "elevation_gain_ft": 457,
       "elevation_loss_ft": 257,
-      "cumulative_time_s": 6505,
-      "cumulative_time_display": "1:48:25",
+      "cumulative_time_s": 6222,
+      "cumulative_time_display": "1:43:42",
       "note": "The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top."
     },
     {
@@ -93,13 +93,13 @@
       "start_mi": 12,
       "end_mi": 24,
       "distance_mi": 12,
-      "target_pace_s_per_mi": 518,
-      "target_pace_display": "8:38/mi",
+      "target_pace_s_per_mi": 496,
+      "target_pace_display": "8:16/mi",
       "mean_grade_pct": -0.5,
       "elevation_gain_ft": 342,
       "elevation_loss_ft": 639,
-      "cumulative_time_s": 12724,
-      "cumulative_time_display": "3:32:04",
+      "cumulative_time_s": 12171,
+      "cumulative_time_display": "3:22:51",
       "note": "Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21. Headwind possible."
     },
     {
@@ -108,13 +108,13 @@
       "start_mi": 24,
       "end_mi": 26.22,
       "distance_mi": 2.22,
-      "target_pace_s_per_mi": 485,
-      "target_pace_display": "8:05/mi",
+      "target_pace_s_per_mi": 464,
+      "target_pace_display": "7:44/mi",
       "mean_grade_pct": -0.1,
       "elevation_gain_ft": 41,
       "elevation_loss_ft": 52,
-      "cumulative_time_s": 13800,
-      "cumulative_time_display": "3:50:00",
+      "cumulative_time_s": 13200,
+      "cumulative_time_display": "3:40:00",
       "note": "Carmel is close. Empty the tank from mile 25. You've trained for this — the crowds carry you to the line."
     }
   ],
@@ -125,7 +125,7 @@
       "kind": "pace",
       "at_mi": 0,
       "distance_mi": 4,
-      "target_pace_s_per_mi": 519,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Opening miles"
     },
@@ -145,7 +145,7 @@
       "kind": "pace",
       "at_mi": 4,
       "distance_mi": 3.5,
-      "target_pace_s_per_mi": 533,
+      "target_pace_s_per_mi": 510,
       "tolerance_s_per_mi": 10,
       "label": "Rolling approach"
     },
@@ -165,7 +165,7 @@
       "kind": "pace",
       "at_mi": 7.5,
       "distance_mi": 2.5,
-      "target_pace_s_per_mi": 533,
+      "target_pace_s_per_mi": 510,
       "tolerance_s_per_mi": 10,
       "label": "Rolling approach"
     },
@@ -183,7 +183,7 @@
       "kind": "pace",
       "at_mi": 10,
       "distance_mi": 2,
-      "target_pace_s_per_mi": 617,
+      "target_pace_s_per_mi": 590,
       "tolerance_s_per_mi": 10,
       "label": "Hurricane Pt"
     },
@@ -211,7 +211,7 @@
       "kind": "pace",
       "at_mi": 12,
       "distance_mi": 1.1,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -229,7 +229,7 @@
       "kind": "pace",
       "at_mi": 13.1,
       "distance_mi": 1.9,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -249,7 +249,7 @@
       "kind": "pace",
       "at_mi": 15,
       "distance_mi": 3.7,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -269,7 +269,7 @@
       "kind": "pace",
       "at_mi": 18.7,
       "distance_mi": 3.8,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -289,7 +289,7 @@
       "kind": "pace",
       "at_mi": 22.5,
       "distance_mi": 0.7,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -307,7 +307,7 @@
       "kind": "pace",
       "at_mi": 23.2,
       "distance_mi": 0.8,
-      "target_pace_s_per_mi": 518,
+      "target_pace_s_per_mi": 496,
       "tolerance_s_per_mi": 10,
       "label": "Cruise miles"
     },
@@ -317,7 +317,7 @@
       "kind": "pace",
       "at_mi": 24,
       "distance_mi": 1,
-      "target_pace_s_per_mi": 485,
+      "target_pace_s_per_mi": 464,
       "tolerance_s_per_mi": 10,
       "label": "Final push"
     },
@@ -335,7 +335,7 @@
       "kind": "pace",
       "at_mi": 25,
       "distance_mi": 1.22,
-      "target_pace_s_per_mi": 485,
+      "target_pace_s_per_mi": 464,
       "tolerance_s_per_mi": 10,
       "label": "Final push"
     }
@@ -346,7 +346,7 @@
     "gel_count": 6,
     "gel_carbs_g": 40,
     "gel_brand": "Maurten",
-    "notes": "Gels anchored to phase boundaries, not clock. 6 × 40 g = 240 g carbs total (62.6 g/hr)."
+    "notes": "Gels anchored to phase boundaries, not clock. 6 × 40 g = 240 g carbs total (65.5 g/hr)."
   },
   "brief": null
 }
