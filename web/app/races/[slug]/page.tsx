@@ -145,8 +145,11 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
 
           <Hero race={race} days={days} peakFt={peakFt} peakMi={peakMi} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 10, marginTop: 10 }}>
+          <div style={{ marginTop: 10 }}>
             <CourseMap points={points} race={race} peakMi={peakMi} peakFt={peakFt} />
+          </div>
+
+          <div style={{ marginTop: 10 }}>
             <ElevationChart points={points} race={race} totalMi={totalMi} peakMi={peakMi} peakFt={peakFt} />
           </div>
 
