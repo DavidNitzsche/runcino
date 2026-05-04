@@ -252,20 +252,24 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
 
   return (
     <div className="poster-c">
-      {/* Header strip — round/season + countdown */}
+      {/* Header strip — page label + countdown. Past races flip the
+          countdown to green; the layout stays the same so the title
+          below never overlaps the badge. */}
       <div className="pc-head">
-        <div className="rd"><b>{narrative.round.split('·')[0].trim()}</b>{narrative.round.split('·').slice(1).map((s, i) => <span key={i}> · {s.trim()}</span>)}</div>
-        {isUpcoming ? (
-          <div className="pc-countdown">
-            <span className="big">{Math.max(0, days)}</span>
-            <span className="lbl">{days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go'}</span>
-          </div>
-        ) : (
-          <div className="pc-countdown">
-            <span className="big" style={{ color: '#7DD685', fontSize: 38, lineHeight: 1.2 }}>Done</span>
-            <span className="lbl">{Math.abs(days) === 1 ? 'Yesterday' : `${Math.abs(days)} days ago`}</span>
-          </div>
-        )}
+        <div className="rd">
+          <b>{isUpcoming ? 'Coming up' : 'Race report'}</b>
+          <span> · {fmtDate(race.meta.date)}</span>
+        </div>
+        <div className="pc-countdown">
+          <span className="big" style={!isUpcoming ? { color: '#7DD685' } : undefined}>
+            {Math.abs(days)}
+          </span>
+          <span className="lbl">
+            {isUpcoming
+              ? (days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go')
+              : (Math.abs(days) === 1 ? 'Day ago' : 'Days ago')}
+          </span>
+        </div>
       </div>
 
       <h1 className="pc-title">{race.meta.name.replace(/marathon/i, 'Marathon').toUpperCase()}</h1>
