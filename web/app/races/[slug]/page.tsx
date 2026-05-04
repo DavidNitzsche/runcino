@@ -143,13 +143,18 @@ export default function RaceDetailPage() {
       </>
     );
   }
-  return <RaceDetailView race={race} onDelete={async () => { await deleteRace(race.slug); router.push('/races'); }} />;
+  return <RaceDetailView
+    race={race}
+    onDelete={async () => { await deleteRace(race.slug); router.push('/races'); }}
+    onUpdated={async () => { const fresh = await getRace(race.slug); if (fresh) setRace(fresh); }}
+  />;
 }
 
-function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => void }) {
+function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDelete: () => void; onUpdated: () => void }) {
   const points = useMemo(() => parseGpxClient(race.gpxText), [race.gpxText]);
   const days = daysUntil(race.meta.date);
   const totalMi = race.plan.race.distance_mi;
+  const [editing, setEditing] = useState(false);
   const peakFt = useMemo(() => Math.max(...points.map(p => p.eleM)) * 3.28084, [points]);
   const peakMi = useMemo(() => {
     let bestIdx = 0;
@@ -178,10 +183,12 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
             <Link href="/races" style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-t2)', fontWeight: 700 }}>← All races</Link>
             <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn btn--ghost" onClick={onDelete}>Delete</button>
               <button className="btn btn--primary" onClick={downloadJson}>↓ Export .runcino.json</button>
             </div>
           </div>
+          {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
 
           <PosterCard race={race} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} />
 
@@ -1512,6 +1519,217 @@ function ExportFooter({ race, onDownload }: { race: SavedRace; onDownload: () =>
       <button className="btn btn--primary" onClick={onDownload} style={{ padding: '14px 24px' }}>
         ↓ Download .runcino.json
       </button>
+    </div>
+  );
+}
+
+/* ── Edit race modal ────────────────────────────────────────
+   Lets the runner fix metadata that doesn't require a plan rebuild
+   (race name, date, distance display) AND optionally rebuild the
+   pacing plan against the saved GPX with new goal/strategy. The
+   rebuild path is the only way to refresh stale plans (e.g., to
+   pick up the new pace-floor clamp) without delete-and-recreate.
+
+   Save vs Save & Rebuild:
+   - Save: PATCH /api/races/[slug] with new meta. Plan stays.
+   - Save & Rebuild: POST /api/races/[slug]/rebuild with the new
+     meta. Server reuses the saved GPX, re-runs build-plan, persists
+     fresh plan + meta. actualResult is preserved either way. */
+const EDITABLE_DISTANCES = [
+  { id: 'marathon', label: 'Marathon',     mi: 26.22 },
+  { id: 'half',     label: 'Half marathon', mi: 13.10 },
+  { id: '10k',      label: '10K',          mi: 6.21 },
+  { id: '5k',       label: '5K',           mi: 3.10 },
+  { id: 'custom',   label: 'Other',        mi: 0 },
+] as const;
+type EditDistanceId = typeof EDITABLE_DISTANCES[number]['id'];
+
+function distanceIdFromMi(mi: number): EditDistanceId {
+  for (const d of EDITABLE_DISTANCES) {
+    if (d.mi > 0 && Math.abs(mi - d.mi) < 0.05) return d.id;
+  }
+  return 'custom';
+}
+
+function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(race.meta.name);
+  const [date, setDate] = useState(race.meta.date);
+  const [goal, setGoal] = useState(race.meta.goalDisplay);
+  const [strategy, setStrategy] = useState<'even_effort' | 'even_split' | 'negative_split'>('even_effort');
+  const [distanceId, setDistanceId] = useState<EditDistanceId>(distanceIdFromMi(race.meta.distanceMi));
+  const [busy, setBusy] = useState<null | 'save' | 'rebuild'>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function parseGoal(s: string): number | null {
+    const m = s.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+  }
+
+  function effectiveDistance(): number {
+    const d = EDITABLE_DISTANCES.find(x => x.id === distanceId);
+    return d && d.id !== 'custom' && d.mi > 0 ? d.mi : race.meta.distanceMi;
+  }
+
+  async function save(rebuild: boolean) {
+    setError(null);
+    const goalS = parseGoal(goal);
+    if (goalS == null) { setError('Goal time must be h:mm:ss (e.g. 1:30:00).'); return; }
+    setBusy(rebuild ? 'rebuild' : 'save');
+    try {
+      if (rebuild) {
+        const res = await fetch(`/api/races/${encodeURIComponent(race.slug)}/rebuild`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            raceName: name.trim(),
+            raceDate: date,
+            goalFinishS: goalS,
+            strategy,
+            distanceMi: effectiveDistance(),
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+      } else {
+        const res = await fetch(`/api/races/${encodeURIComponent(race.slug)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            meta: {
+              name: name.trim(),
+              date,
+              distanceMi: effectiveDistance(),
+              goalDisplay: goal,
+            },
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100, padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="tile"
+        style={{ width: '100%', maxWidth: 640, maxHeight: '88vh', overflow: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 18, background: 'var(--color-l1)' }}
+      >
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub">Edit race</div>
+            <div className="tile-lbl">{race.meta.name}</div>
+          </div>
+          <button className="btn btn--ghost" onClick={onClose} disabled={busy != null}>Close</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+          <div>
+            <label className="runcino-label">Race name</label>
+            <input className="runcino-input" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className="runcino-label">Date</label>
+            <input className="runcino-input font-data" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+
+        <div>
+          <label className="runcino-label">Distance</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+            {EDITABLE_DISTANCES.map(d => {
+              const active = distanceId === d.id;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setDistanceId(d.id)}
+                  style={{
+                    padding: '12px 8px',
+                    textAlign: 'center',
+                    border: `1px solid ${active ? 'var(--color-attention)' : 'var(--color-l4)'}`,
+                    background: active ? 'rgba(243,173,59,.10)' : 'var(--color-l2)',
+                    borderRadius: 10,
+                    cursor: 'pointer',
+                    color: 'var(--color-t0)',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{d.label}</div>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px', marginTop: 4 }}>
+                    {d.mi > 0 ? `${d.mi.toFixed(d.id === '5k' || d.id === '10k' ? 1 : 2)} MI` : 'CUSTOM'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14 }}>
+          <div>
+            <label className="runcino-label">Goal time</label>
+            <input className="runcino-input font-data" placeholder="h:mm:ss" value={goal} onChange={e => setGoal(e.target.value)} style={{ fontSize: 18 }} />
+          </div>
+          <div>
+            <label className="runcino-label">Pacing strategy <span style={{ color: 'var(--color-t3)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(applies on rebuild)</span></label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {([
+                { id: 'even_effort',    name: 'Even effort' },
+                { id: 'even_split',     name: 'Even split' },
+                { id: 'negative_split', name: 'Negative' },
+              ] as const).map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStrategy(s.id)}
+                  style={{
+                    padding: '10px',
+                    border: `1px solid ${strategy === s.id ? 'var(--color-attention)' : 'var(--color-l4)'}`,
+                    background: strategy === s.id ? 'rgba(243,173,59,.08)' : 'var(--color-l2)',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    color: 'var(--color-t0)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >{s.name}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="hint" style={{ background: 'var(--color-l2)', padding: 12, borderRadius: 8, fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+          <b style={{ color: 'var(--color-t1)' }}>Save</b> updates name / date / distance / goal time on the existing plan. <b style={{ color: 'var(--color-t1)' }}>Save & Rebuild</b> additionally re-runs the pacing pipeline with your new goal + strategy + the new pace-floor clamp (no segment more than 60s/mi faster than goal). Race results stay either way.
+        </div>
+
+        {error && (
+          <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 10, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button className="btn btn--ghost" onClick={onClose} disabled={busy != null}>Cancel</button>
+          <button className="btn" onClick={() => save(false)} disabled={busy != null}>
+            {busy === 'save' ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn btn--primary" onClick={() => save(true)} disabled={busy != null}>
+            {busy === 'rebuild' ? 'Rebuilding plan…' : '↻ Save & Rebuild plan'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

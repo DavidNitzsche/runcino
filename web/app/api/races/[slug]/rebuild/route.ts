@@ -1,0 +1,112 @@
+/**
+ * /api/races/[slug]/rebuild — re-run the pacing pipeline against the
+ * race\'s saved GPX with updated meta, then persist.
+ *
+ * Body: {
+ *   raceName?, raceDate?, goalFinishS?, strategy?, toleranceSPerMi?,
+ *   distanceMi?  // canonical distance the runner thinks of (13.1 for half),
+ *                // used for headline display + last-mile label
+ * }
+ *
+ * Anything not sent falls back to the existing meta. The GPX itself is
+ * never re-uploaded — we read it from the row in Postgres. After the
+ * plan rebuilds, the row\'s plan + meta are upserted in place.
+ *
+ * actualResult is preserved untouched. The point of rebuild is to
+ * refresh the PLAN (e.g., apply the new pace-floor clamp, change
+ * strategy, fix a wrong goal time) without losing what already
+ * happened on race day.
+ */
+
+import { getRaceDB, saveRaceDB } from '../../../../../lib/race-store';
+import type { RuncinoPlan } from '../../../../../lib/types';
+
+interface RebuildBody {
+  raceName?: string;
+  raceDate?: string;
+  goalFinishS?: number;
+  strategy?: 'even_effort' | 'even_split' | 'negative_split';
+  toleranceSPerMi?: number;
+  distanceMi?: number;
+}
+
+function parseGoalHMS(s: string): number | null {
+  const m = s.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+
+  let body: RebuildBody;
+  try { body = await req.json(); }
+  catch { return new Response('Invalid JSON', { status: 400 }); }
+
+  const existing = await getRaceDB(slug);
+  if (!existing) return new Response('Not found', { status: 404 });
+
+  // Resolve effective inputs — caller-provided values override the
+  // existing meta; anything not sent stays as it was.
+  const goalFinishS = body.goalFinishS ?? parseGoalHMS(existing.meta.goalDisplay);
+  if (goalFinishS == null) return new Response('Missing or invalid goalFinishS', { status: 400 });
+  const raceName = body.raceName ?? existing.meta.name;
+  const raceDate = body.raceDate ?? existing.meta.date;
+  const strategy = body.strategy ?? 'even_effort';
+  const toleranceSPerMi = body.toleranceSPerMi ?? 10;
+  const headlineDistance = body.distanceMi ?? existing.meta.distanceMi;
+
+  // Reuse the build-plan endpoint over loopback so we don't duplicate
+  // its assembly logic. URL is built from the request itself, so it
+  // works locally + on Railway without a hardcoded host.
+  const origin = new URL(req.url).origin;
+  const buildRes = await fetch(`${origin}/api/build-plan`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      gpxText: existing.gpxText,
+      courseSlug: existing.meta.courseSlug,
+      raceName,
+      raceDate,
+      goalFinishS,
+      strategy,
+      toleranceSPerMi,
+      // Manual flow: pass neutral fitness defaults like /races/new does.
+      fitness: {
+        baselineName: 'Self-reported',
+        baselineFinish: '0:00:00',
+        baselineMonthsAgo: 0,
+        weeklyMileage: 0,
+        weeklyMileageTrend: 0,
+        longestLongRunMi: 0,
+        longestLongRunAgeWk: 0,
+        restingHr: 0,
+        restingHrTrend: 0,
+      },
+      claudeRationale: null,
+    }),
+  });
+  if (!buildRes.ok) {
+    const txt = await buildRes.text();
+    return new Response(`Rebuild failed: ${buildRes.status} ${txt.slice(0, 200)}`, { status: 500 });
+  }
+  const data = await buildRes.json() as { planJsonText: string; summary: { raceName: string; courseSlug: string; goalDisplay: string } };
+  const plan = JSON.parse(data.planJsonText) as RuncinoPlan;
+
+  // Persist — preserve actualResult, refresh plan + meta.
+  await saveRaceDB({
+    slug,
+    plan,
+    gpxText: existing.gpxText,
+    savedAt: new Date().toISOString(),
+    meta: {
+      name: raceName,
+      date: raceDate,
+      distanceMi: headlineDistance,
+      goalDisplay: data.summary.goalDisplay,
+      courseSlug: existing.meta.courseSlug,
+    },
+    actualResult: existing.actualResult,
+  });
+
+  return Response.json({ ok: true, slug });
+}
