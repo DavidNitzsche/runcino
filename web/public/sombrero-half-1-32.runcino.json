@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "generated_at": "2026-05-04T18:29:12.030Z",
+  "generated_at": "2026-05-04T19:35:46.558Z",
   "generator": "runcino-web@0.1.0",
   "race": {
     "name": "Sombrero Half Marathon",
@@ -44,7 +44,7 @@
   "phases": [
     {
       "index": 0,
-      "label": "Heritage Park opener",
+      "label": "Opening miles",
       "start_mi": 0,
       "end_mi": 2,
       "distance_mi": 2,
@@ -55,67 +55,67 @@
       "elevation_loss_ft": 39,
       "cumulative_time_s": 856,
       "cumulative_time_display": "0:14:16",
-      "note": "Flat across Heritage Park. Crowded — hold goal pace, don't chase early."
+      "note": "Flat across Heritage Park. Crowded, easy to run too fast — clock goal pace, don't chase. It's a tune-up."
     },
     {
       "index": 1,
-      "label": "River-trail rollers",
+      "label": "Rolling approach",
       "start_mi": 2,
-      "end_mi": 6,
-      "distance_mi": 4,
-      "target_pace_s_per_mi": 428,
-      "target_pace_display": "7:08/mi",
-      "mean_grade_pct": 0.2,
-      "elevation_gain_ft": 80,
+      "end_mi": 5,
+      "distance_mi": 3,
+      "target_pace_s_per_mi": 424,
+      "target_pace_display": "7:04/mi",
+      "mean_grade_pct": 0.1,
+      "elevation_gain_ft": 52,
       "elevation_loss_ft": 36,
-      "cumulative_time_s": 2569,
-      "cumulative_time_display": "0:42:49",
-      "note": "Neighborhood and river-trail rollers building toward the day's high point. Effort over pace."
+      "cumulative_time_s": 2127,
+      "cumulative_time_display": "0:35:27",
+      "note": "Neighborhood rollers leading to the day's high point. Effort over pace. Sip on every uphill, drink at the top of every down."
     },
     {
       "index": 2,
       "label": "Peak push",
-      "start_mi": 6,
-      "end_mi": 8.5,
-      "distance_mi": 2.5,
-      "target_pace_s_per_mi": 443,
-      "target_pace_display": "7:23/mi",
-      "mean_grade_pct": 0.8,
-      "elevation_gain_ft": 102,
-      "elevation_loss_ft": 1,
-      "cumulative_time_s": 3676,
-      "cumulative_time_display": "1:01:16",
-      "note": "Steepest mile of the course lands at mi 8 (~+1.2%). Shorten stride, lift cadence, crest it."
+      "start_mi": 5,
+      "end_mi": 7,
+      "distance_mi": 2,
+      "target_pace_s_per_mi": 438,
+      "target_pace_display": "7:18/mi",
+      "mean_grade_pct": 0.6,
+      "elevation_gain_ft": 63,
+      "elevation_loss_ft": 0,
+      "cumulative_time_s": 3003,
+      "cumulative_time_display": "0:50:03",
+      "note": "The day's biggest pull, mid-course. Shorten stride, lift cadence, breathe. Crest it and the rest is downhill — don't blow it on the way up."
     },
     {
       "index": 3,
-      "label": "Cruise back",
-      "start_mi": 8.5,
-      "end_mi": 12,
-      "distance_mi": 3.5,
-      "target_pace_s_per_mi": 406,
-      "target_pace_display": "6:46/mi",
-      "mean_grade_pct": -0.8,
-      "elevation_gain_ft": 0,
-      "elevation_loss_ft": 142,
-      "cumulative_time_s": 5097,
-      "cumulative_time_display": "1:24:57",
-      "note": "Net downhill back toward Newhall Ranch Rd — don't hammer, save the quads for the final mile."
+      "label": "Cruise miles",
+      "start_mi": 7,
+      "end_mi": 11,
+      "distance_mi": 4,
+      "target_pace_s_per_mi": 423,
+      "target_pace_display": "7:03/mi",
+      "mean_grade_pct": -0.2,
+      "elevation_gain_ft": 68,
+      "elevation_loss_ft": 103,
+      "cumulative_time_s": 4696,
+      "cumulative_time_display": "1:18:16",
+      "note": "Net downhill back toward Newhall Ranch Rd. Don't hammer — save the quads for the last mile. Gels at 7 and 10."
     },
     {
       "index": 4,
-      "label": "Finish strong",
-      "start_mi": 12,
+      "label": "Final push",
+      "start_mi": 11,
       "end_mi": 13.16,
-      "distance_mi": 1.16,
-      "target_pace_s_per_mi": 365,
-      "target_pace_display": "6:05/mi",
-      "mean_grade_pct": 0.2,
+      "distance_mi": 2.16,
+      "target_pace_s_per_mi": 381,
+      "target_pace_display": "6:21/mi",
+      "mean_grade_pct": -0.3,
       "elevation_gain_ft": 18,
-      "elevation_loss_ft": 8,
+      "elevation_loss_ft": 48,
       "cumulative_time_s": 5520,
       "cumulative_time_display": "1:32:00",
-      "note": "Heritage Park is in sight. Empty the tank from mile 12."
+      "note": "Heritage Park is close. Empty the tank from mile 12. It's a tune-up but finish like you mean it."
     }
   ],
   "intervals": [
@@ -127,7 +127,7 @@
       "distance_mi": 2,
       "target_pace_s_per_mi": 428,
       "tolerance_s_per_mi": 10,
-      "label": "Heritage Park opener"
+      "label": "Opening miles"
     },
     {
       "index": 1,
@@ -135,9 +135,9 @@
       "kind": "pace",
       "at_mi": 2,
       "distance_mi": 1.3,
-      "target_pace_s_per_mi": 428,
+      "target_pace_s_per_mi": 424,
       "tolerance_s_per_mi": 10,
-      "label": "River-trail rollers"
+      "label": "Rolling approach"
     },
     {
       "index": 2,
@@ -154,40 +154,40 @@
       "phase_idx": 1,
       "kind": "pace",
       "at_mi": 3.3,
-      "distance_mi": 2.7,
-      "target_pace_s_per_mi": 428,
+      "distance_mi": 1.7,
+      "target_pace_s_per_mi": 424,
       "tolerance_s_per_mi": 10,
-      "label": "River-trail rollers"
+      "label": "Rolling approach"
     },
     {
       "index": 4,
       "phase_idx": 2,
+      "kind": "pace",
+      "at_mi": 5,
+      "distance_mi": 2,
+      "target_pace_s_per_mi": 438,
+      "tolerance_s_per_mi": 10,
+      "label": "Peak push"
+    },
+    {
+      "index": 5,
+      "phase_idx": 3,
       "kind": "fuel",
-      "at_mi": 6,
+      "at_mi": 7,
       "duration_s": 30,
       "item": "Maurten gel · water",
       "gel_number": 2,
       "label": "Gel 2"
     },
     {
-      "index": 5,
-      "phase_idx": 2,
-      "kind": "pace",
-      "at_mi": 6,
-      "distance_mi": 2.5,
-      "target_pace_s_per_mi": 443,
-      "tolerance_s_per_mi": 10,
-      "label": "Peak push"
-    },
-    {
       "index": 6,
       "phase_idx": 3,
       "kind": "pace",
-      "at_mi": 8.5,
-      "distance_mi": 1.4,
-      "target_pace_s_per_mi": 406,
+      "at_mi": 7,
+      "distance_mi": 2.9,
+      "target_pace_s_per_mi": 423,
       "tolerance_s_per_mi": 10,
-      "label": "Cruise back"
+      "label": "Cruise miles"
     },
     {
       "index": 7,
@@ -204,20 +204,20 @@
       "phase_idx": 3,
       "kind": "pace",
       "at_mi": 9.9,
-      "distance_mi": 2.1,
-      "target_pace_s_per_mi": 406,
+      "distance_mi": 1.1,
+      "target_pace_s_per_mi": 423,
       "tolerance_s_per_mi": 10,
-      "label": "Cruise back"
+      "label": "Cruise miles"
     },
     {
       "index": 9,
       "phase_idx": 4,
       "kind": "pace",
-      "at_mi": 12,
-      "distance_mi": 1.16,
-      "target_pace_s_per_mi": 365,
+      "at_mi": 11,
+      "distance_mi": 2.16,
+      "target_pace_s_per_mi": 381,
       "tolerance_s_per_mi": 10,
-      "label": "Finish strong"
+      "label": "Final push"
     }
   ],
   "fueling": {

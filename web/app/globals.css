@@ -506,3 +506,33 @@ h1, h2, h3, h4 {
   font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.4px;
   color: rgba(255,255,255,.4); font-weight: 700;
 }
+/* Mirrored phase strip directly under the elevation curve — labeled
+   chips, sized proportionally to each phase's mile share so they
+   line up visually with the curve segments above. Matches the
+   canonical .pc-grade .lgd .i pattern from designs/race-detail-sombrero.html. */
+.pc-grade {
+  margin-top: 14px;
+  padding-left: 3.833%;
+  padding-right: 1.167%;
+}
+.pc-grade .lgd { display: grid; gap: 0; }
+.pc-grade .i {
+  border-left: 3px solid;
+  padding: 6px 12px 6px 10px;
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 0;
+}
+.pc-grade .i .l {
+  font-family: 'Oswald', sans-serif; font-size: 9.5px;
+  letter-spacing: 1.6px; text-transform: uppercase;
+  color: rgba(255,255,255,.55); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pc-grade .i .v {
+  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 18px;
+  color: #fff; line-height: 1;
+}
+.pc-grade .i .v small {
+  font-family: 'Jost', sans-serif; font-size: 10px;
+  color: rgba(255,255,255,.5); margin-left: 3px; font-weight: 500; letter-spacing: 1px;
+}

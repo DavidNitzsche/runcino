@@ -38,34 +38,34 @@
   "phases": [
     {
       "index": 0,
-      "label": "Redwood descent",
+      "label": "Opening miles",
       "start_mi": 0.0,
-      "end_mi": 5.0,
-      "expected_mean_grade_pct": -1.0,
-      "note": "Fresh legs — hold back. The descent will tempt you 15 sec/mi too fast.",
+      "end_mi": 4.0,
+      "expected_mean_grade_pct": -0.7,
+      "note": "Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase.",
       "sources": [
         { "url": "https://www.bigsurmarathon.org/marathon-course-info/", "confidence": "primary_source_verified", "verified_at": "2026-04-19" }
       ]
     },
     {
       "index": 1,
-      "label": "Rolling to Hurricane base",
-      "start_mi": 5.0,
+      "label": "Rolling approach",
+      "start_mi": 4.0,
       "end_mi": 10.0,
       "expected_mean_grade_pct": -0.2,
-      "note": "Settle into breath. Hurricane Point looms at mile 10.",
+      "note": "Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard.",
       "sources": [
         { "url": "https://www.bigsurmarathon.org/marathon-course-info/", "confidence": "primary_source_verified", "verified_at": "2026-04-19" }
       ]
     },
     {
       "index": 2,
-      "label": "Hurricane Point climb",
+      "label": "Hurricane Pt",
       "start_mi": 10.0,
       "end_mi": 12.0,
       "expected_mean_grade_pct": 5.0,
       "expected_gain_ft": 560,
-      "note": "Two miles up at ~5%. Hold effort, don't chase pace.",
+      "note": "The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top.",
       "sources": [
         {
           "url": "https://www.bigsurmarathon.org/marathon-course-info/",
@@ -78,11 +78,11 @@
     },
     {
       "index": 3,
-      "label": "Descent to Bixby Bridge",
+      "label": "Cruise miles",
       "start_mi": 12.0,
-      "end_mi": 14.0,
-      "expected_mean_grade_pct": -3.2,
-      "note": "Recovery downhill — grand piano drifts up from Bixby below. Bixby Bridge at mile 13.1 is the halfway point.",
+      "end_mi": 24.0,
+      "expected_mean_grade_pct": -0.4,
+      "note": "Descending after Hurricane. Don't hammer — save quads for mile 23+. Gels at 13, 17, 21. Headwind possible.",
       "sources": [
         {
           "url": "https://www.bigsurmarathon.org/marathon-course-info/",
@@ -94,22 +94,11 @@
     },
     {
       "index": 4,
-      "label": "Highway 1 bluffs",
-      "start_mi": 14.0,
-      "end_mi": 22.0,
-      "expected_mean_grade_pct": 0.1,
-      "note": "Relentless rolling. Each hill is short — power up, flow down.",
-      "sources": [
-        { "url": "https://www.bigsurmarathon.org/marathon-course-info/", "confidence": "primary_source_verified", "verified_at": "2026-04-19" }
-      ]
-    },
-    {
-      "index": 5,
-      "label": "Carmel Highlands finish",
-      "start_mi": 22.0,
+      "label": "Final push",
+      "start_mi": 24.0,
       "end_mi": 26.22,
       "expected_mean_grade_pct": -0.4,
-      "note": "Strawberry Station at mile 23.2. Last real climb at mile 25.",
+      "note": "Carmel is close. Empty the tank from mile 25. You've trained for this — the crowds carry you to the line.",
       "sources": [
         { "url": "https://www.bigsurmarathon.org/marathon-course-info/", "confidence": "primary_source_verified", "verified_at": "2026-04-19" }
       ]

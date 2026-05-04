@@ -32,22 +32,22 @@
   "phases": [
     {
       "index": 0,
-      "label": "Heritage Park opener",
+      "label": "Opening miles",
       "start_mi": 0.0,
       "end_mi": 2.0,
       "expected_mean_grade_pct": -0.2,
-      "note": "Flat across Heritage Park. Crowded — hold goal pace, don't chase early.",
+      "note": "Flat across Heritage Park. Crowded, easy to run too fast — clock goal pace, don't chase. It's a tune-up.",
       "sources": [
         { "url": "https://www.mapmyrun.com/routes/view/6309568135", "confidence": "secondary_source", "verified_at": "2026-05-02" }
       ]
     },
     {
       "index": 1,
-      "label": "River-trail rollers",
+      "label": "Rolling approach",
       "start_mi": 2.0,
-      "end_mi": 6.0,
+      "end_mi": 5.0,
       "expected_mean_grade_pct": 0.4,
-      "note": "Neighborhood and river-trail rollers building toward the day's high point. Effort over pace.",
+      "note": "Neighborhood rollers leading to the day's high point. Effort over pace. Sip on every uphill, drink at the top of every down.",
       "sources": [
         { "url": "https://www.mapmyrun.com/routes/view/6309568135", "confidence": "secondary_source", "verified_at": "2026-05-02" }
       ]
@@ -55,33 +55,33 @@
     {
       "index": 2,
       "label": "Peak push",
-      "start_mi": 6.0,
-      "end_mi": 8.5,
+      "start_mi": 5.0,
+      "end_mi": 7.0,
       "expected_mean_grade_pct": 1.0,
       "expected_gain_ft": 130,
-      "note": "Steepest mile of the course lands at mi 8 (~+1.2%). Shorten stride, lift cadence, crest it.",
+      "note": "The day's biggest pull, mid-course. Shorten stride, lift cadence, breathe. Crest it and the rest is downhill — don't blow it on the way up.",
       "sources": [
         { "url": "https://www.mapmyrun.com/routes/view/6309568135", "confidence": "secondary_source", "verified_at": "2026-05-02" }
       ]
     },
     {
       "index": 3,
-      "label": "Cruise back",
-      "start_mi": 8.5,
-      "end_mi": 12.0,
+      "label": "Cruise miles",
+      "start_mi": 7.0,
+      "end_mi": 11.0,
       "expected_mean_grade_pct": -0.7,
-      "note": "Net downhill back toward Newhall Ranch Rd — don't hammer, save the quads for the final mile.",
+      "note": "Net downhill back toward Newhall Ranch Rd. Don't hammer — save the quads for the last mile. Gels at 7 and 10.",
       "sources": [
         { "url": "https://www.mapmyrun.com/routes/view/6309568135", "confidence": "secondary_source", "verified_at": "2026-05-02" }
       ]
     },
     {
       "index": 4,
-      "label": "Finish strong",
-      "start_mi": 12.0,
+      "label": "Final push",
+      "start_mi": 11.0,
       "end_mi": 13.16,
       "expected_mean_grade_pct": 0.1,
-      "note": "Heritage Park is in sight. Empty the tank from mile 12.",
+      "note": "Heritage Park is close. Empty the tank from mile 12. It's a tune-up but finish like you mean it.",
       "sources": [
         { "url": "https://www.mapmyrun.com/routes/view/6309568135", "confidence": "secondary_source", "verified_at": "2026-05-02" }
       ]

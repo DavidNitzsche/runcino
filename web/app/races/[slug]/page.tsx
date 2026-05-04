@@ -19,7 +19,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 
-const PHASE_COLORS = ['#3EBD41', '#F3AD3B', '#FC4D54', '#008FEC', '#9013FE'];
+// Phase color palette — 8 deterministic colors so any course with up to 8
+// phases gets a distinct hue. Extends the 5-color rainbow used in the
+// canonical Sombrero design with the additional palette tokens defined
+// in runcino.css (pink, aqua, orange) so 6-phase races like Big Sur
+// don't fall off the end with a gray-stub final segment.
+const PHASE_COLORS = [
+  '#3EBD41', // 1 · success green
+  '#F3AD3B', // 2 · attention amber
+  '#FC4D54', // 3 · warning red
+  '#008FEC', // 4 · corporate blue
+  '#9013FE', // 5 · xp purple
+  '#CD317C', // 6 · pink
+  '#27E087', // 7 · aqua
+  '#E88221', // 8 · orange
+];
 
 function fmtDate(iso: string): string {
   const d = new Date(iso + 'T12:00:00Z');
@@ -304,6 +318,18 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
           <span>{(totalMi / 2).toFixed(1)}</span>
           <span>{totalMi.toFixed(1)}</span>
         </div>
+        {/* Mirrored phase strip — same phases as the cards below the
+            poster, sized proportionally to each phase's mile share. */}
+        <div className="pc-grade">
+          <div className="lgd" style={{ display: 'grid', gridTemplateColumns: race.plan.phases.map(p => `${(p.distance_mi).toFixed(2)}fr`).join(' '), gap: 0 }}>
+            {race.plan.phases.map((p, i) => (
+              <div key={i} className="i" style={{ borderColor: PHASE_COLORS[i] ?? '#444' }}>
+                <span className="l">{p.label}</span>
+                <span className="v">{p.distance_mi.toFixed(1)}<small>mi</small></span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -388,14 +414,18 @@ function PosterElevSvg({ points, race, totalMi, peakMi, peakFt }: { points: Pars
   const fY = (e: number) => padT + (1 - (e - minFt) / Math.max(1, maxFt - minFt)) * (H - padT - padB);
   const fX = (mi: number) => padL + (mi / Math.max(1e-9, totalMi)) * (W - padL - padR);
 
-  const stops: Array<{ offsetPct: number; color: string }> = [];
-  stops.push({ offsetPct: 0, color: PHASE_COLORS[0] });
-  for (let i = 0; i < race.plan.phases.length - 1; i++) {
-    const pct = (race.plan.phases[i].end_mi / totalMi) * 100;
-    stops.push({ offsetPct: pct, color: PHASE_COLORS[i] });
-    stops.push({ offsetPct: pct, color: PHASE_COLORS[i + 1] });
-  }
-  stops.push({ offsetPct: 100, color: PHASE_COLORS[Math.min(race.plan.phases.length - 1, PHASE_COLORS.length - 1)] });
+  // Soft transitions: one stop per phase, anchored at its MIDPOINT so
+  // the gradient interpolates between adjacent phase colors instead
+  // of cutting hard. First/last anchored at 0%/100% so the ends still
+  // read as their phase color. Matches the Sombrero design's strip.
+  const stops: Array<{ offsetPct: number; color: string }> = race.plan.phases.map((p, i) => {
+    const mid = ((p.start_mi + p.end_mi) / 2 / totalMi) * 100;
+    const offset =
+      i === 0                          ? 0   :
+      i === race.plan.phases.length - 1 ? 100 :
+      mid;
+    return { offsetPct: offset, color: PHASE_COLORS[i] ?? '#444' };
+  });
 
   const STEPS = 240;
   let topD = '';

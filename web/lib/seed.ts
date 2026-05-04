@@ -20,7 +20,13 @@
 import { getRace, saveRace, type SavedRace } from './storage';
 import type { RuncinoPlan } from './types';
 
-const SEEDED_FLAG = 'runcino:seeded:v1';
+// Bumped from v1 → v2 when the seed runcino.json files were rebuilt
+// to use the canonical 5-phase structure (Opening miles / Rolling
+// approach / Hurricane Pt or Peak push / Cruise miles / Final push)
+// instead of the earlier 6-phase course-facts shape. Existing browsers
+// re-seed the new plans on next load while preserving any user-entered
+// actualResult on those slugs (saveRace merges, doesn't overwrite).
+const SEEDED_FLAG = 'runcino:seeded:v2';
 
 interface SeedSpec {
   slug: string;
@@ -64,22 +70,25 @@ export async function seedIfNeeded(): Promise<{ added: string[] }> {
 
   const added: string[] = [];
   for (const seed of SEEDS) {
-    if (getRace(seed.slug)) continue; // user already has this race; skip
     try {
       const [planRes, gpxRes] = await Promise.all([
-        fetch(seed.planUrl, { cache: 'force-cache' }),
-        fetch(seed.gpxUrl,  { cache: 'force-cache' }),
+        fetch(seed.planUrl, { cache: 'reload' }),
+        fetch(seed.gpxUrl,  { cache: 'reload' }),
       ]);
       if (!planRes.ok || !gpxRes.ok) continue;
       const plan = (await planRes.json()) as RuncinoPlan;
       const gpxText = await gpxRes.text();
+      // Migrate-aware: if the slug already exists, refresh the plan +
+      // GPX (the seed shape may have evolved) but PRESERVE the user's
+      // actualResult — we never overwrite race-day notes / finish times.
+      const existing = getRace(seed.slug);
       const race: SavedRace = {
         slug: seed.slug,
         plan,
         gpxText,
         savedAt: new Date().toISOString(),
         meta: seed.meta,
-        actualResult: null,
+        actualResult: existing?.actualResult ?? null,
       };
       saveRace(race);
       added.push(seed.slug);
