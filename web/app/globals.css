@@ -361,3 +361,148 @@ h1, h2, h3, h4 {
   color: var(--color-attention);
   font-weight: 700;
 }
+
+/* ─── GP-style race poster (race-detail hero) ───────────────
+   Direct port of designs/race-detail-sombrero.html .poster-c +
+   children. Single big card with gradient + noise overlay holding
+   the hero header, 2-col map+narrative grid, and full-width
+   elevation strip. */
+.poster-c {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #0d1218 0%, #070a0e 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  padding: 44px 52px 40px;
+  margin-bottom: 14px;
+}
+.poster-c::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.8' numOctaves='2' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: .55;
+  mix-blend-mode: screen;
+}
+.pc-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  position: relative; z-index: 2;
+}
+.pc-head .rd {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 14px;
+  letter-spacing: 4px; text-transform: uppercase;
+  color: rgba(255,255,255,.55);
+}
+.pc-head .rd b { color: #ff3b30; font-weight: 700; }
+.pc-countdown { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.pc-countdown .big {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: 76px; line-height: .9; color: #ff3b30; letter-spacing: -.02em;
+}
+.pc-countdown .lbl {
+  font-family: 'Oswald', sans-serif; font-size: 10px;
+  letter-spacing: 2.6px; text-transform: uppercase;
+  color: rgba(255,255,255,.55); font-weight: 500;
+}
+.pc-title {
+  font-family: 'Oswald', sans-serif; font-weight: 700; color: #fff;
+  font-size: 148px; line-height: .82; letter-spacing: -.01em;
+  text-transform: uppercase; margin: -18px 0 6px;
+  position: relative; z-index: 2;
+}
+.pc-subtitle {
+  font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 22px;
+  letter-spacing: 8px; text-transform: uppercase;
+  color: rgba(255,255,255,.55);
+  position: relative; z-index: 2; margin-bottom: 28px;
+}
+.pc-grid {
+  display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px;
+  position: relative; z-index: 2;
+}
+.pc-track { position: relative; min-height: 500px; }
+.pc-track svg { width: 100%; height: 100%; display: block; }
+.pc-body { display: flex; flex-direction: column; gap: 20px; color: rgba(255,255,255,.8); }
+.pc-stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0;
+  border-top: 1px solid rgba(255,255,255,.14);
+  border-bottom: 1px solid rgba(255,255,255,.14);
+  padding: 18px 0;
+}
+.pc-stats .s {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 0 18px; border-right: 1px solid rgba(255,255,255,.1);
+}
+.pc-stats .s:first-child { padding-left: 0; }
+.pc-stats .s:last-child { border-right: 0; }
+.pc-stats .l {
+  font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 2.2px;
+  text-transform: uppercase; color: rgba(255,255,255,.45); font-weight: 500;
+}
+.pc-stats .v {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px;
+  letter-spacing: -.005em; color: #fff; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pc-stats .v small {
+  font-family: 'Jost', sans-serif; font-size: 11px;
+  color: rgba(255,255,255,.5); margin-left: 5px; font-weight: 600; letter-spacing: 1.3px;
+}
+.pc-stats .v.accent { color: #ff3b30; }
+.pc-lede {
+  font-family: 'Jost', sans-serif; font-size: 15px; line-height: 1.6;
+  color: rgba(255,255,255,.85); font-weight: 500;
+}
+.pc-para {
+  font-family: 'Jost', sans-serif; font-size: 13px; line-height: 1.7;
+  color: rgba(255,255,255,.65);
+}
+.pc-para b { color: #fff; font-weight: 600; }
+.pc-para em { color: #ff3b30; font-style: normal; font-weight: 600; }
+.pc-legend {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 14px; padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.pc-legend .row {
+  display: grid; grid-template-columns: 28px 110px 1fr auto; gap: 12px;
+  align-items: center; font-family: 'Jost', sans-serif; font-size: 12px;
+  color: rgba(255,255,255,.8);
+}
+.pc-legend .bar { height: 4px; border-radius: 2px; }
+.pc-legend .name {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
+  letter-spacing: 1.5px; text-transform: uppercase; color: #fff;
+}
+.pc-legend .mi { color: rgba(255,255,255,.5); font-size: 11px; letter-spacing: .5px; }
+.pc-legend .pace {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 12px;
+  color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
+.pc-elev {
+  position: relative; z-index: 2;
+  margin-top: 34px;
+  border-top: 1px solid rgba(255,255,255,.14);
+  padding-top: 18px;
+}
+.pc-elev .head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 4px;
+}
+.pc-elev .head .l {
+  font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 11px;
+  letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,.55);
+}
+.pc-elev .head .r {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 10px;
+  letter-spacing: 1.6px; text-transform: uppercase; color: #F3AD3B;
+}
+.pc-elev svg { width: 100%; height: 220px; display: block; }
+.pc-elev .axis {
+  display: flex; justify-content: space-between; margin-top: 2px;
+  padding-left: 3.833%; padding-right: 1.167%;
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.4px;
+  color: rgba(255,255,255,.4); font-weight: 700;
+}

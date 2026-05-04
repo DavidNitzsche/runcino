@@ -143,16 +143,7 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
             </div>
           </div>
 
-          <Hero race={race} days={days} peakFt={peakFt} peakMi={peakMi} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10, marginTop: 10 }}>
-            <CourseMap points={points} race={race} peakMi={peakMi} peakFt={peakFt} />
-            <PhaseLegendTile race={race} />
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <ElevationChart points={points} race={race} totalMi={totalMi} peakMi={peakMi} peakFt={peakFt} />
-          </div>
+          <PosterCard race={race} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} />
 
           <PhaseCards race={race} />
 
@@ -175,92 +166,159 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
   );
 }
 
-function Hero({ race, days, peakFt, peakMi }: { race: SavedRace; days: number; peakFt: number; peakMi: number }) {
+/* ── Race narratives ─────────────────────────────────────────
+   Per-course copy for the poster body — lede paragraph, course
+   description, start/weather paragraph, header label. Custom
+   courses (synthesized facts) get a generic narrative built from
+   the GPX shape. Pulled directly from the canonical
+   designs/race-detail.html and designs/race-detail-sombrero.html. */
+type Narrative = {
+  round: string;
+  subtitle: string;
+  lede: React.ReactNode;
+  para1: React.ReactNode;
+  para2: React.ReactNode;
+};
+function narrativeFor(slug: string, race: SavedRace, peakMi: number, peakFt: number, totalGain: number): Narrative {
+  const climbLen = 2;
+  const climbGain = Math.round(totalGain * 0.55);
+  if (slug === 'big-sur-marathon') {
+    return {
+      round: 'Round 01 · 2026 Season · Coastal Division',
+      subtitle: 'International · Marathon · Sunday 26 April',
+      lede: 'One of the most scenic road marathons on the continent — a point-to-point course carved into the Pacific edge, from redwoods at Big Sur Station to the coastal village of Carmel-by-the-Sea.',
+      para1: <>The course is <b>five sectors</b>. It opens under the redwood canopy, unfolds into rolling coastal approach, steepens into the <em>Hurricane Point climb</em> at mile {peakMi.toFixed(1)} — a {climbLen}-mile, {climbGain}-foot ascent into a prevailing headwind — then releases into a long descent past <b>Bixby Bridge</b> and the cruise miles to Carmel Highlands.</>,
+      para2: <>First run in 1986. Start 06:45 AM · Cutoff 6:00 · Field 4,500. Weather window: <em>52°F · clear · 3 mph SSE</em>. PR to beat: <b>3:52</b>.</>,
+    };
+  }
+  if (slug === 'sombrero-half') {
+    return {
+      round: 'Round 02 · 2026 Season · Tune-up Division',
+      subtitle: 'Santa Clarita · Half Marathon · Sunday 3 May',
+      lede: <>A homegrown Santa Clarita half — a rolling loop from <b>Heritage Park</b> through the Newhall Ranch neighborhoods, with one meaningful climb tucked in the middle and a descent home that pays it back.</>,
+      para1: <>The course is <b>five sectors</b>. It opens flat across the park, builds into rolling neighborhood streets, steepens to the day&apos;s high point near mile {peakMi.toFixed(1)} — a {climbLen}-mile, {climbGain}-foot pull — then releases into a long net-downhill cruise back to the finish at Newhall Ranch Road.</>,
+      para2: <>Start 07:15 AM · Loop course (start = finish). Weather window: <em>60°F · clear · light NE</em>. Tune-up before the season&apos;s A-races — leave room in the tank.</>,
+    };
+  }
+  // Generic narrative for custom courses — synthesize from the GPX.
+  return {
+    round: '2026 Season',
+    subtitle: `${race.meta.distanceMi.toFixed(1)} mi · ${fmtDate(race.meta.date)}`,
+    lede: <>{race.meta.distanceMi.toFixed(1)}-mile course built from your uploaded GPX. Pacing plan, fueling schedule, and Watch intervals derived from the trace below.</>,
+    para1: <>The course is <b>five sectors</b>, auto-detected from the elevation profile. The day&apos;s high point lands at mile {peakMi.toFixed(1)} ({Math.round(peakFt)} ft) — pace targets adjust per phase using the Minetti grade-adjusted-pace curve.</>,
+    para2: <>Goal: <em>{race.meta.goalDisplay}</em>. Strategy: {race.plan.goal.strategy.replace(/_/g, ' ')}. Watch tolerance ±{race.plan.tolerance.pace_s_per_mi} s/mi.</>,
+  };
+}
+
+/* ── Poster card ────────────────────────────────────────────
+   The hero of the race-detail page. Single .poster-c container
+   holding header (round + countdown), big race title, subtitle,
+   2-col map+narrative grid, and full-width elevation strip with
+   axis. Direct port of designs/race-detail-sombrero.html. */
+function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
+  race: SavedRace;
+  points: ParsedPoint[];
+  days: number;
+  totalMi: number;
+  peakFt: number;
+  peakMi: number;
+}) {
+  const totalGain = race.plan.race.total_gain_ft;
+  const narrative = narrativeFor(race.meta.courseSlug, race, peakMi, peakFt, totalGain);
   const isUpcoming = days >= 0;
+
   return (
-    <div style={{
-      background: 'radial-gradient(ellipse at 75% 30%, rgba(252,77,84,.08) 0%, rgba(10,14,20,0) 55%), radial-gradient(ellipse at 20% 85%, rgba(62,189,65,.06) 0%, rgba(10,14,20,0) 55%), var(--color-l0)',
-      border: '1px solid var(--color-l4)',
-      borderRadius: 20,
-      padding: '40px 44px',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 32 }}>
-        <div style={{ flex: 1 }}>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>
-            {isUpcoming ? `Next race · ${fmtDate(race.meta.date).split(',')[0]}` : `Completed · ${fmtDate(race.meta.date)}`}
+    <div className="poster-c">
+      {/* Header strip — round/season + countdown */}
+      <div className="pc-head">
+        <div className="rd"><b>{narrative.round.split('·')[0].trim()}</b>{narrative.round.split('·').slice(1).map((s, i) => <span key={i}> · {s.trim()}</span>)}</div>
+        {isUpcoming ? (
+          <div className="pc-countdown">
+            <span className="big">{Math.max(0, days)}</span>
+            <span className="lbl">{days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go'}</span>
           </div>
-          <div style={{
-            fontFamily: 'var(--font-display)',
-            fontWeight: 700,
-            fontSize: 88,
-            letterSpacing: '-.01em',
-            lineHeight: 0.88,
-            textTransform: 'uppercase',
-            color: 'var(--color-t0)',
-          }}>{race.meta.name}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: 36, marginTop: 28 }}>
-            <Stat label="Date" value={fmtDate(race.meta.date).split(', ').slice(1).join(', ')} />
-            <Stat label="Distance" value={`${race.meta.distanceMi.toFixed(1)} mi`} />
-            <Stat label="Elevation" value={`+${race.plan.race.total_gain_ft} ft`} />
-            <Stat label="Peak" value={`${Math.round(peakFt)} ft @ ${peakMi.toFixed(1)} mi`} />
-          </div>
-        </div>
-        {isUpcoming && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{
-              fontFamily: 'var(--font-display)',
-              fontWeight: 800,
-              fontSize: 156,
-              letterSpacing: '-.04em',
-              lineHeight: 0.85,
-              color: 'var(--color-attention)',
-              fontVariantNumeric: 'tabular-nums',
-            }}>{Math.max(0, days)}</div>
-            <div style={{
-              fontFamily: 'var(--font-data)',
-              fontSize: 11,
-              letterSpacing: '2.4px',
-              textTransform: 'uppercase',
-              color: 'var(--color-t2)',
-              fontWeight: 700,
-              marginTop: 8,
-            }}>{days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go'}</div>
-            <div style={{ marginTop: 22, padding: '12px 16px', background: 'var(--color-l1)', border: '1px solid var(--color-l4)', borderRadius: 10 }}>
-              <div className="tile-sub" style={{ marginBottom: 6 }}>Goal time</div>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontWeight: 800,
-                fontSize: 44,
-                letterSpacing: '-.02em',
-                color: 'var(--color-attention)',
-                lineHeight: 1,
-              }}>{race.meta.goalDisplay}</div>
-            </div>
+        ) : (
+          <div className="pc-countdown">
+            <span className="big" style={{ color: '#7DD685', fontSize: 38, lineHeight: 1.2 }}>Done</span>
+            <span className="lbl">{Math.abs(days) === 1 ? 'Yesterday' : `${Math.abs(days)} days ago`}</span>
           </div>
         )}
+      </div>
+
+      <h1 className="pc-title">{race.meta.name.replace(/marathon/i, 'Marathon').toUpperCase()}</h1>
+      <div className="pc-subtitle">{narrative.subtitle}</div>
+
+      <div className="pc-grid">
+        {/* Course map (left column) */}
+        <div className="pc-track">
+          <PosterMapSvg points={points} race={race} peakMi={peakMi} peakFt={peakFt} />
+        </div>
+
+        {/* Narrative + stats + phase legend (right column) */}
+        <div className="pc-body">
+          <div className="pc-stats">
+            <div className="s">
+              <span className="l">Distance</span>
+              <span className="v">{totalMi.toFixed(1)}<small>mi</small></span>
+            </div>
+            <div className="s">
+              <span className="l">Elevation</span>
+              <span className="v">+{race.plan.race.total_gain_ft}<small>ft</small></span>
+            </div>
+            <div className="s">
+              <span className="l">Goal Time</span>
+              <span className="v accent">{race.meta.goalDisplay.replace(/^0?:?/,'').replace(/:00$/, '')}</span>
+            </div>
+            <div className="s">
+              <span className="l">Peak</span>
+              <span className="v">{Math.round(peakFt)}<small>ft</small></span>
+            </div>
+          </div>
+          <p className="pc-lede">{narrative.lede}</p>
+          <p className="pc-para">{narrative.para1}</p>
+          <p className="pc-para">{narrative.para2}</p>
+
+          {/* Phase legend dots — one row per phase */}
+          <div className="pc-legend">
+            {race.plan.phases.map((p, i) => (
+              <div className="row" key={i}>
+                <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
+                <span className="name">{p.label}</span>
+                <span className="mi">MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}</span>
+                <span className="pace">{p.target_pace_display}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Elevation strip — full width below the grid, inside the same poster card */}
+      <div className="pc-elev">
+        <div className="head">
+          <span className="l">Elevation Profile</span>
+          <span className="r">Peak <em>{Math.round(peakFt)} ft · MI {peakMi.toFixed(1)}</em></span>
+        </div>
+        <PosterElevSvg points={points} race={race} totalMi={totalMi} peakMi={peakMi} peakFt={peakFt} />
+        <div className="axis">
+          <span>0</span>
+          <span>{(totalMi / 2).toFixed(1)}</span>
+          <span>{totalMi.toFixed(1)}</span>
+        </div>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="tile-sub">{label}</div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 24, letterSpacing: '-.02em', color: 'var(--color-t0)', marginTop: 6 }}>{value}</div>
-    </div>
-  );
-}
-
-function CourseMap({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; peakMi: number; peakFt: number }) {
-  if (points.length < 2) return <div className="tile">No GPX track points.</div>;
+/* ── Poster map SVG ──────────────────────────────────────────
+   Internal helper. Projects lat/lon trackpoints into the .pc-track
+   container. Phase-colored polyline + START / FINISH / PEAK dots. */
+function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; peakMi: number; peakFt: number }) {
+  if (points.length < 2) return <div style={{ padding: 32, color: 'rgba(255,255,255,.5)' }}>No GPX track points.</div>;
   const lats = points.map(p => p.lat);
   const lons = points.map(p => p.lon);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const padX = 40, padY = 40, W = 720, H = 420;
+  const padX = 30, padY = 30, W = 600, H = 600;
   const cosLat = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
   const spanLon = (maxLon - minLon) * cosLat || 1e-9;
   const spanLat = maxLat - minLat || 1e-9;
@@ -271,8 +329,6 @@ function CourseMap({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; ra
     offX + (p.lon - minLon) * cosLat * scale,
     offY + (maxLat - p.lat) * scale,
   ];
-  const total = points[points.length - 1].cumMi;
-  // Build segments colored by phase index (5 phases evenly distributed)
   const phaseAtMi = (mi: number) => {
     for (let i = 0; i < race.plan.phases.length; i++) {
       const p = race.plan.phases[i];
@@ -289,118 +345,49 @@ function CourseMap({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; ra
     if (phase !== curPhase) {
       if (cur.length > 0) {
         segs.push({ d: cur.join(' '), color: PHASE_COLORS[curPhase] ?? PHASE_COLORS[0] });
-        cur = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
-      } else {
-        cur = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
       }
+      cur = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
       curPhase = phase;
     } else {
       cur.push(`L ${x.toFixed(1)} ${y.toFixed(1)}`);
     }
   }
   if (cur.length > 0) segs.push({ d: cur.join(' '), color: PHASE_COLORS[curPhase] ?? PHASE_COLORS[0] });
-
   const startP = proj(points[0]);
   const endP = proj(points[points.length - 1]);
   const peakIdx = points.findIndex(p => p.cumMi >= peakMi);
   const peakP = peakIdx >= 0 ? proj(points[peakIdx]) : null;
-
   return (
-    <div className="tile" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '20px 24px 8px' }}>
-        <div className="tile-sub">Course</div>
-        <div className="tile-lbl">{race.plan.race.distance_mi.toFixed(1)} mi · {peakIdx >= 0 ? `peak ${Math.round(peakFt)} ft` : 'flat'}</div>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', display: 'block', background: 'var(--color-l0)' }}>
-        {segs.map((s, i) => (
-          <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round" />
-        ))}
-        <circle cx={startP[0]} cy={startP[1]} r="8" fill="#3EBD41" stroke="var(--color-l0)" strokeWidth="3" />
-        <text x={startP[0]} y={startP[1] - 14} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="#3EBD41" textAnchor="middle" fontWeight="700">START</text>
-        <circle cx={endP[0]} cy={endP[1]} r="8" fill="#9013FE" stroke="var(--color-l0)" strokeWidth="3" />
-        <text x={endP[0]} y={endP[1] + 22} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="#9013FE" textAnchor="middle" fontWeight="700">FINISH</text>
-        {peakP && (
-          <>
-            <circle cx={peakP[0]} cy={peakP[1]} r="6" fill="#FC4D54" stroke="var(--color-l0)" strokeWidth="3" />
-            <text x={peakP[0] + 12} y={peakP[1] + 4} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="#FC4D54" fontWeight="700">PEAK · {Math.round(peakFt)} FT</text>
-          </>
-        )}
-      </svg>
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
+      {segs.map((s, i) => (
+        <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round" />
+      ))}
+      <circle cx={startP[0]} cy={startP[1]} r="9" fill="#3EBD41" stroke="#0d1218" strokeWidth="3" />
+      <text x={startP[0]} y={startP[1] + 22} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#3EBD41" textAnchor="middle" fontWeight="700">START</text>
+      <circle cx={endP[0]} cy={endP[1]} r="9" fill="#9013FE" stroke="#0d1218" strokeWidth="3" />
+      <text x={endP[0]} y={endP[1] - 14} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#9013FE" textAnchor="middle" fontWeight="700">FINISH</text>
+      {peakP && (
+        <>
+          <circle cx={peakP[0]} cy={peakP[1]} r="7" fill="#FC4D54" stroke="#0d1218" strokeWidth="3" />
+          <text x={peakP[0] + 14} y={peakP[1] + 4} fontFamily="JetBrains Mono, monospace" fontSize="11" fill="#FC4D54" fontWeight="700">PEAK · {Math.round(peakFt)} FT</text>
+        </>
+      )}
+    </svg>
   );
 }
 
-/* ── Phase legend tile ──────────────────────────────────────
-   Sits next to the course map (replaces the awkward "course map
-   alone full width" layout). Shows the 5 phases with color swatch,
-   mile range, and target pace — same content as the pc-legend
-   block in designs/race-detail-sombrero.html, just reflowed for
-   the React layout. */
-function PhaseLegendTile({ race }: { race: SavedRace }) {
-  const totalSec = race.plan.goal.finish_time_s;
-  return (
-    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="tile-h">
-        <div>
-          <div className="tile-sub">Five phases</div>
-          <div className="tile-lbl">Goal {race.meta.goalDisplay}</div>
-        </div>
-        <span className="chip">{fmtPace(race.plan.goal.flat_pace_s_per_mi)}/MI AVG</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {race.plan.phases.map((p, i) => (
-          <div key={i} style={{
-            display: 'grid',
-            gridTemplateColumns: '5px 1fr auto',
-            gap: 12,
-            alignItems: 'center',
-            padding: '12px 0',
-            borderTop: i > 0 ? '1px solid var(--color-l4)' : 'none',
-          }}>
-            <div style={{ width: 5, height: 28, borderRadius: 2, background: PHASE_COLORS[i] ?? '#444' }} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1, color: 'var(--color-t0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {p.label}
-              </div>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700, marginTop: 3 }}>
-                MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)} · {p.distance_mi.toFixed(1)} MI
-              </div>
-            </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-.01em', color: PHASE_COLORS[i] ?? 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
-              {p.target_pace_display}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        paddingTop: 10,
-        borderTop: '1px solid var(--color-l4)',
-        fontFamily: 'var(--font-data)',
-        fontSize: 10,
-        letterSpacing: '1.4px',
-        textTransform: 'uppercase',
-        fontWeight: 700,
-        color: 'var(--color-t3)',
-      }}>
-        <span>Total · {race.meta.distanceMi.toFixed(1)} MI</span>
-        <span style={{ color: 'var(--color-t1)' }}>{fmtTimeShort(totalSec)}</span>
-      </div>
-    </div>
-  );
-}
-
-function ElevationChart({ points, race, totalMi, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; totalMi: number; peakMi: number; peakFt: number }) {
-  if (points.length < 2) return <div className="tile">No elevation data.</div>;
-  const W = 600, H = 420, padL = 38, padR = 16, padT = 60, padB = 36;
+/* ── Poster elevation SVG ────────────────────────────────────
+   Internal helper. Phase-tinted silhouette spanning the .pc-elev
+   strip. Y-axis shows peak / low; X-axis is below outside the SVG. */
+function PosterElevSvg({ points, race, totalMi, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; totalMi: number; peakMi: number; peakFt: number }) {
+  if (points.length < 2) return null;
+  const W = 1200, H = 220, padL = 46, padR = 14, padT = 18, padB = 18;
   const elevsFt = points.map(p => p.eleM * 3.28084);
   const minFt = Math.min(...elevsFt);
   const maxFt = Math.max(...elevsFt);
   const fY = (e: number) => padT + (1 - (e - minFt) / Math.max(1, maxFt - minFt)) * (H - padT - padB);
   const fX = (mi: number) => padL + (mi / Math.max(1e-9, totalMi)) * (W - padL - padR);
 
-  // Build gradient stops from phase boundaries (matches the bottom phase strip)
   const stops: Array<{ offsetPct: number; color: string }> = [];
   stops.push({ offsetPct: 0, color: PHASE_COLORS[0] });
   for (let i = 0; i < race.plan.phases.length - 1; i++) {
@@ -410,12 +397,10 @@ function ElevationChart({ points, race, totalMi, peakMi, peakFt }: { points: Par
   }
   stops.push({ offsetPct: 100, color: PHASE_COLORS[Math.min(race.plan.phases.length - 1, PHASE_COLORS.length - 1)] });
 
-  // Silhouette path
-  const STEPS = 200;
+  const STEPS = 240;
   let topD = '';
   for (let i = 0; i <= STEPS; i++) {
     const mi = (i / STEPS) * totalMi;
-    // interpolate elevation at mi
     let lo = 0, hi = points.length - 1;
     while (lo < hi - 1) { const m = (lo + hi) >> 1; if (points[m].cumMi < mi) lo = m; else hi = m; }
     const t = (mi - points[lo].cumMi) / Math.max(1e-9, points[hi].cumMi - points[lo].cumMi);
@@ -423,51 +408,47 @@ function ElevationChart({ points, race, totalMi, peakMi, peakFt }: { points: Par
     topD += (i === 0 ? 'M ' : 'L ') + fX(mi).toFixed(1) + ' ' + fY(eFt).toFixed(1) + ' ';
   }
   const fillD = topD + `L ${fX(totalMi).toFixed(1)} ${(H - padB)} L ${padL} ${(H - padB)} Z`;
+  const peakXY = peakMi >= 0 ? [fX(peakMi), fY(peakFt)] : null;
 
   return (
-    <div className="tile" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '20px 24px 4px' }}>
-        <div className="tile-sub">Elevation</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 }}>
-          <div className="tile-lbl">+{race.plan.race.total_gain_ft} / −{race.plan.race.total_loss_ft} ft</div>
-          <div className="hint" style={{ marginTop: 0 }}>Peak {Math.round(peakFt)} ft · MI {peakMi.toFixed(1)}</div>
-        </div>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', display: 'block', height: 380 }}>
-        <defs>
-          <linearGradient id="phaseTint" x1="0" y1="0" x2="1" y2="0">
-            {stops.map((s, i) => (
-              <stop key={i} offset={s.offsetPct + '%'} stopColor={s.color} />
-            ))}
-          </linearGradient>
-          <linearGradient id="vfade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fff" stopOpacity={0.55} />
-            <stop offset="100%" stopColor="#fff" stopOpacity={0} />
-          </linearGradient>
-          <mask id="silMask">
-            <path d={fillD} fill="url(#vfade)" />
-          </mask>
-        </defs>
-        <rect x={padL} y={0} width={W - padL - padR} height={H - padB} fill="url(#phaseTint)" mask="url(#silMask)" opacity={0.75} />
-        <path d={topD} fill="none" stroke="url(#phaseTint)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {/* Phase boundary ticks */}
-        {race.plan.phases.slice(0, -1).map((p, i) => (
-          <line key={i} x1={fX(p.end_mi)} y1={padT} x2={fX(p.end_mi)} y2={H - padB} stroke="rgba(255,255,255,.08)" strokeDasharray="2 4" />
-        ))}
-        {/* Y axis */}
-        <text x={padL - 6} y={padT + 8} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.45)" textAnchor="end" fontWeight="700">{Math.round(maxFt)}</text>
-        <text x={padL - 6} y={H - padB - 2} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.3)" textAnchor="end" fontWeight="700">{Math.round(minFt)}</text>
-        {/* Phase strip below chart */}
-        {race.plan.phases.map((p, i) => (
-          <rect key={i} x={fX(p.start_mi)} y={H - padB + 4} width={fX(p.end_mi) - fX(p.start_mi)} height="8" fill={PHASE_COLORS[i] ?? '#444'} />
-        ))}
-        {/* X axis */}
-        <text x={padL} y={H - 4} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.3)" fontWeight="700">0</text>
-        <text x={W - padR} y={H - 4} textAnchor="end" fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.3)" fontWeight="700">{totalMi.toFixed(1)}</text>
-      </svg>
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="pcElevTint" x1="0" y1="0" x2="1" y2="0">
+          {stops.map((s, i) => (
+            <stop key={i} offset={s.offsetPct + '%'} stopColor={s.color} />
+          ))}
+        </linearGradient>
+        <linearGradient id="pcElevFade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity={.5} />
+          <stop offset="100%" stopColor="#fff" stopOpacity={0} />
+        </linearGradient>
+        <mask id="pcElevSilMask">
+          <path d={fillD} fill="url(#pcElevFade)" />
+        </mask>
+      </defs>
+      {[0.25, 0.5, 0.75].map((f, i) => (
+        <line key={i} x1={padL} y1={padT + f * (H - padT - padB)} x2={W - padR} y2={padT + f * (H - padT - padB)} stroke="rgba(255,255,255,.06)" strokeDasharray="2 4" />
+      ))}
+      <rect x={padL} y={0} width={W - padL - padR} height={H - padB} fill="url(#pcElevTint)" mask="url(#pcElevSilMask)" opacity={.78} />
+      <path d={topD} fill="none" stroke="url(#pcElevTint)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {race.plan.phases.slice(0, -1).map((p, i) => (
+        <line key={i} x1={fX(p.end_mi)} y1={padT} x2={fX(p.end_mi)} y2={H - padB} stroke="rgba(255,255,255,.08)" strokeDasharray="2 4" />
+      ))}
+      <text x={padL - 8} y={padT + 8} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.45)" textAnchor="end" fontWeight="700">{Math.round(maxFt)}</text>
+      <text x={padL - 8} y={H - padB - 2} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.3)" textAnchor="end" fontWeight="700">{Math.round(minFt)}</text>
+      {peakXY && (
+        <>
+          <line x1={peakXY[0]} y1={peakXY[1]} x2={peakXY[0]} y2={H - padB} stroke="rgba(252,77,84,.4)" strokeWidth="1" strokeDasharray="2 3" />
+          <circle cx={peakXY[0]} cy={peakXY[1]} r="4" fill="#FC4D54" />
+        </>
+      )}
+      {race.plan.phases.map((p, i) => (
+        <rect key={i} x={fX(p.start_mi)} y={H - padB + 4} width={fX(p.end_mi) - fX(p.start_mi)} height="6" fill={PHASE_COLORS[i] ?? '#444'} />
+      ))}
+    </svg>
   );
 }
+
 
 function PhaseCards({ race }: { race: SavedRace }) {
   return (
