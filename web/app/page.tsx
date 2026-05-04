@@ -20,6 +20,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
+import { seedIfNeeded } from '../lib/seed';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -27,8 +28,13 @@ export default function OverviewPage() {
   const [races, setRaces] = useState<SavedRace[] | null>(null);
 
   useEffect(() => {
-    setNow(new Date());
-    setRaces(listRaces());
+    let cancelled = false;
+    seedIfNeeded().finally(() => {
+      if (cancelled) return;
+      setNow(new Date());
+      setRaces(listRaces());
+    });
+    return () => { cancelled = true; };
   }, []);
 
   if (now === null || races === null) return <LoadingShell />;

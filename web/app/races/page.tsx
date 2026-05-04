@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
+import { seedIfNeeded } from '../../lib/seed';
 
 function fmtDate(iso: string): string {
   const d = new Date(iso + 'T12:00:00Z');
@@ -30,7 +31,15 @@ export default function RacesIndexPage() {
   const [races, setRaces] = useState<SavedRace[] | null>(null);
 
   // Read from localStorage on mount; the SSR pass shows the loading shell.
-  useEffect(() => { setRaces(listRaces()); }, []);
+  // Seeds Big Sur + Sombrero on first visit (idempotent).
+  useEffect(() => {
+    let cancelled = false;
+    seedIfNeeded().finally(() => {
+      if (cancelled) return;
+      setRaces(listRaces());
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const upcoming = races?.filter(r => daysUntil(r.meta.date) >= 0) ?? [];
   const past     = races?.filter(r => daysUntil(r.meta.date) < 0) ?? [];

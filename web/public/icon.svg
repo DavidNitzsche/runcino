@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="rmark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#9013FE"/>
+      <stop offset="100%" stop-color="#008FEC"/>
+    </linearGradient>
+    <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#FFFFFF" stop-opacity=".22"/>
+      <stop offset="55%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded-square card. ~30% radius matches iOS app icon shape. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#rmark)"/>
+  <!-- Soft top highlight for depth -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#hl)"/>
+  <!-- The "R" — Oswald 700, manually centered. text-anchor + dominant-baseline center it; tweak y to optical-center. -->
+  <text
+    x="512" y="582"
+    font-family="Oswald, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif"
+    font-weight="700"
+    font-size="640"
+    letter-spacing="-12"
+    fill="#F6F7F8"
+    text-anchor="middle"
+    dominant-baseline="middle"
+  >R</text>
+</svg>
