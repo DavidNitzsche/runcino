@@ -12,7 +12,6 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
-import { seedIfNeeded } from '../../lib/seed';
 import { autoSyncStrava } from '../../lib/strava-auto';
 
 function fmtDate(iso: string): string {
@@ -37,12 +36,15 @@ export default function RacesIndexPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await seedIfNeeded();
+      const initial = await listRaces();
       if (cancelled) return;
-      setRaces(listRaces());
+      setRaces(initial);
       const sync = await autoSyncStrava();
       if (cancelled) return;
-      if (sync.updatedSlugs.length > 0) setRaces(listRaces());
+      if (sync.updatedSlugs.length > 0) {
+        const refreshed = await listRaces(true);
+        if (!cancelled) setRaces(refreshed);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -120,10 +122,24 @@ function Grid({ children }: { children: React.ReactNode }) {
   );
 }
 
+function parseGoalS(s: string): number | null {
+  const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+function fmtDelta(s: number): string {
+  s = Math.round(Math.abs(s));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
 function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: boolean }) {
   const days = daysUntil(race.meta.date);
   const isUpcoming = days >= 0;
   const result = race.actualResult ?? null;
+  const goalS = parseGoalS(race.meta.goalDisplay);
+  const delta = result && goalS != null ? result.finishS - goalS : null;
   return (
     <Link
       href={`/races/${race.slug}`}
@@ -148,7 +164,8 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span className="tile-sub">{fmtDate(race.meta.date)}</span>
         {isUpcoming && <span className="chip chip--attention">{days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days}D`}</span>}
-        {!isUpcoming && result && <span className="chip chip--success">FINISHED</span>}
+        {!isUpcoming && result?.isPR && <span className="chip chip--attention">PR</span>}
+        {!isUpcoming && result && !result.isPR && <span className="chip chip--success">FINISHED</span>}
         {!isUpcoming && !result && <span className="chip">RESULT PENDING</span>}
       </div>
       <div>
@@ -163,6 +180,7 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
         }}>{race.meta.name}</div>
         <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--color-t2)', fontWeight: 500, marginTop: 4 }}>
           {race.meta.distanceMi.toFixed(1)} mi
+          {result?.avgHr ? ` · ${Math.round(result.avgHr)} bpm avg` : ''}
         </div>
       </div>
       <div style={{
@@ -179,10 +197,22 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
         paddingTop: 16,
         borderTop: '1px solid var(--color-l4)',
       }}>
-        <span>{!isUpcoming && result ? 'FINISH' : 'GOAL'}</span>
-        <b style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-.01em', color: 'var(--color-t0)', fontWeight: 800 }}>
-          {!isUpcoming && result ? result.finishDisplay : race.meta.goalDisplay}
-        </b>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span>{!isUpcoming && result ? 'FINISH' : 'GOAL'}</span>
+          {!isUpcoming && result && (
+            <span style={{ color: 'var(--color-t3)', fontSize: 9, fontWeight: 700 }}>vs goal {race.meta.goalDisplay}</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <b style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-.01em', color: 'var(--color-t0)', fontWeight: 800 }}>
+            {!isUpcoming && result ? result.finishDisplay : race.meta.goalDisplay}
+          </b>
+          {delta != null && (
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 800, letterSpacing: '-.005em', color: delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)' }}>
+              {delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtDelta(delta)}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );

@@ -1,107 +1,154 @@
 /**
- * /api/strava/sync — pulls Strava activities + matches against the
- * races the client has saved, returns a per-slug match payload.
+ * /api/strava/sync — match Strava activities to saved races and write
+ * actualResult into Postgres.
  *
- * POST body: { races: [{ slug, date, distanceMi }, ...] }
- * Response: { matches: { [slug]: ActivityResult | null }, fetchedAt }
+ * GET / POST — both refresh the activity cache (if stale) and run the
+ * race matcher across every saved race in Postgres. Returns
+ * { updated: string[], fetchedAt } so the client can decide whether
+ * to re-fetch /api/races.
  *
- * Server-side caches the activity list for 15 minutes (module-level
- * Map) so back-to-back page navs don't hammer Strava's rate-limit
- * (100 req / 15 min on the read endpoint). Cache key is the
- * STRAVA_REFRESH_TOKEN — invalidates automatically on token rotation.
+ * Manual entries (actualResult.source === 'manual') are sticky and
+ * never overwritten by sync. Only Strava-sourced rows refresh, plus
+ * any race that has no actualResult yet.
  */
 
 import {
-  fetchActivities,
-  findRaceMatch,
+  fetchActivityDetail,
   activityToResult,
   type StravaActivity,
-  type ActivityResult,
 } from '../../../../lib/strava';
+import { getCachedActivities, getCacheFetchedAt, getCachedDetail, setCachedDetail } from '../../../../lib/strava-cache';
+import type { NormalizedActivity } from '../activities/route-shared';
+import { listRacesDB, setActualResultDB } from '../../../../lib/race-store';
+import { ensureSeed } from '../../../../lib/seed-server';
+import type { ActualResult } from '../../../../lib/storage-types';
 
-type ActivitiesCache = { fetchedAt: number; activities: StravaActivity[]; tokenKey: string };
-let cache: ActivitiesCache | null = null;
-const TTL_MS = 15 * 60 * 1000;
-
-async function getActivities(): Promise<StravaActivity[]> {
-  const tokenKey = process.env.STRAVA_REFRESH_TOKEN ?? '';
-  if (cache && cache.tokenKey === tokenKey && Date.now() - cache.fetchedAt < TTL_MS) {
-    return cache.activities;
-  }
-  // Pull all activities from the start of the calendar year. Plenty
-  // of headroom for race-history matching without paging through years.
-  const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
-  const activities = await fetchActivities({ after: Math.floor(yearStart) });
-  cache = { fetchedAt: Date.now(), activities, tokenKey };
-  return activities;
-}
-
-interface RaceQuery { slug: string; date: string; distanceMi: number }
-
-export async function POST(req: Request) {
+async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null; error?: string }> {
   if (!process.env.STRAVA_REFRESH_TOKEN) {
-    return Response.json({
-      matches: {},
-      fetchedAt: null,
-      error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.',
-    }, { status: 200 });  // 200 so the client treats it as a no-op, not a hard fail
+    return { updated: [], fetchedAt: null, error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.' };
   }
 
-  let body: { races?: RaceQuery[] };
-  try {
-    body = await req.json();
-  } catch {
-    return new Response('Invalid JSON', { status: 400 });
-  }
-  const races = Array.isArray(body.races) ? body.races : [];
+  await ensureSeed();
+  const races = await listRacesDB();
 
-  let activities: StravaActivity[];
+  // Filter to candidates: races without a result OR previously sourced
+  // from Strava. Manual entries stay frozen.
+  const candidates = races.filter(r => r.actualResult == null || r.actualResult.source === 'strava');
+  if (candidates.length === 0) {
+    const at = await getCacheFetchedAt();
+    return { updated: [], fetchedAt: at ? new Date(at).toISOString() : null };
+  }
+
+  // Pull the cached activity list (refreshes from Strava if stale).
+  let activities;
   try {
-    activities = await getActivities();
+    ({ activities } = await getCachedActivities());
   } catch (e) {
-    return Response.json({ matches: {}, fetchedAt: null, error: String(e) }, { status: 200 });
+    return { updated: [], fetchedAt: null, error: String(e) };
   }
 
-  const matches: Record<string, ActivityResult | null> = {};
-  for (const r of races) {
-    if (!r.slug || !r.date) { matches[r.slug] = null; continue; }
-    const match = findRaceMatch(activities, r.date, r.distanceMi || 0);
-    matches[r.slug] = match ? activityToResult(match, r.distanceMi) : null;
+  const updated: string[] = [];
+  for (const race of candidates) {
+    const match = findMatchByDate(activities, race.meta.date, race.meta.distanceMi);
+    if (!match) continue;
+
+    // Prefer cached detail; otherwise fetch (which writes through).
+    let detail: StravaActivity | null = null;
+    const cachedDetail = await getCachedDetail(match.id);
+    if (cachedDetail?.detail) {
+      detail = cachedDetail.detail as StravaActivity;
+    } else {
+      try {
+        detail = await fetchActivityDetail(match.id);
+        await setCachedDetail(match.id, detail);
+      } catch {
+        // Fall back to summary if detail fetch fails.
+      }
+    }
+
+    const richActivity: StravaActivity = detail ?? toStravaShape(match);
+    const r = activityToResult(richActivity, race.meta.distanceMi);
+
+    const result: ActualResult = {
+      finishS: r.finishS,
+      finishDisplay: r.finishDisplay,
+      paceSPerMi: r.paceSPerMi,
+      paceDisplay: r.paceDisplay,
+      recordedAt: new Date().toISOString(),
+      source: 'strava',
+      stravaActivityId: r.activityId,
+      avgHr: r.avgHr,
+      maxHr: r.maxHr,
+      avgCadence: r.avgCadence,
+      totalGainFt: r.totalGainFt,
+      activityName: r.name,
+      description: r.description,
+      sufferScore: r.sufferScore,
+      kudosCount: r.kudosCount,
+      achievementCount: r.achievementCount,
+      workoutType: r.workoutType,
+      miles: r.miles,
+      bestEfforts: r.bestEfforts,
+      summaryPolyline: r.summaryPolyline,
+      isPR: (r.bestEfforts?.some(b => b.isPR) ?? false) || (race.actualResult?.isPR ?? false),
+      notes: race.actualResult?.notes,                  // user-entered notes are preserved
+    };
+    await setActualResultDB(race.slug, result);
+    updated.push(race.slug);
   }
 
-  return Response.json({
-    matches,
-    fetchedAt: cache?.fetchedAt ? new Date(cache.fetchedAt).toISOString() : null,
-  });
+  const at = await getCacheFetchedAt();
+  return { updated, fetchedAt: at ? new Date(at).toISOString() : null };
 }
 
-/** GET fallback — returns the cached activity list as JSON, useful
- *  for debugging "did Strava actually return anything?" without
- *  needing a saved race to match against. */
+/** Find the cached normalized activity that best matches a saved race
+ *  (same calendar day, run type, distance within ±15%). The matcher
+ *  in lib/strava.ts works on the raw Strava shape; we reimplement the
+ *  same rules here against our normalized rows. */
+function findMatchByDate(activities: NormalizedActivity[], dateISO: string, distMi: number): NormalizedActivity | null {
+  const datePrefix = dateISO.slice(0, 10);
+  const sameDay = activities.filter(a => a.date === datePrefix && (a.type === 'Run' || a.sportType === 'Run' || a.sportType === 'TrailRun'));
+  if (sameDay.length === 0) return null;
+  if (distMi > 0) {
+    const within = sameDay.filter(a => Math.abs(a.distanceMi - distMi) / Math.max(distMi, 0.1) < 0.15);
+    if (within.length > 0) return within.sort((a, b) => b.distanceMi - a.distanceMi)[0];
+  }
+  return sameDay.sort((a, b) => b.distanceMi - a.distanceMi)[0];
+}
+
+/** Reconstruct the minimum StravaActivity shape activityToResult()
+ *  expects when we don't have the full detail cached — miles +
+ *  best_efforts will be missing, which is fine; they fill in after
+ *  the next detail fetch. */
+function toStravaShape(n: NormalizedActivity): StravaActivity {
+  return {
+    id: n.id,
+    name: n.name,
+    distance: n.distanceMi * 1609.344,
+    moving_time: n.movingTimeS,
+    elapsed_time: n.elapsedTimeS,
+    total_elevation_gain: n.elevGainFt / 3.28084,
+    type: n.type,
+    sport_type: n.sportType ?? undefined,
+    workout_type: n.workoutType,
+    start_date: n.startLocal,
+    start_date_local: n.startLocal,
+    average_heartrate: n.avgHr ?? undefined,
+    max_heartrate: n.maxHr ?? undefined,
+    average_cadence: n.avgCadence ?? undefined,
+    map: n.summaryPolyline ? { summary_polyline: n.summaryPolyline } : undefined,
+  };
+}
+
+// Both methods do the same thing — POST kept for legacy callers (the
+// old client used to send a races[] body), GET added so the Overview
+// page can trigger a sync via a plain background fetch.
+export async function POST() {
+  // Body is ignored — server is the source of truth for which races exist.
+  const result = await runSync();
+  return Response.json(result, { status: 200 });
+}
 export async function GET() {
-  if (!process.env.STRAVA_REFRESH_TOKEN) {
-    return Response.json({
-      activities: [],
-      error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.',
-    }, { status: 200 });
-  }
-  try {
-    const activities = await getActivities();
-    return Response.json({
-      activities: activities.map(a => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        sport_type: a.sport_type,
-        start_date_local: a.start_date_local,
-        distance_mi: Math.round(a.distance / 1609.344 * 100) / 100,
-        moving_time_s: a.moving_time,
-        avg_hr: a.average_heartrate ?? null,
-        elev_gain_ft: Math.round((a.total_elevation_gain ?? 0) * 3.28084),
-      })),
-      fetchedAt: cache?.fetchedAt ? new Date(cache.fetchedAt).toISOString() : null,
-    });
-  } catch (e) {
-    return Response.json({ activities: [], error: String(e) }, { status: 200 });
-  }
+  const result = await runSync();
+  return Response.json(result, { status: 200 });
 }

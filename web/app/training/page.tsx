@@ -1,26 +1,32 @@
 'use client';
 
 /**
- * /training — honest empty state until Coach (M3) lands.
+ * /training — actual training executed (last 7 days from Strava) +
+ * placeholder for the M3 Coach plan.
  *
- * Replaces the embedded designs/training.html mock. The math libs
- * (lib/training.ts, /api/plan-week) exist; once they're wired into
- * the app this page becomes the daily/weekly plan view.
+ * The "this week so far" strip is real: Strava miles per day, today
+ * highlighted, week total. Build arc / weekly plan / today workout
+ * stay M3 stubs until Coach lands.
  */
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
+import { useActivities, onlyRuns } from '../../lib/strava-activities';
+import { dailyMiles, weeklyMiles } from '../../lib/strava-stats';
 import { daysUntil, formatWeekRange, formatShort } from '../../lib/dates';
 
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [races, setRaces] = useState<SavedRace[] | null>(null);
+  const { activities } = useActivities();
 
   useEffect(() => {
+    let cancelled = false;
     setNow(new Date());
-    setRaces(listRaces());
+    listRaces().then(rs => { if (!cancelled) setRaces(rs); });
+    return () => { cancelled = true; };
   }, []);
 
   if (now === null || races === null) {
@@ -37,6 +43,7 @@ export default function TrainingPage() {
 
   const upcoming = races.filter(r => daysUntil(r.meta.date) >= 0).sort((a, b) => daysUntil(a.meta.date) - daysUntil(b.meta.date));
   const goalRace = upcoming[0] ?? null;
+  const runs = activities ? onlyRuns(activities) : null;
 
   return (
     <>
@@ -61,6 +68,9 @@ export default function TrainingPage() {
             </div>
           </div>
 
+          {runs && <ActualThisWeekTile runs={runs} now={now} />}
+          {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
+
           <ComingSoon
             milestone="M3 · Coach"
             title="Adaptive weekly plan"
@@ -68,28 +78,90 @@ export default function TrainingPage() {
           />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <Stub label="This week" range={formatWeekRange(now)} pill="M3" body="Mile-by-mile plan with HR zones, fueling, and warm-up/cool-down structure. Drag-drop to reschedule. Quality / long / easy / rest auto-balanced." />
-            <Stub label="Today" range={now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} pill="M3" body="The single workout for today, with target paces, HR zones, and Watch-sync button. Full execution detail like the race-day surface." />
-          </div>
-
-          <Stub
-            label="Build arc"
-            range="16-week periodization"
-            pill="M3"
-            body="Visual phase progression — base / build / peak / taper — over the months leading to your goal race. Each week sized by mileage, color-coded by phase, with milestone markers (peak week, longest run, taper start)."
-            tall
-          />
-
-          <SectionHeader title="What works today" sub="Available now without Coach" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <SurfaceTile href="/races/new" title="Build a race plan" body="GPX → Minetti pacing + fueling + Watch intervals." />
-            <SurfaceTile href="/races"     title="Saved race plans" body="Your built plans. Download .runcino.json, AirDrop to phone." />
-            <SurfaceTile href="/health"    title="Health snapshot"  body="HRV / sleep / RHR — once HealthKit is on." muted />
+            <Stub label="Today's plan" range={now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} pill="M3" body="The single workout for today, with target paces, HR zones, and Watch-sync button." />
+            <Stub label="Build arc" range="16-week periodization" pill="M3" body="Visual phase progression — base / build / peak / taper — over the months leading to your goal race." />
           </div>
 
         </div>
       </div>
     </>
+  );
+}
+
+function ActualThisWeekTile({ runs, now }: { runs: import('../../lib/strava-activities').NormalizedActivity[]; now: Date }) {
+  const days = dailyMiles(runs, 7);
+  const total = days.reduce((s, d) => s + d.miles, 0);
+  const runsCount = days.reduce((s, d) => s + d.runs, 0);
+  const max = Math.max(...days.map(d => d.miles), 1);
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  return (
+    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 10 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">This week so far</div>
+          <div className="tile-lbl">{formatWeekRange(now)}</div>
+        </div>
+        <span className="chip chip--success">{runsCount} RUN{runsCount === 1 ? '' : 'S'} · {total.toFixed(1)} MI</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90 }}>
+        {days.map((d, i) => {
+          const isToday = i === days.length - 1;
+          const dow = new Date(d.date + 'T12:00:00Z').getUTCDay();
+          const dowLabel = dayNames[(dow + 6) % 7];
+          const h = d.miles > 0 ? Math.max(8, (d.miles / max) * 90) : 0;
+          return (
+            <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: d.miles > 0 ? 'var(--color-t1)' : 'var(--color-t3)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                {d.miles > 0 ? d.miles.toFixed(1) : '—'}
+              </div>
+              <div style={{
+                width: '100%',
+                height: h ? `${h}px` : '6px',
+                background: h ? (isToday ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
+                borderRadius: 3,
+              }} />
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, color: isToday ? 'var(--color-attention)' : 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px' }}>
+                {dowLabel.toUpperCase()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RecentWeeksTile({ runs }: { runs: import('../../lib/strava-activities').NormalizedActivity[] }) {
+  const weeks = weeklyMiles(runs, 12);
+  const max = Math.max(...weeks.map(w => w.miles), 1);
+  return (
+    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 10 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Last 12 weeks</div>
+          <div className="tile-lbl">Mileage by week · current week last</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+        {weeks.map((w, i) => {
+          const isThis = i === weeks.length - 1;
+          const h = w.miles > 0 ? Math.max(6, (w.miles / max) * 80) : 0;
+          return (
+            <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, color: w.miles > 0 ? 'var(--color-t2)' : 'var(--color-t3)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                {w.miles > 0 ? Math.round(w.miles) : '—'}
+              </div>
+              <div title={`Week of ${w.weekStart}: ${w.miles} mi · ${w.runs} runs`} style={{
+                width: '100%',
+                height: h ? `${h}px` : '4px',
+                background: h ? (isThis ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
+                borderRadius: 2,
+              }} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -108,11 +180,11 @@ function ComingSoon({ milestone, title, body }: { milestone: string; title: stri
   );
 }
 
-function Stub({ label, range, pill, body, tall }: { label: string; range: string; pill: string; body: string; tall?: boolean }) {
+function Stub({ label, range, pill, body }: { label: string; range: string; pill: string; body: string }) {
   return (
     <div className="tile" style={{
       borderStyle: 'dashed', background: 'transparent',
-      display: 'flex', flexDirection: 'column', gap: 14, minHeight: tall ? 220 : 180,
+      display: 'flex', flexDirection: 'column', gap: 14, minHeight: 180,
     }}>
       <div className="tile-h">
         <div>
@@ -122,37 +194,12 @@ function Stub({ label, range, pill, body, tall }: { label: string; range: string
         <span className="chip">{pill}</span>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: tall ? 72 : 48, color: 'var(--color-t3)', lineHeight: 1, letterSpacing: '-.025em' }}>—</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 48, color: 'var(--color-t3)', lineHeight: 1, letterSpacing: '-.025em' }}>—</div>
         <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>No data</div>
       </div>
       <div style={{ fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55, paddingTop: 12, borderTop: '1px solid var(--color-l4)' }}>
         {body}
       </div>
     </div>
-  );
-}
-
-function SectionHeader({ title, sub }: { title: string; sub: string }) {
-  return (
-    <div className="section-h">
-      <div>
-        <div className="tile-sub" style={{ marginBottom: 4 }}>{sub}</div>
-        <h2>{title}</h2>
-      </div>
-    </div>
-  );
-}
-
-function SurfaceTile({ href, title, body, muted }: { href: string; title: string; body: string; muted?: boolean }) {
-  return (
-    <Link href={href} className="tile" style={{
-      textDecoration: 'none', color: 'inherit', cursor: 'pointer',
-      display: 'flex', flexDirection: 'column', gap: 10, minHeight: 120,
-      opacity: muted ? .55 : 1,
-    }}>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{title}</div>
-      <div style={{ fontSize: 13, color: 'var(--color-t2)', lineHeight: 1.5, flex: 1 }}>{body}</div>
-      <div className="tile-sub" style={{ color: muted ? 'var(--color-t3)' : 'var(--color-corporate)' }}>{muted ? 'Locked' : 'Open →'}</div>
-    </Link>
   );
 }

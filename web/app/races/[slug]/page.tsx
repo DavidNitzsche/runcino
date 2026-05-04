@@ -18,7 +18,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
-import { seedIfNeeded } from '../../../lib/seed';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 
 // Phase color palette — 8 deterministic colors so any course with up to 8
@@ -104,12 +103,15 @@ export default function RaceDetailPage() {
     // plan shape without having to visit / or /races first. Then
     // background-sync from Strava and re-read once it lands.
     (async () => {
-      await seedIfNeeded();
+      const initial = await getRace(slug);
       if (cancelled) return;
-      setRace(getRace(slug));
+      setRace(initial);
       const sync = await autoSyncStrava();
       if (cancelled) return;
-      if (sync.updatedSlugs.includes(slug)) setRace(getRace(slug));
+      if (sync.updatedSlugs.includes(slug)) {
+        const refreshed = await getRace(slug);
+        if (!cancelled) setRace(refreshed);
+      }
     })();
     return () => { cancelled = true; };
   }, [slug]);
@@ -132,7 +134,7 @@ export default function RaceDetailPage() {
       </>
     );
   }
-  return <RaceDetailView race={race} onDelete={() => { deleteRace(race.slug); router.push('/races'); }} />;
+  return <RaceDetailView race={race} onDelete={async () => { await deleteRace(race.slug); router.push('/races'); }} />;
 }
 
 function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => void }) {
@@ -255,27 +257,49 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
   const totalGain = race.plan.race.total_gain_ft;
   const narrative = narrativeFor(race.meta.courseSlug, race, peakMi, peakFt, totalGain);
   const isUpcoming = days >= 0;
+  const result = race.actualResult ?? null;
+  // The page operates in two modes:
+  //   pre-race: countdown + plan-forward (goal time front-and-center)
+  //   debrief:  past-race report (actual finish + delta vs goal lead;
+  //             plan stays as supporting context further down)
+  const isDebrief = !isUpcoming && result != null;
+  const goalDeltaSec = result ? result.finishS - race.plan.goal.finish_time_s : 0;
 
   return (
     <div className="poster-c">
-      {/* Header strip — page label + countdown. Past races flip the
-          countdown to green; the layout stays the same so the title
-          below never overlaps the badge. */}
+      {/* Header strip — page label + countdown. Debrief mode replaces
+          the day-counter with the finish time; the layout stays
+          consistent so the title never overlaps the badge. */}
       <div className="pc-head">
         <div className="rd">
-          <b>{isUpcoming ? 'Coming up' : 'Race report'}</b>
+          <b>{isDebrief ? 'Race report' : isUpcoming ? 'Coming up' : 'Race report'}</b>
           <span> · {fmtDate(race.meta.date)}</span>
         </div>
-        <div className="pc-countdown">
-          <span className="big" style={!isUpcoming ? { color: '#7DD685' } : undefined}>
-            {Math.abs(days)}
-          </span>
-          <span className="lbl">
-            {isUpcoming
-              ? (days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go')
-              : (Math.abs(days) === 1 ? 'Day ago' : 'Days ago')}
-          </span>
-        </div>
+        {isDebrief && result ? (
+          <div className="pc-countdown" style={{ alignItems: 'flex-end' }}>
+            <span style={{
+              fontFamily: 'Oswald, sans-serif',
+              fontWeight: 700,
+              fontSize: 64,
+              lineHeight: .9,
+              letterSpacing: '-.025em',
+              color: '#7DD685',
+              fontVariantNumeric: 'tabular-nums',
+            }}>{result.finishDisplay}</span>
+            <span className="lbl" style={{ color: goalDeltaSec <= 0 ? '#7DD685' : '#FC4D54' }}>
+              {goalDeltaSec === 0 ? 'on goal' : (goalDeltaSec > 0 ? '+' : '−') + fmtTimeShort(Math.abs(goalDeltaSec)) + ' vs goal'}
+            </span>
+          </div>
+        ) : (
+          <div className="pc-countdown">
+            <span className="big">{Math.abs(days)}</span>
+            <span className="lbl">
+              {isUpcoming
+                ? (days === 0 ? 'Today' : days === 1 ? 'Day to go' : 'Days to go')
+                : (Math.abs(days) === 1 ? 'Day ago' : 'Days ago')}
+            </span>
+          </div>
+        )}
       </div>
 
       <h1 className="pc-title">{race.meta.name.replace(/marathon/i, 'Marathon').toUpperCase()}</h1>
@@ -289,29 +313,95 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
 
         {/* Narrative + stats + phase legend (right column) */}
         <div className="pc-body">
-          <div className="pc-stats">
-            <div className="s">
-              <span className="l">Distance</span>
-              <span className="v">{totalMi.toFixed(1)}<small>mi</small></span>
-            </div>
-            <div className="s">
-              <span className="l">Elevation</span>
-              <span className="v">+{race.plan.race.total_gain_ft}<small>ft</small></span>
-            </div>
-            <div className="s">
-              <span className="l">Goal Time</span>
-              <span className="v accent">{race.meta.goalDisplay.replace(/^0?:?/,'').replace(/:00$/, '')}</span>
-            </div>
-            <div className="s">
-              <span className="l">Peak</span>
-              <span className="v">{Math.round(peakFt)}<small>ft</small></span>
-            </div>
-          </div>
-          <p className="pc-lede">{narrative.lede}</p>
-          <p className="pc-para">{narrative.para1}</p>
-          <p className="pc-para">{narrative.para2}</p>
+          {isDebrief && result ? (
+            <>
+              {/* Top stats — actual race results */}
+              <div className="pc-stats">
+                <div className="s">
+                  <span className="l">Distance</span>
+                  <span className="v">{totalMi.toFixed(1)}<small>mi</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Avg pace</span>
+                  <span className="v">{result.paceDisplay}<small>/mi</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">vs Goal {race.meta.goalDisplay.replace(/:00$/, '')}</span>
+                  <span className="v" style={{ color: goalDeltaSec <= 0 ? '#7DD685' : '#FC4D54' }}>
+                    {goalDeltaSec === 0 ? '±0' : (goalDeltaSec > 0 ? '+' : '−') + fmtTimeShort(Math.abs(goalDeltaSec))}
+                  </span>
+                </div>
+                <div className="s">
+                  <span className="l">Avg HR</span>
+                  <span className="v">{result.avgHr ? Math.round(result.avgHr) : '—'}<small>{result.avgHr ? 'bpm' : ''}</small></span>
+                </div>
+              </div>
+              {/* Second row — Strava enrichment */}
+              <div className="pc-stats" style={{ marginTop: -20 }}>
+                <div className="s">
+                  <span className="l">Max HR</span>
+                  <span className="v">{result.maxHr ? Math.round(result.maxHr) : '—'}<small>{result.maxHr ? 'bpm' : ''}</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Cadence</span>
+                  <span className="v">{result.avgCadence ? Math.round(result.avgCadence * 2) : '—'}<small>{result.avgCadence ? 'spm' : ''}</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Elev gain</span>
+                  <span className="v">+{result.totalGainFt ?? '—'}<small>{result.totalGainFt != null ? 'ft' : ''}</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Source</span>
+                  <span className="v" style={{ fontSize: 14 }}>
+                    {result.source === 'strava' ? 'Strava' : 'Manual'}
+                  </span>
+                </div>
+              </div>
+              {result.activityName && (
+                <p className="pc-lede" style={{ fontStyle: 'italic' }}>“{result.activityName}”</p>
+              )}
+              <p className="pc-para">
+                {goalDeltaSec <= 0
+                  ? <>Came in <em>{fmtTimeShort(Math.abs(goalDeltaSec))} under goal</em>.</>
+                  : <>Came in <em>{fmtTimeShort(goalDeltaSec)} over goal</em>.</>}
+                {' '}Plan was <b>{race.meta.goalDisplay}</b> at {fmtPace(race.plan.goal.flat_pace_s_per_mi)}/mi flat-equivalent.
+                Actual: <b>{result.finishDisplay}</b> at {result.paceDisplay}/mi avg.
+              </p>
+              {result.notes && (
+                <p className="pc-para" style={{ borderLeft: '2px solid rgba(255,255,255,.12)', paddingLeft: 14 }}>
+                  {result.notes}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Pre-race: planning view */}
+              <div className="pc-stats">
+                <div className="s">
+                  <span className="l">Distance</span>
+                  <span className="v">{totalMi.toFixed(1)}<small>mi</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Elevation</span>
+                  <span className="v">+{race.plan.race.total_gain_ft}<small>ft</small></span>
+                </div>
+                <div className="s">
+                  <span className="l">Goal Time</span>
+                  <span className="v accent">{race.meta.goalDisplay.replace(/^0?:?/,'').replace(/:00$/, '')}</span>
+                </div>
+                <div className="s">
+                  <span className="l">Peak</span>
+                  <span className="v">{Math.round(peakFt)}<small>ft</small></span>
+                </div>
+              </div>
+              <p className="pc-lede">{narrative.lede}</p>
+              <p className="pc-para">{narrative.para1}</p>
+              <p className="pc-para">{narrative.para2}</p>
+            </>
+          )}
 
-          {/* Phase legend dots — one row per phase */}
+          {/* Phase legend — same in both modes; debrief mode adds an
+              empty actual column placeholder until splits_metric lands. */}
           <div className="pc-legend">
             {race.plan.phases.map((p, i) => (
               <div className="row" key={i}>
@@ -707,19 +797,34 @@ function FuelingTile({ race }: { race: SavedRace }) {
    This is the on-ramp for race results until M2 wires Strava — at
    which point the matching Strava activity auto-fills this block
    and the form becomes "edit / verify". */
+/* ── Race debrief tile ──────────────────────────────────────
+   Sits below the poster card on past races. Contains the rich
+   Strava enrichment that doesn't fit in the hero: per-phase
+   plan-vs-actual breakdown, per-mile splits, best efforts (PRs),
+   suffer score + description if present, plus the user's notes
+   + an Edit button.
+   The hero (PosterCard) covers the 4-up summary stats; this tile
+   doesn't repeat them. */
 function ResultSection({ race }: { race: SavedRace }) {
   const days = daysUntil(race.meta.date);
   const isPast = days < 0;
   const [editing, setEditing] = useState(false);
-  const [version, setVersion] = useState(0); // re-render after save
+  const [version, setVersion] = useState(0);
+  const [result, setResult] = useState<ActualResult | null>(race.actualResult ?? null);
   if (!isPast) return null;
 
-  const result = getRace(race.slug)?.actualResult ?? null;
+  function onSaved() { setEditing(false); setVersion(v => v + 1); }
 
-  function onSaved() {
-    setEditing(false);
-    setVersion(v => v + 1);
-  }
+  // Reload the result whenever the form saves so the just-saved data
+  // shows immediately. Server is the source of truth.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const fresh = await getRace(race.slug);
+      if (!cancelled) setResult(fresh?.actualResult ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [race.slug, version]);
 
   if (!result || editing) {
     return (
@@ -732,7 +837,7 @@ function ResultSection({ race }: { race: SavedRace }) {
         <div className="tile-h">
           <div>
             <div className="tile-sub" style={{ color: 'var(--color-attention)' }}>Race result · {Math.abs(days)} day{Math.abs(days) === 1 ? '' : 's'} ago</div>
-            <div className="tile-lbl">{result ? 'Edit result' : 'How did it go?'}</div>
+            <div className="tile-lbl">{result ? 'Edit notes' : 'How did it go?'}</div>
           </div>
           {result && <button className="btn btn--ghost" onClick={() => setEditing(false)}>Cancel</button>}
         </div>
@@ -741,40 +846,240 @@ function ResultSection({ race }: { race: SavedRace }) {
     );
   }
 
-  const goalDelta = result.finishS - race.plan.goal.finish_time_s;
   return (
-    <div className="tile" style={{
-      marginTop: 10,
-      display: 'flex', flexDirection: 'column', gap: 16,
-      background: 'linear-gradient(135deg, rgba(62,189,65,.08), var(--color-l1))',
-      borderColor: 'rgba(62,189,65,.3)',
-    }}>
+    <>
+      <PerPhaseTable race={race} result={result} />
+      {result.miles && result.miles.length > 0 && <PerMileTable race={race} result={result} />}
+      {((result.bestEfforts && result.bestEfforts.length > 0) || result.sufferScore != null || result.kudosCount != null || result.description) && (
+        <RaceMetaTile result={result} />
+      )}
+      {result.notes && (
+        <div className="tile" style={{ marginTop: 10, padding: '20px 24px' }}>
+          <div className="tile-h" style={{ marginBottom: 10 }}>
+            <div className="tile-sub">Race notes</div>
+            <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+            {result.notes}
+          </div>
+        </div>
+      )}
+      {!result.notes && (
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn btn--ghost" onClick={() => setEditing(true)}>+ Add race notes</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── Per-phase plan vs actual ───────────────────────────────
+   Aggregates the per-mile Strava splits into the planned phase
+   buckets and shows planned-pace / actual-pace / delta side by
+   side. Rows colored by phase. Skipped if no per-mile splits
+   are available (i.e. activity wasn't synced from Strava). */
+function PerPhaseTable({ race, result }: { race: SavedRace; result: ActualResult }) {
+  const miles = result.miles;
+  if (!miles || miles.length === 0) return null;
+
+  // Build per-phase actuals by aggregating splits whose mile-marker
+  // falls inside the phase's [start, end] range. Each split is the
+  // mile ENDING at split.mile, so a split.mile=5 covers mi 4→5.
+  const phaseActuals = race.plan.phases.map(p => {
+    const inPhase = miles.filter(m => m.mile - 0.5 >= p.start_mi && m.mile - 0.5 <= p.end_mi);
+    if (inPhase.length === 0) return null;
+    const totalElapsed = inPhase.reduce((s, m) => s + m.elapsedS, 0);
+    const totalMi = inPhase.length;  // each split ≈ 1 mile
+    const paceS = Math.round(totalElapsed / totalMi);
+    const avgHrSamples = inPhase.filter(m => m.avgHr != null).map(m => m.avgHr as number);
+    const avgHr = avgHrSamples.length > 0 ? Math.round(avgHrSamples.reduce((s, v) => s + v, 0) / avgHrSamples.length) : null;
+    return { paceS, paceDisplay: fmtTimeShort(paceS), avgHr, milesCounted: totalMi };
+  });
+
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-l4)' }}>
+        <div className="tile-sub">Plan vs actual</div>
+        <div className="tile-lbl">Per-phase pacing</div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
+            <th style={{ textAlign: 'left', padding: '12px 18px', width: 32 }}></th>
+            <th style={{ textAlign: 'left', padding: '12px 0' }}>Phase</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Target</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Actual</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Delta</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Avg HR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {race.plan.phases.map((p, i) => {
+            const a = phaseActuals[i];
+            const delta = a ? a.paceS - p.target_pace_s_per_mi : null;
+            return (
+              <tr key={i} style={{ borderTop: '1px solid var(--color-l4)' }}>
+                <td style={{ padding: '14px 18px' }}>
+                  <span style={{ display: 'inline-block', width: 5, height: 22, background: PHASE_COLORS[i] ?? '#444', borderRadius: 2 }} />
+                </td>
+                <td style={{ padding: '14px 0' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{p.label}</div>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700, marginTop: 2 }}>
+                    MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}
+                  </div>
+                </td>
+                <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--color-t1)' }}>
+                  {p.target_pace_display}
+                </td>
+                <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--color-t0)' }}>
+                  {a ? a.paceDisplay + '/mi' : '—'}
+                </td>
+                <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
+                  {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtTimeShort(Math.abs(delta)))}
+                </td>
+                <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>
+                  {a?.avgHr ?? '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ── Per-mile splits ────────────────────────────────────────
+   Compact table showing target pace (from plan) vs actual pace
+   (from Strava splits_standard) per mile. Color the delta column
+   like the per-phase table. */
+function PerMileTable({ race, result }: { race: SavedRace; result: ActualResult }) {
+  const miles = result.miles!;
+  // Build target-pace-per-mile from the plan's intervals.
+  const targetByMile: Record<number, number> = {};
+  for (const iv of race.plan.intervals) {
+    if (iv.kind !== 'pace') continue;
+    const start = Math.ceil(iv.at_mi);
+    const end = Math.floor(iv.at_mi + iv.distance_mi);
+    for (let m = start; m <= end; m++) targetByMile[m] = iv.target_pace_s_per_mi;
+  }
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-l4)' }}>
+        <div className="tile-sub">Splits</div>
+        <div className="tile-lbl">Mile-by-mile · plan vs Strava</div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
+            <th style={{ textAlign: 'left', padding: '12px 18px', width: 60 }}>Mile</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Target</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Actual</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Delta</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>HR</th>
+            <th style={{ textAlign: 'right', padding: '12px 18px' }}>Δ Elev</th>
+          </tr>
+        </thead>
+        <tbody>
+          {miles.map((m, i) => {
+            const phase = race.plan.phases.findIndex(p => m.mile - 0.5 >= p.start_mi && m.mile - 0.5 <= p.end_mi);
+            const targetS = targetByMile[m.mile] ?? null;
+            const delta = targetS != null ? m.paceSPerMi - targetS : null;
+            return (
+              <tr key={i} style={{ borderTop: '1px solid var(--color-l4)' }}>
+                <td style={{ padding: '12px 18px' }}>
+                  {phase >= 0 && <span style={{ display: 'inline-block', width: 4, height: 16, background: PHASE_COLORS[phase] ?? '#444', borderRadius: 1, marginRight: 8, verticalAlign: 'middle' }} />}
+                  <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t1)', fontWeight: 700 }}>{m.mile}</span>
+                </td>
+                <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>
+                  {targetS != null ? fmtTimeShort(targetS) : '—'}
+                </td>
+                <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)', fontWeight: 700 }}>
+                  {m.paceDisplay}
+                </td>
+                <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
+                  {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtTimeShort(Math.abs(delta)))}
+                </td>
+                <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>
+                  {m.avgHr ? Math.round(m.avgHr) : '—'}
+                </td>
+                <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: m.elevDeltaFt > 0 ? '#f9a87c' : m.elevDeltaFt < 0 ? '#7fd6a1' : 'var(--color-t3)' }}>
+                  {m.elevDeltaFt > 0 ? '+' : ''}{m.elevDeltaFt}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ── Race meta tile (best efforts + suffer score + description) ── */
+function RaceMetaTile({ result }: { result: ActualResult }) {
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="tile-h">
         <div>
-          <div className="tile-sub" style={{ color: 'var(--color-success)' }}>Result · {Math.abs(days)} day{Math.abs(days) === 1 ? '' : 's'} ago</div>
-          <div className="tile-lbl">Finished</div>
+          <div className="tile-sub">Race detail</div>
+          <div className="tile-lbl">From Strava</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {result.isPR && <span className="chip chip--attention">PR</span>}
-          <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
+        {result.stravaActivityId && (
+          <a className="btn btn--ghost" target="_blank" rel="noopener noreferrer" href={`https://www.strava.com/activities/${result.stravaActivityId}`}>
+            Open on Strava ↗
+          </a>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 18 }}>
+        {result.sufferScore != null && (
+          <div>
+            <div className="tile-sub">Suffer score</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, color: 'var(--color-t0)', marginTop: 4 }}>{result.sufferScore}</div>
+          </div>
+        )}
+        {result.kudosCount != null && (
+          <div>
+            <div className="tile-sub">Kudos</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, color: 'var(--color-t0)', marginTop: 4 }}>{result.kudosCount}</div>
+          </div>
+        )}
+        {result.achievementCount != null && result.achievementCount > 0 && (
+          <div>
+            <div className="tile-sub">Achievements</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, color: 'var(--color-attention)', marginTop: 4 }}>{result.achievementCount}</div>
+          </div>
+        )}
+        {result.workoutType === 1 && (
+          <div>
+            <div className="tile-sub">Type</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, color: 'var(--color-attention)', marginTop: 4 }}>RACE</div>
+          </div>
+        )}
+      </div>
+      {result.bestEfforts && result.bestEfforts.length > 0 && (
+        <div>
+          <div className="tile-sub" style={{ marginBottom: 10 }}>Best efforts during this race</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {result.bestEfforts.map((b, i) => (
+              <div key={i} style={{
+                display: 'inline-flex', alignItems: 'baseline', gap: 8,
+                padding: '6px 12px',
+                background: b.isPR ? 'rgba(243,173,59,.12)' : 'var(--color-l2)',
+                border: `1px solid ${b.isPR ? 'rgba(243,173,59,.3)' : 'var(--color-l4)'}`,
+                borderRadius: 6,
+                fontSize: 12,
+              }}>
+                <span style={{ fontFamily: 'var(--font-data)', letterSpacing: '1.3px', textTransform: 'uppercase', color: b.isPR ? 'var(--color-attention)' : 'var(--color-t2)', fontWeight: 700, fontSize: 10 }}>{b.name}</span>
+                <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)', fontWeight: 700 }}>{b.elapsedDisplay}</span>
+                {b.isPR && <span className="chip chip--attention" style={{ fontSize: 8 }}>PR</span>}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 24, alignItems: 'flex-end' }}>
-        <ResultStat label="Finish" value={result.finishDisplay} large />
-        <ResultStat label="Avg pace" value={`${result.paceDisplay}/mi`} />
-        <ResultStat
-          label="vs Goal"
-          value={`${goalDelta === 0 ? '±0' : goalDelta > 0 ? '+' : '−'}${fmtTimeShort(Math.abs(goalDelta))}`}
-          color={goalDelta <= 0 ? 'var(--color-success)' : 'var(--color-warning)'}
-        />
-        <ResultStat
-          label="Place"
-          value={result.place != null ? (result.fieldSize != null ? `${result.place}/${result.fieldSize}` : `#${result.place}`) : '—'}
-        />
-      </div>
-      {result.notes && (
-        <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.55 }}>
-          {result.notes}
+      )}
+      {result.description && (
+        <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+          {result.description}
         </div>
       )}
     </div>
@@ -810,11 +1115,10 @@ function fmtTimeShort(s: number): string {
 
 function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: ActualResult | null; onSaved: () => void }) {
   const [hms, setHms] = useState(existing?.finishDisplay ?? '');
-  const [place, setPlace] = useState(existing?.place != null ? String(existing.place) : '');
-  const [fieldSize, setFieldSize] = useState(existing?.fieldSize != null ? String(existing.fieldSize) : '');
   const [isPR, setIsPR] = useState(existing?.isPR ?? false);
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   function parseFinish(s: string): number | null {
     const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
@@ -822,13 +1126,14 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
     return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
   }
 
-  function handleSave() {
+  async function handleSave() {
     const finishS = parseFinish(hms);
     if (finishS === null || finishS < 60) {
       setError('Use h:mm:ss or m:ss format (e.g. 1:32:14 or 21:48).');
       return;
     }
     setError(null);
+    setSaving(true);
     const distMi = race.meta.distanceMi;
     const paceSPerMi = Math.round(finishS / distMi);
     const result: ActualResult = {
@@ -836,25 +1141,27 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
       finishDisplay: fmtTimeShort(finishS),
       paceSPerMi,
       paceDisplay: fmtTimeShort(paceSPerMi),
-      place: place ? Number(place) : null,
-      fieldSize: fieldSize ? Number(fieldSize) : null,
       isPR,
       notes: notes.trim() || undefined,
       recordedAt: new Date().toISOString(),
+      source: 'manual',
     };
-    setActualResult(race.slug, result);
-    onSaved();
+    try { await setActualResult(race.slug, result); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setSaving(false); }
   }
 
-  function handleClear() {
+  async function handleClear() {
     if (!existing) return;
-    setActualResult(race.slug, null);
-    onSaved();
+    setSaving(true);
+    try { await setActualResult(race.slug, null); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setSaving(false); }
   }
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
         <div>
           <label className="runcino-label">Finish time</label>
           <input
@@ -864,14 +1171,6 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
             onChange={e => setHms(e.target.value)}
             style={{ fontSize: 18 }}
           />
-        </div>
-        <div>
-          <label className="runcino-label">Place</label>
-          <input className="runcino-input font-data" type="number" placeholder="—" value={place} onChange={e => setPlace(e.target.value)} />
-        </div>
-        <div>
-          <label className="runcino-label">Field size</label>
-          <input className="runcino-input font-data" type="number" placeholder="—" value={fieldSize} onChange={e => setFieldSize(e.target.value)} />
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-t1)', cursor: 'pointer' }}>
@@ -897,8 +1196,8 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        {existing && <button className="btn btn--ghost" onClick={handleClear}>Clear result</button>}
-        <button className="btn btn--primary" onClick={handleSave}>Save result</button>
+        {existing && <button className="btn btn--ghost" onClick={handleClear} disabled={saving}>Clear result</button>}
+        <button className="btn btn--primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save result'}</button>
       </div>
     </>
   );

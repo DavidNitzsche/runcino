@@ -1,29 +1,42 @@
 'use client';
 
 /**
- * /log — honest empty state until Strava (M2) lands.
+ * /log — every Strava run YTD, grouped by month with PR detection,
+ * weekly mileage rollup, and links to per-run detail pages.
  *
- * Once Strava OAuth is wired, every run auto-imports with route, HR,
- * pace, and split detection. PRs flag automatically. Until then, this
- * page shows what's coming + the existing race results.
+ * Reads from the shared client cache (lib/strava-activities.ts) which
+ * pulls /api/strava/activities. Empty state shows a "Connect Strava"
+ * banner with a deep-link to /api/strava/connect when the refresh
+ * token isn't set yet.
  */
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
-import { daysUntil, formatShort } from '../../lib/dates';
+import { autoSyncStrava } from '../../lib/strava-auto';
+import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
+import { rollupYear, naivePRs } from '../../lib/strava-stats';
+import { formatShort } from '../../lib/dates';
 
 export default function LogPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [races, setRaces] = useState<SavedRace[] | null>(null);
+  const { activities, error, refetch } = useActivities();
 
   useEffect(() => {
+    let cancelled = false;
     setNow(new Date());
-    setRaces(listRaces());
+    (async () => {
+      const rs = await listRaces();
+      if (!cancelled) setRaces(rs);
+      // Trigger a sync so race rows reflect the latest Strava finish times.
+      await autoSyncStrava();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  if (now === null || races === null) {
+  if (now === null || races === null || activities === null) {
     return (
       <>
         <Caption left="Runcino · log" />
@@ -35,7 +48,11 @@ export default function LogPage() {
     );
   }
 
-  const past = races.filter(r => daysUntil(r.meta.date) < 0).sort((a, b) => daysUntil(b.meta.date) - daysUntil(a.meta.date));
+  const runs = onlyRuns(activities);
+  const sortedRuns = runs.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
+  const roll = rollupYear(runs);
+  const prs = naivePRs(runs);
+  const noStrava = error?.includes('STRAVA_REFRESH_TOKEN') || (runs.length === 0 && error);
 
   return (
     <>
@@ -49,77 +66,247 @@ export default function LogPage() {
               <div className="eyebrow">Every run, recorded</div>
               <h1>Log</h1>
               <div className="sub">
-                {past.length === 0
-                  ? <>No runs logged yet. Strava sync (M2) auto-imports from there.</>
-                  : <><b>{past.length} race{past.length === 1 ? '' : 's'}</b> on the books. Daily runs join in M2.</>}
+                {runs.length === 0
+                  ? <>No runs yet. Connect Strava and they&apos;ll auto-import.</>
+                  : <><b>{roll.totalRuns} runs · {roll.totalMiles.toFixed(1)} mi</b> this year · {roll.totalElevFt.toLocaleString()} ft climbed</>}
               </div>
             </div>
             <div className="page-actions">
-              <button className="btn" disabled>+ Log a run</button>
-              <button className="btn" disabled>Sync Strava</button>
+              <button className="btn" onClick={() => refetch()}>↻ Refresh</button>
             </div>
           </div>
 
-          <div className="tile" style={{ padding: '36px 32px', borderStyle: 'dashed', background: 'transparent', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
-            <span className="chip chip--corporate" style={{ alignSelf: 'flex-start' }}>M2 · Strava</span>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 38, textTransform: 'uppercase', letterSpacing: '-.01em', lineHeight: 1 }}>
-              Connect Strava to populate
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--color-t2)', maxWidth: 720, lineHeight: 1.55 }}>
-              OAuth on the laptop, refresh-token stored locally. Every Strava run pulls in with route map, splits, HR series, cadence, and elevation — the same shape that drives race-detail pages. PRs flag automatically across distance buckets (1mi / 5K / 10K / Half / Marathon).
-            </div>
-          </div>
+          {noStrava && <ConnectStravaBanner />}
 
-          <SectionHeader title="Races on the books" sub={`${past.length} completed`} />
-          {past.length === 0 ? (
-            <div className="tile" style={{ padding: '36px 32px', textAlign: 'center', borderStyle: 'dashed', background: 'transparent' }}>
-              <div className="tile-sub" style={{ marginBottom: 10 }}>No races yet</div>
-              <div style={{ fontSize: 14, color: 'var(--color-t2)', marginBottom: 18 }}>Add a race + drop a GPX to start the log.</div>
-              <Link href="/races/new" className="btn btn--primary">+ Add race</Link>
-            </div>
-          ) : (
-            <div className="tile" style={{ padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
-                    <th style={{ textAlign: 'left', padding: '12px 18px', width: 100 }}>Date</th>
-                    <th style={{ textAlign: 'left', padding: '12px 0' }}>Race</th>
-                    <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Distance</th>
-                    <th style={{ textAlign: 'right', padding: '12px 18px', width: 110 }}>Goal</th>
-                    <th style={{ textAlign: 'right', padding: '12px 18px', width: 110 }}>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {past.map(r => (
-                    <tr key={r.slug} style={{ borderTop: '1px solid var(--color-l4)' }}>
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-                        {formatShort(r.meta.date)}
-                      </td>
-                      <td style={{ padding: '14px 0' }}>
-                        <Link href={`/races/${r.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{r.meta.name}</div>
-                        </Link>
-                      </td>
-                      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                        {r.meta.distanceMi.toFixed(1)} mi
-                      </td>
-                      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums' }}>
-                        {r.meta.goalDisplay}
-                      </td>
-                      <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        <span className="chip">RESULT PENDING</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* Naïve PR shelf — ignores Strava best_efforts (which would
+              require N detail fetches) in favor of "best whole run near
+              that distance." Good enough as a top-level summary. */}
+          {runs.length > 0 && <PRShelf prs={prs} />}
+
+          {/* Race results inline — these are the rows that ALSO live in
+              /races. Surface them here too so /log is the one place to
+              scan everything that happened. */}
+          {races.filter(r => r.actualResult).length > 0 && (
+            <RacesShelf races={races.filter(r => r.actualResult)} />
           )}
+
+          {sortedRuns.length > 0 && <RunFeed runs={sortedRuns} />}
 
         </div>
       </div>
     </>
   );
+}
+
+function ConnectStravaBanner() {
+  return (
+    <div className="tile" style={{ padding: '36px 32px', borderStyle: 'dashed', background: 'transparent', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+      <span className="chip chip--corporate" style={{ alignSelf: 'flex-start' }}>STRAVA</span>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 38, textTransform: 'uppercase', letterSpacing: '-.01em', lineHeight: 1 }}>
+        Connect Strava to populate
+      </div>
+      <div style={{ fontSize: 14, color: 'var(--color-t2)', maxWidth: 720, lineHeight: 1.55 }}>
+        OAuth on the laptop, refresh-token stored server-side. Every Strava run pulls in with route map, splits, HR series, cadence, and elevation — the same shape that drives race-detail pages. PRs flag automatically.
+      </div>
+      <a href="/api/strava/connect" className="btn btn--primary" style={{ alignSelf: 'flex-start', marginTop: 8 }}>↗ Connect Strava</a>
+    </div>
+  );
+}
+
+function PRShelf({ prs }: { prs: ReturnType<typeof naivePRs> }) {
+  const have = prs.filter(p => p.bestS != null);
+  if (have.length === 0) return null;
+  return (
+    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">YTD bests</div>
+          <div className="tile-lbl">Best run near each canonical distance</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${prs.length}, 1fr)`, gap: 14 }}>
+        {prs.map(p => (
+          <div key={p.label} style={{
+            padding: '14px 16px',
+            background: p.bestS != null ? 'var(--color-l2)' : 'transparent',
+            border: '1px solid var(--color-l4)',
+            borderRadius: 8,
+            display: 'flex', flexDirection: 'column', gap: 6,
+            opacity: p.bestS != null ? 1 : 0.5,
+          }}>
+            <div className="tile-sub">{p.label}</div>
+            {p.bestS != null && p.activityId && p.date ? (
+              <Link href={`/runs/${p.activityId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--color-t0)', letterSpacing: '-.01em', lineHeight: 1 }}>
+                  {fmtT(p.bestS)}
+                </div>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', marginTop: 6 }}>
+                  {formatShort(p.date)}
+                </div>
+              </Link>
+            ) : (
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--color-t3)', lineHeight: 1 }}>—</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RacesShelf({ races }: { races: SavedRace[] }) {
+  return (
+    <>
+      <SectionHeader title="Race results" sub={`${races.length} race${races.length === 1 ? '' : 's'} on the books`} />
+      <div className="tile" style={{ padding: 0, overflow: 'hidden', marginBottom: 10 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
+              <th style={{ textAlign: 'left', padding: '12px 18px', width: 100 }}>Date</th>
+              <th style={{ textAlign: 'left', padding: '12px 0' }}>Race</th>
+              <th style={{ textAlign: 'right', padding: '12px 18px', width: 90 }}>Distance</th>
+              <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Goal</th>
+              <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Finish</th>
+              <th style={{ textAlign: 'right', padding: '12px 18px', width: 90 }}>vs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {races.map(r => {
+              const result = r.actualResult!;
+              const goalS = parseGoal(r.meta.goalDisplay);
+              const delta = goalS != null ? result.finishS - goalS : null;
+              return (
+                <tr key={r.slug} style={{ borderTop: '1px solid var(--color-l4)' }}>
+                  <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+                    {formatShort(r.meta.date)}
+                  </td>
+                  <td style={{ padding: '14px 0' }}>
+                    <Link href={`/races/${r.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t0)' }}>{r.meta.name}</div>
+                    </Link>
+                    {result.isPR && <span className="chip chip--attention" style={{ marginTop: 4, fontSize: 8 }}>PR</span>}
+                  </td>
+                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                    {r.meta.distanceMi.toFixed(1)} mi
+                  </td>
+                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
+                    {r.meta.goalDisplay}
+                  </td>
+                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                    {result.finishDisplay}
+                  </td>
+                  <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
+                    {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtT(Math.abs(delta)))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function RunFeed({ runs }: { runs: NormalizedActivity[] }) {
+  // Group by year-month for headers.
+  const groups: Array<{ key: string; label: string; runs: NormalizedActivity[] }> = [];
+  for (const r of runs) {
+    const key = r.date.slice(0, 7);
+    const last = groups[groups.length - 1];
+    if (!last || last.key !== key) {
+      const monthLabel = new Date(r.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      groups.push({ key, label: monthLabel, runs: [r] });
+    } else {
+      last.runs.push(r);
+    }
+  }
+
+  return (
+    <>
+      <SectionHeader title="Runs" sub={`${runs.length} runs YTD`} />
+      {groups.map(g => {
+        const monthMi = g.runs.reduce((s, r) => s + r.distanceMi, 0);
+        return (
+          <div key={g.key} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 4px', borderBottom: '1px solid var(--color-l4)', marginBottom: 6 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t1)' }}>{g.label}</div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>{g.runs.length} RUNS · {monthMi.toFixed(1)} MI</div>
+            </div>
+            <div className="tile" style={{ padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
+                    <th style={{ textAlign: 'left', padding: '10px 16px', width: 90 }}>Date</th>
+                    <th style={{ textAlign: 'left', padding: '10px 0' }}>Run</th>
+                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Dist</th>
+                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Pace</th>
+                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Time</th>
+                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 60 }}>HR</th>
+                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Elev</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.runs.map(r => {
+                    const m = Math.floor(r.paceSPerMi / 60);
+                    const s = r.paceSPerMi % 60;
+                    return (
+                      <tr key={r.id} style={{ borderTop: '1px solid var(--color-l4)' }}>
+                        <td style={{ padding: '12px 16px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+                          {formatShort(r.date)}
+                        </td>
+                        <td style={{ padding: '12px 0' }}>
+                          <Link href={`/runs/${r.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)', letterSpacing: '-.005em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320 }}>{r.name}</div>
+                          </Link>
+                          {(r.workoutType === 1 || r.achievementCount > 0) && (
+                            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                              {r.workoutType === 1 && <span className="chip chip--attention" style={{ fontSize: 8 }}>RACE</span>}
+                              {r.achievementCount > 0 && <span className="chip" style={{ fontSize: 8 }}>{r.achievementCount}× ACHIEVE</span>}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                          {r.distanceMi.toFixed(1)}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums' }}>
+                          {m}:{String(s).padStart(2, '0')}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                          {fmtT(r.movingTimeS)}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
+                          {r.avgHr ? Math.round(r.avgHr) : '—'}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
+                          {r.elevGainFt > 0 ? '+' : ''}{r.elevGainFt}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function fmtT(s: number): string {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function parseGoal(s: string): number | null {
+  const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
 function SectionHeader({ title, sub }: { title: string; sub: string }) {

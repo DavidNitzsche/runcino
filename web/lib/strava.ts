@@ -33,6 +33,7 @@ export interface StravaActivity {
   total_elevation_gain: number;  // meters
   type: string;              // "Run", "Ride", etc.
   sport_type?: string;
+  workout_type?: number | null;  // 0=default, 1=race, 2=long, 3=workout
   start_date: string;        // ISO UTC
   start_date_local: string;  // ISO local
   timezone?: string;
@@ -44,7 +45,34 @@ export interface StravaActivity {
   average_cadence?: number;
   start_latlng?: [number, number];
   end_latlng?: [number, number];
-  map?: { summary_polyline?: string };
+  map?: { summary_polyline?: string; polyline?: string };
+  // Detailed fields — only present on /activities/{id}, not the
+  // list endpoint. fetchActivityDetail() pulls these on demand.
+  description?: string | null;
+  kudos_count?: number;
+  achievement_count?: number;
+  suffer_score?: number | null;
+  splits_standard?: Array<{
+    distance: number;             // meters (typically 1609.34 for a mile)
+    elapsed_time: number;
+    moving_time: number;
+    average_speed: number;        // m/s
+    average_heartrate?: number;
+    average_grade_adjusted_speed?: number;
+    elevation_difference?: number; // meters
+    pace_zone?: number;
+    split: number;                 // 1-indexed mile number
+  }>;
+  best_efforts?: Array<{
+    name: string;                 // "1 mile" / "5k" / "10k" / "Half-Marathon" / "Marathon"
+    distance: number;             // meters
+    elapsed_time: number;
+    moving_time: number;
+    pr_rank?: number | null;      // 1 = PR, 2 = 2nd best, etc.
+    start_index?: number;
+    end_index?: number;
+  }>;
+  gear_id?: string | null;
 }
 
 /** Normalized fill-in for a SavedRace's actualResult slot. */
@@ -61,6 +89,30 @@ export interface ActivityResult {
   totalGainFt: number;
   startLocal: string;        // ISO
   name: string;
+  description?: string | null;
+  sufferScore?: number | null;
+  kudosCount?: number;
+  achievementCount?: number;
+  workoutType?: number | null;
+  /** Per-mile splits, normalized to imperial units. */
+  miles?: Array<{
+    mile: number;
+    paceSPerMi: number;
+    paceDisplay: string;
+    elapsedS: number;
+    avgHr: number | null;
+    elevDeltaFt: number;
+  }>;
+  /** PRs / standard distance bests achieved during this run. */
+  bestEfforts?: Array<{
+    name: string;
+    elapsedS: number;
+    elapsedDisplay: string;
+    distanceMi: number;
+    isPR: boolean;
+    rank: number | null;
+  }>;
+  summaryPolyline?: string;
 }
 
 /* ── OAuth: code → tokens ──────────────────────────────────── */
@@ -153,14 +205,53 @@ export function findRaceMatch(activities: StravaActivity[], raceDateISO: string,
   return candidates.sort((a, b) => b.distance - a.distance)[0];
 }
 
+/* ── Activity detail fetch ─────────────────────────────────
+   The list endpoint returns a SUMMARY activity. The single-activity
+   endpoint returns the FULL shape: splits_standard, best_efforts,
+   suffer_score, description, kudos_count. We hit it only for the
+   matched race activity (one extra request per race). */
+export async function fetchActivityDetail(activityId: number): Promise<StravaActivity> {
+  const { accessToken } = await refreshAccessToken();
+  const res = await fetch(`${STRAVA_API_BASE}/activities/${activityId}?include_all_efforts=true`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`Strava activity detail failed: ${res.status} ${await res.text()}`);
+  return await res.json();
+}
+
 /* ── Activity → ActualResult shape ──────────────────────────
    Converts a Strava activity into the shape the SavedRace
-   actualResult expects. Time formats use the existing fmt helpers
-   inlined here so the lib stays portable. */
+   actualResult expects. When `detail` includes splits_standard +
+   best_efforts (i.e. came from fetchActivityDetail not the list
+   endpoint), the per-mile splits + PRs land too. */
 export function activityToResult(a: StravaActivity, distanceMi?: number): ActivityResult {
   const distMi = distanceMi ?? (a.distance / 1609.344);
   const finishS = a.moving_time;
   const paceSPerMi = Math.round(finishS / distMi);
+
+  const miles = a.splits_standard?.map(s => {
+    const splitMi = s.distance / 1609.344;
+    const splitPace = splitMi > 0 ? Math.round(s.elapsed_time / splitMi) : 0;
+    return {
+      mile: s.split,
+      paceSPerMi: splitPace,
+      paceDisplay: fmtTimeShort(splitPace),
+      elapsedS: s.elapsed_time,
+      avgHr: s.average_heartrate ?? null,
+      elevDeltaFt: s.elevation_difference != null ? Math.round(s.elevation_difference * 3.28084) : 0,
+    };
+  });
+
+  const bestEfforts = a.best_efforts?.map(b => ({
+    name: b.name,
+    elapsedS: b.elapsed_time,
+    elapsedDisplay: fmtTimeShort(b.elapsed_time),
+    distanceMi: Math.round(b.distance / 1609.344 * 100) / 100,
+    isPR: b.pr_rank === 1,
+    rank: b.pr_rank ?? null,
+  }));
+
   return {
     activityId: a.id,
     finishS,
@@ -174,6 +265,14 @@ export function activityToResult(a: StravaActivity, distanceMi?: number): Activi
     totalGainFt: Math.round((a.total_elevation_gain ?? 0) * 3.28084),
     startLocal: a.start_date_local || a.start_date,
     name: a.name,
+    description: a.description ?? null,
+    sufferScore: a.suffer_score ?? null,
+    kudosCount: a.kudos_count,
+    achievementCount: a.achievement_count,
+    workoutType: a.workout_type ?? null,
+    miles,
+    bestEfforts,
+    summaryPolyline: a.map?.summary_polyline,
   };
 }
 

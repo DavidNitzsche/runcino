@@ -17,7 +17,7 @@
  */
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { saveRace, listRaces, slugifyRaceName, type SavedRace } from '../../../lib/storage';
 import type { RuncinoPlan } from '../../../lib/types';
@@ -71,6 +71,11 @@ export default function NewRacePage() {
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [takenSlugs, setTakenSlugs] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    listRaces().then(rs => setTakenSlugs(new Set(rs.map(r => r.slug))));
+  }, []);
+
   const goalFinishS = useMemo(() => {
     const m = goalHMS.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
     return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : null;
@@ -96,9 +101,8 @@ export default function NewRacePage() {
     const match = REGISTERED.find(r => lower.includes(r.label.toLowerCase().slice(0, 8)));
     if (match) return match.slug;
     if (!raceName.trim()) return '';
-    const taken = new Set(listRaces().map(r => r.slug));
-    return slugifyRaceName(raceName, taken);
-  }, [raceName]);
+    return slugifyRaceName(raceName, takenSlugs);
+  }, [raceName, takenSlugs]);
 
   const canBuild = Boolean(raceName.trim() && raceDate && goalFinishS && gpxText && courseSlug);
 
@@ -154,7 +158,7 @@ export default function NewRacePage() {
           courseSlug: data.summary.courseSlug,
         },
       };
-      saveRace(saved);
+      await saveRace(saved);
       router.push(`/races/${saved.slug}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
