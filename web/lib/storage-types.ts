@@ -61,6 +61,13 @@ export interface SavedRace {
     distanceMi: number;
     goalDisplay: string;
     courseSlug: string;
+    /** Race priority drives how Coach treats it.
+     *  A — primary target. Coach builds the macrocycle toward this date.
+     *  B — secondary checkpoint. Lighter taper, treated as hard tempo.
+     *  C — drop-in / fun race. No taper, slotted as a workout.
+     *  Defaults to 'A' when missing — backward compat for races saved
+     *  before this field existed. */
+    priority?: 'A' | 'B' | 'C';
   };
   actualResult?: ActualResult | null;
 }

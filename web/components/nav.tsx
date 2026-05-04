@@ -48,11 +48,11 @@ export function Nav({ active }: { active?: NavKey }) {
           ))}
         </div>
       </div>
-      <div className="nav-r">
-        <div className="nav-ic" title="Search">⌕</div>
-        <div className="nav-ic" title="Notifications">◎</div>
-        <div className="avatar" />
-      </div>
+      {/* Right-side icons (search / notifications / avatar) lived
+          here in the design mockup but were inert decorations — no
+          click handlers, no functionality. Removed until each one has
+          a real job: search across runs/races, notifications for
+          race-week reminders + sync status, avatar for auth. */}
     </div>
   );
 }

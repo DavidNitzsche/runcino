@@ -16,7 +16,7 @@ import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
 import { autoSyncStrava } from '../../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
-import { rollupYear, naivePRs } from '../../lib/strava-stats';
+import { rollupYear, naivePRs, isProbablyRace } from '../../lib/strava-stats';
 import { formatShort } from '../../lib/dates';
 
 export default function LogPage() {
@@ -95,7 +95,7 @@ export default function LogPage() {
               .filter(r => r.actualResult)
               .map(r => ({ kind: 'saved', race: r, date: r.meta.date }));
             const stravaOnly: RaceRow[] = runs
-              .filter(r => r.workoutType === 1 && !savedActIds.has(r.id))
+              .filter(r => isProbablyRace(r) && !savedActIds.has(r.id))
               .map(a => ({ kind: 'strava', activity: a, date: a.date }));
             const allRows = [...savedRows, ...stravaOnly].sort((a, b) => b.date.localeCompare(a.date));
             return allRows.length > 0 ? <RacesShelf rows={allRows} /> : null;

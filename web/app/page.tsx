@@ -16,7 +16,7 @@ import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
-import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, type TrainingPulse } from '../lib/strava-stats';
+import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -68,14 +68,14 @@ export default function OverviewPage() {
 
           <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
             <NextRaceCard next={next} daysToNext={daysToNext} />
             <RecentRunCard lastRun={lastRun} />
             <WeeklyMilesCard runs={runs} />
             <YearMilesCard runs={runs} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 10, marginBottom: 10 }}>
             <ThisWeekTile runs={runs} now={now} />
             <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
@@ -85,14 +85,6 @@ export default function OverviewPage() {
           )}
 
           <FunStatsSection runs={runs} />
-
-          <SectionHeader title="Other surfaces" sub="What each tab unlocks" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-            <SurfaceTile href="/races"    title="Races"    body="Build pacing plans, drop GPX, export to Watch."        chip="LIVE" />
-            <SurfaceTile href="/log"      title="Log"      body="Every Strava run with route, splits, and PR detection." chip="LIVE" />
-            <SurfaceTile href="/health"   title="Health"   body="HR + cadence trends from Strava. HRV/sleep in M2."     chip="LIVE" />
-            <SurfaceTile href="/training" title="Training" body="Adaptive weekly plan from goal race + fitness."         chip="M3" muted />
-          </div>
 
         </div>
       </div>
@@ -447,19 +439,17 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
     'TAPER':       'var(--color-attention)',
     'PEAK':        'var(--color-attention)',
     'RACE MONTH':  'var(--color-attention)',
+    'POST-RACE':   'var(--color-corporate)',
     'BUILDING':    'var(--color-success)',
-    'MAINTAINING': 'var(--color-corporate)',
-    'DETRAINING':  'var(--color-warning)',
-    'OFF SEASON':  'var(--color-t3)',
+    'BASE BLOCK':  'var(--color-corporate)',
   };
   const phaseDescriptor = (() => {
-    if (pulse.phase === 'TAPER')        return pulse.daysToRace === 0 ? 'Race day' : pulse.daysToRace === 1 ? 'Race tomorrow' : `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'}`;
+    if (pulse.phase === 'TAPER')        return pulse.daysToRace === 0 ? 'Race day' : pulse.daysToRace === 1 ? 'Race tomorrow' : `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — taper week`;
     if (pulse.phase === 'PEAK')         return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — peak block`;
-    if (pulse.phase === 'RACE MONTH')   return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'}`;
+    if (pulse.phase === 'RACE MONTH')   return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — building`;
+    if (pulse.phase === 'POST-RACE')    return 'Recovery week — volume drop is by design, not detraining';
     if (pulse.phase === 'BUILDING')     return 'Mileage trending up over the last 4 weeks';
-    if (pulse.phase === 'DETRAINING')   return 'Mileage off — recovery, injury, or a break';
-    if (pulse.phase === 'OFF SEASON')   return 'No recent runs — off-season or just back';
-    return 'Holding steady — base maintained';
+    return 'Maintain the base — steady volume, weekly long run, no peaking';
   })();
   const deltaText = pulse.deltaPct == null
     ? null
@@ -468,13 +458,24 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
     : pulse.deltaPct > 0.10 ? 'var(--color-success)'
     : pulse.deltaPct < -0.15 ? 'var(--color-warning)'
     : 'var(--color-t2)';
+  const balance = effortBalance(runs, 14);
+  const easyPct = Math.round(balance.easyShare * 100);
+  // 80/20 polarized-training rule: aim for ≥75% easy, ≤25% hard.
+  const easyColor = easyPct >= 75 ? 'var(--color-success)' : easyPct >= 60 ? 'var(--color-attention)' : 'var(--color-warning)';
+  const easyVerdict = easyPct >= 75 ? 'On target (≥75%)' : easyPct >= 60 ? 'A bit hard — back off' : 'Way too hard — drop intensity';
+
+  // Format week-start ISO → "Mar 9" for bar labels
+  const fmtBar = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
+  };
 
   return (
     <>
       <SectionHeader title="Training pulse" sub={phaseDescriptor} />
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-        {/* Phase + 8-week mileage trend */}
-        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 180 }}>
+        {/* Phase + 8-week mileage trend with per-bar labels */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 220 }}>
           <div className="tile-h">
             <div>
               <div className="tile-sub">Phase</div>
@@ -482,66 +483,92 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
                 {pulse.phase}
               </div>
             </div>
-            <span className="chip" style={{ fontSize: 9 }}>LAST 8 WEEKS</span>
+            <span className="chip" style={{ fontSize: 9 }}>WEEKLY MI · LAST 8 WK</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 56, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80, flex: 1 }}>
             {weeks.map((w, i) => {
               const isRecent = i >= 4;
-              const h = w.miles > 0 ? Math.max(4, (w.miles / max) * 56) : 0;
+              const h = w.miles > 0 ? Math.max(6, (w.miles / max) * 80) : 0;
               return (
-                <div key={w.weekStart} title={`Week of ${w.weekStart}: ${w.miles} mi`} style={{
-                  flex: 1,
-                  height: h ? `${h}px` : '4px',
-                  background: h ? (isRecent ? 'var(--color-corporate)' : 'var(--color-l4)') : 'var(--color-l3)',
-                  borderRadius: 2,
-                }} />
+                <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontVariantNumeric: 'tabular-nums', color: w.miles > 0 ? 'var(--color-t1)' : 'var(--color-t3)', fontWeight: 700 }}>
+                    {w.miles > 0 ? Math.round(w.miles) : '—'}
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    height: h ? `${h}px` : '4px',
+                    background: h ? (isRecent ? 'var(--color-corporate)' : 'var(--color-l4)') : 'var(--color-l3)',
+                    borderRadius: 2,
+                  }} />
+                </div>
               );
             })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
-            <span>{weeks[0]?.weekStart ? new Date(weeks[0].weekStart + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase() : ''}</span>
-            <span>NOW</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
+            {weeks.map((w, i) => (
+              <div key={w.weekStart} style={{ flex: 1, textAlign: 'center', opacity: i === 0 || i === weeks.length - 1 || i === Math.floor(weeks.length / 2) ? 1 : 0.45 }}>
+                {fmtBar(w.weekStart)}
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Weekly avg + delta vs prior 4w */}
-        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 220 }}>
           <div className="tile-sub">Weekly avg</div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {pulse.weeklyAvg.toFixed(1)}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 4 }}>mi</small>
           </div>
-          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 4 weeks</div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 4 weeks · {pulse.recent4wkMi.toFixed(0)} mi total</div>
           {deltaText && (
-            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: deltaColor }}>
-              {deltaText} VS PRIOR 4 WEEKS
+            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: deltaColor, lineHeight: 1.4 }}>
+              {deltaText} VS PRIOR 4 WK<br />
+              <span style={{ color: 'var(--color-t3)', fontWeight: 700 }}>WAS {pulse.prior4wkMi.toFixed(0)} MI</span>
             </div>
           )}
         </div>
 
         {/* Long run trend */}
-        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 220 }}>
           <div className="tile-sub">Long run avg</div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {pulse.longRunAvgMi != null ? pulse.longRunAvgMi.toFixed(1) : '—'}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 4 }}>mi</small>
           </div>
-          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Longest 4 / last 4 weeks</div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Longest run, each of last 4 weeks</div>
           {pulse.longestRecentMi > 0 && (
-            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t2)' }}>
-              PEAK {pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS
+            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t2)', lineHeight: 1.4 }}>
+              PEAK LONG RUN<br />
+              <span style={{ color: 'var(--color-t1)' }}>{pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS</span>
             </div>
           )}
         </div>
 
-        {/* Quality day count this week */}
-        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
-          <div className="tile-sub">Quality days</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: pulse.qualityDaysThisWeek > 0 ? 'var(--color-attention)' : 'var(--color-t3)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {pulse.qualityDaysThisWeek}
+        {/* Easy / hard balance — 80/20 polarized training */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 220 }}>
+          <div className="tile-sub">Easy ratio</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: easyColor, letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {balance.totalMi > 0 ? `${easyPct}` : '—'}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 2 }}>%</small>
           </div>
-          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Workouts logged this week</div>
-          <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
-            STRAVA WORKOUT TYPE
-          </div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 14 days · easy vs hard miles</div>
+          {/* Stacked bar showing easy / hard split */}
+          {balance.totalMi > 0 && (
+            <>
+              <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--color-l3)' }}>
+                <div style={{ width: `${easyPct}%`, background: easyColor }} />
+                <div style={{ width: `${100 - easyPct}%`, background: 'var(--color-l4)' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
+                <span>EASY {balance.easyMi.toFixed(1)} MI</span>
+                <span>HARD {balance.hardMi.toFixed(1)} MI</span>
+              </div>
+              <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: easyColor, lineHeight: 1.4 }}>
+                {easyVerdict}
+              </div>
+            </>
+          )}
+          {balance.totalMi === 0 && (
+            <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--color-t3)' }}>No HR data yet</div>
+          )}
         </div>
       </div>
     </>
@@ -586,19 +613,3 @@ function SectionHeader({ title, sub }: { title: string; sub: string }) {
   );
 }
 
-function SurfaceTile({ href, title, body, chip, muted }: { href: string; title: string; body: string; chip: string; muted?: boolean }) {
-  return (
-    <Link href={href} className="tile" style={{
-      textDecoration: 'none', color: 'inherit', cursor: 'pointer',
-      display: 'flex', flexDirection: 'column', gap: 12, minHeight: 140,
-      opacity: muted ? .65 : 1,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{title}</div>
-        <span className="chip" style={muted ? {} : { background: 'rgba(62,189,65,.12)', color: 'var(--color-success)', borderColor: 'rgba(62,189,65,.3)' }}>{chip}</span>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--color-t2)', lineHeight: 1.55, flex: 1 }}>{body}</div>
-      <div className="tile-sub" style={{ color: muted ? 'var(--color-t3)' : 'var(--color-corporate)' }}>{muted ? 'Locked' : 'Open →'}</div>
-    </Link>
-  );
-}

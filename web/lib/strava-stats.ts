@@ -30,7 +30,7 @@ export function rollupYear(activities: NormalizedActivity[]): YearRollup {
   const totalMovingS = activities.reduce((s, a) => s + a.movingTimeS, 0);
   const totalElevFt = activities.reduce((s, a) => s + a.elevGainFt, 0);
   const longestRunMi = Math.max(...activities.map(a => a.distanceMi));
-  const races = activities.filter(a => a.workoutType === 1);
+  const races = activities.filter(a => isProbablyRace(a));
   const hrSamples = activities.filter(a => a.avgHr != null && a.distanceMi > 0);
   const weightedHr = hrSamples.reduce((s, a) => s + (a.avgHr as number) * a.distanceMi, 0);
   const hrMiles = hrSamples.reduce((s, a) => s + a.distanceMi, 0);
@@ -128,17 +128,23 @@ export function currentWeekDays(activities: NormalizedActivity[]): Array<{ date:
  *  on the Overview page so the dashboard breathes with state instead of
  *  showing the same blank chips year-round.
  *
- *  Phase rules (race-aware first, then trend-based):
- *    daysToRace ≤ 7         → TAPER
- *    daysToRace 8-21        → PEAK
- *    daysToRace 22-56       → RACE MONTH
- *    Else, by 4w/4w mileage delta:
- *      > +10 %              → BUILDING
- *      < −15 %              → DETRAINING
- *      otherwise            → MAINTAINING
+ *  Phase rules (priority order — first match wins):
+ *    A race within 7 days   → TAPER
+ *    A race within 8-21     → PEAK
+ *    A race within 22-56    → RACE MONTH
+ *    Race finished ≤14 days → POST-RACE (recovery, intentional volume drop)
+ *    4w/4w mileage Δ > +10% → BUILDING
+ *    Else                   → BASE BLOCK ("maintain the base" — the
+ *                             default state, not a fallback)
+ *
+ *  Note: "DETRAINING" is intentionally NOT a phase. Volume drops are
+ *  almost always either post-race recovery (already labeled) or a
+ *  break/injury (which the user knows about and doesn't need a chip
+ *  about). Calling normal recovery "detraining" was alarming and
+ *  wrong.
  */
 export interface TrainingPulse {
-  phase: 'TAPER' | 'PEAK' | 'RACE MONTH' | 'BUILDING' | 'MAINTAINING' | 'DETRAINING' | 'OFF SEASON';
+  phase: 'TAPER' | 'PEAK' | 'RACE MONTH' | 'POST-RACE' | 'BUILDING' | 'BASE BLOCK';
   recent4wkMi: number;          // sum of last 4 weeks
   prior4wkMi: number;           // sum of weeks 4–7 ago
   deltaPct: number | null;      // recent vs prior (null if prior is 0)
@@ -162,6 +168,17 @@ export function trainingPulse(
   const prior4wkMi  = Math.round(prior4.reduce((s, w) => s + w.miles, 0) * 10) / 10;
   const deltaPct = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
   const weeklyAvg = Math.round((recent4wkMi / 4) * 10) / 10;
+
+  // Most recent finished race (any priority) — drives the POST-RACE
+  // phase since volume drops after a race are recovery, not detraining.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const recentRaces = activities
+    .filter(a => isProbablyRace(a) && a.date <= todayISO)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const lastRace = recentRaces[0] ?? null;
+  const daysSinceRace = lastRace
+    ? Math.floor((Date.parse(todayISO) - Date.parse(lastRace.date)) / 86_400_000)
+    : null;
 
   // Last 28 days of activities for long-run analysis
   const today = new Date();
@@ -199,15 +216,16 @@ export function trainingPulse(
     daysToRace = Math.round((target.getTime() - today.getTime()) / 86_400_000);
   }
 
-  // Phase inference — race window first, then trend.
+  // Phase inference — race-window first, then post-race recovery, then
+  // trend. BASE BLOCK is the default ("maintain the base"), not a
+  // fallback — most runners spend most of the year in this phase.
   let phase: TrainingPulse['phase'];
   if (daysToRace != null && daysToRace >= 0 && daysToRace <= 7)       phase = 'TAPER';
   else if (daysToRace != null && daysToRace > 7 && daysToRace <= 21)  phase = 'PEAK';
   else if (daysToRace != null && daysToRace > 21 && daysToRace <= 56) phase = 'RACE MONTH';
-  else if (recent4wkMi === 0 && prior4wkMi === 0)                     phase = 'OFF SEASON';
+  else if (daysSinceRace != null && daysSinceRace <= 14)              phase = 'POST-RACE';
   else if (deltaPct != null && deltaPct > 0.10)                       phase = 'BUILDING';
-  else if (deltaPct != null && deltaPct < -0.15)                      phase = 'DETRAINING';
-  else                                                                 phase = 'MAINTAINING';
+  else                                                                 phase = 'BASE BLOCK';
 
   return {
     phase,
@@ -445,12 +463,16 @@ function fmtBigDuration(s: number): string {
  *  Strava best_efforts (which require detail fetches). Useful for an
  *  app-wide "PR shelf" without paying N detail-fetch round trips. */
 export function naivePRs(activities: NormalizedActivity[]): Array<{ label: string; distMi: number; bestS: number | null; activityId: number | null; date: string | null }> {
+  // Looser tolerances than v1 so a marathon at 26.81 mi (Big Sur — GPS
+  // routinely measures long) still counts toward the marathon best, a
+  // half at 13.5 (Point Mugu) counts toward the half, etc. Tight enough
+  // that a 7-mi training run doesn't accidentally win the 10K bucket.
   const buckets = [
-    { label: '1 mi',     distMi: 1.00,  tol: 0.05 },
-    { label: '5K',       distMi: 3.10,  tol: 0.10 },
-    { label: '10K',      distMi: 6.21,  tol: 0.15 },
-    { label: 'Half',     distMi: 13.10, tol: 0.30 },
-    { label: 'Marathon', distMi: 26.22, tol: 0.40 },
+    { label: '1 mi',     distMi: 1.00,  tol: 0.10 },
+    { label: '5K',       distMi: 3.10,  tol: 0.30 },
+    { label: '10K',      distMi: 6.21,  tol: 0.50 },
+    { label: 'Half',     distMi: 13.10, tol: 0.80 },
+    { label: 'Marathon', distMi: 26.22, tol: 1.00 },
   ];
   return buckets.map(b => {
     const within = activities.filter(a => Math.abs(a.distanceMi - b.distMi) <= b.tol);
@@ -461,4 +483,58 @@ export function naivePRs(activities: NormalizedActivity[]): Array<{ label: strin
     const best = within.slice().sort((a, b) => a.movingTimeS - b.movingTimeS)[0];
     return { label: b.label, distMi: b.distMi, bestS: best.movingTimeS, activityId: best.id, date: best.date };
   });
+}
+
+/** Heuristic: is this activity probably a race? Strava's workout_type
+ *  flag (=== 1) is the canonical answer, but plenty of races never get
+ *  tagged at the time. Falling back to a name-keyword match catches
+ *  "Rose Bowl Half Marathon" / "Point Mugu half marathon" / "10K
+ *  Championship" without requiring the runner to retag everything. */
+const RACE_NAME_RE = /\b(marathon|half|10\s*k|5\s*k|championship|grand prix|race|chip)\b/i;
+export function isProbablyRace(a: NormalizedActivity): boolean {
+  if (a.workoutType === 1) return true;
+  return RACE_NAME_RE.test(a.name);
+}
+
+/** Easy / hard split for the last N days. "Easy" is mile-weighted by
+ *  avg HR being below the threshold; "hard" is at or above. Threshold
+ *  defaults to 152 bpm — close to a typical aerobic ceiling for an
+ *  endurance-focused runner; tunable per athlete once HealthKit data
+ *  lands. Returns the easy share as a fraction in [0, 1]. */
+export interface EffortBalance {
+  easyMi: number;
+  hardMi: number;
+  easyShare: number;        // 0–1, mile-weighted
+  totalMi: number;
+  windowDays: number;
+  hrThreshold: number;
+  samplesWithHr: number;
+  totalSamples: number;
+}
+
+export function effortBalance(activities: NormalizedActivity[], windowDays = 14, hrThreshold = 152): EffortBalance {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+  const inWindow = activities.filter(a => a.date >= cutoffISO);
+  let easyMi = 0, hardMi = 0;
+  let samplesWithHr = 0;
+  for (const a of inWindow) {
+    if (a.avgHr == null) continue;
+    samplesWithHr++;
+    if (a.avgHr < hrThreshold) easyMi += a.distanceMi;
+    else hardMi += a.distanceMi;
+  }
+  const totalMi = Math.round((easyMi + hardMi) * 10) / 10;
+  const easyShare = totalMi > 0 ? easyMi / totalMi : 0;
+  return {
+    easyMi: Math.round(easyMi * 10) / 10,
+    hardMi: Math.round(hardMi * 10) / 10,
+    easyShare,
+    totalMi,
+    windowDays,
+    hrThreshold,
+    samplesWithHr,
+    totalSamples: inWindow.length,
+  };
 }
