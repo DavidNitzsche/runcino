@@ -37,6 +37,22 @@ export interface ActualResult {
   notes?: string;
   /** ISO timestamp when the result was saved. */
   recordedAt: string;
+  /** How this result got here. 'strava' results refresh automatically
+   *  on subsequent syncs; 'manual' entries are sticky and never get
+   *  overwritten by the auto-sync. */
+  source?: 'manual' | 'strava';
+  /** Strava activity ID — present when source==='strava'. Lets the
+   *  detail page link out to the original activity + lets sync
+   *  identify whether to refresh this result. */
+  stravaActivityId?: number;
+  /** Strava-derived enrichment fields. None of these have a
+   *  corresponding manual-entry slot — they only land via sync. */
+  avgHr?: number | null;
+  maxHr?: number | null;
+  avgCadence?: number | null;
+  totalGainFt?: number;
+  /** Activity name as recorded in Strava. */
+  activityName?: string;
 }
 
 export interface SavedRace {

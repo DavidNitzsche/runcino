@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { seedIfNeeded } from '../../../lib/seed';
+import { autoSyncStrava } from '../../../lib/strava-auto';
 
 // Phase color palette — 8 deterministic colors so any course with up to 8
 // phases gets a distinct hue. Extends the 5-color rainbow used in the
@@ -100,11 +101,16 @@ export default function RaceDetailPage() {
     let cancelled = false;
     // Run seed migration on detail page too — users who land directly
     // on /races/<slug> via a bookmark or shared link get the latest
-    // plan shape without having to visit / or /races first.
-    seedIfNeeded().finally(() => {
+    // plan shape without having to visit / or /races first. Then
+    // background-sync from Strava and re-read once it lands.
+    (async () => {
+      await seedIfNeeded();
       if (cancelled) return;
       setRace(getRace(slug));
-    });
+      const sync = await autoSyncStrava();
+      if (cancelled) return;
+      if (sync.updatedSlugs.includes(slug)) setRace(getRace(slug));
+    })();
     return () => { cancelled = true; };
   }, [slug]);
 

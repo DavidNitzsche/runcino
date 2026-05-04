@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { listRaces, type SavedRace } from '../../lib/storage';
 import { seedIfNeeded } from '../../lib/seed';
+import { autoSyncStrava } from '../../lib/strava-auto';
 
 function fmtDate(iso: string): string {
   const d = new Date(iso + 'T12:00:00Z');
@@ -31,13 +32,18 @@ export default function RacesIndexPage() {
   const [races, setRaces] = useState<SavedRace[] | null>(null);
 
   // Read from localStorage on mount; the SSR pass shows the loading shell.
-  // Seeds Big Sur + Sombrero on first visit (idempotent).
+  // Seeds Big Sur + Sombrero on first visit (idempotent), then pulls
+  // any Strava-sourced actualResult updates in the background.
   useEffect(() => {
     let cancelled = false;
-    seedIfNeeded().finally(() => {
+    (async () => {
+      await seedIfNeeded();
       if (cancelled) return;
       setRaces(listRaces());
-    });
+      const sync = await autoSyncStrava();
+      if (cancelled) return;
+      if (sync.updatedSlugs.length > 0) setRaces(listRaces());
+    })();
     return () => { cancelled = true; };
   }, []);
 

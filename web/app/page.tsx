@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { seedIfNeeded } from '../lib/seed';
+import { autoSyncStrava } from '../lib/strava-auto';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -29,11 +30,18 @@ export default function OverviewPage() {
 
   useEffect(() => {
     let cancelled = false;
-    seedIfNeeded().finally(() => {
+    (async () => {
+      await seedIfNeeded();
       if (cancelled) return;
       setNow(new Date());
       setRaces(listRaces());
-    });
+      // Background sync — pulls activity data from Strava silently
+      // when STRAVA_REFRESH_TOKEN is set, no-ops otherwise. Updates
+      // localStorage in place; we re-read after to surface the data.
+      const sync = await autoSyncStrava();
+      if (cancelled) return;
+      if (sync.updatedSlugs.length > 0) setRaces(listRaces());
+    })();
     return () => { cancelled = true; };
   }, []);
 
