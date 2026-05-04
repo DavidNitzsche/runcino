@@ -16,7 +16,7 @@ import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
-import { rollupYear, weeklyMiles, dailyMiles, funStats } from '../lib/strava-stats';
+import { rollupYear, weeklyMiles, currentWeekDays, funStats } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -321,11 +321,11 @@ function ThisWeekTile({ runs, now }: { runs: NormalizedActivity[] | null; now: D
       </div>
     );
   }
-  const days = dailyMiles(runs, 7);
+  const days = currentWeekDays(runs);
   const totalMi = days.reduce((s, d) => s + d.miles, 0);
   const totalRuns = days.reduce((s, d) => s + d.runs, 0);
   const max = Math.max(...days.map(d => d.miles), 1);
-  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
   return (
     <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 220 }}>
       <div className="tile-h">
@@ -342,9 +342,6 @@ function ThisWeekTile({ runs, now }: { runs: NormalizedActivity[] | null; now: D
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, flex: 1 }}>
         {days.map((d, i) => {
-          const isToday = i === days.length - 1;
-          const dow = new Date(d.date + 'T12:00:00Z').getUTCDay();
-          const dowLabel = dayNames[(dow + 6) % 7];
           const h = d.miles > 0 ? Math.max(6, (d.miles / max) * 80) : 0;
           return (
             <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
@@ -354,11 +351,12 @@ function ThisWeekTile({ runs, now }: { runs: NormalizedActivity[] | null; now: D
               <div style={{
                 width: '100%',
                 height: h ? `${h}px` : '6px',
-                background: h ? (isToday ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
+                background: h ? (d.isToday ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
                 borderRadius: 2,
+                opacity: d.isFuture ? 0.5 : 1,
               }} />
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, color: isToday ? 'var(--color-attention)' : 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px' }}>
-                {dowLabel.toUpperCase()}
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px' }}>
+                {dayLabels[i]}
               </div>
             </div>
           );

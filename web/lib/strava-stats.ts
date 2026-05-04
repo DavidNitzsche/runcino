@@ -94,6 +94,35 @@ export function dailyMiles(activities: NormalizedActivity[], days = 7): Array<{ 
   return out;
 }
 
+/** Calendar week (Mon → Sun) covering today. Returns one bucket per
+ *  day with miles + runs, plus a flag identifying which bucket is
+ *  today and which buckets are future (haven't happened yet). Used by
+ *  the "this week" tile so the strip matches its own header. */
+export function currentWeekDays(activities: NormalizedActivity[]): Array<{ date: string; miles: number; runs: number; isToday: boolean; isFuture: boolean }> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayOfWeek = today.getDay();
+  const offsetToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + offsetToMon);
+
+  const todayIso = today.toISOString().slice(0, 10);
+  const out: Array<{ date: string; miles: number; runs: number; isToday: boolean; isFuture: boolean }> = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const matches = activities.filter(a => a.date === iso);
+    out.push({
+      date: iso,
+      miles: Math.round(matches.reduce((s, a) => s + a.distanceMi, 0) * 10) / 10,
+      runs: matches.length,
+      isToday: iso === todayIso,
+      isFuture: iso > todayIso,
+    });
+  }
+  return out;
+}
+
 /** Avg HR per week (mile-weighted) for the last `weeks` weeks. */
 export function weeklyAvgHr(activities: NormalizedActivity[], weeks = 12): Array<{ weekStart: string; avgHr: number | null }> {
   const buckets = weeklyMiles(activities, weeks).map(b => ({ ...b, avgHr: null as number | null }));
@@ -206,15 +235,17 @@ export function funStats(roll: YearRollup): FunStat[] {
     });
   }
 
-  // Time on feet.
+  // Time on feet — each quip uses a DIFFERENT reference unit from the
+  // headline value (which is already days/hours via fmtBigDuration), so
+  // the detail line adds new info instead of restating the value.
   const TIME: Array<{ s: number; quip: (n: number) => string }> = [
-    { s: 60 * 60,                quip: n => `${n.toFixed(0)} feature films, end to end. No popcorn breaks.` },
-    { s: 169 * 60,               quip: n => `${n.toFixed(1)}× the Lord of the Rings theatrical cut.` },
-    { s: 11 * 3600 + 22 * 60,    quip: n => `${n.toFixed(1)}× LotR Extended Edition. With every council scene.` },
-    { s: 24 * 3600,              quip: n => `${n.toFixed(1)} full days, if days were spent running.` },
+    { s: 60 * 60,                quip: n => `${n.toFixed(1)} hours on your feet. Just getting going.` },
+    { s: 169 * 60,               quip: n => `${n.toFixed(1)}× Lord of the Rings (theatrical cut). The hobbits are tired.` },
+    { s: 11 * 3600 + 22 * 60,    quip: n => `${n.toFixed(1)}× the LotR Extended Edition. With every council scene.` },
+    { s: 24 * 3600,              quip: n => `About ${(n * 24 / 49).toFixed(1)}× a full Breaking Bad rewatch (62 episodes).` },
+    { s: 49 * 3600,              quip: n => `${n.toFixed(1)}× every episode of Breaking Bad. End to end. Yeah, science.` },
     { s: 86 * 3600,              quip: n => `${n.toFixed(1)}× every Friends episode ever made. They weren\'t on a break.` },
-    { s: 7 * 24 * 3600,          quip: n => `${n.toFixed(1)} calendar weeks of pure motion.` },
-    { s: 30 * 24 * 3600,         quip: n => `${n.toFixed(1)} calendar months. You okay?` },
+    { s: 200 * 3600,             quip: n => `Comparable to ${(n * 200 / 168).toFixed(1)} full work weeks — except moving the whole time.` },
   ];
   const tHit = TIME.filter(t => t.s <= roll.totalMovingS).pop();
   if (tHit) {

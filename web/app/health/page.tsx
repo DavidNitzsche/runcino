@@ -97,28 +97,94 @@ function BigStat({ label, value, sub, trend, trendUnit }: { label: string; value
 function TrendCard({ title, series, unit }: { title: string; series: Array<{ x: string; y: number }>; unit: string }) {
   if (series.length === 0) return <MetricCard label={title} sub={unit} pill="No data" />;
   const ys = series.map(p => p.y);
-  const max = Math.max(...ys);
-  const min = Math.min(...ys);
-  const range = max - min || 1;
-  const W = 200, H = 60;
+  const dataMax = Math.max(...ys);
+  const dataMin = Math.min(...ys);
+  // Pad the y-domain ~5% so the curve never grazes the chart edges,
+  // which made the lines feel unanchored and abstract.
+  const pad = (dataMax - dataMin) * 0.08 || dataMax * 0.05 || 1;
+  const yMax = dataMax + pad;
+  const yMin = Math.max(0, dataMin - pad);
+  const range = yMax - yMin || 1;
+  const median = ys.slice().sort((a, b) => a - b)[Math.floor(ys.length / 2)];
+
+  // Chart geometry — leave room on the left for y-axis tick labels and
+  // on the bottom for x-axis date labels, so this reads as a real chart.
+  const W = 240;
+  const H = 100;
+  const padL = 30, padR = 10, padT = 8, padB = 18;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
   const points = series.map((p, i) => {
-    const x = (i / (series.length - 1 || 1)) * W;
-    const y = H - ((p.y - min) / range) * H;
-    return [x, y] as const;
+    const x = padL + (i / (series.length - 1 || 1)) * innerW;
+    const y = padT + (1 - (p.y - yMin) / range) * innerH;
+    return [x, y, p] as const;
   });
   const path = points.reduce((acc, [x, y], i) => acc + (i === 0 ? `M${x.toFixed(1)},${y.toFixed(1)}` : `L${x.toFixed(1)},${y.toFixed(1)}`), '');
-  const last = series[series.length - 1].y;
+  const medianY = padT + (1 - (median - yMin) / range) * innerH;
+  const last = series[series.length - 1];
+  const first = series[0];
+  const [lastX, lastY] = points[points.length - 1];
+
+  // Format week-start ISO → "Mar 9" for axis ticks.
+  const fmtWeek = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  };
+
   return (
-    <div className="tile" style={{ minHeight: 160, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="tile" style={{ minHeight: 200, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div className="tile-sub">{title}</div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 38, color: 'var(--color-t0)', letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-        {Math.round(last * 10) / 10}<small style={{ fontSize: '.4em', opacity: .55, marginLeft: 4 }}>{unit}</small>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 38, color: 'var(--color-t0)', letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {Math.round(last.y * 10) / 10}<small style={{ fontSize: '.4em', opacity: .55, marginLeft: 4 }}>{unit}</small>
+        </div>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase' }}>
+          week of {fmtWeek(last.x)}
+        </div>
       </div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ flex: 1, marginTop: 4 }}>
-        <path d={path} stroke="var(--color-corporate)" strokeWidth={2} fill="none" strokeLinejoin="round" />
-        {points.map(([x, y], i) => i === points.length - 1 && <circle key={i} cx={x} cy={y} r={3} fill="var(--color-attention)" />)}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ flex: 1, marginTop: 4 }}>
+        {/* Y-axis baseline + median guideline */}
+        <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="var(--color-l4)" strokeWidth={0.5} />
+        <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="var(--color-l4)" strokeWidth={0.5} />
+        <line x1={padL} y1={medianY} x2={W - padR} y2={medianY} stroke="var(--color-l4)" strokeWidth={0.4} strokeDasharray="2 3" />
+
+        {/* Y tick labels — top (max) + bottom (min) */}
+        <text x={padL - 4} y={padT + 3} fontSize={7} fill="var(--color-t3)" textAnchor="end" fontFamily="var(--font-data)" fontWeight={700} letterSpacing={0.5}>
+          {Math.round(dataMax)}
+        </text>
+        <text x={padL - 4} y={H - padB} fontSize={7} fill="var(--color-t3)" textAnchor="end" fontFamily="var(--font-data)" fontWeight={700} letterSpacing={0.5}>
+          {Math.round(dataMin)}
+        </text>
+
+        {/* The trend line + every data point as a small dot */}
+        <path d={path} stroke="var(--color-corporate)" strokeWidth={1.6} fill="none" strokeLinejoin="round" />
+        {points.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={1.4} fill={i === points.length - 1 ? 'var(--color-attention)' : 'var(--color-corporate)'} />
+        ))}
+
+        {/* Highlighted latest point — bigger, with a halo */}
+        <circle cx={lastX} cy={lastY} r={3.2} fill="var(--color-attention)" />
+        <circle cx={lastX} cy={lastY} r={5.5} fill="var(--color-attention)" opacity={0.18} />
+
+        {/* X-axis date ticks at first / mid / last */}
+        <text x={padL} y={H - 4} fontSize={7} fill="var(--color-t3)" textAnchor="start" fontFamily="var(--font-data)" fontWeight={700} letterSpacing={0.5}>
+          {fmtWeek(first.x)}
+        </text>
+        {series.length > 5 && (
+          <text x={padL + innerW / 2} y={H - 4} fontSize={7} fill="var(--color-t3)" textAnchor="middle" fontFamily="var(--font-data)" fontWeight={700} letterSpacing={0.5}>
+            {fmtWeek(series[Math.floor(series.length / 2)].x)}
+          </text>
+        )}
+        <text x={W - padR} y={H - 4} fontSize={7} fill="var(--color-t3)" textAnchor="end" fontFamily="var(--font-data)" fontWeight={700} letterSpacing={0.5}>
+          {fmtWeek(last.x)}
+        </text>
       </svg>
-      <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 12 weeks</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+        <span>MIN {Math.round(dataMin * 10) / 10}{unit && ` ${unit.toUpperCase()}`}</span>
+        <span>MEDIAN {Math.round(median * 10) / 10}</span>
+        <span>MAX {Math.round(dataMax * 10) / 10}</span>
+      </div>
     </div>
   );
 }
