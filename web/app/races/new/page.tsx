@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { saveRace, listRaces, slugifyRaceName, type SavedRace } from '../../../lib/storage';
+import { parseGpx } from '../../../lib/gpx';
 import type { RuncinoPlan } from '../../../lib/types';
 
 type BuildResult = {
@@ -50,6 +51,17 @@ const REGISTERED = [
   { slug: 'sombrero-half',    label: 'Sombrero Half Marathon' },
 ] as const;
 
+/** Canonical race distances. Picking one pre-fills the goal-time
+ *  placeholder + lets us soft-warn if the uploaded GPX doesn't match. */
+const DISTANCES = [
+  { id: 'marathon', label: 'Marathon',     mi: 26.22, defaultGoal: '3:30:00' },
+  { id: 'half',     label: 'Half marathon', mi: 13.10, defaultGoal: '1:35:00' },
+  { id: '10k',      label: '10K',          mi: 6.21,  defaultGoal: '0:45:00' },
+  { id: '5k',       label: '5K',           mi: 3.10,  defaultGoal: '0:22:00' },
+  { id: 'custom',   label: 'Other',        mi: 0,     defaultGoal: '1:30:00' },
+] as const;
+type DistanceId = typeof DISTANCES[number]['id'];
+
 export default function NewRacePage() {
   const router = useRouter();
   const [raceName, setRaceName]   = useState('');
@@ -59,9 +71,22 @@ export default function NewRacePage() {
     return d.toISOString().slice(0, 10);
   });
   const [startTime, setStartTime] = useState('07:00');
+  const [distanceId, setDistanceId] = useState<DistanceId | null>(null);
   const [goalHMS, setGoalHMS]     = useState('1:30:00');
+  const [goalDirty, setGoalDirty] = useState(false);  // true once user has typed in goal
   const [strategy, setStrategy]   = useState<'even_effort' | 'even_split' | 'negative_split'>('even_effort');
   const [tolerance, setTolerance] = useState(10);
+
+  // When user picks a distance, refresh the goal-time field with that
+  // distance's default — but only if they haven't typed their own
+  // goal yet. Avoids stomping on a value they entered first.
+  function pickDistance(id: DistanceId) {
+    setDistanceId(id);
+    if (!goalDirty) {
+      const d = DISTANCES.find(x => x.id === id);
+      if (d) setGoalHMS(d.defaultGoal);
+    }
+  }
 
   const [gpxName, setGpxName] = useState<string | null>(null);
   const [gpxText, setGpxText] = useState<string | null>(null);
@@ -80,6 +105,26 @@ export default function NewRacePage() {
     const m = goalHMS.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
     return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : null;
   }, [goalHMS]);
+
+  // Parse the uploaded GPX to its raw distance once. Used to soft-warn
+  // when the picked distance and the actual GPX disagree.
+  const gpxDistanceMi = useMemo(() => {
+    if (!gpxText) return null;
+    try { return parseGpx(gpxText).totalDistanceM / 1609.344; }
+    catch { return null; }
+  }, [gpxText]);
+
+  // Soft warning if the picked distance is more than 15% off the GPX.
+  // Within 15% covers most races (marathons routinely measure 26.4mi
+  // due to GPS drift + tangent-cutting, halves often 13.2mi, etc).
+  const gpxDistanceMismatch = useMemo(() => {
+    if (gpxDistanceMi == null || !distanceId || distanceId === 'custom') return null;
+    const expected = DISTANCES.find(d => d.id === distanceId);
+    if (!expected || expected.mi <= 0) return null;
+    const drift = Math.abs(gpxDistanceMi - expected.mi) / expected.mi;
+    if (drift < 0.15) return null;
+    return { gpxMi: gpxDistanceMi, expectedLabel: expected.label };
+  }, [gpxDistanceMi, distanceId]);
 
   function handleFile(file: File) {
     setError(null);
@@ -231,12 +276,47 @@ export default function NewRacePage() {
                     />
                   </div>
                 </div>
+                <div style={{ marginTop: 14 }}>
+                  <label className="runcino-label">Distance</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                    {DISTANCES.map(d => {
+                      const active = distanceId === d.id;
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => pickDistance(d.id)}
+                          style={{
+                            padding: '12px 10px',
+                            textAlign: 'center',
+                            border: `1px solid ${active ? 'var(--color-attention)' : 'var(--color-l4)'}`,
+                            background: active ? 'rgba(243,173,59,.10)' : 'var(--color-l2)',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            color: 'var(--color-t0)',
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '-.005em', textTransform: 'uppercase' }}>{d.label}</div>
+                          <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4, fontFamily: 'var(--font-data)', letterSpacing: '1.2px', fontWeight: 700 }}>
+                            {d.mi > 0 ? `${d.mi.toFixed(d.id === '5k' || d.id === '10k' ? 1 : 2)} MI` : 'CUSTOM'}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {courseSlug && courseSlug !== '' && (
                   <div className="hint" style={{ marginTop: 12 }}>
                     Slug · <b style={{ color: 'var(--color-t1)' }}>{courseSlug}</b>
                     {REGISTERED.some(r => r.slug === courseSlug)
                       ? <span style={{ marginLeft: 8, color: 'var(--color-success)' }}>✓ Curated course (landmarks + fact-checked phases)</span>
                       : <span style={{ marginLeft: 8 }}>Custom course — phases auto-detected from GPX, no curated landmarks</span>}
+                  </div>
+                )}
+                {gpxDistanceMismatch && (
+                  <div className="hint" style={{ marginTop: 8, color: 'var(--color-warning)' }}>
+                    ⚠ The GPX measures roughly {gpxDistanceMismatch.gpxMi.toFixed(1)} mi but you picked {gpxDistanceMismatch.expectedLabel}. Pick the matching distance or upload a different GPX.
                   </div>
                 )}
               </div>
@@ -307,7 +387,7 @@ export default function NewRacePage() {
                       style={{ fontSize: 18 }}
                       placeholder="h:mm:ss"
                       value={goalHMS}
-                      onChange={e => setGoalHMS(e.target.value)}
+                      onChange={e => { setGoalHMS(e.target.value); setGoalDirty(true); }}
                     />
                     <div className="hint" style={{ marginTop: 4 }}>
                       {goalFinishS
