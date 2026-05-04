@@ -71,13 +71,20 @@ export function segmentCourse(
 
 /** Hard pace bounds applied AFTER the strategy assigns per-segment
  *  targets. Without this, Minetti's grade-adjusted pace produces
- *  unrealistic targets on steep descents (like 5:45/mi for a 6:52
- *  goal) — physically possible but tactically suicidal: a runner who
- *  banks 60s of "free" speed on a 2-mile downhill blows their quads
- *  before the next climb. Likewise we cap the upside so absurdly slow
- *  uphill targets don't get baked in either. */
-const PACE_FLOOR_S_PER_MI = 60;   // never more than 60s/mi faster than flatPace
-const PACE_CEIL_S_PER_MI  = 120;  // never more than 120s/mi slower than flatPace
+ *  unrealistic targets on steep descents — physically possible but
+ *  tactically suicidal: a runner who banks 60s of "free" speed on a
+ *  2-mile downhill blows their quads before the next climb.
+ *
+ *  The floor here is INTENTIONALLY conservative — coaches typically
+ *  say "no more than 20–30s/mi faster than goal pace on a downhill"
+ *  for sustainable racing. Going more aggressive saves a few seconds
+ *  on the descent and costs minutes from quad damage on the rest of
+ *  the course. Once the training-plan pipeline lands (M3), this
+ *  ceiling becomes athlete-specific (informed by recent quad-tolerant
+ *  long runs, recent downhill-running cadence, etc) instead of a
+ *  universal cap. */
+const PACE_FLOOR_S_PER_MI = 30;   // no segment more than 30s/mi faster than flatPace
+const PACE_CEIL_S_PER_MI  = 90;   // no segment more than 90s/mi slower than flatPace
 
 /** Clamp every segment's pace into [flatPace - FLOOR, flatPace + CEIL]
  *  and redistribute the surplus/deficit time across un-clamped segments
