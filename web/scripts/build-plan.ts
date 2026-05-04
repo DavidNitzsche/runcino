@@ -59,6 +59,7 @@ async function main() {
   if (!goalS) bail(`Invalid --goal "${goalStr}", expected h:mm:ss`);
 
   const facts = getCourseFacts(courseSlug);
+  if (!facts) bail(`Unknown course slug: ${courseSlug}`);
   validateCourseFactsStructure(facts);
 
   const xml = readFileSync(gpxPath, 'utf8');

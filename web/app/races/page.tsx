@@ -108,6 +108,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: boolean }) {
   const days = daysUntil(race.meta.date);
   const isUpcoming = days >= 0;
+  const result = race.actualResult ?? null;
   return (
     <Link
       href={`/races/${race.slug}`}
@@ -123,13 +124,17 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
           borderColor: 'rgba(243,173,59,.4)',
           background: 'linear-gradient(135deg, rgba(243,173,59,.06) 0%, var(--color-l1) 80%)',
         }),
+        ...(!isUpcoming && result && {
+          borderColor: 'rgba(62,189,65,.3)',
+          background: 'linear-gradient(135deg, rgba(62,189,65,.05) 0%, var(--color-l1) 80%)',
+        }),
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span className="tile-sub">{fmtDate(race.meta.date)}</span>
-        {isUpcoming
-          ? <span className="chip chip--attention">{days === 0 ? 'TODAY' : `${days}D`}</span>
-          : <span className="chip">DONE</span>}
+        {isUpcoming && <span className="chip chip--attention">{days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days}D`}</span>}
+        {!isUpcoming && result && <span className="chip chip--success">FINISHED</span>}
+        {!isUpcoming && !result && <span className="chip">RESULT PENDING</span>}
       </div>
       <div>
         <div style={{
@@ -159,9 +164,9 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
         paddingTop: 16,
         borderTop: '1px solid var(--color-l4)',
       }}>
-        <span>GOAL</span>
+        <span>{!isUpcoming && result ? 'FINISH' : 'GOAL'}</span>
         <b style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-.01em', color: 'var(--color-t0)', fontWeight: 800 }}>
-          {race.meta.goalDisplay}
+          {!isUpcoming && result ? result.finishDisplay : race.meta.goalDisplay}
         </b>
       </div>
     </Link>

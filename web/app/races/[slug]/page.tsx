@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
-import { deleteRace, getRace, type SavedRace } from '../../../lib/storage';
+import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 
 const PHASE_COLORS = ['#3EBD41', '#F3AD3B', '#FC4D54', '#008FEC', '#9013FE'];
 
@@ -151,6 +151,8 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
           </div>
 
           <PhaseCards race={race} />
+
+          <ResultSection race={race} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
             <WeatherTile points={points} />
@@ -599,6 +601,211 @@ function FuelingTile({ race }: { race: SavedRace }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── Result section ──────────────────────────────────────────
+   Visible only after the race date has passed. If actualResult is
+   already on file, shows the result + delta-vs-goal. Otherwise shows
+   a form to record finish time / place / PR / notes.
+
+   This is the on-ramp for race results until M2 wires Strava — at
+   which point the matching Strava activity auto-fills this block
+   and the form becomes "edit / verify". */
+function ResultSection({ race }: { race: SavedRace }) {
+  const days = daysUntil(race.meta.date);
+  const isPast = days < 0;
+  const [editing, setEditing] = useState(false);
+  const [version, setVersion] = useState(0); // re-render after save
+  if (!isPast) return null;
+
+  const result = getRace(race.slug)?.actualResult ?? null;
+
+  function onSaved() {
+    setEditing(false);
+    setVersion(v => v + 1);
+  }
+
+  if (!result || editing) {
+    return (
+      <div className="tile" style={{
+        marginTop: 10,
+        borderStyle: result ? 'solid' : 'dashed',
+        background: result ? 'var(--color-l1)' : 'transparent',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }}>
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub" style={{ color: 'var(--color-attention)' }}>Race result · {Math.abs(days)} day{Math.abs(days) === 1 ? '' : 's'} ago</div>
+            <div className="tile-lbl">{result ? 'Edit result' : 'How did it go?'}</div>
+          </div>
+          {result && <button className="btn btn--ghost" onClick={() => setEditing(false)}>Cancel</button>}
+        </div>
+        <ResultForm race={race} existing={result} onSaved={onSaved} key={version} />
+      </div>
+    );
+  }
+
+  const goalDelta = result.finishS - race.plan.goal.finish_time_s;
+  return (
+    <div className="tile" style={{
+      marginTop: 10,
+      display: 'flex', flexDirection: 'column', gap: 16,
+      background: 'linear-gradient(135deg, rgba(62,189,65,.08), var(--color-l1))',
+      borderColor: 'rgba(62,189,65,.3)',
+    }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub" style={{ color: 'var(--color-success)' }}>Result · {Math.abs(days)} day{Math.abs(days) === 1 ? '' : 's'} ago</div>
+          <div className="tile-lbl">Finished</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {result.isPR && <span className="chip chip--attention">PR</span>}
+          <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 24, alignItems: 'flex-end' }}>
+        <ResultStat label="Finish" value={result.finishDisplay} large />
+        <ResultStat label="Avg pace" value={`${result.paceDisplay}/mi`} />
+        <ResultStat
+          label="vs Goal"
+          value={`${goalDelta === 0 ? '±0' : goalDelta > 0 ? '+' : '−'}${fmtTimeShort(Math.abs(goalDelta))}`}
+          color={goalDelta <= 0 ? 'var(--color-success)' : 'var(--color-warning)'}
+        />
+        <ResultStat
+          label="Place"
+          value={result.place != null ? (result.fieldSize != null ? `${result.place}/${result.fieldSize}` : `#${result.place}`) : '—'}
+        />
+      </div>
+      {result.notes && (
+        <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.55 }}>
+          {result.notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultStat({ label, value, large, color }: { label: string; value: string; large?: boolean; color?: string }) {
+  return (
+    <div>
+      <div className="tile-sub" style={{ marginBottom: 6 }}>{label}</div>
+      <div style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 800,
+        fontSize: large ? 48 : 30,
+        letterSpacing: '-.02em',
+        lineHeight: 1,
+        color: color ?? 'var(--color-t0)',
+        fontVariantNumeric: 'tabular-nums',
+      }}>{value}</div>
+    </div>
+  );
+}
+
+function fmtTimeShort(s: number): string {
+  // Output without leading zeros: "0:42" or "12:18" or "1:32:14"
+  s = Math.round(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: ActualResult | null; onSaved: () => void }) {
+  const [hms, setHms] = useState(existing?.finishDisplay ?? '');
+  const [place, setPlace] = useState(existing?.place != null ? String(existing.place) : '');
+  const [fieldSize, setFieldSize] = useState(existing?.fieldSize != null ? String(existing.fieldSize) : '');
+  const [isPR, setIsPR] = useState(existing?.isPR ?? false);
+  const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  function parseFinish(s: string): number | null {
+    const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  }
+
+  function handleSave() {
+    const finishS = parseFinish(hms);
+    if (finishS === null || finishS < 60) {
+      setError('Use h:mm:ss or m:ss format (e.g. 1:32:14 or 21:48).');
+      return;
+    }
+    setError(null);
+    const distMi = race.meta.distanceMi;
+    const paceSPerMi = Math.round(finishS / distMi);
+    const result: ActualResult = {
+      finishS,
+      finishDisplay: fmtTimeShort(finishS),
+      paceSPerMi,
+      paceDisplay: fmtTimeShort(paceSPerMi),
+      place: place ? Number(place) : null,
+      fieldSize: fieldSize ? Number(fieldSize) : null,
+      isPR,
+      notes: notes.trim() || undefined,
+      recordedAt: new Date().toISOString(),
+    };
+    setActualResult(race.slug, result);
+    onSaved();
+  }
+
+  function handleClear() {
+    if (!existing) return;
+    setActualResult(race.slug, null);
+    onSaved();
+  }
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 14 }}>
+        <div>
+          <label className="runcino-label">Finish time</label>
+          <input
+            className="runcino-input font-data"
+            placeholder={`h:mm:ss · goal ${race.meta.goalDisplay}`}
+            value={hms}
+            onChange={e => setHms(e.target.value)}
+            style={{ fontSize: 18 }}
+          />
+        </div>
+        <div>
+          <label className="runcino-label">Place</label>
+          <input className="runcino-input font-data" type="number" placeholder="—" value={place} onChange={e => setPlace(e.target.value)} />
+        </div>
+        <div>
+          <label className="runcino-label">Field size</label>
+          <input className="runcino-input font-data" type="number" placeholder="—" value={fieldSize} onChange={e => setFieldSize(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-t1)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={isPR} onChange={e => setIsPR(e.target.checked)} style={{ accentColor: 'var(--color-attention)' }} />
+            Personal record
+          </label>
+        </div>
+      </div>
+      <div>
+        <label className="runcino-label">Notes</label>
+        <textarea
+          className="runcino-input"
+          rows={2}
+          placeholder="How did the day go? Conditions? What worked / what didn't?"
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
+        />
+      </div>
+      {error && (
+        <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
+          {error}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        {existing && <button className="btn btn--ghost" onClick={handleClear}>Clear result</button>}
+        <button className="btn btn--primary" onClick={handleSave}>Save result</button>
+      </div>
+    </>
   );
 }
 

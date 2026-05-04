@@ -11,7 +11,6 @@ import type {
   FitnessSummary,
   FuelingSummary,
   GpxTrack,
-  Interval,
   PacingInput,
   Phase,
   RuncinoPlan,
@@ -34,13 +33,16 @@ export interface AssembleInput {
 }
 
 /** Build the flat intervals[] array from phases + fuel + landmarks.
- *  Guarantees contiguity in mile space. */
+ *  Guarantees contiguity in mile space. Returns the schema-shaped
+ *  (snake_case) interval list — matches RuncinoPlan.intervals exactly,
+ *  not the camelCase Interval type used internally elsewhere. */
+type SchemaInterval = RuncinoPlan['intervals'][number];
 export function buildIntervals(
   phases: Phase[],
   fueling: FuelPlan,
   landmarks: Array<{ atMi: number; label: string }> = [],
   toleranceSPerMi: number
-): Interval[] {
+): SchemaInterval[] {
   // Collect non-pace "insertion" events sorted by mile
   type Insertion =
     | { atMi: number; kind: 'fuel'; durationS: number; item: string; gelNumber: number; label: string; phaseIdx: number }
@@ -68,7 +70,7 @@ export function buildIntervals(
   }
   insertions.sort((a, b) => a.atMi - b.atMi);
 
-  const intervals: Interval[] = [];
+  const intervals: SchemaInterval[] = [];
   let nextIdx = 0;
 
   const phaseIdxFor = (mi: number): number => {

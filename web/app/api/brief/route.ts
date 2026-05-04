@@ -32,7 +32,7 @@ JSON only:
 `;
 
 type Body = {
-  courseSlug: 'big-sur-marathon';
+  courseSlug: string;
   weatherText: string;
   phases: Array<{ index: number; label: string; startMi: number; endMi: number; paceSPerMi: number; grade: number }>;
 };
@@ -67,6 +67,10 @@ export async function POST(req: Request) {
   }
 
   const facts = getCourseFacts(body.courseSlug);
+  // Custom courses don't have curated facts. Fall back to the slug as
+  // the race name — Claude only uses this to anchor the narrative,
+  // never to invent course-specific landmarks.
+  const raceName = facts?.race.name ?? body.courseSlug;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json(briefStub(body));
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
     messages: [{
       role: 'user',
       content: JSON.stringify({
-        race: facts.race.name,
+        race: raceName,
         phases: body.phases,
         weather: body.weatherText,
       }, null, 2),
