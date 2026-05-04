@@ -49,6 +49,15 @@ function daysUntil(iso: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** True if the race is past AND we already have a recorded finish.
+ *  Gates the pre-race planning tiles (weather forecast, race-morning
+ *  brief, full mile-by-mile pacing plan, fueling target) — those
+ *  re-render the same numbers ResultSection now shows in plan-vs-
+ *  Strava form, so leaving them in is redundant or nonsensical. */
+function isPastWithResult(race: SavedRace): boolean {
+  return daysUntil(race.meta.date) < 0 && race.actualResult != null;
+}
+
 function fmtPace(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.round(s % 60);
@@ -180,15 +189,23 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
 
           <ResultSection race={race} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <WeatherTile points={points} />
-            <BriefTile race={race} />
-          </div>
+          {/* Pre-race planning tiles. Hidden once the race is past +
+              has a recorded result — at that point the per-mile +
+              per-phase plan-vs-Strava tables in ResultSection make
+              these redundant or nonsensical (race-morning brief, etc). */}
+          {!isPastWithResult(race) && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                <WeatherTile points={points} />
+                <BriefTile race={race} />
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10, marginTop: 10 }}>
-            <MileSplits race={race} />
-            <FuelingTile race={race} />
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10, marginTop: 10 }}>
+                <MileSplits race={race} />
+                <FuelingTile race={race} />
+              </div>
+            </>
+          )}
 
           <ExportFooter race={race} onDownload={downloadJson} />
         </div>
@@ -972,7 +989,7 @@ function PerMileTable({ race, result }: { race: SavedRace; result: ActualResult 
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
-            <th style={{ textAlign: 'left', padding: '12px 18px', width: 60 }}>Mile</th>
+            <th style={{ textAlign: 'left', padding: '12px 18px', width: 90, whiteSpace: 'nowrap' }}>Mile</th>
             <th style={{ textAlign: 'right', padding: '12px 18px' }}>Target</th>
             <th style={{ textAlign: 'right', padding: '12px 18px' }}>Actual</th>
             <th style={{ textAlign: 'right', padding: '12px 18px' }}>Delta</th>
@@ -987,9 +1004,11 @@ function PerMileTable({ race, result }: { race: SavedRace; result: ActualResult 
             const delta = targetS != null ? m.paceSPerMi - targetS : null;
             return (
               <tr key={i} style={{ borderTop: '1px solid var(--color-l4)' }}>
-                <td style={{ padding: '12px 18px' }}>
-                  {phase >= 0 && <span style={{ display: 'inline-block', width: 4, height: 16, background: PHASE_COLORS[phase] ?? '#444', borderRadius: 1, marginRight: 8, verticalAlign: 'middle' }} />}
-                  <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t1)', fontWeight: 700 }}>{m.mile}</span>
+                <td style={{ padding: '12px 18px', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ display: 'inline-block', width: 4, height: 16, background: phase >= 0 ? (PHASE_COLORS[phase] ?? '#444') : 'transparent', borderRadius: 1, flexShrink: 0 }} />
+                    <span style={{ fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t1)', fontWeight: 700 }}>{m.mile}</span>
+                  </span>
                 </td>
                 <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>
                   {targetS != null ? fmtTimeShort(targetS) : '—'}

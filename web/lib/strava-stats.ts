@@ -139,93 +139,108 @@ export interface FunStat {
 export function funStats(roll: YearRollup): FunStat[] {
   const out: FunStat[] = [];
 
-  // Distance comparisons — pick whichever item the user's miles cross.
-  const DIST: Array<{ mi: number; name: string }> = [
-    { mi: 26.22,  name: 'a marathon' },
-    { mi: 50,     name: 'an ultramarathon (50 mi)' },
-    { mi: 100,    name: 'the Western States buckle distance' },
-    { mi: 272,    name: 'LA → Las Vegas' },
-    { mi: 382,    name: 'LA → San Francisco' },
-    { mi: 500,    name: 'LA → Reno' },
-    { mi: 1000,   name: 'LA → Seattle' },
-    { mi: 1500,   name: 'LA → Chicago' },
-    { mi: 2099,   name: 'the Pacific Crest Trail (sea-to-sea)' },
-    { mi: 2789,   name: 'LA → New York City' },
-    { mi: 3500,   name: 'LA → London (over the pole)' },
+  // Distance comparisons — each landmark gets a short personality
+  // kicker. The kicker plays in once you cross that threshold.
+  const DIST: Array<{ mi: number; name: string; quip: string }> = [
+    { mi: 26.22,  name: 'a marathon',                              quip: 'A whole marathon. You did several of those, actually.' },
+    { mi: 50,     name: 'a 50-mile ultra',                         quip: 'A 50-mile ultra in steps. Now you\'re showing off.' },
+    { mi: 100,    name: 'a 100-miler',                             quip: '100 miles. Western States territory. Bib not included.' },
+    { mi: 200,    name: 'a tank of gas',                           quip: 'Further than most cars go on a tank of gas.' },
+    { mi: 272,    name: 'LA → Las Vegas',                          quip: 'LA → Vegas, on foot. The drive ride-share would be $200.' },
+    { mi: 382,    name: 'LA → San Francisco',                      quip: 'LA → San Francisco. The whole California coast in steps.' },
+    { mi: 500,    name: 'LA → Reno',                               quip: 'LA → Reno. Nobody asked you to. You did it anyway.' },
+    { mi: 700,    name: 'the length of California',                quip: 'The length of California, basically. North to south.' },
+    { mi: 1000,   name: 'LA → Seattle',                            quip: 'LA → Seattle. The Pacific has watched the whole thing.' },
+    { mi: 1500,   name: 'LA → Chicago',                            quip: 'LA → Chicago. Two time zones in running shoes.' },
+    { mi: 2099,   name: 'the Pacific Crest Trail',                 quip: 'The entire PCT. No bear cans, no permits, no rideshares.' },
+    { mi: 2789,   name: 'LA → NYC',                                quip: 'LA → NYC. Coast to coast. Diner pancakes await.' },
+    { mi: 3500,   name: 'LA → London (over the pole)',             quip: 'LA → London, polar route. The plane is now optional.' },
   ];
   const distHit = DIST.filter(d => d.mi <= roll.totalMiles).pop();
   const distNext = DIST.find(d => d.mi > roll.totalMiles);
   if (distHit) {
-    out.push({
-      label: 'Distance covered',
-      value: `${roll.totalMiles.toFixed(1)} mi`,
-      detail: `Past ${distHit.name}. ${distNext ? `${(distNext.mi - roll.totalMiles).toFixed(0)} mi to ${distNext.name}.` : 'Off the chart.'}`,
-    });
+    const gap = distNext ? distNext.mi - roll.totalMiles : null;
+    const detail = gap != null
+      ? `${distHit.quip} ${Math.round(gap)} more mi unlocks ${distNext!.name}.`
+      : `${distHit.quip} You\'ve broken the chart.`;
+    out.push({ label: 'Distance covered', value: `${roll.totalMiles.toFixed(1)} mi`, detail });
   } else if (distNext) {
     out.push({
       label: 'Distance covered',
       value: `${roll.totalMiles.toFixed(1)} mi`,
-      detail: `${(distNext.mi - roll.totalMiles).toFixed(0)} mi to ${distNext.name}.`,
+      detail: `${Math.round(distNext.mi - roll.totalMiles)} mi to ${distNext.name}. Keep showing up.`,
     });
   }
 
-  // Vertical — total elevation gain compared to landmarks.
-  const VERT: Array<{ ft: number; name: string }> = [
-    { ft: 1454,   name: 'the Empire State Building' },
-    { ft: 4421,   name: 'Half Dome (rim to base)' },
-    { ft: 6288,   name: 'Mt. Washington' },
-    { ft: 14505,  name: 'Mt. Whitney (highest in the lower 48)' },
-    { ft: 19341,  name: 'Kilimanjaro' },
-    { ft: 29029,  name: 'Everest' },
-    { ft: 60000,  name: 'twice up Everest' },
-    { ft: 100000, name: 'three Everests' },
+  // Vertical — total elevation gain compared to landmarks. Show the
+  // remaining gap in ft when it\'s under 1000 (rounding to 0.0K ft is
+  // not a personality, that\'s just a bug).
+  const VERT: Array<{ ft: number; name: string; quip: string }> = [
+    { ft: 1454,   name: 'the Empire State Building',           quip: 'Empire State Building, sidewalk to spire.' },
+    { ft: 4421,   name: 'Half Dome',                           quip: 'Half Dome, valley floor to summit.' },
+    { ft: 6288,   name: 'Mt. Washington',                      quip: 'Mt. Washington — they sell t-shirts for less.' },
+    { ft: 10000,  name: 'a passenger jet at cruise',           quip: 'Roughly cruising altitude on a regional jet.' },
+    { ft: 14505,  name: 'Mt. Whitney',                         quip: 'Mt. Whitney — the highest point in the lower 48. No permit needed.' },
+    { ft: 19341,  name: 'Kilimanjaro',                         quip: 'Kilimanjaro. Bring oxygen anyway.' },
+    { ft: 29029,  name: 'Everest',                             quip: 'A whole Everest. Sherpas would unionize.' },
+    { ft: 60000,  name: 'two Everests',                        quip: 'Two Everests. The atmosphere is taking it personally.' },
+    { ft: 100000, name: 'three Everests',                      quip: 'Three Everests. At this point, just touch grass.' },
   ];
   const vertHit = VERT.filter(v => v.ft <= roll.totalElevFt).pop();
   const vertNext = VERT.find(v => v.ft > roll.totalElevFt);
   if (vertHit) {
-    const stack = (roll.totalElevFt / vertHit.ft).toFixed(1);
+    const factor = roll.totalElevFt / vertHit.ft;
+    const factorStr = factor >= 1.5 ? `${factor.toFixed(1)}× ` : '';
+    const gapFt = vertNext ? vertNext.ft - roll.totalElevFt : null;
+    const gapStr = gapFt == null ? '' : (gapFt < 1000 ? ` Just ${Math.round(gapFt)} ft to ${vertNext!.name} — basically next weekend.` : ` ${Math.round(gapFt / 1000)}K ft to ${vertNext!.name}.`);
     out.push({
       label: 'Vertical climbed',
       value: `${roll.totalElevFt.toLocaleString()} ft`,
-      detail: `${stack}× ${vertHit.name}.${vertNext ? ` ${((vertNext.ft - roll.totalElevFt) / 1000).toFixed(1)}K ft to ${vertNext.name}.` : ''}`,
+      detail: `${factorStr}${vertHit.quip}${gapStr}`,
     });
   } else if (vertNext) {
     out.push({
       label: 'Vertical climbed',
       value: `${roll.totalElevFt.toLocaleString()} ft`,
-      detail: `${((vertNext.ft - roll.totalElevFt) / 1000).toFixed(1)}K ft to ${vertNext.name}.`,
+      detail: `${Math.round((vertNext.ft - roll.totalElevFt) / 100) / 10}K ft to ${vertNext.name}.`,
     });
   }
 
-  // Time comparisons — total moving time vs cultural reference points.
-  const TIME: Array<{ s: number; name: string }> = [
-    { s: 169 * 60,                    name: 'a Lord of the Rings movie' },
-    { s: 11 * 3600 + 22 * 60,         name: 'the LotR Extended trilogy' },
-    { s: 24 * 3600,                   name: 'a full day' },
-    { s: 60 * 60 * 22,                name: 'every Friends episode (S1)' },
-    { s: 86 * 60 * 60,                name: 'every Friends episode (10 seasons)' },
-    { s: 7 * 24 * 3600,               name: 'a calendar week' },
-    { s: 30 * 24 * 3600,              name: 'a calendar month' },
+  // Time on feet.
+  const TIME: Array<{ s: number; quip: (n: number) => string }> = [
+    { s: 60 * 60,                quip: n => `${n.toFixed(0)} feature films, end to end. No popcorn breaks.` },
+    { s: 169 * 60,               quip: n => `${n.toFixed(1)}× the Lord of the Rings theatrical cut.` },
+    { s: 11 * 3600 + 22 * 60,    quip: n => `${n.toFixed(1)}× LotR Extended Edition. With every council scene.` },
+    { s: 24 * 3600,              quip: n => `${n.toFixed(1)} full days, if days were spent running.` },
+    { s: 86 * 3600,              quip: n => `${n.toFixed(1)}× every Friends episode ever made. They weren\'t on a break.` },
+    { s: 7 * 24 * 3600,          quip: n => `${n.toFixed(1)} calendar weeks of pure motion.` },
+    { s: 30 * 24 * 3600,         quip: n => `${n.toFixed(1)} calendar months. You okay?` },
   ];
-  const timeHit = TIME.filter(t => t.s <= roll.totalMovingS).pop();
-  if (timeHit) {
-    const factor = (roll.totalMovingS / timeHit.s);
+  const tHit = TIME.filter(t => t.s <= roll.totalMovingS).pop();
+  if (tHit) {
     out.push({
       label: 'Time on feet',
       value: fmtBigDuration(roll.totalMovingS),
-      detail: factor >= 2 ? `${factor.toFixed(1)}× ${timeHit.name}.` : `Past ${timeHit.name}.`,
+      detail: tHit.quip(roll.totalMovingS / tHit.s),
     });
   } else if (roll.totalMovingS > 0) {
-    out.push({ label: 'Time on feet', value: fmtBigDuration(roll.totalMovingS), detail: 'Adding up.' });
+    out.push({ label: 'Time on feet', value: fmtBigDuration(roll.totalMovingS), detail: 'Just getting warmed up.' });
   }
 
   // Race share of total mileage.
   if (roll.raceCount > 0) {
     const sharePct = Math.round((roll.raceMiles / Math.max(roll.totalMiles, 1)) * 100);
+    const flavor = sharePct < 10
+      ? 'The other 90% was rehearsal.'
+      : sharePct < 20
+      ? 'Most miles are still rehearsal — but the bibs are adding up.'
+      : sharePct < 35
+      ? 'Race-heavy season. Recovery thanks you for nothing.'
+      : 'You basically race for fun at this point.';
     out.push({
       label: 'Race miles',
       value: `${roll.raceMiles.toFixed(1)} mi`,
-      detail: `${roll.raceCount} race${roll.raceCount === 1 ? '' : 's'} · ${sharePct}% of total miles.`,
+      detail: `${roll.raceCount} race${roll.raceCount === 1 ? '' : 's'} this year · ${sharePct}% of total miles. ${flavor}`,
     });
   }
 
@@ -234,10 +249,19 @@ export function funStats(roll: YearRollup): FunStat[] {
   const dayOfYear = Math.floor((Date.now() - yearStart.getTime()) / 86_400_000) + 1;
   if (roll.daysRun > 0 && dayOfYear > 0) {
     const pct = Math.round((roll.daysRun / dayOfYear) * 100);
+    const flavor = pct >= 80
+      ? 'Almost a daily habit. Almost.'
+      : pct >= 60
+      ? 'Out the door more often than not.'
+      : pct >= 40
+      ? 'A solid every-other-day rhythm.'
+      : pct >= 25
+      ? 'Quality over quantity. Allegedly.'
+      : 'Strategically conservative.';
     out.push({
       label: 'Days run',
       value: `${roll.daysRun} of ${dayOfYear}`,
-      detail: `${pct}% of the year so far.`,
+      detail: `${pct}% of the year so far. ${flavor}`,
     });
   }
 
@@ -245,10 +269,31 @@ export function funStats(roll: YearRollup): FunStat[] {
   if (roll.avgPaceSPerMi != null) {
     const m = Math.floor(roll.avgPaceSPerMi / 60);
     const s = roll.avgPaceSPerMi % 60;
+    const hrFlavor = roll.avgHr == null ? 'Mile-weighted across every run.'
+      : roll.avgHr < 140 ? `Avg HR ${roll.avgHr} bpm — chatty pace, mostly.`
+      : roll.avgHr < 155 ? `Avg HR ${roll.avgHr} bpm — comfortable but committed.`
+      : roll.avgHr < 170 ? `Avg HR ${roll.avgHr} bpm — you don\'t mess around.`
+      : `Avg HR ${roll.avgHr} bpm — sustained suffering, applauded by Garmin.`;
     out.push({
       label: 'Year average pace',
       value: `${m}:${String(s).padStart(2, '0')}/mi`,
-      detail: roll.avgHr != null ? `Mile-weighted · avg HR ${roll.avgHr} bpm.` : 'Mile-weighted across every run.',
+      detail: hrFlavor,
+    });
+  }
+
+  // Longest single run — independent of races, more "what was your
+  // outer-edge day" stat. Adds variety to the section.
+  if (roll.longestRunMi > 0) {
+    const lr = roll.longestRunMi;
+    const flavor = lr >= 26.2 ? 'Marathon-plus territory. The legs remember.'
+      : lr >= 20 ? 'Long-run season was real. Big breakfast aftermath.'
+      : lr >= 13.1 ? 'Half-marathon distance, just because.'
+      : lr >= 6.2 ? 'A solid 10K-plus on your hardest day.'
+      : 'Short and sharp this year so far.';
+    out.push({
+      label: 'Longest run',
+      value: `${lr.toFixed(1)} mi`,
+      detail: flavor,
     });
   }
 
