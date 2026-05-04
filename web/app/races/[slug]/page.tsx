@@ -145,8 +145,9 @@ function RaceDetailView({ race, onDelete }: { race: SavedRace; onDelete: () => v
 
           <Hero race={race} days={days} peakFt={peakFt} peakMi={peakMi} />
 
-          <div style={{ marginTop: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10, marginTop: 10 }}>
             <CourseMap points={points} race={race} peakMi={peakMi} peakFt={peakFt} />
+            <PhaseLegendTile race={race} />
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -325,6 +326,67 @@ function CourseMap({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; ra
           </>
         )}
       </svg>
+    </div>
+  );
+}
+
+/* ── Phase legend tile ──────────────────────────────────────
+   Sits next to the course map (replaces the awkward "course map
+   alone full width" layout). Shows the 5 phases with color swatch,
+   mile range, and target pace — same content as the pc-legend
+   block in designs/race-detail-sombrero.html, just reflowed for
+   the React layout. */
+function PhaseLegendTile({ race }: { race: SavedRace }) {
+  const totalSec = race.plan.goal.finish_time_s;
+  return (
+    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Five phases</div>
+          <div className="tile-lbl">Goal {race.meta.goalDisplay}</div>
+        </div>
+        <span className="chip">{fmtPace(race.plan.goal.flat_pace_s_per_mi)}/MI AVG</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {race.plan.phases.map((p, i) => (
+          <div key={i} style={{
+            display: 'grid',
+            gridTemplateColumns: '5px 1fr auto',
+            gap: 12,
+            alignItems: 'center',
+            padding: '12px 0',
+            borderTop: i > 0 ? '1px solid var(--color-l4)' : 'none',
+          }}>
+            <div style={{ width: 5, height: 28, borderRadius: 2, background: PHASE_COLORS[i] ?? '#444' }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1, color: 'var(--color-t0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {p.label}
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700, marginTop: 3 }}>
+                MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)} · {p.distance_mi.toFixed(1)} MI
+              </div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, letterSpacing: '-.01em', color: PHASE_COLORS[i] ?? 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
+              {p.target_pace_display}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        paddingTop: 10,
+        borderTop: '1px solid var(--color-l4)',
+        fontFamily: 'var(--font-data)',
+        fontSize: 10,
+        letterSpacing: '1.4px',
+        textTransform: 'uppercase',
+        fontWeight: 700,
+        color: 'var(--color-t3)',
+      }}>
+        <span>Total · {race.meta.distanceMi.toFixed(1)} MI</span>
+        <span style={{ color: 'var(--color-t1)' }}>{fmtTimeShort(totalSec)}</span>
+      </div>
     </div>
   );
 }
