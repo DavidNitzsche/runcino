@@ -434,18 +434,29 @@ function TodayTile({ now, next, daysToNext, runs }: { now: Date; next: SavedRace
    don't trust heuristic guidance as final recommendation. */
 
 interface CoachAlert { severity: 'info' | 'warn' | 'rest'; message: string }
+interface CoachStrengthPayload {
+  type: 'heavy' | 'power' | 'maintenance' | 'mobility' | 'rest';
+  label: string;
+  durationMin: number;
+  description: string;
+  ampSuggestions: string[];
+  focus: string[];
+}
 interface CoachTodayPayload {
   mode: 'race' | 'base';
   modeDetail: string;
+  phase: string;
   today: {
     type: string;
+    label: string;
     distanceMi: number;
     paceTargetSPerMi: { lowS: number; highS: number } | null;
     hrZone: number | null;
     description: string;
   };
+  strength: CoachStrengthPayload | null;
   rationale: string;
-  weekShape: Array<{ date: string; type: string; distanceMi: number; isToday: boolean }>;
+  weekShape: Array<{ date: string; type: string; distanceMi: number; isToday: boolean; hasStrength: boolean }>;
   alerts: CoachAlert[];
   isPlaceholder: boolean;
 }
@@ -474,15 +485,25 @@ function CoachTodayCard() {
   if (!payload) return null;  // pending fetch
 
   const t = payload.today;
+  // Workout types map to a color so the type word reads as a visual
+  // chip in the Coach card + week shape. New engine vocabulary covers
+  // all 9 categories from the doc + a few helpers.
   const typeColor: Record<string, string> = {
-    long:      'var(--color-corporate)',
-    tempo:     'var(--color-attention)',
-    intervals: 'var(--color-warning)',
-    easy:      'var(--color-success)',
-    recovery:  'var(--color-t2)',
-    rest:      'var(--color-t3)',
-    race:      'var(--color-attention)',
-    fun:       'var(--color-success)',
+    recovery:            'var(--color-t2)',
+    general_aerobic:     'var(--color-success)',
+    medium_long:         'var(--color-corporate)',
+    long_steady:         'var(--color-corporate)',
+    long_progression:    'var(--color-corporate)',
+    long_mp_block:       'var(--color-attention)',
+    threshold:           'var(--color-attention)',
+    threshold_intervals: 'var(--color-attention)',
+    sub_threshold:       'var(--color-attention)',
+    vo2:                 'var(--color-warning)',
+    marathon_specific:   'var(--color-attention)',
+    strides_appended:    'var(--color-success)',
+    shakeout:            'var(--color-success)',
+    rest:                'var(--color-t3)',
+    race:                'var(--color-attention)',
   };
   const dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
   const todayUtcDow = new Date(payload.weekShape.find(d => d.isToday)?.date + 'T12:00:00Z').getUTCDay();
@@ -519,18 +540,12 @@ function CoachTodayCard() {
       )}
 
       <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 280 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-              <div className="tile-sub">Today · {todayLabel}</div>
-              <span style={{
-                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
-                padding: '3px 8px', borderRadius: 4,
-                background: 'var(--color-l3)', color: 'var(--color-t3)', border: '1px solid var(--color-l4)',
-              }}>PLACEHOLDER · v0</span>
-            </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 56, letterSpacing: '-.025em', lineHeight: 1, color: typeColor[t.type] ?? 'var(--color-t0)', textTransform: 'uppercase' }}>
-              {t.type}
+        {/* Run + Strength prescription, side-by-side when both, run alone when no strength */}
+        <div style={{ display: 'grid', gridTemplateColumns: payload.strength ? '1.4fr 1fr' : '1fr', gap: 18 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="tile-sub">Run · {todayLabel}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 48, letterSpacing: '-.025em', lineHeight: 1, color: typeColor[t.type] ?? 'var(--color-t0)', textTransform: 'uppercase' }}>
+              {t.label || t.type.replace(/_/g, ' ')}
             </div>
             <div style={{ fontFamily: 'var(--font-data)', fontSize: 13, color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '0.5px' }}>
               {t.distanceMi > 0 ? `${t.distanceMi.toFixed(1)} MI` : '0 MI · REST DAY'}
@@ -540,15 +555,49 @@ function CoachTodayCard() {
             <div style={{ fontSize: 14, color: 'var(--color-t1)', lineHeight: 1.55, marginTop: 4 }}>
               {t.description}
             </div>
-            <div style={{
-              fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
-              padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8, marginTop: 8,
-              borderLeft: '3px solid var(--color-corporate)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
-              {payload.rationale}
-            </div>
           </div>
+
+          {payload.strength && (
+            <div style={{
+              padding: '16px 18px', borderRadius: 10,
+              background: 'linear-gradient(135deg, rgba(144,19,254,.08), var(--color-l2))',
+              border: '1px solid rgba(144,19,254,.25)',
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-xp, #9013FE)' }}>Strength · Amp</div>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{payload.strength.durationMin} MIN</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.015em', lineHeight: 1, color: 'var(--color-t0)', textTransform: 'uppercase' }}>
+                {payload.strength.label}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55 }}>
+                {payload.strength.description}
+              </div>
+              {payload.strength.ampSuggestions.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                  {payload.strength.ampSuggestions.map(a => (
+                    <span key={a} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'var(--color-l3)', color: 'var(--color-t1)', border: '1px solid var(--color-l4)' }}>{a}</span>
+                  ))}
+                </div>
+              )}
+              {payload.strength.focus.length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>FOCUS · </span>
+                  {payload.strength.focus.join(' · ')}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{
+          fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
+          padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8,
+          borderLeft: '3px solid var(--color-corporate)',
+        }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
+          {payload.rationale}
         </div>
 
         {/* Plausible week shape — re-derived every morning, not promised */}
@@ -558,10 +607,11 @@ function CoachTodayCard() {
             <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>RE-DERIVED DAILY · NOT A PLAN</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-            {payload.weekShape.map((d, i) => {
+            {payload.weekShape.map(d => {
               const dayDow = new Date(d.date + 'T12:00:00Z').getUTCDay();
               const dowLabel = dayLabels[(dayDow + 6) % 7];
               const c = typeColor[d.type] ?? 'var(--color-t3)';
+              const typeLabel = d.type.replace(/_/g, ' ');
               return (
                 <div key={d.date} style={{
                   padding: '10px 10px',
@@ -569,12 +619,18 @@ function CoachTodayCard() {
                   background: d.isToday ? 'rgba(243,173,59,.06)' : 'var(--color-l2)',
                   border: `1px solid ${d.isToday ? 'rgba(243,173,59,.4)' : 'var(--color-l4)'}`,
                   display: 'flex', flexDirection: 'column', gap: 4,
-                  minHeight: 78,
+                  minHeight: 86,
+                  position: 'relative',
                 }}>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 14, color: c, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{d.type}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
+                    {d.hasStrength && (
+                      <span title="Strength session this day" style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-xp, #9013FE)' }}>● S</span>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: c, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>{typeLabel}</div>
                   <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, marginTop: 'auto' }}>
-                    {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : '—'}
+                    {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : d.type === 'rest' ? 'REST' : '—'}
                   </div>
                 </div>
               );

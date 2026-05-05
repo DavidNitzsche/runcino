@@ -1,296 +1,385 @@
 /**
- * Coach engine — placeholder logic.
+ * Coach engine — the real version.
  *
- * INTENTIONAL STUB. The real coaching logic lands once the research
- * doc informs how each principle (80/20, ACWR, taper rules, post-
- * heavy-block rest, etc.) gets encoded. Until then, this file:
+ * Replaces the earlier placeholder. Encodes the coaching principles
+ * from docs/coaching-research.md as constraints + decisions on top of
+ * the aggregated CoachState. See coach-principles.ts for every
+ * literature-anchored constant the engine reads.
  *
- *   1. Locks the response shape iOS will read every morning.
- *   2. Computes `mode` correctly from race calendar (deterministic).
- *   3. Surfaces state-driven ALERTS that the research doc will
- *      eventually drive prescriptions from (heavy-block, rebuild
- *      after break, race-week incoming).
- *   4. Picks today's workout via a simple day-of-week heuristic so
- *      the dashboard card has something visible.
- *
- * Every workout payload sets `isPlaceholder: true` so the UI can
- * surface a clear "this is placeholder coaching" chip. Replacing the
- * engine with the real logic = rewriting `coachDaily()` only.
- *
- * See lib/coach-state.ts for the input shape — that's the data
- * picture Coach reads each morning.
+ * Decision flow each morning:
+ *   1. mode      — race vs base (deterministic from race calendar)
+ *   2. phase     — BASE | BUILD | PEAK | TAPER (race mode) OR
+ *                  POST_RACE | REBUILD | BASE_MAINTENANCE (base mode)
+ *   3. run pick  — default by phase + day-of-week, then state nudges
+ *   4. constraints — long-run spike cap, recovery spacing, ACWR cap,
+ *                    heavy-block override, post-race override
+ *   5. strength  — Amp-aware prescription, opposite hard run days
+ *   6. week shape — same loop simulated forward 7 days
+ *   7. alerts    — heavy-block, easy-ratio low, taper window, rebuild
+ *   8. rationale — one sentence that names the load-bearing input
  */
 
 import type { CoachState } from './coach-state';
+import {
+  type Phase, type RaceSubPhase,
+  raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
+  HEAVY_BLOCK_REST_DAYS,
+} from './coach-principles';
+import {
+  type RunWorkoutType, type RunPrescription,
+  defaultByDow, recovery, generalAerobic, easyWithStrides, mediumLong,
+  longSteady, longProgression, longMpBlock, thresholdContinuous,
+  thresholdIntervals, subThreshold, vo2, marathonSpecific, shakeout, rest, race,
+} from './coach-workouts';
+import {
+  prescribeStrength, strengthWeekContext, type StrengthPrescription,
+} from './coach-strength';
 
-export type WorkoutType = 'easy' | 'long' | 'tempo' | 'intervals' | 'recovery' | 'rest' | 'fun' | 'race';
+export type WorkoutType = RunWorkoutType;
 
 export interface CoachToday {
-  /** RACE mode = A race in scope and structuring toward it.
-   *  BASE mode = no A race in scope; maintain the base. */
   mode: 'race' | 'base';
-  /** Human-readable mode descriptor for the UI. Adapts to whether a
-   *  race is in scope, distance-to-go, etc. */
   modeDetail: string;
-
-  today: {
-    type: WorkoutType;
-    distanceMi: number;
-    /** Inclusive pace target band, in seconds per mile. null = no
-     *  pace target (rest, fun, recovery). */
-    paceTargetSPerMi: { lowS: number; highS: number } | null;
-    /** Aerobic / lactate / VO2max zone, 1–5. null when not applicable. */
-    hrZone: number | null;
-    /** Plain-English description of what to do. */
-    description: string;
-  };
-
-  /** ONE sentence explaining the load-bearing input behind today's
-   *  prescription. The "why" is the whole product differentiator. */
+  phase: Phase;
+  today: TodayPrescription;
+  strength: StrengthPrescription | null;
   rationale: string;
-
-  /** Plausible (not promised) week shape. Re-derived every morning;
-   *  not a static plan. */
   weekShape: Array<{
     date: string;
     type: WorkoutType;
     distanceMi: number;
     isToday: boolean;
+    hasStrength: boolean;
   }>;
-
-  /** State-driven flags Coach surfaces independently of today's
-   *  workout (race-week incoming, heavy-block detected, rebuild after
-   *  break, missing race result, etc). Rendered as chips above the
-   *  prescription card. */
-  alerts: Array<{
-    severity: 'info' | 'warn' | 'rest';
-    message: string;
-  }>;
-
+  alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
   generatedAt: string;
-  /** True until the research-doc-driven engine ships. The UI surfaces
-   *  this as a chip so users know the prescriptions are heuristic. */
   isPlaceholder: boolean;
 }
 
-/** Decide today's prescription given an aggregated state object.
- *  PLACEHOLDER LOGIC — see file header. */
+interface TodayPrescription {
+  type: WorkoutType;
+  label: string;
+  distanceMi: number;
+  paceTargetSPerMi: { lowS: number; highS: number } | null;
+  hrZone: number | null;
+  description: string;
+}
+
+/* ── Main entry ─────────────────────────────────────────────── */
 export function coachDaily(state: CoachState): CoachToday {
   const mode = decideMode(state);
-  const modeDetail = describeMode(state, mode);
-  const alerts = computeAlerts(state, mode);
+  const phase = decidePhase(state, mode);
+  const todayDow = jsDow(state.now);
 
-  // Day-of-week heuristic: traditional Mon–Sun structure with the
-  // long run on Saturday. Real engine will place workouts based on
-  // recent execution + recovery, not the calendar.
-  const dow = new Date(state.now + 'T12:00:00Z').getUTCDay();
-  const today = pickToday(state, mode, dow);
-  const rationale = composeRationale(state, mode, today.type);
-  const weekShape = sketchWeekShape(state, mode);
+  const run = applyConstraints(pickRun(state, phase, todayDow), state, phase, todayDow);
+  const isHard = isHardRun(run);
+  const strength = prescribeStrength(state, phase, todayDow, isHard);
+
+  const alerts = computeAlerts(state, phase);
+  const week = simulateWeek(state, phase, todayDow);
+  const rationale = composeRationale(state, phase, run, strength);
 
   return {
-    mode,
-    modeDetail,
-    today,
+    mode, modeDetail: describeMode(state, phase),
+    phase,
+    today: runToTodayShape(run),
+    strength,
     rationale,
-    weekShape,
+    weekShape: week,
     alerts,
     generatedAt: new Date().toISOString(),
-    isPlaceholder: true,
+    isPlaceholder: false,
   };
 }
 
-/* ── Mode (decidable from race calendar — not placeholder) ────── */
+/* ── Mode ───────────────────────────────────────────────────── */
 function decideMode(state: CoachState): 'race' | 'base' {
   return state.races.nextA && state.races.inWindow.some(r => r.priority === 'A') ? 'race' : 'base';
 }
 
-function describeMode(state: CoachState, mode: 'race' | 'base'): string {
+/* ── Phase ──────────────────────────────────────────────────── */
+function decidePhase(state: CoachState, mode: 'race' | 'base'): Phase {
+  // Race mode → sub-phase by days-to-A.
   if (mode === 'race' && state.races.nextA) {
-    const r = state.races.nextA;
-    if (r.daysAway === 0) return `Race day — ${r.name}`;
-    if (r.daysAway === 1) return `Race tomorrow — ${r.name}`;
-    if (r.daysAway <= 7)  return `${r.daysAway} days to ${r.name} · taper week`;
-    if (r.daysAway <= 21) return `${r.daysAway} days to ${r.name} · peak block`;
-    return `${r.daysAway} days to ${r.name}`;
+    return raceSubPhase(state.races.nextA.daysAway, state.races.nextA.distanceMi) as RaceSubPhase;
   }
-  if (state.flags.rebuildAfterBreak) return 'Rebuilding base after a break — easing back in';
-  if (state.flags.heavyBlockSuspected) return 'Heavy block detected — maintain the base, prioritize recovery';
+  // Base mode — POST_RACE for 14 days after any race finish.
+  const lastRace = state.races.recent[0];
+  if (lastRace && lastRace.daysAgo <= 14) return 'POST_RACE';
+  if (state.flags.rebuildAfterBreak) return 'REBUILD';
+  return 'BASE_MAINTENANCE';
+}
+
+function describeMode(state: CoachState, phase: Phase): string {
+  if (phase === 'TAPER' && state.races.nextA) {
+    const d = state.races.nextA.daysAway;
+    if (d === 0) return `Race day — ${state.races.nextA.name}`;
+    if (d === 1) return `Race tomorrow — ${state.races.nextA.name}`;
+    return `${d} days to ${state.races.nextA.name} · taper week — volume drops, intensity holds`;
+  }
+  if (phase === 'PEAK' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · peak block — marathon-specific work`;
+  if (phase === 'BUILD' && state.races.nextA) return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · build phase — threshold + progression long runs`;
+  if (phase === 'BASE' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · base block — aerobic volume`;
+  if (phase === 'POST_RACE') {
+    const r = state.races.recent[0];
+    return r ? `Recovery week — ${r.daysAgo} day${r.daysAgo === 1 ? '' : 's'} since ${r.name}` : 'Recovery — volume drop is by design';
+  }
+  if (phase === 'REBUILD') return 'Easing back in — rebuilding the base after a break';
   return 'Maintain the base — steady volume, weekly long run, no peaking';
 }
 
-/* ── Alerts (state-driven, real) ─────────────────────────────── */
-function computeAlerts(state: CoachState, mode: 'race' | 'base'): CoachToday['alerts'] {
+/* ── Run picker ─────────────────────────────────────────────── */
+function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription {
+  // Race-week / race-day overrides — these short-circuit normal logic.
+  if (phase === 'TAPER' && state.races.nextA) {
+    const d = state.races.nextA.daysAway;
+    if (d === 0) return race(state.races.nextA.distanceMi, state.races.nextA.name);
+    if (d === 1) return shakeout();
+  }
+
+  // Heavy-block detected + base mode → mandate rest. Doc §13.3:
+  // a runner peaking ≥70 mpw needs 2-4 weeks of reduced training.
+  if (phase === 'BASE_MAINTENANCE' && state.flags.heavyBlockSuspected) {
+    return rest(`Heavy-block recovery (~${HEAVY_BLOCK_REST_DAYS} days). Full rest today.`);
+  }
+
+  // Default by phase + day-of-week (from coach-workouts).
+  const def = defaultByDow(phase, dow);
+  return buildPrescriptionFor(def.primary, state, phase);
+}
+
+function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Phase): RunPrescription {
+  const baseEasy = baseEasyMi(state, phase);
+  const longTarget = longRunTarget(state, phase);
+
+  switch (type) {
+    case 'recovery':           return recovery(Math.min(5, Math.max(3, baseEasy * 0.6)));
+    case 'general_aerobic':    return generalAerobic(baseEasy, state);
+    case 'medium_long':        return mediumLong(Math.max(8, baseEasy * 1.6), state);
+    case 'long_steady':        return longSteady(longTarget, state);
+    case 'long_progression':   return longProgression(longTarget, state);
+    case 'long_mp_block':      return longMpBlock(longTarget, state, Math.min(14, Math.max(6, longTarget * 0.55)));
+    case 'threshold':          return thresholdContinuous(8, state);
+    case 'threshold_intervals': return thresholdIntervals(state);
+    case 'sub_threshold':      return subThreshold(state);
+    case 'vo2':                return vo2(state);
+    case 'marathon_specific':  return marathonSpecific(state);
+    case 'strides_appended':   return easyWithStrides(baseEasy, state);
+    case 'shakeout':           return shakeout();
+    case 'race':               return state.races.nextA ? race(state.races.nextA.distanceMi, state.races.nextA.name) : rest('No race scheduled.');
+    case 'rest':               return rest('Scheduled rest day.');
+  }
+}
+
+/** Daily easy mileage scaled to recent volume + phase. Floors at 3,
+ *  caps at 25% of weekly average so a single easy day doesn't blow the
+ *  weekly budget. */
+function baseEasyMi(state: CoachState, phase: Phase): number {
+  const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
+  const dailyShare = wkAvg / 5;  // Assume ~5 running days/week
+  if (phase === 'POST_RACE') return Math.max(3, dailyShare * 0.5);
+  if (phase === 'REBUILD')   return Math.max(3, dailyShare * 0.7);
+  if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.8);
+  return Math.max(3, Math.min(dailyShare, 12));
+}
+
+/** Long-run target — capped at 110% of longest run in last 30 days
+ *  (single-session-spike rule, doc §13.1). PEAK targets a slight
+ *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%. */
+function longRunTarget(state: CoachState, phase: Phase): number {
+  const cap = maxLongRunMi(state);
+  const peakLast = state.volume.longestLast28Mi;
+  switch (phase) {
+    case 'TAPER':            return Math.min(cap, Math.max(8, peakLast * 0.65));
+    case 'PEAK':             return Math.min(cap, Math.max(14, peakLast * 1.05));
+    case 'BUILD':            return Math.min(cap, Math.max(10, peakLast * 1.05));
+    case 'BASE':             return Math.min(cap, Math.max(8, peakLast));
+    case 'BASE_MAINTENANCE': return Math.min(cap, Math.max(8, peakLast));
+    case 'POST_RACE':        return Math.min(cap, Math.max(6, peakLast * 0.4));
+    case 'REBUILD':          return Math.min(cap, Math.max(6, peakLast * 0.6));
+  }
+}
+
+/* ── Hard constraints ───────────────────────────────────────── */
+function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, dow: number): RunPrescription {
+  // 1. Long run can't spike — cap at maxLongRunMi.
+  if (p.isLong && p.distanceMi > maxLongRunMi(state)) {
+    const capped = maxLongRunMi(state);
+    return { ...p, distanceMi: round1(capped),
+      description: p.description.replace(/^\d+(\.\d+)?\s*mi/i, `${round1(capped)} mi`)
+        + ` · capped to ${round1(capped)} mi (long-run spike rule: never >10% over your recent longest)`,
+    };
+  }
+
+  // 2. 24h recovery: yesterday hard → today must be easy.
+  const y = state.recovery.yesterday;
+  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= 152;
+  if (p.isQuality && yesterdayHard) {
+    return generalAerobic(baseEasyMi(state, phase), state);
+  }
+
+  // 3. ACWR > 1.3 → flag and downshift quality to general aerobic.
+  const ratio = acwr(state);
+  if (ratio != null && ratio > ACWR_HIGH && p.isQuality && !p.isLong) {
+    const easy = generalAerobic(baseEasyMi(state, phase), state);
+    return { ...easy, description: `${easy.description} · acute load is ${ratio.toFixed(2)}× chronic, holding off on quality today` };
+  }
+
+  // 4. POST_RACE phase — never quality, ever.
+  if (phase === 'POST_RACE' && p.isQuality) {
+    return recovery(Math.max(3, baseEasyMi(state, phase) * 0.7));
+  }
+
+  // 5. Rebuild — cap distance to a sensible easy.
+  if (phase === 'REBUILD' && p.distanceMi > baseEasyMi(state, phase) * 1.3) {
+    return generalAerobic(Math.max(3, baseEasyMi(state, phase)), state);
+  }
+
+  // dow used implicitly via the picker; keep for future placement rules.
+  void dow;
+  return p;
+}
+
+function isHardRun(p: RunPrescription): boolean {
+  return p.isQuality || (p.isLong && p.distanceMi >= 10);
+}
+
+/* ── Alerts ─────────────────────────────────────────────────── */
+function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
   const out: CoachToday['alerts'] = [];
 
-  if (state.flags.heavyBlockSuspected && mode === 'base') {
-    out.push({
-      severity: 'rest',
-      message: `${state.races.raceCount30d} races + high volume in the last 30 days. Consider 3–5 days of full rest before resuming structure.`,
-    });
+  if (phase === 'BASE_MAINTENANCE' && state.flags.heavyBlockSuspected) {
+    out.push({ severity: 'rest', message: `${state.races.raceCount30d} races + high volume in the last 30 days. Coach prescribed rest — recovery is the workout.` });
+  }
+  if (phase === 'POST_RACE') {
+    const r = state.races.recent[0];
+    if (r) out.push({ severity: 'info', message: `${r.daysAgo} days since ${r.name}. Volume drop is intentional — building back gradually through the recovery window.` });
   }
   if (state.flags.rebuildAfterBreak) {
-    out.push({
-      severity: 'warn',
-      message: `Last 7 days mileage is well below your 28-day average. Easing back in.`,
-    });
+    out.push({ severity: 'warn', message: 'Last 7 days mileage is well below your 28-day average. Rebuild week — easy mileage only.' });
   }
-  if (state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
-    out.push({
-      severity: 'warn',
-      message: `Only ${Math.round(state.intensity.easyShare14d * 100)}% easy miles last 14 days. Drop intensity before injury risk climbs.`,
-    });
+  const target = intensityTarget(phase);
+  if (state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < target.easyShareMin) {
+    out.push({ severity: 'warn', message: `Only ${Math.round(state.intensity.easyShare14d * 100)}% easy miles last 14 days. Target for this phase is ≥${Math.round(target.easyShareMin * 100)}% — drop intensity before injury risk climbs.` });
   }
   if (state.races.nextA && state.races.nextA.daysAway > 0 && state.races.nextA.daysAway <= 14) {
-    out.push({
-      severity: 'info',
-      message: `${state.races.nextA.daysAway}-day taper window for ${state.races.nextA.name}. Volume drops, intensity holds.`,
-    });
+    out.push({ severity: 'info', message: `${state.races.nextA.daysAway}-day taper window for ${state.races.nextA.name}. Volume drops 40-60%, intensity preserved.` });
+  }
+  const ratio = acwr(state);
+  if (ratio != null && ratio > ACWR_HIGH) {
+    out.push({ severity: 'warn', message: `Acute:chronic load ratio is ${ratio.toFixed(2)}× — over the 1.3 ceiling. Holding intensity until it drops.` });
   }
   return out;
 }
 
-/* ── Today's workout (PLACEHOLDER day-of-week heuristic) ──────── */
-function pickToday(state: CoachState, mode: 'race' | 'base', dow: number): CoachToday['today'] {
-  // Race-week override: 7 days out → easy/rest; 1 day out → 20-min shakeout.
-  if (mode === 'race' && state.races.nextA) {
-    if (state.races.nextA.daysAway === 0) return placeholderRace(state.races.nextA.distanceMi);
-    if (state.races.nextA.daysAway === 1) return placeholderShakeout();
-    if (state.races.nextA.daysAway <= 7)  return placeholderTaperEasy(state);
-  }
-
-  // Heavy-block: rest day overrides everything.
-  if (state.flags.heavyBlockSuspected && mode === 'base') {
-    return placeholderRest('Heavy-block recovery — full rest today.');
-  }
-
-  const baseMi = Math.max(3, state.volume.weeklyAvg4w / 5);
-  // Simple day-of-week mapping: Sat=long, Sun=recovery, Wed=tempo (race) / easy (base), rest easy.
-  if (dow === 6) return placeholderLong(state, mode);
-  if (dow === 0) return placeholderRecovery();
-  if (dow === 3 && mode === 'race') return placeholderTempo(state);
-  return placeholderEasy(baseMi);
-}
-
-function placeholderEasy(distMi: number): CoachToday['today'] {
-  return {
-    type: 'easy',
-    distanceMi: round1(distMi),
-    paceTargetSPerMi: null,
-    hrZone: 2,
-    description: `${round1(distMi)} mi easy · conversational pace · HR zone 2`,
-  };
-}
-function placeholderLong(state: CoachState, mode: 'race' | 'base'): CoachToday['today'] {
-  const target = mode === 'race' ? Math.max(8, state.volume.longestLast28Mi + 1) : Math.max(8, state.volume.longestLast28Mi);
-  return {
-    type: 'long',
-    distanceMi: round1(target),
-    paceTargetSPerMi: null,
-    hrZone: 2,
-    description: `${round1(target)} mi long run · aerobic effort · keep it fun`,
-  };
-}
-function placeholderRecovery(): CoachToday['today'] {
-  return {
-    type: 'recovery',
-    distanceMi: 4,
-    paceTargetSPerMi: null,
-    hrZone: 1,
-    description: '3–5 mi very easy or full rest · let the legs come back',
-  };
-}
-function placeholderTempo(state: CoachState): CoachToday['today'] {
-  const flat = state.races.nextA?.goalFinishS && state.races.nextA.distanceMi > 0
-    ? Math.round(state.races.nextA.goalFinishS / state.races.nextA.distanceMi)
-    : null;
-  return {
-    type: 'tempo',
-    distanceMi: 7,
-    paceTargetSPerMi: flat ? { lowS: flat - 5, highS: flat + 5 } : null,
-    hrZone: 4,
-    description: '2 mi WU · 4 mi at goal pace · 1 mi CD',
-  };
-}
-function placeholderTaperEasy(state: CoachState): CoachToday['today'] {
-  return {
-    type: 'easy',
-    distanceMi: Math.max(3, round1(state.volume.weeklyAvg4w / 6)),
-    paceTargetSPerMi: null,
-    hrZone: 2,
-    description: 'Taper easy · keep legs fresh · don\'t add volume',
-  };
-}
-function placeholderShakeout(): CoachToday['today'] {
-  return {
-    type: 'easy',
-    distanceMi: 2,
-    paceTargetSPerMi: null,
-    hrZone: 2,
-    description: '20 min shakeout · 2–3 strides · race tomorrow',
-  };
-}
-function placeholderRace(distMi: number): CoachToday['today'] {
-  return {
-    type: 'race',
-    distanceMi: round1(distMi),
-    paceTargetSPerMi: null,
-    hrZone: null,
-    description: 'Race day. Trust the plan. Execute.',
-  };
-}
-function placeholderRest(why: string): CoachToday['today'] {
-  return {
-    type: 'rest',
-    distanceMi: 0,
-    paceTargetSPerMi: null,
-    hrZone: null,
-    description: why,
-  };
-}
-
-/* ── Rationale (placeholder string composition) ───────────────── */
-function composeRationale(state: CoachState, mode: 'race' | 'base', type: WorkoutType): string {
-  if (state.flags.heavyBlockSuspected && type === 'rest') {
-    return `${state.races.raceCount30d} races finished in 30 days; rest is the highest-leverage workout.`;
-  }
-  if (state.flags.rebuildAfterBreak) {
-    return `Last 7 days mileage is ${Math.round((state.volume.last7Mi / Math.max(state.volume.weeklyAvg4w, 1)) * 100)}% of recent average — easing back, not pushing.`;
-  }
-  if (mode === 'race' && state.races.nextA && state.races.nextA.daysAway <= 7) {
-    return `${state.races.nextA.daysAway}-day taper for ${state.races.nextA.name} — volume drops while intensity holds.`;
-  }
-  if (type === 'long') {
-    return `Saturday long run — current weekly avg is ${state.volume.weeklyAvg4w.toFixed(1)} mi, peak last 28 days was ${state.volume.longestLast28Mi.toFixed(1)} mi.`;
-  }
-  if (type === 'tempo') {
-    return `Mid-week quality session — placing intensity here keeps Saturday's long run aerobic.`;
-  }
-  return mode === 'race' ? 'Building toward race day.' : 'Maintain the base — easy mileage compounds.';
-}
-
-/* ── Week shape (placeholder Mon-Sun sketch) ──────────────────── */
-function sketchWeekShape(state: CoachState, mode: 'race' | 'base'): CoachToday['weekShape'] {
+/* ── Week shape simulation ──────────────────────────────────── */
+function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachToday['weekShape'] {
   const today = new Date(state.now + 'T12:00:00Z');
-  const dow = today.getUTCDay();
-  const monday = new Date(today); monday.setUTCDate(today.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() + (todayDow === 0 ? -6 : 1 - todayDow));
 
+  const cadence = strengthWeekContext(state, phase).cadence;
   const out: CoachToday['weekShape'] = [];
+
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i);
     const iso = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
     const isToday = iso === state.now;
-    const dayDow = d.getUTCDay();
-    const baseEasy = Math.max(3, state.volume.weeklyAvg4w / 5);
-    let entry: { type: WorkoutType; distanceMi: number };
-    if (dayDow === 6)                                  entry = { type: 'long',     distanceMi: round1(Math.max(8, state.volume.longestLast28Mi)) };
-    else if (dayDow === 0)                             entry = { type: 'recovery', distanceMi: 4 };
-    else if (dayDow === 3 && mode === 'race')          entry = { type: 'tempo',    distanceMi: 7 };
-    else if (dayDow === 1)                             entry = { type: 'rest',     distanceMi: 0 };
-    else                                               entry = { type: 'easy',     distanceMi: round1(baseEasy) };
-    out.push({ date: iso, ...entry, isToday });
+
+    // Pick the day's run + apply constraints. (Doesn't account for
+    // execution within the week — this is a *plausible* shape, not a
+    // promise. Re-derived every morning.)
+    const def = defaultByDow(phase, dow);
+    const run = applyConstraints(buildPrescriptionFor(def.primary, state, phase), state, phase, dow);
+
+    // Strength on this day? Match coach-strength placement rules.
+    const hasStrength = strengthFitsThisDay(state, phase, dow, isHardRun(run), cadence.perWeek);
+
+    out.push({ date: iso, type: run.type, distanceMi: run.distanceMi, isToday, hasStrength });
   }
   return out;
 }
 
+/** Mirrors prescribeStrength's day placement so the week shape's
+ *  hasStrength flag matches what the actual prescription would have
+ *  said for that day. */
+function strengthFitsThisDay(state: CoachState, phase: Phase, dow: number, todayHard: boolean, perWeek: number): boolean {
+  if (perWeek === 0) return false;
+  const PLACEMENT: Record<string, number[]> = {
+    heavy: [1, 4], power: [3], maintenance: [2, 5], mobility: [0, 2],
+  };
+  const types = phase === 'BASE' ? ['heavy', 'heavy']
+    : phase === 'BUILD' ? ['heavy', 'power']
+    : phase === 'PEAK' ? ['maintenance']
+    : phase === 'TAPER' ? ['maintenance']
+    : phase === 'BASE_MAINTENANCE' ? ['heavy', 'heavy']
+    : phase === 'REBUILD' ? ['heavy', 'mobility']
+    : ['mobility'];
+  for (let i = 0; i < Math.min(perWeek, types.length); i++) {
+    if (PLACEMENT[types[i]]?.includes(dow)) {
+      if (todayHard && (types[i] === 'heavy' || types[i] === 'power')) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ── Rationale ──────────────────────────────────────────────── */
+function composeRationale(state: CoachState, phase: Phase, p: RunPrescription, strength: StrengthPrescription | null): string {
+  // Priority order: explicit overrides → state-driven flags → phase
+  // logic → fall-through.
+  if (p.type === 'race') return `Race day. Trust the plan, execute the pacing strategy.`;
+  if (p.type === 'shakeout') return `Race tomorrow — keep the legs awake without adding fatigue.`;
+
+  if (state.flags.heavyBlockSuspected && p.type === 'rest') {
+    return `${state.races.raceCount30d} races finished in the last 30 days; rest is the highest-leverage workout right now.`;
+  }
+  if (state.flags.rebuildAfterBreak) {
+    const ratio = state.volume.weeklyAvg4w > 0 ? Math.round((state.volume.last7Mi / state.volume.weeklyAvg4w) * 100) : null;
+    return ratio != null
+      ? `Last 7 days are ${ratio}% of your recent weekly average — easing back, not pushing.`
+      : `Coming back from a break — easing back in.`;
+  }
+  if (phase === 'POST_RACE') {
+    const r = state.races.recent[0];
+    return r ? `${r.daysAgo} day${r.daysAgo === 1 ? '' : 's'} since ${r.name}. Recovery before structure.` : `Recovery before structure.`;
+  }
+  if (phase === 'TAPER') {
+    return `Taper week — fitness is built, the job is to arrive at the start line rested without losing edge.`;
+  }
+  if (phase === 'PEAK' && p.isLong) {
+    return `Peak block long run — most race-specific session in the cycle (Pfitzinger/Canova). Long-run cap is ${maxLongRunMi(state).toFixed(1)} mi (no >10% spikes).`;
+  }
+  if (p.isQuality && p.isLong) {
+    return `Long run with quality — drives both aerobic capacity and race-pace specificity. Cap ${maxLongRunMi(state).toFixed(1)} mi from longest recent.`;
+  }
+  if (p.isLong) {
+    return `Long run anchors the week. Aerobic effort, kept fun. Cap ${maxLongRunMi(state).toFixed(1)} mi from longest recent.`;
+  }
+  if (p.isQuality) {
+    const tgt = intensityTarget(phase);
+    return `Mid-week quality session — ${phase.toLowerCase()} target is ${Math.round(tgt.qualityDaysPerWeek)} quality day${tgt.qualityDaysPerWeek === 1 ? '' : 's'}/week, easy share ≥${Math.round(tgt.easyShareMin * 100)}%.`;
+  }
+  if (strength) {
+    return `Easy mileage today; ${strength.label.toLowerCase()} on the Amp completes the day. ${state.intensity.easyShare14d > 0 ? `Last 14d easy share ${Math.round(state.intensity.easyShare14d * 100)}%.` : ''}`.trim();
+  }
+  return phase === 'BASE_MAINTENANCE'
+    ? `Maintain the base — easy mileage compounds across years more than any single hard day.`
+    : `Building toward race day — aerobic miles are the substrate.`;
+}
+
+/* ── Helpers ────────────────────────────────────────────────── */
+function runToTodayShape(p: RunPrescription): TodayPrescription {
+  return {
+    type: p.type, label: p.label,
+    distanceMi: p.distanceMi,
+    paceTargetSPerMi: p.paceTargetSPerMi,
+    hrZone: p.hrZone,
+    description: p.description,
+  };
+}
+function jsDow(iso: string): number {
+  return new Date(iso + 'T12:00:00Z').getUTCDay();
+}
 function round1(n: number): number { return Math.round(n * 10) / 10; }

@@ -265,7 +265,6 @@ function RacesShelf({ rows }: { rows: RaceRow[] }) {
               <th style={{ textAlign: 'right', padding: '12px 14px', width: 80 }}>Pace</th>
               <th style={{ textAlign: 'right', padding: '12px 14px', width: 70 }}>HR</th>
               <th style={{ textAlign: 'right', padding: '12px 14px', width: 90 }}>Elev</th>
-              <th style={{ textAlign: 'right', padding: '12px 14px', width: 70 }}>Suffer</th>
               <th style={{ textAlign: 'right', padding: '12px 14px', width: 90 }}>Goal</th>
               <th style={{ textAlign: 'right', padding: '12px 14px', width: 96 }}>Finish</th>
               <th style={{ textAlign: 'right', padding: '12px 18px', width: 80 }}>vs</th>
@@ -323,7 +322,6 @@ function SavedRaceRow({ race }: { race: SavedRace }) {
       <NumCell value={result.paceDisplay ? `${result.paceDisplay}/mi` : '—'} muted={!result.paceDisplay} />
       <NumCell value={result.avgHr != null ? `${Math.round(result.avgHr)}` : '—'} muted={result.avgHr == null} />
       <NumCell value={result.totalGainFt != null ? `+${result.totalGainFt.toLocaleString()} ft` : '—'} muted={result.totalGainFt == null} />
-      <NumCell value={result.sufferScore != null ? `${result.sufferScore}` : '—'} muted={result.sufferScore == null} color={result.sufferScore != null && result.sufferScore >= 250 ? 'var(--color-warning)' : 'var(--color-t1)'} />
       <NumCell value={race.meta.goalDisplay} muted />
       <NumCell bold color="var(--color-t0)" value={result.finishDisplay} />
       <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
@@ -349,13 +347,12 @@ function StravaRaceRow({ activity }: { activity: NormalizedActivity }) {
           </div>
         )}
       </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-        {activity.distanceMi.toFixed(1)} mi
-      </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
-        —
-      </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+      <NumCell bold value={`${activity.distanceMi.toFixed(1)} mi`} />
+      <NumCell value={activity.paceSPerMi > 0 ? `${fmtPace(activity.paceSPerMi)}/mi` : '—'} muted={activity.paceSPerMi <= 0} />
+      <NumCell value={activity.avgHr != null ? `${Math.round(activity.avgHr)}` : '—'} muted={activity.avgHr == null} />
+      <NumCell value={`+${activity.elevGainFt.toLocaleString()} ft`} />
+      <NumCell value="—" muted />
+      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, whiteSpace: 'nowrap' }}>
         {fmtT(activity.movingTimeS)}
       </td>
       <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
