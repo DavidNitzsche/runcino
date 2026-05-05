@@ -80,6 +80,8 @@ export default function OverviewPage() {
             <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
 
+          <CoachTodayCard />
+
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
@@ -423,6 +425,173 @@ function TodayTile({ now, next, daysToNext, runs }: { now: Date; next: SavedRace
       </div>
     </div>
   );
+}
+
+/* ── Coach today card ───────────────────────────────────────
+   Calls /api/coach/today and renders the daily prescription. Engine
+   logic is placeholder until the coaching research doc lands — the
+   PLACEHOLDER chip on the card surfaces that explicitly so users
+   don't trust heuristic guidance as final recommendation. */
+
+interface CoachAlert { severity: 'info' | 'warn' | 'rest'; message: string }
+interface CoachTodayPayload {
+  mode: 'race' | 'base';
+  modeDetail: string;
+  today: {
+    type: string;
+    distanceMi: number;
+    paceTargetSPerMi: { lowS: number; highS: number } | null;
+    hrZone: number | null;
+    description: string;
+  };
+  rationale: string;
+  weekShape: Array<{ date: string; type: string; distanceMi: number; isToday: boolean }>;
+  alerts: CoachAlert[];
+  isPlaceholder: boolean;
+}
+
+function CoachTodayCard() {
+  const [payload, setPayload] = useState<CoachTodayPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as { ok: boolean; today?: CoachTodayPayload; error?: string };
+        if (cancelled) return;
+        if (json.ok && json.today) setPayload(json.today);
+        else setError(json.error ?? 'Coach unavailable');
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) return null;     // silent skip on failure — coach is non-critical
+  if (!payload) return null;  // pending fetch
+
+  const t = payload.today;
+  const typeColor: Record<string, string> = {
+    long:      'var(--color-corporate)',
+    tempo:     'var(--color-attention)',
+    intervals: 'var(--color-warning)',
+    easy:      'var(--color-success)',
+    recovery:  'var(--color-t2)',
+    rest:      'var(--color-t3)',
+    race:      'var(--color-attention)',
+    fun:       'var(--color-success)',
+  };
+  const dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  const todayUtcDow = new Date(payload.weekShape.find(d => d.isToday)?.date + 'T12:00:00Z').getUTCDay();
+  const todayLabel = dayLabels[(todayUtcDow + 6) % 7];
+
+  return (
+    <>
+      <SectionHeader title="Coach says" sub={payload.modeDetail} />
+
+      {/* Alert chips render above the prescription tile when state-
+          driven flags fire. These are real signals (heavy block,
+          rebuild, taper window) — not placeholder. */}
+      {payload.alerts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+          {payload.alerts.map((a, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px',
+              borderRadius: 8,
+              fontSize: 13, lineHeight: 1.4,
+              background: a.severity === 'rest' ? 'rgba(252,77,84,.10)' : a.severity === 'warn' ? 'rgba(243,173,59,.08)' : 'var(--color-l2)',
+              border: `1px solid ${a.severity === 'rest' ? 'rgba(252,77,84,.3)' : a.severity === 'warn' ? 'rgba(243,173,59,.3)' : 'var(--color-l4)'}`,
+              color: 'var(--color-t1)',
+            }}>
+              <span style={{
+                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+                color: a.severity === 'rest' ? 'var(--color-warning)' : a.severity === 'warn' ? 'var(--color-attention)' : 'var(--color-corporate)',
+                padding: '3px 8px', borderRadius: 4, border: '1px solid currentColor',
+              }}>{a.severity === 'rest' ? 'REST' : a.severity === 'warn' ? 'WARN' : 'INFO'}</span>
+              <span>{a.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 280 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <div className="tile-sub">Today · {todayLabel}</div>
+              <span style={{
+                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+                padding: '3px 8px', borderRadius: 4,
+                background: 'var(--color-l3)', color: 'var(--color-t3)', border: '1px solid var(--color-l4)',
+              }}>PLACEHOLDER · v0</span>
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 56, letterSpacing: '-.025em', lineHeight: 1, color: typeColor[t.type] ?? 'var(--color-t0)', textTransform: 'uppercase' }}>
+              {t.type}
+            </div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 13, color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '0.5px' }}>
+              {t.distanceMi > 0 ? `${t.distanceMi.toFixed(1)} MI` : '0 MI · REST DAY'}
+              {t.hrZone != null && ` · HR Z${t.hrZone}`}
+              {t.paceTargetSPerMi && ` · ${fmtPaceBand(t.paceTargetSPerMi)}/MI`}
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--color-t1)', lineHeight: 1.55, marginTop: 4 }}>
+              {t.description}
+            </div>
+            <div style={{
+              fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
+              padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8, marginTop: 8,
+              borderLeft: '3px solid var(--color-corporate)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
+              {payload.rationale}
+            </div>
+          </div>
+        </div>
+
+        {/* Plausible week shape — re-derived every morning, not promised */}
+        <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="tile-sub">Plausible week shape</div>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>RE-DERIVED DAILY · NOT A PLAN</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+            {payload.weekShape.map((d, i) => {
+              const dayDow = new Date(d.date + 'T12:00:00Z').getUTCDay();
+              const dowLabel = dayLabels[(dayDow + 6) % 7];
+              const c = typeColor[d.type] ?? 'var(--color-t3)';
+              return (
+                <div key={d.date} style={{
+                  padding: '10px 10px',
+                  borderRadius: 8,
+                  background: d.isToday ? 'rgba(243,173,59,.06)' : 'var(--color-l2)',
+                  border: `1px solid ${d.isToday ? 'rgba(243,173,59,.4)' : 'var(--color-l4)'}`,
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                  minHeight: 78,
+                }}>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 14, color: c, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{d.type}</div>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, marginTop: 'auto' }}>
+                    {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : '—'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function fmtPaceBand(p: { lowS: number; highS: number }): string {
+  return `${fmtMinSec(p.lowS)}–${fmtMinSec(p.highS)}`;
+}
+function fmtMinSec(s: number): string {
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /* ── Training pulse ─────────────────────────────────────────
