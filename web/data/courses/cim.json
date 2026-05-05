@@ -11,6 +11,8 @@
       "total_gain_ft": 100,
       "total_loss_ft": 440,
       "net_ft": -340,
+      "start_elevation_ft": 366,
+      "finish_elevation_ft": 26,
       "peak_elevation_ft": 366,
       "peak_mi": 0.0
     },

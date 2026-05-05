@@ -62,6 +62,10 @@ export interface CourseFacts {
       total_gain_ft: number;
       total_loss_ft: number;
       net_ft: number;
+      /** Verified start elevation from official source. */
+      start_elevation_ft?: number;
+      /** Verified finish elevation from official source. */
+      finish_elevation_ft?: number;
       /** Verified peak elevation — overrides noisy GPX computation when present. */
       peak_elevation_ft?: number;
       /** Mile mark of the peak — overrides GPX when present. */
