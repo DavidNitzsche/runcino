@@ -280,6 +280,8 @@ function UpcomingRaceHero({ race }: { race: SavedRace }) {
   const goalS = parseGoalSecs(race.meta.goalDisplay);
   const goalPaceS = goalS && race.meta.distanceMi > 0 ? Math.round(goalS / race.meta.distanceMi) : null;
   const totalGain = race.plan.race.total_gain_ft;
+  const totalLoss = race.plan.race.total_loss_ft ?? 0;
+  const netElevFt = Math.round(totalGain - totalLoss);
   const phases = race.plan.phases;
   const totalDist = race.meta.distanceMi;
   const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
@@ -334,7 +336,7 @@ function UpcomingRaceHero({ race }: { race: SavedRace }) {
         <HeroStat label="Distance" value={`${totalDist.toFixed(1)}`} unit="mi" />
         <HeroStat label="Goal time" value={race.meta.goalDisplay} unit="" big />
         {goalPaceS && <HeroStat label="Goal pace" value={fmtPace(goalPaceS)} unit="/mi" />}
-        <HeroStat label="Elevation gain" value={`+${totalGain.toLocaleString()}`} unit="ft" />
+        <HeroStat label="Net elevation" value={`${netElevFt >= 0 ? '+' : ''}${netElevFt.toLocaleString()}`} unit="ft net" />
       </div>
 
       {/* Phase color strip — proportional widths, named below */}
