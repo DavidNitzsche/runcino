@@ -73,7 +73,13 @@ export function coachDaily(state: CoachState): CoachToday {
 
   const run = applyConstraints(pickRun(state, phase, todayDow), state, phase, todayDow);
   const isHard = isHardRun(run);
-  const strength = prescribeStrength(state, phase, todayDow, isHard);
+  // Full rest day on the run side → no strength either. Rest day means
+  // rest. The exception is mid/late POST_RACE where the run is rest but
+  // mobility can still help — but in the first ~5 days of POST_RACE
+  // (when REST is being prescribed because the body actually needs it),
+  // skip strength entirely.
+  const runIsRest = run.type === 'rest';
+  const strength = runIsRest ? null : prescribeStrength(state, phase, todayDow, isHard);
 
   const alerts = computeAlerts(state, phase);
   const week = simulateWeek(state, phase, todayDow);
