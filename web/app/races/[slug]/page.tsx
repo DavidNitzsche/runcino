@@ -1557,6 +1557,7 @@ function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: (
   const [goal, setGoal] = useState(race.meta.goalDisplay);
   const [strategy, setStrategy] = useState<'even_effort' | 'even_split' | 'negative_split'>('even_effort');
   const [distanceId, setDistanceId] = useState<EditDistanceId>(distanceIdFromMi(race.meta.distanceMi));
+  const [priority, setPriority] = useState<'A' | 'B' | 'C'>(race.meta.priority ?? 'A');
   const [busy, setBusy] = useState<null | 'save' | 'rebuild'>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1599,6 +1600,7 @@ function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: (
               date,
               distanceMi: effectiveDistance(),
               goalDisplay: goal,
+              priority,
             },
           }),
         });
@@ -1642,6 +1644,44 @@ function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: (
           <div>
             <label className="runcino-label">Date</label>
             <input className="runcino-input font-data" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Race priority — drives how Coach treats this race in the
+            cycle. A = primary target (full taper, full plan). B =
+            secondary (light taper, treated as hard tempo). C = drop-in
+            (no taper, slotted as a workout). Defaults to A. */}
+        <div>
+          <label className="runcino-label">Race priority</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {([
+              { id: 'A', label: 'A · Primary', desc: 'Full taper · plan anchors here' },
+              { id: 'B', label: 'B · Secondary', desc: 'Light 3-day taper · hard tempo' },
+              { id: 'C', label: 'C · Drop-in', desc: 'No taper · slotted as a workout' },
+            ] as const).map(p => {
+              const active = priority === p.id;
+              const accent = p.id === 'A' ? 'var(--color-attention)' : p.id === 'B' ? 'var(--color-corporate)' : 'var(--color-t2)';
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPriority(p.id)}
+                  style={{
+                    padding: '12px 14px',
+                    textAlign: 'left',
+                    border: `1px solid ${active ? accent : 'var(--color-l4)'}`,
+                    background: active ? `color-mix(in srgb, ${accent} 8%, var(--color-l2))` : 'var(--color-l2)',
+                    borderRadius: 10,
+                    cursor: 'pointer',
+                    color: 'var(--color-t0)',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '-.005em', color: active ? accent : 'var(--color-t0)' }}>{p.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 4, lineHeight: 1.45 }}>{p.desc}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
 

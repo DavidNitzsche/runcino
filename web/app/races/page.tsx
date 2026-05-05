@@ -83,7 +83,15 @@ export default function RacesIndexPage() {
 
           {upcoming.length > 0 && (
             <Section title="Upcoming">
-              <Grid>{upcoming.map(r => <RaceCard key={r.slug} race={r} highlight />)}</Grid>
+              {/* First upcoming race takes the full-width hero with rich
+                  course detail. Remaining upcoming races stack beneath
+                  as standard cards. */}
+              <UpcomingRaceHero race={upcoming[0]} />
+              {upcoming.length > 1 && (
+                <div style={{ marginTop: 10 }}>
+                  <Grid>{upcoming.slice(1).map(r => <RaceCard key={r.slug} race={r} highlight />)}</Grid>
+                </div>
+              )}
             </Section>
           )}
 
@@ -161,12 +169,17 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
         }),
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
         <span className="tile-sub">{fmtDate(race.meta.date)}</span>
-        {isUpcoming && <span className="chip chip--attention">{days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days}D`}</span>}
-        {!isUpcoming && result?.isPR && <span className="chip chip--attention">PR</span>}
-        {!isUpcoming && result && !result.isPR && <span className="chip chip--success">FINISHED</span>}
-        {!isUpcoming && !result && <span className="chip">RESULT PENDING</span>}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {race.meta.priority && race.meta.priority !== 'A' && (
+            <span className="chip" style={{ fontSize: 9, color: race.meta.priority === 'B' ? 'var(--color-corporate)' : 'var(--color-t2)', borderColor: race.meta.priority === 'B' ? 'rgba(0,143,236,.4)' : 'var(--color-l4)' }}>{race.meta.priority}</span>
+          )}
+          {isUpcoming && <span className="chip chip--attention">{days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days}D`}</span>}
+          {!isUpcoming && result?.isPR && <span className="chip chip--attention">PR</span>}
+          {!isUpcoming && result && !result.isPR && <span className="chip chip--success">FINISHED</span>}
+          {!isUpcoming && !result && <span className="chip">RESULT PENDING</span>}
+        </div>
       </div>
       <div>
         <div style={{
@@ -234,6 +247,151 @@ function EmptyState() {
         Type the race name + date, drop a GPX, set a goal time. The pacing plan, fueling schedule, and Watch intervals fall out the other side.
       </div>
       <Link href="/races/new" className="btn btn--primary" style={{ padding: '14px 28px' }}>+ Add your first race</Link>
+    </div>
+  );
+}
+
+/* ── Upcoming race hero ────────────────────────────────────────
+   Replaces the tiny "AMERICAS FINEST CITY 13.2 mi 1:30:00" card with
+   a full-width hero that surfaces every interesting fact we have
+   about the race: countdown, goal pace, course profile via the
+   phase-color strip, elevation gain, peak elevation, plan stats,
+   priority chip. Computed entirely from the SavedRace plan + meta. */
+const PHASE_COLORS_HERO = [
+  '#3EBD41', '#F3AD3B', '#FC4D54', '#008FEC', '#9013FE',
+  '#CD317C', '#27E087', '#E88221',
+];
+
+function parseGoalSecs(s: string): number | null {
+  const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+function fmtPace(s: number): string {
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function priorityColor(p: 'A' | 'B' | 'C'): string {
+  return p === 'A' ? 'var(--color-attention)' : p === 'B' ? 'var(--color-corporate)' : 'var(--color-t2)';
+}
+
+function UpcomingRaceHero({ race }: { race: SavedRace }) {
+  const days = daysUntil(race.meta.date);
+  const goalS = parseGoalSecs(race.meta.goalDisplay);
+  const goalPaceS = goalS && race.meta.distanceMi > 0 ? Math.round(goalS / race.meta.distanceMi) : null;
+  const totalGain = race.plan.race.total_gain_ft;
+  const phases = race.plan.phases;
+  const totalDist = race.meta.distanceMi;
+  const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
+
+  // Days-to-race chip color: imminent = warning, race-week = attention,
+  // race-month = corporate, far out = muted.
+  const daysColor = days <= 1 ? 'var(--color-warning)'
+    : days <= 7 ? 'var(--color-attention)'
+    : days <= 28 ? 'var(--color-corporate)'
+    : 'var(--color-t2)';
+  const daysLabel = days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days} DAYS`;
+
+  return (
+    <Link href={`/races/${race.slug}`} style={{
+      display: 'block', textDecoration: 'none', color: 'inherit',
+      borderRadius: 16, overflow: 'hidden',
+      background: 'linear-gradient(135deg, rgba(243,173,59,.10) 0%, rgba(243,173,59,.02) 45%, var(--color-l1) 100%)',
+      border: '1px solid rgba(243,173,59,.32)',
+      padding: '28px 32px',
+    }}>
+      {/* Header strip — eyebrow date + days chip + priority chip */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '2.2px', textTransform: 'uppercase', color: 'var(--color-attention)', marginBottom: 6 }}>
+            COMING UP · {fmtDate(race.meta.date).toUpperCase()}
+          </div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 56, letterSpacing: '-.015em', lineHeight: 0.92, textTransform: 'uppercase', color: 'var(--color-t0)' }}>
+            {race.meta.name}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.6px',
+            padding: '6px 12px', borderRadius: 6,
+            background: 'transparent', color: daysColor, border: `1.5px solid ${daysColor}`,
+          }}>{daysLabel}</span>
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.6px',
+            padding: '4px 9px', borderRadius: 4,
+            color: priorityColor(priority), border: `1px solid ${priorityColor(priority)}`,
+          }}>RACE {priority}</span>
+        </div>
+      </div>
+
+      {/* Stats row — distance / goal time / goal pace / elev gain / peak */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+        gap: 18, paddingTop: 18, paddingBottom: 18,
+        borderTop: '1px solid var(--color-l4)', borderBottom: '1px solid var(--color-l4)',
+        marginBottom: 18,
+      }}>
+        <HeroStat label="Distance" value={`${totalDist.toFixed(1)}`} unit="mi" />
+        <HeroStat label="Goal time" value={race.meta.goalDisplay} unit="" big />
+        {goalPaceS && <HeroStat label="Goal pace" value={fmtPace(goalPaceS)} unit="/mi" />}
+        <HeroStat label="Elevation gain" value={`+${totalGain.toLocaleString()}`} unit="ft" />
+      </div>
+
+      {/* Phase color strip — proportional widths, named below */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 8 }}>
+          Course profile · {phases.length} phases
+        </div>
+        <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', gap: 1, marginBottom: 6 }}>
+          {phases.map((p, i) => {
+            const widthPct = ((p.end_mi - p.start_mi) / totalDist) * 100;
+            return (
+              <div key={i} title={`${p.label} · mi ${p.start_mi.toFixed(1)}–${p.end_mi.toFixed(1)} · ${p.target_pace_display}/mi`} style={{
+                width: `${widthPct}%`,
+                background: PHASE_COLORS_HERO[i] ?? '#444',
+              }} />
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 1 }}>
+          {phases.map((p, i) => {
+            const widthPct = ((p.end_mi - p.start_mi) / totalDist) * 100;
+            return (
+              <div key={i} style={{
+                width: `${widthPct}%`,
+                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+                color: 'var(--color-t2)', textTransform: 'uppercase',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                paddingRight: 4,
+              }}>{p.label}</div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer chips */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>
+          {race.plan.intervals.length} intervals · ready for Watch
+        </div>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-attention)' }}>
+          OPEN RACE PLAN →
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function HeroStat({ label, value, unit, big }: { label: string; value: string; unit: string; big?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-t3)' }}>{label}</div>
+      <div style={{
+        fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: big ? 36 : 30,
+        letterSpacing: '-.015em', lineHeight: 1, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {value}{unit && <span style={{ fontSize: '.45em', opacity: .55, marginLeft: 4, fontWeight: 700 }}>{unit}</span>}
+      </div>
     </div>
   );
 }
