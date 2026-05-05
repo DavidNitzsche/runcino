@@ -160,38 +160,83 @@ function PRShelf({ prs }: { prs: ReturnType<typeof naivePRs> }) {
   const have = prs.filter(p => p.bestS != null);
   if (have.length === 0) return null;
   return (
-    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
-      <div className="tile-h">
-        <div>
-          <div className="tile-sub">YTD bests</div>
-          <div className="tile-lbl">Best run near each canonical distance</div>
+    <div style={{
+      padding: '24px 28px',
+      borderRadius: 14,
+      background: 'linear-gradient(135deg, rgba(243,173,59,.10) 0%, rgba(243,173,59,.02) 50%, var(--color-l1) 100%)',
+      border: '1px solid rgba(243,173,59,.28)',
+      display: 'flex', flexDirection: 'column', gap: 18,
+      marginBottom: 10,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, textTransform: 'uppercase',
+          letterSpacing: '-.005em', color: 'var(--color-t0)',
+        }}>
+          ★ Your fastest times
+        </div>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>
+          {have.length} OF {prs.length}
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${prs.length}, 1fr)`, gap: 14 }}>
-        {prs.map(p => (
-          <div key={p.label} style={{
-            padding: '14px 16px',
-            background: p.bestS != null ? 'var(--color-l2)' : 'transparent',
-            border: '1px solid var(--color-l4)',
-            borderRadius: 8,
-            display: 'flex', flexDirection: 'column', gap: 6,
-            opacity: p.bestS != null ? 1 : 0.5,
-          }}>
-            <div className="tile-sub">{p.label}</div>
-            {p.bestS != null && p.activityId && p.date ? (
-              <Link href={`/runs/${p.activityId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--color-t0)', letterSpacing: '-.01em', lineHeight: 1 }}>
-                  {fmtT(p.bestS)}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(150px, 1fr))`, gap: 10 }}>
+        {prs.map(p => {
+          const has = p.bestS != null && p.activityId && p.date;
+          // PRs get a stronger medal treatment; missing buckets stay quiet.
+          const cardStyle: React.CSSProperties = has
+            ? {
+                padding: '18px 18px 16px',
+                background: 'linear-gradient(180deg, rgba(243,173,59,.10) 0%, var(--color-l2) 100%)',
+                border: '1px solid rgba(243,173,59,.35)',
+                borderRadius: 10,
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                textDecoration: 'none', color: 'inherit',
+                display: 'flex', flexDirection: 'column', gap: 8,
+                minHeight: 110,
+              }
+            : {
+                padding: '18px 18px 16px',
+                background: 'transparent',
+                border: '1px dashed var(--color-l4)',
+                borderRadius: 10,
+                display: 'flex', flexDirection: 'column', gap: 8,
+                minHeight: 110,
+                opacity: 0.55,
+              };
+          const inner = (
+            <>
+              {/* Subtle gold accent stripe at the top of each PR card */}
+              {has && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, transparent, var(--color-attention), transparent)' }} />}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px',
+                  textTransform: 'uppercase', color: has ? 'var(--color-attention)' : 'var(--color-t3)',
+                }}>{p.label}</div>
+                {has && <span style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-attention)' }}>★</span>}
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 32,
+                color: has ? 'var(--color-t0)' : 'var(--color-t3)',
+                letterSpacing: '-.015em', lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+              }}>
+                {has ? fmtT(p.bestS!) : '—'}
+              </div>
+              {has && (
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)',
+                  fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', marginTop: 'auto',
+                }}>
+                  {formatShort(p.date!)}
                 </div>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', marginTop: 6 }}>
-                  {formatShort(p.date)}
-                </div>
-              </Link>
-            ) : (
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--color-t3)', lineHeight: 1 }}>—</div>
-            )}
-          </div>
-        ))}
+              )}
+            </>
+          );
+          return has
+            ? <Link key={p.label} href={`/runs/${p.activityId}`} style={cardStyle}>{inner}</Link>
+            : <div key={p.label} style={cardStyle}>{inner}</div>;
+        })}
       </div>
     </div>
   );
@@ -216,10 +261,14 @@ function RacesShelf({ rows }: { rows: RaceRow[] }) {
             <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
               <th style={{ textAlign: 'left', padding: '12px 18px', width: 100 }}>Date</th>
               <th style={{ textAlign: 'left', padding: '12px 0' }}>Race</th>
-              <th style={{ textAlign: 'right', padding: '12px 18px', width: 90 }}>Distance</th>
-              <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Goal</th>
-              <th style={{ textAlign: 'right', padding: '12px 18px', width: 100 }}>Finish</th>
-              <th style={{ textAlign: 'right', padding: '12px 18px', width: 90 }}>vs</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 86 }}>Distance</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 80 }}>Pace</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 70 }}>HR</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 90 }}>Elev</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 70 }}>Suffer</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 90 }}>Goal</th>
+              <th style={{ textAlign: 'right', padding: '12px 14px', width: 96 }}>Finish</th>
+              <th style={{ textAlign: 'right', padding: '12px 18px', width: 80 }}>vs</th>
             </tr>
           </thead>
           <tbody>
@@ -229,6 +278,24 @@ function RacesShelf({ rows }: { rows: RaceRow[] }) {
       </div>
     </>
   );
+}
+
+/* ── Cell helpers ──────────────────────────────────────────── */
+function NumCell({ value, color = 'var(--color-t1)', muted = false, bold = false }: { value: React.ReactNode; color?: string; muted?: boolean; bold?: boolean }) {
+  return (
+    <td style={{
+      padding: '14px 14px', textAlign: 'right',
+      fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums',
+      color: muted ? 'var(--color-t3)' : color,
+      fontWeight: bold ? 700 : 500,
+      whiteSpace: 'nowrap',
+    }}>{value}</td>
+  );
+}
+
+function fmtPace(s: number): string {
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function SavedRaceRow({ race }: { race: SavedRace }) {
@@ -247,17 +314,18 @@ function SavedRaceRow({ race }: { race: SavedRace }) {
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
           {result.isPR && <span className="chip chip--attention" style={{ fontSize: 8 }}>PR</span>}
           <span className="chip" style={{ fontSize: 8, background: 'rgba(0,143,236,.12)', color: 'var(--color-corporate)', borderColor: 'rgba(0,143,236,.3)' }}>PLAN</span>
+          {result.achievementCount != null && result.achievementCount > 0 && (
+            <span className="chip" style={{ fontSize: 8 }}>{result.achievementCount}× ACHIEVE</span>
+          )}
         </div>
       </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-        {race.meta.distanceMi.toFixed(1)} mi
-      </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
-        {race.meta.goalDisplay}
-      </td>
-      <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-        {result.finishDisplay}
-      </td>
+      <NumCell bold value={`${race.meta.distanceMi.toFixed(1)} mi`} />
+      <NumCell value={result.paceDisplay ? `${result.paceDisplay}/mi` : '—'} muted={!result.paceDisplay} />
+      <NumCell value={result.avgHr != null ? `${Math.round(result.avgHr)}` : '—'} muted={result.avgHr == null} />
+      <NumCell value={result.totalGainFt != null ? `+${result.totalGainFt.toLocaleString()} ft` : '—'} muted={result.totalGainFt == null} />
+      <NumCell value={result.sufferScore != null ? `${result.sufferScore}` : '—'} muted={result.sufferScore == null} color={result.sufferScore != null && result.sufferScore >= 250 ? 'var(--color-warning)' : 'var(--color-t1)'} />
+      <NumCell value={race.meta.goalDisplay} muted />
+      <NumCell bold color="var(--color-t0)" value={result.finishDisplay} />
       <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: delta == null ? 'var(--color-t3)' : (delta <= 0 ? 'var(--color-success)' : 'var(--color-warning)') }}>
         {delta == null ? '—' : (delta === 0 ? '±0' : (delta > 0 ? '+' : '−') + fmtT(Math.abs(delta)))}
       </td>
@@ -318,61 +386,39 @@ function RunFeed({ runs }: { runs: NormalizedActivity[] }) {
         const monthMi = g.runs.reduce((s, r) => s + r.distanceMi, 0);
         return (
           <div key={g.key} style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 4px', borderBottom: '1px solid var(--color-l4)', marginBottom: 6 }}>
+            {/* Month header — bottom border removed; the table tile starts
+                with no top border so they don't double up. */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 4px 8px' }}>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, textTransform: 'uppercase', letterSpacing: '-.005em', color: 'var(--color-t1)' }}>{g.label}</div>
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>{g.runs.length} RUNS · {monthMi.toFixed(1)} MI</div>
             </div>
             <div className="tile" style={{ padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--color-t3)', fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 700 }}>
-                    <th style={{ textAlign: 'left', padding: '10px 16px', width: 90 }}>Date</th>
-                    <th style={{ textAlign: 'left', padding: '10px 0' }}>Run</th>
-                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Dist</th>
-                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Pace</th>
-                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Time</th>
-                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 60 }}>HR</th>
-                    <th style={{ textAlign: 'right', padding: '10px 14px', width: 80 }}>Elev</th>
-                  </tr>
-                </thead>
                 <tbody>
-                  {g.runs.map(r => {
-                    const m = Math.floor(r.paceSPerMi / 60);
-                    const s = r.paceSPerMi % 60;
-                    return (
-                      <tr key={r.id} style={{ borderTop: '1px solid var(--color-l4)' }}>
-                        <td style={{ padding: '12px 16px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-                          {formatShort(r.date)}
-                        </td>
-                        <td style={{ padding: '12px 0' }}>
-                          <Link href={`/runs/${r.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)', letterSpacing: '-.005em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320 }}>{r.name}</div>
-                          </Link>
-                          {(r.workoutType === 1 || r.achievementCount > 0) && (
-                            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                              {r.workoutType === 1 && <span className="chip chip--attention" style={{ fontSize: 8 }}>RACE</span>}
-                              {r.achievementCount > 0 && <span className="chip" style={{ fontSize: 8 }}>{r.achievementCount}× ACHIEVE</span>}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                          {r.distanceMi.toFixed(1)}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums' }}>
-                          {m}:{String(s).padStart(2, '0')}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                          {fmtT(r.movingTimeS)}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
-                          {r.avgHr ? Math.round(r.avgHr) : '—'}
-                        </td>
-                        <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums' }}>
-                          {r.elevGainFt > 0 ? '+' : ''}{r.elevGainFt}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {g.runs.map((r, idx) => (
+                    <tr key={r.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--color-l4)' }}>
+                      <td style={{ padding: '12px 16px', width: 90, whiteSpace: 'nowrap', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+                        {formatShort(r.date)}
+                      </td>
+                      <td style={{ padding: '12px 0' }}>
+                        <Link href={`/runs/${r.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)', letterSpacing: '-.005em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 360 }}>{r.name}</div>
+                        </Link>
+                        {(r.workoutType === 1 || r.achievementCount > 0) && (
+                          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                            {r.workoutType === 1 && <span className="chip chip--attention" style={{ fontSize: 8 }}>RACE</span>}
+                            {r.achievementCount > 0 && <span className="chip" style={{ fontSize: 8 }}>{r.achievementCount}× ACHIEVE</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px', width: 90, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-data)', color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                        {r.distanceMi.toFixed(1)} mi
+                      </td>
+                      <td style={{ padding: '12px 18px', width: 100, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                        {fmtT(r.movingTimeS)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

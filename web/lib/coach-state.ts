@@ -74,6 +74,10 @@ export interface CoachState {
     hrv7dAvgMs: number | null;
     rhrBpm: number | null;
     sleep7dAvgHrs: number | null;
+    /** Strength sessions logged in the current calendar week. Sourced
+     *  from Amp (eventually) or HealthKit workouts categorized as
+     *  strength training. Null until that pipeline lands. */
+    strengthDaysThisWeek: number | null;
   };
 
   /** Engine-readable flags so it doesn't have to recompute these. */
@@ -239,6 +243,7 @@ export async function gatherCoachState(): Promise<CoachState> {
       hrv7dAvgMs: null,
       rhrBpm: null,
       sleep7dAvgHrs: null,
+      strengthDaysThisWeek: null,
     },
     flags: {
       heavyBlockSuspected,

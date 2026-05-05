@@ -656,7 +656,7 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80, flex: 1 }}>
             {weeks.map((w, i) => {
-              const isRecent = i >= 4;
+              const isCurrentWeek = i === weeks.length - 1;   // last bar = this calendar week, in progress
               const h = w.miles > 0 ? Math.max(6, (w.miles / max) * 80) : 0;
               return (
                 <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
@@ -666,9 +666,12 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
                   <div style={{
                     width: '100%',
                     height: h ? `${h}px` : '4px',
-                    background: h ? (isRecent ? 'var(--color-corporate)' : 'var(--color-l4)') : 'var(--color-l3)',
+                    /* Uniform color across all weeks — only the current
+                       (in-progress) week gets a distinct accent color so
+                       the meaning of the highlight is self-evident. */
+                    background: h ? (isCurrentWeek ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
                     borderRadius: 2,
-                  }} />
+                  }} title={`Week of ${w.weekStart} · ${w.miles.toFixed(1)} mi · ${w.runs} runs${isCurrentWeek ? ' · this week (in progress)' : ''}`} />
                 </div>
               );
             })}

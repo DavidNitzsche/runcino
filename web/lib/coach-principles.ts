@@ -1,0 +1,248 @@
+/**
+ * Coaching principles encoded from the research synthesis.
+ *
+ * Source: docs/coaching-research.md (in this repo). Every constant
+ * here cites the section / number it came from so future updates trace
+ * back to a literature anchor, not a vibe.
+ *
+ * The engine in coach-engine.ts orchestrates these. This file is just
+ * the constants + small pure helpers — keep logic out of here so the
+ * file stays a "what does the literature say" reference.
+ */
+
+import type { CoachState } from './coach-state';
+
+/* ── 1. Race-window math (§2.1) ──────────────────────────────────
+   Each race distance has an associated build-window length. Inside
+   the window the runner is "in race mode" with structured BASE →
+   BUILD → PEAK → TAPER sub-phases. Outside it, the default mode is
+   maintenance.
+
+   The doc recommends 16-24 weeks for a marathon cycle, with longer
+   the more conservative. We use 16 here as the typical sweet spot
+   for an experienced runner; 5K/10K/half scale down. */
+export function buildWindowDays(distanceMi: number): number {
+  if (distanceMi >= 20) return 16 * 7;
+  if (distanceMi >= 10) return 12 * 7;
+  if (distanceMi >= 5)  return 8 * 7;
+  return 6 * 7;
+}
+
+/* ── 2. Sub-phase boundaries (§2.1) ──────────────────────────────
+   Inside the build window, divide into 4 sub-phases. Boundaries
+   given as PERCENTAGE of window remaining (since windows differ by
+   distance). E.g., for a 16-week marathon block:
+     - First 4 weeks (weeks 16-13 out)        → BASE
+     - Next 6 weeks  (weeks 12-7 out)         → BUILD
+     - Next 4 weeks  (weeks 6-3 out)          → PEAK
+     - Final 2 weeks (weeks 2-0 out)          → TAPER
+   Base proportions (4/6/4/2 = 16w) generalize via the same fractions
+   to the shorter race windows. */
+export type RaceSubPhase = 'BASE' | 'BUILD' | 'PEAK' | 'TAPER';
+
+const SUBPHASE_FRACTIONS: Record<RaceSubPhase, number> = {
+  TAPER: 2 / 16,   // last 12.5%
+  PEAK:  4 / 16,   // before that, 25%
+  BUILD: 6 / 16,   // before that, 37.5%
+  BASE:  4 / 16,   // earliest, 25%
+};
+
+export function raceSubPhase(daysAway: number, distanceMi: number): RaceSubPhase {
+  const window = buildWindowDays(distanceMi);
+  const taperEnd = 0;
+  const peakEnd  = window * SUBPHASE_FRACTIONS.TAPER;
+  const buildEnd = peakEnd + window * SUBPHASE_FRACTIONS.PEAK;
+  const baseEnd  = buildEnd + window * SUBPHASE_FRACTIONS.BUILD;
+  if (daysAway <= peakEnd)  return 'TAPER';
+  if (daysAway <= buildEnd) return 'PEAK';
+  if (daysAway <= baseEnd)  return 'BUILD';
+  return 'BASE';
+}
+
+/* ── 3. Intensity distribution by sub-phase (§3.1) ───────────────
+   Targets for the 14-day rolling easy-share metric. The doc says
+   pyramidal in build, polarized in peak — translated to "easy share":
+   pyramidal ≈ 75% easy (more time at threshold), polarized ≈ 80%
+   easy (less middle, more VO2). Maintenance defaults to 80%. */
+export interface IntensityTarget {
+  easyShareMin: number;   // bottom of acceptable band
+  easyShareTarget: number;
+  qualityDaysPerWeek: number;
+}
+
+export function intensityTarget(phase: Phase): IntensityTarget {
+  switch (phase) {
+    case 'TAPER':            return { easyShareMin: 0.78, easyShareTarget: 0.85, qualityDaysPerWeek: 1 };
+    case 'PEAK':             return { easyShareMin: 0.75, easyShareTarget: 0.80, qualityDaysPerWeek: 2 };
+    case 'BUILD':            return { easyShareMin: 0.70, easyShareTarget: 0.75, qualityDaysPerWeek: 2 };
+    case 'BASE':             return { easyShareMin: 0.80, easyShareTarget: 0.85, qualityDaysPerWeek: 1 };
+    case 'BASE_MAINTENANCE': return { easyShareMin: 0.78, easyShareTarget: 0.82, qualityDaysPerWeek: 1 };
+    case 'POST_RACE':        return { easyShareMin: 0.90, easyShareTarget: 1.00, qualityDaysPerWeek: 0 };
+    case 'REBUILD':          return { easyShareMin: 0.85, easyShareTarget: 0.95, qualityDaysPerWeek: 0 };
+  }
+}
+
+/* ── 4. The full phase enum used by the engine ──────────────────
+   Race-mode sub-phases (BASE / BUILD / PEAK / TAPER) + base-mode
+   states (BASE_MAINTENANCE = default, REBUILD = coming back, POST_RACE
+   = within recovery window of a finished race). Distinct from the
+   trainingPulse() chip on the dashboard, which uses friendlier user-
+   facing labels. */
+export type Phase = RaceSubPhase | 'BASE_MAINTENANCE' | 'POST_RACE' | 'REBUILD';
+
+/* ── 5. Single-session spike rule (§13.1) ────────────────────────
+   Strongest predictor of injury. A single run more than ~10% longer
+   than the longest run in the past 30 days raises injury risk
+   substantially:
+     10-30% spike → +64% injury risk
+     30-100% spike → +52%
+     >100%        → 2× risk
+   Engine-side hard ceiling: 10%. */
+export const LONG_RUN_SPIKE_CAP = 1.10;
+
+export function maxLongRunMi(state: CoachState): number {
+  // Floor at 8mi so a runner returning from a break has a sane minimum
+  // even when their "longest in 30 days" is small (otherwise rebuild
+  // is impossible).
+  return Math.max(8, state.volume.longestLast28Mi * LONG_RUN_SPIKE_CAP);
+}
+
+/* ── 6. ACWR (§13.1) ─────────────────────────────────────────────
+   Acute (7-day) : Chronic (28-day) load ratio. HSS marathon study
+   sweet spot is 0.8-1.3. <0.8 is undertraining (high race-day risk);
+   >1.3 is over-reaching (high injury risk). */
+export const ACWR_LOW = 0.8;
+export const ACWR_HIGH = 1.3;
+
+export function acwr(state: CoachState): number | null {
+  const acute   = state.volume.last7Mi;
+  const chronic = state.volume.last28Mi / 4;  // weekly avg over last 28d
+  if (chronic <= 0) return null;
+  return acute / chronic;
+}
+
+/* ── 7. Volume budget per week by phase (§4.2 / §4.3) ────────────
+   Weekly target relative to the runner's established weekly average.
+   Base/Build climb to a peak; Peak holds; Taper slashes 40-60%;
+   Maintenance is 50-70% of an A-race peak, but for a runner without
+   a recent peak we just hold the recent 4-week average.
+   Returns a multiplier applied to the recent 4-week weekly avg. */
+export function weeklyVolumeMultiplier(phase: Phase): { low: number; high: number } {
+  switch (phase) {
+    case 'TAPER':            return { low: 0.40, high: 0.60 };
+    case 'PEAK':             return { low: 1.05, high: 1.20 };
+    case 'BUILD':            return { low: 0.95, high: 1.10 };
+    case 'BASE':             return { low: 0.90, high: 1.05 };
+    case 'BASE_MAINTENANCE': return { low: 0.90, high: 1.05 };
+    case 'POST_RACE':        return { low: 0.30, high: 0.50 };
+    case 'REBUILD':          return { low: 0.50, high: 0.70 };
+  }
+}
+
+/* ── 8. Post-race recovery duration (§13.3) ──────────────────────
+   Doc rule of thumb: a runner peaking at 70 mpw needs 2-4 weeks of
+   reduced training before structured work; 100+ mpw → 3-6 weeks.
+   Easy mileage at 30-50% of peak is fine, no quality.
+   Plus the legacy "1 day per mile" guide → 26 days for a marathon. */
+export function postRaceRecoveryDays(distanceMi: number, peakWeeklyMi: number): number {
+  // Distance-based floor: 1 day per mile (capped).
+  const distanceFloor = Math.min(28, Math.round(distanceMi));
+  // Volume-based extension: high-mileage runners need longer.
+  const volumeFloor = peakWeeklyMi >= 100 ? 28 : peakWeeklyMi >= 70 ? 21 : 14;
+  return Math.max(distanceFloor, volumeFloor);
+}
+
+/* ── 9. Heavy-block detection (§13.3 + your insight) ─────────────
+   3+ races in 21 days OR sustained ≥1.5× weekly avg volume for 3+
+   consecutive weeks → suggest 3-5 days FULL rest before resuming
+   structured work. State already computes the heavyBlockSuspected
+   flag; the engine acts on it. */
+export const HEAVY_BLOCK_REST_DAYS = 5;
+
+/* ── 10. Quality-day spacing (§5.5 / §8.3) ───────────────────────
+   24-72h between hard efforts. Long runs count as "hard" when they're
+   over 90 min OR include MP/progression segments. Engine refuses to
+   prescribe two hard sessions back-to-back. */
+export const MIN_HARD_SPACING_HOURS = 24;
+
+/* ── 11. Strides cadence (§5.8) ──────────────────────────────────
+   Strides 2-3× per week throughout a marathon block. Hill sprints
+   substitute for strides during the build phase 1× per week. */
+export const STRIDES_PER_WEEK = 2;
+
+/* ── 12. Long-run progression rules (§5.4) ──────────────────────
+   - Sat is the long-run day by default.
+   - Long runs over 90 minutes drive aerobic adaptation (slow-twitch
+     recruitment + glycogen depletion training).
+   - In BUILD, alternate steady long runs with progression long runs.
+   - In PEAK, include marathon-pace blocks (8-14 mi at goal MP within
+     14-22 mi total).
+   - Cap at 22 mi or 3 hours, whichever comes first. */
+export const LONG_RUN_DAY_DOW = 6;  // Saturday (0 = Sunday in JS Date.getDay())
+export const LONG_RUN_MIN_MIN = 90;
+export const LONG_RUN_MAX_MI = 22;
+
+/* ── 13. Strength training periodization (§6.3) ──────────────────
+   Heavy resistance + plyometrics, 2 sessions/week year-round. Periodized:
+     BASE      → 2x heavy
+     BUILD     → 1 heavy + 1 power/plyo
+     PEAK      → 1-2x maintenance (low volume, intensity preserved)
+     TAPER     → 1 short session in first taper week, then drop
+     BASE_MAINTENANCE → ramp up: 2x heavy, can chase strength gains
+     POST_RACE → optional 1 light session toward end of recovery window
+     REBUILD   → 1 heavy + 1 mobility
+   Drops entirely in final 7-10 days before A race. */
+export type StrengthSessionType = 'heavy' | 'power' | 'maintenance' | 'mobility' | 'rest';
+
+export interface StrengthCadence {
+  perWeek: number;
+  composition: StrengthSessionType[];   // length = perWeek
+  notes: string;
+}
+
+export function strengthCadence(phase: Phase, daysToRace: number | null): StrengthCadence {
+  // In the final 7-10 days before an A race, no strength.
+  if (daysToRace != null && daysToRace <= 10 && (phase === 'TAPER')) {
+    return { perWeek: 0, composition: [], notes: 'No strength in final 10 days — preserve freshness for race day.' };
+  }
+  switch (phase) {
+    case 'BASE':
+      return { perWeek: 2, composition: ['heavy', 'heavy'], notes: 'Build maximum-force capacity. Heavy lifts (3-6 reps × 3-5 sets at 80%+ 1RM).' };
+    case 'BUILD':
+      return { perWeek: 2, composition: ['heavy', 'power'], notes: 'One heavy session + one power/plyometric. Volume trims as run intensity rises.' };
+    case 'PEAK':
+      return { perWeek: 1, composition: ['maintenance'], notes: 'Maintain — low volume, intensity preserved. Goal is preservation, not gain.' };
+    case 'TAPER':
+      return { perWeek: 1, composition: ['maintenance'], notes: 'One light session in first taper week. Drop entirely in final 7-10 days.' };
+    case 'BASE_MAINTENANCE':
+      return { perWeek: 2, composition: ['heavy', 'heavy'], notes: 'Strength emphasis can ramp up between race cycles. Chase max-force gains here.' };
+    case 'POST_RACE':
+      return { perWeek: 1, composition: ['mobility'], notes: 'Mobility-focused recovery. No heavy loading until you\'ve been back to easy running for a week.' };
+    case 'REBUILD':
+      return { perWeek: 2, composition: ['heavy', 'mobility'], notes: 'Reintroduce heavy lifting; pair with mobility for tendon recovery.' };
+  }
+}
+
+/* ── 14. Sleep / HRV thresholds (§8.1) ───────────────────────────
+   Used once HealthKit lands. Coach downshifts intensity when last-
+   night sleep is poor or HRV is below baseline. */
+export const SLEEP_HOURS_FLOOR = 7.0;
+export const SLEEP_HOURS_HIGH_LOAD = 8.0;
+export const HRV_DROP_FLAG_PCT = 0.12;  // 12% drop from baseline = recovery day
+
+/* ── 15. Pace targets relative to goal pace (§5.5 / §3.1) ────────
+   Daniels-style training paces expressed as offsets from goal MP. */
+export const PACE_OFFSETS_S_PER_MI: Record<string, { lowS: number; highS: number }> = {
+  recovery:        { lowS: 90,  highS: 150 },
+  general_aerobic: { lowS: 30,  highS: 60  },
+  medium_long:     { lowS: 25,  highS: 50  },
+  long_steady:     { lowS: 20,  highS: 60  },
+  long_progression:{ lowS: 0,   highS: 60  }, // ramps to MP at the end
+  long_mp_block:   { lowS: -5,  highS: 5   }, // at MP for the block
+  threshold:       { lowS: -25, highS: -10 }, // ~half marathon pace
+  threshold_intervals: { lowS: -25, highS: -10 },
+  sub_threshold:   { lowS: -15, highS: -5  },
+  vo2:             { lowS: -50, highS: -35 }, // 5K-3K pace
+  marathon_specific: { lowS: -10, highS: 5 },
+  strides:         { lowS: -45, highS: -25 },
+};
