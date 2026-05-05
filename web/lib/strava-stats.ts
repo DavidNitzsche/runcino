@@ -557,7 +557,12 @@ export function effortBalance(activities: NormalizedActivity[], windowDays = 14,
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
   const cutoffISO = cutoff.toISOString().slice(0, 10);
-  const inWindow = activities.filter(a => a.date >= cutoffISO);
+  // Exclude races from the intensity calculation — the 80/20 rule
+  // applies to TRAINING. A race is a competitive effort, not a
+  // training choice. Including races skews the easy-share number and
+  // produces non-actionable alerts after a recent race ("you did too
+  // much hard running" — but the hard running was a race that's done).
+  const inWindow = activities.filter(a => a.date >= cutoffISO && !isProbablyRace(a));
   let easyMi = 0, hardMi = 0;
   let samplesWithHr = 0;
   for (const a of inWindow) {

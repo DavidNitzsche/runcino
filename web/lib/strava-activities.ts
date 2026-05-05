@@ -37,6 +37,14 @@ export interface NormalizedActivity {
   kudosCount: number;
   achievementCount: number;
   sufferScore: number | null;
+  /** Time at the canonical race distance — sourced from Strava's
+   *  best_efforts. For a half marathon ran as a 13.4 mi activity,
+   *  this is the time at exactly 13.10 mi (the chip-time finish).
+   *  null when activity detail hasn't been fetched OR the activity
+   *  doesn't match a canonical distance. */
+  canonicalFinishS: number | null;
+  canonicalDistanceMi: number | null;
+  canonicalLabel: string | null;
 }
 
 interface CachedPayload {

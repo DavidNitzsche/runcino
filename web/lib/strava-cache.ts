@@ -71,7 +71,15 @@ export async function refreshActivities(): Promise<{ activities: StravaActivity[
 
 /** Read all cached activities from Postgres as their normalized form
  *  (the shape the rest of the app uses). Includes a forced refresh if
- *  the cache is stale or empty. */
+ *  the cache is stale or empty.
+ *
+ *  When per-activity detail has been fetched (via the lazy fetcher in
+ *  /api/strava/bests or sync), this function re-normalizes off the
+ *  detail row so canonical-distance best_effort fields populate. So
+ *  for a half marathon ran as 13.4 mi, the returned activity carries
+ *  canonicalFinishS = 1:32:37 (chip time at exactly 13.10 mi) and
+ *  canonicalDistanceMi = 13.10. For activities without detail, the
+ *  canonical fields stay null and consumers fall back to movingTimeS. */
 export async function getCachedActivities(): Promise<{ activities: NormalizedActivity[]; fetchedAt: number }> {
   const state = await getSyncState();
   const lastAt = state.lastFetchedAt ? Date.parse(state.lastFetchedAt) : 0;
@@ -81,15 +89,17 @@ export async function getCachedActivities(): Promise<{ activities: NormalizedAct
     try {
       await refreshActivities();
     } catch (e) {
-      // Fall back to whatever's in the cache; better stale data than none.
       console.error('[strava-cache] refresh failed, using stale rows:', e);
     }
   }
 
-  const rows = await query<{ data: NormalizedActivity; fetched_at: Date }>(
-    `SELECT data, fetched_at FROM strava_activities ORDER BY (data->>'startLocal') DESC`,
+  const rows = await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
+    `SELECT data, detail, fetched_at FROM strava_activities ORDER BY (data->>'startLocal') DESC`,
   );
-  const activities = rows.map(r => r.data);
+  // Re-normalize from detail when we have it, so canonical-distance
+  // best_efforts surface in the listing. Falls back to the stored
+  // summary normalization otherwise.
+  const activities = rows.map(r => r.detail ? normalizeActivity(r.detail) : r.data);
   const fetchedAt = activities.length > 0 ? new Date(rows[0].fetched_at).getTime() : Date.now();
   return { activities, fetchedAt };
 }

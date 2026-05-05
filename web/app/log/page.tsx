@@ -332,6 +332,15 @@ function SavedRaceRow({ race }: { race: SavedRace }) {
 }
 
 function StravaRaceRow({ activity }: { activity: NormalizedActivity }) {
+  // For race rows we display the CANONICAL finish: time at exactly
+  // 13.10 / 26.22 / etc, sourced from Strava's best_efforts. Falls
+  // back to the activity's moving time when canonical isn't cached.
+  // The distance shown matches: 13.1 mi for a half, not 13.4 mi.
+  const finishS = activity.canonicalFinishS ?? activity.movingTimeS;
+  const displayDistMi = activity.canonicalDistanceMi ?? activity.distanceMi;
+  const displayPaceS = activity.canonicalFinishS && activity.canonicalDistanceMi
+    ? Math.round(activity.canonicalFinishS / activity.canonicalDistanceMi)
+    : activity.paceSPerMi;
   return (
     <tr style={{ borderTop: '1px solid var(--color-l4)' }}>
       <td style={{ padding: '14px 18px', fontFamily: 'var(--font-data)', color: 'var(--color-t2)', fontWeight: 700, fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
@@ -347,13 +356,13 @@ function StravaRaceRow({ activity }: { activity: NormalizedActivity }) {
           </div>
         )}
       </td>
-      <NumCell bold value={`${activity.distanceMi.toFixed(1)} mi`} />
-      <NumCell value={activity.paceSPerMi > 0 ? `${fmtPace(activity.paceSPerMi)}/mi` : '—'} muted={activity.paceSPerMi <= 0} />
+      <NumCell bold value={`${displayDistMi.toFixed(1)} mi`} />
+      <NumCell value={displayPaceS > 0 ? `${fmtPace(displayPaceS)}/mi` : '—'} muted={displayPaceS <= 0} />
       <NumCell value={activity.avgHr != null ? `${Math.round(activity.avgHr)}` : '—'} muted={activity.avgHr == null} />
       <NumCell value={`+${activity.elevGainFt.toLocaleString()} ft`} />
       <NumCell value="—" muted />
       <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {fmtT(activity.movingTimeS)}
+        {fmtT(finishS)}
       </td>
       <td style={{ padding: '14px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
         —

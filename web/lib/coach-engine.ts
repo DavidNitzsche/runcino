@@ -258,8 +258,16 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
   if (state.flags.rebuildAfterBreak) {
     out.push({ severity: 'warn', message: 'Last 7 days mileage is well below your 28-day average. Rebuild week — easy mileage only.' });
   }
+  // Easy-share alert — only fires in phases where the runner has
+  // forward agency over training composition. POST_RACE and REBUILD
+  // are recovery phases; the past 14 days will mechanically fail the
+  // ratio and the alert isn't actionable. Skip it.
   const target = intensityTarget(phase);
-  if (state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < target.easyShareMin) {
+  if (
+    phase !== 'POST_RACE' && phase !== 'REBUILD' &&
+    state.intensity.easyShare14d > 0 &&
+    state.intensity.easyShare14d < target.easyShareMin
+  ) {
     out.push({ severity: 'warn', message: `Only ${Math.round(state.intensity.easyShare14d * 100)}% easy miles last 14 days. Target for this phase is ≥${Math.round(target.easyShareMin * 100)}% — drop intensity before injury risk climbs.` });
   }
   if (state.races.nextA && state.races.nextA.daysAway > 0 && state.races.nextA.daysAway <= 14) {

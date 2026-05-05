@@ -31,19 +31,19 @@ export async function POST(req: Request) {
 
   for (const race of upcoming) {
     try {
+      // Snap to the canonical race distance when within 5% — fixes
+      // races built before the canonical-distance picker existed (which
+      // saved the GPS-measured 13.24 instead of 13.10 for halves, etc).
+      const distanceMi = snapToCanonical(race.meta.distanceMi);
+
       const res = await fetch(`${origin}/api/races/${encodeURIComponent(race.slug)}/rebuild`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          // Re-pass the existing meta so /rebuild keeps everything in
-          // place. The point is to refresh the plan, not change anything.
           raceName: race.meta.name,
           raceDate: race.meta.date,
-          distanceMi: race.meta.distanceMi,
-          // Goal time → seconds.
+          distanceMi,
           goalFinishS: parseGoalSeconds(race.meta.goalDisplay),
-          // Default strategy on rebuild — even_effort matches what most
-          // races used originally.
           strategy: 'even_effort',
         }),
       });
@@ -69,4 +69,15 @@ export async function POST(req: Request) {
 function parseGoalSeconds(s: string): number {
   const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
   return m ? Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0;
+}
+
+/** Round near-canonical distances to the official race distance.
+ *  Within 5% of a canonical (5K / 10K / half / marathon) → snap to it.
+ *  Else preserve the user-entered distance. */
+function snapToCanonical(mi: number): number {
+  const CANON = [3.10, 6.21, 13.10, 26.22];
+  for (const c of CANON) {
+    if (Math.abs(mi - c) / c < 0.05) return c;
+  }
+  return mi;
 }

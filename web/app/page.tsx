@@ -86,8 +86,6 @@ export default function OverviewPage() {
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
 
-          {runs && runs.length > 0 && <YearHeatmapSection runs={runs} />}
-
           <FunStatsSection runs={runs} />
 
         </div>
@@ -616,23 +614,48 @@ function CoachTodayCard() {
               const typeLabel = d.type.replace(/_/g, ' ');
               return (
                 <div key={d.date} style={{
-                  padding: '10px 10px',
+                  padding: '10px',
                   borderRadius: 8,
                   background: d.isToday ? 'rgba(243,173,59,.06)' : 'var(--color-l2)',
                   border: `1px solid ${d.isToday ? 'rgba(243,173,59,.4)' : 'var(--color-l4)'}`,
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                  minHeight: 86,
-                  position: 'relative',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  minHeight: 100,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
-                    {d.hasStrength && (
-                      <span title="Strength session this day" style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-xp, #9013FE)' }}>● S</span>
-                    )}
+                  {/* Top: day-of-week */}
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
+
+                  {/* Middle: run type + miles */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: c, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>{typeLabel}</div>
+                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                      {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : d.type === 'rest' ? 'REST' : '—'}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: c, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>{typeLabel}</div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, marginTop: 'auto' }}>
-                    {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : d.type === 'rest' ? 'REST' : '—'}
+
+                  {/* Bottom: strength chip (visible, color-stamped, not a tiny corner dot) */}
+                  <div style={{ marginTop: 'auto' }}>
+                    {d.hasStrength ? (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '4px 8px',
+                        background: 'rgba(144,19,254,.12)',
+                        border: '1px solid rgba(144,19,254,.32)',
+                        borderRadius: 4,
+                        fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700,
+                        letterSpacing: '1px', color: '#B26CFF',
+                      }}>
+                        <span style={{ fontSize: 8 }}>●</span>
+                        <span>+ STRENGTH</span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '4px 8px',
+                        fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700,
+                        letterSpacing: '1px', color: 'var(--color-t3)',
+                      }}>
+                        — no strength
+                      </div>
+                    )}
                   </div>
                 </div>
               );
