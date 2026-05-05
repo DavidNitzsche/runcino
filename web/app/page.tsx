@@ -16,7 +16,7 @@ import { Caption, Nav } from '../components/nav';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
-import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, type TrainingPulse } from '../lib/strava-stats';
+import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 
 export default function OverviewPage() {
@@ -85,6 +85,8 @@ export default function OverviewPage() {
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
+
+          {runs && runs.length > 0 && <YearHeatmapSection runs={runs} />}
 
           <FunStatsSection runs={runs} />
 
@@ -803,28 +805,158 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
   );
 }
 
+/* ── Year of running heatmap ────────────────────────────────
+   GitHub-style contribution grid: one cell per day from Jan 1 to
+   today, colored by mile intensity. Visually communicates "what
+   this year of training looks like" at a glance. Hovering a cell
+   shows the date + miles. */
+function YearHeatmapSection({ runs }: { runs: NormalizedActivity[] }) {
+  const days = yearOfRunningHeatmap(runs);
+  if (days.length === 0) return null;
+
+  // Bucket each day into a 5-step intensity scale based on miles.
+  function intensity(mi: number): number {
+    if (mi <= 0) return 0;
+    if (mi < 3) return 1;
+    if (mi < 6) return 2;
+    if (mi < 10) return 3;
+    if (mi < 16) return 4;
+    return 5;
+  }
+  const intensityColors = [
+    'var(--color-l3)',                       // 0 = no run
+    'rgba(0, 143, 236, .25)',                // 1 = short
+    'rgba(0, 143, 236, .50)',                // 2
+    'rgba(0, 143, 236, .80)',                // 3
+    'var(--color-corporate)',                // 4
+    'var(--color-attention)',                // 5 = long run / race
+  ];
+
+  // Group days into columns by ISO week (Mon = column start). Since
+  // year may not start on Monday, pad the first column with empty
+  // cells. JS Date.getDay(): 0=Sun, 1=Mon, ..., 6=Sat.
+  const firstDay = new Date(days[0].date + 'T12:00:00Z');
+  const firstDow = firstDay.getUTCDay();
+  // Convert to Mon=0...Sun=6
+  const firstOffset = (firstDow + 6) % 7;
+  const cells: Array<{ date: string; miles: number; runs: number; level: number } | null> = [];
+  for (let i = 0; i < firstOffset; i++) cells.push(null);
+  for (const d of days) cells.push({ ...d, level: intensity(d.miles) });
+  // Pad to a full final column.
+  while (cells.length % 7 !== 0) cells.push(null);
+  const cols = cells.length / 7;
+
+  // Month labels above the grid — only show one per month, on the
+  // column where that month starts.
+  const monthLabels: Array<{ col: number; label: string }> = [];
+  let lastMonth = -1;
+  for (let c = 0; c < cols; c++) {
+    const cell = cells[c * 7];  // top of column = Monday
+    const ref = cell ?? cells[c * 7 + 1] ?? cells[c * 7 + 6];
+    if (!ref) continue;
+    const m = new Date(ref.date + 'T12:00:00Z').getUTCMonth();
+    if (m !== lastMonth) {
+      monthLabels.push({ col: c, label: new Date(ref.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase() });
+      lastMonth = m;
+    }
+  }
+
+  const totalMi = days.reduce((s, d) => s + d.miles, 0);
+  const daysRun = days.filter(d => d.miles > 0).length;
+  const dowLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+
+  return (
+    <>
+      <SectionHeader title="Year on foot" sub={`${daysRun} run days · ${totalMi.toFixed(1)} mi · every day of ${new Date().getFullYear()}`} />
+      <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {/* Day-of-week labels on the left */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 18, fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+            {dowLabels.map((d, i) => (
+              <div key={d} style={{ height: 12, display: 'flex', alignItems: 'center', visibility: i % 2 === 0 ? 'visible' : 'hidden' }}>{d}</div>
+            ))}
+          </div>
+          {/* The grid */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, overflowX: 'auto' }}>
+            {/* Month labels */}
+            <div style={{ position: 'relative', height: 14, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+              {monthLabels.map(m => (
+                <span key={m.col} style={{ position: 'absolute', left: `calc(${m.col} * (100% / ${cols}))` }}>{m.label}</span>
+              ))}
+            </div>
+            {/* The actual heatmap */}
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(8px, 1fr))`, gridTemplateRows: 'repeat(7, 1fr)', gridAutoFlow: 'column', gap: 3 }}>
+              {cells.map((c, i) => (
+                <div key={i}
+                  title={c ? `${c.date} · ${c.miles.toFixed(1)} mi · ${c.runs} run${c.runs === 1 ? '' : 's'}` : ''}
+                  style={{
+                    aspectRatio: '1 / 1',
+                    minHeight: 10,
+                    background: c ? intensityColors[c.level] : 'transparent',
+                    borderRadius: 2,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+          <span>LESS</span>
+          {[0, 1, 2, 3, 4, 5].map(lvl => (
+            <div key={lvl} style={{ width: 12, height: 12, borderRadius: 2, background: intensityColors[lvl] }} />
+          ))}
+          <span>MORE</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── Fun stats ─────────────────────────────────────────────
    Headline numbers compared to relatable things — landmarks,
-   road trips, screen-time references. Driven entirely by the
-   year's Strava activity rollup. */
+   road trips, screen-time references. Each card gets its own
+   palette accent so the section reads as a colorful row, not
+   a uniform grid of dark tiles. */
 function FunStatsSection({ runs }: { runs: NormalizedActivity[] | null }) {
   if (!runs || runs.length === 0) return null;
   const r = rollupYear(runs);
   const stats = funStats(r);
   if (stats.length === 0) return null;
+  // Cycle through six palette accents so adjacent cards never share
+  // a color. Keeps the section visually energetic without becoming
+  // confetti.
+  const accents = [
+    { color: 'var(--color-attention)', tint: 'rgba(243,173,59,.10)', border: 'rgba(243,173,59,.25)' },
+    { color: 'var(--color-corporate)', tint: 'rgba(0,143,236,.08)',  border: 'rgba(0,143,236,.22)'  },
+    { color: 'var(--color-success)',   tint: 'rgba(62,189,65,.08)',  border: 'rgba(62,189,65,.22)'  },
+    { color: '#9013FE',                tint: 'rgba(144,19,254,.08)', border: 'rgba(144,19,254,.22)' },
+    { color: '#27E087',                tint: 'rgba(39,224,135,.08)', border: 'rgba(39,224,135,.22)' },
+    { color: '#E88221',                tint: 'rgba(232,130,33,.08)', border: 'rgba(232,130,33,.22)' },
+  ];
   return (
     <>
       <SectionHeader title="Fun stats" sub={`${r.totalRuns} runs · ${r.totalMiles.toFixed(1)} mi this year`} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
-        {stats.map((s, i) => (
-          <div key={i} className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
-            <div className="tile-sub">{s.label}</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 32, letterSpacing: '-.02em', lineHeight: 1, color: 'var(--color-t0)' }}>
-              {s.value}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginBottom: 10 }}>
+        {stats.map((s, i) => {
+          const a = accents[i % accents.length];
+          return (
+            <div key={i} style={{
+              padding: '20px 22px', borderRadius: 12,
+              background: `linear-gradient(135deg, ${a.tint}, var(--color-l1))`,
+              border: `1px solid ${a.border}`,
+              display: 'flex', flexDirection: 'column', gap: 10, minHeight: 160,
+            }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: a.color }}>
+                {s.label}
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36, letterSpacing: '-.02em', lineHeight: 1, color: 'var(--color-t0)' }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, flex: 1 }}>{s.detail}</div>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--color-t2)', lineHeight: 1.5, flex: 1 }}>{s.detail}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

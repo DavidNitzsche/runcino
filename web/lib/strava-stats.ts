@@ -94,6 +94,29 @@ export function dailyMiles(activities: NormalizedActivity[], days = 7): Array<{ 
   return out;
 }
 
+/** Year-of-running heatmap data — one cell per day from Jan 1 to today,
+ *  columns = ISO weeks, rows = days of week (Mon top, Sun bottom).
+ *  Returned as a flat array of {date, miles, runs} ordered by date so
+ *  the renderer can snap each entry into its column/row by week-of-year
+ *  + JS day-of-week. */
+export function yearOfRunningHeatmap(activities: NormalizedActivity[]): Array<{ date: string; miles: number; runs: number }> {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yearStart = new Date(today.getFullYear(), 0, 1);
+  const totalDays = Math.floor((today.getTime() - yearStart.getTime()) / 86_400_000) + 1;
+  const out: Array<{ date: string; miles: number; runs: number }> = [];
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(yearStart); d.setDate(yearStart.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const matches = activities.filter(a => a.date === iso);
+    out.push({
+      date: iso,
+      miles: Math.round(matches.reduce((s, a) => s + a.distanceMi, 0) * 10) / 10,
+      runs: matches.length,
+    });
+  }
+  return out;
+}
+
 /** Calendar week (Mon → Sun) covering today. Returns one bucket per
  *  day with miles + runs, plus a flag identifying which bucket is
  *  today and which buckets are future (haven't happened yet). Used by
