@@ -76,7 +76,7 @@ function sumGainLossFt(points: GpxPoint[], key: 'eleM'): [number, number] {
  *  only records a delta once the current altitude has drifted more
  *  than `thresholdM` from the pivot. Once recorded, the pivot resets.
  *  Output is in feet. */
-export function thresholdedGainLossFt(points: GpxPoint[], thresholdM = 1.5): [number, number] {
+export function thresholdedGainLossFt(points: GpxPoint[], thresholdM = 1.0): [number, number] {
   if (points.length < 2) return [0, 0];
   let gain = 0, loss = 0;
   let pivot = points[0].eleM;
@@ -92,13 +92,14 @@ export function thresholdedGainLossFt(points: GpxPoint[], thresholdM = 1.5): [nu
 }
 
 export interface ParseOptions {
-  /** Moving-average window size. Default 9. Set to 1 to disable smoothing.
-   *  Wider windows tame more jitter at the cost of slightly muting
-   *  short steep features (a 9-pt window over ~5s/sample data spans
-   *  ~45s of running, well under the duration of any real climb). */
+  /** Moving-average window size. Default 5 (was 9 — too aggressive,
+   *  flattened real 30-60s climbs). Set to 1 to disable smoothing.
+   *  A 5-pt window over ~5s/sample data spans ~25s of running —
+   *  enough to tame jitter, narrow enough to preserve real terrain. */
   smoothWindow?: number;
-  /** Pivot threshold for the gain/loss summing pass, in meters. Default
-   *  1.5m (~5ft). Strava uses something in this range. */
+  /** Pivot threshold for the gain/loss summing pass, in meters.
+   *  Default 1.0m (~3.3ft) — calibrated against Strava's own
+   *  reported gain on the same traces. 1.5m was over-filtering. */
   gainThresholdM?: number;
 }
 
@@ -154,9 +155,9 @@ export function parseGpx(xml: string, opts: ParseOptions = {}): GpxTrack {
 
   const [rawGain, rawLoss] = sumGainLossFt(points, 'eleM');
 
-  // Smooth in place (default 9-point window, wide enough to flatten
-  // typical GPS altitude jitter without erasing real climbs).
-  const window = opts.smoothWindow ?? 9;
+  // Smooth in place (default 5-point window — calibrated against
+  // Strava's own reported gain. 9-pt was over-smoothing real climbs).
+  const window = opts.smoothWindow ?? 5;
   if (window >= 3) {
     const src = points.map(p => p.eleM);
     const half = Math.floor(window / 2);
@@ -169,10 +170,10 @@ export function parseGpx(xml: string, opts: ParseOptions = {}): GpxTrack {
     }
   }
 
-  // Threshold-based gain/loss for the "smoothed" output — much closer
-  // to what Strava + other serious tracking apps report. The naïve
-  // sum-every-delta version stays in `rawGainFt` for reference.
-  const [smGain, smLoss] = thresholdedGainLossFt(points, opts.gainThresholdM ?? 1.5);
+  // Threshold-based gain/loss for the "smoothed" output — calibrated
+  // against Strava's own reported gain. The naïve sum-every-delta
+  // version stays in `rawGainFt` for reference.
+  const [smGain, smLoss] = thresholdedGainLossFt(points, opts.gainThresholdM ?? 1.0);
 
   return {
     points,
