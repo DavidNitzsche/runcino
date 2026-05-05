@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { formatShort } from '../../../lib/dates';
-import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-store';
+import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-utils';
 
 interface RichActivity {
   id: number;

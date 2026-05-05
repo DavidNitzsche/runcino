@@ -1,0 +1,148 @@
+{
+  "race": {
+    "name": "California International Marathon",
+    "slug": "cim",
+    "description": "Point-to-point net-downhill marathon from Folsom Dam to the California State Capitol in Sacramento. One of the fastest marathon courses in the US — the 340 ft net drop doesn't make it easy (the early rollers demand respect) but it does make sub-3 accessible on a good day.",
+    "course_type": "point_to_point",
+    "typical_date": "first Sunday of December",
+    "expected_facts": {
+      "distance_mi": 26.2,
+      "distance_m": 42195,
+      "total_gain_ft": 100,
+      "total_loss_ft": 440,
+      "net_ft": -340
+    },
+    "expected_tolerances": {
+      "distance_mi": 0.4,
+      "gain_ft": 120,
+      "loss_ft": 150
+    },
+    "sources": [
+      {
+        "url": "https://runsra.org/california-international-marathon/course-map/",
+        "title": "CIM Official Course Map — Run SRA",
+        "confidence": "primary_source_verified",
+        "verified_at": "2026-05-05",
+        "verified_quote": "Net elevation drop of 340 feet from start at Folsom Dam (366 ft) to finish at the State Capitol (26 ft)"
+      }
+    ]
+  },
+  "phases": [
+    {
+      "index": 0,
+      "label": "Folsom Dam drop",
+      "start_mi": 0.0,
+      "end_mi": 2.0,
+      "expected_mean_grade_pct": -1.3,
+      "expected_loss_ft": 90,
+      "note": "Downhill opening from the dam. Crowds surge here — let them. Settle into goal pace by mile 1. The descent is doing you a favor; don't add to it with a sprint.",
+      "sources": [
+        {
+          "url": "https://runsra.org/california-international-marathon/course-map/",
+          "confidence": "primary_source_verified",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "label": "Orangevale rollers",
+      "start_mi": 2.0,
+      "end_mi": 7.0,
+      "expected_mean_grade_pct": 0.0,
+      "note": "The hilliest section of the course — a series of short, punchy rollers through Orangevale and Fair Oaks. Run these by effort, not pace. The uphills are short; recover on the downs. This is where many runners blow their sub-3 by chasing splits.",
+      "sources": [
+        {
+          "url": "https://runsra.org/california-international-marathon/course-map/",
+          "confidence": "primary_source_verified",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "label": "Fair Oaks hills",
+      "start_mi": 7.0,
+      "end_mi": 9.5,
+      "expected_mean_grade_pct": -0.8,
+      "note": "The rollers continue but begin trending net-downhill through Fair Oaks. If you've been patient, you'll start passing people here. Hold composure — the real payoff starts after mile 10.",
+      "sources": [
+        {
+          "url": "https://runsra.org/california-international-marathon/course-map/",
+          "confidence": "primary_source_verified",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "label": "Auburn Blvd descent",
+      "start_mi": 9.5,
+      "end_mi": 10.9,
+      "expected_mean_grade_pct": -1.5,
+      "expected_loss_ft": 60,
+      "note": "The fastest mile-stretch on the course — a noticeable drop through the Auburn corridor. Let gravity assist but don't overcook it. You have 16 miles left. Use it as a reset to recheck form and nutrition.",
+      "sources": [
+        {
+          "url": "https://runsra.org/california-international-marathon/course-map/",
+          "confidence": "primary_source_verified",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "label": "Sacramento valley",
+      "start_mi": 10.9,
+      "end_mi": 26.2,
+      "expected_mean_grade_pct": -0.7,
+      "expected_loss_ft": 200,
+      "note": "15 miles of gentle, sustained downhill to the Capitol. This is CIM's gift — run the math, trust your pace, don't get greedy. Miles 20-22 are where people start to fade; if you've been even-keel, this is where you pass them. The finish chute on Capitol Mall is fast.",
+      "sources": [
+        {
+          "url": "https://runsra.org/california-international-marathon/course-map/",
+          "confidence": "primary_source_verified",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "at_mi": 0.0,
+      "kind": "summit",
+      "label": "Folsom Dam · 366 ft",
+      "note": "Start. Highest point of the course.",
+      "sources": [{ "url": "https://runsra.org/california-international-marathon/course-map/", "confidence": "primary_source_verified", "verified_at": "2026-05-05" }]
+    },
+    {
+      "at_mi": 10.5,
+      "kind": "landmark",
+      "label": "Auburn Blvd",
+      "note": "End of the rollers. The course flattens and trends consistently downhill from here.",
+      "sources": [{ "url": "https://runsra.org/california-international-marathon/course-map/", "confidence": "primary_source_verified", "verified_at": "2026-05-05" }]
+    },
+    {
+      "at_mi": 26.2,
+      "kind": "landmark",
+      "label": "State Capitol · 26 ft",
+      "note": "Finish. Lowest point of the course.",
+      "sources": [{ "url": "https://runsra.org/california-international-marathon/course-map/", "confidence": "primary_source_verified", "verified_at": "2026-05-05" }]
+    }
+  ],
+  "notes_from_sources": {
+    "course_profile": {
+      "status": "primary_source_verified",
+      "net_drop_ft": 340,
+      "start_elevation_ft": 366,
+      "finish_elevation_ft": 26,
+      "hardest_section": "miles 2-10 (Orangevale/Fair Oaks rollers)",
+      "fastest_section": "miles 11-26 (sustained gentle downhill)"
+    }
+  },
+  "warnings": {
+    "early_pace": "The opening descent from the dam tricks runners into going out too fast. First 2 miles feel easy — they are not representative of the course.",
+    "rollers": "Miles 2-10 require patience. Running by effort (not pace) through the rollers is the key to a negative split on the back half.",
+    "quad_load": "Net downhill courses accumulate eccentric quad load. Build specific downhill training (long runs on net-downhill routes) in the 8 weeks before race day."
+  }
+}

@@ -1,26 +1,7 @@
 import { query } from './db';
-
-export type RunType =
-  | 'race'
-  | 'long'
-  | 'easy'
-  | 'recovery'
-  | 'tempo'
-  | 'intervals'
-  | 'as_needed';
-
-export interface Shoe {
-  id: number;
-  brand: string;
-  model: string;
-  color: string | null;
-  run_types: RunType[];
-  mileage: number;
-  mileage_cap: number | null;
-  retired: boolean;
-  notes: string | null;
-  created_at: string;
-}
+export type { RunType, Shoe } from './shoe-utils';
+export { recommendShoe, inferRunType } from './shoe-utils';
+import type { RunType, Shoe } from './shoe-utils';
 
 export interface ShoeInput {
   brand: string;
@@ -105,41 +86,6 @@ export async function addMileage(shoeId: number, miles: number): Promise<void> {
     `UPDATE shoes SET mileage = mileage + $1 WHERE id = $2`,
     [miles, shoeId],
   );
-}
-
-/** Recommend the best active shoe for a given run type. */
-export function recommendShoe(shoes: Shoe[], runType: RunType): Shoe | null {
-  const active = shoes.filter(s => !s.retired);
-
-  // Exact match on run type
-  const exact = active.filter(s => s.run_types.includes(runType));
-  if (exact.length > 0) return exact[0];
-
-  // Fallback: as_needed shoe
-  const fallback = active.filter(s => s.run_types.includes('as_needed'));
-  if (fallback.length > 0) return fallback[0];
-
-  return null;
-}
-
-/** Map a Strava workout_type or activity name to a RunType. */
-export function inferRunType(workoutType: number | null | undefined, name: string): RunType {
-  // Strava workout_type: 1 = race, 2 = long run, 3 = workout
-  if (workoutType === 1) return 'race';
-  if (workoutType === 2) return 'long';
-  if (workoutType === 3) {
-    const n = name.toLowerCase();
-    if (n.includes('tempo') || n.includes('threshold')) return 'tempo';
-    if (n.includes('interval') || n.includes('track') || n.includes('repeat')) return 'intervals';
-    return 'tempo';
-  }
-  const n = name.toLowerCase();
-  if (n.includes('recovery') || n.includes('shakeout')) return 'recovery';
-  if (n.includes('long') || n.includes('lsd')) return 'long';
-  if (n.includes('tempo') || n.includes('threshold')) return 'tempo';
-  if (n.includes('interval') || n.includes('track')) return 'intervals';
-  if (n.includes('race') || n.includes('marathon') || n.includes('half') || n.includes('10k') || n.includes('5k')) return 'race';
-  return 'easy';
 }
 
 /** Default shoe rotation — seeded on first boot if shoes table is empty. */
