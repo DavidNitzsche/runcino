@@ -439,6 +439,7 @@ interface CoachStrengthPayload {
   label: string;
   durationMin: number;
   description: string;
+  ampMode: 'Fixed' | 'Band' | 'Eccentric' | 'Mobility';
   ampSuggestions: string[];
   focus: string[];
 }
@@ -566,7 +567,12 @@ function CoachTodayCard() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-xp, #9013FE)' }}>Strength · Amp</div>
-                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{payload.strength.durationMin} MIN</span>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', padding: '2px 6px', borderRadius: 3, background: 'rgba(144,19,254,.18)', color: '#B26CFF' }}>
+                    {payload.strength.ampMode.toUpperCase()} MODE
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{payload.strength.durationMin} MIN</span>
+                </div>
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.015em', lineHeight: 1, color: 'var(--color-t0)', textTransform: 'uppercase' }}>
                 {payload.strength.label}

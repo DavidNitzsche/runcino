@@ -527,9 +527,10 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
   // For each anchor dot, pick the side (N/E/S/W) with the fewest route
   // points within ~60px — that's the "empty" side, where the label
   // goes. Cheap O(N) per anchor, runs once per render.
-  const startSide = pickEmptySide(startP, routePts, 60);
-  const endSide   = pickEmptySide(endP,   routePts, 60);
-  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 60) : 'E';
+  const peakLabelText = `PEAK · ${Math.round(peakFt)} FT`;
+  const startSide = pickEmptySide(startP, routePts, 60, estLabelWidth('START'), 13, W, H);
+  const endSide   = pickEmptySide(endP,   routePts, 60, estLabelWidth('FINISH'), 13, W, H);
+  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 60, estLabelWidth(peakLabelText), 13, W, H) : 'E';
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
@@ -546,7 +547,7 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
       {peakP && (
         <>
           <circle cx={peakP[0]} cy={peakP[1]} r="7" fill="#FC4D54" stroke="#0d1218" strokeWidth="3" />
-          <SideLabel anchor={peakP} side={peakSide} text={`PEAK · ${Math.round(peakFt)} FT`} color="#FC4D54" />
+          <SideLabel anchor={peakP} side={peakSide} text={peakLabelText} color="#FC4D54" />
         </>
       )}
     </svg>
@@ -555,28 +556,50 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
 
 type Side = 'N' | 'E' | 'S' | 'W';
 
-/** Bucket nearby route points into N/E/S/W quadrants relative to the
- *  anchor and pick the quadrant with the fewest hits — that's the
- *  side with the most empty space, where the label can sit without
- *  reading into the route. */
-function pickEmptySide(anchor: [number, number], routePts: Array<[number, number]>, radius: number): Side {
-  const counts: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
+/** Pick the side of the anchor where the label fits — has the
+ *  fewest route points to read into AND its bounding box stays
+ *  inside the SVG viewport. Without the viewport check, anchors
+ *  near the edges had labels clipped (e.g. a peak on the left edge
+ *  with the label placed 'W' would slide off-canvas leaving only
+ *  "FT" visible). */
+function pickEmptySide(
+  anchor: [number, number],
+  routePts: Array<[number, number]>,
+  radius: number,
+  textWidth: number,
+  textHeight: number,
+  viewW: number,
+  viewH: number,
+): Side {
   const [ax, ay] = anchor;
+  const counts: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
   for (const [rx, ry] of routePts) {
-    const dx = rx - ax;
-    const dy = ry - ay;
+    const dx = rx - ax, dy = ry - ay;
     if (Math.hypot(dx, dy) > radius) continue;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      if (dx >= 0) counts.E++; else counts.W++;
-    } else {
-      if (dy >= 0) counts.S++; else counts.N++;
-    }
+    if (Math.abs(dx) >= Math.abs(dy)) (dx >= 0 ? counts.E++ : counts.W++);
+    else (dy >= 0 ? counts.S++ : counts.N++);
   }
-  // Pick the quadrant with the fewest route points. Tie-break order
-  // prefers cardinal sides users expect labels on (S for start,
-  // N for finish, E for peak — the caller's preferred order).
+
+  const offset = 18;
+  const margin = 4;
+  // Compute the would-be bounding box for each side and rule out
+  // any side whose bbox extends outside [margin, viewW-margin] x
+  // [margin, viewH-margin]. Heavily penalize clipped sides so we
+  // pick a non-clipping option even if it has more route points.
+  const fits: Record<Side, boolean> = {
+    N: ay - offset - textHeight >= margin && ax - textWidth / 2 >= margin && ax + textWidth / 2 <= viewW - margin,
+    S: ay + offset + textHeight <= viewH - margin && ax - textWidth / 2 >= margin && ax + textWidth / 2 <= viewW - margin,
+    E: ax + offset + textWidth <= viewW - margin && ay - textHeight / 2 >= margin && ay + textHeight / 2 <= viewH - margin,
+    W: ax - offset - textWidth >= margin && ay - textHeight / 2 >= margin && ay + textHeight / 2 <= viewH - margin,
+  };
+  const score: Record<Side, number> = {
+    N: counts.N + (fits.N ? 0 : 1000),
+    S: counts.S + (fits.S ? 0 : 1000),
+    E: counts.E + (fits.E ? 0 : 1000),
+    W: counts.W + (fits.W ? 0 : 1000),
+  };
   const order: Side[] = ['N', 'S', 'E', 'W'];
-  return order.slice().sort((a, b) => counts[a] - counts[b])[0];
+  return order.slice().sort((a, b) => score[a] - score[b])[0];
 }
 
 function SideLabel({ anchor, side, text, color }: { anchor: [number, number]; side: Side; text: string; color: string }) {
@@ -591,6 +614,12 @@ function SideLabel({ anchor, side, text, color }: { anchor: [number, number]; si
   return (
     <text x={x} y={y} fontFamily="JetBrains Mono, monospace" fontSize="11" fill={color} textAnchor={textAnchor} fontWeight="700">{text}</text>
   );
+}
+
+/** Estimated label width at the SVG's font-size (11) for JetBrains
+ *  Mono. Roughly 6.6 px/char + a bit of padding. */
+function estLabelWidth(text: string): number {
+  return text.length * 6.6 + 4;
 }
 
 /* ── Poster elevation SVG ────────────────────────────────────

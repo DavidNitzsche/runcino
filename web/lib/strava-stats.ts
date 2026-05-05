@@ -553,23 +553,37 @@ export interface EffortBalance {
   totalSamples: number;
 }
 
+/** Name-pattern classifier — "is this a hard training run?". The
+ *  HR-threshold approach was unreliable: a well-trained runner can
+ *  hit tempo/threshold work at 145-150 bpm, which falls below the
+ *  152 default and gets misclassified as easy. Name patterns reflect
+ *  what the runner actually intended: tempo / repeats / intervals /
+ *  fartlek / progression / VO2 / over-and-under = hard. Everything
+ *  else (easy, recovery, long, general aerobic) = easy. */
+const HARD_NAME_RE = /\b(tempo|threshold|interval|repeats?|reps?\b|fartlek|progression|vo2|over\s*and\s*under|hill\s*repeats?|race\s*pace|mile\s*reps?|k\s*reps?|drop\s*set|over[-\s]?under|strides|pyramid)\b/i;
+
+function isProbablyHard(a: NormalizedActivity): boolean {
+  return HARD_NAME_RE.test(a.name);
+}
+
 export function effortBalance(activities: NormalizedActivity[], windowDays = 14, hrThreshold = 152): EffortBalance {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
   const cutoffISO = cutoff.toISOString().slice(0, 10);
   // Exclude races from the intensity calculation — the 80/20 rule
   // applies to TRAINING. A race is a competitive effort, not a
-  // training choice. Including races skews the easy-share number and
-  // produces non-actionable alerts after a recent race ("you did too
-  // much hard running" — but the hard running was a race that's done).
+  // training choice.
   const inWindow = activities.filter(a => a.date >= cutoffISO && !isProbablyRace(a));
   let easyMi = 0, hardMi = 0;
   let samplesWithHr = 0;
   for (const a of inWindow) {
-    if (a.avgHr == null) continue;
-    samplesWithHr++;
-    if (a.avgHr < hrThreshold) easyMi += a.distanceMi;
-    else hardMi += a.distanceMi;
+    if (a.avgHr != null) samplesWithHr++;
+    // Hard if EITHER the name says so OR avgHr is above threshold.
+    // This catches tempo workouts at sub-threshold HR (most common
+    // miss with the old purely-HR approach).
+    const hard = isProbablyHard(a) || (a.avgHr != null && a.avgHr >= hrThreshold);
+    if (hard) hardMi += a.distanceMi;
+    else easyMi += a.distanceMi;
   }
   const totalMi = Math.round((easyMi + hardMi) * 10) / 10;
   const easyShare = totalMi > 0 ? easyMi / totalMi : 0;

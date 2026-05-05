@@ -143,6 +143,16 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return rest(`Heavy-block recovery (~${HEAVY_BLOCK_REST_DAYS} days). Full rest today.`);
   }
 
+  // First 2 days after a race — REST. Doc §13.3 + standard practice:
+  // immediately after a half / full / hard 10K, the body needs no
+  // running for 24-48h. Recovery runs come AFTER the initial rest
+  // window, not on day 1 or day 2.
+  const lastRace = state.races.recent[0];
+  if (phase === 'POST_RACE' && lastRace && lastRace.daysAgo <= 2) {
+    const distLabel = lastRace.distanceMi >= 20 ? 'marathon' : lastRace.distanceMi >= 10 ? 'half' : '10K';
+    return rest(`${lastRace.daysAgo === 0 ? 'Race day rest' : `${lastRace.daysAgo} day${lastRace.daysAgo === 1 ? '' : 's'} since ${lastRace.name}`} — full rest. The body needs 48h before any running, even easy. ${lastRace.distanceMi >= 13 ? `Hardest day after a ${distLabel} is the day after the day after.` : ''}`);
+  }
+
   // Default by phase + day-of-week (from coach-workouts).
   const def = defaultByDow(phase, dow);
   return buildPrescriptionFor(def.primary, state, phase);
