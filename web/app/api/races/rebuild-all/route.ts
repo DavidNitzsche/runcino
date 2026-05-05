@@ -18,9 +18,18 @@ import { listRacesDB } from '../../../../lib/race-store';
 export async function POST(req: Request) {
   const races = await listRacesDB();
   const origin = new URL(req.url).origin;
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Past races are locked — they're historical artifacts (the plan
+  // alongside the actualResult tells the story of what was planned vs
+  // what happened). Rebuilding them would erase that history. Only
+  // touch upcoming races, where the plan is still a living document.
+  const upcoming = races.filter(r => r.meta.date >= todayISO);
+  const skipped = races.length - upcoming.length;
+
   const results: Array<{ slug: string; ok: boolean; error?: string }> = [];
 
-  for (const race of races) {
+  for (const race of upcoming) {
     try {
       const res = await fetch(`${origin}/api/races/${encodeURIComponent(race.slug)}/rebuild`, {
         method: 'POST',
