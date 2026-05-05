@@ -10,7 +10,9 @@
       "distance_m": 42195,
       "total_gain_ft": 100,
       "total_loss_ft": 440,
-      "net_ft": -340
+      "net_ft": -340,
+      "peak_elevation_ft": 366,
+      "peak_mi": 0.0
     },
     "expected_tolerances": {
       "distance_mi": 0.4,

@@ -156,12 +156,21 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
   const days = daysUntil(race.meta.date);
   const totalMi = race.plan.race.distance_mi;
   const [editing, setEditing] = useState(false);
-  const peakFt = useMemo(() => Math.max(...points.map(p => p.eleM)) * 3.28084, [points]);
-  const peakMi = useMemo(() => {
+  const gpxPeakFt = useMemo(() => Math.max(...points.map(p => p.eleM)) * 3.28084, [points]);
+  const gpxPeakMi = useMemo(() => {
     let bestIdx = 0;
     for (let i = 1; i < points.length; i++) if (points[i].eleM > points[bestIdx].eleM) bestIdx = i;
     return points[bestIdx]?.cumMi ?? 0;
   }, [points]);
+  // Override GPX-computed peak with verified course facts when available.
+  // GPS elevation has ±10-30 ft noise that compounds; curated facts are authoritative.
+  const { peakFt, peakMi } = useMemo(() => {
+    const facts = getCourseFacts(race.meta.courseSlug);
+    return {
+      peakFt: facts?.race.expected_facts.peak_elevation_ft ?? gpxPeakFt,
+      peakMi: facts?.race.expected_facts.peak_mi ?? gpxPeakMi,
+    };
+  }, [race.meta.courseSlug, gpxPeakFt, gpxPeakMi]);
 
   // Enrich the race object with named phases from course facts (if registered).
   // All child components receive the enriched race so labels are consistent everywhere.
@@ -288,20 +297,33 @@ function enrichPhaseLabels(
   facts: CourseFacts | null
 ): SavedRace['plan']['phases'] {
   if (!facts || facts.phases.length === 0) return planPhases;
-  return planPhases.map(p => {
-    let bestLabel = p.label;
+
+  // Each facts phase donates its label to exactly one plan phase — the one
+  // with the greatest mile overlap. This prevents two plan phases that both
+  // fall inside the same facts phase from sharing the same label.
+  const labelMap = new Map<number, string>(); // planPhase index → facts label
+  const claimedOverlap = new Map<number, number>(); // planPhase index → winning overlap
+
+  for (const fp of facts.phases) {
+    let bestIdx = -1;
     let bestOverlap = 0;
-    for (const fp of facts.phases) {
-      const overlapStart = Math.max(p.start_mi, fp.start_mi);
-      const overlapEnd = Math.min(p.end_mi, fp.end_mi);
-      const overlap = Math.max(0, overlapEnd - overlapStart);
-      if (overlap > bestOverlap) {
-        bestOverlap = overlap;
-        bestLabel = fp.label;
+    for (let i = 0; i < planPhases.length; i++) {
+      const p = planPhases[i];
+      const overlap = Math.max(0, Math.min(p.end_mi, fp.end_mi) - Math.max(p.start_mi, fp.start_mi));
+      if (overlap > bestOverlap) { bestOverlap = overlap; bestIdx = i; }
+    }
+    if (bestIdx >= 0 && bestOverlap > 0) {
+      // Only overwrite a previous claim if this facts phase has more overlap
+      if (bestOverlap > (claimedOverlap.get(bestIdx) ?? 0)) {
+        labelMap.set(bestIdx, fp.label);
+        claimedOverlap.set(bestIdx, bestOverlap);
       }
     }
-    return { ...p, label: bestLabel };
-  });
+  }
+
+  return planPhases.map((p, i) =>
+    labelMap.has(i) ? { ...p, label: labelMap.get(i)! } : p
+  );
 }
 
 /* ── Poster card ────────────────────────────────────────────
