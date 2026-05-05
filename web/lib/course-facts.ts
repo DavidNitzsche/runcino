@@ -87,6 +87,7 @@ export function getCourseFacts(slug: string): CourseFacts | null {
   switch (slug) {
     case 'big-sur-marathon': return bigSur as CourseFacts;
     case 'sombrero-half':    return sombreroHalf as CourseFacts;
+    case 'cim':              return cim as CourseFacts;
     default:                 return null;
   }
 }

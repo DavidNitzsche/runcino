@@ -3,6 +3,10 @@ export type { RunType, Shoe } from './shoe-utils';
 export { recommendShoe, inferRunType } from './shoe-utils';
 import type { RunType, Shoe } from './shoe-utils';
 
+const SHOE_COLS = `id, brand, model, color, run_types,
+  mileage::float AS mileage, mileage_cap::float AS mileage_cap,
+  preferred, retired, notes, created_at`;
+
 export interface ShoeInput {
   brand: string;
   model: string;
@@ -10,22 +14,19 @@ export interface ShoeInput {
   run_types: RunType[];
   mileage?: number;
   mileage_cap?: number;
+  preferred?: boolean;
   notes?: string;
 }
 
 export async function listShoes(): Promise<Shoe[]> {
   return query<Shoe>(
-    `SELECT id, brand, model, color, run_types, mileage::float AS mileage,
-            mileage_cap::float AS mileage_cap, retired, notes, created_at
-     FROM shoes ORDER BY retired ASC, created_at ASC`,
+    `SELECT ${SHOE_COLS} FROM shoes ORDER BY retired ASC, preferred DESC, created_at ASC`,
   );
 }
 
 export async function getShoe(id: number): Promise<Shoe | null> {
   const rows = await query<Shoe>(
-    `SELECT id, brand, model, color, run_types, mileage::float AS mileage,
-            mileage_cap::float AS mileage_cap, retired, notes, created_at
-     FROM shoes WHERE id = $1`,
+    `SELECT ${SHOE_COLS} FROM shoes WHERE id = $1`,
     [id],
   );
   return rows[0] ?? null;
@@ -33,10 +34,9 @@ export async function getShoe(id: number): Promise<Shoe | null> {
 
 export async function createShoe(input: ShoeInput): Promise<Shoe> {
   const rows = await query<Shoe>(
-    `INSERT INTO shoes (brand, model, color, run_types, mileage, mileage_cap, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, brand, model, color, run_types, mileage::float AS mileage,
-               mileage_cap::float AS mileage_cap, retired, notes, created_at`,
+    `INSERT INTO shoes (brand, model, color, run_types, mileage, mileage_cap, preferred, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING ${SHOE_COLS}`,
     [
       input.brand,
       input.model,
@@ -44,6 +44,7 @@ export async function createShoe(input: ShoeInput): Promise<Shoe> {
       input.run_types,
       input.mileage ?? 0,
       input.mileage_cap ?? null,
+      input.preferred ?? true,
       input.notes ?? null,
     ],
   );
@@ -64,6 +65,7 @@ export async function updateShoe(
   if (patch.run_types !== undefined)   { fields.push(`run_types = $${idx++}`);   values.push(patch.run_types); }
   if (patch.mileage !== undefined)     { fields.push(`mileage = $${idx++}`);     values.push(patch.mileage); }
   if (patch.mileage_cap !== undefined) { fields.push(`mileage_cap = $${idx++}`); values.push(patch.mileage_cap); }
+  if (patch.preferred !== undefined)   { fields.push(`preferred = $${idx++}`);   values.push(patch.preferred); }
   if (patch.retired !== undefined)     { fields.push(`retired = $${idx++}`);     values.push(patch.retired); }
   if (patch.notes !== undefined)       { fields.push(`notes = $${idx++}`);       values.push(patch.notes); }
 
@@ -73,8 +75,7 @@ export async function updateShoe(
   const rows = await query<Shoe>(
     `UPDATE shoes SET ${fields.join(', ')}
      WHERE id = $${idx}
-     RETURNING id, brand, model, color, run_types, mileage::float AS mileage,
-               mileage_cap::float AS mileage_cap, retired, notes, created_at`,
+     RETURNING ${SHOE_COLS}`,
     values,
   );
   return rows[0] ?? null;
