@@ -279,6 +279,8 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
   peakMi: number;
 }) {
   const totalGain = race.plan.race.total_gain_ft;
+  const totalLoss = race.plan.race.total_loss_ft;
+  const netElevFt = totalGain - totalLoss;
   const narrative = narrativeFor(race.meta.courseSlug, race, peakMi, peakFt, totalGain);
   const isUpcoming = days >= 0;
   const result = race.actualResult ?? null;
@@ -407,7 +409,9 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
                 </div>
                 <div className="s">
                   <span className="l">Elevation</span>
-                  <span className="v">+{race.plan.race.total_gain_ft}<small>ft</small></span>
+                  <span className="v" style={{ color: netElevFt < -50 ? 'var(--color-recovery)' : netElevFt > 50 ? 'var(--color-warn)' : 'inherit' }}>
+                    {netElevFt >= 0 ? '+' : ''}{Math.round(netElevFt)}<small>ft net</small>
+                  </span>
                 </div>
                 <div className="s">
                   <span className="l">Goal Time</span>

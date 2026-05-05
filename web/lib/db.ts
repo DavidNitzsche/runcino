@@ -100,6 +100,42 @@ async function bootstrap(): Promise<void> {
       CREATE INDEX IF NOT EXISTS strava_activities_date_idx
         ON strava_activities ((data->>'date'));
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS shoes (
+        id            SERIAL PRIMARY KEY,
+        brand         TEXT NOT NULL,
+        model         TEXT NOT NULL,
+        color         TEXT,
+        run_types     TEXT[] NOT NULL DEFAULT '{}',
+        mileage       NUMERIC NOT NULL DEFAULT 0,
+        mileage_cap   NUMERIC,
+        retired       BOOLEAN NOT NULL DEFAULT FALSE,
+        notes         TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      ALTER TABLE strava_activities
+        ADD COLUMN IF NOT EXISTS shoe_id INTEGER REFERENCES shoes(id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS recovery_sessions (
+        id            SERIAL PRIMARY KEY,
+        date          DATE NOT NULL,
+        service       TEXT NOT NULL,
+        credits       INTEGER NOT NULL,
+        done          BOOLEAN NOT NULL DEFAULT FALSE,
+        done_at       TIMESTAMPTZ,
+        note          TEXT,
+        source        TEXT NOT NULL DEFAULT 'suggested',
+        tied_to_run   BIGINT,
+        tied_to_race  TEXT REFERENCES races(slug) ON DELETE SET NULL,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS recovery_sessions_date_idx ON recovery_sessions (date);
+    `);
   } finally {
     client.release();
   }

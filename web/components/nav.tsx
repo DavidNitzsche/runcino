@@ -5,17 +5,15 @@
 
 import Link from 'next/link';
 
-type NavKey = 'overview' | 'training' | 'races' | 'health' | 'log';
+type NavKey = 'overview' | 'training' | 'races' | 'health' | 'log' | 'profile';
 
-/** Five canonical tabs, matching designs/hub.html. Each lands on a
- *  freshly-built dark-theme page; the legacy holdover routes
- *  (retrospective, research, settings/integrations) are gone. */
 const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
   { key: 'overview', href: '/',          label: 'Overview' },
   { key: 'training', href: '/training',  label: 'Training' },
   { key: 'races',    href: '/races',     label: 'Races' },
   { key: 'health',   href: '/health',    label: 'Health' },
   { key: 'log',      href: '/log',       label: 'Log' },
+  { key: 'profile',  href: '/profile',   label: 'Profile' },
 ];
 
 export function Nav({ active }: { active?: NavKey }) {

@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { formatShort } from '../../../lib/dates';
+import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-store';
 
 interface RichActivity {
   id: number;
@@ -40,17 +41,29 @@ interface RichActivity {
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [activity, setActivity] = useState<RichActivity | null | 'loading'>('loading');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
+  const [shoes, setShoes]       = useState<Shoe[]>([]);
+  const [shoeId, setShoeId]     = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/strava/activity/${id}`, { cache: 'no-store' });
-        const json = await res.json() as { activity: RichActivity | null; error?: string };
+        const [actRes, shoeRes, assignRes] = await Promise.all([
+          fetch(`/api/strava/activity/${id}`, { cache: 'no-store' }),
+          fetch('/api/shoes'),
+          fetch(`/api/strava/activity/${id}/shoe`),
+        ]);
+        const [actJson, shoeJson, assignJson] = await Promise.all([
+          actRes.json() as Promise<{ activity: RichActivity | null; error?: string }>,
+          shoeRes.json() as Promise<{ shoes: Shoe[] }>,
+          assignRes.json() as Promise<{ shoe_id: number | null }>,
+        ]);
         if (cancelled) return;
-        if (json.error) setError(json.error);
-        setActivity(json.activity);
+        if (actJson.error) setError(actJson.error);
+        setActivity(actJson.activity);
+        setShoes(shoeJson.shoes ?? []);
+        setShoeId(assignJson.shoe_id ?? null);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -60,6 +73,19 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     })();
     return () => { cancelled = true; };
   }, [id]);
+
+  async function assignShoe(newShoeId: number | null) {
+    setShoeId(newShoeId);
+    await fetch(`/api/strava/activity/${id}/shoe`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shoe_id: newShoeId }),
+    });
+    // Refresh shoe list for updated mileage
+    const r = await fetch('/api/shoes');
+    const d = await r.json() as { shoes: Shoe[] };
+    setShoes(d.shoes ?? []);
+  }
 
   if (activity === 'loading') {
     return <Shell><div className="hint" style={{ padding: 40 }}>Loading run…</div></Shell>;
@@ -105,6 +131,12 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         <StatsTile activity={activity} />
       </div>
 
+      <ShoeTile
+        shoes={shoes}
+        shoeId={shoeId}
+        runType={inferRunType(activity.workoutType, activity.name)}
+        onAssign={assignShoe}
+      />
       {activity.bestEfforts && activity.bestEfforts.length > 0 && <BestEffortsTile efforts={activity.bestEfforts} />}
       {activity.miles && activity.miles.length > 0 && <SplitsTable miles={activity.miles} />}
       {activity.description && <DescriptionTile description={activity.description} />}
@@ -301,6 +333,86 @@ function DescriptionTile({ description }: { description: string }) {
     <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="tile-sub">Strava description</div>
       <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{description}</div>
+    </div>
+  );
+}
+
+function ShoeTile({ shoes, shoeId, runType, onAssign }: {
+  shoes: Shoe[];
+  shoeId: number | null;
+  runType: ReturnType<typeof inferRunType>;
+  onAssign: (id: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const assigned  = shoes.find(s => s.id === shoeId) ?? null;
+  const suggested = recommendShoe(shoes, runType);
+  const active    = shoes.filter(s => !s.retired);
+
+  return (
+    <div className="tile" style={{ marginBottom: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div className="tile-sub">Shoe</div>
+          {assigned
+            ? <div className="tile-lbl" style={{ fontSize: 18 }}>{assigned.brand} {assigned.model}</div>
+            : suggested
+              ? <div style={{ fontSize: 15, color: 'var(--color-t2)' }}>
+                  Suggested: <b style={{ color: 'var(--color-t0)' }}>{suggested.brand} {suggested.model}</b>
+                </div>
+              : <div style={{ fontSize: 15, color: 'var(--color-t3)' }}>No shoe assigned</div>
+          }
+          {assigned?.color && (
+            <div style={{ fontSize: 12, color: 'var(--color-t3)', marginTop: 2 }}>{assigned.color}</div>
+          )}
+        </div>
+        <button className="btn btn--ghost" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => setOpen(o => !o)}>
+          {open ? 'Close' : assigned ? 'Change' : 'Assign'}
+        </button>
+      </div>
+
+      {!assigned && suggested && !open && (
+        <button
+          className="btn btn--primary"
+          style={{ alignSelf: 'flex-start', fontSize: 12, padding: '7px 14px' }}
+          onClick={() => onAssign(suggested.id)}
+        >
+          Confirm: {suggested.model}
+        </button>
+      )}
+
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--color-l4)', paddingTop: 12 }}>
+          {active.map(s => (
+            <button key={s.id} onClick={() => { onAssign(s.id); setOpen(false); }} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 14px', borderRadius: 8,
+              background: s.id === shoeId ? 'rgba(243,173,59,.1)' : 'var(--color-l2)',
+              border: `1px solid ${s.id === shoeId ? 'var(--color-attention)' : 'var(--color-l4)'}`,
+              cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-t0)' }}>{s.brand} {s.model}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 2 }}>
+                  {s.run_types.join(' · ')} · {s.mileage.toFixed(0)} mi
+                </div>
+              </div>
+              {s.id === shoeId && <span style={{ color: 'var(--color-attention)', fontSize: 16 }}>✓</span>}
+              {s.id !== shoeId && suggested?.id === s.id && (
+                <span className="chip chip--attention" style={{ fontSize: 9 }}>suggested</span>
+              )}
+            </button>
+          ))}
+          {shoeId && (
+            <button onClick={() => { onAssign(null); setOpen(false); }} style={{
+              padding: '8px 14px', borderRadius: 8, background: 'transparent',
+              border: '1px solid var(--color-l4)', color: 'var(--color-t3)',
+              fontSize: 12, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+            }}>
+              Remove shoe
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
