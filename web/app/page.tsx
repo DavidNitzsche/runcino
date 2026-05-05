@@ -440,8 +440,18 @@ interface CoachStrengthPayload {
   durationMin: number;
   description: string;
   ampMode: 'Fixed' | 'Band' | 'Eccentric' | 'Mobility';
+  workout: CoachAmpWorkout | null;
   ampSuggestions: string[];
   focus: string[];
+}
+interface CoachAmpWorkout {
+  id: string;
+  name: string;
+  durationMin: 30 | 45;
+  ampMode: 'Fixed' | 'Band' | 'Eccentric' | 'Mobility';
+  intent: string;
+  blocks: Array<{ section: string; items: Array<{ name: string; sets: string; notes?: string }> }>;
+  benefit: string;
 }
 interface CoachTodayPayload {
   mode: 'race' | 'base';
@@ -558,43 +568,7 @@ function CoachTodayCard() {
             </div>
           </div>
 
-          {payload.strength && (
-            <div style={{
-              padding: '16px 18px', borderRadius: 10,
-              background: 'linear-gradient(135deg, rgba(144,19,254,.08), var(--color-l2))',
-              border: '1px solid rgba(144,19,254,.25)',
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-xp, #9013FE)' }}>Strength · Amp</div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', padding: '2px 6px', borderRadius: 3, background: 'rgba(144,19,254,.18)', color: '#B26CFF' }}>
-                    {payload.strength.ampMode.toUpperCase()} MODE
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{payload.strength.durationMin} MIN</span>
-                </div>
-              </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.015em', lineHeight: 1, color: 'var(--color-t0)', textTransform: 'uppercase' }}>
-                {payload.strength.label}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55 }}>
-                {payload.strength.description}
-              </div>
-              {payload.strength.ampSuggestions.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                  {payload.strength.ampSuggestions.map(a => (
-                    <span key={a} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'var(--color-l3)', color: 'var(--color-t1)', border: '1px solid var(--color-l4)' }}>{a}</span>
-                  ))}
-                </div>
-              )}
-              {payload.strength.focus.length > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4 }}>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>FOCUS · </span>
-                  {payload.strength.focus.join(' · ')}
-                </div>
-              )}
-            </div>
-          )}
+          {payload.strength && <StrengthTile strength={payload.strength} />}
         </div>
 
         <div style={{
@@ -670,6 +644,98 @@ function CoachTodayCard() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Strength tile ──────────────────────────────────────────
+   Renders the Amp prescription with the full curated workout when
+   one is attached: name, intent, blocks (warm-up / main / finisher),
+   each block listing every movement with sets + notes. Falls back
+   to the legacy "focus list" rendering when no full workout is
+   attached. */
+function StrengthTile({ strength }: { strength: CoachStrengthPayload }) {
+  const [expanded, setExpanded] = useState(false);
+  const w = strength.workout;
+  return (
+    <div style={{
+      padding: '16px 18px', borderRadius: 10,
+      background: 'linear-gradient(135deg, rgba(144,19,254,.08), var(--color-l2))',
+      border: '1px solid rgba(144,19,254,.25)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: '#B26CFF' }}>Strength · Amp</div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', padding: '2px 6px', borderRadius: 3, background: 'rgba(144,19,254,.18)', color: '#B26CFF' }}>
+            {(w?.ampMode ?? strength.ampMode).toUpperCase()} MODE
+          </span>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{w?.durationMin ?? strength.durationMin} MIN</span>
+        </div>
+      </div>
+
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.015em', lineHeight: 1, color: 'var(--color-t0)', textTransform: 'uppercase' }}>
+        {w?.name ?? strength.label}
+      </div>
+
+      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55 }}>
+        {w?.intent ?? strength.description}
+      </div>
+
+      {w && w.blocks.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            style={{
+              alignSelf: 'flex-start',
+              padding: '6px 12px',
+              fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.4px',
+              background: 'transparent',
+              color: '#B26CFF',
+              border: '1px solid rgba(144,19,254,.35)',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >{expanded ? '▾ HIDE WORKOUT' : '▸ SHOW WORKOUT'}</button>
+
+          {expanded && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+              {w.blocks.map((b, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: '#B26CFF' }}>
+                    {b.section}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 6, borderLeft: '2px solid rgba(144,19,254,.25)' }}>
+                    {b.items.map((it, j) => (
+                      <div key={j} style={{ paddingLeft: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>{it.name}</span>
+                          <span style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.5px', color: 'var(--color-t2)' }}>{it.sets}</span>
+                        </div>
+                        {it.notes && (
+                          <div style={{ fontSize: 12, color: 'var(--color-t3)', lineHeight: 1.45, marginTop: 2 }}>{it.notes}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div style={{ fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.55, marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--color-l4)' }}>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>WHY · </span>
+                {w.benefit}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {!w && strength.focus.length > 0 && (
+        <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4 }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>FOCUS · </span>
+          {strength.focus.join(' · ')}
+        </div>
+      )}
+    </div>
   );
 }
 

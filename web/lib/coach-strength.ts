@@ -30,23 +30,25 @@
 
 import { strengthCadence, type StrengthCadence, type StrengthSessionType, type Phase } from './coach-principles';
 import type { CoachState } from './coach-state';
+import { pickAmpWorkout, isoWeekNumber, type AmpWorkout } from './amp-workouts';
 
 export type AmpMode = 'Fixed' | 'Band' | 'Eccentric' | 'Mobility';
 
 export interface StrengthPrescription {
-  type: StrengthSessionType;          // heavy / power / maintenance / mobility / rest
-  /** Display label for the dashboard card. */
+  type: StrengthSessionType;
   label: string;
-  /** Approximate session duration in minutes. */
   durationMin: number;
-  /** Plain-English description — what to do today on Amp. */
   description: string;
-  /** Amp resistance mode the day calls for. */
   ampMode: AmpMode;
-  /** Specific Amp program suggestions (run-relevant, picked from real
-   *  Amp library categories). User picks one in the Amp app. */
+  /** The full curated Amp workout for the day — name, blocks of
+   *  movements, intent, benefit. Surfaced on the dashboard so the
+   *  runner can follow it directly or use it as a template for an
+   *  Amp AI-generated session. null when no curated match. */
+  workout: AmpWorkout | null;
+  /** Legacy fields — keep for callers that haven't migrated to the
+   *  workout structure. focus is the bullet list shown when no full
+   *  workout structure is rendered. */
   ampSuggestions: string[];
-  /** Movement focus — running-specific where possible per amp doc §11. */
   focus: string[];
 }
 
@@ -85,7 +87,22 @@ export function prescribeStrength(
   return buildPrescription(desired, phase);
 }
 
+/** Bundle in the rotating curated Amp workout for the prescription's
+ *  session type + phase. Same week always picks the same workout
+ *  (deterministic via ISO week number) so the runner can plan
+ *  around it; consecutive weeks rotate through the catalog. */
+function attachAmpWorkout(p: StrengthPrescription, phase: Phase): StrengthPrescription {
+  if (p.type === 'rest') return p;
+  const wk = isoWeekNumber();
+  const w = pickAmpWorkout(p.type, phase, wk);
+  return { ...p, workout: w };
+}
+
 function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPrescription {
+  return attachAmpWorkout(buildPrescriptionInner(type, phase), phase);
+}
+
+function buildPrescriptionInner(type: StrengthSessionType, phase: Phase): StrengthPrescription {
   switch (type) {
     case 'heavy':
       // BASE / BUILD heavy day — runner-first. Doc §11 says eccentric
@@ -98,6 +115,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
         durationMin: 35,
         description: 'Heavy compound work · 3-5 sets × 3-6 reps at high cable tension · long rest (2-3 min) · focus on intent and bar speed, not failure. Amp\'s Eccentric mode (heavier on the lowering phase) doubles as runner-specific tendon protection — Achilles, patellar, hamstring complex.',
         ampMode: phase === 'BUILD' || phase === 'BASE' ? 'Eccentric' : 'Fixed',
+        workout: null,
         ampSuggestions: ['Lower Body Strength', 'Posterior Chain Power', 'Single-Leg Strength'],
         focus: [
           'Single-leg Romanian deadlift (Stiff Deadlift, single-leg variant) — hamstring + glute, eccentric overload',
@@ -116,6 +134,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
         durationMin: 30,
         description: 'Plyo + power · 3-5 sets × 5-10 contacts · fully recovered between sets · explosive intent. Amp\'s Band mode loads peak contraction at the top of the movement — ideal for jump squats, donkey kicks, hip-drive work. Caps neuromuscular sharpness without aerobic cost.',
         ampMode: 'Band',
+        workout: null,
         ampSuggestions: ['Plyometric Athletic', 'Jump + Lift Combo', 'Lower-Body Power'],
         focus: [
           'Resisted Jump Squat — explosive triple-extension',
@@ -133,6 +152,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
         durationMin: 20,
         description: 'Lower volume, intensity preserved · maintain force capacity, no chasing gains. Amp Fixed mode for predictable load comparison.',
         ampMode: 'Fixed',
+        workout: null,
         ampSuggestions: ['Lower Body 20', 'Quick Strength Maintenance', 'Glute & Core Activation'],
         focus: [
           'Bilateral squat (3 × 5 at 75% 1RM equivalent)',
@@ -149,6 +169,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
         durationMin: 20,
         description: 'Hip openers, ankle/calf range, T-spine, glute activation · light cable feedback through stretches · no heavy load. Amp\'s mobility library is underused by most owners — treat it as legitimate work, not filler.',
         ampMode: 'Mobility',
+        workout: null,
         ampSuggestions: ['Mobility Flow', 'Hip + Ankle Range', 'Recovery Day'],
         focus: [
           'Hip flexor / 90/90 / pigeon — desk-runner staple',
@@ -163,7 +184,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
       return {
         type: 'rest', label: 'No strength today',
         durationMin: 0, description: 'Skip — recovery is the workout.',
-        ampMode: 'Fixed', ampSuggestions: [], focus: [],
+        ampMode: 'Fixed', workout: null, ampSuggestions: [], focus: [],
       };
   }
 }
