@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Nav from '../nav';
-import type { Shoe, RunType } from '../../lib/shoe-store';
+import { Nav } from '../../components/nav';
+import type { Shoe, RunType } from '../../lib/shoe-utils';
 
 const RUN_TYPE_LABELS: Record<RunType, string> = {
   race:       'Race',

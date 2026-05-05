@@ -24,27 +24,29 @@ export interface Service {
   key: ServiceKey;
   name: string;
   credits: number;
+  /** Primary use cases — a service can serve multiple purposes */
+  use: Array<'recovery' | 'performance' | 'maintenance'>;
   tags: string[];
   description: string;
 }
 
 export const SERVICES: Record<ServiceKey, Service> = {
-  cryo:          { key: 'cryo',          name: 'Cryotherapy',          credits: 1, tags: ['inflammation', 'quick'],        description: 'Whole-body ultra-cold exposure' },
-  led:           { key: 'led',           name: 'LED Light Bed',        credits: 1, tags: ['cellular', 'maintenance'],      description: 'Full-body cellular repair + ATP' },
-  float:         { key: 'float',         name: 'Float Therapy',        credits: 3, tags: ['mental', 'reset'],              description: 'Sensory deprivation + Epsom salt' },
-  sauna_30:      { key: 'sauna_30',      name: 'Infrared Sauna 30',    credits: 3, tags: ['heat', 'circulation'],          description: '30-min infrared sauna' },
-  sauna_60:      { key: 'sauna_60',      name: 'Infrared Sauna 60',    credits: 4, tags: ['heat', 'circulation'],          description: '60-min infrared sauna' },
-  contrast_30:   { key: 'contrast_30',   name: 'Contrast 30',          credits: 4, tags: ['contrast', 'circulation'],      description: 'Sauna + cold plunge 30 min' },
-  contrast_60:   { key: 'contrast_60',   name: 'Contrast 60',          credits: 6, tags: ['contrast', 'deep-recovery'],    description: 'Sauna + cold plunge 60 min' },
-  massage_60:    { key: 'massage_60',    name: 'Aescape Massage 60',   credits: 6, tags: ['massage', 'tissue'],            description: 'AI robotic massage 60 min' },
-  iv_invigorate: { key: 'iv_invigorate', name: 'IV · Invigorate',      credits: 9, tags: ['iv', 'energy', 'pre-race'],    description: 'B12 + B vitamins — focus, energy, clarity' },
-  iv_balance:    { key: 'iv_balance',    name: 'IV · Balance',         credits: 9, tags: ['iv', 'nervous-system'],         description: 'Daily essentials — nervous system regulation' },
-  iv_turbo:      { key: 'iv_turbo',      name: 'IV · Turbo',           credits: 9, tags: ['iv', 'recovery', 'repair'],    description: 'Amino acids + B vitamins + Mg — tissue repair' },
-  iv_pause:      { key: 'iv_pause',      name: 'IV · Pause',           credits: 9, tags: ['iv', 'sleep', 'cortisol'],     description: 'High Mg + zinc — stress + deep sleep' },
-  iv_defense:    { key: 'iv_defense',    name: 'IV · Defense',         credits: 9, tags: ['iv', 'immunity'],              description: 'Vitamin C + zinc — immune + oxidative stress' },
-  iv_radiate:    { key: 'iv_radiate',    name: 'IV · Radiate',         credits: 9, tags: ['iv', 'collagen'],              description: 'Vitamins + minerals for collagen' },
-  iv_recover:    { key: 'iv_recover',    name: 'IV · Recover',         credits: 9, tags: ['iv', 'recovery', 'post-race'], description: 'Antioxidants + vitamins — aches, post-race' },
-  iv_hydrate:    { key: 'iv_hydrate',    name: 'IV · Hydrate',         credits: 9, tags: ['iv', 'hydration'],             description: 'Pure hydration, no additives' },
+  cryo:          { key: 'cryo',          name: 'Cryotherapy',          credits: 1, use: ['recovery', 'performance'],            tags: ['inflammation', 'quick'],         description: 'Whole-body cold — reduce inflammation, stimulate circulation' },
+  led:           { key: 'led',           name: 'LED Light Bed',        credits: 1, use: ['maintenance', 'recovery'],            tags: ['cellular', 'atp'],               description: 'Full-body red/near-IR light — cellular repair + ATP production' },
+  float:         { key: 'float',         name: 'Float Therapy',        credits: 3, use: ['recovery', 'maintenance'],            tags: ['mental', 'passive-recovery'],    description: 'Sensory deprivation + Epsom salt — nervous system reset, mental clarity' },
+  sauna_30:      { key: 'sauna_30',      name: 'Infrared Sauna 30',    credits: 3, use: ['performance', 'maintenance', 'recovery'], tags: ['heat', 'circulation', 'hormonal'], description: '30-min infrared sauna — heat adaptation, blood flow, hormonal priming' },
+  sauna_60:      { key: 'sauna_60',      name: 'Infrared Sauna 60',    credits: 4, use: ['performance', 'maintenance', 'recovery'], tags: ['heat', 'circulation', 'hormonal'], description: '60-min infrared sauna — deep heat exposure for adaptation and recovery' },
+  contrast_30:   { key: 'contrast_30',   name: 'Contrast 30',          credits: 4, use: ['recovery', 'performance'],            tags: ['contrast', 'circulation'],       description: 'Sauna + cold plunge 30 min — vasodilation/constriction cycle, inflammation' },
+  contrast_60:   { key: 'contrast_60',   name: 'Contrast 60',          credits: 6, use: ['recovery'],                           tags: ['contrast', 'deep-recovery'],     description: 'Sauna + cold plunge 60 min — deep tissue recovery after hard efforts' },
+  massage_60:    { key: 'massage_60',    name: 'Aescape Massage 60',   credits: 6, use: ['recovery', 'maintenance'],            tags: ['massage', 'tissue', 'aescape'],  description: 'Robotic precision massage 60 min — tissue work, adhesion, circulation' },
+  iv_invigorate: { key: 'iv_invigorate', name: 'IV · Invigorate',      credits: 9, use: ['performance'],                        tags: ['iv', 'energy', 'pre-race'],      description: 'B12 + B vitamins — energy, focus, mental clarity. Pre-race or pre-workout priming' },
+  iv_balance:    { key: 'iv_balance',    name: 'IV · Balance',         credits: 9, use: ['maintenance'],                        tags: ['iv', 'nervous-system'],          description: 'Daily essentials — nervous system regulation, general wellness' },
+  iv_turbo:      { key: 'iv_turbo',      name: 'IV · Turbo',           credits: 9, use: ['recovery', 'performance'],            tags: ['iv', 'repair', 'amino-acids'],   description: 'Amino acids + B vitamins + Mg — muscle repair, strength, tissue recovery' },
+  iv_pause:      { key: 'iv_pause',      name: 'IV · Pause',           credits: 9, use: ['recovery', 'maintenance'],            tags: ['iv', 'sleep', 'cortisol'],       description: 'High Mg + zinc — cortisol regulation, deep sleep, nervous system calm' },
+  iv_defense:    { key: 'iv_defense',    name: 'IV · Defense',         credits: 9, use: ['maintenance'],                        tags: ['iv', 'immunity'],                description: 'Vitamin C + zinc — immune system + oxidative stress management' },
+  iv_radiate:    { key: 'iv_radiate',    name: 'IV · Radiate',         credits: 9, use: ['maintenance'],                        tags: ['iv', 'collagen', 'skin'],        description: 'Vitamins + minerals for collagen production and connective tissue' },
+  iv_recover:    { key: 'iv_recover',    name: 'IV · Recover',         credits: 9, use: ['recovery'],                           tags: ['iv', 'antioxidants', 'post-race'], description: 'Antioxidants + vitamins — post-race aches, oxidative damage, rebound' },
+  iv_hydrate:    { key: 'iv_hydrate',    name: 'IV · Hydrate',         credits: 9, use: ['recovery', 'performance'],            tags: ['iv', 'hydration'],               description: 'Pure IV hydration — race-day prep, post-race replenishment, travel' },
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
