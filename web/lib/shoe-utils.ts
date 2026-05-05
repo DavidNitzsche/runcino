@@ -15,6 +15,7 @@ export interface Shoe {
   run_types: RunType[];
   mileage: number;
   mileage_cap: number | null;
+  preferred: boolean;
   retired: boolean;
   notes: string | null;
   created_at: string;

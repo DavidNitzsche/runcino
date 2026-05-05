@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Nav } from '../../components/nav';
+import { Modal } from '../../components/modal';
 import type { Shoe, RunType } from '../../lib/shoe-utils';
 
 const RUN_TYPE_LABELS: Record<RunType, string> = {
@@ -25,12 +26,11 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DEFAULT_LONG_DAY = 'Sun';
 
 export default function ProfilePage() {
-  const [shoes, setShoes]     = useState<Shoe[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<number | null>(null);
-  const [adding, setAdding]   = useState(false);
-  const [longDay, setLongDay] = useState(DEFAULT_LONG_DAY);
-  const [easyDays, setEasyDays] = useState<string[]>(['Tue', 'Thu', 'Sat']);
+  const [shoes, setShoes]       = useState<Shoe[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [editingShoe, setEditingShoe] = useState<Shoe | null>(null);
+  const [addingShoe, setAddingShoe]   = useState(false);
+  const [longDay, setLongDay]   = useState(DEFAULT_LONG_DAY);
 
   useEffect(() => {
     fetch('/api/shoes')
@@ -57,10 +57,10 @@ export default function ProfilePage() {
     });
     const d = await res.json();
     setShoes(s => s.map(x => x.id === id ? d.shoe : x));
-    setEditing(null);
+    setEditingShoe(null);
   }
 
-  async function addShoe(input: { brand: string; model: string; color: string; run_types: RunType[]; mileage_cap: number }) {
+  async function addShoe(input: { brand: string; model: string; color: string; run_types: RunType[]; mileage: number; mileage_cap: number; preferred: boolean; notes: string }) {
     const res = await fetch('/api/shoes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -68,7 +68,7 @@ export default function ProfilePage() {
     });
     const d = await res.json();
     setShoes(s => [...s, d.shoe]);
-    setAdding(false);
+    setAddingShoe(false);
   }
 
   const active  = shoes.filter(s => !s.retired);
@@ -79,7 +79,6 @@ export default function ProfilePage() {
       <Nav active="profile" />
       <div className="body">
 
-        {/* ── Page header ─────────────────────────────────────────── */}
         <div className="page-head" style={{ marginBottom: 32 }}>
           <div>
             <div className="eyebrow" style={{ marginBottom: 8 }}>ATHLETE PROFILE</div>
@@ -87,11 +86,10 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Training day preferences ─────────────────────────────── */}
+        {/* ── Training preferences ──────────────────────────────── */}
         <section style={{ marginBottom: 40 }}>
-          <div className="tile-sub" style={{ marginBottom: 16 }}>TRAINING SCHEDULE PREFERENCES</div>
-          <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
+          <div className="tile-sub" style={{ marginBottom: 16 }}>TRAINING SCHEDULE</div>
+          <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 10, fontWeight: 500 }}>
                 Long run day
@@ -102,14 +100,11 @@ export default function ProfilePage() {
                     key={d}
                     onClick={() => setLongDay(d)}
                     style={{
-                      padding: '7px 12px',
-                      borderRadius: 8,
-                      border: '1px solid',
+                      padding: '7px 12px', borderRadius: 8, border: '1px solid', cursor: 'pointer',
                       borderColor: longDay === d ? 'var(--color-attention)' : 'var(--color-l4)',
                       background: longDay === d ? 'var(--color-attention)' : 'transparent',
                       color: longDay === d ? 'var(--color-l0)' : 'var(--color-t2)',
-                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                      fontFamily: 'inherit',
+                      fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
                     }}
                   >
                     {d}
@@ -117,50 +112,20 @@ export default function ProfilePage() {
                 ))}
               </div>
             </div>
-
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 10, fontWeight: 500 }}>
-                Easy / recovery run days
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {DAYS.map(d => {
-                  const on = easyDays.includes(d);
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => setEasyDays(prev => on ? prev.filter(x => x !== d) : [...prev, d])}
-                      style={{
-                        padding: '7px 12px',
-                        borderRadius: 8,
-                        border: '1px solid',
-                        borderColor: on ? 'var(--color-corporate)' : 'var(--color-l4)',
-                        background: on ? 'rgba(79,143,247,0.12)' : 'transparent',
-                        color: on ? 'var(--color-corporate)' : 'var(--color-t2)',
-                        fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      {d}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)' }}>
-              Coach uses these to shape your weekly plan — long run anchors the week, easy days fill around it.
+              Long run anchors the week. Coach fills remaining days as training load requires.
             </div>
           </div>
         </section>
 
-        {/* ── Shoe Closet ─────────────────────────────────────────── */}
+        {/* ── Shoe Closet ──────────────────────────────────────── */}
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div className="tile-sub">SHOE CLOSET</div>
             <button
               className="btn btn--primary"
               style={{ padding: '8px 16px', fontSize: 12 }}
-              onClick={() => setAdding(true)}
+              onClick={() => setAddingShoe(true)}
             >
               + Add shoe
             </button>
@@ -170,71 +135,104 @@ export default function ProfilePage() {
             <div style={{ color: 'var(--color-t3)', fontSize: 13, padding: '24px 0' }}>Loading closet…</div>
           )}
 
-          {/* Active shoes */}
           {active.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 16 }}>
               {active.map(shoe => (
-                editing === shoe.id
-                  ? <ShoeEditCard key={shoe.id} shoe={shoe} onSave={p => saveShoe(shoe.id, p)} onCancel={() => setEditing(null)} />
-                  : <ShoeCard key={shoe.id} shoe={shoe} onEdit={() => setEditing(shoe.id)} onToggleRetired={() => toggleRetired(shoe)} />
+                <ShoeCard
+                  key={shoe.id}
+                  shoe={shoe}
+                  onEdit={() => setEditingShoe(shoe)}
+                  onToggleRetired={() => toggleRetired(shoe)}
+                />
               ))}
             </div>
           )}
 
-          {/* Add form */}
-          {adding && (
-            <ShoeAddCard onAdd={addShoe} onCancel={() => setAdding(false)} />
-          )}
-
-          {/* Retired */}
           {retired.length > 0 && (
             <div style={{ marginTop: 24 }}>
               <div className="tile-sub" style={{ marginBottom: 12, opacity: 0.6 }}>RETIRED</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                 {retired.map(shoe => (
-                  <ShoeCard key={shoe.id} shoe={shoe} retired onEdit={() => setEditing(shoe.id)} onToggleRetired={() => toggleRetired(shoe)} />
+                  <ShoeCard
+                    key={shoe.id}
+                    shoe={shoe}
+                    retired
+                    onEdit={() => setEditingShoe(shoe)}
+                    onToggleRetired={() => toggleRetired(shoe)}
+                  />
                 ))}
               </div>
             </div>
           )}
         </section>
-
       </div>
+
+      {/* ── Modals ───────────────────────────────────────────────── */}
+      {addingShoe && (
+        <Modal title="New shoe" onClose={() => setAddingShoe(false)}>
+          <ShoeForm
+            onSave={data => addShoe(data)}
+            onCancel={() => setAddingShoe(false)}
+            submitLabel="Add to closet"
+          />
+        </Modal>
+      )}
+
+      {editingShoe && (
+        <Modal title={`${editingShoe.brand} ${editingShoe.model}`} onClose={() => setEditingShoe(null)}>
+          <ShoeForm
+            initial={editingShoe}
+            onSave={data => saveShoe(editingShoe.id, data)}
+            onCancel={() => setEditingShoe(null)}
+            submitLabel="Save changes"
+          />
+        </Modal>
+      )}
     </div>
   );
 }
 
-// ── Shoe card ────────────────────────────────────────────────────────────────
+// ── Shoe card ─────────────────────────────────────────────────────────────────
 
 function ShoeCard({
   shoe, retired = false, onEdit, onToggleRetired,
 }: {
   shoe: Shoe; retired?: boolean; onEdit: () => void; onToggleRetired: () => void;
 }) {
-  const cap    = shoe.mileage_cap ?? 500;
-  const pct    = Math.min(100, (shoe.mileage / cap) * 100);
-  const warn   = pct >= 80;
-  const barClr = warn ? 'var(--color-warning)' : 'var(--color-success)';
+  const cap     = shoe.mileage_cap ?? 500;
+  const pct     = Math.min(100, (shoe.mileage / cap) * 100);
+  const warning = pct >= 80 && pct < 100;
+  const over    = pct >= 100;
+  const barClr  = over ? 'var(--color-race)' : warning ? 'var(--color-warn)' : 'var(--color-success)';
 
   return (
     <div className="tile" style={{ opacity: retired ? 0.55 : 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div className="tile-sub">{shoe.brand.toUpperCase()}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <div className="tile-sub">{shoe.brand.toUpperCase()}</div>
+            {shoe.preferred && !retired && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: '1px',
+                padding: '2px 6px', borderRadius: 3,
+                background: 'rgba(62,189,65,0.12)', color: 'var(--color-success)',
+                textTransform: 'uppercase',
+              }}>IN ROTATION</span>
+            )}
+          </div>
           <div className="tile-lbl" style={{ fontSize: 18, marginTop: 2 }}>{shoe.model}</div>
           {shoe.color && (
             <div style={{ fontSize: 12, color: 'var(--color-t3)', marginTop: 2 }}>{shoe.color}</div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={onEdit} style={iconBtnStyle}>✏</button>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button onClick={onEdit} style={iconBtnStyle} title="Edit">✏</button>
           <button onClick={onToggleRetired} title={retired ? 'Restore' : 'Retire'} style={iconBtnStyle}>
             {retired ? '↩' : '✕'}
           </button>
         </div>
       </div>
 
-      {/* Run types */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {shoe.run_types.map(t => (
           <span key={t} style={{
@@ -247,12 +245,11 @@ function ShoeCard({
         ))}
       </div>
 
-      {/* Mileage bar */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--color-t3)', marginBottom: 4 }}>
           <span>{shoe.mileage.toFixed(0)} mi</span>
-          <span style={{ color: warn ? 'var(--color-warning)' : undefined }}>
-            {warn ? '⚠ ' : ''}{cap} mi cap
+          <span style={{ color: over ? 'var(--color-race)' : warning ? 'var(--color-warn)' : undefined }}>
+            {over ? '⚠ Retire — ' : warning ? '⚠ ' : ''}{cap} mi cap
           </span>
         </div>
         <div style={{ height: 4, background: 'var(--color-l3)', borderRadius: 2, overflow: 'hidden' }}>
@@ -269,98 +266,37 @@ function ShoeCard({
   );
 }
 
-// ── Edit card ────────────────────────────────────────────────────────────────
+// ── Shared shoe form (add + edit) ─────────────────────────────────────────────
 
-function ShoeEditCard({ shoe, onSave, onCancel }: {
-  shoe: Shoe;
-  onSave: (p: Partial<Shoe>) => void;
+function ShoeForm({
+  initial,
+  onSave,
+  onCancel,
+  submitLabel,
+}: {
+  initial?: Shoe;
+  onSave: (data: { brand: string; model: string; color: string; run_types: RunType[]; mileage: number; mileage_cap: number; preferred: boolean; notes: string }) => void;
   onCancel: () => void;
+  submitLabel: string;
 }) {
-  const [brand, setBrand]     = useState(shoe.brand);
-  const [model, setModel]     = useState(shoe.model);
-  const [color, setColor]     = useState(shoe.color ?? '');
-  const [types, setTypes]     = useState<RunType[]>(shoe.run_types);
-  const [cap, setCap]         = useState(String(shoe.mileage_cap ?? ''));
-  const [mileage, setMileage] = useState(String(shoe.mileage));
-  const [notes, setNotes]     = useState(shoe.notes ?? '');
-
-  const toggleType = (t: RunType) =>
-    setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
-
-  return (
-    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--color-attention)' }}>
-      <div className="tile-sub">EDITING</div>
-      <input className="runcino-input" value={brand} onChange={e => setBrand(e.target.value)} placeholder="Brand" />
-      <input className="runcino-input" value={model} onChange={e => setModel(e.target.value)} placeholder="Model" />
-      <input className="runcino-input" value={color} onChange={e => setColor(e.target.value)} placeholder="Color" />
-      <div>
-        <div className="runcino-label">Run types</div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {ALL_RUN_TYPES.map(t => {
-            const on = types.includes(t);
-            return (
-              <button key={t} onClick={() => toggleType(t)} style={{
-                padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
-                borderColor: on ? 'var(--color-attention)' : 'var(--color-l4)',
-                background: on ? 'var(--color-attention)' : 'transparent',
-                color: on ? 'var(--color-l0)' : 'var(--color-t2)',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-              }}>
-                {RUN_TYPE_LABELS[t]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <div>
-          <div className="runcino-label">Current mileage</div>
-          <input className="runcino-input" type="number" value={mileage} onChange={e => setMileage(e.target.value)} />
-        </div>
-        <div>
-          <div className="runcino-label">Mileage cap</div>
-          <input className="runcino-input" type="number" value={cap} onChange={e => setCap(e.target.value)} />
-        </div>
-      </div>
-      <input className="runcino-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)" />
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--primary" style={{ flex: 1 }} onClick={() => onSave({
-          brand, model, color: color || null,
-          run_types: types,
-          mileage: parseFloat(mileage) || 0,
-          mileage_cap: cap ? parseFloat(cap) : null,
-          notes: notes || null,
-        })}>
-          Save
-        </button>
-        <button className="btn btn--ghost" onClick={onCancel}>Cancel</button>
-      </div>
-    </div>
-  );
-}
-
-// ── Add card ─────────────────────────────────────────────────────────────────
-
-function ShoeAddCard({ onAdd, onCancel }: {
-  onAdd: (input: { brand: string; model: string; color: string; run_types: RunType[]; mileage_cap: number }) => void;
-  onCancel: () => void;
-}) {
-  const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [color, setColor] = useState('');
-  const [types, setTypes] = useState<RunType[]>([]);
-  const [cap, setCap]     = useState('');
+  const [brand,     setBrand]     = useState(initial?.brand ?? '');
+  const [model,     setModel]     = useState(initial?.model ?? '');
+  const [color,     setColor]     = useState(initial?.color ?? '');
+  const [types,     setTypes]     = useState<RunType[]>(initial?.run_types ?? []);
+  const [mileage,   setMileage]   = useState(String(initial?.mileage ?? 0));
+  const [cap,       setCap]       = useState(String(initial?.mileage_cap ?? ''));
+  const [preferred, setPreferred] = useState(initial?.preferred ?? true);
+  const [notes,     setNotes]     = useState(initial?.notes ?? '');
 
   const toggleType = (t: RunType) =>
     setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
   const defaultCap = types.length > 0 ? MILEAGE_CAPS[types[0]] : 400;
+  const canSubmit = brand.trim() && model.trim() && types.length > 0;
 
   return (
-    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--color-attention)', marginBottom: 16 }}>
-      <div className="tile-sub">NEW SHOE</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <div className="runcino-label">Brand</div>
           <input className="runcino-input" value={brand} onChange={e => setBrand(e.target.value)} placeholder="e.g. Nike" />
@@ -370,18 +306,20 @@ function ShoeAddCard({ onAdd, onCancel }: {
           <input className="runcino-input" value={model} onChange={e => setModel(e.target.value)} placeholder="e.g. Vaporfly 3" />
         </div>
       </div>
+
       <div>
         <div className="runcino-label">Color</div>
         <input className="runcino-input" value={color} onChange={e => setColor(e.target.value)} placeholder="e.g. Black / White" />
       </div>
+
       <div>
         <div className="runcino-label">Run types</div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
           {ALL_RUN_TYPES.map(t => {
             const on = types.includes(t);
             return (
               <button key={t} onClick={() => toggleType(t)} style={{
-                padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                 border: '1px solid', cursor: 'pointer', fontFamily: 'inherit',
                 borderColor: on ? 'var(--color-attention)' : 'var(--color-l4)',
                 background: on ? 'var(--color-attention)' : 'transparent',
@@ -394,18 +332,73 @@ function ShoeAddCard({ onAdd, onCancel }: {
           })}
         </div>
       </div>
-      <div>
-        <div className="runcino-label">Mileage cap (default {defaultCap} mi)</div>
-        <input className="runcino-input" type="number" value={cap} onChange={e => setCap(e.target.value)} placeholder={String(defaultCap)} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <div className="runcino-label">Current mileage</div>
+          <input className="runcino-input" type="number" min="0" value={mileage}
+            onChange={e => setMileage(e.target.value)} placeholder="0" />
+        </div>
+        <div>
+          <div className="runcino-label">Mileage cap (default {defaultCap} mi)</div>
+          <input className="runcino-input" type="number" min="0" value={cap}
+            onChange={e => setCap(e.target.value)} placeholder={String(defaultCap)} />
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+
+      <div>
+        <div className="runcino-label">Notes</div>
+        <input className="runcino-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+      </div>
+
+      {/* Preferred rotation toggle */}
+      <button
+        onClick={() => setPreferred(p => !p)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 14px', borderRadius: 10,
+          border: '1px solid',
+          borderColor: preferred ? 'var(--color-success)' : 'var(--color-l4)',
+          background: preferred ? 'rgba(62,189,65,0.08)' : 'transparent',
+          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+        }}
+      >
+        <div style={{
+          width: 20, height: 20, borderRadius: 5, border: '1.5px solid',
+          borderColor: preferred ? 'var(--color-success)' : 'var(--color-l4)',
+          background: preferred ? 'var(--color-success)' : 'transparent',
+          display: 'grid', placeItems: 'center', flexShrink: 0,
+          color: '#fff', fontSize: 12, fontWeight: 700,
+        }}>
+          {preferred ? '✓' : ''}
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: preferred ? 'var(--color-success)' : 'var(--color-t2)' }}>
+            In active rotation
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 2 }}>
+            Coach assigns this shoe to runs automatically
+          </div>
+        </div>
+      </button>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
         <button
           className="btn btn--primary"
           style={{ flex: 1 }}
-          disabled={!brand || !model || types.length === 0}
-          onClick={() => onAdd({ brand, model, color, run_types: types, mileage_cap: cap ? parseFloat(cap) : defaultCap })}
+          disabled={!canSubmit}
+          onClick={() => onSave({
+            brand: brand.trim(),
+            model: model.trim(),
+            color: color.trim(),
+            run_types: types,
+            mileage: parseFloat(mileage) || 0,
+            mileage_cap: cap ? parseFloat(cap) : defaultCap,
+            preferred,
+            notes: notes.trim(),
+          })}
         >
-          Add to closet
+          {submitLabel}
         </button>
         <button className="btn btn--ghost" onClick={onCancel}>Cancel</button>
       </div>

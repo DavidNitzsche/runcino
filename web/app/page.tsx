@@ -13,6 +13,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
+import { Modal } from '../components/modal';
 import { listRaces, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
@@ -1090,17 +1091,24 @@ interface RecoveryCredits {
   remaining: number;
   resetDate: string;
 }
-interface ServiceDef { name: string; credits: number; category: string }
+interface ServiceDef { name: string; credits: number; category: string; description?: string }
+
+// Groups for the service picker modal
+const SERVICE_GROUPS: { label: string; keys: string[] }[] = [
+  { label: 'Recovery',    keys: ['cryo', 'contrast_30', 'contrast_60', 'float', 'massage_60', 'iv_recover', 'iv_hydrate'] },
+  { label: 'Performance', keys: ['sauna_30', 'sauna_60', 'iv_invigorate', 'iv_turbo'] },
+  { label: 'Maintenance', keys: ['led', 'iv_balance', 'iv_defense', 'iv_radiate', 'iv_pause'] },
+];
 
 function RecoveryWidget() {
   const [sessions, setSessions] = useState<RecoverySession[]>([]);
-  const [credits, setCredits] = useState<RecoveryCredits | null>(null);
+  const [credits, setCredits]   = useState<RecoveryCredits | null>(null);
   const [services, setServices] = useState<Record<string, ServiceDef>>({});
-  const [adding, setAdding] = useState(false);
-  const [addDate, setAddDate] = useState(todayISO());
+  const [picking, setPicking]   = useState(false);
+  const [addDate, setAddDate]   = useState(todayISO());
   const [addService, setAddService] = useState('');
-  const [addNote, setAddNote] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [addNote, setAddNote]   = useState('');
+  const [saving, setSaving]     = useState(false);
 
   const today = todayISO();
   const weekEnd = (() => {
@@ -1131,7 +1139,7 @@ function RecoveryWidget() {
     void load();
   };
 
-  const addSession = async () => {
+  const scheduleSession = async () => {
     if (!addDate || !addService) return;
     setSaving(true);
     await fetch('/api/recovery', {
@@ -1139,23 +1147,23 @@ function RecoveryWidget() {
       body: JSON.stringify({ date: addDate, service: addService, note: addNote || undefined, source: 'manual' }),
     });
     setSaving(false);
-    setAdding(false);
+    setPicking(false);
+    setAddService('');
     setAddNote('');
+    setAddDate(todayISO());
     void load();
   };
 
-  const serviceList = Object.entries(services).sort((a, b) => a[1].credits - b[1].credits);
-
   if (!credits && sessions.length === 0 && Object.keys(services).length === 0) return null;
 
-  const creditPct = credits ? Math.max(0, Math.min(100, (credits.remaining / credits.total) * 100)) : 0;
+  const creditPct   = credits ? Math.max(0, Math.min(100, (credits.remaining / credits.total) * 100)) : 0;
   const creditColor = creditPct > 50 ? 'var(--color-recovery)' : creditPct > 20 ? 'var(--color-warn)' : 'var(--color-race)';
 
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8, marginTop: 4, padding: '0 2px' }}>
         <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.8px', textTransform: 'uppercase', color: 'var(--color-mute)' }}>
-          Recovery · Pause Studio City
+          Pause Studio City
         </div>
         {credits && (
           <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-mute)' }}>
@@ -1165,7 +1173,6 @@ function RecoveryWidget() {
       </div>
 
       <div className="tile" style={{ padding: '18px 22px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Credit bar */}
         {credits && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1173,7 +1180,7 @@ function RecoveryWidget() {
                 {credits.remaining} <span style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-mute)' }}>CREDITS LEFT</span>
               </div>
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-mute)', letterSpacing: '.5px' }}>
-                {credits.spent} scheduled · {credits.used} done
+                {credits.used} scheduled · {credits.spent} done
               </div>
             </div>
             <div style={{ height: 4, borderRadius: 2, background: 'var(--color-surface)', overflow: 'hidden' }}>
@@ -1182,99 +1189,136 @@ function RecoveryWidget() {
           </div>
         )}
 
-        {/* Scheduled sessions this week */}
         {sessions.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {sessions.map(s => {
-              const svc = services[s.service];
+              const svc   = services[s.service];
               const isPast = s.date < today;
               return (
                 <div key={s.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 12px', borderRadius: 8,
                   background: s.done ? 'rgba(78,205,149,.06)' : isPast && !s.done ? 'rgba(252,77,84,.06)' : 'var(--color-surface)',
-                  border: `1px solid ${s.done ? 'rgba(78,205,149,.25)' : isPast && !s.done ? 'rgba(252,77,84,.25)' : 'var(--color-surface)'}`,
+                  border: `1px solid ${s.done ? 'rgba(78,205,149,.25)' : isPast && !s.done ? 'rgba(252,77,84,.25)' : 'transparent'}`,
                   opacity: s.done ? 0.7 : 1,
                 }}>
-                  <button
-                    type="button"
-                    onClick={() => void toggleDone(s.id, !s.done)}
-                    style={{
-                      width: 20, height: 20, borderRadius: 4, flexShrink: 0,
-                      border: `2px solid ${s.done ? 'var(--color-recovery)' : 'var(--color-mute)'}`,
-                      background: s.done ? 'var(--color-recovery)' : 'transparent',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'var(--color-bg)', fontSize: 12, fontWeight: 800,
-                    }}
-                  >{s.done ? '✓' : ''}</button>
+                  <button type="button" onClick={() => void toggleDone(s.id, !s.done)} style={{
+                    width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                    border: `2px solid ${s.done ? 'var(--color-recovery)' : 'var(--color-mute)'}`,
+                    background: s.done ? 'var(--color-recovery)' : 'transparent',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 11, fontWeight: 800,
+                  }}>{s.done ? '✓' : ''}</button>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-ink)', textDecoration: s.done ? 'line-through' : 'none' }}>
                         {svc?.name ?? s.service}
                       </span>
-                      <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-mute)' }}>
-                        {s.credits} CR
-                      </span>
+                      <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-mute)' }}>{s.credits} CR</span>
                     </div>
                     <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-mute)', letterSpacing: '.3px' }}>
-                      {s.date === today ? 'TODAY' : s.date} {s.note ? `· ${s.note}` : ''}
+                      {s.date === today ? 'TODAY' : s.date}{s.note ? ` · ${s.note}` : ''}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void deleteSession(s.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-mute)', fontSize: 14, padding: '0 4px', flexShrink: 0 }}
-                    title="Remove"
-                  >×</button>
+                  <button type="button" onClick={() => void deleteSession(s.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-mute)', fontSize: 16, padding: '0 4px', flexShrink: 0 }}
+                    title="Remove">×</button>
                 </div>
               );
             })}
           </div>
         )}
 
-        {sessions.length === 0 && !adding && (
+        {sessions.length === 0 && (
           <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, color: 'var(--color-mute)', letterSpacing: '.5px' }}>
-            No recovery sessions scheduled this week
+            No sessions scheduled this week
           </div>
         )}
 
-        {/* Add form */}
-        {adding ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 8, background: 'var(--color-surface)', border: '1px solid var(--color-surface)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-mute)' }}>DATE</label>
-                <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)}
-                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface)', borderRadius: 6, padding: '6px 10px', color: 'var(--color-ink)', fontSize: 13, fontFamily: 'var(--font-body)' }} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-mute)' }}>SERVICE</label>
-                <select value={addService} onChange={e => setAddService(e.target.value)}
-                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface)', borderRadius: 6, padding: '6px 10px', color: addService ? 'var(--color-ink)' : 'var(--color-mute)', fontSize: 13, fontFamily: 'var(--font-body)' }}>
-                  <option value="">Select…</option>
-                  {serviceList.map(([key, svc]) => (
-                    <option key={key} value={key}>{svc.name} ({svc.credits} cr)</option>
-                  ))}
-                </select>
-              </div>
+        <button type="button" onClick={() => setPicking(true)} style={{
+          alignSelf: 'flex-start', background: 'none',
+          border: '1px solid var(--color-l4)', borderRadius: 6,
+          padding: '6px 14px', cursor: 'pointer',
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.2px', color: 'var(--color-mute)',
+        }}>
+          + SCHEDULE SESSION
+        </button>
+      </div>
+
+      {picking && (
+        <Modal title="Schedule a Pause session" onClose={() => { setPicking(false); setAddService(''); setAddNote(''); }} width={560}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Date */}
+            <div>
+              <div className="runcino-label">Date</div>
+              <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)}
+                className="runcino-input" style={{ maxWidth: 200 }} />
             </div>
-            <input type="text" value={addNote} onChange={e => setAddNote(e.target.value)} placeholder="Note (optional)"
-              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-surface)', borderRadius: 6, padding: '6px 10px', color: 'var(--color-ink)', fontSize: 13, fontFamily: 'var(--font-body)' }} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => void addSession()} disabled={!addDate || !addService || saving}
-                className="btn btn--primary" style={{ fontSize: 12, padding: '6px 14px' }}>
-                {saving ? 'Saving…' : 'Schedule'}
+
+            {/* Service picker */}
+            {SERVICE_GROUPS.map(group => {
+              const groupServices = group.keys.map(k => [k, services[k]] as [string, ServiceDef]).filter(([, s]) => s);
+              if (groupServices.length === 0) return null;
+              return (
+                <div key={group.label}>
+                  <div className="runcino-label" style={{ marginBottom: 8 }}>{group.label.toUpperCase()}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {groupServices.map(([key, svc]) => {
+                      const sel = addService === key;
+                      const affordable = credits ? svc.credits <= credits.remaining : true;
+                      return (
+                        <button key={key} type="button" onClick={() => setAddService(sel ? '' : key)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            padding: '10px 14px', borderRadius: 10, border: '1px solid', cursor: 'pointer',
+                            fontFamily: 'inherit', textAlign: 'left', width: '100%',
+                            borderColor: sel ? 'var(--color-attention)' : 'var(--color-l4)',
+                            background: sel ? 'rgba(255,138,0,0.08)' : 'var(--color-l2)',
+                            opacity: affordable ? 1 : 0.45,
+                          }}
+                        >
+                          <div style={{
+                            width: 18, height: 18, borderRadius: 4, border: '1.5px solid', flexShrink: 0,
+                            borderColor: sel ? 'var(--color-attention)' : 'var(--color-l4)',
+                            background: sel ? 'var(--color-attention)' : 'transparent',
+                            display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 800,
+                          }}>{sel ? '✓' : ''}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-t1)' }}>{svc.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 1 }}>{svc.description ?? ''}</div>
+                          </div>
+                          <div style={{
+                            fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700,
+                            color: sel ? 'var(--color-attention)' : 'var(--color-mute)',
+                            letterSpacing: '0.5px', flexShrink: 0,
+                          }}>{svc.credits} CR</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Note */}
+            <div>
+              <div className="runcino-label">Note (optional)</div>
+              <input className="runcino-input" value={addNote} onChange={e => setAddNote(e.target.value)} placeholder="e.g. post-long run" />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => void scheduleSession()}
+                disabled={!addDate || !addService || saving}
+                className="btn btn--primary" style={{ flex: 1 }}>
+                {saving ? 'Scheduling…' : 'Schedule'}
               </button>
-              <button type="button" onClick={() => setAdding(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-mute)', fontSize: 13 }}>Cancel</button>
+              <button type="button" onClick={() => { setPicking(false); setAddService(''); setAddNote(''); }}
+                className="btn btn--ghost">Cancel</button>
             </div>
           </div>
-        ) : (
-          <button type="button" onClick={() => setAdding(true)}
-            style={{ alignSelf: 'flex-start', background: 'none', border: '1px solid var(--color-surface)', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-mute)' }}>
-            + SCHEDULE RECOVERY
-          </button>
-        )}
-      </div>
+        </Modal>
+      )}
     </>
   );
 }

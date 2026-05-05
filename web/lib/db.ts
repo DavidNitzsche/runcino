@@ -119,6 +119,10 @@ async function bootstrap(): Promise<void> {
         ADD COLUMN IF NOT EXISTS shoe_id INTEGER REFERENCES shoes(id);
     `);
     await client.query(`
+      ALTER TABLE shoes
+        ADD COLUMN IF NOT EXISTS preferred BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS recovery_sessions (
         id            SERIAL PRIMARY KEY,
         date          DATE NOT NULL,
