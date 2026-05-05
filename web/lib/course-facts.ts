@@ -12,13 +12,14 @@
 import bigSur from '../data/courses/big-sur-marathon.json';
 import sombreroHalf from '../data/courses/sombrero-half.json';
 import cim from '../data/courses/cim.json';
+import afc from '../data/courses/americas-finest-city.json';
 import type { GpxTrack } from './types';
 
 /** Slugs of courses with curated facts files. Add a new entry here +
  *  drop a JSON in data/courses/ to register a new race with first-class
  *  landmark/phase support. Anything else falls through to synthesized
  *  facts derived from the uploaded GPX. */
-export const REGISTERED_COURSES = ['big-sur-marathon', 'sombrero-half', 'cim'] as const;
+export const REGISTERED_COURSES = ['big-sur-marathon', 'sombrero-half', 'cim', 'americas-finest-city'] as const;
 export type RegisteredCourseSlug = typeof REGISTERED_COURSES[number];
 
 export interface SourceCitation {
@@ -85,10 +86,11 @@ export interface CourseFacts {
  *  is unrecognized — callers can then fall back to synthesizeCourseFacts(). */
 export function getCourseFacts(slug: string): CourseFacts | null {
   switch (slug) {
-    case 'big-sur-marathon': return bigSur as CourseFacts;
-    case 'sombrero-half':    return sombreroHalf as CourseFacts;
-    case 'cim':              return cim as CourseFacts;
-    default:                 return null;
+    case 'big-sur-marathon':     return bigSur as CourseFacts;
+    case 'sombrero-half':        return sombreroHalf as CourseFacts;
+    case 'cim':                  return cim as CourseFacts;
+    case 'americas-finest-city': return afc as CourseFacts;
+    default:                     return null;
   }
 }
 

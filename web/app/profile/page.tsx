@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Nav } from '../../components/nav';
 import { Modal } from '../../components/modal';
 import type { Shoe, RunType } from '../../lib/shoe-utils';
@@ -226,7 +226,7 @@ function ShoeCard({
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button onClick={onEdit} style={iconBtnStyle} title="Edit">✏</button>
+          <button onClick={onEdit} style={{ ...iconBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11, fontWeight: 600, color: 'var(--color-t2)', letterSpacing: '0.02em' }}>Edit</button>
           <button onClick={onToggleRetired} title={retired ? 'Restore' : 'Retire'} style={iconBtnStyle}>
             {retired ? '↩' : '✕'}
           </button>
@@ -266,6 +266,28 @@ function ShoeCard({
   );
 }
 
+// ── Shoe mileage cap lookup ───────────────────────────────────────────────────
+
+const SHOE_CAPS: Array<{ match: RegExp; cap: number }> = [
+  // Carbon-plate racers (200–300 mi)
+  { match: /alphafly|vaporfly|dragonfly|adizero adios pro|metaspeed (sky|edge)|sc pacer|supercomp pacer|endorphin pro|mach x|pk/i, cap: 250 },
+  { match: /sc trainer|sc elite|rc elite|zoomx streakfly/i, cap: 300 },
+  // Plush daily / long-run trainers (450–500 mi)
+  { match: /superblast|bondi|clifton|ghost|vomero|invincible|nimbus|cumulus|gel-nimbus|gel-kayano/i, cap: 500 },
+  // Versatile tempo / daily (400 mi)
+  { match: /zoom fly|novablast|endorphin speed|adizero boston|launch|kinvara|glide|freedom|guide/i, cap: 400 },
+  // Recovery / plush (400–450 mi)
+  { match: /recover|recharge|relief|jog|walk|carbon x|arahi|kayano/i, cap: 450 },
+];
+
+function suggestCap(brand: string, model: string, runTypes: RunType[]): number {
+  const key = `${brand} ${model}`;
+  for (const entry of SHOE_CAPS) {
+    if (entry.match.test(key)) return entry.cap;
+  }
+  return runTypes.length > 0 ? MILEAGE_CAPS[runTypes[0]] : 400;
+}
+
 // ── Shared shoe form (add + edit) ─────────────────────────────────────────────
 
 function ShoeForm({
@@ -285,14 +307,26 @@ function ShoeForm({
   const [types,     setTypes]     = useState<RunType[]>(initial?.run_types ?? []);
   const [mileage,   setMileage]   = useState(String(initial?.mileage ?? 0));
   const [cap,       setCap]       = useState(String(initial?.mileage_cap ?? ''));
+  const [capSource, setCapSource] = useState<'auto' | 'manual'>(initial?.mileage_cap ? 'manual' : 'auto');
   const [preferred, setPreferred] = useState(initial?.preferred ?? true);
   const [notes,     setNotes]     = useState(initial?.notes ?? '');
+  const brandRef = useRef(brand);
+  const modelRef = useRef(model);
+  brandRef.current = brand;
+  modelRef.current = model;
+
+  useEffect(() => {
+    if (capSource === 'manual') return;
+    const suggested = suggestCap(brand, model, types);
+    setCap(String(suggested));
+  }, [brand, model, types, capSource]);
 
   const toggleType = (t: RunType) =>
     setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
 
-  const defaultCap = types.length > 0 ? MILEAGE_CAPS[types[0]] : 400;
+  const suggestedCap = suggestCap(brand, model, types);
   const canSubmit = brand.trim() && model.trim() && types.length > 0;
+  const resolvedCap = cap ? parseFloat(cap) : suggestedCap;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -340,9 +374,21 @@ function ShoeForm({
             onChange={e => setMileage(e.target.value)} placeholder="0" />
         </div>
         <div>
-          <div className="runcino-label">Mileage cap (default {defaultCap} mi)</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+            <div className="runcino-label" style={{ marginBottom: 0 }}>Mileage cap</div>
+            {capSource === 'auto' && cap && (
+              <span style={{ fontSize: 10, color: 'var(--color-recovery)', fontFamily: 'var(--font-data)', letterSpacing: '0.5px' }}>AUTO</span>
+            )}
+            {capSource === 'manual' && (
+              <button onClick={() => setCapSource('auto')} style={{
+                fontSize: 10, color: 'var(--color-t3)', background: 'none', border: 'none',
+                cursor: 'pointer', padding: 0, fontFamily: 'var(--font-data)', letterSpacing: '0.5px',
+              }}>reset</button>
+            )}
+          </div>
           <input className="runcino-input" type="number" min="0" value={cap}
-            onChange={e => setCap(e.target.value)} placeholder={String(defaultCap)} />
+            onChange={e => { setCap(e.target.value); setCapSource('manual'); }}
+            placeholder={String(suggestedCap)} />
         </div>
       </div>
 
@@ -393,7 +439,7 @@ function ShoeForm({
             color: color.trim(),
             run_types: types,
             mileage: parseFloat(mileage) || 0,
-            mileage_cap: cap ? parseFloat(cap) : defaultCap,
+            mileage_cap: resolvedCap,
             preferred,
             notes: notes.trim(),
           })}

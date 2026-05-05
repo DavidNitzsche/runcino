@@ -1,0 +1,153 @@
+{
+  "race": {
+    "name": "America's Finest City Half Marathon",
+    "slug": "americas-finest-city",
+    "description": "Point-to-point half marathon from Cabrillo National Monument on Point Loma to Balboa Park in San Diego. The course climbs briefly on Point Loma, peaks near the monument ridge, then drops steeply into the flatlands before a gradual climb to the park finish. San Diego's signature late-summer race — fast for those who don't blow up on the opening miles.",
+    "course_type": "point_to_point",
+    "typical_date": "third Sunday of August",
+    "expected_facts": {
+      "distance_mi": 13.1,
+      "distance_m": 21097,
+      "total_gain_ft": 210,
+      "total_loss_ft": 473,
+      "net_ft": -263
+    },
+    "expected_tolerances": {
+      "distance_mi": 0.3,
+      "gain_ft": 80,
+      "loss_ft": 100
+    },
+    "sources": [
+      {
+        "url": "https://www.americasfinestcityhalf.com/course",
+        "title": "AFC Half Marathon Official Course Page",
+        "confidence": "secondary_source",
+        "verified_at": "2026-05-05",
+        "verified_quote": "Point-to-point course from Cabrillo National Monument to Balboa Park"
+      }
+    ]
+  },
+  "phases": [
+    {
+      "index": 0,
+      "label": "Point Loma Climb",
+      "start_mi": 0.0,
+      "end_mi": 2.0,
+      "expected_mean_grade_pct": 0.8,
+      "expected_gain_ft": 120,
+      "note": "The first 2 miles climb the Point Loma ridge toward the peak near Cabrillo National Monument. Control effort here — the descent is coming and you'll want fresh legs. Don't bank time on the uphills.",
+      "sources": [
+        {
+          "url": "https://www.americasfinestcityhalf.com/course",
+          "confidence": "secondary_source",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "label": "The Drop",
+      "start_mi": 2.0,
+      "end_mi": 4.5,
+      "expected_mean_grade_pct": -2.0,
+      "expected_loss_ft": 280,
+      "note": "The signature descent off Point Loma — steep, fast, and quad-punishing if you let yourself fly. Use gravity but brake with your cadence, not your quads. Overspeed here costs you at mile 10. Target 10-15s faster than goal pace, no more.",
+      "sources": [
+        {
+          "url": "https://www.americasfinestcityhalf.com/course",
+          "confidence": "secondary_source",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "label": "Mission Bay",
+      "start_mi": 4.5,
+      "end_mi": 9.9,
+      "expected_mean_grade_pct": 0.1,
+      "note": "Long flat run through the Mission Bay and Midway districts. This is where the race is won — hold goal pace precisely, don't drift, stay hydrated. The August heat reflects hard off the pavement here. Shade is minimal.",
+      "sources": [
+        {
+          "url": "https://www.americasfinestcityhalf.com/course",
+          "confidence": "secondary_source",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "label": "Harbor Approach",
+      "start_mi": 9.9,
+      "end_mi": 10.9,
+      "expected_mean_grade_pct": 0.2,
+      "note": "Transition section into downtown San Diego. Largely flat. This is the final check-in — if you've been steady through Mission Bay, you have enough left. If you've drifted, it's damage control time.",
+      "sources": [
+        {
+          "url": "https://www.americasfinestcityhalf.com/course",
+          "confidence": "secondary_source",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "label": "Balboa Finish",
+      "start_mi": 10.9,
+      "end_mi": 13.1,
+      "expected_mean_grade_pct": 1.1,
+      "expected_gain_ft": 90,
+      "note": "The sting in the tail — a gradual climb toward Balboa Park for the final 2.2 miles. Many runners don't prep for this. If you've paced conservatively, this is where you make your move. If not, dig in and hold form.",
+      "sources": [
+        {
+          "url": "https://www.americasfinestcityhalf.com/course",
+          "confidence": "secondary_source",
+          "verified_at": "2026-05-05"
+        }
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "at_mi": 0.0,
+      "kind": "landmark",
+      "label": "Cabrillo NM · Start",
+      "note": "Start on Point Loma. The course climbs before it drops — don't let early adrenaline push you into the descent too fast.",
+      "sources": [{ "url": "https://www.americasfinestcityhalf.com/course", "confidence": "secondary_source", "verified_at": "2026-05-05" }]
+    },
+    {
+      "at_mi": 2.1,
+      "kind": "summit",
+      "label": "Point Loma Peak · ~413 ft",
+      "note": "High point of the course. The long descent begins here.",
+      "sources": [{ "url": "https://www.americasfinestcityhalf.com/course", "confidence": "secondary_source", "verified_at": "2026-05-05" }]
+    },
+    {
+      "at_mi": 13.1,
+      "kind": "landmark",
+      "label": "Balboa Park · Finish",
+      "note": "Finish in Balboa Park. Slight uphill on the approach.",
+      "sources": [{ "url": "https://www.americasfinestcityhalf.com/course", "confidence": "secondary_source", "verified_at": "2026-05-05" }]
+    }
+  ],
+  "notes_from_sources": {
+    "course_profile": {
+      "status": "secondary_source",
+      "net_drop_ft": -263,
+      "start_elevation_ft": 300,
+      "peak_elevation_ft": 413,
+      "finish_elevation_ft": 150,
+      "hardest_section": "miles 10.9-13.1 (Balboa Park climb after long flat)",
+      "fastest_section": "miles 2.0-4.5 (Point Loma descent)"
+    },
+    "accuracy_note": {
+      "status": "secondary_source",
+      "note": "Elevation figures are secondary-source estimates. GPS elevation data from uploaded GPX may differ. Primary source verification from the official race organization is needed to lock these numbers."
+    }
+  },
+  "warnings": {
+    "heat": "August race in San Diego — race-day temperatures 65-80°F with low humidity but intense sun reflection off pavement through Mission Bay. Hydrate aggressively.",
+    "descent_pace": "The Point Loma drop (miles 2-4.5) can lure runners 30+ seconds per mile faster than goal pace. Quads pay the price at mile 10.",
+    "finish_climb": "The Balboa Park climb at miles 11-13 surprises runners who trained flat. Include at least 2-3 runs with climbing in the final 6 weeks of training."
+  }
+}
