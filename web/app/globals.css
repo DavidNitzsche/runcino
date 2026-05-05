@@ -1,99 +1,144 @@
 @import "tailwindcss";
 
-/* ────────────────────────────────────────────────────────────────
-   Runcino design system — port of designs/runcino.css.
-   Dark layer scale, GP-poster typography (Oswald + Jost + JetBrains
-   Mono), semantic colors, chip + tile primitives. Both the homepage
-   and the new /races flow build on these tokens.
-   ────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Runcino design system — canonical tokens + component primitives
+   Fonts: Inter (all weights) + JetBrains Mono (data/mono)
+   ───────────────────────────────────────────────────────────────────────── */
 
 @theme inline {
-  /* ── Canonical color palette ────────────────────────────────────
-     Source of truth: docs/design/colors.md + docs/design/colors.jpg
-     Every CSS color value here must match that spec exactly. */
+  /* ── Core neutrals ────────────────────────────────────────────────── */
+  --color-bg:        #0B0F17;   /* deepest background */
+  --color-surface:   #141923;   /* card surface */
+  --color-surface-2: #1C2230;   /* elevated surface / hover */
+  --color-surface-3: #212B3A;   /* input backgrounds, nested cells */
+  --color-ink:       #F5F4EE;   /* primary text */
+  --color-mute:      #8B909C;   /* secondary / muted text */
+  --color-line:      #262C39;   /* borders */
+  --color-line-2:    #313B4F;   /* heavier strokes */
 
-  /* Dark layer scale (background depths, l0 = deepest, l4 = topmost) */
-  --color-l0: #10131A;   /* Dark basement */
-  --color-l1: #141820;   /* Dark background */
-  --color-l2: #1A212D;   /* Dark first */
-  --color-l3: #1D2736;   /* Dark second */
-  --color-l4: #212D3F;   /* Dark third */
-  --color-l5: #2b3a4e;   /* Project extension — borders + heavy strokes */
+  /* ── Semantic accents — each has one job ──────────────────────────── */
+  --color-race:      #FF5722;   /* brand, CTA, primary action, today */
+  --color-active:    #4F8FF7;   /* links, info, secondary action */
+  --color-recovery:  #14C08C;   /* success, on-plan, recovery */
+  --color-warn:      #F43F5E;   /* alerts, errors, risk */
+  --color-milestone: #F5C518;   /* PRs, achievements */
 
-  /* Light layer scale (race-plan exports, editorial retrospectives) */
-  --color-light-base: #B6BBCC;
-  --color-light-bg:   #E6E8EF;
-  --color-light-1:    #F6F7F8;
-  --color-light-2:    #FBFBFB;
-  --color-light-3:    #FFFFFF;
+  /* ── Race gradient ────────────────────────────────────────────────── */
+  --color-race-light: #FF8A3D;
+  --color-race-deep:  #E03E00;
 
-  /* Typography */
-  --color-t0:         #F6F7F8;
-  --color-t1:         rgba(246, 247, 248, 0.72);
-  --color-t2:         rgba(246, 247, 248, 0.48);
-  --color-t3:         rgba(246, 247, 248, 0.32);
-  --color-text-dark:  #080808;
+  /* ── Course phase palette — elevation/legend only ─────────────────── */
+  --color-phase-0: #4ade80;
+  --color-phase-1: #fbbf24;
+  --color-phase-2: #f87171;
+  --color-phase-3: #38bdf8;
+  --color-phase-4: #a78bfa;
 
-  /* Semantic system colors — meaning, not decoration */
-  --color-corporate: #008FEC;
-  --color-xp:        #9013FE;
-  --color-warning:   #FC4D54;
-  --color-success:   #3EBD41;
-  --color-attention: #F3AD3B;
-  /* --color-caution kept as alias for legacy callers, identical to yellow */
-  --color-caution:   #F0DF47;
+  /* ── Legacy token aliases (component compatibility) ───────────────── */
+  --color-l0: var(--color-bg);
+  --color-l1: var(--color-surface);
+  --color-l2: var(--color-surface-2);
+  --color-l3: var(--color-surface-3);
+  --color-l4: var(--color-line);
+  --color-l5: var(--color-line-2);
 
-  /* Additional (data + accents) */
-  --color-yellow:  #F0DF47;   /* Light Yellow */
-  --color-orange:  #E88021;   /* Dark Orange */
-  --color-redish:  #D03F3F;
-  --color-pink:    #CD317C;
-  --color-violet:  #6227E0;
-  --color-dk-blue: #2264E3;
-  --color-lt-blue: #27B4E0;   /* Light Blue */
-  --color-aqua:    #27E087;   /* Aquamarine */
-  --color-green:   #139520;   /* Dark Green */
-  --color-gray:    #646464;
+  --color-t0: var(--color-ink);
+  --color-t1: rgba(245, 244, 238, 0.75);
+  --color-t2: var(--color-mute);
+  --color-t3: rgba(139, 144, 156, 0.6);
 
-  /* Hero gradient — XP → Corporate (purple → blue) */
-  --gradient-hero: linear-gradient(135deg, #9013FE 0%, #008FEC 100%);
+  --color-attention: var(--color-race);
+  --color-corporate: var(--color-active);
+  --color-warning:   var(--color-warn);
+  --color-success:   var(--color-recovery);
+  --color-xp:        var(--color-race);
 
-  /* Phase rainbow (matches the elevation/legend gradient) */
-  --color-phase-0: #3EBD41;
-  --color-phase-1: #F3AD3B;
-  --color-phase-2: #FC4D54;
-  --color-phase-3: #008FEC;
-  --color-phase-4: #9013FE;
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-data:    'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+}
 
-  --font-display: "Oswald", "Headliner", "Bebas Neue", "Helvetica Neue Condensed", "Arial Narrow", sans-serif;
-  --font-body:    "Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", Avenir, sans-serif;
-  --font-data:    "JetBrains Mono", "SF Mono", "IBM Plex Mono", ui-monospace, monospace;
+/* ── CSS custom properties for inline-style use ─────────────────────────── */
+:root {
+  --bg:        #0B0F17;
+  --surface:   #141923;
+  --surface-2: #1C2230;
+  --surface-3: #212B3A;
+  --ink:       #F5F4EE;
+  --mute:      #8B909C;
+  --line:      #262C39;
+  --line-2:    #313B4F;
+
+  --race:      #FF5722;
+  --active:    #4F8FF7;
+  --recovery:  #14C08C;
+  --warn:      #F43F5E;
+  --milestone: #F5C518;
+
+  --race-wash:      rgba(255, 87, 34, .12);
+  --active-wash:    rgba(79, 143, 247, .12);
+  --recovery-wash:  rgba(20, 192, 140, .12);
+  --warn-wash:      rgba(244, 63, 94, .12);
+  --milestone-wash: rgba(245, 197, 24, .12);
+
+  --race-grad-light: #FF8A3D;
+  --race-grad:       #FF5722;
+  --race-grad-deep:  #E03E00;
+
+  /* Phase palette */
+  --phase-0: #4ade80;
+  --phase-1: #fbbf24;
+  --phase-2: #f87171;
+  --phase-3: #38bdf8;
+  --phase-4: #a78bfa;
+
+  /* Legacy aliases */
+  --color-l0: var(--bg);
+  --color-l1: var(--surface);
+  --color-l2: var(--surface-2);
+  --color-l3: var(--surface-3);
+  --color-l4: var(--line);
+  --color-l5: var(--line-2);
+  --color-t0: var(--ink);
+  --color-t1: rgba(245, 244, 238, 0.75);
+  --color-t2: var(--mute);
+  --color-t3: rgba(139, 144, 156, 0.6);
+  --color-attention: var(--race);
+  --color-corporate: var(--active);
+  --color-warning:   var(--warn);
+  --color-success:   var(--recovery);
+  --color-xp:        var(--race);
+  --color-text-dark: #080808;
+
+  --gradient-hero: linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 55%, var(--race-grad-deep) 100%);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
 html, body {
-  background: var(--color-l0);
-  color: var(--color-t0);
-  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: 0.005em;
+  font-feature-settings: 'ss01';
+  font-optical-sizing: auto;
+  letter-spacing: 0;
 }
 body { padding: 24px; min-height: 100vh; }
 
 a { color: inherit; text-decoration: none; }
 
-.font-display { font-family: var(--font-display); }
-.font-body    { font-family: var(--font-body); }
-.font-data    { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.font-display { font-family: 'Inter', sans-serif; font-weight: 600; }
+.font-body    { font-family: 'Inter', sans-serif; }
+.font-data    { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+.font-mono    { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
 
-/* ─── Shell ──────────────────────────────────────────────────
-   Full-bleed responsive shell. No card frame, no centered max-
-   width container, no top caption strip. The page renders as a
-   real website that fills the viewport with comfortable side
-   padding that scales with screen width. .caption is hidden
-   wholesale — was a holdover from the design mockup that read
-   "Runcino · overview · 2026-05-04" and felt like chrome. */
+/* ─── Shell ───────────────────────────────────────────────────────────────── */
 .stage {
   width: 100%;
   background: transparent;
@@ -106,13 +151,13 @@ a { color: inherit; text-decoration: none; }
   padding: 24px clamp(20px, 4vw, 80px) 64px;
 }
 
-/* ─── Nav ────────────────────────────────────────────────── */
+/* ─── Nav ─────────────────────────────────────────────────────────────────── */
 .nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 18px clamp(20px, 4vw, 80px);
-  border-bottom: 1px solid var(--color-l4);
+  border-bottom: 1px solid var(--line);
   width: 100%;
   flex-wrap: wrap;
   gap: 12px;
@@ -122,13 +167,14 @@ a { color: inherit; text-decoration: none; }
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-xp), var(--color-corporate));
-  color: var(--color-t0);
+  background: var(--race);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-display);
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
+  font-style: italic;
   font-size: 20px;
 }
 .tabs {
@@ -137,31 +183,31 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   padding: 4px;
   border-radius: 100px;
-  background: var(--color-l1);
-  border: 1px solid var(--color-l4);
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 .tab {
   padding: 7px 14px;
   border-radius: 100px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-t2);
+  color: var(--mute);
   letter-spacing: -0.01em;
   cursor: pointer;
   font-family: inherit;
   background: transparent;
   border: none;
 }
-.tab.active { background: var(--color-l3); color: var(--color-t0); font-weight: 700; }
-.tab:hover:not(.active) { color: var(--color-t1); }
+.tab.active { background: var(--surface-2); color: var(--ink); font-weight: 700; }
+.tab:hover:not(.active) { color: var(--ink); }
 .nav-r { display: flex; gap: 10px; align-items: center; }
 .nav-ic {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--color-l1);
-  color: var(--color-t2);
-  border: 1px solid var(--color-l4);
+  background: var(--surface);
+  color: var(--mute);
+  border: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -172,108 +218,106 @@ a { color: inherit; text-decoration: none; }
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-corporate), var(--color-aqua));
+  background: var(--race);
 }
 
-/* ─── Page header ────────────────────────────────────────── */
+/* ─── Page header ─────────────────────────────────────────────────────────── */
 .page-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   margin-bottom: 22px;
   padding-bottom: 22px;
-  border-bottom: 1px solid var(--color-l4);
+  border-bottom: 1px solid var(--line);
 }
 .page-head h1 {
-  font-family: var(--font-display);
-  font-size: 72px;
+  font-family: 'Inter', sans-serif;
+  font-size: 64px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
   line-height: 0.9;
-  text-transform: uppercase;
-  color: var(--color-t0);
+  color: var(--ink);
 }
 .page-head .eyebrow {
-  font-family: var(--font-data);
   font-size: 10.5px;
-  letter-spacing: 2.2px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-t2);
-  font-weight: 700;
+  color: var(--mute);
+  font-weight: 500;
   margin-bottom: 10px;
 }
 .page-head .sub {
-  font-family: var(--font-body);
   font-size: 14px;
-  color: var(--color-t2);
-  font-weight: 500;
+  color: var(--mute);
+  font-weight: 400;
   margin-top: 12px;
   max-width: 520px;
 }
-.page-head .sub b { color: var(--color-t1); font-weight: 700; }
+.page-head .sub b { color: var(--ink); font-weight: 600; }
 
 .page-actions { display: flex; gap: 8px; align-items: center; }
 
-/* ─── Chips ──────────────────────────────────────────────── */
+/* ─── Chips ───────────────────────────────────────────────────────────────── */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-data);
-  font-size: 8.5px;
-  letter-spacing: 1.2px;
-  font-weight: 700;
-  padding: 3px 7px;
-  border-radius: 4px;
-  background: var(--color-l3);
-  color: var(--color-t1);
-  border: 1px solid var(--color-l4);
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--mute);
+  border: 1px solid var(--line);
   text-transform: uppercase;
   white-space: nowrap;
 }
-.chip--success   { background: rgba(62, 189, 65, 0.12);  color: var(--color-success);   border-color: rgba(62, 189, 65, 0.3); }
-.chip--warning   { background: rgba(252, 77, 84, 0.12);  color: var(--color-warning);   border-color: rgba(252, 77, 84, 0.3); }
-.chip--attention { background: rgba(243, 173, 59, 0.12); color: var(--color-attention); border-color: rgba(243, 173, 59, 0.3); }
-.chip--corporate { background: rgba(0, 143, 236, 0.14);  color: var(--color-corporate); border-color: rgba(0, 143, 236, 0.3); }
-.chip--xp        { background: rgba(144, 19, 254, 0.15); color: #b873ff;                border-color: rgba(144, 19, 254, 0.35); }
+.chip--success   { background: var(--recovery-wash);  color: var(--recovery);  border-color: rgba(20, 192, 140, 0.3); }
+.chip--warning   { background: var(--warn-wash);      color: var(--warn);      border-color: rgba(244, 63, 94, 0.3); }
+.chip--attention { background: var(--race-wash);      color: var(--race);      border-color: rgba(255, 87, 34, 0.3); }
+.chip--corporate { background: var(--active-wash);    color: var(--active);    border-color: rgba(79, 143, 247, 0.3); }
+.chip--xp        { background: var(--race-wash);      color: var(--race);      border-color: rgba(255, 87, 34, 0.35); }
 
-/* ─── Buttons (replaces light-theme btn-*) ──────────────── */
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 10px 18px;
-  font-family: var(--font-body);
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
   border-radius: 10px;
-  border: 1px solid var(--color-l4);
-  background: var(--color-l2);
-  color: var(--color-t1);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  text-decoration: none;
 }
-.btn:hover:not(:disabled) { background: var(--color-l3); color: var(--color-t0); }
+.btn:hover:not(:disabled) { background: var(--surface-3); color: var(--ink); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn--primary {
-  background: var(--color-attention);
-  color: var(--color-l0);
+  background: var(--race);
+  color: #fff;
   border-color: transparent;
 }
-.btn--primary:hover:not(:disabled) { background: #f5b950; color: var(--color-l0); }
+.btn--primary:hover:not(:disabled) { opacity: 0.9; }
 .btn--ghost {
   background: transparent;
-  border-color: var(--color-l4);
-  color: var(--color-t2);
+  border-color: var(--line);
+  color: var(--mute);
 }
-.btn--ghost:hover:not(:disabled)  { color: var(--color-t0); border-color: var(--color-l5); background: var(--color-l1); }
+.btn--ghost:hover:not(:disabled) { color: var(--ink); border-color: var(--line-2); background: var(--surface); }
 
-/* ─── Tile / card primitive ─────────────────────────────── */
+/* ─── Tile / card primitive ───────────────────────────────────────────────── */
 .tile {
-  background: var(--color-l1);
-  border: 1px solid var(--color-l4);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 22px 24px;
 }
@@ -284,56 +328,54 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 14px;
 }
 .tile-sub {
-  font-family: var(--font-data);
-  font-size: 9.5px;
-  letter-spacing: 1.6px;
+  font-size: 10px;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--color-t3);
-  font-weight: 700;
+  color: var(--mute);
+  font-weight: 500;
 }
 .tile-lbl {
-  font-family: var(--font-display);
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
   font-size: 22px;
-  letter-spacing: -0.005em;
-  text-transform: uppercase;
-  color: var(--color-t0);
+  letter-spacing: -0.02em;
+  color: var(--ink);
   line-height: 1;
 }
 
-/* ─── Inputs ─────────────────────────────────────────────── */
+/* ─── Inputs ──────────────────────────────────────────────────────────────── */
 .runcino-input {
   width: 100%;
   padding: 11px 14px;
-  font-family: var(--font-body);
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
-  color: var(--color-t0);
-  background: var(--color-l2);
-  border: 1px solid var(--color-l4);
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   border-radius: 10px;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .runcino-input:focus {
-  border-color: var(--color-attention);
-  box-shadow: 0 0 0 3px rgba(243, 173, 59, 0.2);
+  border-color: var(--active);
+  box-shadow: 0 0 0 3px rgba(79, 143, 247, 0.15);
 }
-.runcino-input::placeholder { color: var(--color-t3); }
+.runcino-input::placeholder { color: var(--mute); }
 
 .runcino-label {
   display: block;
-  font-family: var(--font-data);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-t3);
+  color: var(--mute);
   margin-bottom: 6px;
 }
 
-.hint { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--color-t3); font-weight: 700; margin-top: 8px; }
+.hint { font-size: 11px; letter-spacing: 0.06em; color: var(--mute); font-weight: 400; margin-top: 8px; }
 
-/* ─── Common section header ─────────────────────────────── */
+/* ─── Common section header ───────────────────────────────────────────────── */
 .section-h {
   display: flex;
   justify-content: space-between;
@@ -341,38 +383,32 @@ a { color: inherit; text-decoration: none; }
   margin: 26px 4px 14px;
 }
 .section-h h2 {
-  font-family: var(--font-display);
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
   font-size: 28px;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
-  color: var(--color-t0);
+  letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
-/* ─── Headings (override Tailwind defaults) ─────────────── */
+/* ─── Headings ────────────────────────────────────────────────────────────── */
 h1, h2, h3, h4 {
-  font-family: var(--font-display);
+  font-family: 'Inter', sans-serif;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   line-height: 1.1;
-  color: var(--color-t0);
+  color: var(--ink);
 }
 
-/* ─── Eyebrow ────────────────────────────────────────────── */
+/* ─── Eyebrow ─────────────────────────────────────────────────────────────── */
 .eyebrow {
-  font-family: var(--font-data);
   font-size: 10.5px;
-  letter-spacing: 2.2px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-attention);
-  font-weight: 700;
+  color: var(--mute);
+  font-weight: 500;
 }
 
-/* ─── GP-style race poster (race-detail hero) ───────────────
-   Direct port of designs/race-detail-sombrero.html .poster-c +
-   children. Single big card with gradient + noise overlay holding
-   the hero header, 2-col map+narrative grid, and full-width
-   elevation strip. */
+/* ─── Race poster (.pc-* classes) — race/[slug] page ─────────────────────── */
 .poster-c {
   position: relative;
   overflow: hidden;
@@ -397,30 +433,30 @@ h1, h2, h3, h4 {
   position: relative; z-index: 2;
 }
 .pc-head .rd {
-  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 14px;
-  letter-spacing: 4px; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 500; font-size: 13px;
+  letter-spacing: 0.22em; text-transform: uppercase;
   color: rgba(255,255,255,.55);
 }
-.pc-head .rd b { color: #ff3b30; font-weight: 700; }
+.pc-head .rd b { color: var(--race); font-weight: 700; }
 .pc-countdown { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .pc-countdown .big {
-  font-family: 'Oswald', sans-serif; font-weight: 700;
-  font-size: 76px; line-height: .9; color: #ff3b30; letter-spacing: -.02em;
+  font-family: 'Inter', sans-serif; font-weight: 700;
+  font-size: 76px; line-height: .9; color: var(--race); letter-spacing: -.04em;
 }
 .pc-countdown .lbl {
-  font-family: 'Oswald', sans-serif; font-size: 10px;
-  letter-spacing: 2.6px; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  letter-spacing: 0.2em; text-transform: uppercase;
   color: rgba(255,255,255,.55); font-weight: 500;
 }
 .pc-title {
-  font-family: 'Oswald', sans-serif; font-weight: 700; color: #fff;
-  font-size: 148px; line-height: .82; letter-spacing: -.01em;
+  font-family: 'Inter', sans-serif; font-weight: 800; color: #fff;
+  font-size: 120px; line-height: .85; letter-spacing: -.04em;
   text-transform: uppercase; margin: 4px 0 6px;
   position: relative; z-index: 2;
 }
 .pc-subtitle {
-  font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 22px;
-  letter-spacing: 8px; text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-weight: 400; font-size: 18px;
+  letter-spacing: 0.35em; text-transform: uppercase;
   color: rgba(255,255,255,.55);
   position: relative; z-index: 2; margin-bottom: 28px;
 }
@@ -444,29 +480,29 @@ h1, h2, h3, h4 {
 .pc-stats .s:first-child { padding-left: 0; }
 .pc-stats .s:last-child { border-right: 0; }
 .pc-stats .l {
-  font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 2.2px;
+  font-size: 10px; letter-spacing: 0.2em;
   text-transform: uppercase; color: rgba(255,255,255,.45); font-weight: 500;
 }
 .pc-stats .v {
-  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px;
-  letter-spacing: -.005em; color: #fff; line-height: 1;
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 28px;
+  letter-spacing: -.03em; color: #fff; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .pc-stats .v small {
-  font-family: 'Jost', sans-serif; font-size: 11px;
-  color: rgba(255,255,255,.5); margin-left: 5px; font-weight: 600; letter-spacing: 1.3px;
+  font-size: 11px;
+  color: rgba(255,255,255,.5); margin-left: 5px; font-weight: 500; letter-spacing: 0.08em;
 }
-.pc-stats .v.accent { color: #ff3b30; }
+.pc-stats .v.accent { color: var(--race); }
 .pc-lede {
-  font-family: 'Jost', sans-serif; font-size: 15px; line-height: 1.6;
-  color: rgba(255,255,255,.85); font-weight: 500;
+  font-size: 15px; line-height: 1.6;
+  color: rgba(255,255,255,.85); font-weight: 400;
 }
 .pc-para {
-  font-family: 'Jost', sans-serif; font-size: 13px; line-height: 1.7;
+  font-size: 13px; line-height: 1.7;
   color: rgba(255,255,255,.65);
 }
 .pc-para b { color: #fff; font-weight: 600; }
-.pc-para em { color: #ff3b30; font-style: normal; font-weight: 600; }
+.pc-para em { color: var(--race); font-style: normal; font-weight: 600; }
 .pc-legend {
   display: flex; flex-direction: column; gap: 10px;
   margin-top: 14px; padding-top: 16px;
@@ -474,13 +510,13 @@ h1, h2, h3, h4 {
 }
 .pc-legend .row {
   display: grid; grid-template-columns: 28px 110px 1fr auto; gap: 12px;
-  align-items: center; font-family: 'Jost', sans-serif; font-size: 12px;
+  align-items: center; font-size: 12px;
   color: rgba(255,255,255,.8);
 }
 .pc-legend .bar { height: 4px; border-radius: 2px; }
 .pc-legend .name {
-  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
-  letter-spacing: 1.5px; text-transform: uppercase; color: #fff;
+  font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: #fff;
 }
 .pc-legend .mi { color: rgba(255,255,255,.5); font-size: 11px; letter-spacing: .5px; }
 .pc-legend .pace {
@@ -498,24 +534,20 @@ h1, h2, h3, h4 {
   margin-bottom: 4px;
 }
 .pc-elev .head .l {
-  font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 11px;
-  letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,.55);
+  font-size: 11px;
+  letter-spacing: 0.25em; text-transform: uppercase; color: rgba(255,255,255,.55); font-weight: 500;
 }
 .pc-elev .head .r {
   font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 10px;
-  letter-spacing: 1.6px; text-transform: uppercase; color: #F3AD3B;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--milestone);
 }
 .pc-elev svg { width: 100%; height: 220px; display: block; }
 .pc-elev .axis {
   display: flex; justify-content: space-between; margin-top: 2px;
   padding-left: 3.833%; padding-right: 1.167%;
-  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.12em;
   color: rgba(255,255,255,.4); font-weight: 700;
 }
-/* Mirrored phase strip directly under the elevation curve — labeled
-   chips, sized proportionally to each phase's mile share so they
-   line up visually with the curve segments above. Matches the
-   canonical .pc-grade .lgd .i pattern from designs/race-detail-sombrero.html. */
 .pc-grade {
   margin-top: 14px;
   padding-left: 3.833%;
@@ -529,16 +561,16 @@ h1, h2, h3, h4 {
   min-width: 0;
 }
 .pc-grade .i .l {
-  font-family: 'Oswald', sans-serif; font-size: 9.5px;
-  letter-spacing: 1.6px; text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.14em; text-transform: uppercase;
   color: rgba(255,255,255,.55); font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pc-grade .i .v {
-  font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 18px;
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px;
   color: #fff; line-height: 1;
 }
 .pc-grade .i .v small {
-  font-family: 'Jost', sans-serif; font-size: 10px;
-  color: rgba(255,255,255,.5); margin-left: 3px; font-weight: 500; letter-spacing: 1px;
+  font-size: 10px;
+  color: rgba(255,255,255,.5); margin-left: 3px; font-weight: 500; letter-spacing: 0.08em;
 }
