@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
+import { getCourseFacts, type CourseFacts } from '../../../lib/course-facts';
 
 // Phase color palette — 8 deterministic colors so any course with up to 8
 // phases gets a distinct hue. Extends the 5-color rainbow used in the
@@ -162,6 +163,19 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     return points[bestIdx]?.cumMi ?? 0;
   }, [points]);
 
+  // Enrich the race object with named phases from course facts (if registered).
+  // All child components receive the enriched race so labels are consistent everywhere.
+  const enrichedRace = useMemo(() => {
+    const facts = getCourseFacts(race.meta.courseSlug);
+    const enrichedPhases = enrichPhaseLabels(race.plan.phases, facts);
+    const phasesDiffer = enrichedPhases.some((p, i) => p.label !== race.plan.phases[i].label);
+    if (!phasesDiffer && !facts) return race;
+    return {
+      ...race,
+      plan: { ...race.plan, phases: enrichedPhases },
+    };
+  }, [race]);
+
   function downloadJson() {
     const blob = new Blob([JSON.stringify(race.plan, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -190,11 +204,11 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           </div>
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
 
-          <PosterCard race={race} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} />
+          <PosterCard race={enrichedRace} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} onUpdated={onUpdated} />
 
-          <PhaseCards race={race} />
+          <PhaseCards race={enrichedRace} phases={enrichedRace.plan.phases} />
 
-          <ResultSection race={race} />
+          <ResultSection race={enrichedRace} />
 
           {/* Pre-race planning tiles. Hidden once the race is past +
               has a recorded result — at that point the per-mile +
@@ -204,17 +218,17 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                 <WeatherTile points={points} />
-                <BriefTile race={race} />
+                <BriefTile race={enrichedRace} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10, marginTop: 10 }}>
-                <MileSplits race={race} />
-                <FuelingTile race={race} />
+                <MileSplits race={enrichedRace} />
+                <FuelingTile race={enrichedRace} />
               </div>
             </>
           )}
 
-          <ExportFooter race={race} onDownload={downloadJson} />
+          <ExportFooter race={enrichedRace} onDownload={downloadJson} />
         </div>
       </div>
     </>
@@ -265,22 +279,82 @@ function narrativeFor(slug: string, race: SavedRace, peakMi: number, peakFt: num
   };
 }
 
+/* ── Phase label enrichment ─────────────────────────────────
+   For each plan phase, find the course-facts phase that overlaps
+   the most (by mile range) and use its label. If no facts exist
+   or no overlap is found, the original plan label is kept. */
+function enrichPhaseLabels(
+  planPhases: SavedRace['plan']['phases'],
+  facts: CourseFacts | null
+): SavedRace['plan']['phases'] {
+  if (!facts || facts.phases.length === 0) return planPhases;
+  return planPhases.map(p => {
+    let bestLabel = p.label;
+    let bestOverlap = 0;
+    for (const fp of facts.phases) {
+      const overlapStart = Math.max(p.start_mi, fp.start_mi);
+      const overlapEnd = Math.min(p.end_mi, fp.end_mi);
+      const overlap = Math.max(0, overlapEnd - overlapStart);
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestLabel = fp.label;
+      }
+    }
+    return { ...p, label: bestLabel };
+  });
+}
+
 /* ── Poster card ────────────────────────────────────────────
    The hero of the race-detail page. Single .poster-c container
    holding header (round + countdown), big race title, subtitle,
    2-col map+narrative grid, and full-width elevation strip with
    axis. Direct port of designs/race-detail-sombrero.html. */
-function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
+function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: {
   race: SavedRace;
   points: ParsedPoint[];
   days: number;
   totalMi: number;
   peakFt: number;
   peakMi: number;
+  onUpdated?: () => void;
 }) {
-  const totalGain = race.plan.race.total_gain_ft;
-  const totalLoss = race.plan.race.total_loss_ft;
-  const netElevFt = totalGain - totalLoss;
+  const [goalEditing, setGoalEditing] = useState(false);
+  const [goalInput, setGoalInput] = useState(race.meta.goalDisplay);
+  const [goalBusy, setGoalBusy] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
+
+  function parseGoalInput(s: string): number | null {
+    const m = s.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+  }
+
+  async function submitGoal() {
+    const goalS = parseGoalInput(goalInput);
+    if (goalS == null) { setGoalError('Use h:mm:ss'); return; }
+    setGoalBusy(true);
+    setGoalError(null);
+    try {
+      const res = await fetch(`/api/races/${encodeURIComponent(race.slug)}/rebuild`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ goalFinishS: goalS, raceDate: race.meta.date, raceName: race.meta.name }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setGoalEditing(false);
+      onUpdated?.();
+    } catch (e) {
+      setGoalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGoalBusy(false);
+    }
+  }
+
+  const facts = getCourseFacts(race.meta.courseSlug);
+  const totalGain = facts?.race.expected_facts.total_gain_ft ?? race.plan.race.total_gain_ft;
+  const totalLoss = facts?.race.expected_facts.total_loss_ft ?? race.plan.race.total_loss_ft;
+  const netElevFt = facts?.race.expected_facts.net_ft ?? (totalGain - totalLoss);
+  // race.plan.phases already enriched by RaceDetailView
+  const enrichedPhases = race.plan.phases;
   const narrative = narrativeFor(race.meta.courseSlug, race, peakMi, peakFt, totalGain);
   const isUpcoming = days >= 0;
   const result = race.actualResult ?? null;
@@ -413,9 +487,27 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
                     {netElevFt >= 0 ? '+' : ''}{Math.round(netElevFt)}<small>ft net</small>
                   </span>
                 </div>
-                <div className="s">
-                  <span className="l">Goal Time</span>
-                  <span className="v accent">{race.meta.goalDisplay.replace(/^0?:?/,'').replace(/:00$/, '')}</span>
+                <div className="s" style={{ cursor: !goalEditing ? 'pointer' : 'default' }} onClick={() => { if (!goalEditing) { setGoalInput(race.meta.goalDisplay); setGoalError(null); setGoalEditing(true); } }}>
+                  <span className="l">Goal Time {!goalEditing && <span style={{ fontSize: 9, opacity: 0.5, letterSpacing: '1px' }}>✎</span>}</span>
+                  {goalEditing ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={goalInput}
+                        onChange={e => setGoalInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') submitGoal(); if (e.key === 'Escape') setGoalEditing(false); }}
+                        style={{ fontFamily: 'var(--font-data)', fontSize: 22, fontWeight: 700, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, color: '#fff', padding: '2px 8px', width: 110 }}
+                        placeholder="h:mm:ss"
+                      />
+                      {goalError && <span style={{ fontSize: 10, color: 'var(--color-warn)' }}>{goalError}</span>}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn--primary" style={{ padding: '3px 10px', fontSize: 11 }} disabled={goalBusy} onClick={submitGoal}>{goalBusy ? '…' : 'Rebuild'}</button>
+                        <button className="btn btn--ghost" style={{ padding: '3px 10px', fontSize: 11 }} disabled={goalBusy} onClick={() => setGoalEditing(false)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="v accent">{race.meta.goalDisplay.replace(/^0?:?/,'').replace(/:00$/, '')}</span>
+                  )}
                 </div>
                 <div className="s">
                   <span className="l">Peak</span>
@@ -431,7 +523,7 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
           {/* Phase legend — same in both modes; debrief mode adds an
               empty actual column placeholder until splits_metric lands. */}
           <div className="pc-legend">
-            {race.plan.phases.map((p, i) => (
+            {enrichedPhases.map((p, i) => (
               <div className="row" key={i}>
                 <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
                 <span className="name">{p.label}</span>
@@ -458,8 +550,8 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi }: {
         {/* Mirrored phase strip — same phases as the cards below the
             poster, sized proportionally to each phase's mile share. */}
         <div className="pc-grade">
-          <div className="lgd" style={{ display: 'grid', gridTemplateColumns: race.plan.phases.map(p => `${(p.distance_mi).toFixed(2)}fr`).join(' '), gap: 0 }}>
-            {race.plan.phases.map((p, i) => (
+          <div className="lgd" style={{ display: 'grid', gridTemplateColumns: enrichedPhases.map(p => `${(p.distance_mi).toFixed(2)}fr`).join(' '), gap: 0 }}>
+            {enrichedPhases.map((p, i) => (
               <div key={i} className="i" style={{ borderColor: PHASE_COLORS[i] ?? '#444' }}>
                 <span className="l">{p.label}</span>
                 <span className="v">{p.distance_mi.toFixed(1)}<small>mi</small></span>
@@ -532,9 +624,14 @@ function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[];
   // points within ~60px — that's the "empty" side, where the label
   // goes. Cheap O(N) per anchor, runs once per render.
   const peakLabelText = `PEAK · ${Math.round(peakFt)} FT`;
-  const startSide = pickEmptySide(startP, routePts, 60, estLabelWidth('START'), 13, W, H);
-  const endSide   = pickEmptySide(endP,   routePts, 60, estLabelWidth('FINISH'), 13, W, H);
-  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 60, estLabelWidth(peakLabelText), 13, W, H) : 'E';
+  const startSide = pickEmptySide(startP, routePts, 80, estLabelWidth('START'), 13, W, H);
+  const endSide   = pickEmptySide(endP,   routePts, 80, estLabelWidth('FINISH'), 13, W, H);
+  // When the peak is within 20px of START or FINISH, exclude the START/FINISH label's side
+  // so PEAK is forced to a different quadrant and the two labels don't collide.
+  const peakNearStart = peakP ? Math.hypot(peakP[0] - startP[0], peakP[1] - startP[1]) < 20 : false;
+  const peakNearEnd   = peakP ? Math.hypot(peakP[0] - endP[0],   peakP[1] - endP[1])   < 20 : false;
+  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 80, estLabelWidth(peakLabelText), 13, W, H,
+    peakNearStart ? startSide : peakNearEnd ? endSide : undefined) : 'E';
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
@@ -574,6 +671,7 @@ function pickEmptySide(
   textHeight: number,
   viewW: number,
   viewH: number,
+  excludeSide?: Side,
 ): Side {
   const [ax, ay] = anchor;
   const counts: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
@@ -584,7 +682,7 @@ function pickEmptySide(
     else (dy >= 0 ? counts.S++ : counts.N++);
   }
 
-  const offset = 18;
+  const offset = 26;
   const margin = 4;
   // Compute the would-be bounding box for each side and rule out
   // any side whose bbox extends outside [margin, viewW-margin] x
@@ -597,17 +695,17 @@ function pickEmptySide(
     W: ax - offset - textWidth >= margin && ay - textHeight / 2 >= margin && ay + textHeight / 2 <= viewH - margin,
   };
   const score: Record<Side, number> = {
-    N: counts.N + (fits.N ? 0 : 1000),
-    S: counts.S + (fits.S ? 0 : 1000),
-    E: counts.E + (fits.E ? 0 : 1000),
-    W: counts.W + (fits.W ? 0 : 1000),
+    N: counts.N + (fits.N ? 0 : 1000) + (excludeSide === 'N' ? 2000 : 0),
+    S: counts.S + (fits.S ? 0 : 1000) + (excludeSide === 'S' ? 2000 : 0),
+    E: counts.E + (fits.E ? 0 : 1000) + (excludeSide === 'E' ? 2000 : 0),
+    W: counts.W + (fits.W ? 0 : 1000) + (excludeSide === 'W' ? 2000 : 0),
   };
   const order: Side[] = ['N', 'S', 'E', 'W'];
   return order.slice().sort((a, b) => score[a] - score[b])[0];
 }
 
 function SideLabel({ anchor, side, text, color }: { anchor: [number, number]; side: Side; text: string; color: string }) {
-  const offset = 18;
+  const offset = 26;
   let x = anchor[0], y = anchor[1], textAnchor: 'start' | 'middle' | 'end' = 'middle';
   switch (side) {
     case 'N': y = anchor[1] - offset; textAnchor = 'middle'; break;
@@ -704,13 +802,13 @@ function PosterElevSvg({ points, race, totalMi, peakMi, peakFt }: { points: Pars
 }
 
 
-function PhaseCards({ race }: { race: SavedRace }) {
+function PhaseCards({ race, phases }: { race: SavedRace; phases: SavedRace['plan']['phases'] }) {
   return (
     <>
       <div className="section-h">
         <div>
           <div className="tile-sub" style={{ marginBottom: 4 }}>Terrain-aware race strategy</div>
-          <h2>{race.plan.phases.length} phases</h2>
+          <h2>{phases.length} phases</h2>
         </div>
         <span style={{ fontFamily: 'var(--font-data)', fontSize: 11, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t2)', fontWeight: 700 }}>
           <b style={{ color: 'var(--color-t1)' }}>Predicted</b> {race.meta.goalDisplay} · avg {fmtPace(race.plan.goal.flat_pace_s_per_mi)}/mi
@@ -718,10 +816,10 @@ function PhaseCards({ race }: { race: SavedRace }) {
       </div>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${race.plan.phases.length}, 1fr)`,
+        gridTemplateColumns: `repeat(${phases.length}, 1fr)`,
         gap: 10,
       }}>
-        {race.plan.phases.map((p, i) => (
+        {phases.map((p, i) => (
           <div key={i} className="tile" style={{ borderLeft: `3px solid ${PHASE_COLORS[i] ?? '#444'}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <div className="tile-sub">PHASE {i + 1}</div>

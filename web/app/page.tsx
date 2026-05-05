@@ -586,7 +586,7 @@ function CoachTodayCard() {
         {/* Plausible week shape — re-derived every morning, not promised */}
         <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="tile-sub">Plausible week shape</div>
+            <div className="tile-sub">This Week</div>
             <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>RE-DERIVED DAILY · NOT A PLAN</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
@@ -630,15 +630,7 @@ function CoachTodayCard() {
                         <span style={{ fontSize: 8 }}>●</span>
                         <span>+ STRENGTH</span>
                       </div>
-                    ) : (
-                      <div style={{
-                        padding: '4px 8px',
-                        fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700,
-                        letterSpacing: '1px', color: 'var(--color-t3)',
-                      }}>
-                        — no strength
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );
@@ -1109,6 +1101,7 @@ function RecoveryWidget() {
   const [addService, setAddService] = useState('');
   const [addNote, setAddNote]   = useState('');
   const [saving, setSaving]     = useState(false);
+  const [pickTab, setPickTab]   = useState(0);
 
   const today = todayISO();
   const weekEnd = (() => {
@@ -1247,59 +1240,59 @@ function RecoveryWidget() {
       </div>
 
       {picking && (
-        <Modal title="Schedule a Pause session" onClose={() => { setPicking(false); setAddService(''); setAddNote(''); }} width={560}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Modal title="Schedule a Pause session" onClose={() => { setPicking(false); setAddService(''); setAddNote(''); setPickTab(0); }} width={520}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Date */}
             <div>
               <div className="runcino-label">Date</div>
               <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)}
-                className="runcino-input" style={{ maxWidth: 200 }} />
+                className="runcino-input" style={{ maxWidth: 180 }} />
             </div>
 
-            {/* Service picker */}
-            {SERVICE_GROUPS.map(group => {
-              const groupServices = group.keys.map(k => [k, services[k]] as [string, ServiceDef]).filter(([, s]) => s);
-              if (groupServices.length === 0) return null;
-              return (
-                <div key={group.label}>
-                  <div className="runcino-label" style={{ marginBottom: 8 }}>{group.label.toUpperCase()}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {groupServices.map(([key, svc]) => {
-                      const sel = addService === key;
-                      const affordable = credits ? svc.credits <= credits.remaining : true;
-                      return (
-                        <button key={key} type="button" onClick={() => setAddService(sel ? '' : key)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 12,
-                            padding: '10px 14px', borderRadius: 10, border: '1px solid', cursor: 'pointer',
-                            fontFamily: 'inherit', textAlign: 'left', width: '100%',
-                            borderColor: sel ? 'var(--color-attention)' : 'var(--color-l4)',
-                            background: sel ? 'rgba(255,138,0,0.08)' : 'var(--color-l2)',
-                            opacity: affordable ? 1 : 0.45,
-                          }}
-                        >
-                          <div style={{
-                            width: 18, height: 18, borderRadius: 4, border: '1.5px solid', flexShrink: 0,
-                            borderColor: sel ? 'var(--color-attention)' : 'var(--color-l4)',
-                            background: sel ? 'var(--color-attention)' : 'transparent',
-                            display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 800,
-                          }}>{sel ? '✓' : ''}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-t1)' }}>{svc.name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 1 }}>{svc.description ?? ''}</div>
-                          </div>
-                          <div style={{
-                            fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700,
-                            color: sel ? 'var(--color-attention)' : 'var(--color-mute)',
-                            letterSpacing: '0.5px', flexShrink: 0,
-                          }}>{svc.credits} CR</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+            {/* Tab strip */}
+            <div>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                {SERVICE_GROUPS.map((g, idx) => (
+                  <button key={g.label} type="button" onClick={() => setPickTab(idx)} style={{
+                    flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid', cursor: 'pointer',
+                    fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.2px',
+                    textTransform: 'uppercase',
+                    borderColor: pickTab === idx ? 'var(--color-recovery)' : 'var(--color-l4)',
+                    background: pickTab === idx ? 'var(--recovery-wash)' : 'transparent',
+                    color: pickTab === idx ? 'var(--color-recovery)' : 'var(--color-t3)',
+                  }}>{g.label}</button>
+                ))}
+              </div>
+
+              {/* 2-column compact grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {SERVICE_GROUPS[pickTab].keys.map(key => {
+                  const svc = services[key];
+                  if (!svc) return null;
+                  const sel = addService === key;
+                  const affordable = credits ? svc.credits <= credits.remaining : true;
+                  return (
+                    <button key={key} type="button" onClick={() => setAddService(sel ? '' : key)} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: 8, border: '1.5px solid', cursor: 'pointer',
+                      fontFamily: 'inherit', textAlign: 'left',
+                      borderColor: sel ? 'var(--color-race)' : 'var(--color-l4)',
+                      background: sel ? 'var(--race-wash)' : 'var(--color-l2)',
+                      opacity: affordable ? 1 : 0.4,
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: sel ? 'var(--color-race)' : 'var(--color-t1)' }}>
+                        {svc.name}
+                      </div>
+                      <div style={{
+                        fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+                        color: sel ? 'var(--color-race)' : 'var(--color-mute)',
+                        letterSpacing: '0.5px', flexShrink: 0, marginLeft: 8,
+                      }}>{svc.credits} CR</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Note */}
             <div>
@@ -1313,7 +1306,7 @@ function RecoveryWidget() {
                 className="btn btn--primary" style={{ flex: 1 }}>
                 {saving ? 'Scheduling…' : 'Schedule'}
               </button>
-              <button type="button" onClick={() => { setPicking(false); setAddService(''); setAddNote(''); }}
+              <button type="button" onClick={() => { setPicking(false); setAddService(''); setAddNote(''); setPickTab(0); }}
                 className="btn btn--ghost">Cancel</button>
             </div>
           </div>
