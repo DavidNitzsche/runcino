@@ -82,13 +82,31 @@ export interface CoachState {
 
   /** Engine-readable flags so it doesn't have to recompute these. */
   flags: {
-    /** 3+ races in last 21 days OR weekly volume ≥1.5× 8-week average for 3+ weeks. */
+    /** True when ANY of: 2+ races in 14 days; a marathon-distance race
+     *  in the last 14 days; 3+ races in 21 days; sustained ≥1.5× weekly
+     *  average for 3+ weeks. Drives a deeper rest schedule than a
+     *  single-race POST_RACE — Big Sur + Sombrero (8 days apart)
+     *  qualifies and means the coach holds on running for longer. */
     heavyBlockSuspected: boolean;
     /** Last-7-day mileage ≤ 30% of 28-day average → coming back from a break. */
     rebuildAfterBreak: boolean;
     /** True once HealthKit data is flowing. Engine uses this to decide which rules to trust. */
     healthKitAvailable: boolean;
   };
+
+  /** ISO date when the LATEST race-recovery window closes. Each
+   *  recent race contributes a window; this picks the furthest-out
+   *  end-date. Engine treats `today < recoveryWindowEndsISO` as
+   *  POST_RACE phase regardless of the 14-day default. So a marathon
+   *  21 days ago still keeps the runner in POST_RACE if its window
+   *  hasn't closed.
+   *
+   *  Distance-driven recovery durations (doc §13.3 + 1-day-per-mile):
+   *    Marathon:    26 days
+   *    Half:        14 days
+   *    10K:          7 days
+   *    5K:           3 days */
+  recoveryWindowEndsISO: string | null;
 }
 
 interface NextRace {
@@ -210,10 +228,34 @@ export async function gatherCoachState(): Promise<CoachState> {
 
   // ── Flags ─────────────────────────────────────────────────
   const cutoff21 = isoDateOffset(today, -21);
+  const cutoff14 = isoDateOffset(today, -14);
   const recentRaceCount21 = activities.filter(a => a.date >= cutoff21 && a.date <= todayISO && isProbablyRace(a)).length;
+  const recentRaceCount14 = activities.filter(a => a.date >= cutoff14 && a.date <= todayISO && isProbablyRace(a)).length;
+  const marathonInLast14 = activities.some(a => a.date >= cutoff14 && a.date <= todayISO && isProbablyRace(a) && a.distanceMi >= 22);
   const heavyBlockSuspected = recentRaceCount21 >= 3
+    || recentRaceCount14 >= 2
+    || marathonInLast14
     || (weeklyAvg8w > 0 && recent4.some(w => w.miles >= weeklyAvg8w * 1.5));
   const rebuildAfterBreak = last28Mi > 0 && last7Mi <= last28Mi / 4 * 0.30;
+
+  // Compute the latest recovery-window-end across all recent races
+  // (saved + Strava-detected). A marathon contributes 26 days, a half
+  // 14, a 10K 7, a 5K 3. The runner stays in POST_RACE phase until
+  // every window has closed.
+  const allRecentRaces: Array<{ date: string; distanceMi: number }> = [
+    ...recent.map(r => ({ date: r.date, distanceMi: r.distanceMi })),
+  ];
+  let recoveryWindowEndsISO: string | null = null;
+  for (const r of allRecentRaces) {
+    const days = recoveryDaysForDistance(r.distanceMi);
+    const raceDay = new Date(r.date + 'T12:00:00Z');
+    raceDay.setUTCDate(raceDay.getUTCDate() + days);
+    const endISO = raceDay.toISOString().slice(0, 10);
+    if (endISO < todayISO) continue;            // window already closed
+    if (recoveryWindowEndsISO == null || endISO > recoveryWindowEndsISO) {
+      recoveryWindowEndsISO = endISO;
+    }
+  }
 
   return {
     now: todayISO,
@@ -250,7 +292,17 @@ export async function gatherCoachState(): Promise<CoachState> {
       rebuildAfterBreak,
       healthKitAvailable: false,
     },
+    recoveryWindowEndsISO,
   };
+}
+
+/** Distance-driven recovery duration. Doc §13.3 + the legacy
+ *  "1 day per mile" guideline. Floor 3 days, cap 28 days. */
+function recoveryDaysForDistance(distMi: number): number {
+  if (distMi >= 22) return 26;   // marathon
+  if (distMi >= 11) return 14;   // half
+  if (distMi >= 5)  return 7;    // 10K
+  return 3;                       // 5K-ish
 }
 
 function toNextRace(r: SavedRace): NextRace {

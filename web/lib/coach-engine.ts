@@ -103,9 +103,15 @@ function decidePhase(state: CoachState, mode: 'race' | 'base'): Phase {
   if (mode === 'race' && state.races.nextA) {
     return raceSubPhase(state.races.nextA.daysAway, state.races.nextA.distanceMi) as RaceSubPhase;
   }
-  // Base mode — POST_RACE for 14 days after any race finish.
-  const lastRace = state.races.recent[0];
-  if (lastRace && lastRace.daysAgo <= 14) return 'POST_RACE';
+  // Base mode — POST_RACE while ANY recent race's distance-aware
+  // recovery window is still open. A marathon contributes 26 days,
+  // a half 14, a 10K 7. So a marathon 21 days ago still qualifies
+  // as POST_RACE even though the previous "14 day" rule would have
+  // closed it. Stacking races (marathon + half within 14 days) keeps
+  // the phase active until the LATEST window closes.
+  if (state.recoveryWindowEndsISO && state.now <= state.recoveryWindowEndsISO) {
+    return 'POST_RACE';
+  }
   if (state.flags.rebuildAfterBreak) return 'REBUILD';
   return 'BASE_MAINTENANCE';
 }
@@ -143,19 +149,84 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return rest(`Heavy-block recovery (~${HEAVY_BLOCK_REST_DAYS} days). Full rest today.`);
   }
 
-  // First 2 days after a race — REST. Doc §13.3 + standard practice:
-  // immediately after a half / full / hard 10K, the body needs no
-  // running for 24-48h. Recovery runs come AFTER the initial rest
-  // window, not on day 1 or day 2.
-  const lastRace = state.races.recent[0];
-  if (phase === 'POST_RACE' && lastRace && lastRace.daysAgo <= 2) {
-    const distLabel = lastRace.distanceMi >= 20 ? 'marathon' : lastRace.distanceMi >= 10 ? 'half' : '10K';
-    return rest(`${lastRace.daysAgo === 0 ? 'Race day rest' : `${lastRace.daysAgo} day${lastRace.daysAgo === 1 ? '' : 's'} since ${lastRace.name}`} — full rest. The body needs 48h before any running, even easy. ${lastRace.distanceMi >= 13 ? `Hardest day after a ${distLabel} is the day after the day after.` : ''}`);
+  // POST_RACE — graduated recovery based on the LARGEST recent race's
+  // distance + heavy-block flag (stacked races extend the rest depth).
+  //
+  // Single race recovery — gentle ramp:
+  //   Marathon:    days 0-3 REST, days 4-7 recovery 2-3mi, days 8-14
+  //                easy 4-6mi, days 15-21 gradual return, day 22+ base.
+  //   Half:        days 0-2 REST, days 3-5 recovery 2-3mi, days 6-9
+  //                easy 4-6mi, day 10+ base return.
+  //   10K:         days 0-1 REST, days 2-4 recovery, day 5+ base.
+  //   5K:          day 0 REST, day 1 recovery, day 2+ base.
+  //
+  // Heavy block (marathon-in-14d, 2+ races in 14d, etc) — every stage
+  // extends ~2x because the second race compounded the damage.
+  if (phase === 'POST_RACE') {
+    const r = postRaceWorkout(state);
+    if (r) return r;
   }
 
   // Default by phase + day-of-week (from coach-workouts).
   const def = defaultByDow(phase, dow);
   return buildPrescriptionFor(def.primary, state, phase);
+}
+
+/** Graduated post-race recovery prescription. Looks at the LARGEST
+ *  recent race (most damaging) + heavy-block flag, finds days-since
+ *  to that race, and picks the right depth: REST → light recovery →
+ *  easy general aerobic → base return. Returns null when nothing
+ *  matches (caller falls through to default phase logic). */
+function postRaceWorkout(state: CoachState): RunPrescription | null {
+  if (state.races.recent.length === 0) return null;
+  // Largest race is the load-bearing one for recovery duration.
+  const biggest = state.races.recent.slice().sort((a, b) => b.distanceMi - a.distanceMi)[0];
+  // Most-recent race tells us how many days have actually passed.
+  const mostRecent = state.races.recent[0];
+  const days = mostRecent.daysAgo;
+  const distMi = biggest.distanceMi;
+  const heavy = state.flags.heavyBlockSuspected;
+
+  const stageMul = heavy ? 1.8 : 1;   // heavy block ~2x rest depth
+  const restEnd = Math.round((distMi >= 22 ? 3 : distMi >= 11 ? 2 : 1) * stageMul);
+  const lightEnd = Math.round((distMi >= 22 ? 7 : distMi >= 11 ? 5 : 3) * stageMul);
+  const easyEnd = Math.round((distMi >= 22 ? 14 : distMi >= 11 ? 9 : 5) * stageMul);
+
+  if (days <= restEnd) {
+    const racesDesc = state.races.recent.length > 1
+      ? `${state.races.recent.length} races in ${state.races.recent[state.races.recent.length - 1].daysAgo} days (last: ${mostRecent.name})`
+      : `${days === 0 ? 'Race day' : `${days} day${days === 1 ? '' : 's'}`} since ${mostRecent.name}`;
+    return rest(`${racesDesc}. Full rest today. ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
+  }
+  if (days <= lightEnd) {
+    return {
+      type: 'recovery', label: 'Recovery run',
+      distanceMi: 2.5, durationMin: null,
+      paceTargetSPerMi: null, hrZone: 1,
+      description: `2-3 mi very easy · circulation, not adaptation · or rest if legs aren\'t ready`,
+      isQuality: false, isLong: false, appendStrides: false,
+    };
+  }
+  if (days <= easyEnd) {
+    const baseEasy = baseEasyMi(state, 'POST_RACE');
+    return {
+      type: 'general_aerobic', label: 'General aerobic',
+      distanceMi: round1(Math.max(3, Math.min(baseEasy * 0.7, 6))), durationMin: null,
+      paceTargetSPerMi: null, hrZone: 2,
+      description: `${round1(Math.max(3, Math.min(baseEasy * 0.7, 6)))} mi easy aerobic · stay conversational · gradual return`,
+      isQuality: false, isLong: false, appendStrides: false,
+    };
+  }
+  // Past the easy window but recoveryWindowEndsISO still says POST_RACE
+  // (e.g. day 15-26 after a marathon). Allow general aerobic at base
+  // volume but no quality work.
+  return {
+    type: 'general_aerobic', label: 'General aerobic',
+    distanceMi: round1(baseEasyMi(state, 'POST_RACE')), durationMin: null,
+    paceTargetSPerMi: null, hrZone: 2,
+    description: `${round1(baseEasyMi(state, 'POST_RACE'))} mi easy aerobic · still inside the marathon recovery window — no quality yet`,
+    isQuality: false, isLong: false, appendStrides: false,
+  };
 }
 
 function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Phase): RunPrescription {
