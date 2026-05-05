@@ -17,11 +17,23 @@ import { listRaces, type SavedRace } from '../../lib/storage';
 import { autoSyncStrava } from '../../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
 import { rollupYear, naivePRs, isProbablyRace } from '../../lib/strava-stats';
+
+interface AggregatedBest {
+  label: string;
+  distMi: number;
+  bestS: number | null;
+  elapsedDisplay: string;
+  activityId: number | null;
+  activityName: string | null;
+  date: string | null;
+  isPR: boolean;
+}
 import { formatShort } from '../../lib/dates';
 
 export default function LogPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [races, setRaces] = useState<SavedRace[] | null>(null);
+  const [stravaBests, setStravaBests] = useState<AggregatedBest[] | null>(null);
   const { activities, error, refetch } = useActivities();
 
   useEffect(() => {
@@ -32,6 +44,17 @@ export default function LogPage() {
       if (!cancelled) setRaces(rs);
       // Trigger a sync so race rows reflect the latest Strava finish times.
       await autoSyncStrava();
+      // Pull aggregated best_efforts (server-side: fetches detail for
+      // race-like activities that don't have it yet, caches results).
+      // Hits Strava up to 8x per call so this fills in over a couple
+      // of page loads.
+      try {
+        const res = await fetch('/api/strava/bests', { cache: 'no-store' });
+        const json = await res.json() as { bests: AggregatedBest[] };
+        if (!cancelled) setStravaBests(json.bests ?? null);
+      } catch (e) {
+        console.warn('Failed to fetch Strava bests:', e);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -51,7 +74,16 @@ export default function LogPage() {
   const runs = onlyRuns(activities);
   const sortedRuns = runs.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
   const roll = rollupYear(runs);
-  const prs = naivePRs(runs);
+  // PRs: prefer Strava's own best_efforts when we've got it (catches a
+  // 5:27 mile inside a half-marathon race). Fall back to naïve "fastest
+  // whole run near this distance" buckets per-label when best_efforts
+  // hasn't loaded yet OR Strava reports no best_effort for that bucket.
+  const naive = naivePRs(runs);
+  const prs = naive.map(n => {
+    const strava = stravaBests?.find(s => s.label === n.label);
+    if (strava && strava.bestS != null) return strava;
+    return n;
+  });
   const noStrava = error?.includes('STRAVA_REFRESH_TOKEN') || (runs.length === 0 && error);
 
   return (

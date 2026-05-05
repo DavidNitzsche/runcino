@@ -487,13 +487,31 @@ export function naivePRs(activities: NormalizedActivity[]): Array<{ label: strin
 
 /** Heuristic: is this activity probably a race? Strava's workout_type
  *  flag (=== 1) is the canonical answer, but plenty of races never get
- *  tagged at the time. Falling back to a name-keyword match catches
- *  "Rose Bowl Half Marathon" / "Point Mugu half marathon" / "10K
- *  Championship" without requiring the runner to retag everything. */
-const RACE_NAME_RE = /\b(marathon|half|10\s*k|5\s*k|championship|grand prix|race|chip)\b/i;
+ *  tagged at the time.
+ *
+ *  Without the tag, we have to disambiguate race names from training
+ *  names. Training names include "race" too — "Race Pace Mile Reps",
+ *  "20mi Race Practice Long Run", "Race-Pace Tempo." The naive
+ *  /race|marathon|half/ regex was misclassifying those.
+ *
+ *  Approach:
+ *    1. Strava workout_type === 1 always wins.
+ *    2. Otherwise, name must contain a strong race indicator
+ *       ("marathon", "half marathon", "championship", "grand prix")
+ *    3. AND must NOT contain training-language exclusions
+ *       (tempo, repeats, intervals, easy, recovery, long run,
+ *        race pace, race practice, etc).
+ *  This catches Big Sur / Sombrero / LA / Rose Bowl / Point Mugu —
+ *  it does NOT catch "Race Pace Mile Reps" or "20mi Race Practice
+ *  Long Run". Strava-tagged races (Disney "Powered by the Mouse for
+ *  a PR", which doesn't match by name) still surface via rule #1. */
+const RACE_INDICATOR_RE  = /\b(marathon|half[\s-]?marathon|championship|grand\s*prix)\b/i;
+const TRAINING_EXCLUDE_RE = /\b(race\s*pace|race\s*practice|practice\s*run|tempo|repeat|rep\b|interval|long\s*run|easy|recovery|workout|over\s*and\s*under|progression|drop\s*set|stride|shake|warm[-\s]?up|cool[-\s]?down|taper)\b/i;
+
 export function isProbablyRace(a: NormalizedActivity): boolean {
   if (a.workoutType === 1) return true;
-  return RACE_NAME_RE.test(a.name);
+  if (TRAINING_EXCLUDE_RE.test(a.name)) return false;
+  return RACE_INDICATOR_RE.test(a.name);
 }
 
 /** Easy / hard split for the last N days. "Easy" is mile-weighted by
