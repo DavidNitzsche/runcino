@@ -8,36 +8,55 @@
    ────────────────────────────────────────────────────────────── */
 
 @theme inline {
-  /* Layer scale (background depths) */
-  --color-l0: #10131A;
-  --color-l1: #141820;
-  --color-l2: #1A212D;
-  --color-l3: #1D2736;
-  --color-l4: #21303F;
-  --color-l5: #2b3a4e;
+  /* ── Canonical color palette ────────────────────────────────────
+     Source of truth: docs/design/colors.md + docs/design/colors.jpg
+     Every CSS color value here must match that spec exactly. */
 
-  /* Type tokens (white at varying alpha) */
-  --color-t0: #F6F7F8;
-  --color-t1: rgba(246, 247, 248, 0.72);
-  --color-t2: rgba(246, 247, 248, 0.48);
-  --color-t3: rgba(246, 247, 248, 0.32);
+  /* Dark layer scale (background depths, l0 = deepest, l4 = topmost) */
+  --color-l0: #10131A;   /* Dark basement */
+  --color-l1: #141820;   /* Dark background */
+  --color-l2: #1A212D;   /* Dark first */
+  --color-l3: #1D2736;   /* Dark second */
+  --color-l4: #212D3F;   /* Dark third */
+  --color-l5: #2b3a4e;   /* Project extension — borders + heavy strokes */
 
-  /* Semantic */
+  /* Light layer scale (race-plan exports, editorial retrospectives) */
+  --color-light-base: #B6BBCC;
+  --color-light-bg:   #E6E8EF;
+  --color-light-1:    #F6F7F8;
+  --color-light-2:    #FBFBFB;
+  --color-light-3:    #FFFFFF;
+
+  /* Typography */
+  --color-t0:         #F6F7F8;
+  --color-t1:         rgba(246, 247, 248, 0.72);
+  --color-t2:         rgba(246, 247, 248, 0.48);
+  --color-t3:         rgba(246, 247, 248, 0.32);
+  --color-text-dark:  #080808;
+
+  /* Semantic system colors — meaning, not decoration */
   --color-corporate: #008FEC;
+  --color-xp:        #9013FE;
   --color-warning:   #FC4D54;
   --color-success:   #3EBD41;
-  --color-caution:   #F0DF47;
   --color-attention: #F3AD3B;
-  --color-xp:        #9013FE;
+  /* --color-caution kept as alias for legacy callers, identical to yellow */
+  --color-caution:   #F0DF47;
 
-  /* Data palette */
-  --color-lt-blue: #2784E0;
-  --color-dk-blue: #2264E3;
-  --color-aqua:    #27E087;
-  --color-yellow:  #F0DF47;
+  /* Additional (data + accents) */
+  --color-yellow:  #F0DF47;   /* Light Yellow */
+  --color-orange:  #E88021;   /* Dark Orange */
+  --color-redish:  #D03F3F;
   --color-pink:    #CD317C;
-  --color-orange:  #E88221;
-  --color-green:   #139520;
+  --color-violet:  #6227E0;
+  --color-dk-blue: #2264E3;
+  --color-lt-blue: #27B4E0;   /* Light Blue */
+  --color-aqua:    #27E087;   /* Aquamarine */
+  --color-green:   #139520;   /* Dark Green */
+  --color-gray:    #646464;
+
+  /* Hero gradient — XP → Corporate (purple → blue) */
+  --gradient-hero: linear-gradient(135deg, #9013FE 0%, #008FEC 100%);
 
   /* Phase rainbow (matches the elevation/legend gradient) */
   --color-phase-0: #3EBD41;
