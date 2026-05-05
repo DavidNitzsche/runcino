@@ -56,9 +56,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const headlineDistance = body.distanceMi ?? existing.meta.distanceMi;
 
   // Reuse the build-plan endpoint over loopback so we don't duplicate
-  // its assembly logic. URL is built from the request itself, so it
-  // works locally + on Railway without a hardcoded host.
-  const origin = new URL(req.url).origin;
+  // its assembly logic. On Railway, req.url's origin is the internal
+  // 0.0.0.0:$PORT host which isn't reachable via fetch from inside
+  // the same container — fall back to the public domain set in env.
+  const origin = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : new URL(req.url).origin;
   const buildRes = await fetch(`${origin}/api/build-plan`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

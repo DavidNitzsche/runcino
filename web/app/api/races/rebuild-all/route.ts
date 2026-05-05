@@ -17,7 +17,12 @@ import { listRacesDB } from '../../../../lib/race-store';
 
 export async function POST(req: Request) {
   const races = await listRacesDB();
-  const origin = new URL(req.url).origin;
+  // Same fix as /api/races/[slug]/rebuild — Railway's req.url origin
+  // is 0.0.0.0:$PORT which can't be fetched from inside the same
+  // container. Use the public domain when it's set in env.
+  const origin = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : new URL(req.url).origin;
   const todayISO = new Date().toISOString().slice(0, 10);
 
   // Past races are locked — they're historical artifacts (the plan
