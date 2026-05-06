@@ -188,7 +188,26 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
  *  recent race (most damaging) + heavy-block flag, finds days-since
  *  to that race, and picks the right depth: REST → light recovery →
  *  easy general aerobic → base return. Returns null when nothing
- *  matches (caller falls through to default phase logic). */
+ *  matches (caller falls through to default phase logic).
+ *
+ *  Research alignment (coaching-research.md):
+ *
+ *    §13.3 "The recovery period doesn't have to mean no running; it
+ *    means easy mileage at 30 to 50 percent of peak, no quality work."
+ *    — light recovery is daily, not alternated.
+ *
+ *    §8.1 lists active recovery as high-evidence: easy spinning or
+ *    very-low-intensity jogging supports recovery without taxing the
+ *    aerobic system.
+ *
+ *    §8.3 "every hard training stress requires a recovery period of
+ *    24 to 72 hours" — bounds the rest stage. Easy/recovery efforts
+ *    are not classified as hard stress.
+ *
+ *    A heavy-block stack (multiple races within ~30 days) extends the
+ *    reduced-volume window (more days at recovery + easy before
+ *    structured workouts return), with the rest-stage scaling within
+ *    the §8.3 24-72h envelope plus heavy-block accumulation. */
 function postRaceWorkout(state: CoachState): RunPrescription | null {
   if (state.races.recent.length === 0) return null;
   // Largest race is the load-bearing one for recovery duration.
@@ -199,7 +218,7 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   const distMi = biggest.distanceMi;
   const heavy = state.flags.heavyBlockSuspected;
 
-  const stageMul = heavy ? 1.8 : 1;   // heavy block ~2x rest depth
+  const stageMul = heavy ? 1.8 : 1;   // heavy block ~2x reduced-volume window
   const restEnd = Math.round((distMi >= 22 ? 3 : distMi >= 11 ? 2 : 1) * stageMul);
   const lightEnd = Math.round((distMi >= 22 ? 7 : distMi >= 11 ? 5 : 3) * stageMul);
   const easyEnd = Math.round((distMi >= 22 ? 14 : distMi >= 11 ? 9 : 5) * stageMul);
