@@ -23,6 +23,10 @@
  */
 import type { CoachBaseContext, CoachDecision } from './types';
 import { callCoachLLM, llmAvailable } from './llm';
+import { citationsForWorkoutType, citationsForReadiness } from './citations';
+import { coachDaily, type CoachToday } from '../lib/coach-engine';
+import type { CoachState } from '../lib/coach-state';
+import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
 
 // ── Method-specific input types ──────────────────────────────────────
 // Defined inline here so the Coach's API surface stays in one file.
@@ -50,28 +54,44 @@ export interface PaceStrategyOutput {
 }
 
 export interface PrescribeWorkoutInput extends CoachBaseContext {
-  /** The user's macro-level state (volume, intensity history, recovery
-   *  signals, race calendar). Stage 1 wires this from coach-state.ts. */
-  state: unknown; // Replaced with CoachState in Stage 1.
+  state: CoachState;
 }
 
 export interface WorkoutPrescription {
-  type: string; // e.g. 'easy', 'threshold', 'long_progression'
-  durationMin: number;
-  distanceMi?: number;
-  paceTargetSPerMi?: { lower: number; upper: number };
-  hrZone?: { lower: number; upper: number };
-  notes: string;
+  /** Workout-type slug. Maps 1:1 to lib/coach-engine.WorkoutType. */
+  type: string;
+  /** Display label, e.g. "Easy 6 mi", "Threshold intervals", "Rest". */
+  label: string;
+  /** Distance in miles, if applicable. 0 for rest days. */
+  distanceMi: number;
+  /** Pace band in s/mi, if applicable. */
+  paceTargetSPerMi?: { lower: number; upper: number } | null;
+  /** HR zone (1-5), if available. */
+  hrZone?: number | null;
+  /** Description of the session — voice-cleaned single sentence. */
+  description: string;
+  /** Whether this is a hard / quality session vs an easy / recovery
+   *  day. The card uses this to show the right chip. */
+  isQuality: boolean;
+  /** Whether today's run is the long run for the week. */
+  isLong: boolean;
+  /** The Coach's deterministic engine output, exposed for callers
+   *  that want richer data (week shape, alerts, mode/phase). */
+  coachToday: CoachToday;
 }
 
 export interface AssessReadinessInput extends CoachBaseContext {
-  state: unknown; // Replaced with CoachState in Stage 1.
+  state: CoachState;
 }
 
 export interface ReadinessAssessment {
   level: 'green' | 'yellow' | 'red';
-  /** Sentence the daily card renders verbatim. */
+  /** Sentence the daily card renders verbatim — Coach voice. */
   message: string;
+  /** Numeric ACWR for the indicator strip; null if not enough data. */
+  acwr: number | null;
+  /** 14-day easy-share fraction (0–1); null if no recent intensity data. */
+  easyShare: number | null;
 }
 
 export interface TaperDepthInput extends CoachBaseContext {
@@ -196,12 +216,88 @@ class CoachImpl implements Coach {
   }
 
   paceStrategy(): Promise<CoachDecision<PaceStrategyOutput>> { return this.notYet(1, 'paceStrategy'); }
-  prescribeWorkout(): Promise<CoachDecision<WorkoutPrescription>> { return this.notYet(3, 'prescribeWorkout'); }
-  assessReadiness(): Promise<CoachDecision<ReadinessAssessment>> { return this.notYet(3, 'assessReadiness'); }
   taperDepth(): Promise<CoachDecision<number>> { return this.notYet(1, 'taperDepth'); }
   fuelingFor(): Promise<CoachDecision<FuelingPlan>> { return this.notYet(1, 'fuelingFor'); }
   retrospect(): Promise<CoachDecision<RetrospectiveOutput>> { return this.notYet(4, 'retrospect'); }
   adjustForReality(): Promise<CoachDecision<AdjustedPlan>> { return this.notYet(5, 'adjustForReality'); }
+
+  // ── Stage 3 · Daily prescription ───────────────────────────────────
+  // Wraps the existing coachDaily() engine. The engine's output is
+  // already deterministic and well-tested; we attach citations and a
+  // voice-cleaned rationale so the daily card on /training has the
+  // same audit trail as race-morning brief.
+  async prescribeWorkout(input: PrescribeWorkoutInput): Promise<CoachDecision<WorkoutPrescription>> {
+    const today = coachDaily(input.state);
+    const t = today.today;
+    return {
+      answer: {
+        type: t.type,
+        label: t.label,
+        distanceMi: t.distanceMi,
+        paceTargetSPerMi: t.paceTargetSPerMi
+          ? { lower: t.paceTargetSPerMi.lowS, upper: t.paceTargetSPerMi.highS }
+          : null,
+        hrZone: t.hrZone,
+        description: t.description,
+        isQuality: today.alerts.some(a => a.severity === 'rest') ? false : isHardWorkoutType(t.type),
+        isLong: t.type.startsWith('long_'),
+        coachToday: today,
+      },
+      rationale: today.rationale,
+      citations: citationsForWorkoutType(t.type),
+      brain: 'deterministic',
+    };
+  }
+
+  // ── Stage 3 · Readiness ────────────────────────────────────────────
+  // Pure deterministic. ACWR sweet-spot 0.8–1.3 (doctrine §13.1) drives
+  // the level; easy-share and recent missed-runs nudge it.
+  // Sleep / HRV signals are reserved for Stage 5 once HealthKit lands.
+  async assessReadiness(input: AssessReadinessInput): Promise<CoachDecision<ReadinessAssessment>> {
+    const s = input.state;
+    const ratio = acwr(s);
+    const phase = (s.races.nextA != null && s.races.inWindow.some(r => r.priority === 'A')) ? 'BUILD' : 'BASE_MAINTENANCE';
+    const target = intensityTarget(phase as Parameters<typeof intensityTarget>[0]);
+    const easy = s.intensity.easyShare14d;
+    const missedRunsSignal = s.recovery.daysSinceLastRun >= 3;
+
+    let level: 'green' | 'yellow' | 'red' = 'green';
+    let reason = '';
+    if (ratio != null && (ratio < 0.5 || ratio > 1.5)) {
+      level = 'red';
+      reason = ratio > 1.5
+        ? `Acute load is way over chronic — your last 7 days are ${Math.round(ratio * 100)}% of your baseline. We dial back today.`
+        : `Last 7 days are ${Math.round(ratio * 100)}% of baseline — too quiet to call you ready.`;
+    } else if (ratio != null && (ratio < ACWR_LOW || ratio > ACWR_HIGH)) {
+      level = 'yellow';
+      reason = ratio > ACWR_HIGH
+        ? `Recent volume is running hot. Hold the easy days honestly and don't pile on quality.`
+        : `Coming off a quiet week — ease back in, don't try to make it up in one day.`;
+    } else if (easy > 0 && easy < target.easyShareMin) {
+      level = 'yellow';
+      reason = `Easy runs are drifting too fast — last 14 days only ${Math.round(easy * 100)}% truly easy. The discipline of running easy honestly is harder than the threshold day.`;
+    } else if (missedRunsSignal) {
+      level = 'yellow';
+      reason = `${s.recovery.daysSinceLastRun} days since the last run. You're not falling apart — get out the door, easy pace, get some miles.`;
+    } else {
+      level = 'green';
+      reason = ratio != null
+        ? `Load is in the sweet spot (${ratio.toFixed(2)}× baseline) and easy share is honest. Trust today's plan.`
+        : `Looking ready. Trust today's plan.`;
+    }
+
+    return {
+      answer: {
+        level,
+        message: reason,
+        acwr: ratio,
+        easyShare: easy > 0 ? easy : null,
+      },
+      rationale: reason,
+      citations: citationsForReadiness(level),
+      brain: 'deterministic',
+    };
+  }
 
   // ── Stage 2 · Race-morning brief ───────────────────────────────────
   // First user-visible LLM surface. Pre-race, the Coach writes a short
@@ -247,8 +343,25 @@ class CoachImpl implements Coach {
   }
 }
 
+/** Canonical "hard" workout types — used by prescribeWorkout to decide
+ *  whether to flag today as quality on the card. Mirrors lib/coach-
+ *  workouts.ts's notion of intensity but kept here so the Coach layer
+ *  doesn't depend on engine internals. */
+function isHardWorkoutType(type: string): boolean {
+  return (
+    type.includes('threshold') ||
+    type === 'vo2' ||
+    type === 'sub_threshold' ||
+    type === 'tempo_continuous' ||
+    type.startsWith('marathon_specific') ||
+    type === 'long_progression' ||
+    type === 'long_mp_block' ||
+    type === 'long_fast_finish'
+  );
+}
+
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
- *  Stage 2 implements `briefRaceMorning`; other methods still stub
- *  with a clear "Stage N" error. Each stage flips one or more from
- *  stub → real. */
+ *  Stage 2 implements `briefRaceMorning`; Stage 3 adds `prescribeWorkout`
+ *  + `assessReadiness`; other methods still stub with a clear "Stage N"
+ *  error. Each stage flips one or more from stub → real. */
 export const coach: Coach = new CoachImpl();

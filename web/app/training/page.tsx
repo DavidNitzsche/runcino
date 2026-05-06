@@ -2,11 +2,12 @@
 
 /**
  * /training — actual training executed (last 7 days from Strava) +
- * placeholder for the M3 Coach plan.
+ * Coach's daily prescription.
  *
- * The "this week so far" strip is real: Strava miles per day, today
- * highlighted, week total. Build arc / weekly plan / today workout
- * stay M3 stubs until Coach lands.
+ * Stage 3: today's workout + readiness pill come from /api/coach/today,
+ * which routes through `coach.prescribeWorkout` + `coach.assessReadiness`.
+ * Both are deterministic (no LLM). The "Why?" toggle on the daily card
+ * reveals the citations into docs/coaching-research.md.
  */
 
 import Link from 'next/link';
@@ -17,15 +18,55 @@ import { useActivities, onlyRuns } from '../../lib/strava-activities';
 import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
 import { daysUntil, formatWeekRange, formatShort } from '../../lib/dates';
 
+// ── Daily prescription shapes (from /api/coach/today) ───────────────
+type Citation = { doc: string; section: string; snippet?: string };
+type CoachDecision<T> = { answer: T; rationale: string; citations: Citation[]; brain: 'deterministic' | 'llm' };
+type WorkoutPrescription = {
+  type: string;
+  label: string;
+  distanceMi: number;
+  paceTargetSPerMi?: { lower: number; upper: number } | null;
+  hrZone?: number | null;
+  description: string;
+  isQuality: boolean;
+  isLong: boolean;
+};
+type ReadinessAssessment = {
+  level: 'green' | 'yellow' | 'red';
+  message: string;
+  acwr: number | null;
+  easyShare: number | null;
+};
+type CoachTodayResponse = {
+  ok: boolean;
+  error?: string;
+  coach?: {
+    workout: CoachDecision<WorkoutPrescription>;
+    readiness: CoachDecision<ReadinessAssessment>;
+  };
+  today?: {
+    weekShape: Array<{ date: string; type: string; distanceMi: number; isToday: boolean; hasStrength: boolean }>;
+    alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
+    mode: 'race' | 'base';
+    phase: string;
+    modeDetail: string;
+  };
+};
+
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [races, setRaces] = useState<SavedRace[] | null>(null);
+  const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(null);
   const { activities } = useActivities();
 
   useEffect(() => {
     let cancelled = false;
     setNow(new Date());
     listRaces().then(rs => { if (!cancelled) setRaces(rs); });
+    fetch('/api/coach/today')
+      .then(r => r.json())
+      .then((data: CoachTodayResponse) => { if (!cancelled) setCoachToday(data); })
+      .catch(() => { /* non-fatal — card shows the unavailable state */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -68,24 +109,186 @@ export default function TrainingPage() {
             </div>
           </div>
 
+          <TodayCard data={coachToday} now={now} />
+
           {runs && <ActualThisWeekTile runs={runs} now={now} />}
           {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
 
-          <ComingSoon
-            milestone="M3 · Coach"
-            title="Adaptive weekly plan"
-            body="Once Coach is on, your week auto-generates from your goal race + current fitness. HRV drops, missed runs, and race-week tapers all flow through. Each daily workout pushes to your Watch as a CustomWorkout — same pipeline as the race-day intervals."
-          />
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <Stub label="Today's plan" range={now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} pill="M3" body="The single workout for today, with target paces, HR zones, and Watch-sync button." />
             <Stub label="Build arc" range="16-week periodization" pill="M3" body="Visual phase progression — base / build / peak / taper — over the months leading to your goal race." />
+            <Stub label="Watch-sync" range="CustomWorkout export" pill="M3" body="Push today's prescription to your Watch with target paces, HR zones, and lap structure — same pipeline as race-day intervals." />
           </div>
 
         </div>
       </div>
     </>
   );
+}
+
+// ── TodayCard — the daily prescription + readiness pill ─────────────
+function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }) {
+  const [showWhy, setShowWhy] = useState(false);
+  const dateLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  // Loading
+  if (!data) {
+    return (
+      <div className="tile" style={{ padding: '20px 24px', marginBottom: 10 }}>
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub">Today</div>
+            <div className="tile-lbl">{dateLabel}</div>
+          </div>
+        </div>
+        <div className="hint">Coach is checking in…</div>
+      </div>
+    );
+  }
+
+  // Error / no DB
+  if (!data.ok || !data.coach) {
+    return (
+      <div className="tile" style={{ padding: '20px 24px', marginBottom: 10, borderStyle: 'dashed' }}>
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub">Today</div>
+            <div className="tile-lbl">{dateLabel}</div>
+          </div>
+          <span className="chip">Coach unavailable</span>
+        </div>
+        <div className="hint" style={{ fontSize: 12 }}>
+          {data.error ?? 'Need a connected Strava account + a saved goal race to generate today\'s prescription.'}
+        </div>
+      </div>
+    );
+  }
+
+  const w = data.coach.workout.answer;
+  const r = data.coach.readiness.answer;
+  const citations = [...data.coach.workout.citations, ...data.coach.readiness.citations];
+  const phase = data.today?.phase ?? '';
+  const alerts = data.today?.alerts ?? [];
+
+  return (
+    <div className="tile" style={{ padding: '20px 24px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Today</div>
+          <div className="tile-lbl">{dateLabel} · {phase.toLowerCase().replace(/_/g, ' ')}</div>
+        </div>
+        <ReadinessPill level={r.level} acwr={r.acwr} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 38, letterSpacing: '-.02em', textTransform: 'uppercase' }}>
+          {w.label}
+        </div>
+        {w.isQuality && <span className="chip chip--attention" style={{ alignSelf: 'center' }}>Quality</span>}
+        {w.isLong && <span className="chip" style={{ alignSelf: 'center', background: 'rgba(0,143,236,.15)', color: 'var(--color-corporate)' }}>Long</span>}
+      </div>
+
+      {(w.distanceMi > 0 || w.paceTargetSPerMi || w.hrZone) && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          {w.distanceMi > 0 && (
+            <Stat label="Distance" value={`${w.distanceMi.toFixed(1)} mi`} />
+          )}
+          {w.paceTargetSPerMi && (
+            <Stat
+              label="Pace"
+              value={`${fmtPace(w.paceTargetSPerMi.lower)}–${fmtPace(w.paceTargetSPerMi.upper)}/mi`}
+            />
+          )}
+          {w.hrZone != null && <Stat label="HR" value={`Zone ${w.hrZone}`} />}
+        </div>
+      )}
+
+      <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.55 }}>
+        {w.description}
+      </div>
+
+      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, fontStyle: 'italic' }}>
+        {r.message}
+      </div>
+
+      {alerts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {alerts.map((a, i) => (
+            <div key={i} style={{
+              padding: '8px 12px', borderRadius: 6, fontSize: 12,
+              background: a.severity === 'rest' ? 'rgba(252,77,84,.1)' : a.severity === 'warn' ? 'rgba(243,173,59,.1)' : 'rgba(79,143,247,.1)',
+              borderLeft: `3px solid ${a.severity === 'rest' ? 'var(--color-warning)' : a.severity === 'warn' ? 'var(--color-attention)' : 'var(--color-corporate)'}`,
+              color: 'var(--color-t1)',
+            }}>
+              {a.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn btn--ghost" onClick={() => setShowWhy(s => !s)} style={{ fontSize: 12 }}>
+          {showWhy ? '× Hide' : '? Why'}
+        </button>
+      </div>
+
+      {showWhy && (
+        <div style={{
+          padding: 12,
+          background: 'var(--color-l1)',
+          border: '1px solid var(--color-l4)',
+          borderRadius: 8,
+          fontSize: 12,
+          color: 'var(--color-t1)',
+          lineHeight: 1.55,
+        }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>Coach rationale</div>
+          <div style={{ marginBottom: citations.length ? 12 : 0, color: 'var(--color-t0)' }}>{data.coach.workout.rationale}</div>
+          {citations.length > 0 && (
+            <>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>Citations</div>
+              <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {citations.map((c, i) => (
+                  <li key={i}>
+                    <strong style={{ color: 'var(--color-t0)' }}>{c.section}</strong>
+                    {c.snippet && <span style={{ color: 'var(--color-t2)' }}>{' — '}{c.snippet}</span>}
+                    <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 2 }}>{c.doc}</div>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReadinessPill({ level, acwr }: { level: 'green' | 'yellow' | 'red'; acwr: number | null }) {
+  const palette = {
+    green:  { bg: 'rgba(20,192,140,.15)', fg: 'var(--color-success)', label: 'Ready' },
+    yellow: { bg: 'rgba(243,173,59,.15)', fg: 'var(--color-attention)', label: 'Caution' },
+    red:    { bg: 'rgba(252,77,84,.15)',  fg: 'var(--color-warning)', label: 'Pull back' },
+  }[level];
+  return (
+    <span className="chip" style={{ background: palette.bg, color: palette.fg, fontWeight: 700 }}>
+      ● {palette.label}{acwr != null ? ` · ACWR ${acwr.toFixed(2)}` : ''}
+    </span>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--color-t3)', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-data)', fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)' }}>{value}</div>
+    </div>
+  );
+}
+
+function fmtPace(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function ActualThisWeekTile({ runs, now }: { runs: import('../../lib/strava-activities').NormalizedActivity[]; now: Date }) {
@@ -163,20 +366,6 @@ function RecentWeeksTile({ runs }: { runs: import('../../lib/strava-activities')
   );
 }
 
-function ComingSoon({ milestone, title, body }: { milestone: string; title: string; body: string }) {
-  return (
-    <div className="tile" style={{
-      padding: '36px 32px', borderStyle: 'dashed', background: 'transparent',
-      display: 'flex', flexDirection: 'column', gap: 14,
-    }}>
-      <span className="chip chip--attention" style={{ alignSelf: 'flex-start' }}>{milestone}</span>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 38, textTransform: 'uppercase', letterSpacing: '-.01em', lineHeight: 1 }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 14, color: 'var(--color-t2)', maxWidth: 720, lineHeight: 1.55 }}>{body}</div>
-    </div>
-  );
-}
 
 function Stub({ label, range, pill, body }: { label: string; range: string; pill: string; body: string }) {
   return (

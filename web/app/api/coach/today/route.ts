@@ -1,25 +1,41 @@
 /**
  * /api/coach/today — daily prescription endpoint.
  *
- * GET → CoachToday (see lib/coach-engine.ts for the full shape).
+ * Stage 3 wired: routes through `coach.prescribeWorkout` + `coach.
+ * assessReadiness`. Both are deterministic — no Claude call, no API
+ * key needed. The legacy `today` + `state` envelope is preserved
+ * (iOS reads them); a `coach` sub-object carries the workout
+ * prescription, readiness, and citations.
  *
- * Reads aggregated state from Postgres + Strava cache via
- * gatherCoachState(), then runs the engine. iOS will call this every
- * morning to get today's workout + rationale + week shape + alerts.
- *
- * The engine is intentionally placeholder until the coaching research
- * doc lands. Response carries `isPlaceholder: true` so the UI can
- * surface a chip making that explicit.
+ * GET → {
+ *   ok: true,
+ *   today: CoachToday,                  // legacy shape from coachDaily()
+ *   state: CoachState,                  // raw aggregated state
+ *   coach: {
+ *     workout: CoachDecision<WorkoutPrescription>,
+ *     readiness: CoachDecision<ReadinessAssessment>,
+ *   }
+ * }
  */
-
 import { gatherCoachState } from '../../../../lib/coach-state';
 import { coachDaily } from '../../../../lib/coach-engine';
+import { coach } from '../../../../coach/coach';
 
 export async function GET() {
   try {
     const state = await gatherCoachState();
     const today = coachDaily(state);
-    return Response.json({ ok: true, today, state });
+    const isoToday = state.now.slice(0, 10);
+    const [workout, readiness] = await Promise.all([
+      coach.prescribeWorkout({ today: isoToday, state }),
+      coach.assessReadiness({ today: isoToday, state }),
+    ]);
+    return Response.json({
+      ok: true,
+      today,
+      state,
+      coach: { workout, readiness },
+    });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 200 });
   }
