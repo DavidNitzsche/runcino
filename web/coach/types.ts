@@ -15,7 +15,14 @@
  *  `snippet` is an optional short prose excerpt — used by the UI to
  *  render a hover-tooltip explaining the rule without leaving the page. */
 export interface Citation {
-  doc: 'docs/coaching-research.md' | 'docs/amp-research.md';
+  /** Canonical doctrine source. The `Research/...` form is the
+   *  current source of truth (per docs/COACH_BUILD_PLAN.md); the two
+   *  legacy `docs/...md` paths remain only until the last legacy
+   *  citation migrates. */
+  doc:
+    | 'docs/coaching-research.md'
+    | 'docs/amp-research.md'
+    | `Research/${string}`;
   section: string;
   snippet?: string;
 }
