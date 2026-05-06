@@ -1361,7 +1361,6 @@ function BriefTile({ race }: { race: SavedRace }) {
   const [brief, setBrief] = useState<BriefResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [showWhy, setShowWhy] = useState(false);
 
   async function generate() {
     setLoading(true); setErr(null);
@@ -1394,8 +1393,6 @@ function BriefTile({ race }: { race: SavedRace }) {
     }
   }
 
-  const citations = brief?.coach?.citations ?? [];
-  const hasCitations = citations.length > 0;
 
   return (
     <div className="tile">
@@ -1427,50 +1424,8 @@ function BriefTile({ race }: { race: SavedRace }) {
             {brief.narrative}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="btn btn--ghost" onClick={() => { setBrief(null); setShowWhy(false); }} style={{ fontSize: 12 }}>↻ Regenerate</button>
-            {hasCitations && (
-              <button
-                className="btn btn--ghost"
-                onClick={() => setShowWhy(s => !s)}
-                style={{ fontSize: 12 }}
-                aria-expanded={showWhy}
-              >
-                {showWhy ? '× Hide rationale' : '? Why'}
-              </button>
-            )}
+            <button className="btn btn--ghost" onClick={() => { setBrief(null); }} style={{ fontSize: 12 }}>↻ Regenerate</button>
           </div>
-          {showWhy && brief.coach && (
-            <div style={{
-              padding: 12,
-              background: 'var(--color-l1)',
-              border: '1px solid var(--color-l4)',
-              borderRadius: 8,
-              fontSize: 12,
-              color: 'var(--color-t1)',
-              lineHeight: 1.55,
-            }}>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>
-                Coach rationale
-              </div>
-              <div style={{ marginBottom: citations.length ? 10 : 0, color: 'var(--color-t0)' }}>{brief.coach.rationale}</div>
-              {citations.length > 0 && (
-                <>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>
-                    Citations
-                  </div>
-                  <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {citations.map((c, i) => (
-                      <li key={i}>
-                        <strong style={{ color: 'var(--color-t0)' }}>{c.section}</strong>
-                        {c.snippet && <span style={{ color: 'var(--color-t2)' }}>{' — '}{c.snippet}</span>}
-                        <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 2 }}>{c.doc}</div>
-                      </li>
-                    ))}
-                  </ol>
-                </>
-              )}
-            </div>
-          )}
         </>
       )}
       {err && (

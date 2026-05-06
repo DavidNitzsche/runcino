@@ -335,12 +335,17 @@ function isHardRun(p: RunPrescription): boolean {
 function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
   const out: CoachToday['alerts'] = [];
 
+  // Heavy-block + post-race contexts are already explained in the
+  // workout description AND the readiness sentence. Adding a third
+  // alert that says the same thing produces banner-fatigue, so we skip
+  // these when the description carries the message.
   if (phase === 'BASE_MAINTENANCE' && state.flags.heavyBlockSuspected) {
-    out.push({ severity: 'rest', message: `${state.races.raceCount30d} races + high volume in the last 30 days. Coach prescribed rest — recovery is the workout.` });
+    // No alert — description ("X races in N days, full rest today")
+    // and readiness ("recovery is the work right now") already cover it.
   }
   if (phase === 'POST_RACE') {
-    const r = state.races.recent[0];
-    if (r) out.push({ severity: 'info', message: `${r.daysAgo} days since ${r.name}. Volume drop is intentional — building back gradually through the recovery window.` });
+    // Same — workout description already names the recent race + the
+    // recovery posture. Suppress.
   }
   if (state.flags.rebuildAfterBreak) {
     out.push({ severity: 'warn', message: 'Last 7 days mileage is well below your 28-day average. Rebuild week — easy mileage only.' });

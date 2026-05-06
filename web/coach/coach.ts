@@ -24,6 +24,7 @@
 import type { CoachBaseContext, CoachDecision } from './types';
 import { callCoachLLM, llmAvailable } from './llm';
 import { citationsForWorkoutType, citationsForReadiness } from './citations';
+import { composeExplanation } from './explanations';
 import { coachDaily, type CoachToday } from '../lib/coach-engine';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
@@ -229,6 +230,7 @@ class CoachImpl implements Coach {
   async prescribeWorkout(input: PrescribeWorkoutInput): Promise<CoachDecision<WorkoutPrescription>> {
     const today = coachDaily(input.state);
     const t = today.today;
+    const isLong = t.type.startsWith('long_');
     return {
       answer: {
         type: t.type,
@@ -240,19 +242,21 @@ class CoachImpl implements Coach {
         hrZone: t.hrZone,
         description: t.description,
         isQuality: today.alerts.some(a => a.severity === 'rest') ? false : isHardWorkoutType(t.type),
-        isLong: t.type.startsWith('long_'),
+        isLong,
         coachToday: today,
       },
       rationale: today.rationale,
+      explanation: composeExplanation({ workoutType: t.type, isLong, state: input.state }),
       citations: citationsForWorkoutType(t.type),
       brain: 'deterministic',
     };
   }
 
   // ── Stage 3 · Readiness ────────────────────────────────────────────
-  // Pure deterministic. ACWR sweet-spot 0.8–1.3 (doctrine §13.1) drives
-  // the level; easy-share and recent missed-runs nudge it.
-  // Sleep / HRV signals are reserved for Stage 5 once HealthKit lands.
+  // Pure deterministic. Sweet-spot logic (doctrine §13.1) drives the
+  // band, with one important context check first: if the runner just
+  // raced or is in a heavy-block recovery, the load drop is INTENTIONAL,
+  // not a sign of a slack week. The Coach should reflect that.
   async assessReadiness(input: AssessReadinessInput): Promise<CoachDecision<ReadinessAssessment>> {
     const s = input.state;
     const ratio = acwr(s);
@@ -260,30 +264,44 @@ class CoachImpl implements Coach {
     const target = intensityTarget(phase as Parameters<typeof intensityTarget>[0]);
     const easy = s.intensity.easyShare14d;
     const missedRunsSignal = s.recovery.daysSinceLastRun >= 3;
+    const recentRace = s.races.recent[0] ?? null;
+    const inRaceRecovery = recentRace != null && recentRace.daysAgo <= 14;
+    const heavyBlock = s.flags.heavyBlockSuspected;
 
     let level: 'green' | 'yellow' | 'red' = 'green';
     let reason = '';
-    if (ratio != null && (ratio < 0.5 || ratio > 1.5)) {
+
+    // ── Recovery context first — overrides ratio drift signals.
+    if (heavyBlock || inRaceRecovery) {
+      level = 'green';
+      if (heavyBlock) {
+        reason = `Recovery is the work right now. You've stacked races — letting the body absorb them is what turns racing into fitness.`;
+      } else if (recentRace) {
+        reason = `${recentRace.daysAgo} day${recentRace.daysAgo === 1 ? '' : 's'} since ${recentRace.name}. The volume drop is by design — let the legs come back when they're ready.`;
+      }
+    }
+    // ── Then the ratio bands (only fire when no recovery context).
+    else if (ratio != null && ratio > 1.5) {
       level = 'red';
-      reason = ratio > 1.5
-        ? `Acute load is way over chronic — your last 7 days are ${Math.round(ratio * 100)}% of your baseline. We dial back today.`
-        : `Last 7 days are ${Math.round(ratio * 100)}% of baseline — too quiet to call you ready.`;
-    } else if (ratio != null && (ratio < ACWR_LOW || ratio > ACWR_HIGH)) {
+      reason = `Recent volume is way above your normal — last 7 days are ${Math.round(ratio * 100)}% of your usual weekly average. Today's a pull-back day.`;
+    } else if (ratio != null && ratio < 0.5) {
+      level = 'red';
+      reason = `Last 7 days are ${Math.round(ratio * 100)}% of your usual — too far off to call you ready. Easy run today, see how the legs feel.`;
+    } else if (ratio != null && ratio > ACWR_HIGH) {
       level = 'yellow';
-      reason = ratio > ACWR_HIGH
-        ? `Recent volume is running hot. Hold the easy days honestly and don't pile on quality.`
-        : `Coming off a quiet week — ease back in, don't try to make it up in one day.`;
+      reason = `Volume's been running hot — last 7 days are ${Math.round(ratio * 100)}% of your normal. Hold the easy days honestly, don't pile on hard work.`;
+    } else if (ratio != null && ratio < ACWR_LOW) {
+      level = 'yellow';
+      reason = `Mileage was light last week — about ${Math.round(ratio * 100)}% of your usual. Ease back in, don't try to make it up in one day.`;
     } else if (easy > 0 && easy < target.easyShareMin) {
       level = 'yellow';
-      reason = `Easy runs are drifting too fast — last 14 days only ${Math.round(easy * 100)}% truly easy. The discipline of running easy honestly is harder than the threshold day.`;
+      reason = `Easy runs have been drifting too fast — only ${Math.round(easy * 100)}% of the last 14 days were truly easy. Run today's first mile by feel, then add 30 seconds.`;
     } else if (missedRunsSignal) {
       level = 'yellow';
       reason = `${s.recovery.daysSinceLastRun} days since the last run. You're not falling apart — get out the door, easy pace, get some miles.`;
     } else {
       level = 'green';
-      reason = ratio != null
-        ? `Load is in the sweet spot (${ratio.toFixed(2)}× baseline) and easy share is honest. Trust today's plan.`
-        : `Looking ready. Trust today's plan.`;
+      reason = `The legs look ready. Trust today's plan.`;
     }
 
     return {

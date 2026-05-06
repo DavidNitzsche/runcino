@@ -36,7 +36,15 @@ export type CoachBrain = 'deterministic' | 'llm';
  *  • `brain`     — which path produced it ('deterministic' | 'llm') */
 export interface CoachDecision<T> {
   answer: T;
+  /** One sentence in voice — the default the UI shows on the card. */
   rationale: string;
+  /** Optional 1-paragraph plain-English explanation. The UI surfaces
+   *  this when the user asks "Why?". Reads like the Coach explaining
+   *  themselves; cites principles in plain language, no §-numbers. */
+  explanation?: string;
+  /** Internal audit trail — the research sections that justify the
+   *  answer. NOT rendered in the default UI; available to consumers
+   *  that want to expose a deep "show me the source" mode. */
   citations: Citation[];
   brain: CoachBrain;
 }
