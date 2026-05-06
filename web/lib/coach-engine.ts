@@ -373,6 +373,11 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
 }
 
 /* ── Week shape simulation ──────────────────────────────────── */
+// Walks every day through the SAME picker the actual prescription
+// uses (pickRun + applyConstraints), advancing state forward one day
+// at a time so race-week overrides and post-race graduated recovery
+// reflect what the day will actually look like. Today's entry is
+// guaranteed to match coachDaily's prescription.
 function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachToday['weekShape'] {
   const today = new Date(state.now + 'T12:00:00Z');
   const monday = new Date(today);
@@ -387,18 +392,44 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
     const dow = d.getUTCDay();
     const isToday = iso === state.now;
 
-    // Pick the day's run + apply constraints. (Doesn't account for
-    // execution within the week — this is a *plausible* shape, not a
-    // promise. Re-derived every morning.)
-    const def = defaultByDow(phase, dow);
-    const run = applyConstraints(buildPrescriptionFor(def.primary, state, phase), state, phase, dow);
+    // Calendar offset from today. Past days don't need a real
+    // simulation (Strava actuals fill those in on the client) — we
+    // still emit an entry so the strip stays 7 wide.
+    const offset = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+    const dayState = offset > 0 ? advanceState(state, offset) : state;
+    const dayPhase = offset > 0 ? decidePhase(dayState, decideMode(dayState)) : phase;
 
-    // Strength on this day? Match coach-strength placement rules.
+    const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
     const hasStrength = strengthFitsThisDay(state, phase, dow, isHardRun(run), cadence.perWeek);
 
     out.push({ date: iso, type: run.type, distanceMi: run.distanceMi, isToday, hasStrength });
   }
   return out;
+}
+
+/** Shift CoachState forward by N days for week-shape simulation:
+ *  state.now bumps forward, every recent race's daysAgo grows by N,
+ *  and the next-A race's daysAway shrinks by N. Lets postRaceWorkout
+ *  (graduated by daysAgo) and TAPER overrides (by daysAway) produce
+ *  the right answer for a future day without mutating real state. */
+function advanceState(state: CoachState, daysOffset: number): CoachState {
+  if (daysOffset === 0) return state;
+  const advancedNow = (() => {
+    const d = new Date(state.now + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + daysOffset);
+    return d.toISOString().slice(0, 10);
+  })();
+  return {
+    ...state,
+    now: advancedNow,
+    races: {
+      ...state.races,
+      recent: state.races.recent.map(r => ({ ...r, daysAgo: r.daysAgo + daysOffset })),
+      nextA: state.races.nextA
+        ? { ...state.races.nextA, daysAway: state.races.nextA.daysAway - daysOffset }
+        : null,
+    },
+  };
 }
 
 /** Mirrors prescribeStrength's day placement so the week shape's
