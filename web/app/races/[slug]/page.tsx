@@ -4,13 +4,17 @@
  * /races/[slug] — race detail view.
  *
  * Reads the saved race from localStorage by slug, then renders the full
- * pacing experience: hero, projected course map, elevation profile,
- * five-phase strategy cards, mile splits, fueling, and a one-click
- * export of the .runcino.json (the file the iOS app imports).
+ * pacing experience: hero, course map, elevation profile, five-phase
+ * strategy cards, mile splits, fueling, and a one-click export of the
+ * .runcino.json (the file the iOS app imports).
  *
- * The math is already in the saved plan — this page is purely
- * presentation. The map + elevation SVGs are computed in-component from
- * the bundled GPX text so they always match what was planned against.
+ * Single source of truth: every numeric value displayed on this page
+ * derives from `analyzeGpx(race.gpxText)` (the StravaGPX-calibrated
+ * threshold analyzer). The saved plan supplies phase ranges + per-phase
+ * target paces — those are themselves derived from analyzeGpx at plan-
+ * build time, so they remain consistent. Course-facts overrides apply
+ * to phase labels only (e.g. "Hurricane Point climb"); numeric facts
+ * like peak elevation / total gain are not consulted.
  */
 
 import Link from 'next/link';
@@ -20,7 +24,13 @@ import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { getCourseFacts, type CourseFacts } from '../../../lib/course-facts';
-import CoursePreview from '../../../components/CoursePreview';
+import { analyzeGpx, type CourseAnalysis } from '../../../lib/gpx-analysis';
+import {
+  RouteMap, ElevationProfile,
+  SplitsTables, ChartsRow, SpacingAndDistance, Insights,
+} from '../../../components/CoursePreview';
+
+const FT_PER_M = 3.28084;
 
 // Phase color palette — 8 deterministic colors so any course with up to 8
 // phases gets a distinct hue. Extends the 5-color rainbow used in the
@@ -64,47 +74,6 @@ function fmtPace(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.round(s % 60);
   return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-interface ParsedPoint { lat: number; lon: number; eleM: number; cumMi: number; }
-
-/** Parse GPX into points. When demElevations is provided (parallel array
- *  of DEM elevations in meters), overlay it onto the points so the
- *  elevation profile and peak marker match what the pacing engine used. */
-function parseGpxClient(text: string, demElevations?: number[]): ParsedPoint[] {
-  const dom = new DOMParser().parseFromString(text, 'text/xml');
-  const nodes = dom.getElementsByTagName('trkpt');
-  const out: { lat: number; lon: number; eleM: number }[] = [];
-  for (let i = 0; i < nodes.length; i++) {
-    const n = nodes[i];
-    const lat = parseFloat(n.getAttribute('lat') ?? '');
-    const lon = parseFloat(n.getAttribute('lon') ?? '');
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const eleNode = n.getElementsByTagName('ele')[0];
-    const gpsEleM = eleNode ? parseFloat(eleNode.textContent ?? '0') : 0;
-    // Use DEM elevation when available; fall back to GPS
-    const eleM = (demElevations && demElevations[out.length] !== undefined)
-      ? demElevations[out.length]
-      : gpsEleM;
-    out.push({ lat, lon, eleM });
-  }
-  // Cumulative miles via haversine.
-  const result: ParsedPoint[] = [];
-  let cum = 0;
-  const R = 3958.8;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  for (let i = 0; i < out.length; i++) {
-    if (i > 0) {
-      const a = out[i - 1], b = out[i];
-      const dLat = toRad(b.lat - a.lat);
-      const dLon = toRad(b.lon - a.lon);
-      const la1 = toRad(a.lat), la2 = toRad(b.lat);
-      const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
-      cum += 2 * R * Math.asin(Math.sqrt(x));
-    }
-    result.push({ lat: out[i].lat, lon: out[i].lon, eleM: out[i].eleM, cumMi: cum });
-  }
-  return result;
 }
 
 export default function RaceDetailPage() {
@@ -160,25 +129,21 @@ export default function RaceDetailPage() {
 }
 
 function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDelete: () => void; onUpdated: () => void }) {
-  const points = useMemo(() => parseGpxClient(race.gpxText, race.demElevations), [race.gpxText, race.demElevations]);
+  // Single source of truth: every numeric on this page derives from
+  // this analysis. parseGpxClient + DEM-elevation fallbacks are gone.
+  const analysis = useMemo<CourseAnalysis | null>(() => {
+    try { return analyzeGpx(race.gpxText); } catch { return null; }
+  }, [race.gpxText]);
   const days = daysUntil(race.meta.date);
-  const totalMi = race.plan.race.distance_mi;
+  // Distance still leans on the saved plan for canonical race distance
+  // (e.g. user picked "Half marathon" in the form). Falls back to the
+  // analyzer when missing.
+  const totalMi = race.plan.race.distance_mi
+    ?? (analysis ? analysis.stats.totalDistM / 1609.344 : 0);
   const [editing, setEditing] = useState(false);
-  const gpxPeakFt = useMemo(() => Math.max(...points.map(p => p.eleM)) * 3.28084, [points]);
-  const gpxPeakMi = useMemo(() => {
-    let bestIdx = 0;
-    for (let i = 1; i < points.length; i++) if (points[i].eleM > points[bestIdx].eleM) bestIdx = i;
-    return points[bestIdx]?.cumMi ?? 0;
-  }, [points]);
-  // Override GPX-computed peak with verified course facts when available.
-  // GPS elevation has ±10-30 ft noise that compounds; curated facts are authoritative.
-  const { peakFt, peakMi } = useMemo(() => {
-    const facts = getCourseFacts(race.meta.courseSlug);
-    return {
-      peakFt: facts?.race.expected_facts.peak_elevation_ft ?? gpxPeakFt,
-      peakMi: facts?.race.expected_facts.peak_mi ?? gpxPeakMi,
-    };
-  }, [race.meta.courseSlug, gpxPeakFt, gpxPeakMi]);
+  const peakFt = analysis ? analysis.stats.maxEleM * FT_PER_M : 0;
+  const peakMi = analysis ? analysis.cumDistM[analysis.stats.maxEleIdx] / 1609.344 : 0;
+  const peakIdx = analysis?.stats.maxEleIdx ?? null;
 
   // Enrich the race object with named phases from course facts (if registered).
   // All child components receive the enriched race so labels are consistent everywhere.
@@ -221,16 +186,38 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           </div>
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
 
-          <PosterCard race={enrichedRace} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} onUpdated={onUpdated} />
+          {analysis ? (
+            <PosterCard
+              race={enrichedRace}
+              analysis={analysis}
+              days={days}
+              totalMi={totalMi}
+              peakFt={peakFt}
+              peakMi={peakMi}
+              peakIdx={peakIdx}
+              onUpdated={onUpdated}
+            />
+          ) : (
+            <div className="poster-c" style={{ padding: 32, color: 'rgba(255,255,255,.5)' }}>
+              GPX could not be analyzed.
+            </div>
+          )}
 
-          <section style={{ marginTop: 18 }}>
-            <div style={{
-              fontSize: 11, color: 'var(--color-t3)',
-              fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
-              fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
-            }}>Course analysis</div>
-            <CoursePreview gpxText={race.gpxText} />
-          </section>
+          {analysis && (
+            <section style={{ marginTop: 18 }}>
+              <div style={{
+                fontSize: 11, color: 'var(--color-t3)',
+                fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
+                fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
+              }}>Course detail</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <SplitsTables analysis={analysis} />
+                <ChartsRow analysis={analysis} />
+                <SpacingAndDistance analysis={analysis} />
+                <Insights analysis={analysis} />
+              </div>
+            </section>
+          )}
 
           <PhaseCards race={enrichedRace} phases={enrichedRace.plan.phases} />
 
@@ -243,7 +230,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           {!isPastWithResult(race) && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-                <WeatherTile points={points} />
+                <WeatherTile start={analysis ? [analysis.trkpts[0][0], analysis.trkpts[0][1]] : null} />
                 <BriefTile race={enrichedRace} />
               </div>
 
@@ -348,15 +335,18 @@ function enrichPhaseLabels(
    holding header (round + countdown), big race title, subtitle,
    2-col map+narrative grid, and full-width elevation strip with
    axis. Direct port of designs/race-detail-sombrero.html. */
-function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: {
+function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, onUpdated }: {
   race: SavedRace;
-  points: ParsedPoint[];
+  analysis: CourseAnalysis;
   days: number;
   totalMi: number;
   peakFt: number;
   peakMi: number;
+  peakIdx: number | null;
   onUpdated?: () => void;
 }) {
+  // Hover sync — driven by the elevation profile, displayed by the map.
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalInput, setGoalInput] = useState(race.meta.goalDisplay);
   const [goalBusy, setGoalBusy] = useState(false);
@@ -388,12 +378,23 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: 
     }
   }
 
-  const facts = getCourseFacts(race.meta.courseSlug);
-  const totalGain = facts?.race.expected_facts.total_gain_ft ?? race.plan.race.total_gain_ft;
-  const totalLoss = facts?.race.expected_facts.total_loss_ft ?? race.plan.race.total_loss_ft;
-  const netElevFt = facts?.race.expected_facts.net_ft ?? (totalGain - totalLoss);
+  // All elevation numbers come from the analysis. Course facts are NOT
+  // consulted for numeric data — only for phase labels (handled in
+  // RaceDetailView via enrichPhaseLabels). This keeps the page a pure
+  // function of the GPX + plan, per the single-source-of-truth rule.
+  const totalGain = analysis.stats.gainFt;
+  const totalLoss = analysis.stats.lossFt;
+  const netElevFt = totalGain - totalLoss;
   // race.plan.phases already enriched by RaceDetailView
   const enrichedPhases = race.plan.phases;
+  // Memoized PhaseRange[] for RouteMap + ElevationProfile. Without this
+  // the array reference flips on every render, forcing the Leaflet map
+  // to tear down and rebuild — visually it just blinks, but the cost
+  // is real.
+  const phaseRanges = useMemo(
+    () => enrichedPhases.map(p => ({ start_mi: p.start_mi, end_mi: p.end_mi, label: p.label })),
+    [enrichedPhases],
+  );
   const narrative = narrativeFor(race.meta.courseSlug, race, peakMi, peakFt, totalGain);
   const isUpcoming = days >= 0;
   const result = race.actualResult ?? null;
@@ -445,9 +446,22 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: 
       <div className="pc-subtitle">{narrative.subtitle}</div>
 
       <div className="pc-grid">
-        {/* Course map (left column) */}
+        {/* Course map (left column). Same physical slot as the legacy
+            SVG poster — but rendered with the exact RouteMap config
+            from the original CoursePreview: Carto Dark tiles, S/F/T
+            pins, dashed bbox, grade-tinted polyline, grade legend
+            below, recenter button. */}
         <div className="pc-track">
-          <PosterMapSvg points={points} race={race} peakMi={peakMi} peakFt={peakFt} />
+          <RouteMap
+            analysis={analysis}
+            hoverIdx={hoverIdx}
+            tinting="grade"
+            tiles
+            height={500}
+            recenter
+            showBbox
+            showLegend
+          />
         </div>
 
         {/* Narrative + stats + phase legend (right column) */}
@@ -574,13 +588,30 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: 
         </div>
       </div>
 
-      {/* Elevation strip — full width below the grid, inside the same poster card */}
+      {/* Elevation strip — full width below the grid, inside the same
+          poster card. Same physical slot as the legacy SVG; rendered
+          with Chart.js now, phase-tinted, peak marker, axis, and phase
+          strip below — all driven by the analyzer + plan phases. */}
       <div className="pc-elev">
         <div className="head">
           <span className="l">Elevation Profile</span>
           <span className="r">Peak <em>{Math.round(peakFt)} ft · MI {peakMi.toFixed(1)}</em></span>
         </div>
-        <PosterElevSvg points={points} race={race} totalMi={totalMi} peakMi={peakMi} peakFt={peakFt} />
+        <div style={{ height: 220, position: 'relative' }}>
+          <ElevationProfile
+            analysis={analysis}
+            onHoverIdx={setHoverIdx}
+            tinting="phase"
+            phases={phaseRanges}
+            phaseColors={PHASE_COLORS}
+            peakIdx={peakIdx ?? undefined}
+            showAxis={false}
+            chartAxisVisible={false}
+            showPhaseStrip={false}
+            height={220}
+            bare
+          />
+        </div>
         <div className="axis">
           <span>0</span>
           <span>{(totalMi / 2).toFixed(1)}</span>
@@ -603,242 +634,6 @@ function PosterCard({ race, points, days, totalMi, peakFt, peakMi, onUpdated }: 
   );
 }
 
-/* ── Poster map SVG ──────────────────────────────────────────
-   Internal helper. Projects lat/lon trackpoints into the .pc-track
-   container. Phase-colored polyline + START / FINISH / PEAK dots. */
-function PosterMapSvg({ points, race, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; peakMi: number; peakFt: number }) {
-  if (points.length < 2) return <div style={{ padding: 32, color: 'rgba(255,255,255,.5)' }}>No GPX track points.</div>;
-  const lats = points.map(p => p.lat);
-  const lons = points.map(p => p.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const padX = 30, padY = 30, W = 600, H = 600;
-  const cosLat = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
-  const spanLon = (maxLon - minLon) * cosLat || 1e-9;
-  const spanLat = maxLat - minLat || 1e-9;
-  const scale = Math.min((W - 2 * padX) / spanLon, (H - 2 * padY) / spanLat);
-  const offX = padX + ((W - 2 * padX) - spanLon * scale) / 2;
-  const offY = padY + ((H - 2 * padY) - spanLat * scale) / 2;
-  const proj = (p: ParsedPoint): [number, number] => [
-    offX + (p.lon - minLon) * cosLat * scale,
-    offY + (maxLat - p.lat) * scale,
-  ];
-  const phaseAtMi = (mi: number) => {
-    for (let i = 0; i < race.plan.phases.length; i++) {
-      const p = race.plan.phases[i];
-      if (mi >= p.start_mi && mi <= p.end_mi) return i;
-    }
-    return race.plan.phases.length - 1;
-  };
-  const segs: Array<{ d: string; color: string }> = [];
-  let cur: string[] = [];
-  let curPhase = -1;
-  for (let i = 0; i < points.length; i++) {
-    const phase = phaseAtMi(points[i].cumMi);
-    const [x, y] = proj(points[i]);
-    if (phase !== curPhase) {
-      if (cur.length > 0) {
-        segs.push({ d: cur.join(' '), color: PHASE_COLORS[curPhase] ?? PHASE_COLORS[0] });
-      }
-      cur = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
-      curPhase = phase;
-    } else {
-      cur.push(`L ${x.toFixed(1)} ${y.toFixed(1)}`);
-    }
-  }
-  if (cur.length > 0) segs.push({ d: cur.join(' '), color: PHASE_COLORS[curPhase] ?? PHASE_COLORS[0] });
-  const startP = proj(points[0]);
-  const endP = proj(points[points.length - 1]);
-  const peakIdx = points.findIndex(p => p.cumMi >= peakMi);
-  const peakP = peakIdx >= 0 ? proj(points[peakIdx]) : null;
-
-  // Pre-project every route point once. Used to figure out which side
-  // of each label dot has empty space, so we can place the label on
-  // that side instead of running the text into the route line.
-  const routePts: Array<[number, number]> = points.map(p => {
-    const r = proj(p); return [r[0], r[1]];
-  });
-
-  // For each anchor dot, pick the side (N/E/S/W) with the fewest route
-  // points within ~60px — that's the "empty" side, where the label
-  // goes. Cheap O(N) per anchor, runs once per render.
-  const peakLabelText = `PEAK · ${Math.round(peakFt)} FT`;
-  const startSide = pickEmptySide(startP, routePts, 80, estLabelWidth('START'), 13, W, H);
-  const endSide   = pickEmptySide(endP,   routePts, 80, estLabelWidth('FINISH'), 13, W, H);
-  // When the peak is within 20px of START or FINISH, exclude the START/FINISH label's side
-  // so PEAK is forced to a different quadrant and the two labels don't collide.
-  const peakNearStart = peakP ? Math.hypot(peakP[0] - startP[0], peakP[1] - startP[1]) < 20 : false;
-  const peakNearEnd   = peakP ? Math.hypot(peakP[0] - endP[0],   peakP[1] - endP[1])   < 20 : false;
-  const peakSide  = peakP ? pickEmptySide(peakP, routePts, 80, estLabelWidth(peakLabelText), 13, W, H,
-    peakNearStart ? startSide : peakNearEnd ? endSide : undefined) : 'E';
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
-      {segs.map((s, i) => (
-        <path key={i} d={s.d} fill="none" stroke={s.color} strokeWidth="3.5" strokeLinejoin="round" strokeLinecap="round" />
-      ))}
-
-      <circle cx={startP[0]} cy={startP[1]} r="9" fill="#3EBD41" stroke="#0d1218" strokeWidth="3" />
-      <SideLabel anchor={startP} side={startSide} text="START" color="#3EBD41" />
-
-      <circle cx={endP[0]} cy={endP[1]} r="9" fill="#9013FE" stroke="#0d1218" strokeWidth="3" />
-      <SideLabel anchor={endP} side={endSide} text="FINISH" color="#9013FE" />
-
-      {peakP && (
-        <>
-          <circle cx={peakP[0]} cy={peakP[1]} r="7" fill="#FC4D54" stroke="#0d1218" strokeWidth="3" />
-          <SideLabel anchor={peakP} side={peakSide} text={peakLabelText} color="#FC4D54" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-type Side = 'N' | 'E' | 'S' | 'W';
-
-/** Pick the side of the anchor where the label fits — has the
- *  fewest route points to read into AND its bounding box stays
- *  inside the SVG viewport. Without the viewport check, anchors
- *  near the edges had labels clipped (e.g. a peak on the left edge
- *  with the label placed 'W' would slide off-canvas leaving only
- *  "FT" visible). */
-function pickEmptySide(
-  anchor: [number, number],
-  routePts: Array<[number, number]>,
-  radius: number,
-  textWidth: number,
-  textHeight: number,
-  viewW: number,
-  viewH: number,
-  excludeSide?: Side,
-): Side {
-  const [ax, ay] = anchor;
-  const counts: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
-  for (const [rx, ry] of routePts) {
-    const dx = rx - ax, dy = ry - ay;
-    if (Math.hypot(dx, dy) > radius) continue;
-    if (Math.abs(dx) >= Math.abs(dy)) (dx >= 0 ? counts.E++ : counts.W++);
-    else (dy >= 0 ? counts.S++ : counts.N++);
-  }
-
-  const offset = 26;
-  const margin = 4;
-  // Compute the would-be bounding box for each side and rule out
-  // any side whose bbox extends outside [margin, viewW-margin] x
-  // [margin, viewH-margin]. Heavily penalize clipped sides so we
-  // pick a non-clipping option even if it has more route points.
-  const fits: Record<Side, boolean> = {
-    N: ay - offset - textHeight >= margin && ax - textWidth / 2 >= margin && ax + textWidth / 2 <= viewW - margin,
-    S: ay + offset + textHeight <= viewH - margin && ax - textWidth / 2 >= margin && ax + textWidth / 2 <= viewW - margin,
-    E: ax + offset + textWidth <= viewW - margin && ay - textHeight / 2 >= margin && ay + textHeight / 2 <= viewH - margin,
-    W: ax - offset - textWidth >= margin && ay - textHeight / 2 >= margin && ay + textHeight / 2 <= viewH - margin,
-  };
-  const score: Record<Side, number> = {
-    N: counts.N + (fits.N ? 0 : 1000) + (excludeSide === 'N' ? 2000 : 0),
-    S: counts.S + (fits.S ? 0 : 1000) + (excludeSide === 'S' ? 2000 : 0),
-    E: counts.E + (fits.E ? 0 : 1000) + (excludeSide === 'E' ? 2000 : 0),
-    W: counts.W + (fits.W ? 0 : 1000) + (excludeSide === 'W' ? 2000 : 0),
-  };
-  const order: Side[] = ['N', 'S', 'E', 'W'];
-  return order.slice().sort((a, b) => score[a] - score[b])[0];
-}
-
-function SideLabel({ anchor, side, text, color }: { anchor: [number, number]; side: Side; text: string; color: string }) {
-  const offset = 26;
-  let x = anchor[0], y = anchor[1], textAnchor: 'start' | 'middle' | 'end' = 'middle';
-  switch (side) {
-    case 'N': y = anchor[1] - offset; textAnchor = 'middle'; break;
-    case 'S': y = anchor[1] + offset + 4; textAnchor = 'middle'; break;
-    case 'E': x = anchor[0] + offset; y = anchor[1] + 4; textAnchor = 'start'; break;
-    case 'W': x = anchor[0] - offset; y = anchor[1] + 4; textAnchor = 'end'; break;
-  }
-  return (
-    <text x={x} y={y} fontFamily="JetBrains Mono, monospace" fontSize="11" fill={color} textAnchor={textAnchor} fontWeight="700">{text}</text>
-  );
-}
-
-/** Estimated label width at the SVG's font-size (11) for JetBrains
- *  Mono. Roughly 6.6 px/char + a bit of padding. */
-function estLabelWidth(text: string): number {
-  return text.length * 6.6 + 4;
-}
-
-/* ── Poster elevation SVG ────────────────────────────────────
-   Internal helper. Phase-tinted silhouette spanning the .pc-elev
-   strip. Y-axis shows peak / low; X-axis is below outside the SVG. */
-function PosterElevSvg({ points, race, totalMi, peakMi, peakFt }: { points: ParsedPoint[]; race: SavedRace; totalMi: number; peakMi: number; peakFt: number }) {
-  if (points.length < 2) return null;
-  const W = 1200, H = 220, padL = 46, padR = 14, padT = 18, padB = 18;
-  const elevsFt = points.map(p => p.eleM * 3.28084);
-  const minFt = Math.min(...elevsFt);
-  const maxFt = Math.max(...elevsFt);
-  const fY = (e: number) => padT + (1 - (e - minFt) / Math.max(1, maxFt - minFt)) * (H - padT - padB);
-  const fX = (mi: number) => padL + (mi / Math.max(1e-9, totalMi)) * (W - padL - padR);
-
-  // Soft transitions: one stop per phase, anchored at its MIDPOINT so
-  // the gradient interpolates between adjacent phase colors instead
-  // of cutting hard. First/last anchored at 0%/100% so the ends still
-  // read as their phase color. Matches the Sombrero design's strip.
-  const stops: Array<{ offsetPct: number; color: string }> = race.plan.phases.map((p, i) => {
-    const mid = ((p.start_mi + p.end_mi) / 2 / totalMi) * 100;
-    const offset =
-      i === 0                          ? 0   :
-      i === race.plan.phases.length - 1 ? 100 :
-      mid;
-    return { offsetPct: offset, color: PHASE_COLORS[i] ?? '#444' };
-  });
-
-  const STEPS = 240;
-  let topD = '';
-  for (let i = 0; i <= STEPS; i++) {
-    const mi = (i / STEPS) * totalMi;
-    let lo = 0, hi = points.length - 1;
-    while (lo < hi - 1) { const m = (lo + hi) >> 1; if (points[m].cumMi < mi) lo = m; else hi = m; }
-    const t = (mi - points[lo].cumMi) / Math.max(1e-9, points[hi].cumMi - points[lo].cumMi);
-    const eFt = (points[lo].eleM + t * (points[hi].eleM - points[lo].eleM)) * 3.28084;
-    topD += (i === 0 ? 'M ' : 'L ') + fX(mi).toFixed(1) + ' ' + fY(eFt).toFixed(1) + ' ';
-  }
-  const fillD = topD + `L ${fX(totalMi).toFixed(1)} ${(H - padB)} L ${padL} ${(H - padB)} Z`;
-  const peakXY = peakMi >= 0 ? [fX(peakMi), fY(peakFt)] : null;
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="pcElevTint" x1="0" y1="0" x2="1" y2="0">
-          {stops.map((s, i) => (
-            <stop key={i} offset={s.offsetPct + '%'} stopColor={s.color} />
-          ))}
-        </linearGradient>
-        <linearGradient id="pcElevFade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fff" stopOpacity={.5} />
-          <stop offset="100%" stopColor="#fff" stopOpacity={0} />
-        </linearGradient>
-        <mask id="pcElevSilMask">
-          <path d={fillD} fill="url(#pcElevFade)" />
-        </mask>
-      </defs>
-      {[0.25, 0.5, 0.75].map((f, i) => (
-        <line key={i} x1={padL} y1={padT + f * (H - padT - padB)} x2={W - padR} y2={padT + f * (H - padT - padB)} stroke="rgba(255,255,255,.06)" strokeDasharray="2 4" />
-      ))}
-      <rect x={padL} y={0} width={W - padL - padR} height={H - padB} fill="url(#pcElevTint)" mask="url(#pcElevSilMask)" opacity={.78} />
-      <path d={topD} fill="none" stroke="url(#pcElevTint)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {race.plan.phases.slice(0, -1).map((p, i) => (
-        <line key={i} x1={fX(p.end_mi)} y1={padT} x2={fX(p.end_mi)} y2={H - padB} stroke="rgba(255,255,255,.08)" strokeDasharray="2 4" />
-      ))}
-      <text x={padL - 8} y={padT + 8} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.45)" textAnchor="end" fontWeight="700">{Math.round(maxFt)}</text>
-      <text x={padL - 8} y={H - padB - 2} fontFamily="JetBrains Mono, monospace" fontSize="10" fill="rgba(255,255,255,.3)" textAnchor="end" fontWeight="700">{Math.round(minFt)}</text>
-      {peakXY && (
-        <>
-          <line x1={peakXY[0]} y1={peakXY[1]} x2={peakXY[0]} y2={H - padB} stroke="rgba(252,77,84,.4)" strokeWidth="1" strokeDasharray="2 3" />
-          <circle cx={peakXY[0]} cy={peakXY[1]} r="4" fill="#FC4D54" />
-        </>
-      )}
-      {race.plan.phases.map((p, i) => (
-        <rect key={i} x={fX(p.start_mi)} y={H - padB + 4} width={fX(p.end_mi) - fX(p.start_mi)} height="6" fill={PHASE_COLORS[i] ?? '#444'} />
-      ))}
-    </svg>
-  );
-}
 
 
 function PhaseCards({ race, phases }: { race: SavedRace; phases: SavedRace['plan']['phases'] }) {
@@ -1481,12 +1276,12 @@ type WeatherPeriod = {
   precipitation_pct: number;
 };
 
-function WeatherTile({ points }: { points: ParsedPoint[] }) {
+function WeatherTile({ start }: { start: [number, number] | null }) {
   const [data, setData] = useState<WeatherSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const lat = points[0]?.lat;
-  const lon = points[0]?.lon;
+  const lat = start?.[0];
+  const lon = start?.[1];
 
   async function fetchWeather() {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
