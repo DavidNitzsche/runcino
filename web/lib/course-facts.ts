@@ -123,9 +123,9 @@ export function synthesizeCourseFacts(
       expected_facts: {
         distance_mi: Math.round(distMi * 100) / 100,
         distance_m: Math.round(track.totalDistanceM),
-        total_gain_ft: Math.round(track.smoothedGainFt),
-        total_loss_ft: Math.round(track.smoothedLossFt),
-        net_ft: Math.round(track.smoothedGainFt - track.smoothedLossFt),
+        total_gain_ft: Math.round(track.demGainFt ?? track.smoothedGainFt),
+        total_loss_ft: Math.round(track.demLossFt ?? track.smoothedLossFt),
+        net_ft: Math.round((track.demGainFt ?? track.smoothedGainFt) - (track.demLossFt ?? track.smoothedLossFt)),
       },
       // Permissive tolerances so the synthesized "expected" never errors
       // its own GPX out — this validation is meaningful only for curated

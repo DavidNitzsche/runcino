@@ -6,8 +6,9 @@
 export interface GpxPoint {
   lat: number;
   lon: number;
-  eleM: number;            // elevation, meters
+  eleM: number;            // GPS elevation — kept for reference; never use for grade
   distM: number;           // cumulative distance from start, meters
+  demEleM?: number;        // DEM elevation injected by elevation pipeline; undefined until pipeline runs
 }
 
 export interface GpxTrack {
@@ -17,6 +18,22 @@ export interface GpxTrack {
   rawLossFt: number;
   smoothedGainFt: number;
   smoothedLossFt: number;
+  demGainFt?: number;      // DEM-derived gain (ft), set by elevation pipeline
+  demLossFt?: number;      // DEM-derived loss (ft), set by elevation pipeline
+}
+
+/** What David provides per race. Passed from the form to /api/build-plan. */
+export interface RaceInputContract {
+  gpxText: string;
+  officialUrl: string;
+  athleteGuidePdfUrl?: string;
+  usatfCertNumber?: string;
+  raceName: string;
+  raceDate: string;
+  startTime: string;
+  goalFinishS: number;
+  strategy: 'even_effort' | 'even_split' | 'negative_split';
+  toleranceSPerMi: number;
 }
 
 export interface Segment {

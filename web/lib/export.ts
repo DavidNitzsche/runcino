@@ -165,8 +165,8 @@ export function assemblePlan(input: AssembleInput): RuncinoPlan {
       date: race.date,
       distance_mi: Math.round(totalMi * 100) / 100,
       distance_m: Math.round(track.totalDistanceM),
-      total_gain_ft: Math.round(track.smoothedGainFt),
-      total_loss_ft: Math.round(track.smoothedLossFt),
+      total_gain_ft: Math.round(track.demGainFt ?? track.smoothedGainFt),
+      total_loss_ft: Math.round(track.demLossFt ?? track.smoothedLossFt),
     },
     goal: {
       finish_time_s: pacing.goalFinishS,

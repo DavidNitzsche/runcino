@@ -18,8 +18,15 @@ import {
 import { formatHMS } from '../../../lib/time';
 import type { FitnessSummary } from '../../../lib/types';
 
+import type { GpxTrack } from '../../../lib/types';
+
 type Body = {
   gpxText: string;
+  /** Pre-computed DEM-enriched track. When present, used instead of
+   *  re-parsing gpxText so pacing uses DEM elevation. */
+  demTrack?: GpxTrack;
+  /** Verified aid station mile marks from the extraction review panel. */
+  verifiedAidStationMiles?: number[];
   /** A registered course slug ('big-sur-marathon', 'sombrero-half') OR a
    *  custom slug for a brand-new race the user just typed in. When the
    *  slug isn't recognized, raceName + raceDate must be supplied and the
@@ -66,11 +73,15 @@ export async function POST(req: Request) {
     return new Response('Invalid goalFinishS', { status: 400 });
   }
 
-  let track;
-  try {
-    track = parseGpx(body.gpxText);
-  } catch (err) {
-    return new Response(`GPX parse error: ${err instanceof Error ? err.message : err}`, { status: 400 });
+  let track: GpxTrack;
+  if (body.demTrack) {
+    track = body.demTrack;
+  } else {
+    try {
+      track = parseGpx(body.gpxText);
+    } catch (err) {
+      return new Response(`GPX parse error: ${err instanceof Error ? err.message : err}`, { status: 400 });
+    }
   }
 
   // Look up the registered course; if unknown, synthesize facts from the
@@ -102,12 +113,15 @@ export async function POST(req: Request) {
     segments,
     facts.phases.length > 0 ? { courseFacts: facts } : {}
   );
-  const aidStationMiles = facts.landmarks
-    .filter(l => l.kind === 'aid_station')
-    .map(l => l.at_mi);
+  // Prefer verified aid stations from the form's extraction review panel.
+  // Fall back to curated course facts landmarks.
+  const aidStationMiles: number[] = body.verifiedAidStationMiles?.length
+    ? body.verifiedAidStationMiles
+    : facts.landmarks.filter(l => l.kind === 'aid_station').map(l => l.at_mi);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const fueling = apiKey
+  const hasVerifiedAidStations = aidStationMiles.length > 0;
+  const fueling = (apiKey && hasVerifiedAidStations)
     ? await planFuelingWithClaude({
         phases,
         finishS: body.goalFinishS,
@@ -169,5 +183,11 @@ export async function POST(req: Request) {
     geometryErrors: check.errors,
   };
 
-  return Response.json({ planJsonText, summary });
+  // Return DEM elevations array parallel to GPX trackpoints so the
+  // detail page can render the elevation profile from DEM, not GPS.
+  const demElevations = track.points.every(p => p.demEleM !== undefined)
+    ? track.points.map(p => p.demEleM!)
+    : undefined;
+
+  return Response.json({ planJsonText, summary, demElevations });
 }
