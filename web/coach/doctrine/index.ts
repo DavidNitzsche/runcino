@@ -129,3 +129,4 @@ export * from './taper';
 export * from './post_race';
 export * from './pace_zones';
 export * from './hr_zones';
+export * from './race_prediction';
