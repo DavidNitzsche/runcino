@@ -461,11 +461,18 @@ h1, h2, h3, h4 {
   position: relative; z-index: 2; margin-bottom: 28px;
 }
 .pc-grid {
-  display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px;
+  display: grid; grid-template-columns: 1.4fr 1fr; gap: 36px;
   position: relative; z-index: 2;
 }
 .pc-track { position: relative; min-height: 500px; }
 .pc-track svg { width: 100%; height: 100%; display: block; }
+
+/* Leaflet 1.9.4 ships a Ukraine-flag attribution badge in the bottom-
+ * right of every map. We're keeping the standard "© OSM · © CARTO"
+ * tile attribution but hiding the flag — it reads as a stray blue/
+ * yellow rectangle on top of the dark race poster. The descendant
+ * selector beats the single-class rule that ships with leaflet.css. */
+.leaflet-container .leaflet-attribution-flag { display: none !important; }
 .pc-body { display: flex; flex-direction: column; gap: 20px; color: rgba(255,255,255,.8); }
 .pc-stats {
   display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0;

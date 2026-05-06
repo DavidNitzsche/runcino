@@ -459,7 +459,7 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
             tiles
             height={500}
             recenter
-            showBbox
+            showBbox={false}
             showLegend
           />
         </div>
@@ -535,10 +535,8 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
                   <span className="v">{totalMi.toFixed(1)}<small>mi</small></span>
                 </div>
                 <div className="s">
-                  <span className="l">Elevation</span>
-                  <span className="v" style={{ color: netElevFt < -50 ? 'var(--color-recovery)' : netElevFt > 50 ? 'var(--color-warn)' : 'inherit' }}>
-                    {netElevFt >= 0 ? '+' : ''}{Math.round(netElevFt)}<small>ft net</small>
-                  </span>
+                  <span className="l">Elev gain</span>
+                  <span className="v">+{Math.round(totalGain)}<small>ft</small></span>
                 </div>
                 <div className="s" style={{ cursor: !goalEditing ? 'pointer' : 'default' }} onClick={() => { if (!goalEditing) { setGoalInput(race.meta.goalDisplay); setGoalError(null); setGoalEditing(true); } }}>
                   <span className="l">Goal Time {!goalEditing && <span style={{ fontSize: 9, opacity: 0.5, letterSpacing: '1px' }}>✎</span>}</span>
@@ -574,17 +572,27 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
           )}
 
           {/* Phase legend — same in both modes; debrief mode adds an
-              empty actual column placeholder until splits_metric lands. */}
-          <div className="pc-legend">
-            {enrichedPhases.map((p, i) => (
-              <div className="row" key={i}>
-                <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
-                <span className="name">{p.label}</span>
-                <span className="mi">MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}</span>
-                <span className="pace">{p.target_pace_display}</span>
+              empty actual column placeholder until splits_metric lands.
+              When the plan auto-detects sectors and every phase ends
+              up with the same generic label (e.g. "ROLLING") we fall
+              back to "Phase 1 / 2 / …" so the rows are distinguishable. */}
+          {(() => {
+            const firstLabel = enrichedPhases[0]?.label;
+            const labelsCollide = enrichedPhases.length > 1
+              && enrichedPhases.every(p => p.label === firstLabel);
+            return (
+              <div className="pc-legend">
+                {enrichedPhases.map((p, i) => (
+                  <div className="row" key={i}>
+                    <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
+                    <span className="name">{labelsCollide ? `Phase ${i + 1}` : p.label}</span>
+                    <span className="mi">MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}</span>
+                    <span className="pace">{p.target_pace_display}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       </div>
 

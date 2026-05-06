@@ -426,14 +426,16 @@ export function RouteMap({
       )}
       {legend && (
         <div style={{
-          display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10,
-          fontSize: 11, color: TEXT_2, fontFamily: 'var(--font-data)',
+          display: 'flex', gap: 8, flexWrap: 'nowrap', marginTop: 10,
+          fontSize: 10, color: TEXT_2, fontFamily: 'var(--font-data)',
           letterSpacing: '0.04em',
+          alignItems: 'center', whiteSpace: 'nowrap',
+          overflow: 'hidden',
         }}>
-          <strong style={{ color: TEXT_3, marginRight: 4 }}>GRADE</strong>
+          <strong style={{ color: TEXT_3, marginRight: 2, fontSize: 10, letterSpacing: '0.12em' }}>GRADE</strong>
           {GRADE_COLORS.map(({ color, label }) => (
-            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 12, height: 12, background: color, borderRadius: 2 }} />
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, background: color, borderRadius: 2, flexShrink: 0 }} />
               {label}
             </span>
           ))}
@@ -583,7 +585,7 @@ export function ElevationProfile({
             },
           }}
         />
-        {peakIdx != null && peakIdx >= 0 && peakIdx < trkpts.length && (
+        {peakIdx != null && peakIdx >= 0 && peakIdx < trkpts.length && !bare && (
           <div style={{
             position: 'absolute', top: 6, right: 10,
             fontSize: 10.5, color: '#F5C518',
