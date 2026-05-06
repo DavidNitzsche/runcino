@@ -29,7 +29,7 @@ import {
   Tooltip, Filler,
 } from 'chart.js';
 import { Line, Bar, PolarArea } from 'react-chartjs-2';
-import { analyzeGpx, GRADE_COLORS, gradeColor, type CourseAnalysis } from '../lib/gpx-analysis';
+import { analyzeGpx, GRADE_COLORS, gradeColor, gradeColorContinuous, type CourseAnalysis } from '../lib/gpx-analysis';
 
 ChartJS.register(
   CategoryScale, LinearScale, RadialLinearScale,
@@ -78,6 +78,55 @@ function phaseIndexAt(mile: number, phases: PhaseRange[]): number {
 }
 function phaseColorAt(mile: number, phases: PhaseRange[], colors: string[]): string {
   return colors[phaseIndexAt(mile, phases)] ?? colors[colors.length - 1] ?? '#888888';
+}
+
+// Soft phase-boundary blend. Within fadeMi miles of a phase edge, lerp
+// between this phase's color and the neighbor's so the elevation profile
+// doesn't snap from one tint to the next. Default 0.1 mi keeps the fade
+// narrow — most of each phase still reads as its own pure color.
+function parseColor(c: string): [number, number, number] | null {
+  if (c.startsWith('#')) {
+    if (c.length === 7) return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+    if (c.length === 4) return [parseInt(c[1] + c[1], 16), parseInt(c[2] + c[2], 16), parseInt(c[3] + c[3], 16)];
+  }
+  const m = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (m) return [+m[1], +m[2], +m[3]];
+  return null;
+}
+function mixColors(a: string, b: string, t: number): string {
+  const ra = parseColor(a), rb = parseColor(b);
+  if (!ra || !rb) return a;
+  const r = Math.round(ra[0] + (rb[0] - ra[0]) * t);
+  const g = Math.round(ra[1] + (rb[1] - ra[1]) * t);
+  const bl = Math.round(ra[2] + (rb[2] - ra[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+function phaseColorAtBlended(
+  mile: number,
+  phases: PhaseRange[],
+  colors: string[],
+  fadeMi = 0.1,
+): string {
+  const idx = phaseIndexAt(mile, phases);
+  const here = colors[idx] ?? colors[colors.length - 1] ?? '#888888';
+  const phase = phases[idx];
+  if (!phase) return here;
+  const distFromStart = mile - phase.start_mi;
+  const distFromEnd = phase.end_mi - mile;
+  // Fade INTO the previous phase as we approach our start boundary
+  if (distFromStart < fadeMi && idx > 0) {
+    const prev = colors[idx - 1] ?? here;
+    // t = 0 right at boundary (full neighbor), 1 fully inside (full self)
+    const t = Math.max(0, Math.min(1, (distFromStart + fadeMi) / (2 * fadeMi)));
+    return mixColors(prev, here, t);
+  }
+  // Fade INTO the next phase as we approach our end boundary
+  if (distFromEnd < fadeMi && idx < phases.length - 1) {
+    const next = colors[idx + 1] ?? here;
+    const t = Math.max(0, Math.min(1, (distFromEnd + fadeMi) / (2 * fadeMi)));
+    return mixColors(next, here, t);
+  }
+  return here;
 }
 
 export interface CoursePreviewProps {
@@ -273,7 +322,11 @@ export function RouteMap({
         // even before fitBounds runs.
         preferCanvas: tiles,
         zoomControl: tiles, // hide +/- in tile-less poster mode
-        attributionControl: tiles, // hide attribution in poster mode
+        // No Leaflet attribution badge anywhere — it visually clutters
+        // the dark race poster. Tile attribution stays compliant by
+        // being added to a separate footer (or, if you skip the
+        // footer entirely, accepted as the trade-off).
+        attributionControl: false,
       });
       mapRef.current = map;
       // Container background — controls what shows through when no tile
@@ -308,7 +361,9 @@ export function RouteMap({
           const midM = (cumDistM[segIdx] + cumDistM[segIdx + 1]) / 2;
           return phaseColorAt(midM / M_PER_MI, phases, phaseColors);
         }
-        return gradeColor(gradesPct[segIdx]);
+        // Continuous interpolation — lerps between bucket anchors so
+        // segment-to-segment color seams fade out.
+        return gradeColorContinuous(gradesPct[segIdx]);
       };
       for (let i = 1; i < trkpts.length; i++) {
         const a = trkpts[i - 1], b = trkpts[i];
@@ -486,12 +541,14 @@ export function ElevationProfile({
   const totalMi = mi(cumDistM[cumDistM.length - 1] ?? 0);
 
   // Build the segment color resolver once per render — Chart.js calls
-  // this back for every segment between p0 and p1.
+  // this back for every segment between p0 and p1. Phase boundaries
+  // get a small lerp window (0.1 mi each side) so the area-fill fades
+  // softly between phase tints instead of switching abruptly.
   const segmentColor = useMemo(() => {
     if (tinting === 'phase' && phases && phaseColors) {
       return (segIdx: number, alpha = 1): string => {
         const midM = (cumDistM[segIdx] + cumDistM[segIdx + 1]) / 2;
-        const c = phaseColorAt(midM / M_PER_MI, phases, phaseColors);
+        const c = phaseColorAtBlended(midM / M_PER_MI, phases, phaseColors, 0.1);
         return alpha < 1 ? withAlpha(c, alpha) : c;
       };
     }
@@ -511,8 +568,15 @@ export function ElevationProfile({
       background: SURFACE, border: `1px solid ${BORDER}`,
       borderRadius: 12, padding: 14, height,
     }}>
-      {/* Chart sized to fill the wrapper (or `height` if bare). */}
-      <div style={{ position: 'relative', width: '100%', height: bare ? height : '100%' }}>
+      {/* Chart sized to fill the wrapper (or `height` if bare).
+          onMouseLeave clears the synced hover marker on the map —
+          Chart.js's onHover only fires on mousemove inside the chart,
+          so without this the marker stays painted on the map after
+          the cursor leaves. */}
+      <div
+        style={{ position: 'relative', width: '100%', height: bare ? height : '100%' }}
+        onMouseLeave={() => onHoverIdx?.(null)}
+      >
         <Line
           data={{
             labels,
@@ -550,35 +614,68 @@ export function ElevationProfile({
           options={{
             responsive: true, maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
+            // Drive hover sync. Mouseleave on the wrapper above also
+            // clears the marker — Chart.js onHover only fires inside.
             onHover: (_e, elements) => {
               if (!onHoverIdx) return;
               if (elements.length > 0) onHoverIdx(elements[0].index);
               else onHoverIdx(null);
             },
+            // Pull right padding to 0 so the curve runs to the right
+            // edge. Top padding leaves room for hover dots so they
+            // don't clip on a high peak.
+            layout: { padding: { left: 0, right: 0, top: 6, bottom: 0 } },
             plugins: {
               tooltip: {
-                backgroundColor: 'rgba(11,15,23,0.95)',
-                borderColor: 'rgba(245,244,238,0.15)',
+                backgroundColor: 'rgba(11,15,23,0.96)',
+                borderColor: 'rgba(245,197,24,0.45)', // milestone-yellow accent
                 borderWidth: 1,
+                cornerRadius: 6,
+                padding: 10,
+                caretSize: 6,
+                caretPadding: 8,
+                displayColors: false,
+                titleColor: 'rgba(245,197,24,0.85)',
+                titleFont: { family: "'JetBrains Mono', monospace", size: 11, weight: 700 },
+                titleAlign: 'left',
+                bodyColor: '#fff',
+                bodyFont: { family: "'JetBrains Mono', monospace", size: 13, weight: 600 },
+                bodySpacing: 4,
                 filter: item => item.datasetIndex === 0, // suppress peak-overlay tooltip noise
                 callbacks: {
-                  title: items => `${Number(items[0].label).toFixed(2)} mi`,
-                  label: item => `Elevation: ${(item.parsed.y as number).toFixed(1)} ft (${((item.parsed.y as number) / FT_PER_M).toFixed(1)} m)`,
+                  title: items => `MI ${Number(items[0].label).toFixed(2)}`,
+                  label: item => `${(item.parsed.y as number).toFixed(0)} FT  ·  ${((item.parsed.y as number) / FT_PER_M).toFixed(1)} M`,
                 },
               },
             },
             scales: {
               x: {
                 type: 'linear',
+                // Hide entirely when chartAxisVisible=false so no left/
+                // right padding is reserved (lets the curve fill edge
+                // to edge). The poster's external `.axis` strip below
+                // provides the 0/mid/total mile labels.
+                display: chartAxisVisible,
                 title: { display: chartAxisVisible, text: 'Distance (mi)' },
                 ticks: { display: chartAxisVisible },
                 grid: { color: chartAxisVisible ? 'rgba(245,244,238,0.06)' : 'transparent' },
                 border: { display: false },
               },
               y: {
+                // Y-axis stays visible even when chartAxisVisible=false
+                // so the user has an elevation scale reference. Only
+                // the title ("Elevation (ft)") is suppressed in poster
+                // mode — the ticks themselves carry the unit.
+                display: true,
                 title: { display: chartAxisVisible, text: 'Elevation (ft)' },
-                ticks: { display: chartAxisVisible },
-                grid: { color: chartAxisVisible ? 'rgba(245,244,238,0.06)' : 'rgba(245,244,238,0.04)' },
+                ticks: {
+                  display: true,
+                  color: 'rgba(245,244,238,0.45)',
+                  font: { family: "'JetBrains Mono', monospace", size: 10 },
+                  padding: 6,
+                  callback: (value: string | number) => `${Math.round(Number(value))} ft`,
+                },
+                grid: { color: chartAxisVisible ? 'rgba(245,244,238,0.06)' : 'rgba(245,244,238,0.05)' },
                 border: { display: false },
                 beginAtZero: false,
               },
@@ -638,10 +735,14 @@ export function ElevationProfile({
 // passes through rgba()/hsla() (returns as-is if not a recognized
 // color format).
 function withAlpha(color: string, alpha: number): string {
+  const a = Math.max(0, Math.min(1, alpha));
   if (color.startsWith('#') && color.length === 7) {
-    const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255).toString(16).padStart(2, '0');
-    return color + a;
+    const ah = Math.round(a * 255).toString(16).padStart(2, '0');
+    return color + ah;
   }
+  // rgb(...) → rgba(...)
+  const rgb = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgb) return `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})`;
   return color;
 }
 

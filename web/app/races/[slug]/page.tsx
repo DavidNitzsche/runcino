@@ -23,8 +23,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
-import { getCourseFacts, type CourseFacts } from '../../../lib/course-facts';
-import { analyzeGpx, type CourseAnalysis } from '../../../lib/gpx-analysis';
+import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
 import {
   RouteMap, ElevationProfile,
   SplitsTables, ChartsRow, SpacingAndDistance, Insights,
@@ -145,18 +144,23 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
   const peakMi = analysis ? analysis.cumDistM[analysis.stats.maxEleIdx] / 1609.344 : 0;
   const peakIdx = analysis?.stats.maxEleIdx ?? null;
 
-  // Enrich the race object with named phases from course facts (if registered).
-  // All child components receive the enriched race so labels are consistent everywhere.
+  // Auto-generate descriptive phase names from the GPX shape — this
+  // replaces the curated labels in course-facts.ts so EVERY race
+  // (registered or not) gets the same scheme. AFC's "Point Loma Climb /
+  // The Drop / Mission Bay" etc. were nice but inconsistent across the
+  // app — Malibu and other unregistered courses landed on auto-detected
+  // "ROLLING ROLLING ROLLING". Auto-naming gives every course a
+  // descriptive, terrain-derived label set with zero curation.
   const enrichedRace = useMemo(() => {
-    const facts = getCourseFacts(race.meta.courseSlug);
-    const enrichedPhases = enrichPhaseLabels(race.plan.phases, facts);
-    const phasesDiffer = enrichedPhases.some((p, i) => p.label !== race.plan.phases[i].label);
-    if (!phasesDiffer && !facts) return race;
+    if (!analysis) return race;
+    const names = autoNamePhases(analysis, race.plan.phases);
+    if (names.length !== race.plan.phases.length) return race;
+    const enrichedPhases = race.plan.phases.map((p, i) => ({ ...p, label: names[i] ?? p.label }));
     return {
       ...race,
       plan: { ...race.plan, phases: enrichedPhases },
     };
-  }, [race]);
+  }, [race, analysis]);
 
   function downloadJson() {
     const blob = new Blob([JSON.stringify(race.plan, null, 2)], { type: 'application/json' });
@@ -203,21 +207,16 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             </div>
           )}
 
-          {analysis && (
-            <section style={{ marginTop: 18 }}>
-              <div style={{
-                fontSize: 11, color: 'var(--color-t3)',
-                fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
-                fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
-              }}>Course detail</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <SplitsTables analysis={analysis} />
-                <ChartsRow analysis={analysis} />
-                <SpacingAndDistance analysis={analysis} />
-                <Insights analysis={analysis} />
-              </div>
-            </section>
-          )}
+          {/* Order, top to bottom on a pre-race page:
+                hero (PosterCard) → phase strategy → race-day weather +
+                race-morning brief → per-mile splits + fueling →
+                course detail (deep stats) → export.
+              The deep "Course detail" stats are valuable but the most
+              actionable context (phases, weather, splits, fueling) is
+              what runners reach for first. Course detail sits at the
+              bottom for reference. ResultSection only renders post-
+              race; it slots in between PhaseCards and the planning
+              tiles so debrief mode shows results right under the plan. */}
 
           <PhaseCards race={enrichedRace} phases={enrichedRace.plan.phases} />
 
@@ -239,6 +238,22 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
                 <FuelingTile race={enrichedRace} />
               </div>
             </>
+          )}
+
+          {analysis && (
+            <section style={{ marginTop: 18 }}>
+              <div style={{
+                fontSize: 11, color: 'var(--color-t3)',
+                fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
+                fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
+              }}>Course detail</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <SplitsTables analysis={analysis} />
+                <ChartsRow analysis={analysis} />
+                <SpacingAndDistance analysis={analysis} />
+                <Insights analysis={analysis} />
+              </div>
+            </section>
           )}
 
           <ExportFooter race={enrichedRace} onDownload={downloadJson} />
@@ -290,44 +305,6 @@ function narrativeFor(slug: string, race: SavedRace, peakMi: number, peakFt: num
     para1: <>The course is <b>five sectors</b>, auto-detected from the elevation profile. The day&apos;s high point lands at mile {peakMi.toFixed(1)} ({Math.round(peakFt)} ft) — pace targets adjust per phase using the Minetti grade-adjusted-pace curve.</>,
     para2: <>Goal: <em>{race.meta.goalDisplay}</em>. Strategy: {race.plan.goal.strategy.replace(/_/g, ' ')}. Watch tolerance ±{race.plan.tolerance.pace_s_per_mi} s/mi.</>,
   };
-}
-
-/* ── Phase label enrichment ─────────────────────────────────
-   For each plan phase, find the course-facts phase that overlaps
-   the most (by mile range) and use its label. If no facts exist
-   or no overlap is found, the original plan label is kept. */
-function enrichPhaseLabels(
-  planPhases: SavedRace['plan']['phases'],
-  facts: CourseFacts | null
-): SavedRace['plan']['phases'] {
-  if (!facts || facts.phases.length === 0) return planPhases;
-
-  // Each facts phase donates its label to exactly one plan phase — the one
-  // with the greatest mile overlap. This prevents two plan phases that both
-  // fall inside the same facts phase from sharing the same label.
-  const labelMap = new Map<number, string>(); // planPhase index → facts label
-  const claimedOverlap = new Map<number, number>(); // planPhase index → winning overlap
-
-  for (const fp of facts.phases) {
-    let bestIdx = -1;
-    let bestOverlap = 0;
-    for (let i = 0; i < planPhases.length; i++) {
-      const p = planPhases[i];
-      const overlap = Math.max(0, Math.min(p.end_mi, fp.end_mi) - Math.max(p.start_mi, fp.start_mi));
-      if (overlap > bestOverlap) { bestOverlap = overlap; bestIdx = i; }
-    }
-    if (bestIdx >= 0 && bestOverlap > 0) {
-      // Only overwrite a previous claim if this facts phase has more overlap
-      if (bestOverlap > (claimedOverlap.get(bestIdx) ?? 0)) {
-        labelMap.set(bestIdx, fp.label);
-        claimedOverlap.set(bestIdx, bestOverlap);
-      }
-    }
-  }
-
-  return planPhases.map((p, i) =>
-    labelMap.has(i) ? { ...p, label: labelMap.get(i)! } : p
-  );
 }
 
 /* ── Poster card ────────────────────────────────────────────
@@ -571,28 +548,19 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
             </>
           )}
 
-          {/* Phase legend — same in both modes; debrief mode adds an
-              empty actual column placeholder until splits_metric lands.
-              When the plan auto-detects sectors and every phase ends
-              up with the same generic label (e.g. "ROLLING") we fall
-              back to "Phase 1 / 2 / …" so the rows are distinguishable. */}
-          {(() => {
-            const firstLabel = enrichedPhases[0]?.label;
-            const labelsCollide = enrichedPhases.length > 1
-              && enrichedPhases.every(p => p.label === firstLabel);
-            return (
-              <div className="pc-legend">
-                {enrichedPhases.map((p, i) => (
-                  <div className="row" key={i}>
-                    <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
-                    <span className="name">{labelsCollide ? `Phase ${i + 1}` : p.label}</span>
-                    <span className="mi">MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}</span>
-                    <span className="pace">{p.target_pace_display}</span>
-                  </div>
-                ))}
+          {/* Phase legend. Labels come from autoNamePhases() so every
+              row gets a descriptive name derived from the GPX shape
+              (Opening climb / The drop / Cruise / Final push / …). */}
+          <div className="pc-legend">
+            {enrichedPhases.map((p, i) => (
+              <div className="row" key={i}>
+                <div className="bar" style={{ background: PHASE_COLORS[i] ?? '#444' }} />
+                <span className="name">{p.label}</span>
+                <span className="mi">MI {p.start_mi.toFixed(1)} – {p.end_mi.toFixed(1)}</span>
+                <span className="pace">{p.target_pace_display}</span>
               </div>
-            );
-          })()}
+            ))}
+          </div>
         </div>
       </div>
 

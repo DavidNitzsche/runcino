@@ -270,3 +270,174 @@ export function gradeColor(gradePct: number): string {
   }
   return GRADE_COLORS[GRADE_COLORS.length - 1].color;
 }
+
+// ── Phase auto-naming ──────────────────────────────────────────────────
+// Generates short, descriptive names for plan phases purely from the
+// GPX shape — no curated registry needed. Replaces the curated labels
+// from course-facts.ts at the consumer level: passing an
+// auto-generated array always overrides whatever the saved plan
+// stored, so the same label scheme applies to every race (registered
+// or not).
+//
+// Heuristics, in order of priority:
+//   • Net climb / drop ≥ 60 ft AND grade is meaningful → climb / descent
+//   • Mean |grade| < 1 % → cruise / opening / finishing stretch
+//   • Otherwise → rolling section
+//   • First / last phase get prefixed with "Opening" / "Final"
+//   • Single phase course → "Full course"
+//
+// Output is title-cased (e.g. "Opening climb", "The drop"). The poster
+// CSS uppercases what it renders, so we don't need to all-caps here.
+
+export interface PhaseShape {
+  startMi: number;
+  endMi: number;
+  meanGradePct: number;
+  netGainFt: number;
+}
+
+/** Build PhaseShape rows for an analysis given a list of phase ranges. */
+export function summarizePhases(
+  analysis: CourseAnalysis,
+  phases: Array<{ start_mi: number; end_mi: number }>,
+): PhaseShape[] {
+  const { cumDistM, trkpts } = analysis;
+  return phases.map(p => {
+    const startM = p.start_mi * M_PER_MI;
+    const endM = p.end_mi * M_PER_MI;
+    // Find the trkpts bracketing the phase
+    let lo = 0, hi = cumDistM.length - 1;
+    for (let i = 0; i < cumDistM.length; i++) {
+      if (cumDistM[i] >= startM) { lo = i; break; }
+    }
+    for (let i = cumDistM.length - 1; i >= 0; i--) {
+      if (cumDistM[i] <= endM) { hi = i; break; }
+    }
+    if (hi < lo) hi = lo;
+    let absGrade = 0, segs = 0;
+    for (let i = lo + 1; i <= hi; i++) {
+      const d = cumDistM[i] - cumDistM[i - 1];
+      if (d <= 0) continue;
+      absGrade += Math.abs(((trkpts[i][2] - trkpts[i - 1][2]) / d) * 100);
+      segs++;
+    }
+    const meanGradePct = segs > 0 ? absGrade / segs : 0;
+    const netGainFt = (trkpts[hi][2] - trkpts[lo][2]) * (1 / 0.3048);
+    return {
+      startMi: p.start_mi,
+      endMi: p.end_mi,
+      meanGradePct,
+      netGainFt,
+    };
+  });
+}
+
+export function autoNamePhases(
+  analysis: CourseAnalysis,
+  phases: Array<{ start_mi: number; end_mi: number }>,
+): string[] {
+  const shapes = summarizePhases(analysis, phases);
+  if (shapes.length === 0) return [];
+  if (shapes.length === 1) return ['Full course'];
+
+  const raw = shapes.map((s, i) => {
+    const isFirst = i === 0;
+    const isLast = i === shapes.length - 1;
+    const lengthMi = s.endMi - s.startMi;
+    const flat = s.meanGradePct < 1.0 && Math.abs(s.netGainFt) < 40;
+    const climb = s.netGainFt > 60 && s.meanGradePct > 1.0;
+    const drop = s.netGainFt < -60 && s.meanGradePct > 1.0;
+    const steepClimb = s.netGainFt > 100 && s.meanGradePct > 4.0;
+    const steepDrop = s.netGainFt < -100 && s.meanGradePct > 4.0;
+    const wall = lengthMi < 1 && s.meanGradePct > 5.0;
+
+    if (wall && climb) return 'Wall climb';
+    if (wall && drop) return 'Quick drop';
+    if (steepClimb) return isFirst ? 'Opening climb' : isLast ? 'Final climb' : 'The climb';
+    if (steepDrop)  return isLast ? 'Final descent' : 'The drop';
+    if (climb)      return isFirst ? 'Opening climb' : isLast ? 'Final push' : 'Rolling climb';
+    if (drop)       return isLast ? 'Closing descent' : 'Long descent';
+    if (flat)       return isFirst ? 'Opening miles' : isLast ? 'Finishing stretch' : 'Cruise';
+    // Mixed / mild rolling — keep base short so positional prefixes
+    // ("Early Rolling / Mid Rolling / Late Rolling") still read cleanly.
+    return isFirst ? 'Warm-up' : isLast ? 'Final stretch' : 'Rolling';
+  });
+
+  return dedupeRunsWithPosition(raw);
+}
+
+/** When N consecutive phases share an identical auto-name, prefix each
+ *  with a position descriptor so the legend doesn't read "Rolling /
+ *  Rolling / Rolling / Rolling". 2 → Early / Late, 3 → Early / Mid /
+ *  Late, 4 → Opening / Early / Late / Closing, 5+ → numbered. */
+function dedupeRunsWithPosition(names: string[]): string[] {
+  const out = names.slice();
+  let i = 0;
+  while (i < out.length) {
+    const base = out[i];
+    let j = i;
+    while (j + 1 < out.length && out[j + 1] === base) j++;
+    const run = j - i + 1;
+    if (run > 1) {
+      const lower = base.toLowerCase();
+      const positional =
+        run === 2 ? [`Early ${lower}`, `Late ${lower}`] :
+        run === 3 ? [`Early ${lower}`, `Mid ${lower}`, `Late ${lower}`] :
+        // 4+ phases sharing a label → neutral numbering. Avoids
+        // collisions with neighbour phases (e.g. "Opening rolling"
+        // colliding with "Opening miles" on the previous slot).
+        Array.from({ length: run }, (_, k) => `${base} ${k + 1}`);
+      for (let k = 0; k < run; k++) out[i + k] = positional[k];
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
+// ── Continuous grade color (lerps between bucket anchors) ──────────────
+// `gradeColor` is fine for the legend (shows discrete buckets) but the
+// polyline rendered with it has hard color seams whenever a segment's
+// grade crosses a bucket edge — e.g. 4.95 % → 5.05 % flips yellow → orange
+// in a single segment. `gradeColorContinuous` interpolates linearly between
+// adjacent anchor colors so a 4.95 % segment is almost yellow, a 5.05 %
+// segment is almost orange, and the polyline visually fades between them.
+// Anchor positions match the bucket *centers* so the legend swatch and
+// the polyline at the same grade render identically.
+
+const GRADE_ANCHORS: Array<{ at: number; rgb: [number, number, number] }> = [
+  { at: -10, rgb: [30,  58, 138] }, // < -8 %
+  { at: -6.5, rgb: [37,  99, 235] }, // -8 to -5 %
+  { at: -4,  rgb: [59, 130, 246] }, // -5 to -3 %
+  { at: -2,  rgb: [96, 165, 250] }, // -3 to -1 %
+  { at:  0,  rgb: [16, 185, 129] }, // flat ±1 %
+  { at:  2,  rgb: [132, 204,  22] }, // 1 to 3 %
+  { at:  4,  rgb: [234, 179,   8] }, // 3 to 5 %
+  { at:  6.5, rgb: [249, 115,  22] }, // 5 to 8 %
+  { at: 10,  rgb: [220,  38,  38] }, // > 8 %
+];
+
+function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+export function gradeColorContinuous(gradePct: number): string {
+  if (gradePct <= GRADE_ANCHORS[0].at) {
+    const [r, g, b] = GRADE_ANCHORS[0].rgb;
+    return `rgb(${r},${g},${b})`;
+  }
+  const last = GRADE_ANCHORS[GRADE_ANCHORS.length - 1];
+  if (gradePct >= last.at) {
+    const [r, g, b] = last.rgb;
+    return `rgb(${r},${g},${b})`;
+  }
+  for (let i = 0; i < GRADE_ANCHORS.length - 1; i++) {
+    const a = GRADE_ANCHORS[i], n = GRADE_ANCHORS[i + 1];
+    if (gradePct >= a.at && gradePct < n.at) {
+      const t = (gradePct - a.at) / (n.at - a.at);
+      const r = Math.round(lerp(a.rgb[0], n.rgb[0], t));
+      const g = Math.round(lerp(a.rgb[1], n.rgb[1], t));
+      const b = Math.round(lerp(a.rgb[2], n.rgb[2], t));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  const [r, g, b] = last.rgb;
+  return `rgb(${r},${g},${b})`;
+}
