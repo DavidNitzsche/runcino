@@ -19,6 +19,7 @@
 import { listRacesDB } from './race-store';
 import { getCachedActivities } from './strava-cache';
 import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './strava-stats';
+import { todayISO as todayLAISO, todayDate } from './dates';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -147,8 +148,11 @@ function buildWindowDays(distanceMi: number): number {
 }
 
 export async function gatherCoachState(): Promise<CoachState> {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayISO = today.toISOString().slice(0, 10);
+  // "Today" in LA — server runs in UTC and would otherwise flip a day
+  // early in the evening. todayDate() is anchored at noon UTC of the
+  // LA calendar date so isoDateOffset's setDate/getDate math is safe.
+  const today = todayDate();
+  const todayISO = todayLAISO();
 
   const [savedRaces, { activities }] = await Promise.all([
     listRacesDB(),

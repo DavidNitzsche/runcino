@@ -7,12 +7,29 @@
  * through time together. Tests pin to a fixed date by stubbing now().
  */
 
+/** App-wide reference timezone. The user is in California; the server
+ *  runs in UTC. Computing "today" naively against UTC means we flip
+ *  to tomorrow at 4–5 PM local — highlighting the wrong day in the
+ *  week strip. All date-string math goes through LA. */
+export const RUNCINO_TZ = 'America/Los_Angeles';
+
 export function now(): Date {
   return new Date();
 }
 
+/** Today's date in YYYY-MM-DD, computed in LA timezone (en-CA locale
+ *  yields ISO format). Use this anywhere you need the user's calendar
+ *  date, never `new Date().toISOString().slice(0,10)` (which is UTC). */
 export function todayISO(): string {
-  return now().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('en-CA', { timeZone: RUNCINO_TZ });
+}
+
+/** A Date anchored at noon UTC of LA's calendar today. Safe to pass
+ *  through `setDate` / `getDate` arithmetic on any server timezone —
+ *  noon UTC is far enough from midnight that ±days never crosses
+ *  a UTC date boundary. */
+export function todayDate(): Date {
+  return new Date(todayISO() + 'T12:00:00Z');
 }
 
 export function greeting(d: Date = now()): 'Good morning' | 'Good afternoon' | 'Good evening' {
@@ -22,14 +39,12 @@ export function greeting(d: Date = now()): 'Good morning' | 'Good afternoon' | '
   return 'Good evening';
 }
 
-/** Days from today (00:00 local) to the race date (12:00 UTC).
+/** Days from today (LA calendar) to the race date.
  *  Negative if past, 0 if today, positive if future. */
 export function daysUntil(iso: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const target = new Date(iso + 'T12:00:00Z');
   if (Number.isNaN(target.getTime())) return NaN;
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  return Math.round((target.getTime() - todayDate().getTime()) / 86_400_000);
 }
 
 export function isUpcoming(iso: string): boolean {
@@ -67,15 +82,16 @@ export function formatDow(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-/** Returns Mon-of-current-week + Sun-of-current-week as ISO strings. */
-export function thisWeekRange(d: Date = now()): { start: string; end: string } {
-  const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+/** Returns Mon-of-current-week + Sun-of-current-week as ISO strings.
+ *  Computed in LA timezone — the server's UTC clock would otherwise
+ *  flip the week boundary in the early hours of LA's Monday. */
+export function thisWeekRange(d: Date = todayDate()): { start: string; end: string } {
+  const day = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat (UTC because d is anchored noon-UTC)
   const offsetToMon = day === 0 ? -6 : 1 - day;
   const mon = new Date(d);
-  mon.setDate(d.getDate() + offsetToMon);
-  mon.setHours(0, 0, 0, 0);
+  mon.setUTCDate(d.getUTCDate() + offsetToMon);
   const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
+  sun.setUTCDate(mon.getUTCDate() + 6);
   return {
     start: mon.toISOString().slice(0, 10),
     end:   sun.toISOString().slice(0, 10),
