@@ -1337,14 +1337,23 @@ function PeriodRow({ p, primary }: { p: WeatherPeriod; primary?: boolean }) {
   );
 }
 
-/* ── Claude race-morning brief tile ─────────────────────────
-   Calls /api/brief with the plan's phases + a weather text
-   description. Returns a short narrative + optional pace deltas
-   per phase. Output is a stub when ANTHROPIC_API_KEY isn't set. */
+/* ── Race-morning brief tile (Coach-driven) ─────────────────
+   Stage 2: routes through coach.briefRaceMorning() via /api/brief.
+   The Coach's voice is governed by web/coach/voice.md and grounded
+   in coaching-research.md. The "why?" affordance reveals citations
+   without putting them in the body of the brief.
+   Falls back to a deterministic stub when ANTHROPIC_API_KEY is unset. */
+type Citation = { doc: string; section: string; snippet?: string };
 type BriefResponse = {
   narrative: string;
   plan_adjustments: Array<{ phase_idx: number; pace_delta_s_per_mi: number; reason: string }>;
   stub?: boolean;
+  coach?: {
+    rationale: string;
+    citations: Citation[];
+    brain: 'deterministic' | 'llm';
+    llmAvailable: boolean;
+  };
 };
 
 function BriefTile({ race }: { race: SavedRace }) {
@@ -1352,6 +1361,7 @@ function BriefTile({ race }: { race: SavedRace }) {
   const [brief, setBrief] = useState<BriefResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
 
   async function generate() {
     setLoading(true); setErr(null);
@@ -1361,6 +1371,9 @@ function BriefTile({ race }: { race: SavedRace }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           courseSlug: race.meta.courseSlug,
+          raceName: race.meta.name,
+          raceDate: race.meta.date,
+          goalDisplay: race.meta.goalDisplay,
           weatherText: weather || 'no specific forecast — assume seasonal norms',
           phases: race.plan.phases.map(p => ({
             index: p.index,
@@ -1381,14 +1394,17 @@ function BriefTile({ race }: { race: SavedRace }) {
     }
   }
 
+  const citations = brief?.coach?.citations ?? [];
+  const hasCitations = citations.length > 0;
+
   return (
     <div className="tile">
       <div className="tile-h">
         <div>
           <div className="tile-sub">Race-morning brief</div>
-          <div className="tile-lbl">{brief ? 'Claude says:' : 'Generate brief'}</div>
+          <div className="tile-lbl">{brief ? 'Coach says:' : 'Generate brief'}</div>
         </div>
-        {brief?.stub && <span className="chip">STUB · NO API KEY</span>}
+        {brief?.stub && <span className="chip">FALLBACK · NO API KEY</span>}
       </div>
       {!brief && (
         <>
@@ -1401,31 +1417,60 @@ function BriefTile({ race }: { race: SavedRace }) {
             style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
           />
           <button className="btn btn--primary" onClick={generate} disabled={loading} style={{ alignSelf: 'flex-start' }}>
-            {loading ? 'Asking Claude…' : '✦ Generate'}
+            {loading ? 'Coach is writing…' : '✦ Generate'}
           </button>
         </>
       )}
       {brief && (
         <>
-          <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55 }}>
+          <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
             {brief.narrative}
           </div>
-          {brief.plan_adjustments.length > 0 && (
-            <div>
-              <div className="tile-sub" style={{ marginBottom: 8 }}>Suggested pace tweaks</div>
-              {brief.plan_adjustments.map((a, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: i > 0 ? '1px solid var(--color-l4)' : 'none', fontSize: 12.5 }}>
-                  <span style={{ color: 'var(--color-t1)' }}>
-                    Phase {a.phase_idx + 1} · {race.plan.phases[a.phase_idx]?.label}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, color: a.pace_delta_s_per_mi >= 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                    {a.pace_delta_s_per_mi >= 0 ? '+' : ''}{a.pace_delta_s_per_mi}s/mi · {a.reason}
-                  </span>
-                </div>
-              ))}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn--ghost" onClick={() => { setBrief(null); setShowWhy(false); }} style={{ fontSize: 12 }}>↻ Regenerate</button>
+            {hasCitations && (
+              <button
+                className="btn btn--ghost"
+                onClick={() => setShowWhy(s => !s)}
+                style={{ fontSize: 12 }}
+                aria-expanded={showWhy}
+              >
+                {showWhy ? '× Hide rationale' : '? Why'}
+              </button>
+            )}
+          </div>
+          {showWhy && brief.coach && (
+            <div style={{
+              padding: 12,
+              background: 'var(--color-l1)',
+              border: '1px solid var(--color-l4)',
+              borderRadius: 8,
+              fontSize: 12,
+              color: 'var(--color-t1)',
+              lineHeight: 1.55,
+            }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>
+                Coach rationale
+              </div>
+              <div style={{ marginBottom: citations.length ? 10 : 0, color: 'var(--color-t0)' }}>{brief.coach.rationale}</div>
+              {citations.length > 0 && (
+                <>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-t3)', marginBottom: 6 }}>
+                    Citations
+                  </div>
+                  <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {citations.map((c, i) => (
+                      <li key={i}>
+                        <strong style={{ color: 'var(--color-t0)' }}>{c.section}</strong>
+                        {c.snippet && <span style={{ color: 'var(--color-t2)' }}>{' — '}{c.snippet}</span>}
+                        <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 2 }}>{c.doc}</div>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
             </div>
           )}
-          <button className="btn btn--ghost" onClick={() => setBrief(null)} style={{ alignSelf: 'flex-start' }}>↻ Regenerate</button>
         </>
       )}
       {err && (

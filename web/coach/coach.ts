@@ -22,6 +22,7 @@
  * is replacing.
  */
 import type { CoachBaseContext, CoachDecision } from './types';
+import { callCoachLLM, llmAvailable } from './llm';
 
 // ── Method-specific input types ──────────────────────────────────────
 // Defined inline here so the Coach's API surface stays in one file.
@@ -99,7 +100,8 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
   raceName: string;
   raceDate: string;
   goalDisplay: string;
-  weather?: { tempF: number; windMph?: number; conditions?: string };
+  /** Any field can be omitted when the runner hasn't pasted a forecast. */
+  weather?: { tempF?: number; windMph?: number; conditions?: string };
   /** Top-line course summary the brief can reference (peak mile, etc.). */
   courseSummary: string;
 }
@@ -183,27 +185,70 @@ export interface Coach {
   adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>>;
 }
 
-// ── Stage-0 stub implementation ──────────────────────────────────────
-// Every method throws a clear "implemented in Stage N" error. This lets
-// us compile and import the Coach throughout the app starting now;
-// real callers don't get added until Stage 1+, when each method gets
-// a working body.
+// ── Coach implementation ─────────────────────────────────────────────
+// Each method either reads from doctrine deterministically or calls the
+// LLM brain. As stages land, methods move from stub → real. Stubs throw
+// with a clear "Stage N" hint; real methods have full bodies.
 
-class StubCoach implements Coach {
+class CoachImpl implements Coach {
   private notYet(stage: number, method: string): never {
     throw new Error(`Coach.${method}() lands in Stage ${stage}. See docs/COACH_BUILD_PLAN.md.`);
   }
+
   paceStrategy(): Promise<CoachDecision<PaceStrategyOutput>> { return this.notYet(1, 'paceStrategy'); }
   prescribeWorkout(): Promise<CoachDecision<WorkoutPrescription>> { return this.notYet(3, 'prescribeWorkout'); }
   assessReadiness(): Promise<CoachDecision<ReadinessAssessment>> { return this.notYet(3, 'assessReadiness'); }
   taperDepth(): Promise<CoachDecision<number>> { return this.notYet(1, 'taperDepth'); }
   fuelingFor(): Promise<CoachDecision<FuelingPlan>> { return this.notYet(1, 'fuelingFor'); }
-  briefRaceMorning(): Promise<CoachDecision<string>> { return this.notYet(2, 'briefRaceMorning'); }
   retrospect(): Promise<CoachDecision<RetrospectiveOutput>> { return this.notYet(4, 'retrospect'); }
   adjustForReality(): Promise<CoachDecision<AdjustedPlan>> { return this.notYet(5, 'adjustForReality'); }
+
+  // ── Stage 2 · Race-morning brief ───────────────────────────────────
+  // First user-visible LLM surface. Pre-race, the Coach writes a short
+  // paragraph in voice — what to do in the first three miles, weather
+  // adjustments, fueling reminders, what NOT to chase. Citations point
+  // back at coaching-research §3, §5, §7, §11, §14 depending on what
+  // the brief leans on.
+  async briefRaceMorning(input: RaceMorningBriefInput): Promise<CoachDecision<string>> {
+    if (!llmAvailable()) {
+      // Deterministic fallback — keeps the page working without an
+      // ANTHROPIC_API_KEY. Voice stays close but obviously generic.
+      return {
+        answer: `Morning. The training is done. ${input.weather?.tempF != null
+          ? `${Math.round(input.weather.tempF)}°F start — ${input.weather.tempF > 75 ? 'start conservative, the heat will catch up' : input.weather.tempF < 50 ? 'cool and favorable, don\'t overdress' : 'comfortable conditions, run the plan'}.`
+          : 'Trust the plan.'} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`,
+        rationale: 'Conservative start + trust-the-plan default. No LLM available.',
+        citations: [
+          { doc: 'docs/coaching-research.md', section: '§14', snippet: 'in the final two weeks, the fitness is built. The job is to arrive at the start line rested without losing edge.' },
+        ],
+        brain: 'deterministic',
+      };
+    }
+
+    const weatherLine = input.weather
+      ? `Weather: ${input.weather.tempF}°F${input.weather.windMph != null ? `, ${input.weather.windMph} mph wind` : ''}${input.weather.conditions ? `, ${input.weather.conditions}` : ''}.`
+      : 'Weather: no specific forecast.';
+
+    const userPrompt = [
+      `Write a race-morning brief for ${input.raceName} on ${input.raceDate}.`,
+      `Goal: ${input.goalDisplay}.`,
+      `Course: ${input.courseSummary}`,
+      weatherLine,
+      '',
+      'The brief is what the runner reads over coffee. One short paragraph. Voice rules apply (plain language, no §-numbers in the rationale, no jargon-without-translation). Acknowledge real conditions, give pace-band guidance for the opening miles, mention fuel timing, and end with a single line of focus.',
+    ].join('\n');
+
+    return callCoachLLM<string>({
+      scope: 'running',
+      userPrompt,
+      answerSchema: 'a single paragraph (3–6 sentences) of race-morning brief in the Coach voice',
+      maxTokens: 600,
+    });
+  }
 }
 
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
- *  Stage 0 returns a stub that throws on every call; Stage 1 swaps it for
- *  a real implementation backed by doctrine + the LLM brain. */
-export const coach: Coach = new StubCoach();
+ *  Stage 2 implements `briefRaceMorning`; other methods still stub
+ *  with a clear "Stage N" error. Each stage flips one or more from
+ *  stub → real. */
+export const coach: Coach = new CoachImpl();

@@ -1,61 +1,57 @@
 /**
  * /api/brief — race-morning brief generator.
  *
- * Takes a weather description (NOAA forecast paste) plus the existing plan,
- * returns a narrative + optional pace adjustments. Same guardrails as /api/goal:
- * Claude reasons about strategy; it does NOT invent course facts.
+ * Stage 2 wired: delegates to `coach.briefRaceMorning(...)`. The Coach
+ * routes the call through the LLM brain when `ANTHROPIC_API_KEY` is
+ * present (with voice.md + coaching-research.md cached), and falls
+ * back to a deterministic stub when not.
+ *
+ * The legacy response shape — `{ narrative, plan_adjustments, stub }`
+ * — is preserved so the existing BriefTile keeps working. The richer
+ * `CoachDecision` (rationale + citations) is delivered in a `coach`
+ * sub-object the tile picks up incrementally.
  */
-
-import Anthropic from '@anthropic-ai/sdk';
+import { coach } from '../../../coach/coach';
+import { llmAvailable } from '../../../coach/llm';
 import { getCourseFacts } from '../../../lib/course-facts';
-
-const BRIEF_SYSTEM_PROMPT = `
-You are Runcino's race-morning briefer. You receive a race plan (phases with paces and landmarks) and a weather forecast the runner pastes in. You return a short narrative for the runner to read over coffee, plus optional pace adjustments.
-
-# Hard rules
-
-- Speak only to the weather, strategy, and pacing. Do not invent course facts, aid stations, or landmarks not in the plan.
-- If conditions are unremarkable, say "no changes" and give a one-sentence head-up.
-- Pace adjustments are integers in seconds per mile, referenced by phase index.
-- Length: 3-6 sentences. Warm but direct. No cheerleading.
-
-# Output format
-
-JSON only:
-
-{
-  "narrative": string,
-  "plan_adjustments": [
-    { "phase_idx": number, "pace_delta_s_per_mi": number, "reason": string }
-  ]
-}
-`;
+import type { CoachDecision } from '../../../coach/types';
 
 type Body = {
   courseSlug: string;
+  raceName?: string;
+  raceDate?: string;
+  goalDisplay?: string;
   weatherText: string;
   phases: Array<{ index: number; label: string; startMi: number; endMi: number; paceSPerMi: number; grade: number }>;
 };
 
-function briefStub(body: Body) {
-  const hot = /\b(80|85|90|hot|humid)\b/i.test(body.weatherText);
-  const windy = /\b(wind|gust|headwind|\d{2}\s*mph)\b/i.test(body.weatherText);
-  const cool = /\b(40|45|50|cool|overcast)\b/i.test(body.weatherText);
-  const adj: Array<{ phase_idx: number; pace_delta_s_per_mi: number; reason: string }> = [];
-  let narrative = 'Conditions look unremarkable. Run the plan as written.';
-  if (hot) {
-    narrative = 'Warm day. Pace will drift late — start conservative, accept 5-10 sec/mi slowdown after mile 20, drink at every aid station.';
-    if (body.phases.length >= 5) {
-      adj.push({ phase_idx: 4, pace_delta_s_per_mi: +8, reason: 'heat drift in the bluffs' });
-      adj.push({ phase_idx: 5, pace_delta_s_per_mi: +10, reason: 'heat sustain through finish' });
-    }
-  } else if (windy) {
-    narrative = 'Wind in the forecast. Exposed sections (highway bluffs) will cost pace — don\'t force the number. Tuck in behind runners when you can.';
-    if (body.phases.length >= 5) adj.push({ phase_idx: 4, pace_delta_s_per_mi: +4, reason: 'crosswind exposure' });
-  } else if (cool) {
-    narrative = 'Cool and favorable. Trust the pace plan. Don\'t overdress — you\'ll warm up fast after the first mile.';
-  }
-  return { narrative, plan_adjustments: adj, stub: true };
+/** Build a one-line course summary from the plan's phases for the
+ *  Coach prompt. Avoids inventing course facts the Coach doesn't have. */
+function summarizeCourse(body: Body, raceName: string): string {
+  const total = body.phases.length > 0
+    ? body.phases[body.phases.length - 1].endMi
+    : 0;
+  if (total <= 0) return `${raceName}, distance unknown.`;
+  const peakGrade = Math.max(...body.phases.map(p => p.grade));
+  const peakPhase = body.phases.find(p => p.grade === peakGrade);
+  const peakNote = peakPhase && peakGrade > 1
+    ? `, with the steepest section near mile ${((peakPhase.startMi + peakPhase.endMi) / 2).toFixed(1)} at ${peakGrade.toFixed(1)}% grade`
+    : '';
+  return `${raceName}, ${total.toFixed(1)} mi, ${body.phases.length} sectors${peakNote}.`;
+}
+
+/** Parse a free-text NOAA-style forecast into the structured weather
+ *  the Coach expects. Best-effort regex; if it can't parse, just
+ *  forwards the raw text in `conditions`. */
+function parseWeather(text: string): { tempF?: number; windMph?: number; conditions?: string } | undefined {
+  if (!text || text.trim().length === 0) return undefined;
+  const tempMatch = text.match(/(\d{2,3})\s*°?\s*F/i);
+  const windMatch = text.match(/(\d{1,3})\s*mph/i);
+  return {
+    tempF: tempMatch ? Number(tempMatch[1]) : undefined,
+    windMph: windMatch ? Number(windMatch[1]) : undefined,
+    conditions: text.trim(),
+  };
 }
 
 export async function POST(req: Request) {
@@ -67,37 +63,38 @@ export async function POST(req: Request) {
   }
 
   const facts = getCourseFacts(body.courseSlug);
-  // Custom courses don't have curated facts. Fall back to the slug as
-  // the race name — Claude only uses this to anchor the narrative,
-  // never to invent course-specific landmarks.
-  const raceName = facts?.race.name ?? body.courseSlug;
+  const raceName = body.raceName ?? facts?.race.name ?? body.courseSlug;
+  const courseSummary = summarizeCourse(body, raceName);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return Response.json(briefStub(body));
-
-  const client = new Anthropic({ apiKey });
-  const resp = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: [{ type: 'text', text: BRIEF_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{
-      role: 'user',
-      content: JSON.stringify({
-        race: raceName,
-        phases: body.phases,
-        weather: body.weatherText,
-      }, null, 2),
-    }],
-  });
-
-  let raw = '';
-  for (const block of resp.content) if (block.type === 'text') raw += block.text;
-  const jsonText = raw.replace(/```json\s*/i, '').replace(/```\s*$/i, '').trim();
-
+  let decision: CoachDecision<string>;
   try {
-    const parsed = JSON.parse(jsonText);
-    return Response.json({ ...parsed, stub: false });
-  } catch {
-    return new Response(`Claude returned invalid JSON: ${jsonText.slice(0, 300)}`, { status: 502 });
+    decision = await coach.briefRaceMorning({
+      today,
+      raceName,
+      raceDate: body.raceDate ?? today,
+      goalDisplay: body.goalDisplay ?? '',
+      weather: parseWeather(body.weatherText),
+      courseSummary,
+    });
+  } catch (e) {
+    return new Response(
+      `Coach failed: ${e instanceof Error ? e.message : String(e)}`,
+      { status: 502 },
+    );
   }
+
+  // Legacy shape for the existing BriefTile + a `coach` sub-object
+  // that surfaces the rationale + citations.
+  return Response.json({
+    narrative: decision.answer,
+    plan_adjustments: [], // Brief no longer prescribes pace deltas — voice rules call for run-the-plan.
+    stub: decision.brain === 'deterministic',
+    coach: {
+      rationale: decision.rationale,
+      citations: decision.citations,
+      brain: decision.brain,
+      llmAvailable: llmAvailable(),
+    },
+  });
 }
