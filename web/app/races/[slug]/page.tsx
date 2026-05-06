@@ -20,6 +20,7 @@ import { Caption, Nav } from '../../../components/nav';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { getCourseFacts, type CourseFacts } from '../../../lib/course-facts';
+import CoursePreview from '../../../components/CoursePreview';
 
 // Phase color palette — 8 deterministic colors so any course with up to 8
 // phases gets a distinct hue. Extends the 5-color rainbow used in the
@@ -221,6 +222,15 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
 
           <PosterCard race={enrichedRace} points={points} days={days} totalMi={totalMi} peakFt={peakFt} peakMi={peakMi} onUpdated={onUpdated} />
+
+          <section style={{ marginTop: 18 }}>
+            <div style={{
+              fontSize: 11, color: 'var(--color-t3)',
+              fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
+              fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
+            }}>Course analysis</div>
+            <CoursePreview gpxText={race.gpxText} />
+          </section>
 
           <PhaseCards race={enrichedRace} phases={enrichedRace.plan.phases} />
 

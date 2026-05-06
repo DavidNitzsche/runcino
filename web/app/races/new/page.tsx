@@ -5,10 +5,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { saveRace, listRaces, slugifyRaceName } from '../../../lib/storage';
 import { parseGpx } from '../../../lib/gpx';
-import type { GpxTrack, RuncinoPlan } from '../../../lib/types';
-import type { ElevationResult } from '../../../lib/elevation';
+import { analyzeGpx, type CourseAnalysis } from '../../../lib/gpx-analysis';
+import type { RuncinoPlan } from '../../../lib/types';
 import type { ExtractedAidStation, ExtractionResult } from '../../../lib/aid-extraction';
 import type { SavedRace } from '../../../lib/storage-types';
+import CoursePreview from '../../../components/CoursePreview';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,10 +23,9 @@ type AidStationRow = ExtractedAidStation & {
 };
 
 type ProcessResult = {
-  elevationResult: ElevationResult;
+  analysis: CourseAnalysis;
   extractionResult: ExtractionResult;
   aidRows: AidStationRow[];
-  skippedDem?: boolean;
 };
 
 type BuildResult = {
@@ -74,21 +74,6 @@ function isValidUrl(s: string): boolean {
   try { new URL(s); return true; } catch { return false; }
 }
 
-function validationIssues(
-  eleResult: ElevationResult,
-): Array<{ level: 'warn' | 'block'; message: string }> {
-  const issues: Array<{ level: 'warn' | 'block'; message: string }> = [];
-  for (const w of eleResult.warnings) {
-    issues.push({ level: eleResult.closureErr > 20 ? 'block' : 'warn', message: w });
-  }
-  if (eleResult.closureErr > 20) {
-    issues.push({ level: 'block', message: `Loop closure error ${eleResult.closureErr.toFixed(1)}% exceeds 20% block threshold. Check the GPX or try again.` });
-  } else if (eleResult.closureErr > 10) {
-    issues.push({ level: 'warn', message: `Loop closure error ${eleResult.closureErr.toFixed(1)}% — DEM data may be less reliable on this course.` });
-  }
-  return issues;
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function NewRacePage() {
@@ -113,7 +98,6 @@ export default function NewRacePage() {
   // — GPX —
   const [gpxName, setGpxName] = useState<string | null>(null);
   const [gpxText, setGpxText] = useState<string | null>(null);
-  const [skipDem, setSkipDem] = useState(false);
   const [manualPaste, setManualPaste] = useState('');
   const [showPaste, setShowPaste] = useState(false);
 
@@ -192,60 +176,25 @@ export default function NewRacePage() {
   );
 
   // — Process Race Data —
+  // Analyze the GPX in-browser (StravaGPX-calibrated threshold gain/loss)
+  // and extract aid stations from the official race URL in parallel.
   async function handleProcess() {
     if (!canProcess || !gpxText) return;
     setProcessError(null);
     setPhase('processing');
     try {
-      // Build elevation result — either from DEM API or directly from GPX
-      let elevationResultPromise: Promise<ElevationResult>;
-      if (skipDem) {
-        const parsed = parseGpx(gpxText);
-        const gainFt = parsed.smoothedGainFt ?? 0;
-        const lossFt = parsed.smoothedLossFt ?? 0;
-        const trackWithDem: typeof parsed = {
-          ...parsed,
-          points: parsed.points.map(p => ({ ...p, demEleM: p.eleM })),
-          demGainFt: Math.round(gainFt),
-          demLossFt: Math.round(lossFt),
-        };
-        elevationResultPromise = Promise.resolve<ElevationResult>({
-          track: trackWithDem,
-          dataset: 'srtm30m', // unused — skippedDem flag controls display
-          gainFt: Math.round(gainFt),
-          lossFt: Math.round(lossFt),
-          closureErr: 0,
-          divergenceWarning: false,
-          warnings: [],
-        });
-      } else {
-        elevationResultPromise = fetch('/api/elevation', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ gpxText }),
-        }).then(async res => {
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
-            throw new Error(j.error ?? `Elevation service error ${res.status}`);
-          }
-          return res.json() as Promise<ElevationResult>;
-        });
-      }
+      const analysis = analyzeGpx(gpxText);
 
-      const [elevationResult, aidRes] = await Promise.all([
-        elevationResultPromise,
-        fetch('/api/extract-aid-stations', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            officialUrl,
-            athleteGuidePdfUrl: guideUrl || undefined,
-            manualPasteText: manualPaste || undefined,
-            courseDistanceMi: courseMi,
-          }),
+      const aidRes = await fetch('/api/extract-aid-stations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          officialUrl,
+          athleteGuidePdfUrl: guideUrl || undefined,
+          manualPasteText: manualPaste || undefined,
+          courseDistanceMi: courseMi,
         }),
-      ]);
-
+      });
       const extractionResult = await aidRes.json() as ExtractionResult;
 
       // Show manual-paste prompt if fewer than 3 stations extracted
@@ -261,7 +210,7 @@ export default function NewRacePage() {
         editedLabel: s.label,
       }));
 
-      setProcessResult({ elevationResult, extractionResult, aidRows, skippedDem: skipDem });
+      setProcessResult({ analysis, extractionResult, aidRows });
       setPhase('review');
     } catch (e) {
       setProcessError(e instanceof Error ? e.message : String(e));
@@ -320,12 +269,10 @@ export default function NewRacePage() {
     });
   }
 
-  const issues = useMemo(() =>
-    processResult ? validationIssues(processResult.elevationResult) : [],
-  [processResult]);
-  const hasBlocks = issues.some(i => i.level === 'block');
-
   // — Build Race Plan —
+  // Feeds the analyzed track to /api/build-plan as the "demTrack" — the
+  // pacing engine reads point eleM directly, so the StravaGPX-calibrated
+  // elevations stand in for the old DEM-corrected channel.
   async function handleBuild() {
     if (!processResult || !gpxText || !goalFinishS) return;
     setBuildError(null);
@@ -338,12 +285,21 @@ export default function NewRacePage() {
       const canonical = distanceId && distanceId !== 'custom'
         ? DISTANCES.find(d => d.id === distanceId)?.mi : null;
 
+      // Mirror eleM into demEleM so downstream consumers that prefer
+      // demEleM still resolve a value. No external DEM call needed.
+      const trackWithEle = {
+        ...processResult.analysis.track,
+        points: processResult.analysis.track.points.map(p => ({ ...p, demEleM: p.eleM })),
+        demGainFt: Math.round(processResult.analysis.stats.gainFt),
+        demLossFt: Math.round(processResult.analysis.stats.lossFt),
+      };
+
       const res = await fetch('/api/build-plan', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           gpxText,
-          demTrack: processResult.elevationResult.track,
+          demTrack: trackWithEle,
           verifiedAidStationMiles: approvedStations,
           courseSlug,
           raceName: raceName.trim(),
@@ -377,9 +333,9 @@ export default function NewRacePage() {
           verified: false,
           verified_at: null,
           elevation: {
-            source: `DEM pipeline (${processResult.elevationResult.dataset})`,
-            total_gain_ft: processResult.elevationResult.gainFt,
-            total_loss_ft: processResult.elevationResult.lossFt,
+            source: 'StravaGPX threshold (2 m)',
+            total_gain_ft: Math.round(processResult.analysis.stats.gainFt),
+            total_loss_ft: Math.round(processResult.analysis.stats.lossFt),
           },
           aid_stations: approvedStations.length
             ? processResult.aidRows
@@ -564,13 +520,9 @@ export default function NewRacePage() {
                   <input ref={fileInputRef} type="file" accept=".gpx,.tcx" style={{ display: 'none' }}
                     onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', userSelect: 'none' }}>
-                  <input type="checkbox" checked={skipDem} onChange={e => setSkipDem(e.target.checked)}
-                    style={{ accentColor: 'var(--color-attention)', width: 15, height: 15 }} />
-                  <span style={{ fontSize: 12, color: 'var(--color-t2)' }}>
-                    Use GPX elevation directly — skip DEM pipeline
-                  </span>
-                </label>
+                <div className="hint" style={{ marginTop: 10, fontSize: 11.5 }}>
+                  StravaGPX exports work best — elevations are already terrain-corrected.
+                </div>
               </div>
 
               {/* Step 3: Goal & strategy */}
@@ -653,56 +605,31 @@ export default function NewRacePage() {
               {phase === 'processing' && (
                 <div className="tile" style={{ textAlign: 'center', padding: 40 }}>
                   <div style={{ fontSize: 24, marginBottom: 12, color: 'var(--color-attention)' }}>⏳</div>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Processing race data…</div>
-                  <div className="hint">Querying OpenTopoData DEM elevation service + extracting aid stations. Takes ~10–20 seconds.</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Analyzing course + extracting aid stations…</div>
+                  <div className="hint">Parses the GPX in-browser and queries the official race URL. ~5–15 seconds.</div>
                 </div>
               )}
 
               {/* ── Review panel ── */}
               {(phase === 'review' || phase === 'building') && processResult && (
                 <>
-                  {/* Elevation card */}
-                  <div className="tile" style={{ borderColor: 'rgba(0,143,236,.3)', background: 'rgba(0,143,236,.05)' }}>
+                  {/* Course preview — full GPX analysis. Replaces the
+                      old DEM elevation card. */}
+                  <div className="tile">
                     <div className="tile-h">
                       <div>
-                        <div className="tile-sub" style={{ color: 'var(--color-corporate)' }}>
-                          Step 4 · {processResult.skippedDem ? 'GPX Elevation' : 'DEM Elevation'}
-                        </div>
-                        <div className="tile-lbl">{processResult.skippedDem ? 'From GPX file' : 'Terrain verified'}</div>
+                        <div className="tile-sub">Step 4 · Course preview</div>
+                        <div className="tile-lbl">GPX analysis</div>
                       </div>
-                      <span className="chip" style={{ background: 'rgba(0,143,236,.15)', color: 'var(--color-corporate)' }}>
-                        {processResult.skippedDem ? 'GPX' : processResult.elevationResult.dataset.toUpperCase()}
-                      </span>
+                      <button
+                        onClick={() => { setProcessResult(null); setPhase('input'); }}
+                        className="btn btn--ghost"
+                        style={{ fontSize: 11 }}
+                      >
+                        ← Re-process
+                      </button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: processResult.skippedDem ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 16, marginBottom: 12 }}>
-                      <Stat label="Gain" value={`+${processResult.elevationResult.gainFt.toLocaleString()} ft`} />
-                      <Stat label="Loss" value={`-${processResult.elevationResult.lossFt.toLocaleString()} ft`} />
-                      {!processResult.skippedDem && (
-                        <Stat label="Closure error" value={`${processResult.elevationResult.closureErr.toFixed(1)}%`}
-                          warn={processResult.elevationResult.closureErr > 10} />
-                      )}
-                    </div>
-                    {issues.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {issues.map((iss, i) => (
-                          <div key={i} style={{
-                            padding: '8px 12px', borderRadius: 8, fontSize: 12,
-                            background: iss.level === 'block' ? 'rgba(252,77,84,.12)' : 'rgba(243,173,59,.12)',
-                            color: iss.level === 'block' ? '#FECDCB' : 'var(--color-attention)',
-                            borderLeft: `3px solid ${iss.level === 'block' ? 'var(--color-warning)' : 'var(--color-attention)'}`,
-                          }}>
-                            {iss.level === 'block' ? '🚫 ' : '⚠ '}{iss.message}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => { setProcessResult(null); setPhase('input'); }}
-                      className="btn btn--ghost"
-                      style={{ marginTop: 12, fontSize: 12 }}
-                    >
-                      ← Re-process with different settings
-                    </button>
+                    <CoursePreview analysis={processResult.analysis} compact />
                   </div>
 
                   {/* Aid station review card */}
@@ -789,14 +716,9 @@ export default function NewRacePage() {
                         <b style={{ color: 'var(--color-warning)' }}>Build failed.</b> {buildError}
                       </div>
                     )}
-                    {hasBlocks && (
-                      <div className="hint" style={{ color: 'var(--color-warning)', textAlign: 'center', fontSize: 12 }}>
-                        Blocking validation issue above must be resolved before building.
-                      </div>
-                    )}
                     <button
                       onClick={handleBuild}
-                      disabled={hasBlocks || phase === 'building'}
+                      disabled={phase === 'building'}
                       className="btn btn--primary"
                       style={{ alignSelf: 'stretch', padding: '16px 24px', fontSize: 15 }}
                     >
@@ -812,9 +734,9 @@ export default function NewRacePage() {
               <PhaseStatusCard phase={phase} processResult={processResult} />
 
               <div className="tile" style={{ background: 'rgba(0,143,236,.06)', borderColor: 'rgba(0,143,236,.2)' }}>
-                <div className="tile-sub" style={{ marginBottom: 8, color: 'var(--color-corporate)' }}>DEM vs GPS elevation</div>
+                <div className="tile-sub" style={{ marginBottom: 8, color: 'var(--color-corporate)' }}>How elevation is measured</div>
                 <p style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.5, margin: 0 }}>
-                  GPS elevation is −61% wrong on hilly courses (Big Sur GPS: 853 ft gain vs official 2,182 ft). After &quot;Process Race Data&quot; the DEM pipeline queries real terrain data — pacing, grades, and fueling all use those corrected numbers.
+                  GPX is parsed in-browser. Gain/loss use a 2 m threshold filter calibrated against Strava on StravaGPX exports — typically within ~2% of Strava&apos;s reported number. For best accuracy, export from Strava routes (already DEM-corrected).
                 </p>
               </div>
 
@@ -892,7 +814,7 @@ function AidRow({ row, onToggle, onEdit, onCommit, onChangeMi, onChangeLabel }: 
 function PhaseStatusCard({ phase, processResult }: { phase: FormPhase; processResult: ProcessResult | null }) {
   const steps = [
     { id: 'input', label: 'Fill form + upload GPX' },
-    { id: 'processing', label: 'DEM elevation + aid station extraction' },
+    { id: 'processing', label: 'Course analysis + aid station extraction' },
     { id: 'review', label: 'Review + approve data' },
     { id: 'building', label: 'Build race plan' },
   ];
@@ -926,11 +848,11 @@ function PhaseStatusCard({ phase, processResult }: { phase: FormPhase; processRe
       </div>
       {processResult && phase === 'review' && (
         <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--color-l4)' }}>
-          <div style={{ fontSize: 11, color: 'var(--color-t3)', fontFamily: 'var(--font-data)', letterSpacing: '1.2px', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>DEM result</div>
+          <div style={{ fontSize: 11, color: 'var(--color-t3)', fontFamily: 'var(--font-data)', letterSpacing: '1.2px', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Course analysis</div>
           <div style={{ fontSize: 12, color: 'var(--color-t1)', lineHeight: 1.6 }}>
-            <div>Dataset: <b>{processResult.elevationResult.dataset}</b></div>
-            <div>Gain: <b>+{processResult.elevationResult.gainFt.toLocaleString()} ft</b></div>
-            <div>Loss: <b>-{processResult.elevationResult.lossFt.toLocaleString()} ft</b></div>
+            <div>Distance: <b>{(processResult.analysis.stats.totalDistM / 1609.344).toFixed(2)} mi</b></div>
+            <div>Gain: <b>+{Math.round(processResult.analysis.stats.gainFt).toLocaleString()} ft</b></div>
+            <div>Loss: <b>-{Math.round(processResult.analysis.stats.lossFt).toLocaleString()} ft</b></div>
             <div>Aid stations: <b>{processResult.aidRows.filter(r => r.status === 'approved').length} approved</b></div>
           </div>
         </div>
