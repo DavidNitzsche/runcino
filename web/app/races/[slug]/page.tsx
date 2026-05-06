@@ -67,7 +67,10 @@ function fmtPace(s: number): string {
 
 interface ParsedPoint { lat: number; lon: number; eleM: number; cumMi: number; }
 
-function parseGpxClient(text: string): ParsedPoint[] {
+/** Parse GPX into points. When demElevations is provided (parallel array
+ *  of DEM elevations in meters), overlay it onto the points so the
+ *  elevation profile and peak marker match what the pacing engine used. */
+function parseGpxClient(text: string, demElevations?: number[]): ParsedPoint[] {
   const dom = new DOMParser().parseFromString(text, 'text/xml');
   const nodes = dom.getElementsByTagName('trkpt');
   const out: { lat: number; lon: number; eleM: number }[] = [];
@@ -77,7 +80,11 @@ function parseGpxClient(text: string): ParsedPoint[] {
     const lon = parseFloat(n.getAttribute('lon') ?? '');
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const eleNode = n.getElementsByTagName('ele')[0];
-    const eleM = eleNode ? parseFloat(eleNode.textContent ?? '0') : 0;
+    const gpsEleM = eleNode ? parseFloat(eleNode.textContent ?? '0') : 0;
+    // Use DEM elevation when available; fall back to GPS
+    const eleM = (demElevations && demElevations[out.length] !== undefined)
+      ? demElevations[out.length]
+      : gpsEleM;
     out.push({ lat, lon, eleM });
   }
   // Cumulative miles via haversine.
@@ -152,7 +159,7 @@ export default function RaceDetailPage() {
 }
 
 function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDelete: () => void; onUpdated: () => void }) {
-  const points = useMemo(() => parseGpxClient(race.gpxText), [race.gpxText]);
+  const points = useMemo(() => parseGpxClient(race.gpxText, race.demElevations), [race.gpxText, race.demElevations]);
   const days = daysUntil(race.meta.date);
   const totalMi = race.plan.race.distance_mi;
   const [editing, setEditing] = useState(false);

@@ -40,13 +40,13 @@ export function segmentCourse(
     const b = points[end];
     if (b.distM <= a.distM) break;
 
-    const rise = b.eleM - a.eleM;
+    const rise = (b.demEleM ?? b.eleM) - (a.demEleM ?? a.eleM);
     const run = b.distM - a.distM;
     const gradePct = (rise / run) * 100;
 
     let gainFt = 0, lossFt = 0;
     for (let i = segStart + 1; i <= end; i++) {
-      const d = (points[i].eleM - points[i - 1].eleM) * FT_PER_M;
+      const d = ((points[i].demEleM ?? points[i].eleM) - (points[i - 1].demEleM ?? points[i - 1].eleM)) * FT_PER_M;
       if (d > 0) gainFt += d;
       else lossFt -= d;
     }

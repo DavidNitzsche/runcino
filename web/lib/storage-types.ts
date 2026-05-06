@@ -54,6 +54,10 @@ export interface SavedRace {
   slug: string;
   plan: RuncinoPlan;
   gpxText: string;
+  /** DEM elevation in meters, parallel to the GPX trackpoints array.
+   *  Set when the race was created via the DEM pipeline. Used by the
+   *  detail page to render the elevation profile from DEM (not GPS). */
+  demElevations?: number[];
   savedAt: string;
   meta: {
     name: string;

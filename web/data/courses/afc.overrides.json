@@ -1,0 +1,14 @@
+{
+  "slug": "afc",
+  "locked_at": "2026-05-06",
+  "locked_by": "david",
+  "verified": false,
+  "verified_at": null,
+  "elevation": {
+    "source": "DEM pipeline (srtm30m)",
+    "total_gain_ft": 450,
+    "total_loss_ft": 509
+  },
+  "aid_stations": null,
+  "field_locks": {}
+}
