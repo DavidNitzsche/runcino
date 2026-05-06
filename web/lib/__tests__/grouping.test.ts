@@ -33,7 +33,7 @@ describe('groupPhases on Big Sur', () => {
   });
 
   it('phases are labeled with Big Sur landmarks when facts provided', () => {
-    const facts = getCourseFacts('big-sur-marathon');
+    const facts = getCourseFacts('big-sur-marathon')!;
     const phases = groupPhases(segs, { courseFacts: facts });
     const labels = phases.map(p => p.label);
     // At least 2 of the 6 canonical landmarks should match after grouping
