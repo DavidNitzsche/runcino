@@ -42,7 +42,19 @@ type ReadinessAssessment = {
   acwr: number | null;
   easyShare: number | null;
 };
-type WeekShapeDay = { date: string; type: string; distanceMi: number; isToday: boolean; hasStrength: boolean };
+type WeekShapeDay = {
+  date: string;
+  type: string;
+  label: string;
+  distanceMi: number;
+  description: string;
+  paceTargetSPerMi: { lowS: number; highS: number } | null;
+  hrZone: number | null;
+  isQuality: boolean;
+  isLong: boolean;
+  isToday: boolean;
+  hasStrength: boolean;
+};
 type CoachTodayResponse = {
   ok: boolean;
   error?: string;
@@ -285,7 +297,9 @@ function DailyBriefing({
         </div>
       </div>
 
-      {/* This week — solid-orange today */}
+      {/* This week — each cell carries the day's full prescription:
+          short type label + distance + pace (when prescribed). Today
+          gets the solid-orange treatment. */}
       {weekStrip.length === 7 && (
         <div style={{ paddingTop: 24, marginBottom: 24 }}>
           <div style={{
@@ -308,37 +322,15 @@ function DailyBriefing({
             )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: 'var(--color-l4)', border: '1px solid var(--color-l4)' }}>
-            {weekStrip.map(d => {
-              const showMi = d.actualMi != null && d.actualMi > 0
-                ? d.actualMi
-                : d.plannedMi != null && d.plannedMi > 0
-                  ? d.plannedMi
-                  : null;
-              return (
-                <div key={d.date} style={{
-                  padding: '14px 6px', textAlign: 'center',
-                  background: d.isToday ? 'var(--color-race)' : 'var(--color-l1)',
-                  opacity: d.isFuture && !d.isToday ? 0.7 : 1,
-                }}>
-                  <div style={{
-                    fontFamily: 'var(--font-data)', fontSize: 10,
-                    letterSpacing: '0.16em', fontWeight: 700,
-                    color: d.isToday ? '#fff' : 'var(--color-t3)',
-                    marginBottom: 8,
-                  }}>{d.dow}</div>
-                  <div style={{
-                    fontFamily: 'var(--font-data)', fontSize: 16,
-                    fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                    color: d.isToday ? '#fff' : showMi != null ? 'var(--color-t0)' : 'var(--color-t3)',
-                  }}>{showMi != null ? (showMi >= 10 ? Math.round(showMi) : showMi.toFixed(1)) : '·'}</div>
-                </div>
-              );
-            })}
+            {weekStrip.map(d => <WeekCell key={d.date} day={d} />)}
           </div>
         </div>
       )}
 
-      {/* Next up */}
+      {/* Next up — each row stacks day · workout summary on top with a
+          one-line description below. The description is the
+          prescription's own write-up (already plain-English, e.g.
+          "2-3 mi very easy · circulation, not adaptation"). */}
       {ahead.length > 0 && (
         <div>
           <div style={{
@@ -348,26 +340,7 @@ function DailyBriefing({
           }}>Next up</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {ahead.map((a, i) => (
-              <div key={a.date} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                padding: '10px 0',
-                borderBottom: i === ahead.length - 1 ? 'none' : '1px solid var(--color-l4)',
-              }}>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
-                  <span style={{
-                    fontFamily: 'var(--font-data)', fontSize: 10.5,
-                    color: 'var(--color-t3)', letterSpacing: '0.16em',
-                    fontWeight: 700, textTransform: 'uppercase', width: 36,
-                  }}>{dowShort(a.date)}</span>
-                  <span style={{ fontSize: 14, color: 'var(--color-t1)' }}>{TYPE_LABEL[a.type] ?? a.type}</span>
-                </div>
-                <span style={{
-                  fontFamily: 'var(--font-data)', fontSize: 12,
-                  color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums',
-                }}>
-                  {a.distanceMi > 0 ? `${a.distanceMi >= 10 ? Math.round(a.distanceMi) : a.distanceMi.toFixed(1)} mi` : '—'}
-                </span>
-              </div>
+              <NextUpRow key={a.date} day={a} isLast={i === ahead.length - 1} />
             ))}
           </div>
         </div>
@@ -484,6 +457,122 @@ function RecentWeeksTile({ runs }: { runs: NormalizedActivity[] }) {
   );
 }
 
+// ── Week strip cell + Next-up row ───────────────────────────────────
+
+function WeekCell({ day }: { day: StripDay }) {
+  const isToday = day.isToday;
+  const isPast = !day.isFuture && !isToday;
+  const isRest = day.plannedType === 'rest';
+
+  // Resolved values: actuals beat plans for past days; plans for
+  // today/future. distanceMi can be 0 (rest day) — that's a real
+  // value, not "missing data".
+  const distance: number | null =
+    isPast && day.actualMi != null && day.actualMi > 0
+      ? day.actualMi
+      : day.plannedMi;
+  const showLabel = day.plannedLabel || (isPast ? null : null);
+
+  // Color logic — today = white on orange; rest = dim; everything else
+  // gets the standard t0/t2 palette.
+  const dayColor = isToday ? '#fff' : 'var(--color-t3)';
+  const labelColor = isToday ? 'rgba(255,255,255,0.9)' : isRest ? 'var(--color-t3)' : 'var(--color-t1)';
+  const distColor = isToday ? '#fff' : (distance != null && distance > 0) ? 'var(--color-t0)' : 'var(--color-t3)';
+  const paceColor = isToday ? 'rgba(255,255,255,0.85)' : 'var(--color-t3)';
+
+  return (
+    <div style={{
+      padding: '12px 8px', textAlign: 'center',
+      background: isToday ? 'var(--color-race)' : 'var(--color-l1)',
+      opacity: day.isFuture && !isToday && isRest ? 0.7 : 1,
+      display: 'flex', flexDirection: 'column', gap: 6, minHeight: 96,
+    }}>
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 10,
+        letterSpacing: '0.16em', fontWeight: 700, color: dayColor,
+      }}>{day.dow}</div>
+
+      {showLabel && (
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 10,
+          color: labelColor, letterSpacing: '0.06em',
+          textTransform: 'uppercase', fontWeight: 600,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{showLabel}</div>
+      )}
+
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 18,
+        fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+        color: distColor, lineHeight: 1.1,
+      }}>
+        {distance != null && distance > 0
+          ? (distance >= 10 ? Math.round(distance) : distance.toFixed(1))
+          : '·'}
+      </div>
+
+      {day.plannedPaceLabel && (
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 10,
+          color: paceColor, fontVariantNumeric: 'tabular-nums',
+        }}>{day.plannedPaceLabel}</div>
+      )}
+    </div>
+  );
+}
+
+function NextUpRow({ day, isLast }: { day: WeekShapeDay; isLast: boolean }) {
+  const dist = day.distanceMi > 0
+    ? (day.distanceMi >= 10 ? Math.round(day.distanceMi) : day.distanceMi.toFixed(1))
+    : null;
+  const pace = day.paceTargetSPerMi
+    ? `${fmtPace(day.paceTargetSPerMi.lowS)}–${fmtPace(day.paceTargetSPerMi.highS)}`
+    : null;
+
+  return (
+    <div style={{
+      padding: '14px 0',
+      borderBottom: isLast ? 'none' : '1px solid var(--color-l4)',
+      display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'baseline', gap: 12,
+      }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', minWidth: 0, flex: 1 }}>
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 10.5,
+            color: 'var(--color-t3)', letterSpacing: '0.16em',
+            fontWeight: 700, textTransform: 'uppercase', width: 36, flexShrink: 0,
+          }}>{dowShort(day.date)}</span>
+          <span style={{
+            fontSize: 14, color: 'var(--color-t0)', fontWeight: 600,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{day.label}</span>
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 12,
+          color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right', flexShrink: 0,
+        }}>
+          {dist != null && <span>{dist} mi</span>}
+          {dist != null && pace != null && <span style={{ color: 'var(--color-t3)' }}> · </span>}
+          {pace != null && <span>{pace}/mi</span>}
+          {dist == null && pace == null && <span>—</span>}
+        </div>
+      </div>
+      {day.description && (
+        <div style={{
+          fontSize: 12.5, color: 'var(--color-t2)',
+          lineHeight: 1.55, paddingLeft: 50,
+        }}>
+          {day.description}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 interface StripDay {
   date: string;
@@ -492,6 +581,9 @@ interface StripDay {
   isFuture: boolean;
   actualMi: number | null;  // from Strava
   plannedMi: number | null; // from coach weekShape
+  plannedType: string | null;
+  plannedLabel: string | null;
+  plannedPaceLabel: string | null;
 }
 
 function buildWeekStrip(
@@ -515,7 +607,7 @@ function buildWeekStrip(
 
   const dows = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   return frame.map((f, i) => {
-    const planned = planByDate.get(f.date);
+    const planned = planByDate.get(f.date) ?? null;
     return {
       date: f.date,
       dow: dows[i] ?? '',
@@ -523,8 +615,44 @@ function buildWeekStrip(
       isFuture: f.isFuture,
       actualMi: f.miles > 0 ? f.miles : null,
       plannedMi: planned ? planned.distanceMi : null,
+      plannedType: planned?.type ?? null,
+      plannedLabel: planned ? shortStripLabel(planned) : null,
+      plannedPaceLabel: planned?.paceTargetSPerMi
+        ? `${fmtPace(planned.paceTargetSPerMi.lowS)}–${fmtPace(planned.paceTargetSPerMi.highS)}`
+        : null,
     };
   });
+}
+
+/** Compact workout label for the 7-cell week strip. The full prescription
+ *  label ("6 × 1 mile threshold") is too wide for ~120px columns; this
+ *  trims to a 1-2 word category. */
+function shortStripLabel(d: WeekShapeDay): string {
+  const COMPACT: Record<string, string> = {
+    rest: 'Rest',
+    recovery: 'Recovery',
+    general_aerobic: 'Easy',
+    easy: 'Easy',
+    medium_long: 'Medium-long',
+    long_steady: 'Long',
+    long_progression: 'Long · prog',
+    long_mp_block: 'Long · MP',
+    long_fast_finish: 'Long · FF',
+    threshold: 'Threshold',
+    threshold_intervals: 'Threshold',
+    tempo_continuous: 'Tempo',
+    sub_threshold: 'Sub-thr',
+    vo2: 'VO2',
+    marathon_specific: 'MP',
+    marathon_specific_combo: 'MP',
+    marathon_specific_long: 'MP',
+    strides: 'Strides',
+    hill_sprints: 'Hills',
+    race: 'Race',
+    shakeout: 'Shakeout',
+    strides_appended: 'Easy + str',
+  };
+  return COMPACT[d.type] ?? d.label;
 }
 
 function dowShort(iso: string): string {

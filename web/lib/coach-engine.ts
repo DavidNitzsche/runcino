@@ -47,7 +47,13 @@ export interface CoachToday {
   weekShape: Array<{
     date: string;
     type: WorkoutType;
+    label: string;
     distanceMi: number;
+    description: string;
+    paceTargetSPerMi: { lowS: number; highS: number } | null;
+    hrZone: number | null;
+    isQuality: boolean;
+    isLong: boolean;
     isToday: boolean;
     hasStrength: boolean;
   }>;
@@ -402,7 +408,19 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
     const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
     const hasStrength = strengthFitsThisDay(state, phase, dow, isHardRun(run), cadence.perWeek);
 
-    out.push({ date: iso, type: run.type, distanceMi: run.distanceMi, isToday, hasStrength });
+    out.push({
+      date: iso,
+      type: run.type,
+      label: run.label,
+      distanceMi: run.distanceMi,
+      description: run.description,
+      paceTargetSPerMi: run.paceTargetSPerMi,
+      hrZone: run.hrZone,
+      isQuality: run.isQuality,
+      isLong: run.isLong,
+      isToday,
+      hasStrength,
+    });
   }
   return out;
 }
