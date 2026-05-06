@@ -8,6 +8,7 @@
  */
 
 import type { NormalizedActivity } from './strava-activities';
+import { todayISO as todayLAISO, todayDate } from './dates';
 
 export interface YearRollup {
   totalRuns: number;
@@ -122,17 +123,18 @@ export function yearOfRunningHeatmap(activities: NormalizedActivity[]): Array<{ 
  *  today and which buckets are future (haven't happened yet). Used by
  *  the "this week" tile so the strip matches its own header. */
 export function currentWeekDays(activities: NormalizedActivity[]): Array<{ date: string; miles: number; runs: number; isToday: boolean; isFuture: boolean }> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayOfWeek = today.getDay();
+  // Today in LA timezone (the user's calendar), anchored at noon UTC
+  // so setDate/getDate math is safe regardless of server timezone.
+  const today = todayDate();
+  const dayOfWeek = today.getUTCDay();
   const offsetToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   const monday = new Date(today);
-  monday.setDate(today.getDate() + offsetToMon);
+  monday.setUTCDate(today.getUTCDate() + offsetToMon);
 
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = todayLAISO();
   const out: Array<{ date: string; miles: number; runs: number; isToday: boolean; isFuture: boolean }> = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i);
     const iso = d.toISOString().slice(0, 10);
     const matches = activities.filter(a => a.date === iso);
     out.push({
