@@ -73,7 +73,7 @@ Layer 3 · APPLICATION
 | Stage | What lands | Visible? | Status |
 |-------|------------|----------|--------|
 | **0 · Skeleton** | `web/coach/` dir, `Coach` interface stub, `CoachDecision` type, `Citation` type, `doctrine/` directory, ONE exemplar doctrine file (`intensity.ts`) showing the extraction pattern, plan persisted to repo, `voice.md` locked in | No (foundation) | ✅ done |
-| **1 · Extraction** | All Tier-1 constants from research → 12 doctrine files. Existing `coach-principles.ts`, `pacing.ts`, `coach-workouts.ts` refactored to read from doctrine. **Zero behavior change**, but every magic number now cites research | No (foundation) | pending |
+| **1 · Extraction** | All Tier-1 constants from research → 12 doctrine files. `coach-principles.ts` (the central constant registry) reads its anchored values from doctrine. Other engines (`pacing.ts`, `coach-engine.ts`, `coach-workouts.ts`, `fueling-claude.ts`) get pointer comments to doctrine — full Coach-wrapping happens in Stage 2+ when each becomes a `coach.X()` consumer. **Zero behavior change** | No (foundation) | ✅ done |
 | **2 · LLM brain** | Cached system prompt with full research doc. First use case: race-morning brief (new endpoint + tile in race detail) | ✅ tile lands | pending |
 | **3 · Coach today on web** | `/training` page consumes `coach.prescribeWorkout` + `assessReadiness`. Daily card with rationale + citation link | ✅ daily UI | pending |
 | **4 · Retrospective loop** | Race finish → `coach.retrospect(plan, actual)` → writes to per-user `calibration.ts`. Next race plan reads from calibration. Personal Minetti starts to drift toward truth | ✅ visible after first race | pending |

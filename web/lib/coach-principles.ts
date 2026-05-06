@@ -1,16 +1,25 @@
 /**
  * Coaching principles encoded from the research synthesis.
  *
- * Source: docs/coaching-research.md (in this repo). Every constant
- * here cites the section / number it came from so future updates trace
- * back to a literature anchor, not a vibe.
+ * Most of the literature-anchored constants in this file have moved to
+ * the doctrine layer (web/coach/doctrine/*.ts). This file now layers
+ * engine-specific organization on top — sub-phase fractions, easy-share
+ * targets per phase, post-race recovery curves — that aren't direct
+ * doctrine values but are computed from doctrine principles.
  *
- * The engine in coach-engine.ts orchestrates these. This file is just
- * the constants + small pure helpers — keep logic out of here so the
- * file stays a "what does the literature say" reference.
+ * **Source-of-truth rule:** if you need to change a number in this
+ * file, check first whether it lives in doctrine. If it does, change
+ * doctrine; if it doesn't, document the engine-specific reason here.
+ *
+ * The engine in coach-engine.ts orchestrates these.
  */
 
 import type { CoachState } from './coach-state';
+import {
+  ACWR_BAND, SINGLE_SESSION_SPIKE,
+  LONG_RUN, STRIDES,
+  SLEEP,
+} from '../coach/doctrine';
 
 /* ── 1. Race-window math (§2.1) ──────────────────────────────────
    Each race distance has an associated build-window length. Inside
@@ -91,14 +100,11 @@ export function intensityTarget(phase: Phase): IntensityTarget {
 export type Phase = RaceSubPhase | 'BASE_MAINTENANCE' | 'POST_RACE' | 'REBUILD';
 
 /* ── 5. Single-session spike rule (§13.1) ────────────────────────
-   Strongest predictor of injury. A single run more than ~10% longer
-   than the longest run in the past 30 days raises injury risk
-   substantially:
-     10-30% spike → +64% injury risk
-     30-100% spike → +52%
-     >100%        → 2× risk
-   Engine-side hard ceiling: 10%. */
-export const LONG_RUN_SPIKE_CAP = 1.10;
+   Strongest predictor of injury. Doctrine: SINGLE_SESSION_SPIKE in
+   coach/doctrine/load.ts. Engine-side hard ceiling: 10 % (the doctrine
+   ceiling, expressed as a multiplier on `longestRecentLast30d`). */
+export const LONG_RUN_SPIKE_CAP =
+  1 + SINGLE_SESSION_SPIKE.value.ceilingPctAboveLongestRecent / 100;
 
 export function maxLongRunMi(state: CoachState): number {
   // Floor at 8mi so a runner returning from a break has a sane minimum
@@ -108,11 +114,9 @@ export function maxLongRunMi(state: CoachState): number {
 }
 
 /* ── 6. ACWR (§13.1) ─────────────────────────────────────────────
-   Acute (7-day) : Chronic (28-day) load ratio. HSS marathon study
-   sweet spot is 0.8-1.3. <0.8 is undertraining (high race-day risk);
-   >1.3 is over-reaching (high injury risk). */
-export const ACWR_LOW = 0.8;
-export const ACWR_HIGH = 1.3;
+   Doctrine: ACWR_BAND in coach/doctrine/load.ts. */
+export const ACWR_LOW = ACWR_BAND.value.sweetSpotLow;
+export const ACWR_HIGH = ACWR_BAND.value.sweetSpotHigh;
 
 export function acwr(state: CoachState): number | null {
   const acute   = state.volume.last7Mi;
@@ -166,21 +170,15 @@ export const HEAVY_BLOCK_REST_DAYS = 5;
 export const MIN_HARD_SPACING_HOURS = 24;
 
 /* ── 11. Strides cadence (§5.8) ──────────────────────────────────
-   Strides 2-3× per week throughout a marathon block. Hill sprints
-   substitute for strides during the build phase 1× per week. */
-export const STRIDES_PER_WEEK = 2;
+   Doctrine: STRIDES in coach/doctrine/workouts.ts. */
+export const STRIDES_PER_WEEK = STRIDES.value.perWeekLow;
 
 /* ── 12. Long-run progression rules (§5.4) ──────────────────────
-   - Sat is the long-run day by default.
-   - Long runs over 90 minutes drive aerobic adaptation (slow-twitch
-     recruitment + glycogen depletion training).
-   - In BUILD, alternate steady long runs with progression long runs.
-   - In PEAK, include marathon-pace blocks (8-14 mi at goal MP within
-     14-22 mi total).
-   - Cap at 22 mi or 3 hours, whichever comes first. */
+   Doctrine: LONG_RUN in coach/doctrine/workouts.ts. The day-of-week
+   default (Saturday) is engine-specific organisation, not doctrine. */
 export const LONG_RUN_DAY_DOW = 6;  // Saturday (0 = Sunday in JS Date.getDay())
-export const LONG_RUN_MIN_MIN = 90;
-export const LONG_RUN_MAX_MI = 22;
+export const LONG_RUN_MIN_MIN = LONG_RUN.value.thresholdMinutes;
+export const LONG_RUN_MAX_MI = LONG_RUN.value.distanceMiHigh;
 
 /* ── 13. Strength training periodization (§6.3) ──────────────────
    Heavy resistance + plyometrics, 2 sessions/week year-round. Periodized:
@@ -224,11 +222,11 @@ export function strengthCadence(phase: Phase, daysToRace: number | null): Streng
 }
 
 /* ── 14. Sleep / HRV thresholds (§8.1) ───────────────────────────
-   Used once HealthKit lands. Coach downshifts intensity when last-
-   night sleep is poor or HRV is below baseline. */
-export const SLEEP_HOURS_FLOOR = 7.0;
-export const SLEEP_HOURS_HIGH_LOAD = 8.0;
-export const HRV_DROP_FLAG_PCT = 0.12;  // 12% drop from baseline = recovery day
+   Doctrine: SLEEP in coach/doctrine/recovery.ts. HRV threshold is
+   engine-specific (no direct number in research §8). */
+export const SLEEP_HOURS_FLOOR = SLEEP.value.generalHoursLow;
+export const SLEEP_HOURS_HIGH_LOAD = SLEEP.value.highLoadHoursLow;
+export const HRV_DROP_FLAG_PCT = 0.12;  // 12 % drop from baseline = recovery day
 
 /* ── 15. Pace targets relative to goal pace (§5.5 / §3.1) ────────
    Daniels-style training paces expressed as offsets from goal MP. */

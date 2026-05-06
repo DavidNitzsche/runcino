@@ -8,6 +8,12 @@
  *    pace vary with the course.
  *
  * See docs/ALGORITHM.md for the math.
+ *
+ * **Stage 1 note:** strategy/clamp constants in this file are
+ * engine-specific tuning, not direct doctrine values. Doctrine
+ * (web/coach/doctrine/) governs which strategy to choose for which
+ * phase; this file implements the chosen strategy. Stage 2+ wraps it
+ * behind `Coach.paceStrategy(...)` (web/coach/coach.ts).
  */
 
 import { FT_PER_M, M_PER_MI } from './time';

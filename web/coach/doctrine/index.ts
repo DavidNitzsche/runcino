@@ -44,6 +44,19 @@ export function cite(
 }
 
 // ── Topic barrels ────────────────────────────────────────────────────
-// Each file under doctrine/ is added here as it lands. Stage 0 only
-// includes intensity.ts as the exemplar; Stage 1 fills in the rest.
+// Each file under doctrine/ is its own research chapter. Import either
+// by-topic via this barrel (`import { POLARIZED_DISTRIBUTION } from
+// '@/coach/doctrine'`) or by-file (`import * as Intensity from
+// '@/coach/doctrine/intensity'`) when the call site cares about scope.
 export * from './intensity';
+export * from './volume';
+export * from './workouts';
+export * from './strength';
+export * from './fueling';
+export * from './recovery';
+export * from './shoes';
+export * from './cadence';
+export * from './heat';
+export * from './masters';
+export * from './load';
+export * from './taper';
