@@ -27,7 +27,8 @@ type WorkoutPrescription = {
   distanceMi: number;
   paceTargetSPerMi?: { lower: number; upper: number } | null;
   hrZone?: number | null;
-  description: string;
+  phaseLabel: string;
+  voiceLead: string;
   isQuality: boolean;
   isLong: boolean;
 };
@@ -125,9 +126,13 @@ export default function TrainingPage() {
   );
 }
 
-// ── TodayCard — the daily prescription + readiness pill ─────────────
+// ── TodayCard — single source of truth for today ────────────────────
+// Layout: header strip (Today + date + phase chip), big workout title,
+// optional stats row, single voice-lead body paragraph (always
+// visible), and only-when-actionable alerts. No competing pills, no
+// duplicate description + italic, no toggleable Why panel — one
+// coherent block.
 function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }) {
-  const [showWhy, setShowWhy] = useState(false);
   const dateLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
   // Loading
@@ -164,8 +169,6 @@ function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }
   }
 
   const w = data.coach.workout.answer;
-  const r = data.coach.readiness.answer;
-  const phase = data.today?.phase ?? '';
   const alerts = data.today?.alerts ?? [];
 
   return (
@@ -173,21 +176,19 @@ function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }
       <div className="tile-h">
         <div>
           <div className="tile-sub">Today</div>
-          <div className="tile-lbl">{dateLabel} · {phase.toLowerCase().replace(/_/g, ' ')}</div>
+          <div className="tile-lbl">{dateLabel}</div>
         </div>
-        <ReadinessPill level={r.level} acwr={r.acwr} />
+        <span className="chip" style={{ background: 'var(--color-l3)', color: 'var(--color-t1)', fontWeight: 600, letterSpacing: '0.06em' }}>
+          {w.phaseLabel}
+        </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 38, letterSpacing: '-.02em', textTransform: 'uppercase' }}>
-          {w.label}
-        </div>
-        {w.isQuality && <span className="chip chip--attention" style={{ alignSelf: 'center' }}>Quality</span>}
-        {w.isLong && <span className="chip" style={{ alignSelf: 'center', background: 'rgba(0,143,236,.15)', color: 'var(--color-corporate)' }}>Long</span>}
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, letterSpacing: '-.02em', textTransform: 'uppercase', lineHeight: 1 }}>
+        {w.label}
       </div>
 
       {(w.distanceMi > 0 || w.paceTargetSPerMi || w.hrZone) && (
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
           {w.distanceMi > 0 && (
             <Stat label="Distance" value={`${w.distanceMi.toFixed(1)} mi`} />
           )}
@@ -197,18 +198,20 @@ function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }
               value={`${fmtPace(w.paceTargetSPerMi.lower)}–${fmtPace(w.paceTargetSPerMi.upper)}/mi`}
             />
           )}
-          {w.hrZone != null && <Stat label="HR" value={`Zone ${w.hrZone}`} />}
+          {w.hrZone != null && <Stat label="HR zone" value={`${w.hrZone}`} />}
         </div>
       )}
 
-      <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.55 }}>
-        {w.description}
+      {/* Single voice-lead body — combines situation + prescription +
+          execution note. No headings, no toggle. */}
+      <div style={{ fontSize: 14, color: 'var(--color-t0)', lineHeight: 1.65, maxWidth: 760 }}>
+        {w.voiceLead}
       </div>
 
-      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, fontStyle: 'italic' }}>
-        {r.message}
-      </div>
-
+      {/* Alerts strip — only fires when the message ADDS information
+          the voice lead doesn't already cover (rebuild warning, ACWR
+          way over). Heavy-block + post-race alerts are suppressed
+          server-side because the voice lead names them. */}
       {alerts.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {alerts.map((a, i) => (
@@ -223,40 +226,7 @@ function TodayCard({ data, now }: { data: CoachTodayResponse | null; now: Date }
           ))}
         </div>
       )}
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--ghost" onClick={() => setShowWhy(s => !s)} style={{ fontSize: 12 }}>
-          {showWhy ? '× Hide' : '? Why'}
-        </button>
-      </div>
-
-      {showWhy && (
-        <div style={{
-          padding: '14px 18px',
-          background: 'var(--color-l1)',
-          border: '1px solid var(--color-l4)',
-          borderRadius: 8,
-          fontSize: 13.5,
-          color: 'var(--color-t0)',
-          lineHeight: 1.65,
-        }}>
-          {data.coach.workout.explanation ?? data.coach.workout.rationale}
-        </div>
-      )}
     </div>
-  );
-}
-
-function ReadinessPill({ level }: { level: 'green' | 'yellow' | 'red'; acwr: number | null }) {
-  const palette = {
-    green:  { bg: 'rgba(20,192,140,.15)', fg: 'var(--color-success)', label: 'Ready' },
-    yellow: { bg: 'rgba(243,173,59,.15)', fg: 'var(--color-attention)', label: 'Take it easy' },
-    red:    { bg: 'rgba(252,77,84,.15)',  fg: 'var(--color-warning)', label: 'Pull back' },
-  }[level];
-  return (
-    <span className="chip" style={{ background: palette.bg, color: palette.fg, fontWeight: 700 }}>
-      ● {palette.label}
-    </span>
   );
 }
 

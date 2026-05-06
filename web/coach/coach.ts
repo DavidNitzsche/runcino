@@ -24,7 +24,7 @@
 import type { CoachBaseContext, CoachDecision } from './types';
 import { callCoachLLM, llmAvailable } from './llm';
 import { citationsForWorkoutType, citationsForReadiness } from './citations';
-import { composeExplanation } from './explanations';
+import { composeVoiceLead } from './explanations';
 import { coachDaily, type CoachToday } from '../lib/coach-engine';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
@@ -69,10 +69,15 @@ export interface WorkoutPrescription {
   paceTargetSPerMi?: { lower: number; upper: number } | null;
   /** HR zone (1-5), if available. */
   hrZone?: number | null;
-  /** Description of the session — voice-cleaned single sentence. */
-  description: string;
+  /** Phase chip label — context, not verdict. "Post-race recovery",
+   *  "Build", "Build · quality", "Peak", "Taper", "Recovery", etc. */
+  phaseLabel: string;
+  /** ONE multi-sentence body paragraph in the Coach voice that
+   *  combines situation + prescription + execution note. The card
+   *  renders this verbatim, no toggle, no headings. */
+  voiceLead: string;
   /** Whether this is a hard / quality session vs an easy / recovery
-   *  day. The card uses this to show the right chip. */
+   *  day. */
   isQuality: boolean;
   /** Whether today's run is the long run for the week. */
   isLong: boolean;
@@ -231,22 +236,34 @@ class CoachImpl implements Coach {
     const today = coachDaily(input.state);
     const t = today.today;
     const isLong = t.type.startsWith('long_');
+    const isQuality = today.alerts.some(a => a.severity === 'rest') ? false : isHardWorkoutType(t.type);
+    const paceBand = t.paceTargetSPerMi
+      ? { lower: t.paceTargetSPerMi.lowS, upper: t.paceTargetSPerMi.highS }
+      : null;
+    const phaseLabel = composePhaseLabel(today.phase, today.mode, isQuality, input.state);
+    const voiceLead = composeVoiceLead({
+      workoutType: t.type,
+      label: t.label,
+      distanceMi: t.distanceMi,
+      paceBand: t.paceTargetSPerMi,
+      isLong,
+      state: input.state,
+    });
     return {
       answer: {
         type: t.type,
         label: t.label,
         distanceMi: t.distanceMi,
-        paceTargetSPerMi: t.paceTargetSPerMi
-          ? { lower: t.paceTargetSPerMi.lowS, upper: t.paceTargetSPerMi.highS }
-          : null,
+        paceTargetSPerMi: paceBand,
         hrZone: t.hrZone,
-        description: t.description,
-        isQuality: today.alerts.some(a => a.severity === 'rest') ? false : isHardWorkoutType(t.type),
+        phaseLabel,
+        voiceLead,
+        isQuality,
         isLong,
         coachToday: today,
       },
       rationale: today.rationale,
-      explanation: composeExplanation({ workoutType: t.type, isLong, state: input.state }),
+      explanation: voiceLead,
       citations: citationsForWorkoutType(t.type),
       brain: 'deterministic',
     };
@@ -358,6 +375,32 @@ class CoachImpl implements Coach {
       answerSchema: 'a single paragraph (3–6 sentences) of race-morning brief in the Coach voice',
       maxTokens: 600,
     });
+  }
+}
+
+/** Plain-English phase label for the corner chip on the daily card.
+ *  Surfaces TRAINING CONTEXT (not a readiness verdict). The chip shows
+ *  alongside today's prescription so the user can see, at a glance,
+ *  why today looks the way it does. */
+function composePhaseLabel(
+  phase: string,
+  mode: 'race' | 'base',
+  isQuality: boolean,
+  state: CoachState,
+): string {
+  // State-driven overrides — these read truer than the underlying phase.
+  if (state.flags.heavyBlockSuspected) return 'Recovery';
+  if (state.flags.rebuildAfterBreak) return 'Rebuilding';
+  // Phase-driven defaults.
+  switch (phase) {
+    case 'POST_RACE': return 'Post-race recovery';
+    case 'REBUILD':   return 'Rebuilding';
+    case 'TAPER':     return 'Taper';
+    case 'PEAK':      return isQuality ? 'Peak · quality' : 'Peak';
+    case 'BUILD':     return isQuality ? 'Build · quality' : 'Build';
+    case 'BASE':      return 'Base';
+    case 'BASE_MAINTENANCE': return mode === 'base' ? 'Maintenance' : 'Base';
+    default:          return mode === 'race' ? 'Build' : 'Base';
   }
 }
 

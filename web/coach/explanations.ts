@@ -1,105 +1,209 @@
 /**
- * Plain-English explanations for the Coach's "Why?" panel.
+ * Plain-English voice lead for the daily card.
  *
- * The CoachDecision.rationale is one sentence — what shows by default
- * on the daily card. The CoachDecision.explanation is the longer prose
- * version — what the user sees when they tap "Why?". It's grounded in
- * the research but READS LIKE THE COACH TALKING, not a citation list.
+ * ONE multi-sentence paragraph that combines:
+ *   • the actual prescription (what to do today, with real numbers)
+ *   • the state context (why today looks like this — recovery,
+ *     heavy block, taper, build-week-N, etc.)
+ *   • a real-world execution note (when to back off, what NOT to do)
  *
- * Templates here. Pure functions, no LLM call. Fast, free, predictable.
- * Voice rules apply: plain language, no §-numbers, no "studies show",
- * 60–140 words. Match the room — race-day prep is different from
- * a flat easy day.
+ * This replaces the old layered design (one-line description +
+ * separate italic readiness sentence + toggleable Why panel + bullet
+ * citations). Single source of truth for "what's today and why."
+ *
+ * Voice rules apply:
+ *   • Plain language. Translate jargon: "6 × 1 mile" becomes "a mile,
+ *     then jog easy for 90 seconds, six times." "MP+20" becomes
+ *     "about 20 seconds per mile slower than marathon pace."
+ *   • No §-numbers, no "studies show", no "per the research".
+ *   • 3–5 sentences. The card breathes.
+ *   • Real numbers (paces, miles, reps). Not walls of them.
+ *   • Match the room — race day register is different from a quiet
+ *     easy day.
  */
 import type { CoachState } from '../lib/coach-state';
 
-interface ExplainCtx {
+export interface VoiceLeadCtx {
   workoutType: string;
+  /** Display label, e.g. "Easy 6 mi" or "6 × 1 mile threshold". Used
+   *  for distance + structure inside the paragraph. */
+  label: string;
+  /** Distance prescribed today, miles. 0 for rest. */
+  distanceMi: number;
+  /** Pace band in s/mile, low/high. */
+  paceBand?: { lowS: number; highS: number } | null;
   isLong: boolean;
   state: CoachState;
 }
 
-/** Compose a 1-paragraph explanation for the prescription. The order
- *  inside the function matters: state-driven overrides come first
- *  (post-race recovery, heavy block, rebuild), then workout-type
- *  templates, then the catch-all. */
-export function composeExplanation(ctx: ExplainCtx): string {
-  const { workoutType, isLong, state } = ctx;
+function fmtPace(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+function fmtBand(b: { lowS: number; highS: number }): string {
+  return `${fmtPace(b.lowS)}–${fmtPace(b.highS)} per mile`;
+}
+
+export function composeVoiceLead(ctx: VoiceLeadCtx): string {
+  const { workoutType, label, distanceMi, paceBand, isLong, state } = ctx;
   const recent = state.races.recent[0] ?? null;
   const inRaceRecovery = recent != null && recent.daysAgo <= 14;
   const heavyBlock = state.flags.heavyBlockSuspected;
   const rebuild = state.flags.rebuildAfterBreak;
+  const dist = distanceMi > 0 ? `${distanceMi.toFixed(distanceMi >= 10 ? 0 : 1)} mi` : '';
+  const pace = paceBand ? fmtBand(paceBand) : '';
 
   // ── State-driven overrides come first ───────────────────────────
-  if (workoutType === 'rest' && (heavyBlock || inRaceRecovery)) {
-    if (heavyBlock) {
-      return `You've stacked ${state.races.raceCount30d} races in 30 days. The body reads that as a pile of acute stress, and the work pays off in recovery, not during the runs. Most of the adaptation from racing happens between sessions — if you keep adding more right now, those efforts compound without being absorbed and you risk getting hurt or getting slower. Today off is where the value of the racing actually converts into fitness.`;
-    }
-    if (recent) {
-      return `${recent.daysAgo} day${recent.daysAgo === 1 ? '' : 's'} since ${recent.name}. After a hard race effort, the body needs 24–72 hours before another stress, and a marathon-distance effort needs longer. Recovery isn't a lost day — it's when the work pays off. The fitness from that race is being converted into actual capacity right now, while you rest.`;
-    }
+  if (workoutType === 'rest' && heavyBlock) {
+    const races = state.races.raceCount30d;
+    const lastName = recent?.name ?? 'your last race';
+    return [
+      `${races} races in 30 days${recent ? `, last was ${lastName}` : ''}.`,
+      `Today off — the body reads that stack of efforts as a pile of acute stress, and the work pays off in recovery, not during the runs.`,
+      `Push through this now and the racing compounds without being absorbed; you risk getting hurt or getting slower.`,
+      `Rest is where the racing actually converts into fitness.`,
+    ].join(' ');
+  }
+  if (workoutType === 'rest' && inRaceRecovery && recent) {
+    return [
+      `${recent.daysAgo} day${recent.daysAgo === 1 ? '' : 's'} since ${recent.name}.`,
+      `Today off — after a race effort, the body needs 24–72 hours before another stress, and a marathon needs longer.`,
+      `Recovery isn't a lost day; it's when the work pays off.`,
+      `The fitness from that race is being converted into actual capacity right now, while you rest.`,
+    ].join(' ');
   }
   if (rebuild) {
-    return `You're coming off a quieter stretch. The right move isn't to make it up in one big run — that's how injuries happen. Rebuild gradually, easy mileage first, then layer in quality once the body's back in rhythm. The week-over-week jump matters less than the size of any single run; one big spike from your recent normal is the strongest predictor of injury.`;
+    return [
+      `Coming off a quieter stretch — last 7 days are well below your usual.`,
+      `Today's an easy ${dist || 'aerobic'} run${pace ? `, around ${pace}` : ''}, no faster.`,
+      `Don't try to make it up in one big day; one big spike from your recent normal is the strongest predictor of injury.`,
+      `Ease back in. Quality returns once the body's in rhythm again.`,
+    ].join(' ');
   }
 
   // ── Workout-type templates ──────────────────────────────────────
   switch (workoutType) {
     case 'rest':
-      return `Today's off-day is part of the plan, not a missed opportunity. Hard training stress takes 24–72 hours to absorb — adaptation happens during recovery, not during the run itself. If you're feeling restless, walk, stretch, foam-roll, sleep an extra hour. Tomorrow's run is where the value lands.`;
+      return [
+        `Today's off-day is part of the plan, not a missed opportunity.`,
+        `Hard training stress takes 24–72 hours to absorb — adaptation happens during recovery, not during the run itself.`,
+        `Walk, stretch, foam-roll, sleep an extra hour. Tomorrow's run is where the value lands.`,
+      ].join(' ');
 
     case 'recovery':
-      return `Recovery runs are about circulation and active recovery — not building anything new. Truly easy, often slower than feels normal, 30–50 minutes. The point is to keep blood moving, flush the legs, and not add stress. Run it slow enough that you'd be embarrassed if a stranger could see your watch.`;
+      return [
+        `Recovery run — ${dist || 'short and slow'}${pace ? `, around ${pace}` : ', well below conversational pace'}.`,
+        `Truly easy, often slower than feels normal.`,
+        `The point is circulation and active recovery, not building anything new. Run it slow enough that you'd be embarrassed if a stranger could see your watch.`,
+      ].join(' ');
 
     case 'general_aerobic':
     case 'easy':
-      return `Easy aerobic running is the bread and butter of marathon fitness. More than any single hard workout, this is what builds the engine — mitochondrial density, capillary growth, the slow-twitch capacity that determines how long you can hold marathon pace. The catch: easy runs only work if they're actually easy. Running them too fast turns them into low-quality threshold work, and you can't recover for the day that actually pushes you. Honest easy is harder than threshold. That's why most people don't.`;
+      return [
+        `Easy ${dist || 'miles'} today${pace ? `, around ${pace}` : ''}, no faster — even if it feels stupid easy.`,
+        `Easy aerobic running is the bread and butter of marathon fitness; more than any single hard workout, this is what builds the engine.`,
+        `Honest easy is harder than the threshold day, because if it drifts faster you can't recover for the day that actually pushes you.`,
+        `Half the value of this build is in the easy days you ran with discipline.`,
+      ].join(' ');
 
     case 'medium_long':
-      return `Medium-long runs are a Pfitzinger signature — a second weekly run of 11–15 miles distinct from the long run. The aerobic adaptation that matters most kicks in around the 90-minute mark, where fast-twitch fibers start getting recruited into aerobic work. One of these per week is good. Two separates serious marathoners from the field.`;
+      return [
+        `Medium-long run — ${dist || '11–15 miles'} at endurance pace.`,
+        `Pfitzinger's signature: a second weekly run distinct from the long run, kicking in past the 90-minute mark where fast-twitch fibers start getting recruited into aerobic work.`,
+        `One of these per week is good. Two separates serious marathoners from the field.`,
+      ].join(' ');
 
     case 'long_steady':
-      return `The long run is the headline workout of marathon training. Past 90 minutes, the body starts recruiting fast-twitch fibers into aerobic work — that recruitment, more than anything else, is what makes the marathon possible. Today's run is steady aerobic effort, not race pace. The point is time on feet, not how fast you cover the miles.`;
+      return [
+        `Long run — ${dist || '16–20 miles'} steady, easy effort throughout.`,
+        `Past the 90-minute mark, the body starts recruiting fast-twitch fibers into aerobic work — that recruitment, more than anything else, is what makes the marathon possible.`,
+        `The point is time on feet, not how fast you cover the miles. Don't manufacture a hero day on a long run.`,
+      ].join(' ');
 
     case 'long_progression':
-      return `Progression long runs start easy and finish at marathon pace or just above. The opening miles build the aerobic base; the closing miles teach the body to find marathon pace on already-tired legs — exactly what mile 18 will feel like on race day. The pattern Pfitzinger popularized is to ramp the final 4–8 miles toward MP, then settle in.`;
+      return [
+        `Progression long run — ${dist || '14–18 miles'}.`,
+        `Run the first half easy, then ramp the final 4–8 miles toward marathon pace.`,
+        `The opening builds the aerobic base; the closing teaches the body to find marathon pace on already-tired legs — exactly what mile 18 will feel like on race day.`,
+      ].join(' ');
 
     case 'long_mp_block':
-      return `Long runs with marathon-pace miles in the middle are probably the single most predictive workout of how your race will go. They train the marathon energy system at marathon pace on already-tired legs. Schedule these 3–5 weeks before race day, not closer — they're high training stress and you need time to absorb.`;
+      return [
+        `Marathon-pace long run — ${dist || '14–22 miles'}, with the middle 8–14 miles at goal MP.`,
+        `Probably the single most predictive workout of how your race will go. It trains the marathon energy system at marathon pace on already-tired legs.`,
+        `Schedule these 3–5 weeks before race day, not closer — they're high training stress and you need time to absorb.`,
+      ].join(' ');
 
     case 'long_fast_finish':
-      return `The Hanson "fast finish" long run — last 2–4 miles run faster than marathon pace (closer to half-marathon pace). It's high training stress and high specificity to closing strong on tired legs. The point isn't to suffer; it's to teach the body that there's still gear left after the bulk of the work is done.`;
+      return [
+        `Long run with a fast finish — ${dist || '16–18 miles'} total, last 2–4 miles closer to half-marathon pace.`,
+        `The Hanson signature: high training stress, high specificity to closing strong on tired legs.`,
+        `The point isn't to suffer; it's to teach the body that there's still gear left after the bulk of the work is done.`,
+      ].join(' ');
 
     case 'tempo_continuous':
-      return `Tempo work targets your lactate threshold — the highest correlation with marathon performance of any single physiological marker, even higher than VO2max. Marathon pace lives at or just below threshold, so improving threshold directly raises what you can hold for 26 miles. Today's tempo is one continuous block at threshold pace — classic and demanding. Don't try to push beyond the prescribed pace; the value is in time at threshold, not how fast you went.`;
+      return [
+        `Tempo today — ${dist || '4–8 miles'} continuous${pace ? ` at ${pace}` : ' at threshold pace'}.`,
+        `Threshold work has the highest correlation with marathon performance of any single training variable, even higher than VO2max.`,
+        `Don't push beyond the prescribed pace; the value is in time at threshold, not how fast you went. Hold the band.`,
+      ].join(' ');
 
     case 'threshold_intervals':
-      return `Threshold intervals are Daniels' staple — short reps at threshold pace with brief recovery jogs. The short rests let you accumulate more time at intensity than a continuous tempo could, which is what builds threshold faster. The pace target matters more than how the reps feel — too fast and it becomes VO2 work; too slow and it's just a tempo with extra steps.`;
+      return [
+        `Threshold reps today — a hard mile${pace ? ` at ${pace}` : ' at threshold pace'}, then jog easy for 90 seconds, repeat.`,
+        `Push this shit — tomorrow's an easy day, we're not saving legs.`,
+        `Threshold has the highest correlation with marathon performance of any single training variable. The pace target matters more than how the reps feel; if rep three drifts past the band, you're under-recovered — drop the last two and call it.`,
+      ].join(' ');
 
     case 'sub_threshold':
-      return `Sub-threshold work is the Norwegian-singles adaptation. Slightly slower than full threshold pace, longer total volume — the principle is restraint. You're banking time at high aerobic intensity without breaking yourself, which is what the Bakken/Ingebrigtsen system gets right. The error mode is treating it like another tempo. Stay sub-threshold.`;
+      return [
+        `Sub-threshold reps today${pace ? ` around ${pace}` : ' just below threshold pace'} — slightly slower than full threshold, longer total time.`,
+        `The Norwegian-singles adaptation: bank time at high aerobic intensity without breaking yourself.`,
+        `The error mode is treating it like another tempo. Stay sub-threshold; restraint is what makes the system work.`,
+      ].join(' ');
 
     case 'vo2':
-      return `VO2max work raises the engine's ceiling, which makes everything below it — including marathon pace — feel relatively easier. For marathon training specifically, this is secondary importance. It doesn't directly train the marathon energy system, but a higher ceiling means your marathon pace sits at a lower percentage of max. One per week through the build, then we trim it as you enter the race-specific peak.`;
+      return [
+        `VO2 work today — short hard reps${pace ? ` around ${pace}` : ' at 5K to 3K pace'}, with full recovery between.`,
+        `This raises the engine's ceiling, which makes everything below it — including marathon pace — feel relatively easier.`,
+        `For marathon training, secondary importance. The reps aren't long; the recovery between is the secret to actually hitting the prescribed pace.`,
+      ].join(' ');
 
     case 'marathon_specific':
     case 'marathon_specific_combo':
     case 'marathon_specific_long':
-      return `Marathon-specific workouts are the defining sessions of the peak phase. Combo workouts that alternate marathon pace with faster intervals teach the marathon energy system AND the ability to recover at MP after surging. These sessions are demanding — they need full recovery before another hard day. Worth it: the simulation prepares you for the moments in the race when something disrupts the rhythm.`;
+      return [
+        `Marathon-specific session today — ${label.toLowerCase()}.`,
+        `These are the defining workouts of the peak phase: marathon pace mixed with faster intervals, which trains both the marathon energy system and the ability to recover at MP after surging.`,
+        `High demand — make sure tomorrow has space to absorb it.`,
+      ].join(' ');
 
     case 'strides':
     case 'hill_sprints':
-      return `Strides are short bursts of fast running — 80–100m at near-sprint pace, fully recovered between reps. They preserve neuromuscular sharpness and running economy without taxing the aerobic or metabolic systems. Hill sprints serve the same purpose with lower injury risk. Consistently underused by recreational marathoners, consistently emphasized by elite coaches. Add them after easy runs, 2–3 times a week.`;
+      return [
+        `Strides today — short bursts of fast running, 80–100 m at near-sprint pace, fully recovered between reps.`,
+        `Six to ten reps after an easy run.`,
+        `They preserve neuromuscular sharpness and running economy without taxing the aerobic or metabolic systems. Consistently underused by recreational marathoners and consistently emphasized by elite coaches.`,
+      ].join(' ');
 
     case 'race':
-      return `This is the easy part. The training is built; today is execution. Run the first three miles slower than you want to — every fast plan dies in the opening miles. Trust the pace plan, take fuel on schedule, drink to thirst, and run your race.`;
+      return [
+        `Race day. The training is built — today is execution.`,
+        `Run the first three miles slower than you want; every fast plan dies in the opening miles.`,
+        `Trust the pace plan, take fuel on schedule, drink to thirst, and run your race.`,
+      ].join(' ');
 
     case 'shakeout':
-      return `Day before the race. The legs need to remember they can run, but they don't need any new stress. 20–30 minutes very easy, with a few short pickups to wake up the nervous system. Stop while you still feel fresh — there's nothing to gain from pushing today.`;
+      return [
+        `Day before a race — shakeout. ${dist || '20–30 minutes'} very easy, with a few short pickups to wake up the nervous system.`,
+        `The legs need to remember they can run, but they don't need any new stress.`,
+        `Stop while you still feel fresh. There's nothing to gain from pushing today.`,
+      ].join(' ');
 
     default:
       return isLong
-        ? `Long aerobic work anchors the week. Time on feet, not pace, is the metric that matters today.`
-        : `Aerobic miles are the substrate everything else gets built on. Easy honestly, not hard. Tomorrow's session is where the push happens.`;
+        ? `Long aerobic ${dist || 'run'} today. Time on feet is the metric — pace is secondary. Easy effort throughout.`
+        : `Easy aerobic ${dist || 'miles'} today${pace ? `, around ${pace}` : ''}. The substrate everything else gets built on. Easy honestly, not hard.`;
   }
 }
