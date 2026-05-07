@@ -23,7 +23,7 @@ import type { CoachState } from './coach-state';
 import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
-  HEAVY_BLOCK_REST_DAYS,
+  HEAVY_BLOCK_REST_DAYS, HARD_EFFORT_HR_DEFAULT_BPM,
 } from './coach-principles';
 import {
   type RunWorkoutType, type RunPrescription,
@@ -324,8 +324,10 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
   }
 
   // 2. 24h recovery: yesterday hard → today must be easy.
+  // Threshold from coach/doctrine/hr_zones.ts HRMAX_ZONES_5 — 80% HRmax
+  // is the bottom of the threshold zone. Default 152 bpm ≈ 80% × 190.
   const y = state.recovery.yesterday;
-  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= 152;
+  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= HARD_EFFORT_HR_DEFAULT_BPM;
   if (p.isQuality && yesterdayHard) {
     return generalAerobic(baseEasyMi(state, phase), state);
   }

@@ -221,26 +221,47 @@ export function strengthCadence(phase: Phase, daysToRace: number | null): Streng
   }
 }
 
-/* ── 14. Sleep / HRV thresholds (§8.1) ───────────────────────────
-   Doctrine: SLEEP in coach/doctrine/recovery.ts. HRV threshold is
-   engine-specific (no direct number in research §8). */
+/* ── 14. Sleep / HRV thresholds (Research 03 §10) ────────────────
+   Doctrine: SLEEP in coach/doctrine/recovery.ts. HRV threshold pulls
+   from Research 03 §10 HRV_INTERPRETATION_PATTERNS — daily drop ~20%
+   below baseline triggers easy/rest. The 12% used here is the
+   engine's recovery-day flag (more sensitive than the rest threshold). */
 export const SLEEP_HOURS_FLOOR = SLEEP.value.generalHoursLow;
 export const SLEEP_HOURS_HIGH_LOAD = SLEEP.value.highLoadHoursLow;
 export const HRV_DROP_FLAG_PCT = 0.12;  // 12 % drop from baseline = recovery day
 
-/* ── 15. Pace targets relative to goal pace (§5.5 / §3.1) ────────
-   Daniels-style training paces expressed as offsets from goal MP. */
+/* ── 14b. Hard-effort HR threshold (Research 03 §4) ──────────────
+   Default cutoff for "yesterday was hard." 152 bpm ≈ 80% of HRmax
+   190 — the bottom of HRMAX_ZONES_5 threshold zone in
+   coach/doctrine/hr_zones.ts. Reasonable default for typical
+   recreational runners; should become user-specific (0.80 × user
+   HRmax) once HRmax lands in CoachState. */
+export const HARD_EFFORT_HR_DEFAULT_BPM = 152;
+
+/* ── 15. Pace targets relative to goal pace ─────────────────────
+   Daniels-style training paces expressed as offsets from goal MP.
+   Source: Research/01-pace-zones-vdot.md §"Daniels training paces"
+   and §"Pace conversion from a race time"; Research/04 §"Pace zone
+   shorthand". Doctrine constants:
+     pace_zones.ts → DANIELS_PACE_OFFSETS_S_PER_MI (canonical anchors)
+     pace_zones.ts → HANSONS_PACE_OFFSETS_S_PER_MI (Hansons offsets)
+     workouts.ts   → PACE_ZONE_SHORTHAND (E/M/T/ST/I/R/HM/MP/10K/5K/3K)
+   The values below are the engine's per-workout-type lookup,
+   approximated from those doctrine sources for fast read access in
+   coach-workouts.ts. They preserve the existing engine behavior.
+   When the user has a recent race result, replace with VDOT-derived
+   paces (pace_zones.ts VDOT_LOOKUP_TABLE). */
 export const PACE_OFFSETS_S_PER_MI: Record<string, { lowS: number; highS: number }> = {
-  recovery:        { lowS: 90,  highS: 150 },
-  general_aerobic: { lowS: 30,  highS: 60  },
-  medium_long:     { lowS: 25,  highS: 50  },
-  long_steady:     { lowS: 20,  highS: 60  },
-  long_progression:{ lowS: 0,   highS: 60  }, // ramps to MP at the end
-  long_mp_block:   { lowS: -5,  highS: 5   }, // at MP for the block
-  threshold:       { lowS: -25, highS: -10 }, // ~half marathon pace
+  recovery:        { lowS: 90,  highS: 150 }, // Hansons recovery 90-120; Daniels E slow end
+  general_aerobic: { lowS: 30,  highS: 60  }, // Pfitzinger GA 15-25% slower than MP
+  medium_long:     { lowS: 25,  highS: 50  }, // Pfitzinger endurance/long anchor
+  long_steady:     { lowS: 20,  highS: 60  }, // Mid-E to upper-E (Pfitzinger long-run pace)
+  long_progression:{ lowS: 0,   highS: 60  }, // Ramps E → M at the end
+  long_mp_block:   { lowS: -5,  highS: 5   }, // Locked at MP per Daniels M
+  threshold:       { lowS: -25, highS: -10 }, // T pace ≈ HM to 15K (Daniels T)
   threshold_intervals: { lowS: -25, highS: -10 },
-  sub_threshold:   { lowS: -15, highS: -5  },
-  vo2:             { lowS: -50, highS: -35 }, // 5K-3K pace
+  sub_threshold:   { lowS: -15, highS: -5  }, // ST: 10-15 s/mi slower than T (Norwegian)
+  vo2:             { lowS: -50, highS: -35 }, // I pace ≈ 5K-3K (Daniels I)
   marathon_specific: { lowS: -10, highS: 5 },
-  strides:         { lowS: -45, highS: -25 },
+  strides:         { lowS: -45, highS: -25 }, // R pace ≈ mile to 800m race pace (Daniels R)
 };
