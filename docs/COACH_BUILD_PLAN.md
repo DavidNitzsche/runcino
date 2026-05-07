@@ -126,13 +126,13 @@ Layer 3 · APPLICATION
 
 | Stage | What lands | Behaviour change | Status |
 |-------|------------|-----------|--------|
-| **0 · Migration prerequisite** | `cite()` helper takes Research-doc identifiers (`cite('§3', '...', 'research', '00a')`). Build plan + memory updated to reflect `/Research/` as canonical. | None | 🟡 in progress |
-| **1 · Foundational layer** | New `pace_zones.ts` (Research 01), `race_prediction.ts` (02), `hr_zones.ts` (03). Major extension of `workouts.ts` (04). Engine reads pace + HR from new doctrine. | None — behaviour-equivalent | pending |
-| **2 · Practical coaching** | New `weather.ts` replaces `heat.ts` (Research 06 — full Maughan/Ely/Vihma table). Major extension of `strength.ts` (07). New `race_week.ts` + `pacing.ts` (08). New `injury_return.ts` (05). Race-morning brief reads `weather.ts`. | Race-morning brief speaks fully from research | pending |
-| **3 · Recovery / load / signals** | Major extension of `recovery.ts` and `post_race.ts` from 00b. Major extension of `load.ts` from 13 + 15. Rename `masters.ts` → `age.ts` (14). Engine refactors to read all stage cutoffs from doctrine. | Daily readiness signal is research-grounded | pending |
-| **4 · Plan templates** | New `plan_templates.ts` (Research 22). New `volume.ts` per-experience tables. Engine instantiates a template + substitutes user VDOT/HRmax. | First behaviour change — engine produces real structured plans, not ad-hoc weeks | pending |
-| **5 · Equipment / fueling / sex-specific** | Split `fueling.ts` → `fueling.ts` + `hydration.ts` + `fueling_products.ts` (Research 18 + 19). Major extension of `shoes.ts` → `footwear.ts` (17). New `sex.ts` (13). | Race-day fueling + shoe-rotation reach research depth | pending |
-| **6 · Specialized** | `cross_training.ts` (09), `mobility.ts` (10), `course.ts` (11), `travel.ts` (12), rename `cadence.ts` → `form.ts` and extend from 16, new `form_corrections.ts` (21), `mental.ts` (20). | Cross-training credit, course-specific training, mental prep | pending |
+| **0 · Migration prerequisite** | `cite()` helper takes Research-doc identifiers. Build plan + memory updated. | None | ✅ done |
+| **1 · Foundational layer** | `pace_zones.ts` (01), `race_prediction.ts` (02), `hr_zones.ts` (03), extended `workouts.ts` (04). Engine re-cites `PACE_OFFSETS_S_PER_MI` + magic HR threshold. | None — behaviour-equivalent | ✅ done |
+| **2 · Practical coaching** | `weather.ts` (06, replaces `heat.ts`), `pacing.ts` + `race_week.ts` (08), `injury_return.ts` (05). Strength extension deferred. | Race-morning brief reads weather (when wired) | ✅ doctrine done; engine wire-up pending |
+| **3 · Recovery / load / signals** | `recovery_protocols.ts` (00b — comprehensive). `wearables.ts` (15). `age.ts` (14). Existing `recovery.ts`, `post_race.ts`, `load.ts`, `masters.ts` kept for backward compat. | Daily readiness signal can read research-grounded thresholds | ✅ doctrine done; engine wire-up pending |
+| **4 · Plan templates** | `plan_templates.ts` (22 — 15 plans: 5K/10K/HM/M × Beginner/Intermediate/Advanced + Base + Maintenance + C25K). Volume per-experience tables embedded. | First behaviour change — when engine consumes templates, produces real structured plans not ad-hoc weeks | ✅ doctrine done; engine consumer pending |
+| **5 · Equipment / fueling / sex-specific** | `hydration.ts` (19). `sex.ts` (13). Footwear / fueling-products split deferred. | Race-day fueling + sex-specific calibration available | 🟡 partial (hydration + sex done) |
+| **6 · Specialized** | `cross_training.ts` (09), `mobility.ts` (10), `course.ts` (11), `travel.ts` (12), `mental.ts` (20). Form / form-corrections deferred. | Cross-training credit, course prep, mental prep, travel | 🟡 mostly done |
 
 Plus the deferred behavior layers from the original plan:
 
