@@ -131,3 +131,5 @@ export * from './pace_zones';
 export * from './hr_zones';
 export * from './race_prediction';
 export * from './weather';
+export * from './pacing';
+export * from './race_week';
