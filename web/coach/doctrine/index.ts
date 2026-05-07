@@ -133,3 +133,4 @@ export * from './race_prediction';
 export * from './weather';
 export * from './pacing';
 export * from './race_week';
+export * from './injury_return';
