@@ -135,3 +135,4 @@ export * from './pacing';
 export * from './race_week';
 export * from './injury_return';
 export * from './recovery_protocols';
+export * from './plan_templates';
