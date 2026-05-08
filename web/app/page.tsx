@@ -11,7 +11,7 @@
  */
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
 import { Modal } from '../components/modal';
 import { listRaces, type SavedRace } from '../lib/storage';
@@ -83,21 +83,23 @@ export default function OverviewPage() {
             <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
 
-          <CoachTodayCard />
+          <CoachTodayProvider>
+            <CoachTodayCard />
 
-          <PhaseGuidanceCard />
+            <PhaseGuidanceCard />
 
-          <Next30DaysCard />
+            <Next30DaysCard />
 
-          <VdotCard />
+            <VdotCard />
 
-          <HrZonesCard />
+            <HrZonesCard />
 
-          <RecoveryWidget />
+            <RecoveryWidget />
 
-          {runs && runs.length > 0 && (
-            <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
-          )}
+            {runs && runs.length > 0 && (
+              <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
+            )}
+          </CoachTodayProvider>
 
           <FunStatsSection runs={runs} />
 
@@ -469,6 +471,50 @@ interface CoachAmpWorkout {
   blocks: Array<{ section: string; items: Array<{ name: string; sets: string; notes?: string }> }>;
   benefit: string;
 }
+/* ── Shared /api/coach/today fetch ──────────────────────────
+   The coach endpoint returns a rich payload (today's prescription,
+   week shape, 30-day outlook, VDOT snapshot, readiness, daily
+   brief, alerts, full state). Five+ tiles on this page each used
+   to fetch it independently — wasteful (5x latency, 5x LLM cost)
+   and made the dashboard render piecemeal. This context dedupes
+   the fetch and fans the response out to every consumer. */
+interface CoachTodayApiResponse {
+  ok: boolean;
+  today?: CoachTodayPayload;
+  state?: {
+    races?: {
+      nextA?: { name: string; daysAway: number; distanceMi: number } | null;
+      recent?: Array<{ name: string; daysAgo: number; distanceMi: number }>;
+    };
+  };
+  vdot?: VdotTilePayload | null;
+  vdotTestPrompt?: boolean;
+  dailyBrief?: DailyBriefPayload | null;
+  coach?: { readiness?: ReadinessPayload };
+  error?: string;
+}
+const CoachTodayContext = createContext<CoachTodayApiResponse | null>(null);
+function CoachTodayProvider({ children }: { children: React.ReactNode }) {
+  const [data, setData] = useState<CoachTodayApiResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as CoachTodayApiResponse;
+        if (!cancelled) setData(json);
+      } catch (e) {
+        if (!cancelled) setData({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  return <CoachTodayContext.Provider value={data}>{children}</CoachTodayContext.Provider>;
+}
+function useCoachToday(): CoachTodayApiResponse | null {
+  return useContext(CoachTodayContext);
+}
+
 interface CoachTodayPayload {
   mode: 'race' | 'base';
   modeDetail: string;
@@ -518,40 +564,11 @@ interface ReadinessPayload {
 }
 
 function CoachTodayCard() {
-  const [payload, setPayload] = useState<CoachTodayPayload | null>(null);
-  const [dailyBrief, setDailyBrief] = useState<DailyBriefPayload | null>(null);
-  const [readiness, setReadiness] = useState<ReadinessPayload['answer'] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as {
-          ok: boolean;
-          today?: CoachTodayPayload;
-          dailyBrief?: DailyBriefPayload | null;
-          coach?: { readiness?: ReadinessPayload };
-          error?: string;
-        };
-        if (cancelled) return;
-        if (json.ok && json.today) {
-          setPayload(json.today);
-          setDailyBrief(json.dailyBrief ?? null);
-          setReadiness(json.coach?.readiness?.answer ?? null);
-        } else {
-          setError(json.error ?? 'Coach unavailable');
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (error) return null;     // silent skip on failure — coach is non-critical
-  if (!payload) return null;  // pending fetch
+  const ctx = useCoachToday();
+  if (!ctx || !ctx.ok || !ctx.today) return null;
+  const payload = ctx.today;
+  const dailyBrief = ctx.dailyBrief ?? null;
+  const readiness = ctx.coach?.readiness?.answer ?? null;
 
   const t = payload.today;
   // Workout types map to a color so the type word reads as a visual
@@ -1045,26 +1062,9 @@ function CoachDailyBrief({ brief, engineRationale }: {
    darker chip; races flag with a colored bar above the cell.
    Re-derived every dashboard load (same engine path as weekShape). */
 function Next30DaysCard() {
-  const [days, setDays] = useState<CoachTodayPayload['next30Days'] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as { ok: boolean; today?: CoachTodayPayload; error?: string };
-        if (cancelled) return;
-        if (json.ok && json.today) setDays(json.today.next30Days ?? null);
-        else setError(json.error ?? 'Forecast unavailable');
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (error || !days || days.length === 0) return null;
+  const ctx = useCoachToday();
+  const days = ctx?.today?.next30Days ?? null;
+  if (!days || days.length === 0) return null;
   return <Next30DaysTile days={days} />;
 }
 
@@ -1203,46 +1203,15 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
    brief already covers those — this card is for the moments
    when the playbook is non-obvious. */
 function PhaseGuidanceCard() {
-  const [phase, setPhase] = useState<string | null>(null);
-  const [nextRace, setNextRace] = useState<{ name: string; daysAway: number; distanceMi: number } | null>(null);
-  const [recentRace, setRecentRace] = useState<{ name: string; daysAgo: number; distanceMi: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as {
-          ok: boolean;
-          today?: { phase: string };
-          state?: {
-            races?: {
-              nextA?: { name: string; daysAway: number; distanceMi: number } | null;
-              recent?: Array<{ name: string; daysAgo: number; distanceMi: number }>;
-            };
-          };
-          error?: string;
-        };
-        if (cancelled) return;
-        if (json.ok) {
-          setPhase(json.today?.phase ?? null);
-          setNextRace(json.state?.races?.nextA ?? null);
-          // Largest recent race drives post-race guidance.
-          const recent = json.state?.races?.recent ?? [];
-          const biggest = recent.length > 0 ? recent.reduce((a, b) => a.distanceMi >= b.distanceMi ? a : b) : null;
-          setRecentRace(biggest);
-        } else {
-          setError(json.error ?? 'unavailable');
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (error) return null;
+  const ctx = useCoachToday();
+  if (!ctx || !ctx.ok) return null;
+  const phase = ctx.today?.phase ?? null;
+  const nextRace = ctx.state?.races?.nextA ?? null;
+  // Largest recent race drives post-race guidance.
+  const recentList = ctx.state?.races?.recent ?? [];
+  const recentRace = recentList.length > 0
+    ? recentList.reduce((a, b) => a.distanceMi >= b.distanceMi ? a : b)
+    : null;
   if (!phase) return null;
   // Only fire on special phases — others use the regular brief.
   if (phase !== 'TAPER' && phase !== 'POST_RACE' && phase !== 'REBUILD') return null;
@@ -1510,33 +1479,10 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
 }
 
 function VdotCard() {
-  const [vdot, setVdot] = useState<VdotTilePayload | null>(null);
-  const [testPrompt, setTestPrompt] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as { ok: boolean; vdot?: VdotTilePayload | null; vdotTestPrompt?: boolean; error?: string };
-        if (cancelled) return;
-        if (json.ok) {
-          setVdot(json.vdot ?? null);
-          setTestPrompt(json.vdotTestPrompt ?? false);
-        } else {
-          setError(json.error ?? 'VDOT unavailable');
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (error) return null;     // silent skip — non-critical
-  // No VDOT signal at all → render the test-prompt panel so the
-  // runner has a concrete next step instead of an empty surface.
+  const ctx = useCoachToday();
+  if (!ctx || !ctx.ok) return null;
+  const vdot = ctx.vdot ?? null;
+  const testPrompt = ctx.vdotTestPrompt ?? false;
   if (vdot == null && testPrompt) return <NoVdotPanel />;
   if (vdot == null) return null;
   return <VdotTile vdot={vdot} />;
@@ -1722,57 +1668,27 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
    the dashboard always tells you "where you're at" before
    diving into vanity numbers. */
 function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import('../lib/strava-activities').NormalizedActivity[] }) {
-  // Pull VDOT + phase-aware easy-share target from /api/coach/today
-  // so the effort classifier uses pace-zone signals (research-anchored)
-  // and the "On target" verdict matches the runner's actual phase
-  // instead of a static 75% threshold. Also overrides the local
-  // pulse.phase with the engine's phase so the dashboard doesn't
-  // disagree with the Coach. Failure is non-fatal — falls back to
-  // the local heuristics.
-  const [vdot, setVdot] = useState<number | null>(null);
-  const [easyShareMin, setEasyShareMin] = useState<number>(0.80);
-  const [phaseLabel, setPhaseLabel] = useState<string>('base maintenance');
-  const [enginePhase, setEnginePhase] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as {
-          ok: boolean;
-          vdot?: { vdot: number } | null;
-          today?: { phase: string };
-        };
-        if (cancelled) return;
-        if (json.ok) {
-          setVdot(json.vdot?.vdot ?? null);
-          // Phase → easy-share target (mirrors coach-principles.ts)
-          // + display label that matches the dashboard's phase chip.
-          const phase = json.today?.phase ?? 'BASE_MAINTENANCE';
-          const targets: Record<string, { min: number; label: string; display: string }> = {
-            TAPER:            { min: 0.78, label: 'taper',            display: 'TAPER' },
-            PEAK:             { min: 0.75, label: 'peak',             display: 'PEAK' },
-            BUILD:            { min: 0.70, label: 'build',            display: 'BUILDING' },
-            BASE:             { min: 0.80, label: 'base',             display: 'BASE BLOCK' },
-            BASE_MAINTENANCE: { min: 0.78, label: 'base maintenance', display: 'BASE BLOCK' },
-            POST_RACE:        { min: 0.90, label: 'post-race',        display: 'POST-RACE' },
-            REBUILD:          { min: 0.85, label: 'rebuild',          display: 'REBUILD' },
-          };
-          const t = targets[phase] ?? { min: 0.80, label: 'base maintenance', display: 'BASE BLOCK' };
-          setEasyShareMin(t.min);
-          setPhaseLabel(t.label);
-          setEnginePhase(t.display);
-        }
-      } catch {
-        /* fall back to defaults */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-  // Engine phase wins when available — dashboard heuristic is a
-  // backup so the page renders cleanly before /api/coach/today
-  // resolves on first paint.
-  const displayPhase = (enginePhase ?? pulse.phase) as TrainingPulse['phase'];
+  // Pull VDOT + phase-aware easy-share target from the shared
+  // CoachToday context so the effort classifier uses pace-zone
+  // signals (research-anchored) and the "On target" verdict matches
+  // the runner's actual phase. Engine phase wins when available;
+  // local heuristic is the backup before context resolves.
+  const ctx = useCoachToday();
+  const vdot = ctx?.vdot?.vdot ?? null;
+  const enginePhaseRaw = ctx?.today?.phase ?? null;
+  const phaseTargets: Record<string, { min: number; label: string; display: string }> = {
+    TAPER:            { min: 0.78, label: 'taper',            display: 'TAPER' },
+    PEAK:             { min: 0.75, label: 'peak',             display: 'PEAK' },
+    BUILD:            { min: 0.70, label: 'build',            display: 'BUILDING' },
+    BASE:             { min: 0.80, label: 'base',             display: 'BASE BLOCK' },
+    BASE_MAINTENANCE: { min: 0.78, label: 'base maintenance', display: 'BASE BLOCK' },
+    POST_RACE:        { min: 0.90, label: 'post-race',        display: 'POST-RACE' },
+    REBUILD:          { min: 0.85, label: 'rebuild',          display: 'REBUILD' },
+  };
+  const phaseTarget = enginePhaseRaw ? phaseTargets[enginePhaseRaw] : null;
+  const easyShareMin = phaseTarget?.min ?? 0.80;
+  const phaseLabel = phaseTarget?.label ?? 'base maintenance';
+  const displayPhase = (phaseTarget?.display ?? pulse.phase) as TrainingPulse['phase'];
   const weeks = weeklyMiles(runs, 8);
   const max = Math.max(...weeks.map(w => w.miles), 1);
   const phaseColor: Record<TrainingPulse['phase'], string> = {
