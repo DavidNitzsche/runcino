@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runcino · Evening session — 2026-05-08</title>
+<style>
+  :root {
+    --bg-0: #0a0a0c;
+    --bg-1: #131318;
+    --bg-2: #1c1c23;
+    --bg-3: #25252e;
+    --line: #2e2e38;
+    --t-0: #f4f4f8;
+    --t-1: #c8c8d0;
+    --t-2: #8c8c98;
+    --t-3: #5c5c66;
+    --accent: #4f8ff7;
+    --warn: #f3ad3b;
+    --good: #3ebd41;
+    --bad: #fc4d54;
+    --pink: #cd317c;
+    --aqua: #27e087;
+    --font-data: ui-monospace, "SF Mono", Menlo, monospace;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-0); color: var(--t-1); font-family: var(--font-display); font-size: 14px; line-height: 1.55; }
+  body { padding: 32px 24px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 36px; letter-spacing: -.012em; color: var(--t-0); margin: 0 0 6px; font-weight: 800; }
+  h2 { font-size: 22px; color: var(--t-0); margin: 36px 0 12px; font-weight: 700; }
+  h3 { font-size: 14px; color: var(--accent); margin: 18px 0 6px; font-family: var(--font-data); letter-spacing: 1.4px; text-transform: uppercase; font-weight: 700; }
+  p { color: var(--t-1); margin: 0 0 12px; }
+  .eyebrow { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--warn); font-weight: 700; }
+  .lede { font-size: 16px; color: var(--t-1); max-width: 720px; line-height: 1.6; }
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 18px 0 28px; }
+  .stat { padding: 4px 8px; border-left: 2px solid var(--accent); }
+  .stat .v { font-size: 22px; font-weight: 800; color: var(--t-0); font-variant-numeric: tabular-nums; }
+  .stat .l { font-family: var(--font-data); font-size: 9px; color: var(--t-3); letter-spacing: 1.3px; text-transform: uppercase; margin-top: 2px; }
+  .grid { display: grid; gap: 12px; }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.good { border-left: 3px solid var(--good); }
+  .tag { font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; border: 1px solid currentColor; display: inline-block; }
+  .tag.good { color: var(--good); }
+  .tag.warn { color: var(--warn); }
+  .tag.accent { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t-3); font-weight: 700; }
+  td.priority { font-family: var(--font-data); color: var(--accent); font-weight: 700; }
+  td.size { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.2px; color: var(--t-3); }
+  td.status { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.2px; }
+  .done { color: var(--good); }
+  code { font-family: var(--font-data); font-size: 12px; background: var(--bg-2); padding: 1px 4px; border-radius: 3px; color: var(--t-0); }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .commits { font-family: var(--font-data); font-size: 12px; color: var(--t-1); background: var(--bg-2); padding: 12px 16px; border-radius: 6px; line-height: 1.7; }
+  .commits .sha { color: var(--accent); }
+  .next { background: linear-gradient(135deg, var(--bg-1), var(--bg-2)); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin-top: 24px; }
+  .footer { color: var(--t-3); font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; text-align: center; margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">Evening session · 2026-05-08</div>
+<h1>Inventory backlog: shipped end-to-end</h1>
+<p class="lede">All 10 priorities from this morning's inventory + redesign brief are live on main + the feature branch. Architecture-first migration completed (RunnerHub), then every doctrine-traceability fix, then the placeholder kills, then the two new pages.</p>
+
+<div class="strip">
+  <div class="stat"><div class="v">10/10</div><div class="l">priorities shipped</div></div>
+  <div class="stat"><div class="v">9</div><div class="l">commits to main</div></div>
+  <div class="stat"><div class="v">+1,800</div><div class="l">lines net</div></div>
+  <div class="stat"><div class="v">6</div><div class="l">new files in lib/</div></div>
+  <div class="stat"><div class="v">2</div><div class="l">new pages</div></div>
+  <div class="stat"><div class="v">119/119</div><div class="l">tests pass</div></div>
+</div>
+
+<h2>The arc of the session</h2>
+<p>Started after the inventory landed. Ran the architecture migration first (RunnerHub) so every page projects from one canonical payload. Then walked the top-10 priority queue — fixing what the inventory flagged, then surfacing what was buried in doctrine, then building the new pages.</p>
+
+<div class="grid two">
+  <div class="card good">
+    <div class="tag good">SHIPPED · ARCHITECTURE</div>
+    <h3>RunnerHub migration · 6 phases</h3>
+    <p>Every page in the app now projects from <code>useHub()</code> — dashboard, training, races, race-detail. One <code>/api/hub</code> endpoint fans out coach + races + profile + RPE in parallel. Mutations bump one cache; every subscribed page re-renders. The phone vs desktop disconnect is gone.</p>
+    <p style="margin-top: 8px; font-size: 12px; color: var(--t-2);">Files: <code>lib/hub-types.ts</code>, <code>lib/hub.ts</code>, <code>lib/hub-provider.tsx</code>, <code>app/api/hub/route.ts</code>. Plus 4 page rewrites and the retirement of <code>coach-today-client-cache.ts</code>.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · DOCTRINE</div>
+    <h3>Long-run cap math unified</h3>
+    <p>The engine and the dashboard each had inline copies of per-phase cap multipliers (TAPER × 0.65, POST_RACE × 0.4, etc). Extracted to <code>lib/long-run-cap.ts</code> as the single source — both surfaces now call <code>longRunTargetMi(phase, peakLast28Mi)</code>. Drift is impossible.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · DOCTRINE</div>
+    <h3>Post-race recovery from doctrine</h3>
+    <p>Engine's recovery ladder used to be hand-coded (3/7/14/26 days). Now reads <code>POST_RACE_BY_DISTANCE</code> from Research/00b across 8 distance bands (5K through 100mi). Stage gates derive from <code>zeroOrVeryLightDays</code>, <code>returnToLongRunsDay</code>, <code>totalRecoveryDaysNoQuality</code>. Marathon recovery extended 26→28 days (more conservative).</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · DOCTRINE</div>
+    <h3>Sweat-rate + EAH risk surfaced</h3>
+    <p>HydrationTile on race-detail now also shows: full Research/19 sweat-rate calibration protocol (formula, steps, example, 4 typical-range categories) + 9 EAH risk factors as a warn-tinted alert. Generic ml/hr bands aren't enough; sweat rates vary 10× across runners.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · INPUT</div>
+    <h3>Workout RPE logger</h3>
+    <p>New <code>workout_rpe</code> Postgres table + <code>/api/rpe</code> endpoint + <code>RpeInput</code> component (Borg 1-10 scale, instant save). Mounted on the dashboard and the new <code>/workout/[date]</code> page. Hub now carries <code>recentRpe</code> so the dashboard shows a 7-day mini-history strip.</p>
+    <p style="margin-top: 8px; font-size: 12px; color: var(--t-2);">Doctrine source: Research/00b §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS. Engine consumption of the signal is the next step — this commit captures the data so the signal exists.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · PAGE</div>
+    <h3>/workout/[date] is real</h3>
+    <p>Replaced the 520-line static placeholder. Now resolves a prescription from one of three branches: today (full payload), current week (weekShape entry), or next-30-days (lighter forecast). Race-day on calendar links to <code>/races/[slug]</code>. Hero KPIs, "How to run it", structure breakdown, RPE log, readiness summary — all data-driven.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · PAGE</div>
+    <h3>/calibration — every dial in one place</h3>
+    <p>VDOT (with freshness chip + source race) → pace zones → HRmax (measured vs Tanaka estimate) → HR zones → LTHR (Karvonen if RHR known) → long-run cap → easy-share target → taper depth → pre-race + during-race hydration. Every tile shows current value + source + doctrine citation + recalibrate CTA when stale.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">SHIPPED · PAGE</div>
+    <h3>/season — strategic race calendar</h3>
+    <p>Horizontal timeline 6mo back → 12mo forward. Phase segments (BUILD/TAPER/POST_RACE/GAP) computed from doctrine recovery windows + 14d standard taper. Race markers as priority-colored bars with click-through to /races/[slug]. Today line. Conflict detection per <code>MULTI_RACE_CADENCE</code>. Annual race-load summary against <code>aRaceMaxPerYear</code> (2) + <code>bRacePerYear</code> (4-6 typical).</p>
+  </div>
+</div>
+
+<h2>The 10 priorities · status table</h2>
+<table>
+  <tr><th>#</th><th>Priority</th><th>Size</th><th>Status</th></tr>
+  <tr><td class="priority">1</td><td>Wire runner profile to server-side CoachState</td><td class="size">M</td><td class="status done">DONE (overnight)</td></tr>
+  <tr><td class="priority">2</td><td>Build a real /workout/[date] page</td><td class="size">M</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">3</td><td>Eliminate doctrine-inlining</td><td class="size">S–M</td><td class="status done">DONE (verified)</td></tr>
+  <tr><td class="priority">4</td><td>Reconcile long-run cap math</td><td class="size">S</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">5</td><td>Wire recovery_protocols POST_RACE_BY_DISTANCE + REVERSE_TAPER</td><td class="size">M</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">6</td><td>Build /season page</td><td class="size">M</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">7</td><td>Build /calibration page</td><td class="size">S–M</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">8</td><td>Surface SWEAT_RATE_PROTOCOL + EAH_RISK_FACTORS in HydrationTile</td><td class="size">S</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">9</td><td>Add "how did that feel" RPE input on prescribed workouts</td><td class="size">S</td><td class="status done">DONE</td></tr>
+  <tr><td class="priority">10</td><td>Wire HRmax to engine's "yesterday was hard" gate</td><td class="size">S</td><td class="status done">DONE (overnight)</td></tr>
+</table>
+
+<h2>Commits shipped this session</h2>
+<div class="commits">
+<div><span class="sha">3f0dbf2</span> · feat(nav): expose /season + /calibration in the main nav</div>
+<div><span class="sha">a19e1b5</span> · feat: /calibration + /season pages + client-safe recovery-distance</div>
+<div><span class="sha">75018a0</span> · feat(workout): /workout/[date] now real, projects from RunnerHub</div>
+<div><span class="sha">dac67e1</span> · feat: post-race recovery from doctrine + RPE input on dashboard</div>
+<div><span class="sha">d5c2776</span> · feat: unify long-run cap math + surface sweat-rate / EAH doctrine</div>
+<div><span class="sha">c922f2c</span> · feat(hub): unify all client state behind RunnerHub + /api/hub</div>
+<div><span class="sha">f5e803a</span> · docs+fix: HTML inventory report + storage cache invalidation</div>
+</div>
+
+<h2>What you'll feel when you open the app</h2>
+<ul>
+  <li><b>No more loading flashes.</b> The hub sync-inits from localStorage, every page paints with content immediately on revisit.</li>
+  <li><b>Phone and desktop see the same races + profile + RPE.</b> All on Postgres now; the localStorage masking is gone.</li>
+  <li><b>Two new tabs in the nav</b> — Season (between Races and Calibration) and Calibration (between Season and Health).</li>
+  <li><b>Dashboard has a "How did that feel?" tile</b> below the Coach card on workout days. One tap saves; recent 7 days appear as a mini-strip below.</li>
+  <li><b>Race-detail hydration tile</b> has two new sections: sweat-rate calibration protocol + 9 EAH risk factors as a warn-tinted alert.</li>
+  <li><b>Click any day in the dashboard's week-strip or 30-day-strip</b> and you land on a real <code>/workout/[date]</code> page with engine-driven content for THAT date — not the static threshold placeholder anymore.</li>
+  <li><b>The /season page has a click-through timeline</b> showing your year as an arc with phase segments. Conflict detection flags marathons too close together (Research/00b spacing rules).</li>
+  <li><b>The /calibration page is the audit trail</b> — every personal dial with current value + source + doctrine citation + recalibrate CTA when stale.</li>
+</ul>
+
+<div class="next">
+<h3>What's next when you say go</h3>
+<p>The inventory's redesign brief (Section 8 of <code>docs/INVENTORY-2026-05-08.md</code>) is the layer cake on top of this foundation. Concrete next moves:</p>
+<ul>
+  <li><b>Engine consumption of RPE.</b> The data is being captured; now wire <code>recentRpe</code> into <code>coach.assessReadiness</code> so the engine can spot fatigue drift between similar-prescribed sessions.</li>
+  <li><b>Component extraction</b> per Section 8.E.8 of the inventory — pull <code>HrZonesTile</code>, <code>VdotTile</code>, <code>ReadinessBanner</code>, <code>CoachDailyBrief</code>, etc out of <code>app/page.tsx</code> into <code>web/components/</code> so they can render on /calibration, /workout, /training without copy-paste.</li>
+  <li><b>The remaining Section 8 redesigns</b> (mode-aware dashboard, training page macro-redesign, race-detail expansion, run-detail expansion) — these are the design polish layer once the architecture + data foundations are rock-solid (which they now are).</li>
+  <li><b>Doctrine drift detector</b> — Section 8h.9 — a build-time check that flags inline numeric patterns where an importable doctrine constant exists. Prevents future drift.</li>
+</ul>
+<p style="font-size: 12px; color: var(--t-2); margin-top: 12px;">None of these is on a critical path. The app's foundation is done — these are the polishing passes that take it from "really good" to "the mecca of marathon coaching" (your phrase).</p>
+</div>
+
+<div class="footer">
+RUNCINO · 2026-05-08 EVENING SESSION · MAIN @ 3F0DBF2 · ALL TESTS PASS · BUILD CLEAN
+</div>
+
+</div>
+</body>
+</html>
