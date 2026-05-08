@@ -25,7 +25,7 @@ import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESE
 import { LONG_RUN_HARD_CAP_MULTIPLIER, TRAINING_PULSE_TO_ENGINE_PHASE, longRunTargetMi } from '../lib/long-run-cap';
 import { RpeInput } from '../components/RpeInput';
 import { ReadinessBanner } from '../components/coaching/ReadinessBanner';
-import { CoachDailyBrief } from '../components/coaching/CoachDailyBrief';
+// CoachDailyBrief import removed — voice paragraph lives on /training (audit #19)
 
 export default function OverviewPage() {
   // The whole page is wrapped in HubProvider so every consumer below
@@ -85,9 +85,14 @@ function OverviewPageInner() {
         <Nav active="overview" />
         <div className="body">
 
-          <ModeBanner daysToNext={daysToNext} hub={hub} />
-
-          <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
+          {/* ModeBanner and ModeHero are mutually exclusive — hero
+              only renders for special modes (race-day, race-week,
+              post-race, heavy-block); banner shows for everyday
+              training. Showing both at once duplicates the same idea
+              twice — fixed per audit #18. */}
+          {isSpecialMode(hub, daysToNext)
+            ? <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
+            : <ModeBanner daysToNext={daysToNext} hub={hub} />}
 
           <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
 
@@ -98,16 +103,21 @@ function OverviewPageInner() {
             <YearMilesCard runs={runs} />
           </div>
 
+          {/* TodayTile dropped — RecentRunCard above already shows the
+              same data. Audit #9, #25. ThisWeekTile retained — it's
+              an at-a-glance daily-bar chart, not a run summary. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 10, marginBottom: 10 }}>
             <ThisWeekTile runs={runs} now={now} />
-            <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
 
-          <CoachTodayCard />
+          <CoachTodayCard runs={runs} />
 
           <WorkoutRpeCard />
 
-          <PhaseGuidanceCard />
+          {/* PhaseGuidanceCard — only fires for non-special modes
+              (otherwise ModeHero is already saying the same thing).
+              Audit #8. */}
+          {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
 
           <Next30DaysCard />
 
@@ -115,7 +125,8 @@ function OverviewPageInner() {
 
           <HrZonesCard />
 
-          <RecoveryWidget />
+          {/* RecoveryWidget (yoga membership tracker) removed — it's
+              off-topic for a running coach app. Audit #12. */}
 
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
@@ -144,6 +155,19 @@ function LoadingShell() {
       </div>
     </>
   );
+}
+
+/** Whether the runner is in a "special" mode that warrants the
+ *  rich ModeHero card instead of the one-line ModeBanner. Mirror
+ *  of the conditions inside ModeHero — kept here so callers can
+ *  branch BEFORE rendering and avoid stacking both. */
+function isSpecialMode(hub: import('../lib/hub-types').RunnerHub | null, daysToNext: number | null): boolean {
+  if (!hub) return false;
+  if (daysToNext != null && daysToNext <= 7) return true;       // race day / week
+  const recentRace = hub.coach.state?.races?.recent?.[0] ?? null;
+  if (recentRace && recentRace.daysAgo <= 21) return true;       // post-race
+  if (hub.coach.state?.flags?.heavyBlockSuspected) return true;  // heavy block
+  return false;
 }
 
 /* ── Mode banner — current training-mode pill at the top of the
@@ -375,10 +399,15 @@ function Greeting({
     return null;
   })();
 
+  // Greeting subtitle no longer duplicates the goal race when there
+  // IS one — the NextRaceCard below this Greeting already shows the
+  // name, days, goal pace. Audit #10. We keep the subtitle for the
+  // "race day / tomorrow" countdown, post-race ("no upcoming race"),
+  // and no-race-ever empty state.
   const sub = (() => {
     if (next && daysToNext === 0) return `${next.meta.name} · today`;
     if (next && daysToNext === 1) return `${next.meta.name} · tomorrow`;
-    if (next && daysToNext !== null) return <><b style={{ color: 'var(--color-t1)' }}>{next.meta.name}</b> · {daysToNext} days · goal {next.meta.goalDisplay}</>;
+    if (next && daysToNext !== null && daysToNext > 1) return null;
     if (lastCompleted) {
       const back = Math.abs(daysUntil(lastCompleted.meta.date));
       return <><b style={{ color: 'var(--color-t1)' }}>{lastCompleted.meta.name}</b> {back === 1 ? 'yesterday' : `${back} days ago`} · no upcoming race</>;
@@ -408,7 +437,7 @@ function Greeting({
           lineHeight: 1,
         }}>{hl.text}</div>
       )}
-      <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-t2)', fontWeight: 500 }}>{sub}</div>
+      {sub && <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-t2)', fontWeight: 500 }}>{sub}</div>}
     </div>
   );
 }
@@ -805,12 +834,26 @@ interface ReadinessPayload {
   };
 }
 
-function CoachTodayCard() {
+function CoachTodayCard({ runs }: { runs: NormalizedActivity[] | null }) {
   const ctx = useCoachToday();
   if (!ctx || !ctx.ok || !ctx.today) return null;
   const payload = ctx.today;
-  const dailyBrief = ctx.dailyBrief ?? null;
   const readiness = ctx.coach?.readiness?.answer ?? null;
+  // dailyBrief / voice paragraph dropped from dashboard — it lives on
+  // /training daily-briefing now (audit #19). Dashboard role is at-a-glance.
+
+  // Build a map of actual run miles by date so the week strip can
+  // reflect what HAPPENED on past days instead of the prescription
+  // it was given (which is all REST during post-race recovery).
+  // Audit #11.
+  const actualByDate = new Map<string, number>();
+  if (runs) {
+    for (const r of runs) {
+      const prev = actualByDate.get(r.date) ?? 0;
+      if (r.distanceMi > prev) actualByDate.set(r.date, r.distanceMi);
+    }
+  }
+  const todayISOStr = new Date().toISOString().slice(0, 10);
 
   const t = payload.today;
   // Workout types map to a color so the type word reads as a visual
@@ -897,25 +940,25 @@ function CoachTodayCard() {
           {payload.strength && <StrengthTile strength={payload.strength} />}
         </div>
 
-        {/* Daily training brief — voice paragraph anchored on TODAY.
-            When the LLM is available it gets the rich Coach voice;
-            otherwise the deterministic fallback assembles a shorter
-            paragraph from the structured pieces. The deterministic
-            engine rationale (one-liner) sits below as the "why" so
-            the runner can always trace back to first principles. */}
-        {dailyBrief && (
-          <CoachDailyBrief brief={dailyBrief} engineRationale={payload.rationale} />
-        )}
-        {!dailyBrief && (
-          <div style={{
-            fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
-            padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8,
-            borderLeft: '3px solid var(--color-corporate)',
+        {/* Voice paragraph (CoachDailyBrief) lives on /training only —
+            audit #19. Dashboard keeps the engine-rationale one-liner
+            as a small WHY chip for traceability. */}
+        <div style={{
+          fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
+          padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8,
+          borderLeft: '3px solid var(--color-corporate)',
+        }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
+          {payload.rationale}
+          <Link href="/training" style={{
+            display: 'inline-block', marginLeft: 8,
+            fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+            letterSpacing: '1.2px', color: 'var(--color-corporate)',
+            textDecoration: 'none',
           }}>
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
-            {payload.rationale}
-          </div>
-        )}
+            FULL VOICE BRIEF →
+          </Link>
+        </div>
 
         {/* Plausible week shape — re-derived every morning, not promised */}
         <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -929,6 +972,9 @@ function CoachTodayCard() {
               const dowLabel = dayLabels[(dayDow + 6) % 7];
               const c = typeColor[d.type] ?? 'var(--color-t3)';
               const typeLabel = d.type.replace(/_/g, ' ');
+              const isPast = d.date < todayISOStr;
+              const actualMi = actualByDate.get(d.date);
+              const ranOnRest = d.type === 'rest' && actualMi != null && actualMi > 0;
               return (
                 <div key={d.date} style={{
                   padding: '10px',
@@ -937,16 +983,38 @@ function CoachTodayCard() {
                   border: `1px solid ${d.isToday ? 'rgba(243,173,59,.4)' : 'var(--color-l4)'}`,
                   display: 'flex', flexDirection: 'column', gap: 6,
                   minHeight: 100,
+                  opacity: isPast && !actualMi ? 0.55 : 1,
                 }}>
                   {/* Top: day-of-week */}
                   <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
 
-                  {/* Middle: run type + miles */}
+                  {/* Middle: actual run on past days, prescription on
+                      today/future. Past rest days with an override run
+                      get an "ACTUAL" stamp + the actual miles + a
+                      "ran on rest day" footnote. Audit #11. */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: c, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>{typeLabel}</div>
-                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
-                      {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : d.type === 'rest' ? 'REST' : '—'}
-                    </div>
+                    {isPast && actualMi != null ? (
+                      <>
+                        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: 'var(--color-success)', textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>
+                          DONE
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                          {actualMi.toFixed(1)} MI
+                        </div>
+                        {ranOnRest && (
+                          <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, color: 'var(--color-attention)', letterSpacing: '0.6px' }}>
+                            ON REST DAY
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: c, textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>{typeLabel}</div>
+                        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
+                          {d.distanceMi > 0 ? `${d.distanceMi.toFixed(1)} MI` : d.type === 'rest' ? 'REST' : '—'}
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Bottom: strength chip (visible, color-stamped, not a tiny corner dot) */}
