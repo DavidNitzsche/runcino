@@ -91,6 +91,104 @@ export async function fetchNoaaWeather(lat: number, lon: number): Promise<Weathe
   };
 }
 
+/**
+ * Open-Meteo historical weather fetcher — free, no auth.
+ *
+ * Used to surface "what the weather was like last year on this date
+ * at this race" before we're close enough for a real NOAA forecast.
+ * Returns the same WeatherSummary shape as fetchNoaaWeather so the
+ * UI can render either source uniformly.
+ *
+ * Endpoint: https://archive-api.open-meteo.com/v1/archive
+ * Coverage: global, 1940-present, hourly. No API key required.
+ *
+ * Race start is assumed to be 7am local — typical for road races.
+ * We pull the start hour + 2 hours later to approximate start +
+ * mid-race conditions, mirroring how NOAA's "morning / afternoon"
+ * periods feed the brief.
+ */
+export async function fetchHistoricalWeather(
+  lat: number,
+  lon: number,
+  dateISO: string,                // YYYY-MM-DD
+  startHourLocal: number = 7,     // race start, default 7am local
+): Promise<WeatherSummary> {
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&start_date=${dateISO}&end_date=${dateISO}` +
+    `&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_direction_10m,precipitation,weather_code` +
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
+    `&timezone=auto`;
+
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  if (!res.ok) throw new Error(`Open-Meteo archive ${res.status}`);
+  const data = await res.json() as {
+    hourly: {
+      time: string[];                              // local-time ISO, hourly
+      temperature_2m: number[];
+      relative_humidity_2m: number[];
+      dew_point_2m: number[];
+      wind_speed_10m: number[];
+      wind_direction_10m: number[];
+      precipitation: number[];
+      weather_code: number[];
+    };
+    timezone?: string;
+  };
+
+  const startIdx = startHourLocal;          // hourly array is local-aligned
+  const finishIdx = Math.min(startHourLocal + 2, 23);
+  const at = (idx: number, label: string): WeatherPeriod => {
+    const dir = degreesToCompass(data.hourly.wind_direction_10m[idx]);
+    const wind = Math.round(data.hourly.wind_speed_10m[idx]);
+    const code = data.hourly.weather_code[idx];
+    const precip = Math.round(data.hourly.precipitation[idx] * 100) / 100;
+    return {
+      name: label,
+      start_iso: data.hourly.time[idx],
+      temperature_f: Math.round(data.hourly.temperature_2m[idx]),
+      wind_speed_mph_min: wind,
+      wind_speed_mph_max: wind,
+      wind_direction: dir,
+      short_forecast: weatherCodeToText(code),
+      precipitation_pct: precip > 0 ? 100 : 0,    // historical actuals — fell or didn't
+    };
+  };
+
+  const start_period = at(startIdx, 'Race start');
+  const second_period = at(finishIdx, 'Mid-race');
+
+  return {
+    location: { lat, lon },
+    start_period,
+    second_period,
+    narrative: buildNarrative(start_period, second_period),
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+/** Compass dir from degrees. 0/360 = N, 90 = E, 180 = S, 270 = W. */
+function degreesToCompass(deg: number): string {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+/** Open-Meteo WMO weather codes → short text. Just the families we
+ *  care about for race-morning context. */
+function weatherCodeToText(code: number): string {
+  if (code === 0) return 'Clear';
+  if (code <= 3) return 'Partly cloudy';
+  if (code === 45 || code === 48) return 'Fog';
+  if (code <= 57) return 'Drizzle';
+  if (code <= 67) return 'Rain';
+  if (code <= 77) return 'Snow';
+  if (code <= 82) return 'Showers';
+  if (code <= 86) return 'Snow showers';
+  if (code <= 99) return 'Thunderstorm';
+  return 'Mixed';
+}
+
 function buildNarrative(a: WeatherPeriod, b: WeatherPeriod | null): string {
   const lines: string[] = [];
   lines.push(

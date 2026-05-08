@@ -229,7 +229,10 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           {!isPastWithResult(race) && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-                <WeatherTile start={analysis ? [analysis.trkpts[0][0], analysis.trkpts[0][1]] : null} />
+                <WeatherTile
+                  start={analysis ? [analysis.trkpts[0][0], analysis.trkpts[0][1]] : null}
+                  raceDate={race.meta.date}
+                />
                 <BriefTile race={enrichedRace} />
               </div>
 
@@ -1233,14 +1236,20 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
 }
 
 /* ── Weather tile ────────────────────────────────────────────
-   Calls /api/weather with the GPX start lat/lon and renders
-   NOAA's first two forecast periods (typically race-day morning
-   and afternoon). Shows the start temperature, wind, and short
-   forecast — enough to inform the Claude brief below it. */
+   Auto-fetches on mount. Picks source based on days-to-race:
+
+     T ≤ 7 days  → live NOAA forecast (CONUS-only)
+     T > 7 days  → Open-Meteo historical for the same date last year
+
+   Falls back to historical when NOAA fails (out of CONUS, no
+   forecast yet, or service outage) so the tile always shows
+   something actionable. The header label adapts to the source. */
 type WeatherSummary = {
   start_period: WeatherPeriod;
   second_period: WeatherPeriod | null;
   narrative: string;
+  source?: 'forecast' | 'historical';
+  date?: string | null;
 };
 type WeatherPeriod = {
   name: string;
@@ -1252,39 +1261,81 @@ type WeatherPeriod = {
   precipitation_pct: number;
 };
 
-function WeatherTile({ start }: { start: [number, number] | null }) {
+/** Same calendar date one year before `iso`. */
+function sameDateLastYear(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const prev = new Date(Date.UTC(y - 1, m - 1, d));
+  return prev.toISOString().slice(0, 10);
+}
+
+function WeatherTile({ start, raceDate }: { start: [number, number] | null; raceDate: string }) {
   const [data, setData] = useState<WeatherSummary | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const lat = start?.[0];
   const lon = start?.[1];
 
-  async function fetchWeather() {
+  useEffect(() => {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      setErr('No GPX coordinates'); return;
+      setErr('No GPX coordinates'); setLoading(false);
+      return;
     }
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch(`/api/weather?lat=${lat}&lon=${lon}`);
-      if (!res.ok) throw new Error(await res.text());
-      setData(await res.json());
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+    let cancelled = false;
+    (async () => {
+      const days = daysUntil(raceDate);
+      const useForecast = days >= 0 && days <= 7;
+      // Try preferred source first, fall through to historical on
+      // failure so out-of-CONUS races and far-future races still get
+      // something useful on screen.
+      const tryFetch = async (qs: string) => {
+        const res = await fetch(`/api/weather?${qs}`);
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json() as WeatherSummary;
+      };
+      try {
+        if (useForecast) {
+          try {
+            const forecast = await tryFetch(`lat=${lat}&lon=${lon}`);
+            if (!cancelled) setData(forecast);
+            return;
+          } catch {
+            // NOAA failed — fall through to historical.
+          }
+        }
+        const histDate = sameDateLastYear(raceDate);
+        const hist = await tryFetch(`lat=${lat}&lon=${lon}&date=${histDate}`);
+        if (!cancelled) setData(hist);
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [lat, lon, raceDate]);
+
+  const isHistorical = data?.source === 'historical';
+  const headerLabel = !data ? 'Loading…'
+    : `${Math.round(data.start_period.temperature_f)}°F · ${data.start_period.short_forecast}`;
+  const sourceChip = !data ? null
+    : isHistorical ? 'LAST YEAR'
+    : 'NOAA FORECAST';
 
   return (
     <div className="tile">
       <div className="tile-h">
         <div>
           <div className="tile-sub">Race-day weather</div>
-          <div className="tile-lbl">{data ? `${Math.round(data.start_period.temperature_f)}°F · ${data.start_period.short_forecast}` : 'NOAA forecast'}</div>
+          <div className="tile-lbl">{headerLabel}</div>
         </div>
-        <button className="btn btn--ghost" onClick={fetchWeather} disabled={loading}>
-          {loading ? 'Fetching…' : data ? '↻ Refresh' : '↓ Fetch forecast'}
-        </button>
+        {sourceChip && (
+          <span className="chip" style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+            padding: '3px 7px', borderRadius: 3,
+            background: isHistorical ? 'rgba(150,150,150,.18)' : 'rgba(38,127,255,.18)',
+            color: isHistorical ? 'var(--color-t2)' : 'var(--color-corporate)',
+          }}>{sourceChip}</span>
+        )}
       </div>
       {err && (
         <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
@@ -1297,13 +1348,18 @@ function WeatherTile({ start }: { start: [number, number] | null }) {
           {data.second_period && <PeriodRow p={data.second_period} />}
           {data.narrative && (
             <div style={{ marginTop: 8, padding: 12, background: 'var(--color-l2)', borderRadius: 8, fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.5 }}>
+              {isHistorical && data.date && (
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 4 }}>
+                  {data.date} · same date last year
+                </span>
+              )}
               {data.narrative}
             </div>
           )}
         </>
       )}
-      {!data && !loading && !err && (
-        <div className="hint" style={{ padding: 14 }}>NOAA forecast is CONUS-only; Big Sur + Santa Clarita are covered. Fetch when you&apos;re within a week of race day for best accuracy.</div>
+      {!data && loading && (
+        <div className="hint" style={{ padding: 14 }}>Pulling weather…</div>
       )}
     </div>
   );
@@ -1356,77 +1412,126 @@ type BriefResponse = {
   };
 };
 
+/** Build a forecast string from a WeatherSummary the same way the
+ *  user would have pasted one. Goes into the brief prompt so the
+ *  Coach has real numbers to work with even when we're 30 days out. */
+function weatherSummaryToText(w: WeatherSummary | null): string {
+  if (!w) return 'no specific forecast — assume seasonal norms';
+  const a = w.start_period;
+  const b = w.second_period;
+  const wind = a.wind_speed_mph_max != null && a.wind_speed_mph_max > 0
+    ? `${a.wind_direction} wind ${a.wind_speed_mph_max} mph`
+    : 'calm';
+  const finish = b ? `, ${Math.round(b.temperature_f)}°F finish` : '';
+  const note = w.source === 'historical'
+    ? ' (last year actuals — forecast not yet available)'
+    : '';
+  return `${Math.round(a.temperature_f)}°F start${finish}, ${wind}, ${a.short_forecast.toLowerCase()}${note}`;
+}
+
+/** Pick a contextual title based on time-to-race. The brief content
+ *  itself stays in the same Coach voice — only the framing label
+ *  changes so a 30-days-out reading doesn't say "Race-morning brief". */
+function briefTitleFor(daysToRace: number): { sub: string; lbl: string } {
+  if (daysToRace <= 0) return { sub: 'Race-morning brief',  lbl: 'Coach says:' };
+  if (daysToRace <= 7)  return { sub: 'Race-week brief',     lbl: 'Coach says:' };
+  if (daysToRace <= 21) return { sub: 'Approach brief',      lbl: 'Coach says:' };
+  return { sub: 'Course brief', lbl: 'Coach says:' };
+}
+
 function BriefTile({ race }: { race: SavedRace }) {
-  const [weather, setWeather] = useState('');
   const [brief, setBrief] = useState<BriefResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherSummary | null>(null);
 
-  async function generate() {
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch('/api/brief', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          courseSlug: race.meta.courseSlug,
-          raceName: race.meta.name,
-          raceDate: race.meta.date,
-          goalDisplay: race.meta.goalDisplay,
-          weatherText: weather || 'no specific forecast — assume seasonal norms',
-          phases: race.plan.phases.map(p => ({
-            index: p.index,
-            label: p.label,
-            startMi: p.start_mi,
-            endMi: p.end_mi,
-            paceSPerMi: p.target_pace_s_per_mi,
-            grade: p.mean_grade_pct,
-          })),
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setBrief(await res.json());
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const days = daysUntil(race.meta.date);
+  const titleParts = briefTitleFor(days);
 
+  // Auto-fetch on mount: pull weather (same logic as WeatherTile —
+  // forecast within 7 days, last year otherwise), then hand the
+  // resulting forecast string to /api/brief.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Pull the race's start coords from its GPX trace, then hit
+      // the same /api/weather route as WeatherTile (forecast within
+      // 7 days, last year otherwise). The forecast string feeds the
+      // /api/brief prompt so the Coach reads real numbers — even 30
+      // days out, when NOAA hasn't published a forecast yet.
+      let weatherText = 'no specific forecast — assume seasonal norms';
+      let weatherSummary: WeatherSummary | null = null;
+      try {
+        const a = analyzeGpx(race.gpxText);
+        const lat0 = a.trkpts[0][0];
+        const lon0 = a.trkpts[0][1];
+        const useForecast = days >= 0 && days <= 7;
+        const url = useForecast
+          ? `/api/weather?lat=${lat0}&lon=${lon0}`
+          : `/api/weather?lat=${lat0}&lon=${lon0}&date=${sameDateLastYear(race.meta.date)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          weatherSummary = await res.json() as WeatherSummary;
+          weatherText = weatherSummaryToText(weatherSummary);
+        }
+      } catch {
+        // GPX un-parseable or weather fetch failed — leave default.
+      }
+      if (!cancelled) setWeather(weatherSummary);
+
+      try {
+        const res = await fetch('/api/brief', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            courseSlug: race.meta.courseSlug,
+            raceName: race.meta.name,
+            raceDate: race.meta.date,
+            goalDisplay: race.meta.goalDisplay,
+            weatherText,
+            phases: race.plan.phases.map(p => ({
+              index: p.index,
+              label: p.label,
+              startMi: p.start_mi,
+              endMi: p.end_mi,
+              paceSPerMi: p.target_pace_s_per_mi,
+              grade: p.mean_grade_pct,
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        if (!cancelled) setBrief(await res.json());
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // race.slug is stable per page; re-run on race id change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [race.slug]);
 
   return (
     <div className="tile">
       <div className="tile-h">
         <div>
-          <div className="tile-sub">Race-morning brief</div>
-          <div className="tile-lbl">{brief ? 'Coach says:' : 'Generate brief'}</div>
+          <div className="tile-sub">{titleParts.sub}</div>
+          <div className="tile-lbl">{loading ? 'Coach is reading the course…' : brief ? titleParts.lbl : 'Coach unavailable'}</div>
         </div>
         {brief?.stub && <span className="chip">FALLBACK · NO API KEY</span>}
+        {weather?.source === 'historical' && !brief?.stub && (
+          <span className="chip" style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+            padding: '3px 7px', borderRadius: 3,
+            background: 'rgba(150,150,150,.18)', color: 'var(--color-t2)',
+          }}>USING LAST YR WX</span>
+        )}
       </div>
-      {!brief && (
-        <>
-          <textarea
-            className="runcino-input"
-            placeholder="Paste forecast (e.g., '52°F start, 60°F finish, NW wind 8 mph, overcast') — or leave blank for seasonal default."
-            value={weather}
-            onChange={e => setWeather(e.target.value)}
-            rows={3}
-            style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
-          />
-          <button className="btn btn--primary" onClick={generate} disabled={loading} style={{ alignSelf: 'flex-start' }}>
-            {loading ? 'Coach is writing…' : '✦ Generate'}
-          </button>
-        </>
-      )}
       {brief && (
-        <>
-          <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-            {brief.narrative}
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="btn btn--ghost" onClick={() => { setBrief(null); }} style={{ fontSize: 12 }}>↻ Regenerate</button>
-          </div>
-        </>
+        <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+          {brief.narrative}
+        </div>
       )}
       {err && (
         <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
