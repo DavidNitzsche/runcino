@@ -144,6 +144,11 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
   /** Goal pace in seconds-per-mile, used to convert the slowdown
    *  percentage into a per-mile seconds adjustment for the brief. */
   goalPaceSPerMi?: number;
+  /** Race distance in miles. Heat impact scales with race duration —
+   *  a half marathon sees roughly half the heat impact of a marathon
+   *  in the same conditions because exposure time is half. Required
+   *  for the slowdown calc to reflect distance correctly. */
+  raceDistanceMi?: number;
   /** Runner ability tier — picks the right Maughan curve. Default
    *  'mid_pack'. Future: derive from VDOT or recent race times. */
   abilityTier?: 'elite' | 'mid_pack' | 'slow';
@@ -374,6 +379,7 @@ class CoachImpl implements Coach {
           altitudeAcclimatized: input.altitudeAcclimatized,
           runnerPaceSPerMi: input.goalPaceSPerMi,
           abilityTier: input.abilityTier ?? 'mid_pack',
+          raceDistanceMi: input.raceDistanceMi,
         })
       : null;
     const slowdownLine = slowdown ? formatSlowdownForBrief(slowdown) : null;

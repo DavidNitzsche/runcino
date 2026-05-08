@@ -51,6 +51,13 @@ export interface WeatherSlowdownInput {
    *  curve. 'elite' (sub-3:00 marathon), 'mid_pack' (3:00-4:30),
    *  'slow' (4:30+). Default: 'mid_pack'. */
   abilityTier?: 'elite' | 'mid_pack' | 'slow';
+  /** Race distance in miles. Heat impact scales with race duration
+   *  (cumulative heat load): a half marathon at 65°F costs roughly
+   *  half what a marathon at the same temp costs because the runner
+   *  is exposed for ~half as long. Without this, the calc was
+   *  marathon-anchored across all distances. Default: 26.2 (marathon
+   *  baseline). */
+  raceDistanceMi?: number;
 }
 
 export interface WeatherSlowdown {
@@ -81,9 +88,44 @@ const ABILITY_KEY: Record<NonNullable<WeatherSlowdownInput['abilityTier']>, 'eli
   slow:     'slowMarathonerPct',
 };
 
+/** Distance scaling factor for heat + altitude impact. The Maughan/
+ *  Hadley research is calibrated for marathon distance — cumulative
+ *  heat load over 3+ hours. Shorter races have proportionally less
+ *  exposure: a half is roughly half the impact, a 5K nearly negligible.
+ *  Ultras compound the other direction. */
+function distanceScaleFactor(raceDistanceMi: number | undefined): number {
+  const d = raceDistanceMi ?? 26.2;
+  if (d >= 50)   return 1.5;   // 50+ mile ultra
+  if (d >= 22)   return 1.0;   // marathon
+  if (d >= 11)   return 0.5;   // half marathon
+  if (d >= 7)    return 0.35;  // 10K
+  if (d >= 3)    return 0.25;  // 5K
+  return 0.20;                  // shorter than 5K — tiny exposure
+}
+
+/** Linearly interpolate a percentage within a banded range. When
+ *  the input value sits at the low edge of a band, returns the
+ *  band's low pct; at the high edge, returns the high pct. Removes
+ *  the artificial "always mid-band" jump from the prior version. */
+function bandLerp(
+  value: number,
+  bandLow: number,
+  bandHigh: number,
+  pctLow: number,
+  pctHigh: number,
+): number {
+  if (bandHigh === bandLow) return pctLow;
+  const t = Math.max(0, Math.min(1, (value - bandLow) / (bandHigh - bandLow)));
+  return pctLow + t * (pctHigh - pctLow);
+}
+
 export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlowdown {
   const tier = input.abilityTier ?? 'mid_pack';
   const tierKey = ABILITY_KEY[tier];
+  const distScale = distanceScaleFactor(input.raceDistanceMi);
+  const distLabel = input.raceDistanceMi != null && input.raceDistanceMi < 22
+    ? input.raceDistanceMi >= 11 ? 'half-marathon' : input.raceDistanceMi >= 7 ? '10K' : '5K'
+    : 'marathon';
 
   // ── Heat component ───────────────────────────────────────────
   let heatPct = 0;
@@ -91,13 +133,14 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
 
   if (input.dewpointF != null) {
     // Td-aware path — use Tair+Td sum table (Hadley framework, more
-    // accurate than Tair alone). Mid-band of the row.
+    // accurate than Tair alone). Linear-interpolated within the band
+    // so cool-edge conditions get the band-low pct rather than mid.
     const sum = input.tairF + input.dewpointF;
     const row = TEMP_DEWPOINT_SUM_ADJUSTMENT.value.find(r =>
       sum >= r.sumLowF && (r.sumHighF == null || sum <= r.sumHighF)
     );
-    if (row && row.pctLow != null && row.pctHigh != null) {
-      heatPct = (row.pctLow + row.pctHigh) / 2;
+    if (row && row.pctLow != null && row.pctHigh != null && row.sumHighF != null) {
+      heatPct = bandLerp(sum, row.sumLowF, row.sumHighF, row.pctLow, row.pctHigh);
       heatRationale = `${input.tairF}°F + ${input.dewpointF}°F dewpoint (sum ${sum}) — ${row.notes.toLowerCase()}.`;
     }
   } else {
@@ -106,21 +149,20 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
       input.tairF >= r.tairFLow && input.tairF <= r.tairFHigh
     );
     if (row) {
-      heatPct = (row.slowdownPctLow + row.slowdownPctHigh) / 2;
+      heatPct = bandLerp(input.tairF, row.tairFLow, row.tairFHigh, row.slowdownPctLow, row.slowdownPctHigh);
       if (heatPct > 0) {
-        heatRationale = `${input.tairF}°F start — heat costs about ${heatPct.toFixed(1)}% for a ${tier === 'elite' ? 'sub-3 marathoner' : tier === 'slow' ? '4:30+ runner' : 'mid-pack runner'}.`;
+        heatRationale = `${input.tairF}°F start — heat costs about ${heatPct.toFixed(1)}% (marathon-equivalent) for a ${tier === 'elite' ? 'sub-3 marathoner' : tier === 'slow' ? '4:30+ runner' : 'mid-pack runner'}.`;
       }
     }
 
     // Cross-check against Maughan tier table when in marathon range.
+    // Maughan values are point estimates per ability tier, not bands.
     const maughanRow = MAUGHAN_HEAT_SLOWDOWN.value.find(r => Math.abs(r.tairF - input.tairF) <= 5);
     if (maughanRow) {
       const tierPct = maughanRow[tierKey];
-      // Use the tier-specific Maughan number when available (more
-      // ability-aware than the single-number fallback).
       heatPct = tierPct;
       if (tierPct > 0) {
-        heatRationale = `${input.tairF}°F (Maughan/Ely/Vihma synthesis): about ${tierPct.toFixed(1)}% slowdown for a ${tier === 'elite' ? 'sub-3' : tier === 'slow' ? '4:30+' : '3:30'} runner.`;
+        heatRationale = `${input.tairF}°F (Maughan/Ely/Vihma marathon synthesis): about ${tierPct.toFixed(1)}% slowdown for a ${tier === 'elite' ? 'sub-3' : tier === 'slow' ? '4:30+' : '3:30'} runner.`;
       }
     }
   }
@@ -129,6 +171,16 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
   if (input.tairF < 50) {
     heatPct = 0;
     heatRationale = null;
+  }
+
+  // Distance scaling: Maughan/Hadley data is marathon-anchored;
+  // shorter races see proportionally less cumulative heat load.
+  if (heatPct > 0 && distScale !== 1.0) {
+    const scaled = heatPct * distScale;
+    heatRationale = heatRationale && distLabel !== 'marathon'
+      ? `${heatRationale} Scaled to ${distLabel} (×${distScale}): ${scaled.toFixed(1)}%.`
+      : heatRationale;
+    heatPct = scaled;
   }
 
   // ── Altitude component ───────────────────────────────────────
@@ -145,12 +197,22 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
         altitudeRationale = `${input.elevationFt} ft elevation${acclim ? ' (acclimatized)' : ' (acute)'}: about ${altitudePct.toFixed(1)}% slowdown.`;
       }
     }
+    // Altitude impact also scales with race duration: a marathon at
+    // altitude is brutal; a 5K at altitude is a brief deficit.
+    if (altitudePct > 0 && distScale !== 1.0) {
+      altitudePct = altitudePct * distScale;
+    }
   }
 
   // ── Wind component ───────────────────────────────────────────
   let windSecPerMi = 0;
   let windRationale: string | null = null;
-  if (input.windMph != null && input.windMph >= 5) {
+  // Wind floor: <5 mph is essentially noise (table starts at 5 mph,
+  // and at that level the net out-and-back cost is ~1-2 sec/mi —
+  // inside any pacing variability). Skip below 5 mph entirely.
+  // At 5 mph we still skip because after the 0.35 out-and-back factor
+  // the cost rounds to 1-2 sec/mi which is a noise-band callout.
+  if (input.windMph != null && input.windMph > 5) {
     // Pick the closest pace band from the wind table.
     const tablePace = input.runnerPaceSPerMi != null && input.runnerPaceSPerMi <= 420 ? '6:00' : '8:00';
     const row = WIND_PER_MILE_COST.value.slice().reverse().find(r => input.windMph! >= r.windMph);
@@ -160,8 +222,10 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
       // brief always assumes net headwind — point-to-points should
       // override).
       windSecPerMi = Math.round(windSecPerMi * 0.35);
-      if (windSecPerMi >= 1) {
+      if (windSecPerMi >= 2) {
         windRationale = `${input.windMph} mph wind — net cost on an out-and-back course about +${windSecPerMi} sec/mi.`;
+      } else {
+        windSecPerMi = 0;  // Inside noise band; suppress.
       }
     }
   }

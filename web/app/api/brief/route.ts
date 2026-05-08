@@ -128,6 +128,7 @@ export async function POST(req: Request) {
       goalPaceSPerMi: goalPaceSPerMi ?? undefined,
       abilityTier,
       elevationFt,
+      raceDistanceMi: totalMi > 0 ? totalMi : undefined,
     });
   } catch (e) {
     return new Response(
