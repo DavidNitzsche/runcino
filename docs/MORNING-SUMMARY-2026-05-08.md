@@ -6,7 +6,7 @@ we set it up earlier in the session).
 
 ## TL;DR
 
-**16 commits + 1 audit + 1 fresh end-of-night audit + this summary.**
+**21 commits + 2 audits (start + end) + this summary.**
 Three arcs:
 
 1. **VDOT becomes a complete coaching layer** — tier classification,
@@ -42,8 +42,12 @@ Research/01, Research/03, Research/14, Research/19, Research/24).
 | **`831d469`** | **Easy ratio classifier — research-backed** | **The 100% bug. New cascade: name patterns → VDOT pace zones → HR threshold → long-run default → explicit unknown bucket. Phase-aware "On target" verdict. UI shows easy/hard/unknown 3-segment bar with low-confidence chip.** |
 | `d393516` | Phase + quality count match the engine | TrainingPulseTile pulls phase from /api/coach/today (engine wins). Quality day count now also uses HARD_NAME_RE not just Strava workoutType=3 |
 | `a233c36` | HR zones tile + HRmax/RHR profile fields | New HrZonesCard derived from HRMAX_ZONES_5 (Research/03). HRmax priority: measured > Tanaka estimate (208 - 0.7×age) > hidden. Profile editor adds HRmax + RHR inputs |
-| `9300cca` | Quality day count + Daniels long-run cap on Training Pulse | "X / Y QUALITY THIS WEEK" line; "≤ X.X MI · DANIELS +10% RULE" next-week cap with phase ceiling |
+| `9300cca` | Quality day count + Daniels long-run cap on Training Pulse | "X / Y QUALITY THIS WEEK" line; "≤ X.X MI" next-week cap with phase ceiling |
 | `60be8b5` | Phase-aware guidance card (taper / post-race / rebuild) | New PhaseGuidanceCard between CoachTodayCard and Next30DaysCard. Wires taper.ts (was unwired) + recovery_protocols.POST_RACE_STAGES (was unwired). Hidden in BASE/BUILD/PEAK |
+| `02922de` | Morning summary refresh (this doc) | First pass |
+| `0d54cb7` | Dedupe 5 parallel /api/coach/today fetches via shared CoachTodayContext | 5x → 1x fetch. Dashboard also paints together instead of piecemeal as each card resolves |
+| `a0bdd1b` | Cutback week detection + Daniels 3+1 cycle indicator | Detects cutback weeks in 8wk strip (≥30% drop from prior 3wk max). Surfaces "CUTBACK RECOMMENDED NEXT WEEK · 3W SINCE LAST" / "WEEK 2 OF BUILD CYCLE" / "CUTBACK WEEK · DOWN-VOLUME ON PURPOSE" depending on cycle position. Hidden in TAPER/POST-RACE/REBUILD. Wires CUTBACK_FREQUENCY (was unwired). Audit dropped here too |
+| **`0ea5c64`** | **Audit-flagged fixes** | **Real long-run-cap bug fix (dashboard math diverged from engine — TAPER 0.6 vs 0.65, POST-RACE 0.5 vs 0.4, etc). Plus HydrationTile + NoVdotPanel now import doctrine instead of inlining hardcoded copies of the constants** |
 
 (Plus earlier in the session: `269f8d9` brief owns description, `9f72bb9` brief reads training state, `0fd5408` weather + brief auto-load, `5b406b2` brief horizon, `eadb51e` VDOT dashboard tile, `afa4410` VDOT pipeline.)
 
@@ -178,9 +182,21 @@ without needing the Strava metadata.
 
 ## Audit findings
 
-The fresh end-of-night audit is at `docs/AUDIT-2026-05-08-final.md`.
-It supersedes the early-session audit and reflects everything shipped
-during the night.
+The fresh end-of-night audit is at `docs/AUDIT-2026-05-08-final.md`
+(650 lines). It supersedes the early-session audit and reflects
+everything shipped during the night.
+
+**The end-of-night audit found one real bug + three doctrine-inline
+issues — all fixed in `0ea5c64` before this summary.**
+
+  - **Real bug:** TrainingPulseTile's long-run cap multipliers
+    disagreed with the engine's longRunTarget. Dashboard said one
+    cap, prescription said another. Fixed: dashboard now uses the
+    engine's per-phase constants verbatim.
+  - **Doctrine inlining:** HydrationTile + NoVdotPanel had copies
+    of FLUID_DURING_RACE, PRE_RACE_HYDRATION, and VDOT_FIELD_TESTS
+    hand-written into the components. Fixed: both now import from
+    `coach/doctrine` so doctrine drift propagates automatically.
 
 **Key remaining gaps** (audit recommendations queue):
 
@@ -231,11 +247,38 @@ during the night.
 3. **Open AFC race detail** — Hydration tile is at the bottom; Brief
    has ▸ WHY? toggle now.
 
-## Open questions
+## Audit's prioritized #1 finding for next session
 
-- Server-side profile (Postgres user table) vs continued localStorage?
-  The grading layer wants age + sex; the engine wants HRmax. Until
-  we have auth, localStorage is fine. Worth scoping the migration?
+**Wire `runner-profile.ts` to server-side `CoachState`.** The biggest
+unfinished architectural piece. Currently:
+
+- The runner's age, sex, HRmax, RHR live in localStorage.
+- The dashboard reads them client-side — VDOT tile shows age-graded
+  VDOT, HR zones tile shows BPM ranges, profile editor saves them.
+- BUT: the server-side coach engine never sees them. `coach.briefRaceMorning`,
+  `coach.briefDailyTraining`, and `coach.assessReadiness` all run
+  with no profile. The brief never says "exceptional VDOT for a
+  60yo woman" because the route doesn't have age + sex.
+- The engine's "yesterday was hard" gate is still hardcoded
+  `152 BPM` even when the runner has set a measured HRmax of 175.
+
+Closing this would unlock:
+  - LLM brief contextualization on age + sex
+  - HRmax-aware "yesterday hard" detection
+  - Karvonen / HRR zones (need RHR server-side)
+  - Future age-specific recovery rules from Research/14
+
+Two paths:
+  1. Pass the profile from client to API on each call (header or
+     body). Quick, no DB migration.
+  2. Migrate to a Postgres `runner_profiles` table once auth is in.
+     Cleaner long-term but requires authentication.
+
+(1) is the right move for tonight's followup; (2) is the migration
+when auth lands.
+
+## Other open questions
+
 - WMA age-grading tables (vendor the full lookup vs continue with
   the Daniels-extrapolated decline approximation)?
 - HealthKit integration as the next big M2 unlock — would close
@@ -244,3 +287,7 @@ during the night.
   static-placeholder surface. Worth replacing with a real day view
   (the engine already produces every day's prescription via
   simulateNext30Days).
+- Engine's parallel post-race ladder (lib/coach-engine.ts:228-278)
+  vs `recovery_protocols.ts.POST_RACE_STAGES` — same shape, two
+  sources of truth. Consolidate into a single doctrine-driven
+  picker?
