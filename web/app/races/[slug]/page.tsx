@@ -549,13 +549,12 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
                   <span className="v">{Math.round(peakFt)}<small>ft</small></span>
                 </div>
               </div>
-              <p className="pc-lede">{narrative.lede}</p>
-              <p className="pc-para">{narrative.para1}</p>
-              <p className="pc-para">{narrative.para2}</p>
-              {/* Adaptive coach brief — auto-loads, adapts language by
-                  daysUntil(raceDate). Folded into the poster
-                  description block per design: same place every visit,
-                  always relevant, never a "click to generate" gate. */}
+              {/* The static narrative paragraphs that used to live here
+                  ("13.1-mile course built from your uploaded GPX...",
+                  "five sectors", "Goal: 1:35:00. Strategy: even effort")
+                  were redundant with the data row above + the phase
+                  legend below. Pulled out so the brief — which is the
+                  actual coaching read — owns the description column. */}
               {!isDebrief && <CoachBriefBlock race={race} />}
             </>
           )}
@@ -1538,20 +1537,30 @@ function CoachBriefBlock({ race }: { race: SavedRace }) {
   const { brief, weather, loading, err, days } = useAdaptiveBrief(race);
   const titleParts = briefTitleFor(days);
   const showLastYrChip = weather?.source === 'historical' && !brief?.stub;
+  const horizonLabel = days <= 0 ? 'Race morning'
+                     : days === 1 ? '1 day out'
+                     : days <= 7 ? `${days} days out · race week`
+                     : days <= 21 ? `${days} days out · approach`
+                     : `${days} days out`;
 
   return (
     <div style={{
-      marginTop: 18,
-      paddingTop: 16,
-      borderTop: '1px solid rgba(255,255,255,.1)',
-      display: 'flex', flexDirection: 'column', gap: 10,
+      display: 'flex', flexDirection: 'column', gap: 14,
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      {/* Lightweight provenance row: horizon (e.g. "100 days out ·
+          approach") + small chips when relevant. No big section
+          header — the brief itself is the headline. */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <span style={{
           fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
-          letterSpacing: '1.6px', textTransform: 'uppercase',
+          letterSpacing: '1.4px', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,.45)',
+        }}>{horizonLabel}</span>
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.4px', textTransform: 'uppercase',
           color: 'var(--race)',
-        }}>{titleParts.sub}</span>
+        }}>· {titleParts.sub}</span>
         {brief?.stub && (
           <span style={{
             fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
@@ -1568,20 +1577,24 @@ function CoachBriefBlock({ race }: { race: SavedRace }) {
         )}
       </div>
       {loading && (
-        <p className="pc-para" style={{ color: 'rgba(255,255,255,.45)', fontStyle: 'italic' }}>
-          Coach is reading the course…
+        <p style={{
+          fontSize: 16, lineHeight: 1.6, color: 'rgba(255,255,255,.4)',
+          fontStyle: 'italic', margin: 0,
+        }}>
+          Coach is reading the course and your training…
         </p>
       )}
       {brief && !loading && (
-        <p className="pc-para" style={{
-          color: 'rgba(255,255,255,.85)', whiteSpace: 'pre-wrap',
-          borderLeft: '2px solid var(--race)', paddingLeft: 14,
+        <p style={{
+          fontSize: 16, lineHeight: 1.65,
+          color: 'rgba(255,255,255,.92)', whiteSpace: 'pre-wrap',
+          margin: 0,
         }}>
           {brief.narrative}
         </p>
       )}
       {err && !loading && (
-        <p className="pc-para" style={{ color: 'rgba(252,77,84,.85)' }}>
+        <p style={{ fontSize: 14, color: 'rgba(252,77,84,.85)', margin: 0 }}>
           Coach unavailable: {err}
         </p>
       )}
