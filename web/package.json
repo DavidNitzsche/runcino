@@ -14,7 +14,8 @@
     "generate-gpx": "node scripts/make-big-sur-gpx.mjs",
     "retrospective": "tsx scripts/retrospective.ts",
     "plan-week": "tsx scripts/plan-week.ts",
-    "weather": "tsx scripts/weather.ts"
+    "weather": "tsx scripts/weather.ts",
+    "check-doctrine-drift": "tsx scripts/check-doctrine-drift.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
