@@ -11,6 +11,8 @@ import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
 import { useActivities, onlyRuns } from '../../lib/strava-activities';
 import { rollupYear, weeklyAvgHr, weeklyAvgCadence, weeklyMiles } from '../../lib/strava-stats';
+import { HubProvider, useHub } from '../../lib/hub-provider';
+import { ReadinessBanner } from '../../components/coaching/ReadinessBanner';
 
 const HEALTHKIT_METRICS: Array<{ label: string; sub: string; pill: string; }> = [
   { label: 'Resting HR',         sub: 'bpm', pill: 'M2 · HealthKit' },
@@ -20,11 +22,23 @@ const HEALTHKIT_METRICS: Array<{ label: string; sub: string; pill: string; }> = 
 ];
 
 export default function HealthPage() {
+  return (
+    <HubProvider>
+      <HealthInner />
+    </HubProvider>
+  );
+}
+
+function HealthInner() {
   const [now, setNow] = useState<Date | null>(null);
   const { activities } = useActivities();
+  const hub = useHub();
   useEffect(() => { setNow(new Date()); }, []);
 
   const runs = activities ? onlyRuns(activities) : null;
+  const readiness = hub?.coach.coach?.readiness?.answer ?? null;
+  const rpe = hub?.coach.state?.rpe ?? null;
+  const recoveryWindowEndsISO = hub?.coach.state?.recoveryWindowEndsISO ?? null;
 
   return (
     <>
@@ -39,9 +53,51 @@ export default function HealthPage() {
               <h1>Health</h1>
               <div className="sub">
                 {runs && runs.length > 0
-                  ? <>Strava is feeding the HR / cadence / load panels below. HealthKit-only metrics light up in M2.</>
+                  ? <>Today&apos;s readiness verdict + the signals driving it. Strava + RPE inputs feed the panels; HealthKit metrics light up in M2.</>
                   : <>Connect Strava (and HealthKit in M2) to populate.</>}
               </div>
+            </div>
+          </div>
+
+          {/* Today's recovery picture — composite from the engine + RPE */}
+          <SectionHeader title="Today's recovery picture" sub="Composite verdict + the signals driving it" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+            {readiness && <ReadinessBanner readiness={readiness} />}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+              {readiness?.acwr != null && (
+                <RecoveryStat
+                  label="ACWR"
+                  value={readiness.acwr.toFixed(2)}
+                  sub="Acute:chronic load ratio"
+                  status={readiness.acwr > 1.5 || readiness.acwr < 0.5 ? 'bad' : (readiness.acwr > 1.3 || readiness.acwr < 0.7) ? 'warn' : 'ok'}
+                  citation="Research/00b §load"
+                />
+              )}
+              {readiness?.easyShare != null && (
+                <RecoveryStat
+                  label="Easy share · 14d"
+                  value={`${Math.round(readiness.easyShare * 100)}%`}
+                  sub="Polarized target ≥80%"
+                  status={readiness.easyShare >= 0.78 ? 'ok' : readiness.easyShare >= 0.65 ? 'warn' : 'bad'}
+                  citation="Research/00a §3.1"
+                />
+              )}
+              {rpe?.avg7d != null && (
+                <RecoveryStat
+                  label="Avg RPE · 7d"
+                  value={rpe.avg7d.toFixed(1)}
+                  sub={rpe.drift != null ? `Drift ${rpe.drift >= 0 ? '+' : ''}${rpe.drift.toFixed(1)} vs prior 7d` : 'Self-reported effort'}
+                  status={rpe.drift != null && rpe.drift >= 1.5 ? 'bad' : rpe.drift != null && rpe.drift >= 1 ? 'warn' : 'ok'}
+                  citation="Research/00b §RPE"
+                />
+              )}
+              <RecoveryStat
+                label="In recovery window?"
+                value={recoveryWindowEndsISO ? 'Yes' : 'No'}
+                sub={recoveryWindowEndsISO ? `Until ${recoveryWindowEndsISO}` : 'Standard training day'}
+                status={recoveryWindowEndsISO ? 'warn' : 'ok'}
+                citation="Research/00b §post-race"
+              />
             </div>
           </div>
 
@@ -60,6 +116,30 @@ export default function HealthPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function RecoveryStat({ label, value, sub, status, citation }: {
+  label: string;
+  value: string;
+  sub: string;
+  status: 'ok' | 'warn' | 'bad';
+  citation: string;
+}) {
+  const color = status === 'ok' ? 'var(--color-success)' : status === 'warn' ? 'var(--color-attention)' : 'var(--color-warning)';
+  return (
+    <div className="tile" style={{ borderLeft: `3px solid ${color}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 32, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>{sub}</div>
+      <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+        {citation}
+      </div>
+    </div>
   );
 }
 

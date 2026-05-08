@@ -14,6 +14,8 @@ import { use, useEffect, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
 import { formatShort } from '../../../lib/dates';
 import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-utils';
+import { HubProvider, useHub } from '../../../lib/hub-provider';
+import { RpeInput } from '../../../components/RpeInput';
 
 interface RichActivity {
   id: number;
@@ -39,6 +41,14 @@ interface RichActivity {
 }
 
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <HubProvider>
+      <RunDetailInner params={params} />
+    </HubProvider>
+  );
+}
+
+function RunDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [activity, setActivity] = useState<RichActivity | null | 'loading'>('loading');
   const [error, setError]       = useState<string | null>(null);
@@ -88,7 +98,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   }
 
   if (activity === 'loading') {
-    return <Shell><div className="hint" style={{ padding: 40 }}>Loading run…</div></Shell>;
+    return <Shell><div style={{ minHeight: 480 }} aria-busy="true" /></Shell>;
   }
   if (!activity) {
     return (
@@ -131,6 +141,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         <StatsTile activity={activity} />
       </div>
 
+      <PrescriptionVsActualTile activity={activity} />
+
+      <PostRunRpeTile activity={activity} />
+
       <ShoeTile
         shoes={shoes}
         shoeId={shoeId}
@@ -142,6 +156,139 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       {activity.description && <DescriptionTile description={activity.description} />}
     </Shell>
   );
+}
+
+/* ── Prescription vs actual ──────────────────────────────────
+   The 'how did this match what coach prescribed' tile. Looks up
+   the run's date in hub.coach.weekShape or hub.coach.next30Days,
+   surfaces type/distance/pace prescribed, then renders deltas vs
+   what actually happened. Hidden when there's no match (e.g. an
+   ad-hoc run on a rest day). */
+function PrescriptionVsActualTile({ activity }: { activity: RichActivity }) {
+  const hub = useHub();
+  if (!hub) return null;
+
+  // Find a prescription on the run's date — prefer weekShape (richest
+  // data), fall back to next30Days.
+  const pres = hub.coach.today?.weekShape?.find(d => d.date === activity.date)
+            ?? hub.coach.today?.next30Days?.find(d => d.date === activity.date)
+            ?? null;
+  if (!pres) {
+    return (
+      <div className="tile" style={{ borderStyle: 'dashed', marginBottom: 10 }}>
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub">Prescription vs actual</div>
+            <div className="tile-lbl">No prescription on file for {activity.date}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4 }}>
+          Either a rest day, an ad-hoc run, or outside the engine&apos;s 30-day forecast. The run still counts toward training load.
+        </div>
+      </div>
+    );
+  }
+
+  const distDelta = activity.distanceMi - pres.distanceMi;
+  const distDeltaPct = pres.distanceMi > 0 ? (distDelta / pres.distanceMi) * 100 : 0;
+  const presPaceMid = ('paceTargetSPerMi' in pres && pres.paceTargetSPerMi)
+    ? (pres.paceTargetSPerMi.lowS + pres.paceTargetSPerMi.highS) / 2
+    : null;
+  const paceDelta = presPaceMid != null ? activity.paceSPerMi - presPaceMid : null;
+
+  // Verdict — "matched" / "longer" / "shorter" / "faster" / "slower" combinations.
+  const verdict = (() => {
+    const distOk = Math.abs(distDeltaPct) < 10;
+    const paceOk = paceDelta == null || Math.abs(paceDelta) < 15;
+    if (distOk && paceOk) return { color: 'var(--color-success)', label: 'On plan' };
+    if (!distOk && distDelta > 0 && paceOk) return { color: 'var(--color-corporate)', label: 'Longer than planned' };
+    if (!distOk && distDelta < 0 && paceOk) return { color: 'var(--color-attention)', label: 'Shorter than planned' };
+    if (paceDelta != null && paceDelta < -15) return { color: 'var(--color-attention)', label: 'Faster than planned' };
+    if (paceDelta != null && paceDelta > 15) return { color: 'var(--color-corporate)', label: 'Slower than planned' };
+    return { color: 'var(--color-t2)', label: 'Off plan' };
+  })();
+
+  return (
+    <div className="tile" style={{ marginBottom: 10, borderLeft: `3px solid ${verdict.color}` }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub" style={{ color: verdict.color }}>Prescription vs actual</div>
+          <div className="tile-lbl">{verdict.label}</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', padding: '3px 7px', border: `1px solid ${verdict.color}`, color: verdict.color, borderRadius: 3 }}>
+          {pres.type.toUpperCase().replace(/_/g, ' ')}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 6 }}>
+        <CompareRow
+          label="Distance"
+          planned={`${pres.distanceMi.toFixed(1)} mi`}
+          actual={`${activity.distanceMi.toFixed(1)} mi`}
+          delta={`${distDelta >= 0 ? '+' : ''}${distDelta.toFixed(1)} mi`}
+          deltaColor={Math.abs(distDeltaPct) < 10 ? 'var(--color-success)' : distDelta > 0 ? 'var(--color-corporate)' : 'var(--color-attention)'}
+        />
+        <CompareRow
+          label="Pace target"
+          planned={presPaceMid != null ? `${formatPaceShort(presPaceMid)}/mi` : '—'}
+          actual={`${formatPaceShort(activity.paceSPerMi)}/mi`}
+          delta={paceDelta != null ? `${paceDelta >= 0 ? '+' : ''}${Math.abs(Math.round(paceDelta))}s` : '—'}
+          deltaColor={paceDelta == null ? 'var(--color-t3)' : Math.abs(paceDelta) < 15 ? 'var(--color-success)' : paceDelta < 0 ? 'var(--color-attention)' : 'var(--color-corporate)'}
+        />
+        <CompareRow
+          label="Type"
+          planned={pres.label}
+          actual={activity.name.slice(0, 30)}
+          delta=""
+          deltaColor="var(--color-t3)"
+        />
+      </div>
+      {'description' in pres && pres.description && (
+        <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--color-l2)', borderRadius: 6, fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5 }}>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', marginRight: 6 }}>WHAT WAS PRESCRIBED</span>
+          {pres.description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompareRow({ label, planned, actual, delta, deltaColor }: { label: string; planned: string; actual: string; delta: string; deltaColor: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 10px', background: 'var(--color-l2)', borderRadius: 6 }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: 11, color: 'var(--color-t3)' }}>plan {planned}</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>{actual}</span>
+        </div>
+        {delta && (
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 800, color: deltaColor, fontVariantNumeric: 'tabular-nums' }}>
+            {delta}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostRunRpeTile({ activity }: { activity: RichActivity }) {
+  const hub = useHub();
+  if (!hub) return null;
+  const existing = hub.recentRpe.find(e => e.workoutDate === activity.date) ?? null;
+  return (
+    <div className="tile" style={{ marginBottom: 10, borderStyle: existing ? 'solid' : 'dashed' }}>
+      <div className="tile-h">
+        <div className="tile-lbl">{existing ? 'Logged effort' : 'How did this run feel?'}</div>
+      </div>
+      <RpeInput workoutDate={activity.date} existing={existing} compact={existing != null} />
+    </div>
+  );
+}
+
+function formatPaceShort(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
