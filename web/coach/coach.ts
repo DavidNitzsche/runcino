@@ -498,13 +498,22 @@ class CoachImpl implements Coach {
   async assessReadiness(input: AssessReadinessInput): Promise<CoachDecision<ReadinessAssessment>> {
     const s = input.state;
     const ratio = acwr(s);
-    const phase = (s.races.nextA != null && s.races.inWindow.some(r => r.priority === 'A')) ? 'BUILD' : 'BASE_MAINTENANCE';
-    const target = intensityTarget(phase as Parameters<typeof intensityTarget>[0]);
-    const easy = s.intensity.easyShare14d;
-    const missedRunsSignal = s.recovery.daysSinceLastRun >= 3;
     const recentRace = s.races.recent[0] ?? null;
     const inRaceRecovery = recentRace != null && recentRace.daysAgo <= 14;
     const heavyBlock = s.flags.heavyBlockSuspected;
+    // Phase for the intensity target — POST_RACE wins when applicable
+    // so easyShareMin reflects the doctrine target for the runner's
+    // ACTUAL state (90% post-race, 70% build, 80% base, etc).
+    // Previously hardcoded BUILD/BASE_MAINTENANCE silently used 70-78%
+    // even when the runner was in recovery, which let the verdict say
+    // "READY" while the runner was running 51% easy in a 90%-target window.
+    const phase: 'POST_RACE' | 'BUILD' | 'BASE_MAINTENANCE' =
+      (inRaceRecovery || heavyBlock) ? 'POST_RACE'
+      : (s.races.nextA != null && s.races.inWindow.some(r => r.priority === 'A')) ? 'BUILD'
+      : 'BASE_MAINTENANCE';
+    const target = intensityTarget(phase);
+    const easy = s.intensity.easyShare14d;
+    const missedRunsSignal = s.recovery.daysSinceLastRun >= 3;
 
     let level: 'green' | 'yellow' | 'red' = 'green';
     let reason = '';

@@ -485,10 +485,12 @@ function NextFourWeeksSection({ now, hub, goalRace }: {
       return { label: 'Recovery week · reverse taper', phase: 'POST_RACE', color: 'var(--color-corporate)' };
     }
 
-    // Heuristic for everything else — cutback if miles drop sharply
+    // Heuristic for everything else — cutback if miles drop sharply.
+    // Skip during post-race recovery: any miles drop in the recovery
+    // window is BY DESIGN (volume rebuild), not a cutback.
     const priorWk = wIdx > 0 ? weeks[wIdx - 1] : null;
     const priorMi = priorWk ? priorWk.days.reduce((s, d) => s + (d.entry?.distanceMi ?? 0), 0) : 0;
-    if (priorWk && priorMi > 5 && totalMi < priorMi * 0.75) {
+    if (priorWk && priorMi > 5 && totalMi < priorMi * 0.75 && !inPostRaceRecovery) {
       return { label: 'Cutback week', phase: 'BASE', color: 'var(--color-corporate)' };
     }
 
