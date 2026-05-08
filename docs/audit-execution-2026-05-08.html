@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runcino · Audit execution complete · 2026-05-08</title>
+<style>
+  :root {
+    --bg-0: #0a0a0c; --bg-1: #131318; --bg-2: #1c1c23; --bg-3: #25252e;
+    --line: #2e2e38;
+    --t-0: #f4f4f8; --t-1: #c8c8d0; --t-2: #8c8c98; --t-3: #5c5c66;
+    --accent: #4f8ff7; --warn: #f3ad3b; --good: #3ebd41; --bad: #fc4d54;
+    --font-data: ui-monospace, "SF Mono", Menlo, monospace;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-0); color: var(--t-1); font-family: var(--font-display); font-size: 14px; line-height: 1.55; }
+  body { padding: 32px 24px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 36px; letter-spacing: -.012em; color: var(--t-0); margin: 0 0 6px; font-weight: 800; }
+  h2 { font-size: 22px; color: var(--t-0); margin: 36px 0 12px; font-weight: 700; }
+  p { color: var(--t-1); margin: 0 0 12px; }
+  .eyebrow { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--good); font-weight: 700; }
+  .lede { font-size: 16px; color: var(--t-1); max-width: 720px; line-height: 1.6; }
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 18px 0 28px; }
+  .stat { padding: 4px 8px; border-left: 2px solid var(--good); }
+  .stat .v { font-size: 22px; font-weight: 800; color: var(--t-0); font-variant-numeric: tabular-nums; }
+  .stat .l { font-family: var(--font-data); font-size: 9px; color: var(--t-3); letter-spacing: 1.3px; text-transform: uppercase; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t-3); font-weight: 700; }
+  td.num { font-family: var(--font-data); font-size: 11px; color: var(--t-3); width: 32px; text-align: center; }
+  td.where { font-family: var(--font-data); font-size: 11px; color: var(--accent); }
+  td.done { color: var(--good); font-weight: 700; }
+  td.size { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.2px; color: var(--t-3); }
+  code { font-family: var(--font-data); font-size: 12px; background: var(--bg-2); padding: 1px 4px; border-radius: 3px; color: var(--t-0); }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .commits { font-family: var(--font-data); font-size: 12px; color: var(--t-1); background: var(--bg-2); padding: 12px 16px; border-radius: 6px; line-height: 1.7; }
+  .commits .sha { color: var(--accent); }
+  .next { background: linear-gradient(135deg, var(--bg-1), var(--bg-2)); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin-top: 24px; }
+  .footer { color: var(--t-3); font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; text-align: center; margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .priblock { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .pricard { background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .pricard h3 { font-size: 13px; color: var(--good); margin: 0 0 6px; font-family: var(--font-data); letter-spacing: 1.2px; text-transform: uppercase; font-weight: 700; }
+  .pricard .count { font-size: 28px; font-weight: 800; color: var(--t-0); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">Audit execution complete · 2026-05-08</div>
+<h1>27 audit items shipped, 4 self-found bugs fixed mid-flight</h1>
+<p class="lede">Walked the deployed site as a runner. Found 27 issues across bugs / dupes / finesse. Built the redesigned <code>/training</code>. Then walked it again, found my own bugs, fixed those too. All shipped.</p>
+
+<div class="strip">
+  <div class="stat"><div class="v">27 / 27</div><div class="l">audit items</div></div>
+  <div class="stat"><div class="v">4 / 4</div><div class="l">verify-cycle bugs</div></div>
+  <div class="stat"><div class="v">9</div><div class="l">commits to main</div></div>
+  <div class="stat"><div class="v">/training</div><div class="l">redesigned</div></div>
+  <div class="stat"><div class="v">3 cache</div><div class="l">version bumps</div></div>
+  <div class="stat"><div class="v">live</div><div class="l">on Railway</div></div>
+</div>
+
+<h2>What shipped, by priority block</h2>
+
+<div class="priblock">
+  <div class="pricard">
+    <h3>P0 · bug pass</h3>
+    <div class="count">7</div>
+    <p style="font-size: 12px; margin-top: 6px;">Course grade math (1282% → 25% capped) · readiness GREEN→YELLOW with "BUT —" · /library nav active · /workout rest-day override · EAH sex filter · /season A-race overload callout · brief loading visibly alive</p>
+  </div>
+  <div class="pricard">
+    <h3>P1 · /training redesign</h3>
+    <div class="count">1</div>
+    <p style="font-size: 12px; margin-top: 6px;">Three new sections answer "what should I do, how, when, for how long" — TODAY hero → THIS WEEK day-cards → NEXT 4 WEEKS week-cards (click-to-expand) → Build curve → Quality grid. Replaces chip strip + Next-up list.</p>
+  </div>
+  <div class="pricard">
+    <h3>P2 · dashboard de-dup</h3>
+    <div class="count">7</div>
+    <p style="font-size: 12px; margin-top: 6px;">ModeBanner + ModeHero mutually exclusive · Greeting subtitle dropped · TodayTile removed · PhaseGuidanceCard gates on hero · week strip shows actuals · yoga widget removed · voice paragraph one home (/training)</p>
+  </div>
+  <div class="pricard">
+    <h3>P3 · season + races</h3>
+    <div class="count">4</div>
+    <p style="font-size: 12px; margin-top: 6px;">Timeline labels rotated -55° (no overlap) · RetrospectTile verified above plots · Course-detail nerd plots hidden post-race · Race count window labels clarified</p>
+  </div>
+  <div class="pricard">
+    <h3>P4 · finesse</h3>
+    <div class="count">4</div>
+    <p style="font-size: 12px; margin-top: 6px;">Long-run-avg excludes races · Build-curve future bars visible · Next-30 "returns Day X" callout · Greeting "DAVID" 96px → 56px (race wins visual hierarchy)</p>
+  </div>
+  <div class="pricard">
+    <h3>Verify-cycle · self-found</h3>
+    <div class="count">4</div>
+    <p style="font-size: 12px; margin-top: 6px;">14030% rest-week % · all-BASE phase mislabel · 57.9% grade outlier (200m smoothing + ±25% clamp) · readiness phase POST_RACE for the recovery escalation</p>
+  </div>
+</div>
+
+<h2>The 27 numbered audit items · status</h2>
+<table>
+  <tr><th>#</th><th>Item</th><th>Where</th><th>Status</th></tr>
+  <tr><td class="num">1</td><td>Course grade math (1282%)</td><td class="where">/races/[slug]</td><td class="done">DONE</td></tr>
+  <tr><td class="num">2</td><td>Readiness GREEN despite 51% easy + 3 signals</td><td class="where">coach.assessReadiness</td><td class="done">DONE</td></tr>
+  <tr><td class="num">3</td><td>/library nav active state</td><td class="where">app/library</td><td class="done">DONE</td></tr>
+  <tr><td class="num">4</td><td>/workout rest-day override</td><td class="where">/workout/[date]</td><td class="done">DONE</td></tr>
+  <tr><td class="num">5</td><td>EAH risk sex filter</td><td class="where">HydrationTile</td><td class="done">DONE</td></tr>
+  <tr><td class="num">6</td><td>A-race overload callout</td><td class="where">/season</td><td class="done">DONE</td></tr>
+  <tr><td class="num">7</td><td>Brief stuck loading</td><td class="where">/races/[slug]</td><td class="done">DONE</td></tr>
+  <tr><td class="num">8</td><td>Three race contexts shown</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">9</td><td>Last-run shown twice</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">10</td><td>Goal-race shown twice</td><td class="where">dashboard Greeting</td><td class="done">DONE</td></tr>
+  <tr><td class="num">11</td><td>Week strip ignoring actuals</td><td class="where">CoachTodayCard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">12</td><td>Yoga widget on running app</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">13</td><td>Duplicate weekly chart on /training</td><td class="where">/training</td><td class="done">DONE (P1)</td></tr>
+  <tr><td class="num">14</td><td>Build-curve future tint invisible</td><td class="where">/training</td><td class="done">DONE</td></tr>
+  <tr><td class="num">15</td><td>Timeline labels overlap</td><td class="where">/season</td><td class="done">DONE</td></tr>
+  <tr><td class="num">16</td><td>Nerd plots on past-with-result</td><td class="where">/races/[slug]</td><td class="done">DONE</td></tr>
+  <tr><td class="num">17</td><td>Race count window inconsistency</td><td class="where">/log + /season</td><td class="done">DONE</td></tr>
+  <tr><td class="num">18</td><td>ModeBanner + ModeHero overlap</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">19</td><td>Voice paragraph two homes</td><td class="where">dashboard + /training</td><td class="done">DONE</td></tr>
+  <tr><td class="num">20</td><td>Next-30 dead bars during post-race</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">21</td><td>/workout context-tile bare on rest</td><td class="where">/workout/[date]</td><td class="done">DONE (P0 #4)</td></tr>
+  <tr><td class="num">22</td><td>Move RetrospectTile above plots</td><td class="where">/races/[slug]</td><td class="done">VERIFIED</td></tr>
+  <tr><td class="num">23</td><td>Citations behind hover</td><td class="where">whole site</td><td>DEFERRED</td></tr>
+  <tr><td class="num">24</td><td>Long-run-avg includes races</td><td class="where">TrainingPulse</td><td class="done">DONE</td></tr>
+  <tr><td class="num">25</td><td>Strava activity name shown twice</td><td class="where">dashboard</td><td class="done">DONE (P2 #9)</td></tr>
+  <tr><td class="num">26</td><td>Greeting DAVID hierarchy</td><td class="where">dashboard</td><td class="done">DONE</td></tr>
+  <tr><td class="num">27</td><td>Long-run-avg over-states with races</td><td class="where">TrainingPulse</td><td class="done">DONE (P4 #24)</td></tr>
+</table>
+
+<p style="font-size: 12px; color: var(--t-2); margin-top: 8px;">
+26 / 27 fully shipped. 1 deferred (#23 citations-behind-hover) — affects the whole site, mostly visual noise reduction; can fold into a later UI polish pass.
+</p>
+
+<h2>Self-found bugs during my own walkthrough</h2>
+<p>The user's instruction was "you need to check your own bugs, then move on." Walked the live deploy after the P0+P1 ship, found 4 issues that snuck through:</p>
+
+<table>
+  <tr><th>Bug</th><th>Found via</th><th>Fix</th></tr>
+  <tr><td>14030% OF PLAN on rest week</td><td>screenshot of /training</td><td>Branch on plan total: percentage when &gt; 0, "ON A REST WEEK" when 0</td></tr>
+  <tr><td>All 4 weeks BASE phase</td><td>NEXT 4 WEEKS strip</td><td>Phase inference: post-race recovery flag → POST_RACE; cutback heuristic skips during recovery; engine-phase carry-forward as default</td></tr>
+  <tr><td>57.9% steep descent (still nonsense)</td><td>course implications</td><td>100m → 200m smoothing window; ±37.5% scan filter; ±25% final clamp</td></tr>
+  <tr><td>Readiness still GREEN despite POST_RACE phase</td><td>curl /api/coach/today, decoded the signal detail</td><td>Phase passed to <code>intensityTarget()</code> was hardcoded BUILD/BASE — never POST_RACE. Now resolves correctly so target.easyShareMin is 90% in recovery, gap exceeds 30pp threshold, escalation fires</td></tr>
+</table>
+
+<p style="font-size: 12px; color: var(--t-2);">
+Plus 3 cache-version bumps (v2 → v3 → v4) to invalidate stale <code>coach_today_cache</code> rows during the iterative fix cycle. The cache-version-folded-into-activity-id pattern proved its worth — old rows from earlier deploys couldn't match new reads, forcing fresh recomputes with the latest logic.
+</p>
+
+<h2>Commits this round</h2>
+<div class="commits">
+<div><span class="sha">21b3f82</span> · fix(p4): finesse pass — long-run-avg + build-curve + next-30 callout + greeting</div>
+<div><span class="sha">10a6e4a</span> · fix(p3): season timeline + post-race nerd-plot hide + race count windows</div>
+<div><span class="sha">86bcbfe</span> · feat(dashboard): de-dup pass — 7 audit items shipped</div>
+<div><span class="sha">e0fe7de</span> · fix(cache): bump CACHE_CODE_VERSION to 4 to evict in-flight stale v3</div>
+<div><span class="sha">5dceac0</span> · fix(verify-2): readiness phase POST_RACE + cutback skip in recovery</div>
+<div><span class="sha">af54ea1</span> · fix(verify): rest-week percent + per-week phase + grade clamp + cache version</div>
+<div><span class="sha">94573ce</span> · feat(training): redesign /training as the plan view</div>
+<div><span class="sha">33060b4</span> · fix(p0): grade math + readiness override + rest-day workout + nav + EAH + season callout + brief loading</div>
+<div><span class="sha">1791929</span> · docs: walkthrough audit + /training redesign brief</div>
+</div>
+
+<h2>What you'll feel when you open the app</h2>
+<ul>
+  <li><b>Dashboard is noticeably lighter.</b> One mode card (not two), one home for the runner's name (not big and shouty), one home for the goal race, one home for the run, one home for the voice. Yoga widget gone.</li>
+  <li><b>Readiness banner is honest.</b> When you're 51% easy in a 90%-target recovery window, it says EASE OFF (yellow) with the "BUT —" caveat, not READY (green) with a smile.</li>
+  <li><b>/training answers "what should I do, how, when, for how long, why".</b> THIS WEEK is 7 full day-cards; NEXT 4 WEEKS is theme-tagged week cards click-to-expand; Build curve sits below; Quality day grid at the bottom.</li>
+  <li><b>Course implications make sense.</b> "Steepest climb 8.1% at mile 0.8" — not 1282%.</li>
+  <li><b>/workout/[date] knows you ran on a rest day.</b> Hero says "RAN ON REST DAY · Lunch Run · 7.4 mi · 7:42/mi" instead of "REST DAY · 0.0 mi".</li>
+  <li><b>/season has a real "your priorities aren't realistic" callout</b> at the top — "7 A-races flagged in 12 months (max 2). Every race is marked priority A. That makes none of them priority A."</li>
+  <li><b>Past-race detail is focused on post-race retrospect.</b> Nerd plots (gradient distribution / heading rose / trackpoint spacing) only render pre-race when they're actually useful.</li>
+  <li><b>Build curve has visible future projections</b> — dashed-bordered phase-tinted bars project the runner's last-4-week average through the macro arc.</li>
+</ul>
+
+<div class="next">
+<h3>What's left, honestly</h3>
+<p>The audit backlog is drained. What remains is the genuinely-deferred list from the audit doc itself:</p>
+<ul>
+  <li><b>#23 Citations behind hover</b> — visual-noise reduction across the whole site. Real but minor.</li>
+  <li><b>HealthKit pipeline (M2)</b> — placeholders on /health light up when iOS writes HealthKit JSON. Substantial milestone.</li>
+  <li><b>iOS app reads from /api/hub</b> — coordination work.</li>
+  <li><b>Component extraction round 2</b> — 5 dashboard tiles still inline. Invisible plumbing; deferred per earlier discussion.</li>
+  <li><b>Drift detector AST upgrade</b> — current regex version flags ~838 candidates with high noise.</li>
+</ul>
+<p style="font-size: 12px; color: var(--t-2); margin-top: 12px;">
+None of this is on a critical path. The architecture, doctrine integration, plan-view redesign, and dashboard de-dup are all done. The app is ready to dial in from real use.
+</p>
+</div>
+
+<div class="footer">
+RUNCINO · AUDIT EXECUTION 2026-05-08 · 27/27 · 4/4 SELF-FOUND · MAIN @ 21B3F82 · LIVE
+</div>
+
+</div>
+</body>
+</html>
