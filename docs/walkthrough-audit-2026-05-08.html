@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runcino · Walkthrough audit + /training redesign · 2026-05-08</title>
+<style>
+  :root {
+    --bg-0: #0a0a0c; --bg-1: #131318; --bg-2: #1c1c23; --bg-3: #25252e;
+    --line: #2e2e38;
+    --t-0: #f4f4f8; --t-1: #c8c8d0; --t-2: #8c8c98; --t-3: #5c5c66;
+    --accent: #4f8ff7; --warn: #f3ad3b; --good: #3ebd41; --bad: #fc4d54;
+    --font-data: ui-monospace, "SF Mono", Menlo, monospace;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-0); color: var(--t-1); font-family: var(--font-display); font-size: 14px; line-height: 1.55; }
+  body { padding: 32px 24px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 36px; letter-spacing: -.012em; color: var(--t-0); margin: 0 0 6px; font-weight: 800; }
+  h2 { font-size: 22px; color: var(--t-0); margin: 36px 0 12px; font-weight: 700; }
+  h3 { font-size: 14px; color: var(--accent); margin: 18px 0 6px; font-family: var(--font-data); letter-spacing: 1.4px; text-transform: uppercase; font-weight: 700; }
+  h4 { font-size: 16px; color: var(--t-0); margin: 16px 0 8px; font-weight: 700; }
+  p { color: var(--t-1); margin: 0 0 12px; }
+  .eyebrow { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--warn); font-weight: 700; }
+  .lede { font-size: 16px; color: var(--t-1); max-width: 720px; line-height: 1.6; }
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 18px 0 28px; }
+  .stat { padding: 4px 8px; border-left: 2px solid var(--accent); }
+  .stat .v { font-size: 22px; font-weight: 800; color: var(--t-0); font-variant-numeric: tabular-nums; }
+  .stat .l { font-family: var(--font-data); font-size: 9px; color: var(--t-3); letter-spacing: 1.3px; text-transform: uppercase; margin-top: 2px; }
+  .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+  .card.bug { border-left: 3px solid var(--bad); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.ok { border-left: 3px solid var(--good); }
+  .card.fix { border-left: 3px solid var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t-3); font-weight: 700; }
+  td.num { font-family: var(--font-data); font-size: 11px; color: var(--t-3); width: 32px; text-align: center; }
+  td.where { font-family: var(--font-data); font-size: 11px; color: var(--accent); }
+  td.severity-bug { color: var(--bad); font-weight: 700; }
+  td.severity-warn { color: var(--warn); font-weight: 700; }
+  td.severity-fix { color: var(--accent); }
+  code { font-family: var(--font-data); font-size: 12px; background: var(--bg-2); padding: 1px 4px; border-radius: 3px; color: var(--t-0); }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .next { background: linear-gradient(135deg, var(--bg-1), var(--bg-2)); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin-top: 24px; }
+  .footer { color: var(--t-3); font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; text-align: center; margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; margin: 16px 0 28px; }
+  .toc a { text-decoration: none; padding: 8px 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; color: var(--t-1); display: block; transition: border-color 0.12s; }
+  .toc a:hover { border-color: var(--accent); }
+  .pri { display: inline-block; padding: 2px 6px; border-radius: 3px; font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
+  .pri-1 { background: rgba(252, 77, 84, 0.18); color: var(--bad); }
+  .pri-2 { background: rgba(243, 173, 59, 0.18); color: var(--warn); }
+  .pri-3 { background: rgba(79, 143, 247, 0.18); color: var(--accent); }
+  .grid-cols-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
+  .layout-sketch { background: var(--bg-2); border: 1px dashed var(--line); border-radius: 8px; padding: 16px; margin: 12px 0; font-family: var(--font-data); font-size: 11px; color: var(--t-2); white-space: pre; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">Walkthrough audit + /training redesign · 2026-05-08</div>
+<h1>What I saw, what's wrong, what we're building next</h1>
+<p class="lede">A runner walked through every surface on the deployed site. This doc captures the audit (working as intended / bugs / duplications / finesse) plus the redesigned <code>/training</code> page that addresses the underlying gap: the app shows data <em>about</em> training, not the <em>plan of</em> training.</p>
+
+<div class="strip">
+  <div class="stat"><div class="v">11</div><div class="l">surfaces walked</div></div>
+  <div class="stat"><div class="v">8</div><div class="l">working great</div></div>
+  <div class="stat"><div class="v">7</div><div class="l">real bugs</div></div>
+  <div class="stat"><div class="v">10</div><div class="l">confusing dupes</div></div>
+  <div class="stat"><div class="v">10</div><div class="l">finesse items</div></div>
+  <div class="stat"><div class="v">1</div><div class="l">major redesign</div></div>
+</div>
+
+<h2>Table of contents</h2>
+<div class="toc">
+  <a href="#working">1. Working great — leave alone</a>
+  <a href="#bugs">2. Real bugs — fix soon</a>
+  <a href="#confusing">3. Confusing — duplications + contradictions</a>
+  <a href="#finesse">4. Finesse — small tweaks</a>
+  <a href="#gap">5. The deeper gap — plan vs data</a>
+  <a href="#redesign">6. /training redesign spec</a>
+  <a href="#sequence">7. Work sequence</a>
+</div>
+
+<h2 id="working">1. Working great — leave alone</h2>
+<table>
+  <tr><th>Page</th><th>What works</th></tr>
+  <tr><td class="where">/races</td><td>Hero poster + rainbow phase strip + 4 secondary cards + completed list with goal-vs-finish delta. Strongest page on the site.</td></tr>
+  <tr><td class="where">/races/[slug] pre-race</td><td>Map + 5-phase color-coded pacing + per-mile splits + fueling plan with gels at MI 3.3/6.6/10. The detail you actually want race week.</td></tr>
+  <tr><td class="where">/races/[slug] post-race</td><td>Per-phase plan vs actual with deltas. Phase color match between pre + post is great.</td></tr>
+  <tr><td class="where">/calibration</td><td>Every dial in one place with SOURCE + Research/N citation. Settled.</td></tr>
+  <tr><td class="where">/library</td><td>Reference card grid with what-it-builds / structure / example / citation. Trustworthy.</td></tr>
+  <tr><td class="where">/log</td><td>Fastest times row + race results table.</td></tr>
+  <tr><td class="where">/profile</td><td>Birthday + sex + HRmax + RHR + health flags + equipment + connections. Settled.</td></tr>
+  <tr><td class="where">Daily-feedback tile</td><td>"You ran on a rest day — how did it feel?" with adaptive sublede. Best moment of personality on the site.</td></tr>
+</table>
+
+<h2 id="bugs">2. Real bugs — fix soon</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What</th><th>Why it matters</th></tr>
+  <tr><td class="num">1</td><td class="where">/races/[slug]</td><td class="severity-bug">Course implications: "Steepest climb 1282.5%" / "Steep descent 427.5%"</td><td><code>stats.maxUpGradePct</code> is already a percent; tile is multiplying or reading wrong scale. Whole tile unusable until fixed.</td></tr>
+  <tr><td class="num">2</td><td class="where">Dashboard + /health</td><td class="severity-bug">Verdict says READY (green) while same banner shows 51% easy share + 3 SIGNALS + Training Pulse says "Way too hard for post-race — drop intensity"</td><td>Recovery-window override path silently nullifies real signal accumulation. Erodes trust.</td></tr>
+  <tr><td class="num">3</td><td class="where">/library</td><td class="severity-bug">Library tab is highlighted with "Training" active</td><td>Wrong NavKey. Trivial fix.</td></tr>
+  <tr><td class="num">4</td><td class="where">/workout/[date] today</td><td class="severity-bug">Hero says "REST DAY · 0.0 mi" while the runner already ran 7.4 mi. Context shows "Distance 0.0 mi"</td><td>/training acknowledges the rest-day override; /workout/[date] doesn't. Same day, two different stories.</td></tr>
+  <tr><td class="num">5</td><td class="where">/races/[slug] EAH risk</td><td class="severity-bug">Risk list shows "Female sex — smaller body mass" for a male runner</td><td>Should filter by <code>profile.sex</code>.</td></tr>
+  <tr><td class="num">6</td><td class="where">/season annual race load</td><td class="severity-bug">"A-RACES 7 (max 2)" — every saved race got priority A by default</td><td>Real coaching insight buried as a small stat. The page knows but doesn't surface loudly.</td></tr>
+  <tr><td class="num">7</td><td class="where">/races/[slug]</td><td class="severity-bug">"Coach is reading the course and your training…" stuck on permanent loading</td><td>Brief generation broken or never resolves.</td></tr>
+</table>
+
+<h2 id="confusing">3. Confusing — duplications + contradictions</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What</th></tr>
+  <tr><td class="num">8</td><td class="where">Dashboard stack</td><td class="severity-warn">Mode banner says "Heavy-block recovery", hero card says "POST-RACE · WEEK 1 · 5 days since Sombrero", AND PhaseGuidanceCard says "DAY 12 SINCE BIG SUR · 26.2MI · EASY 30-50% peak volume." Three places, two different races, one runner.</td></tr>
+  <tr><td class="num">9</td><td class="where">Dashboard</td><td class="severity-warn">"LAST RUN 7.4 mi · 7:42/mi" appears in LAST RUN card AND TODAY tile right next to it. "Working on better form" appears twice.</td></tr>
+  <tr><td class="num">10</td><td class="where">Dashboard</td><td class="severity-warn">"Americas Finest City · 100 days · goal 1:35:00" appears as Greeting subtitle AND as a NEXT RACE card right below.</td></tr>
+  <tr><td class="num">11</td><td class="where">Dashboard "THIS WEEK"</td><td class="severity-warn">All 7 days show REST because the engine prescribed rest. But the runner ran Wed (6.7) and Fri (7.4). The week strip pretends the runs didn't happen — only TODAY tile shows them.</td></tr>
+  <tr><td class="num">12</td><td class="where">Dashboard</td><td class="severity-warn">"PAUSE STUDIO CITY · 34 CREDITS · No sessions scheduled" — yoga membership tracking on the running coach dashboard. Out of place.</td></tr>
+  <tr><td class="num">13</td><td class="where">/training</td><td class="severity-warn">"Mileage by week" chart and "Build curve" chart both show 12 weeks of bars. Duplicate.</td></tr>
+  <tr><td class="num">14</td><td class="where">/training Build curve</td><td class="severity-warn">Future-week phase-tinted bars are barely visible — phase legend exists but green tint for projections looks like empty space.</td></tr>
+  <tr><td class="num">15</td><td class="where">/season timeline</td><td class="severity-warn">Race name labels overlap and truncate ("...Half Marat...", "...Finest Ci..."). Hard to read.</td></tr>
+  <tr><td class="num">16</td><td class="where">/races/[slug] post-race</td><td class="severity-warn">RetrospectTile sits below COURSE DETAIL nerd plots (Gradient distribution, Heading rose, Trackpoint spacing) — research-grade plots that have no place after a race is done. Move retrospect UP, hide nerd plots post-race.</td></tr>
+  <tr><td class="num">17</td><td class="where">/log Race results</td><td class="severity-warn">6 races shown vs /season's "7 A-RACES" — different time windows but no labels. Numbers seem to disagree.</td></tr>
+</table>
+
+<h2 id="finesse">4. Finesse — small tweaks</h2>
+<table>
+  <tr><th>#</th><th>Where</th><th>What to tweak</th></tr>
+  <tr><td class="num">18</td><td class="where">Dashboard</td><td class="severity-fix">When ModeHero is showing, drop ModeBanner — they say overlapping things.</td></tr>
+  <tr><td class="num">19</td><td class="where">Dashboard Coach card</td><td class="severity-fix">Voice paragraph "Three races in 20 days is a real stack..." duplicates /training. Pick one home for the voice; everywhere else terse.</td></tr>
+  <tr><td class="num">20</td><td class="where">Dashboard "Next 30 days"</td><td class="severity-fix">All grey/empty bars (POST_RACE prescribes rest) — looks dead. Surface "Returns Day 14: easy aerobic" markers.</td></tr>
+  <tr><td class="num">21</td><td class="where">/workout/[date] Context tile</td><td class="severity-fix">"Distance 0.0 mi · Quality No · Long No" key-value list on rest day is bare. Replace with recovery-focus content or hide.</td></tr>
+  <tr><td class="num">22</td><td class="where">/races/[slug] post-race</td><td class="severity-fix">Move RetrospectTile above COURSE DETAIL plots. Plan-vs-actual + retrospect = the post-race answer; nerd plots = distraction.</td></tr>
+  <tr><td class="num">23</td><td class="where">/season</td><td class="severity-fix">Promote "Annual race load" → callout banner near top. The "7 A-races (max 2)" finding is actionable; right now it's a small stat.</td></tr>
+  <tr><td class="num">24</td><td class="where">Whole site</td><td class="severity-fix">Citations like <code>RESEARCH/00b · §LOAD</code> in mono everywhere look like serial numbers. Hide behind hover/click.</td></tr>
+  <tr><td class="num">25</td><td class="where">Dashboard</td><td class="severity-fix">Strava activity name "Working on better form" appears in two cards — show once.</td></tr>
+  <tr><td class="num">26</td><td class="where">Greeting card</td><td class="severity-fix">All-caps "DAVID" gets the visual weight, but the most important line is the next race. Re-balance.</td></tr>
+  <tr><td class="num">27</td><td class="where">Training Pulse "long run avg"</td><td class="severity-fix">Peak 26.8 mi = the marathon 12 days ago. Treating it as a "long run" overstates current capability. Exclude races from "long run avg."</td></tr>
+</table>
+
+<h2 id="gap">5. The deeper gap — plan vs data</h2>
+<div class="card">
+  <p style="font-size: 16px; color: var(--t-0); line-height: 1.55;">
+    Runner's framing: <em>"Data is surfacing, I can see things. But the most important thing is what should I do, how should I do it, when should I do it, and for how long. Doing this will get me ready for the next race."</em>
+  </p>
+  <p>The app shows data <strong>about</strong> training. The runner wants to see the <strong>plan of</strong> training. Different things.</p>
+  <p>The engine already computes ~80% of what's needed:</p>
+  <ul>
+    <li><code>coachDaily(state).today</code> — full daily prescription · ✅ rendered well</li>
+    <li><code>coachDaily(state).weekShape</code> — 7 days with type/distance/pace/HR · 🟡 rendered as a chip strip, not a plan</li>
+    <li><code>coachDaily(state).next30Days</code> — 30 day-by-day prescriptions · 🟡 rendered as 30 colored squares</li>
+    <li><code>decidePhase(state)</code> — current phase · 🟡 shown as a chip, not a chapter heading</li>
+    <li><code>MULTI_RACE_CADENCE</code> + race calendar · 🟡 timeline shows races, not training between</li>
+  </ul>
+  <p>So the answer to "what am I doing this week?" is <em>computed</em> but rendered as 7 small letters on a chip strip. The answer to "what am I doing the next 4 weeks?" is computed but rendered as 30 colored squares. The redesign below fills that gap.</p>
+</div>
+
+<h2 id="redesign">6. /training redesign spec</h2>
+<p>Each section answers a different temporal question. <strong>TODAY</strong> (specific + voice) → <strong>THIS WEEK</strong> (the rhythm) → <strong>NEXT 4 WEEKS</strong> (the arc) → <strong>BUILD CURVE</strong> (the long view) → <strong>QUALITY DAY GRID</strong> (the pattern).</p>
+
+<div class="layout-sketch">/training (redesigned)
+├── HEADER · "TRAINING · DAILY BRIEFING"
+│
+├── ① TODAY HERO (existing DailyBriefing — kept + strengthened)
+│   FRIDAY · RECOVERY · 100 days to AFC
+│   REST DAY (or override-aware copy when runner ran)
+│   Voice paragraph
+│   GOAL RACE sidebar
+│   ↑ Drop the chip-strip "THIS WEEK" + "NEXT UP" from underneath
+│
+├── ② DAILY FEEDBACK (existing — kept)
+│
+├── ③ THIS WEEK · NEW
+│   Header: "Mon May 4 — Sun May 10 · 14 mi · 1 quality · 1 long"
+│   Theme: "Recovery week — volume drop is by design (post-race window)"
+│   Grid: 7 day-cards, today highlighted
+│   Each card: day + date · workout label · miles + est min ·
+│              pace target band · HR zone · 1-line description ·
+│              done-mark for past days · click → /workout/[date]
+│   "WHY THIS WEEK?" expansion (collapsed by default)
+│
+├── ④ NEXT 4 WEEKS · NEW
+│   4 week-cards in a row, collapsed by default
+│   Each: week label · theme · total mi (Δ vs prior) · quality count ·
+│         long run distance · phase chip · cutback flag if applicable
+│   Phase strip painted across the row (BASE/BUILD/PEAK/TAPER)
+│   Click any week → expand inline to show 7 days
+│   "WHY THESE 4 WEEKS?" expansion
+│
+├── ⑤ BUILD CURVE (existing — kept, smaller header, repositioned)
+│   The long view: 12 weeks back, 8 forward
+│   Phase shading + 110% ceiling + race-week marker
+│   Future-week tint upgraded so projections are visible (fix #14)
+│
+├── ⑥ QUALITY DAY GRID (existing — kept at bottom, retrospective)
+│   12 weeks × 7 days heatmap of what landed when
+│
+└── REMOVED: RecentWeeksTile (redundant with build curve)</div>
+
+<h4>Day-card design</h4>
+<div class="grid-cols-2">
+  <div class="card">
+    <h3 style="margin-top: 0;">Workout day card</h3>
+    <ul style="font-size: 12px; line-height: 1.5;">
+      <li><strong>Day-of-week label</strong> — TUE</li>
+      <li><strong>Date number</strong> — May 5</li>
+      <li><strong>Workout type</strong> — color-coded chip (THRESHOLD)</li>
+      <li><strong>Distance + duration</strong> — "8 mi · ~58 min"</li>
+      <li><strong>Pace target</strong> — "6:30/mi" with band</li>
+      <li><strong>HR zone</strong> — "Z4 · 140-158"</li>
+      <li><strong>One-line description</strong></li>
+      <li><strong>Done-mark + actual</strong> on past days</li>
+      <li><strong>Click</strong> → /workout/[date]</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top: 0;">Week-card design (NEXT 4 WEEKS)</h3>
+    <ul style="font-size: 12px; line-height: 1.5;">
+      <li><strong>Week label</strong> — "Week of May 11" + "+1 wk"</li>
+      <li><strong>Theme</strong> — "Specificity build · MP intro"</li>
+      <li><strong>Total mi</strong> — "32 mi (+4 vs prior)"</li>
+      <li><strong>Quality count</strong> — "2 quality"</li>
+      <li><strong>Long run</strong> — "16 mi"</li>
+      <li><strong>Phase chip</strong> — color-coded (BUILD/PEAK/etc)</li>
+      <li><strong>Cutback flag</strong> — when applicable</li>
+      <li><strong>Click</strong> → expand inline 7-day breakdown</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="sequence">7. Work sequence</h2>
+<p>Recommended execution order, since you said you want all of it:</p>
+
+<table>
+  <tr><th>Pri</th><th>Block</th><th>Items</th><th>Size</th></tr>
+  <tr><td><span class="pri pri-1">P0</span></td><td>Bug pass</td><td>#1 grade math · #2 readiness contradiction · #3 nav active state · #4 workout rest-day disconnect · #5 EAH sex filter · #7 race brief stuck loading</td><td>S</td></tr>
+  <tr><td><span class="pri pri-1">P1</span></td><td>/training redesign</td><td>The new spec above — THIS WEEK day-cards + NEXT 4 WEEKS week-cards, repositioned build curve, removed RecentWeeksTile</td><td>L</td></tr>
+  <tr><td><span class="pri pri-2">P2</span></td><td>Dashboard de-dup</td><td>#8 race contexts collapsed · #9 last-run shown once · #10 next-race shown once · #11 week strip reflects actuals · #12 remove yoga widget · #18 mode banner gates on hero · #19 voice paragraph one home only</td><td>M</td></tr>
+  <tr><td><span class="pri pri-2">P3</span></td><td>/season + /races polish</td><td>#6 promote A-race overload to callout · #15 timeline labels · #16 retrospect-above-nerd · #17 race count consistency · #22 retrospect repositioning</td><td>S–M</td></tr>
+  <tr><td><span class="pri pri-3">P4</span></td><td>Misc finesse</td><td>#13 remove duplicate weekly chart · #14 build-curve future tint · #20 next-30 markers · #21 workout context-tile rest-day · #23 hide citations behind hover · #24 long run avg excludes races · #25 strava name once · #26 greeting hierarchy</td><td>S</td></tr>
+</table>
+
+<div class="next">
+  <h3>The principle behind the redesign</h3>
+  <p>The dashboard answers <strong>"how am I doing?"</strong> — VDOT, weekly miles, recovery score, training pulse, fun stats.</p>
+  <p>The redesigned /training page answers <strong>"what should I do?"</strong> — today, this week, the next 4 weeks, the long arc.</p>
+  <p>Today the runner is being asked to derive the second answer from the first. The redesign closes that gap.</p>
+</div>
+
+<div class="footer">
+RUNCINO · WALKTHROUGH AUDIT 2026-05-08 · 27 ITEMS QUEUED · /TRAINING REDESIGN BRIEF · ALL ITEMS WILL BE EXECUTED
+</div>
+
+</div>
+</body>
+</html>
