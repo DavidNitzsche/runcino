@@ -114,7 +114,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <Caption left="Runcino · season" right="STRATEGIC ARC" />
       <div className="stage">
-        <Nav active="races" />
+        <Nav active="season" />
         <div className="body">{children}</div>
       </div>
     </>

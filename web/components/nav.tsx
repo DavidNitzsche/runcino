@@ -5,15 +5,17 @@
 
 import Link from 'next/link';
 
-type NavKey = 'overview' | 'training' | 'races' | 'health' | 'log' | 'profile';
+type NavKey = 'overview' | 'training' | 'races' | 'season' | 'calibration' | 'health' | 'log' | 'profile';
 
 const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
-  { key: 'overview', href: '/',          label: 'Overview' },
-  { key: 'training', href: '/training',  label: 'Training' },
-  { key: 'races',    href: '/races',     label: 'Races' },
-  { key: 'health',   href: '/health',    label: 'Health' },
-  { key: 'log',      href: '/log',       label: 'Log' },
-  { key: 'profile',  href: '/profile',   label: 'Profile' },
+  { key: 'overview',    href: '/',             label: 'Overview' },
+  { key: 'training',    href: '/training',     label: 'Training' },
+  { key: 'races',       href: '/races',        label: 'Races' },
+  { key: 'season',      href: '/season',       label: 'Season' },
+  { key: 'calibration', href: '/calibration',  label: 'Calibration' },
+  { key: 'health',      href: '/health',       label: 'Health' },
+  { key: 'log',         href: '/log',          label: 'Log' },
+  { key: 'profile',     href: '/profile',      label: 'Profile' },
 ];
 
 export function Nav({ active }: { active?: NavKey }) {

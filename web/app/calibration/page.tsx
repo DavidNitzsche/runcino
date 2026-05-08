@@ -261,7 +261,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <Caption left="Runcino · calibration" right="EVERY DIAL" />
       <div className="stage">
-        <Nav active="overview" />
+        <Nav active="calibration" />
         <div className="body">{children}</div>
       </div>
     </>
