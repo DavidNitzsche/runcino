@@ -509,7 +509,12 @@ class CoachImpl implements Coach {
     let level: 'green' | 'yellow' | 'red' = 'green';
     let reason = '';
 
-    // ── Recovery context first — overrides ratio drift signals.
+    // ── Recovery context — sets the base voice but does NOT
+    //    silently override compounding signals. A runner in
+    //    post-race who is ALSO running 51% easy when the target
+    //    is ≥90% is violating the recovery, not within it. We
+    //    set a baseline "recovery active" reason here, then
+    //    re-evaluate level after collecting signals below.
     if (heavyBlock || inRaceRecovery) {
       level = 'green';
       if (heavyBlock) {
@@ -621,8 +626,33 @@ class CoachImpl implements Coach {
     // (INCOMPLETE_RECOVERY_DECISION_MATRIX, Research/00b). HealthKit
     // signals will plug in as additional rows once those land.
     const warnSignals = signals.filter(sg => sg.severity === 'warn').length;
+
+    // Re-evaluate level after collecting signals — even when in
+    // recovery context, compounding stress signals should escalate.
+    // Two specific cases the override path used to mask:
+    //   1. Runner in post-race AND running >30 percentage points
+    //      below their easy-share target (e.g. 51% vs 90%) — that's
+    //      recovery being violated, not protected.
+    //   2. 3+ warn signals firing alongside recovery context — the
+    //      body is signaling distress regardless of "by-design" volume drop.
+    if (heavyBlock || inRaceRecovery) {
+      const easyShareGap = easy > 0 && easy < target.easyShareMin
+        ? target.easyShareMin - easy : 0;
+      if (warnSignals >= 3) {
+        level = 'yellow';
+        reason = `${reason} BUT — ${warnSignals} stress signals firing alongside the recovery window. The body's asking you to honor the recovery more strictly today, not just structurally.`;
+      } else if (easyShareGap >= 0.30) {
+        level = 'yellow';
+        reason = `${reason} BUT — only ${Math.round(easy * 100)}% easy in last 14d when post-race target is ≥${Math.round(target.easyShareMin * 100)}%. Recovery window is being violated; today should be honestly easy or a rest day.`;
+      } else if (warnSignals >= 2) {
+        level = 'yellow';
+        reason = `${reason} Note: ${warnSignals} stress signals also firing — keep today honestly easy.`;
+      }
+    }
+
     const recommendedAction = (() => {
-      if (heavyBlock || inRaceRecovery)        return 'Recovery active — let the body absorb the load.';
+      if ((heavyBlock || inRaceRecovery) && warnSignals < 2) return 'Recovery active — let the body absorb the load.';
+      if ((heavyBlock || inRaceRecovery) && warnSignals >= 2) return 'Recovery active AND stress signals firing — strict rest or very easy today.';
       if (warnSignals >= 3)                    return 'Multiple stress signals. Consider a 3-5 day cutback (50% volume, no quality).';
       if (warnSignals === 2)                   return 'Insert easy days; defer next quality session 24-48h.';
       if (warnSignals === 1)                   return 'One signal flagged — handle gently today, watch tomorrow.';

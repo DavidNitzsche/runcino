@@ -235,7 +235,7 @@ export default function LibraryPage() {
     <>
       <Caption left="Runcino · library" right="WORKOUT TYPES" />
       <div className="stage">
-        <Nav active="training" />
+        <Nav active="library" />
         <div className="body">
 
           <div style={{ marginBottom: 24 }}>

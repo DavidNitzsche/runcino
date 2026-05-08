@@ -145,15 +145,22 @@ function WorkoutDetailInner({ date }: { date: string }) {
   // RPE for any historical day.
   const existingRpe = hub.recentRpe.find(e => e.workoutDate === date) ?? null;
 
+  // Rest-day override detection — did the runner actually run on a
+  // prescribed rest day? When yes, surface what they did so the page
+  // doesn't pretend "0 mi · No running today" when Strava shows otherwise.
+  const todayActual = prescription.isToday ? hub.coach.state?.recovery?.today : null;
+  const isRestOverride = prescription.type === 'rest' && todayActual != null;
+
   return (
     <Shell date={date}>
       <Breadcrumb date={date} prescription={prescription} modeDetail={modeDetail} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <HeroTile prescription={prescription} phase={phase} />
-          {prescription.description && <DescriptionTile description={prescription.description} />}
-          <StructureTile prescription={prescription} />
+          <HeroTile prescription={prescription} phase={phase} todayActual={todayActual} />
+          {isRestOverride && todayActual && <RestOverrideTile actual={todayActual} />}
+          {prescription.description && !isRestOverride && <DescriptionTile description={prescription.description} />}
+          {!isRestOverride && <StructureTile prescription={prescription} />}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -226,7 +233,16 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
   race:                 'Race day. Trust the prep.',
 };
 
-function HeroTile({ prescription, phase }: { prescription: DayPrescription; phase: string | null }) {
+interface ActualRun {
+  distMi: number;
+  paceSPerMi: number;
+  avgHr: number | null;
+  name: string;
+  activityId: number;
+}
+
+function HeroTile({ prescription, phase, todayActual }: { prescription: DayPrescription; phase: string | null; todayActual?: ActualRun | null }) {
+  const isRestOverride = prescription.type === 'rest' && todayActual != null;
   const typeColor: Record<string, string> = {
     rest:                 'var(--color-t3)',
     recovery:             'var(--color-success)',
@@ -257,6 +273,46 @@ function HeroTile({ prescription, phase }: { prescription: DayPrescription; phas
   const paceLabel = prescription.paceTargetSPerMi
     ? `${formatPace(prescription.paceTargetSPerMi.lowS)}–${formatPace(prescription.paceTargetSPerMi.highS)}`
     : null;
+  // Override case: rest day prescribed but the runner ran. Hero
+  // shows the actual run's stats so the page doesn't pretend "0 mi"
+  // when Strava shows the real distance.
+  if (isRestOverride && todayActual) {
+    const overrideAccent = 'var(--color-attention)';
+    return (
+      <div className="tile" style={{
+        padding: '24px 26px',
+        background: 'linear-gradient(135deg, var(--color-l2) 0%, rgba(243,173,59,0.08) 100%)',
+        borderColor: 'rgba(243,173,59,0.3)',
+        borderLeft: `4px solid ${overrideAccent}`,
+      }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span style={chipStyle(overrideAccent)}>RAN ON REST DAY</span>
+          {phase && <span style={chipStyle('var(--color-t2)')}>{phase}</span>}
+          <span style={chipStyle('var(--color-warning)')}>TODAY</span>
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 48,
+          lineHeight: 0.95, letterSpacing: '-.005em', textTransform: 'uppercase',
+          marginTop: 14, color: 'var(--color-t0)',
+        }}>
+          {todayActual.name}
+        </div>
+        <div style={{ fontSize: 14, color: 'var(--color-t2)', marginTop: 6, maxWidth: 520, lineHeight: 1.5 }}>
+          Plan was rest. You ran anyway — done is done. Tomorrow stays off whatever happens; the recovery the body needed didn&apos;t go away just because you moved.
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
+          padding: '18px 0 4px', borderTop: '1px solid var(--color-l4)', marginTop: 14,
+        }}>
+          <Kpi value={todayActual.distMi.toFixed(1)} unit="mi" label="Actual distance" />
+          <Kpi value={formatPace(todayActual.paceSPerMi)} unit="/mi" label="Actual pace" accent />
+          <Kpi value={todayActual.avgHr != null ? String(todayActual.avgHr) : '—'} unit={todayActual.avgHr != null ? 'bpm' : ''} label="Avg HR" />
+          <Kpi value="REST" unit="" label="Was prescribed" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tile" style={{ padding: '24px 26px', background: bg, borderColor: `${accent}40` }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -323,6 +379,23 @@ function Kpi({ value, unit, label, accent }: { value: string; unit: string; labe
         letterSpacing: '1.4px', color: accent ? 'var(--color-corporate)' : 'var(--color-t3)',
         fontWeight: 700, textTransform: 'uppercase',
       }}>{label}</div>
+    </div>
+  );
+}
+
+function RestOverrideTile({ actual }: { actual: ActualRun }) {
+  return (
+    <div className="tile" style={{
+      padding: '18px 22px',
+      background: 'var(--color-l2)',
+      borderLeft: '3px solid var(--color-attention)',
+    }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-attention)', marginBottom: 6 }}>
+        WHAT THE COACH NEEDS YOU TO HEAR
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+        Today was prescribed as rest because the body needed it. You ran <b>{actual.distMi.toFixed(1)} mi at {formatPace(actual.paceSPerMi)}/mi</b>{actual.avgHr != null ? ` (${actual.avgHr} bpm avg)` : ''}. If it felt easy, that&apos;s useful information for the coach. If it felt like work, the next rest day matters more, not less. The recovery window doesn&apos;t reset — tomorrow stays off whatever happens.
+      </div>
     </div>
   );
 }

@@ -93,6 +93,35 @@ function SeasonPageInner() {
 
       <Timeline races={inWindow} todayISO={todayISO} segments={segments} />
 
+      {/* Priority overload callout — when EVERY race is marked A,
+          the runner has no realistic build cycle. Doctrine caps A-races
+          at 2/year. This is the most actionable insight on /season,
+          so it deserves a banner near the top, not a small stat. */}
+      {aCount > MULTI_RACE_CADENCE.value.aRaceMaxPerYear && (
+        <div className="tile" style={{
+          marginTop: 14, padding: '16px 20px',
+          borderLeft: '3px solid var(--color-warning)',
+          background: 'rgba(252, 77, 84, 0.06)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div className="tile-sub" style={{ color: 'var(--color-warning)' }}>
+                Priority overload · {aCount} A-races flagged in 12 months (max {MULTI_RACE_CADENCE.value.aRaceMaxPerYear})
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: 'var(--color-t0)', marginTop: 4, lineHeight: 1.3 }}>
+                Every race is marked priority A. That makes none of them priority A.
+              </div>
+            </div>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+              RESEARCH/00b · MULTI_RACE_CADENCE
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, marginTop: 8 }}>
+            Doctrine: max 2 A-races per year (full taper, peak day, full recovery). Recommended split: 2 A-races + {MULTI_RACE_CADENCE.value.bRacePerYear.low}-{MULTI_RACE_CADENCE.value.bRacePerYear.high} B-races (1-week taper, 60-70% of A-recovery) + C-races as workouts. Re-prioritize your races on the index page so the engine knows where to peak you and where to ride through.
+          </div>
+        </div>
+      )}
+
       {conflicts.length > 0 && <ConflictsCard conflicts={conflicts} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 14 }}>

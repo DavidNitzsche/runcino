@@ -1397,6 +1397,8 @@ function FuelingTile({ race }: { race: SavedRace }) {
    shows. Lives below MileSplits + FuelingTile because it depends
    on weather to pick the right temp band. */
 function HydrationTile({ race }: { race: SavedRace }) {
+  const hub = useHub();
+  const runnerSex = hub?.profile?.sex ?? 'unspecified';
   const distMi = race.meta.distanceMi;
   // Map race distance to the doctrine's distance bucket.
   const bucket: 'half' | 'marathon' | '10K' | '5K' = distMi >= 22 ? 'marathon'
@@ -1562,9 +1564,14 @@ function HydrationTile({ race }: { race: SavedRace }) {
           </span>
         </div>
         <ul style={{ paddingLeft: 18, margin: 0, fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
-          {EAH_RISK_FACTORS.value.map((f, i) => (
-            <li key={i}>{f}</li>
-          ))}
+          {EAH_RISK_FACTORS.value
+            // Filter sex-specific risk factors when the runner's sex
+            // is known. "Female sex — smaller body mass" is doctrine
+            // for women; surfacing it to a male runner is noise.
+            .filter(f => runnerSex !== 'male' || !/^female sex/i.test(f))
+            .map((f, i) => (
+              <li key={i}>{f}</li>
+            ))}
         </ul>
         <div style={{ fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.4, fontStyle: 'italic' }}>
           Overdrinking — not sodium loss — is the dominant cause. Body-mass <em>gain</em> during a race is a red flag.
@@ -2197,6 +2204,59 @@ function writeBriefCache(slug: string, brief: BriefResponse | null, weather: Wea
   }
 }
 
+/* ── Brief loading state ─────────────────────────────────────
+   The brief is an LLM call that takes 8-20s on cold cache. The
+   default "Coach is reading…" italic line was stuck-feeling. This
+   replaces it with a visibly-alive indicator: rotating message +
+   subtle pulse + elapsed-seconds chip so the runner knows the
+   request is working, not hung. */
+function BriefLoadingState() {
+  const [elapsed, setElapsed] = useState(0);
+  const messages = [
+    'Coach is reading the course…',
+    'Reviewing your recent training…',
+    'Cross-referencing the doctrine…',
+    'Putting the words together…',
+  ];
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const msg = messages[Math.min(Math.floor(elapsed / 5), messages.length - 1)];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      padding: '12px 0', margin: 0,
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: '50%',
+        background: 'var(--color-warning)',
+        animation: 'pulse 1.4s ease-in-out infinite',
+      }} />
+      <p style={{
+        fontSize: 16, lineHeight: 1.6, color: 'rgba(255,255,255,.55)',
+        fontStyle: 'italic', margin: 0,
+      }}>
+        {msg}
+      </p>
+      <span style={{
+        fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700,
+        letterSpacing: '1.2px', color: 'rgba(255,255,255,.4)',
+        padding: '2px 7px', borderRadius: 3,
+        border: '1px solid rgba(255,255,255,.12)',
+      }}>
+        {elapsed}s
+      </span>
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.85); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function useAdaptiveBrief(race: SavedRace): {
   brief: BriefResponse | null;
   weather: WeatherSummary | null;
@@ -2354,14 +2414,7 @@ function CoachBriefBlock({ race }: { race: SavedRace }) {
           }}>USING LAST YR WEATHER</span>
         )}
       </div>
-      {loading && (
-        <p style={{
-          fontSize: 16, lineHeight: 1.6, color: 'rgba(255,255,255,.4)',
-          fontStyle: 'italic', margin: 0,
-        }}>
-          Coach is reading the course and your training…
-        </p>
-      )}
+      {loading && <BriefLoadingState />}
       {brief && !loading && (
         <p style={{
           fontSize: 16, lineHeight: 1.65,
