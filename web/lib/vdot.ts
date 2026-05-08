@@ -260,3 +260,53 @@ export function paceTargetFromVdot(
   const band = set[zone];
   return { lowS: band.lowS, highS: band.highS, vdot, zone };
 }
+
+// ── Dashboard snapshot ────────────────────────────────────────────
+
+export interface VdotSnapshot {
+  /** Current VDOT (rounded to 1 decimal). */
+  vdot: number;
+  /** The race the VDOT was inferred from. */
+  source: {
+    name: string;
+    date: string;        // ISO YYYY-MM-DD
+    daysAgo: number;
+    distanceMi: number;
+    timeS: number;
+    paceSPerMi: number;  // computed for display
+  };
+  /** Full Daniels pace bands. */
+  paces: DanielsPaceSet;
+}
+
+/** Bundle the VDOT picture for the dashboard tile: source race +
+ *  current VDOT + all 5 pace bands. Returns null when no usable
+ *  recent race is logged. */
+export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
+  // Walk recent races, pick the strongest by VDOT, return its details.
+  let best: { race: typeof state.races.recent[number]; vdot: number } | null = null;
+  for (const r of state.races.recent) {
+    if (r.finishS == null) continue;
+    if (!distanceKeyForMi(r.distanceMi)) continue;
+    const v = vdotFromRace(r.distanceMi, r.finishS);
+    if (v == null) continue;
+    if (best == null || v > best.vdot) best = { race: r, vdot: v };
+  }
+  if (!best || best.race.finishS == null) return null;
+
+  const paces = pacesFromVdot(best.vdot);
+  if (!paces) return null;
+
+  return {
+    vdot: best.vdot,
+    source: {
+      name: best.race.name,
+      date: best.race.date,
+      daysAgo: best.race.daysAgo,
+      distanceMi: best.race.distanceMi,
+      timeS: best.race.finishS,
+      paceSPerMi: Math.round(best.race.finishS / best.race.distanceMi),
+    },
+    paces,
+  };
+}

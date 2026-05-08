@@ -8,7 +8,7 @@
  * second look.
  */
 import { describe, it, expect } from 'vitest';
-import { vdotFromRace, pacesFromVdot, paceTargetFromVdot } from '../vdot';
+import { vdotFromRace, pacesFromVdot, paceTargetFromVdot, vdotSnapshot } from '../vdot';
 import type { CoachState } from '../coach-state';
 
 const HM_DISTANCE_MI = 13.26;       // Strava-reported, slightly long course
@@ -99,5 +99,46 @@ describe('VDOT sanity — AFC half marathon 2025 actual', () => {
       races: { recent: [], nextA: null, nextAny: null, inWindow: [], raceCount30d: 0 },
     } as unknown as CoachState;
     expect(paceTargetFromVdot(state, 'general_aerobic')).toBeNull();
+  });
+
+  it('vdotSnapshot bundles the dashboard payload', () => {
+    const state = {
+      races: {
+        recent: [
+          {
+            slug: 'afc-2025',
+            activityId: null,
+            name: 'America\'s Finest City Half',
+            date: '2025-08-31',
+            distanceMi: HM_DISTANCE_MI,
+            finishS: HM_TIME_S,
+            daysAgo: 14,
+          },
+        ],
+        nextA: null, nextAny: null, inWindow: [], raceCount30d: 0,
+      },
+    } as unknown as CoachState;
+
+    const snap = vdotSnapshot(state);
+    expect(snap).not.toBeNull();
+    expect(snap!.vdot).toBeGreaterThan(46);
+    expect(snap!.vdot).toBeLessThan(48);
+    expect(snap!.source.name).toBe('America\'s Finest City Half');
+    expect(snap!.source.daysAgo).toBe(14);
+    expect(snap!.source.paceSPerMi).toBeGreaterThan(430);
+    expect(snap!.source.paceSPerMi).toBeLessThan(442);
+    // All 5 bands populated.
+    expect(snap!.paces.E.lowS).toBeGreaterThan(0);
+    expect(snap!.paces.M.lowS).toBeGreaterThan(0);
+    expect(snap!.paces.T.lowS).toBeGreaterThan(0);
+    expect(snap!.paces.I.lowS).toBeGreaterThan(0);
+    expect(snap!.paces.R.lowS).toBeGreaterThan(0);
+  });
+
+  it('vdotSnapshot returns null without race data', () => {
+    const state = {
+      races: { recent: [], nextA: null, nextAny: null, inWindow: [], raceCount30d: 0 },
+    } as unknown as CoachState;
+    expect(vdotSnapshot(state)).toBeNull();
   });
 });

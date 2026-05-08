@@ -20,6 +20,7 @@
 import { gatherCoachState } from '../../../../lib/coach-state';
 import { coachDaily } from '../../../../lib/coach-engine';
 import { coach } from '../../../../coach/coach';
+import { vdotSnapshot } from '../../../../lib/vdot';
 
 export async function GET() {
   try {
@@ -30,10 +31,12 @@ export async function GET() {
       coach.prescribeWorkout({ today: isoToday, state }),
       coach.assessReadiness({ today: isoToday, state }),
     ]);
+    const vdot = vdotSnapshot(state);
     return Response.json({
       ok: true,
       today,
       state,
+      vdot,                    // null when no usable recent race; tile hides itself
       coach: { workout, readiness },
     });
   } catch (e) {

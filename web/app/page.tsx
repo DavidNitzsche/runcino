@@ -83,6 +83,8 @@ export default function OverviewPage() {
 
           <CoachTodayCard />
 
+          <VdotCard />
+
           <RecoveryWidget />
 
           {runs && runs.length > 0 && (
@@ -743,6 +745,162 @@ function fmtPaceBand(p: { lowS: number; highS: number }): string {
 function fmtMinSec(s: number): string {
   s = Math.round(s);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function fmtHMS(s: number): string {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s - h * 3600) / 60);
+  const sec = s - h * 3600 - m * 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+/* ── VDOT fitness tile ───────────────────────────────────────
+   Surfaces the runner's current Daniels VDOT and the full set of
+   E/M/T/I/R training pace bands. The number is anchored on the
+   strongest race in the last 28 days (state.races.recent), which
+   we surface as "last tested" so the runner knows how fresh the
+   estimate is. Hides itself when no recent race is available —
+   the engine falls back to goal pace + offsets in that case. */
+
+interface VdotTilePayload {
+  vdot: number;
+  source: {
+    name: string;
+    date: string;
+    daysAgo: number;
+    distanceMi: number;
+    timeS: number;
+    paceSPerMi: number;
+  };
+  paces: {
+    vdot: number;
+    E: { lowS: number; highS: number };
+    M: { lowS: number; highS: number };
+    T: { lowS: number; highS: number };
+    I: { lowS: number; highS: number };
+    R: { lowS: number; highS: number };
+  };
+}
+
+const ZONE_DEFS: Array<{
+  key: 'E' | 'M' | 'T' | 'I' | 'R';
+  label: string;
+  sub: string;
+  color: string;
+  blurb: string;
+}> = [
+  { key: 'E', label: 'Easy',       sub: 'Aerobic / recovery', color: 'var(--color-success)',    blurb: 'Most of your weekly mileage. Conversational.' },
+  { key: 'M', label: 'Marathon',   sub: 'Goal-race pace',      color: 'var(--color-corporate)',  blurb: 'MP work on long-run finishers + race rehearsals.' },
+  { key: 'T', label: 'Threshold',  sub: 'Lactate threshold',   color: 'var(--color-attention)',  blurb: 'Comfortably hard · ~hour-race effort. Tempos + cruise intervals.' },
+  { key: 'I', label: 'Intervals',  sub: 'VO2max · ~5K pace',   color: 'var(--color-warning)',    blurb: '3–5 min reps with equal jog. Stresses oxygen ceiling.' },
+  { key: 'R', label: 'Reps',       sub: 'Mile pace · neuromuscular', color: 'var(--color-active)', blurb: '200–400m fast with full recovery. Speed + economy.' },
+];
+
+function VdotCard() {
+  const [vdot, setVdot] = useState<VdotTilePayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as { ok: boolean; vdot?: VdotTilePayload | null; error?: string };
+        if (cancelled) return;
+        if (json.ok) setVdot(json.vdot ?? null);
+        else setError(json.error ?? 'VDOT unavailable');
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) return null;     // silent skip — non-critical
+  if (vdot == null) return null; // hides itself when no recent race
+  return <VdotTile vdot={vdot} />;
+}
+
+function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
+  const ageLabel = vdot.source.daysAgo === 0
+    ? 'today'
+    : vdot.source.daysAgo === 1
+    ? 'yesterday'
+    : `${vdot.source.daysAgo} days ago`;
+
+  return (
+    <>
+      <SectionHeader title="VDOT fitness" sub="DANIELS · ANCHORED ON YOUR LAST RACE" />
+
+      <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
+        {/* Top: big VDOT number + source race */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'center' }}>
+          <div>
+            <div className="tile-sub" style={{ marginBottom: 4 }}>VDOT</div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 64,
+              letterSpacing: '-.03em', lineHeight: 1, color: 'var(--color-corporate)',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {vdot.vdot.toFixed(1)}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="tile-sub">Last tested · {ageLabel}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-t0)', lineHeight: 1.2 }}>
+              {vdot.source.name}
+            </div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '0.5px' }}>
+              {vdot.source.distanceMi.toFixed(2)} MI · {fmtHMS(vdot.source.timeS)} · {fmtMinSec(vdot.source.paceSPerMi)}/MI
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom: 5 pace zones with full labels */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8,
+          borderTop: '1px solid var(--color-l4)', paddingTop: 16,
+        }}>
+          {ZONE_DEFS.map(z => {
+            const band = vdot.paces[z.key];
+            return (
+              <div key={z.key} style={{
+                padding: '12px',
+                borderRadius: 8,
+                background: 'var(--color-l2)',
+                border: '1px solid var(--color-l4)',
+                display: 'flex', flexDirection: 'column', gap: 6,
+                minHeight: 120,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{
+                    fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 800,
+                    letterSpacing: '1.4px', color: z.color,
+                  }}>{z.key}</span>
+                  <span style={{
+                    fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 16,
+                    color: 'var(--color-t0)', textTransform: 'uppercase', letterSpacing: '-.005em',
+                  }}>{z.label}</span>
+                </div>
+                <div className="tile-sub" style={{ fontSize: 9 }}>{z.sub}</div>
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 14, fontWeight: 800,
+                  color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px',
+                }}>
+                  {fmtPaceBand(band)}<span style={{ fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, marginLeft: 3 }}>/MI</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4, marginTop: 'auto' }}>
+                  {z.blurb}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
 }
 
 /* ── Training pulse ─────────────────────────────────────────
