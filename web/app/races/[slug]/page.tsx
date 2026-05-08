@@ -986,15 +986,8 @@ function CourseImplicationsTile({ race, analysis }: { race: SavedRace; analysis:
             borderLeft: `3px solid ${severityColor[imp.severity]}`,
             display: 'flex', flexDirection: 'column', gap: 4,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>
-                {imp.label}
-              </div>
-              {imp.cite && (
-                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
-                  {imp.cite}
-                </span>
-              )}
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>
+              {imp.label}
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.55 }}>
               {imp.detail}
@@ -1177,9 +1170,6 @@ function GoalTargetsTile({ race }: { race: SavedRace }) {
           <div className="tile-sub">Goal spread</div>
           <div className="tile-lbl">A · B · C pace targets</div>
         </div>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
-          RESEARCH/14
-        </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
         {targets.map(t => {
@@ -1449,11 +1439,6 @@ function HydrationTile({ race }: { race: SavedRace }) {
           <div className="tile-sub">Hydration plan</div>
           <div className="tile-lbl">Pre + during · {bucket} race</div>
         </div>
-        <span className="chip" style={{
-          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
-          padding: '3px 7px', borderRadius: 3,
-          background: 'rgba(38,127,255,.18)', color: 'var(--color-corporate)',
-        }}>RESEARCH/19</span>
       </div>
 
       {/* Pre-race plan */}
@@ -1519,9 +1504,6 @@ function HydrationTile({ race }: { race: SavedRace }) {
           <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-attention)' }}>
             CALIBRATE YOUR OWN SWEAT RATE
           </div>
-          <span style={{ fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
-            RESEARCH/19 §SWEAT-RATE
-          </span>
         </div>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.4 }}>
           {SWEAT_RATE_PROTOCOL.value.formula}
@@ -1560,13 +1542,8 @@ function HydrationTile({ race }: { race: SavedRace }) {
         background: 'rgba(252, 77, 84, 0.08)', border: '1px solid rgba(252, 77, 84, 0.32)',
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-warning)' }}>
-            EAH RISK FACTORS — DRINK LIGHTER IF ANY APPLY
-          </div>
-          <span style={{ fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
-            RESEARCH/19 §EAH
-          </span>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-warning)' }}>
+          EAH RISK FACTORS — DRINK LIGHTER IF ANY APPLY
         </div>
         <ul style={{ paddingLeft: 18, margin: 0, fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
           {EAH_RISK_FACTORS.value

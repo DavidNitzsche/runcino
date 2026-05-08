@@ -112,12 +112,9 @@ function SeasonPageInner() {
                 Every race is marked priority A. That makes none of them priority A.
               </div>
             </div>
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-              RESEARCH/00b · MULTI_RACE_CADENCE
-            </span>
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, marginTop: 8 }}>
-            Doctrine: max 2 A-races per year (full taper, peak day, full recovery). Recommended split: 2 A-races + {MULTI_RACE_CADENCE.value.bRacePerYear.low}-{MULTI_RACE_CADENCE.value.bRacePerYear.high} B-races (1-week taper, 60-70% of A-recovery) + C-races as workouts. Re-prioritize your races on the index page so the engine knows where to peak you and where to ride through.
+            Max 2 A-races per year (full taper, peak day, full recovery). Recommended split: 2 A-races + {MULTI_RACE_CADENCE.value.bRacePerYear.low}-{MULTI_RACE_CADENCE.value.bRacePerYear.high} B-races (1-week taper, 60-70% of A-recovery) + C-races as workouts. Re-prioritize your races on the index page so the engine knows where to peak you and where to ride through.
           </div>
         </div>
       )}
@@ -381,9 +378,6 @@ function ConflictsCard({ conflicts }: { conflicts: Array<{ a: SavedRace; b: Save
             </div>
           </div>
         ))}
-      </div>
-      <div style={{ marginTop: 10, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-        RESEARCH/00b · MULTI_RACE_CADENCE
       </div>
     </div>
   );

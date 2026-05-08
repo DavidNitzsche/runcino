@@ -323,10 +323,9 @@ function SettingTile({
           <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)', textTransform: 'uppercase', marginRight: 6 }}>SOURCE</span>
           {source}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-            {citation}
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          {/* Citation hidden — site-wide visual cleanup. Doctrine
+              traceability still in code via cite() in coach/doctrine/. */}
           {stale && recalibrateHref && (
             <Link href={recalibrateHref} style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-attention)', textDecoration: 'none' }}>
               {recalibrateLabel ?? 'RECALIBRATE'} →

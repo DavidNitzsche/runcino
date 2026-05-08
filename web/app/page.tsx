@@ -355,9 +355,6 @@ function ModeHero({ daysToNext, next, hub }: {
         <div style={{ fontSize: 13, color: 'var(--color-t1)', marginTop: 10, lineHeight: 1.55 }}>
           {focus}
         </div>
-        <div style={{ marginTop: 12, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-          RESEARCH/00b · REVERSE_TAPER_PROTOCOL
-        </div>
       </div>
     );
   }
@@ -1514,9 +1511,6 @@ function TaperGuidancePanel({ race }: { race: { name: string; daysAway: number; 
             ))}
           </ul>
         </div>
-        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
-          RESEARCH/14 · TAPER DOCTRINE
-        </div>
       </div>
     </>
   );
@@ -1590,9 +1584,6 @@ function PostRaceGuidancePanel({ race }: { race: { name: string; daysAgo: number
             <span>D{stage.easyEndDay} · BACK TO BASE</span>
           </div>
         </div>
-        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
-          RESEARCH/00b · POST_RACE_STAGES (§8.3 + §13.3)
-        </div>
       </div>
     </>
   );
@@ -1611,9 +1602,6 @@ function RebuildGuidancePanel() {
           <li>VDOT estimate has dropped 3-8 points (depends on layoff length); field-test only after 2-3 weeks of consistent base.</li>
           <li>First quality work returns when easy share consistently hits ≥85%.</li>
         </ul>
-        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
-          RESEARCH/01 · §"Returning from layoff"
-        </div>
       </div>
     </>
   );
@@ -1683,7 +1671,7 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
 
   return (
     <>
-      <SectionHeader title="HR zones" sub={`%HRmax · 5-zone (Research/03) · HRmax ${hrmax.bpm} BPM ${hrmax.source === 'tanaka_estimate' ? '· Tanaka estimate' : '· measured'}`} />
+      <SectionHeader title="HR zones" sub={`%HRmax · 5-zone · HRmax ${hrmax.bpm} BPM ${hrmax.source === 'tanaka_estimate' ? '· Tanaka estimate' : '· measured'}`} />
       <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 10 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
           {zoneOrder.map(z => {
@@ -2180,7 +2168,7 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
             return (
               <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)', lineHeight: 1.4, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
                 NEXT-WEEK CAP<br />
-                <span style={{ color: 'var(--color-t1)' }}>≤ {cap.toFixed(1)} MI <span style={{ color: 'var(--color-t3)', fontSize: 9 }}>· {displayPhase} TARGET (RESEARCH/01)</span></span>
+                <span style={{ color: 'var(--color-t1)' }}>≤ {cap.toFixed(1)} MI <span style={{ color: 'var(--color-t3)', fontSize: 9 }}>· {displayPhase} TARGET</span></span>
               </div>
             );
           })()}

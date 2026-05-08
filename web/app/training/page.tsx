@@ -794,9 +794,6 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
           <div className="tile-sub">Build curve</div>
           <div className="tile-lbl">{daysToRace} days to {goalRace.meta.name} · 12 weeks back, 8 forward</div>
         </div>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
-          RESEARCH/14 · TAPER
-        </span>
       </div>
 
       {/* Bar chart */}
@@ -1022,9 +1019,6 @@ function QualityDayGridTile({ runs }: { runs: NormalizedActivity[] }) {
           <div className="tile-sub">Quality day grid</div>
           <div className="tile-lbl">12 weeks · pattern of what landed when</div>
         </div>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
-          RESEARCH/00b
-        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, alignItems: 'flex-start' }}>

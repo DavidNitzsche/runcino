@@ -291,12 +291,14 @@ function RecoveryScoreCard({ acwr, easyShare, rpeAvg7d, rpeDrift, rpeRecentHeavy
   );
 }
 
-function RecoveryStat({ label, value, sub, status, citation }: {
+function RecoveryStat({ label, value, sub, status }: {
   label: string;
   value: string;
   sub: string;
   status: 'ok' | 'warn' | 'bad';
-  citation: string;
+  /** Doctrine citation kept in component sig for future hover/expand
+   *  affordance, but not rendered visually — citations site-wide hide. */
+  citation?: string;
 }) {
   const color = status === 'ok' ? 'var(--color-success)' : status === 'warn' ? 'var(--color-attention)' : 'var(--color-warning)';
   return (
@@ -308,9 +310,6 @@ function RecoveryStat({ label, value, sub, status, citation }: {
         {value}
       </div>
       <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>{sub}</div>
-      <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
-        {citation}
-      </div>
     </div>
   );
 }

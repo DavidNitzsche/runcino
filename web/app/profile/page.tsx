@@ -687,7 +687,7 @@ function RunnerProfileSection() {
               Cycle tracking
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5 }}>
-              Optional. Cycle phase affects training response (luteal-phase heat sensitivity, follicular-phase strength gains, etc.). Research/24 §sex differences. Leave blank if you don&apos;t want to track here.
+              Optional. Cycle phase affects training response (luteal-phase heat sensitivity, follicular-phase strength gains, etc.). Leave blank if you don&apos;t want to track here.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
