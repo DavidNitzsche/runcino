@@ -1639,6 +1639,24 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
               </div>
             ))}
           </div>
+          {/* Quality day count this week vs phase target. Sourced from
+              the same HARD_NAME_RE the effort classifier uses (after
+              the parallel Strava workoutType check). */}
+          {(() => {
+            const qualityTarget: Record<string, number> = {
+              'TAPER': 1, 'PEAK': 2, 'BUILDING': 2, 'BASE BLOCK': 1, 'POST-RACE': 0, 'REBUILD': 0, 'RACE MONTH': 2,
+            };
+            const tgt = qualityTarget[displayPhase] ?? 1;
+            const c = pulse.qualityDaysThisWeek > tgt ? 'var(--color-warning)'
+              : pulse.qualityDaysThisWeek === tgt ? 'var(--color-success)'
+              : pulse.qualityDaysThisWeek === 0 && tgt > 0 ? 'var(--color-attention)'
+              : 'var(--color-t2)';
+            return (
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.1px', color: c, paddingTop: 4, borderTop: '1px solid var(--color-l4)' }}>
+                {pulse.qualityDaysThisWeek} / {tgt} QUALITY THIS WEEK
+              </div>
+            );
+          })()}
         </div>
 
         {/* Weekly avg + delta vs prior 4w */}
@@ -1656,7 +1674,12 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           )}
         </div>
 
-        {/* Long run trend */}
+        {/* Long run trend + Daniels' 10% cap. The cap is the largest
+            safe long run for the next week — capped at +10% of the
+            longest recent (Daniels: no >10% week-over-week long-run
+            spike) AND a phase ceiling (TAPER < ongoing build).
+            Doctrine source: Research/01 §"Triggers to retest" + the
+            general Daniels long-run progression rule. */}
         <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 220 }}>
           <div className="tile-sub">Long run avg</div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t0)', letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
@@ -1664,11 +1687,33 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           </div>
           <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Longest run, each of last 4 weeks</div>
           {pulse.longestRecentMi > 0 && (
-            <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t2)', lineHeight: 1.4 }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t2)', lineHeight: 1.4 }}>
               PEAK LONG RUN<br />
               <span style={{ color: 'var(--color-t1)' }}>{pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS</span>
             </div>
           )}
+          {/* Next-week cap: 10% over peak (Daniels). TAPER caps lower
+              (short long runs); POST_RACE / REBUILD cap by phase. */}
+          {pulse.longestRecentMi > 0 && (() => {
+            const danielsTen = Math.round(pulse.longestRecentMi * 1.10 * 10) / 10;
+            const phaseCap: Record<string, number | null> = {
+              'TAPER':      Math.min(danielsTen, Math.max(8, pulse.longestRecentMi * 0.6)),
+              'PEAK':       danielsTen,
+              'BUILDING':   danielsTen,
+              'BASE BLOCK': danielsTen,
+              'POST-RACE':  Math.min(danielsTen, Math.max(4, pulse.longestRecentMi * 0.5)),
+              'REBUILD':    Math.min(danielsTen, Math.max(6, pulse.longestRecentMi * 0.7)),
+              'RACE MONTH': danielsTen,
+            };
+            const cap = phaseCap[displayPhase];
+            if (cap == null) return null;
+            return (
+              <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)', lineHeight: 1.4, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
+                NEXT-WEEK CAP<br />
+                <span style={{ color: 'var(--color-t1)' }}>≤ {cap.toFixed(1)} MI <span style={{ color: 'var(--color-t3)', fontSize: 9 }}>· DANIELS +10% RULE</span></span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Easy / hard balance — 80/20 polarized training, classified
