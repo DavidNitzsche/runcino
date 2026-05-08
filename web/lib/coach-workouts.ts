@@ -13,6 +13,7 @@
 
 import { PACE_OFFSETS_S_PER_MI, type Phase } from './coach-principles';
 import type { CoachState } from './coach-state';
+import { paceTargetFromVdot } from './vdot';
 
 export type RunWorkoutType =
   | 'recovery'
@@ -70,6 +71,17 @@ function goalPaceSPerMi(state: CoachState): number | null {
 }
 
 function paceFor(type: RunWorkoutType, state: CoachState): PaceTarget | null {
+  // 1. VDOT-derived band (preferred) — anchored on the runner's most
+  //    recent strong race result. Doctrine source: Daniels VDOT table
+  //    + PACE_ZONE_WIDTH (Research/01).
+  const vdotTarget = paceTargetFromVdot(state, type);
+  if (vdotTarget) {
+    return { lowS: vdotTarget.lowS, highS: vdotTarget.highS };
+  }
+  // 2. Legacy fallback: goal pace ± static offset table. Used when the
+  //    runner hasn't logged a recent race. Less precise (a 3:30
+  //    marathon goal at peak fitness ≠ same goal mid-build), but
+  //    keeps prescriptions sane until VDOT data lands.
   const offsets = PACE_OFFSETS_S_PER_MI[type];
   if (!offsets) return null;
   const goal = goalPaceSPerMi(state);
