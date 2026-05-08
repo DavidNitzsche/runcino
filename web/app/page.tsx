@@ -1691,6 +1691,35 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
   const displayPhase = (phaseTarget?.display ?? pulse.phase) as TrainingPulse['phase'];
   const weeks = weeklyMiles(runs, 8);
   const max = Math.max(...weeks.map(w => w.miles), 1);
+  // Cutback detection — Daniels' 3+1 / 4+1 cycle (Research/00b
+  // CUTBACK_FREQUENCY). A "cutback week" is one where miles dropped
+  // ≥30% from the prior 3-week running max (so we're not flagging
+  // single low weeks during a build, only intentional drops). This
+  // surfaces "X weeks since last cutback" + "cutback recommended
+  // next week" timing under the bar chart.
+  const cutbackInfo = (() => {
+    if (weeks.length < 4) return null;
+    let lastCutbackIdx: number | null = null;
+    for (let i = 1; i < weeks.length; i++) {
+      const prior = weeks.slice(Math.max(0, i - 3), i);
+      const priorMax = Math.max(...prior.map(w => w.miles), 0);
+      if (priorMax > 0 && weeks[i].miles < priorMax * 0.7 && weeks[i].miles > 0) {
+        lastCutbackIdx = i;
+      }
+    }
+    // Don't count the in-progress current week as a cutback yet.
+    const currentIdx = weeks.length - 1;
+    const referenceIdx = lastCutbackIdx === currentIdx ? null : lastCutbackIdx;
+    if (referenceIdx == null) {
+      return { weeksSince: null, recommendNext: weeks.length >= 4, isCutbackThisWeek: false };
+    }
+    const weeksSince = currentIdx - referenceIdx;
+    return {
+      weeksSince,
+      recommendNext: weeksSince >= 3,
+      isCutbackThisWeek: lastCutbackIdx === currentIdx,
+    };
+  })();
   const phaseColor: Record<TrainingPulse['phase'], string> = {
     'TAPER':       'var(--color-attention)',
     'PEAK':        'var(--color-attention)',
@@ -1761,7 +1790,16 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80, flex: 1 }}>
             {weeks.map((w, i) => {
-              const isCurrentWeek = i === weeks.length - 1;   // last bar = this calendar week, in progress
+              const isCurrentWeek = i === weeks.length - 1;
+              // Detect cutback weeks for visual coding — same heuristic
+              // the cutbackInfo computation uses (≥30% drop from prior
+              // 3-week max). Highlights so the runner sees the cycle.
+              const isCutback = (() => {
+                if (i === 0) return false;
+                const prior = weeks.slice(Math.max(0, i - 3), i);
+                const priorMax = Math.max(...prior.map(pw => pw.miles), 0);
+                return priorMax > 0 && w.miles > 0 && w.miles < priorMax * 0.7;
+              })();
               const h = w.miles > 0 ? Math.max(6, (w.miles / max) * 80) : 0;
               return (
                 <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
@@ -1771,12 +1809,13 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
                   <div style={{
                     width: '100%',
                     height: h ? `${h}px` : '4px',
-                    /* Uniform color across all weeks — only the current
-                       (in-progress) week gets a distinct accent color so
-                       the meaning of the highlight is self-evident. */
-                    background: h ? (isCurrentWeek ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
+                    background: h
+                      ? (isCurrentWeek ? 'var(--color-attention)'
+                        : isCutback ? 'var(--color-t3)'
+                        : 'var(--color-corporate)')
+                      : 'var(--color-l3)',
                     borderRadius: 2,
-                  }} title={`Week of ${w.weekStart} · ${w.miles.toFixed(1)} mi · ${w.runs} runs${isCurrentWeek ? ' · this week (in progress)' : ''}`} />
+                  }} title={`Week of ${w.weekStart} · ${w.miles.toFixed(1)} mi · ${w.runs} runs${isCutback ? ' · cutback week' : ''}${isCurrentWeek ? ' · this week (in progress)' : ''}`} />
                 </div>
               );
             })}
@@ -1803,6 +1842,27 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
             return (
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.1px', color: c, paddingTop: 4, borderTop: '1px solid var(--color-l4)' }}>
                 {pulse.qualityDaysThisWeek} / {tgt} QUALITY THIS WEEK
+              </div>
+            );
+          })()}
+          {/* Cutback timing per Daniels 3+1 cycle (Research/00b
+              CUTBACK_FREQUENCY). Hidden during taper / post-race /
+              rebuild — those phases drive volume separately. */}
+          {cutbackInfo && displayPhase !== 'TAPER' && displayPhase !== 'POST-RACE' && (displayPhase as string) !== 'REBUILD' && (() => {
+            const text = cutbackInfo.isCutbackThisWeek
+              ? 'CUTBACK WEEK · DOWN-VOLUME ON PURPOSE'
+              : cutbackInfo.recommendNext
+              ? `CUTBACK RECOMMENDED NEXT WEEK${cutbackInfo.weeksSince != null ? ` · ${cutbackInfo.weeksSince}W SINCE LAST` : ''}`
+              : cutbackInfo.weeksSince != null
+              ? `WEEK ${cutbackInfo.weeksSince + 1} OF BUILD CYCLE · CUTBACK IN ${3 - cutbackInfo.weeksSince}W`
+              : null;
+            const color = cutbackInfo.isCutbackThisWeek ? 'var(--color-corporate)'
+              : cutbackInfo.recommendNext ? 'var(--color-attention)'
+              : 'var(--color-t3)';
+            if (!text) return null;
+            return (
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.1px', color, lineHeight: 1.4 }}>
+                {text}
               </div>
             );
           })()}
