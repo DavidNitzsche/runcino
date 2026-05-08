@@ -93,6 +93,22 @@ export interface CoachState {
     strengthDaysThisWeek: number | null;
   };
 
+  /** Runner demographic + physio profile, server-sourced from the
+   *  `runner_profile` Postgres table (lib/runner-profile-store.ts).
+   *  Drives HR-threshold computation, age-grading, sex-cohort framing.
+   *  All fields nullable — empty profile is valid, engine falls
+   *  back to defaults (e.g. HARD_EFFORT_HR_DEFAULT_BPM 152). */
+  runner: {
+    age: number | null;
+    sex: 'male' | 'female' | 'other' | 'unspecified';
+    hrmaxBpm: number | null;
+    rhrBpm: number | null;
+    /** Resolved HRmax — measured if set, otherwise Tanaka estimate
+     *  from age, otherwise null. The engine uses this for threshold
+     *  derivation: 80% × hrmax = "yesterday was hard" cutoff. */
+    resolvedHrmaxBpm: number | null;
+  };
+
   /** Engine-readable flags so it doesn't have to recompute these. */
   flags: {
     /** True when ANY of: 2+ races in 14 days; a marathon-distance race
@@ -368,11 +384,33 @@ export async function gatherCoachState(): Promise<CoachState> {
     }
   }
 
+  // Runner profile (Postgres-backed, server-side). Failure is non-
+  // fatal — empty profile is valid, downstream just falls back to
+  // defaults (HARD_EFFORT_HR_DEFAULT_BPM, no age-graded VDOT, etc).
+  const runnerProfile = await (async () => {
+    try {
+      const { getRunnerProfile, ageFromBirthYear, resolveHrmax } = await import('./runner-profile-store');
+      const p = await getRunnerProfile();
+      const age = ageFromBirthYear(p.birthYear, today);
+      const hrmaxResolved = resolveHrmax(p);
+      return {
+        age,
+        sex: p.sex,
+        hrmaxBpm: p.hrmaxBpm,
+        rhrBpm: p.rhrBpm,
+        resolvedHrmaxBpm: hrmaxResolved?.bpm ?? null,
+      };
+    } catch {
+      return { age: null, sex: 'unspecified' as const, hrmaxBpm: null, rhrBpm: null, resolvedHrmaxBpm: null };
+    }
+  })();
+
   return {
     now: todayISO,
     races: {
       nextA, nextAny, inWindow, recent, racesForVdot, raceCount30d,
     },
+    runner: runnerProfile,
     volume: {
       last7Mi, last28Mi, last7Days,
       weeklyAvg4w, weeklyAvg8w,

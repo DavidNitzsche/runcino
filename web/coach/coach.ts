@@ -207,6 +207,17 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
     heavyBlockSuspected: boolean;
     rebuildAfterBreak: boolean;
   };
+  /** Runner profile (age, sex, HRmax, RHR) — when provided, the
+   *  brief LLM gets demographic context. Doctrine: Research/24
+   *  age/sex grading + Research/03 HR zones. Server-side wired
+   *  via the runner-profile-store. Optional — empty profile is OK,
+   *  brief just runs without age/sex framing. */
+  runnerProfile?: {
+    age: number | null;
+    sex: 'male' | 'female' | 'other' | 'unspecified';
+    hrmaxBpm: number | null;
+    rhrBpm: number | null;
+  };
 }
 
 export interface RetrospectInput extends CoachBaseContext {
@@ -314,6 +325,16 @@ export interface DailyTrainingBriefInput extends CoachBaseContext {
   } | null;
   /** Whether the engine is recommending a deliberate VDOT test. */
   vdotTestPrompt: boolean;
+  /** Runner profile (server-side, Postgres-backed). When provided,
+   *  the brief LLM gets demographic context (age + sex + HRmax)
+   *  and can contextualize accordingly. Empty profile → brief skips
+   *  demographic framing. */
+  runnerProfile?: {
+    age: number | null;
+    sex: 'male' | 'female' | 'other' | 'unspecified';
+    hrmaxBpm: number | null;
+    rhrBpm: number | null;
+  };
 }
 
 // ── Coach implementation ─────────────────────────────────────────────
@@ -720,6 +741,28 @@ class CoachImpl implements Coach {
       return lines.join('\n');
     })();
 
+    // Runner demographic block — surfaces age + sex + HRmax to the
+    // brief LLM so the voice can contextualize ("for a 60-year-old
+    // M50 runner, this fitness is...") without us having to hardcode
+    // it. Hidden from the model when the profile is empty so the
+    // brief doesn't make demographic claims it can't support.
+    const runnerRead = (() => {
+      const p = input.runnerProfile;
+      if (!p) return '';
+      const parts: string[] = [];
+      if (p.age != null) parts.push(`age ${p.age}`);
+      if (p.sex !== 'unspecified' && p.sex !== 'other') parts.push(`${p.sex} runner`);
+      if (p.hrmaxBpm != null) parts.push(`HRmax ${p.hrmaxBpm} BPM (measured)`);
+      else if (p.age != null) parts.push(`HRmax ~${Math.round(208 - 0.7 * p.age)} BPM (Tanaka estimate)`);
+      if (parts.length === 0) return '';
+      return [
+        '',
+        'RUNNER PROFILE:',
+        `  ${parts.join(', ')}.`,
+        '  Use this for cohort-aware framing when natural ("for a 60-year-old, this fitness is solid"). Do NOT invent demographic details beyond what\'s listed.',
+      ].join('\n');
+    })();
+
     const userPrompt = [
       `Write a race brief for ${input.raceName} on ${input.raceDate}.`,
       `Goal: ${input.goalDisplay}.`,
@@ -727,6 +770,7 @@ class CoachImpl implements Coach {
       weatherLine,
       slowdownContext,
       trainingRead,
+      runnerRead,
       '',
       horizonInstructions[horizon],
       '',
@@ -817,6 +861,27 @@ class CoachImpl implements Coach {
     if (state.flags.rebuildAfterBreak) flagLines.push('REBUILD FLAG — coming back from a break.');
     if (input.vdotTestPrompt) flagLines.push('VDOT TEST FLAG — Coach is planning a 5K time trial; surface why it matters.');
 
+    // Runner profile block — same structure as the race brief.
+    // Surfaces age + sex + HRmax to the LLM so the daily brief can
+    // contextualize ("at 60, this volume is solid"). Hidden when
+    // empty so the brief doesn't fabricate demographic framing.
+    const runnerProfileLines: string[] = (() => {
+      const p = input.runnerProfile;
+      if (!p) return [];
+      const parts: string[] = [];
+      if (p.age != null) parts.push(`age ${p.age}`);
+      if (p.sex !== 'unspecified' && p.sex !== 'other') parts.push(`${p.sex}`);
+      if (p.hrmaxBpm != null) parts.push(`HRmax ${p.hrmaxBpm} BPM (measured)`);
+      else if (p.age != null) parts.push(`HRmax ~${Math.round(208 - 0.7 * p.age)} BPM (Tanaka estimate)`);
+      if (parts.length === 0) return [];
+      return [
+        ``,
+        `RUNNER PROFILE:`,
+        `  ${parts.join(', ')}.`,
+        `  Use sparingly for cohort-aware framing. Don't invent details beyond what's listed.`,
+      ];
+    })();
+
     const userPrompt = [
       `Write today's training brief for the runner. Date: ${input.prescription.generatedAt.slice(0, 10)}.`,
       ``,
@@ -832,6 +897,7 @@ class CoachImpl implements Coach {
       `  Longest run last 28d: ${state.volume.longestLast28Mi.toFixed(1)} mi`,
       `  Easy/quality balance: ${(state.intensity.easyShare14d * 100).toFixed(0)}% easy`,
       ...flagLines.map(f => `  ${f}`),
+      ...runnerProfileLines,
       ``,
       `RACE CALENDAR:`,
       `  ${raceLine}`,

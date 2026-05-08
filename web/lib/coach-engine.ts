@@ -386,9 +386,15 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
 
   // 2. 24h recovery: yesterday hard → today must be easy.
   // Threshold from coach/doctrine/hr_zones.ts HRMAX_ZONES_5 — 80% HRmax
-  // is the bottom of the threshold zone. Default 152 bpm ≈ 80% × 190.
+  // is the bottom of the threshold zone. Uses the runner's actual
+  // HRmax (measured > Tanaka estimate from age) when set; falls back
+  // to HARD_EFFORT_HR_DEFAULT_BPM (152, ~80% × 190 default HRmax)
+  // when the profile is empty.
+  const hardThresholdBpm = state.runner?.resolvedHrmaxBpm != null
+    ? Math.round(state.runner.resolvedHrmaxBpm * 0.80)
+    : HARD_EFFORT_HR_DEFAULT_BPM;
   const y = state.recovery.yesterday;
-  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= HARD_EFFORT_HR_DEFAULT_BPM;
+  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= hardThresholdBpm;
   if (p.isQuality && yesterdayHard) {
     return generalAerobic(baseEasyMi(state, phase), state);
   }

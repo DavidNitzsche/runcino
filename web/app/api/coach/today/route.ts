@@ -21,6 +21,7 @@ import { gatherCoachState } from '../../../../lib/coach-state';
 import { coachDaily } from '../../../../lib/coach-engine';
 import { coach } from '../../../../coach/coach';
 import { vdotSnapshot, shouldPromptVdotTest } from '../../../../lib/vdot';
+import { getRunnerProfile, ageFromBirthYear } from '../../../../lib/runner-profile-store';
 
 export async function GET() {
   try {
@@ -33,6 +34,18 @@ export async function GET() {
     ]);
     const vdot = vdotSnapshot(state);
     const vdotTestPrompt = shouldPromptVdotTest(state);
+
+    // Fetch runner profile so the brief LLM sees age + sex + HRmax.
+    // Audit's #1 priority — runner profile lives in Postgres, the
+    // brief route reads it and passes it through. Empty profile is
+    // fine; brief skips demographic framing.
+    const profile = await getRunnerProfile().catch(() => null);
+    const runnerProfileForBrief = profile ? {
+      age: ageFromBirthYear(profile.birthYear),
+      sex: profile.sex,
+      hrmaxBpm: profile.hrmaxBpm,
+      rhrBpm: profile.rhrBpm,
+    } : undefined;
 
     // Today's training brief — voice paragraph for the dashboard.
     // Generated separately from the race brief because it anchors on
@@ -49,6 +62,7 @@ export async function GET() {
         sourceName: vdot.source.name,
       } : null,
       vdotTestPrompt,
+      runnerProfile: runnerProfileForBrief,
     }).catch(() => null);
 
     return Response.json({

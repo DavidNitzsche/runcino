@@ -17,6 +17,7 @@ import { getCourseFacts } from '../../../lib/course-facts';
 import type { CoachDecision } from '../../../coach/types';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { vdotSnapshot, vdotRow } from '../../../lib/vdot';
+import { getRunnerProfile, ageFromBirthYear } from '../../../lib/runner-profile-store';
 
 type Body = {
   courseSlug: string;
@@ -195,6 +196,24 @@ export async function POST(req: Request) {
     }
   })();
 
+  // Fetch runner profile so the brief LLM sees age + sex + HRmax.
+  // Audit's #1 priority — closes the "brief is blind to demographics"
+  // gap. Failure is non-fatal — brief still works, just without
+  // cohort framing.
+  const runnerProfileForBrief = await (async () => {
+    try {
+      const p = await getRunnerProfile();
+      return {
+        age: ageFromBirthYear(p.birthYear),
+        sex: p.sex,
+        hrmaxBpm: p.hrmaxBpm,
+        rhrBpm: p.rhrBpm,
+      };
+    } catch {
+      return undefined;
+    }
+  })();
+
   let decision: CoachDecision<string>;
   try {
     decision = await coach.briefRaceMorning({
@@ -210,6 +229,7 @@ export async function POST(req: Request) {
       raceDistanceMi: totalMi > 0 ? totalMi : undefined,
       daysToRace: serverDaysToRace,
       trainingContext,
+      runnerProfile: runnerProfileForBrief,
     });
   } catch (e) {
     return new Response(
