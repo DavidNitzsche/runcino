@@ -17,7 +17,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
-import { listRaces, type SavedRace } from '../../lib/storage';
+import { listRaces, listRacesCachedSync, type SavedRace } from '../../lib/storage';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
 import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
 import { daysUntil, formatShort, todayISO } from '../../lib/dates';
@@ -97,8 +97,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 // ── Page ────────────────────────────────────────────────────────────
 export default function TrainingPage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [races, setRaces] = useState<SavedRace[] | null>(null);
+  // Synchronous initializers so revisits paint with content
+  // immediately — no "Loading…" flash.
+  const [now, setNow] = useState<Date | null>(() => typeof window !== 'undefined' ? new Date() : null);
+  const [races, setRaces] = useState<SavedRace[] | null>(() => listRacesCachedSync());
   // Stale-while-revalidate for coach data — render localStorage cache
   // instantly on revisit, refresh in background.
   const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(() => {

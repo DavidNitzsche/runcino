@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
 import { Modal } from '../components/modal';
-import { listRaces, type SavedRace } from '../lib/storage';
+import { listRaces, listRacesCachedSync, type SavedRace } from '../lib/storage';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
@@ -23,13 +23,20 @@ import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 
 export default function OverviewPage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [races, setRaces] = useState<SavedRace[] | null>(null);
+  // Synchronous initializers so the page paints with content on
+  // revisits — no "Loading…" flash. `now` is trivially synchronous;
+  // races read from the localStorage cache layer (lib/storage.ts
+  // listRacesCachedSync). First-ever visit (no cache) still falls
+  // through to the loading state.
+  const [now, setNow] = useState<Date | null>(() => typeof window !== 'undefined' ? new Date() : null);
+  const [races, setRaces] = useState<SavedRace[] | null>(() => listRacesCachedSync());
   const { activities } = useActivities();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Always update `now` after mount so SSR-hydration doesn't
+      // race a stale clock; harmless when init was already correct.
       setNow(new Date());
       const initial = await listRaces();
       if (cancelled) return;
