@@ -539,36 +539,169 @@ export function isProbablyRace(a: NormalizedActivity): boolean {
   return RACE_INDICATOR_RE.test(a.name);
 }
 
-/** Easy / hard split for the last N days. "Easy" is mile-weighted by
- *  avg HR being below the threshold; "hard" is at or above. Threshold
- *  defaults to 152 bpm — close to a typical aerobic ceiling for an
- *  endurance-focused runner; tunable per athlete once HealthKit data
- *  lands. Returns the easy share as a fraction in [0, 1]. */
+/** Easy / hard / unknown split for the last N days, mile-weighted.
+ *  Doctrine source: Daniels' polarized 80/20 distribution. A run is
+ *  "easy" when it sits in the runner's E zone (the wide aerobic
+ *  window above E pace floor). "Hard" is anything M pace or faster
+ *  — Daniels lumps M, T, I, R together as quality work for the
+ *  80/20 read.
+ *
+ *  Classification cascade (highest confidence first):
+ *    1. Name pattern — runner's own naming is intent. HARD_NAME_RE
+ *       catches tempo/intervals/MP-block/track/etc. EASY_NAME_RE
+ *       catches recovery/shakeout/base.
+ *    2. VDOT pace zones — when a current VDOT exists, pace below the
+ *       slowest E-zone band = hard, pace within E zone = easy.
+ *    3. HR threshold — fallback when no name signal + no VDOT.
+ *    4. Distance + position in week — long runs without quality
+ *       signal default to easy (Daniels: long runs are E pace).
+ *    5. Otherwise UNKNOWN — explicit "we can't tell" bucket.
+ *       Better than silently counting as easy and inflating the
+ *       ratio. */
 export interface EffortBalance {
   easyMi: number;
   hardMi: number;
-  easyShare: number;        // 0–1, mile-weighted
+  unknownMi: number;
+  /** Mile-weighted ratio over CLASSIFIED miles (easy / (easy+hard)).
+   *  Excludes unknown so runners with no HR + no naming aren't
+   *  punished or flattered. */
+  easyShare: number;
   totalMi: number;
   windowDays: number;
+  /** Confidence flag — true when ≥70% of miles got high/medium-
+   *  confidence classification. Low otherwise. */
+  highConfidence: boolean;
+  /** Per-activity classification breakdown for transparency UI. */
+  classifications: Array<{
+    activityId: number;
+    name: string;
+    distanceMi: number;
+    effort: 'easy' | 'hard' | 'unknown';
+    reason: string;
+  }>;
   hrThreshold: number;
   samplesWithHr: number;
   totalSamples: number;
 }
 
-/** Name-pattern classifier — "is this a hard training run?". The
- *  HR-threshold approach was unreliable: a well-trained runner can
- *  hit tempo/threshold work at 145-150 bpm, which falls below the
- *  152 default and gets misclassified as easy. Name patterns reflect
- *  what the runner actually intended: tempo / repeats / intervals /
- *  fartlek / progression / VO2 / over-and-under = hard. Everything
- *  else (easy, recovery, long, general aerobic) = easy. */
-const HARD_NAME_RE = /\b(tempo|threshold|interval|repeats?|reps?\b|fartlek|progression|vo2|over\s*and\s*under|hill\s*repeats?|race\s*pace|mile\s*reps?|k\s*reps?|drop\s*set|over[-\s]?under|strides|pyramid)\b/i;
+// ── Name pattern signals ─────────────────────────────────────────
 
-function isProbablyHard(a: NormalizedActivity): boolean {
-  return HARD_NAME_RE.test(a.name);
+/** Hard workout name patterns — runner explicitly named this
+ *  session as quality. Expanded from the prior version to catch
+ *  modern run-naming conventions. */
+const HARD_NAME_RE = /\b(tempo|threshold|interval|repeats?|reps?\b|fartlek|progression|vo2\s*max|vo2|over\s*and\s*under|over[-\s]?under|hill\s*(?:repeats?|sprints?|workout)?|race\s*pace|mile\s*reps?|k\s*reps?|400s?|800s?|1k|1200s?|1600s?|drop\s*set|strides|pyramid|cutdown|ladder|track\b|speed\s*(?:work|day)?|surges|pickups|cruise\s*intervals?|sub[-\s]?threshold|mp\s*(?:block|miles?)?|marathon\s*pace|wave\s*tempo|alternations?|drills)\b/i;
+
+/** Easy workout name patterns — runner explicitly named this as
+ *  recovery/base/shakeout. Higher confidence than just "no hard
+ *  pattern matched". */
+const EASY_NAME_RE = /\b(easy|recovery|recover|base|shakeout|shake[-\s]?out|maf|zone\s*2|z2|aerobic|conversational|chill|jog|warmup\s*only)\b/i;
+
+function classifyByName(name: string): 'hard' | 'easy' | null {
+  if (HARD_NAME_RE.test(name)) return 'hard';
+  if (EASY_NAME_RE.test(name)) return 'easy';
+  return null;
 }
 
-export function effortBalance(activities: NormalizedActivity[], windowDays = 14, hrThreshold = 152): EffortBalance {
+/** Single-activity effort classifier with a research-backed cascade.
+ *  Returns the effort bucket + a reason string for transparency. */
+function classifyEffort(
+  a: NormalizedActivity,
+  vdot: number | null,
+  hrThreshold: number,
+): { effort: 'easy' | 'hard' | 'unknown'; reason: string } {
+  // 1. Name pattern — highest confidence, runner's intent.
+  const byName = classifyByName(a.name);
+  if (byName === 'hard') return { effort: 'hard', reason: `name "${a.name.slice(0, 40)}" matches hard pattern` };
+  if (byName === 'easy') return { effort: 'easy', reason: `name "${a.name.slice(0, 40)}" matches easy pattern` };
+
+  // 2. VDOT pace zones — when we have a current VDOT, anything at
+  //    or faster than M pace is hard, anything in E zone is easy.
+  //    Doctrine source: Daniels' 80/20 (M/T/I/R = quality, E = easy).
+  if (vdot != null && a.paceSPerMi > 0) {
+    // Inline the pace lookup to avoid a circular import.
+    // M center ≈ marathonS / 26.219 from the VDOT table.
+    const paceFromVdotTable = vdotToPaces(vdot);
+    if (paceFromVdotTable) {
+      const { mCenterS, eFloorS } = paceFromVdotTable;
+      if (a.paceSPerMi <= mCenterS + 5) {
+        return { effort: 'hard', reason: `pace ${fmtPace(a.paceSPerMi)} at/faster than M pace ${fmtPace(mCenterS)}` };
+      }
+      if (a.paceSPerMi >= eFloorS - 10) {
+        return { effort: 'easy', reason: `pace ${fmtPace(a.paceSPerMi)} within E zone (≥${fmtPace(eFloorS)})` };
+      }
+      // Between M and E → moderate. Daniels says runs in this
+      // zone without quality intent are "junk miles" — we'll
+      // call them easy for the 80/20 ratio (the runner isn't
+      // doing quality work, they're just running medium).
+      return { effort: 'easy', reason: `pace ${fmtPace(a.paceSPerMi)} between M and E (no quality intent)` };
+    }
+  }
+
+  // 3. HR threshold — medium confidence fallback.
+  if (a.avgHr != null) {
+    if (a.avgHr >= hrThreshold) return { effort: 'hard', reason: `avg HR ${a.avgHr} ≥ ${hrThreshold} threshold` };
+    if (a.avgHr < hrThreshold * 0.88) return { effort: 'easy', reason: `avg HR ${a.avgHr} < ${Math.round(hrThreshold * 0.88)} easy ceiling` };
+    return { effort: 'unknown', reason: `HR ${a.avgHr} in moderate band (no clear signal)` };
+  }
+
+  // 4. Long runs default to easy — Daniels' long runs are E pace.
+  if (a.distanceMi >= 12) return { effort: 'easy', reason: 'long run, no quality signal — defaults to E' };
+
+  // 5. No signal — explicit unknown bucket.
+  return { effort: 'unknown', reason: 'no pace/HR/name signal' };
+}
+
+// ── VDOT pace lookup (inline copy to avoid circular import) ──────
+
+interface VdotRow { vdot: number; mileS: number; km5S: number; halfS: number; marathonS: number }
+const VDOT_PACE_ROWS: VdotRow[] = [
+  // Mirrors web/coach/doctrine/pace_zones.ts VDOT_LOOKUP_TABLE.
+  // Inlined here so strava-stats stays a leaf module (no circular
+  // import on coach-state via vdot.ts → coach/doctrine).
+  { vdot: 30, mileS: 510, km5S: 1840, halfS: 8464,  marathonS: 17357 },
+  { vdot: 40, mileS: 395, km5S: 1448, halfS: 6659,  marathonS: 13785 },
+  { vdot: 45, mileS: 356, km5S: 1310, halfS: 6020,  marathonS: 12506 },
+  { vdot: 50, mileS: 324, km5S: 1197, halfS: 5495,  marathonS: 11449 },
+  { vdot: 55, mileS: 298, km5S: 1102, halfS: 5058,  marathonS: 10561 },
+  { vdot: 60, mileS: 276, km5S: 1023, halfS: 4689,  marathonS: 9805  },
+  { vdot: 65, mileS: 258, km5S: 954,  halfS: 4375,  marathonS: 9155  },
+  { vdot: 70, mileS: 243, km5S: 895,  halfS: 4101,  marathonS: 8590  },
+  { vdot: 75, mileS: 230, km5S: 843,  halfS: 3863,  marathonS: 8095  },
+  { vdot: 80, mileS: 218, km5S: 798,  halfS: 3654,  marathonS: 7658  },
+  { vdot: 85, mileS: 208, km5S: 758,  halfS: 3473,  marathonS: 7271  },
+];
+
+function vdotToPaces(vdot: number): { mCenterS: number; eFloorS: number } | null {
+  if (vdot < VDOT_PACE_ROWS[0].vdot) vdot = VDOT_PACE_ROWS[0].vdot;
+  if (vdot > VDOT_PACE_ROWS[VDOT_PACE_ROWS.length - 1].vdot) vdot = VDOT_PACE_ROWS[VDOT_PACE_ROWS.length - 1].vdot;
+  for (let i = 0; i < VDOT_PACE_ROWS.length - 1; i++) {
+    const lo = VDOT_PACE_ROWS[i], hi = VDOT_PACE_ROWS[i + 1];
+    if (vdot >= lo.vdot && vdot <= hi.vdot) {
+      const t = (vdot - lo.vdot) / (hi.vdot - lo.vdot);
+      const lerp = (a: number, b: number) => a + t * (b - a);
+      const marathonS = lerp(lo.marathonS, hi.marathonS);
+      const mCenterS = marathonS / 26.219;
+      // E pace is M + 60-90 sec/mi per Daniels — using the wide end
+      // (90s) as the floor so we're CONSERVATIVE about easy
+      // (anything slower than M+90 is easy).
+      const eFloorS = mCenterS + 90;
+      return { mCenterS, eFloorS };
+    }
+  }
+  return null;
+}
+
+function fmtPace(s: number): string {
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}/mi`;
+}
+
+export function effortBalance(
+  activities: NormalizedActivity[],
+  windowDays = 14,
+  hrThreshold = 152,
+  vdot: number | null = null,
+): EffortBalance {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
   const cutoffISO = cutoff.toISOString().slice(0, 10);
@@ -576,25 +709,43 @@ export function effortBalance(activities: NormalizedActivity[], windowDays = 14,
   // applies to TRAINING. A race is a competitive effort, not a
   // training choice.
   const inWindow = activities.filter(a => a.date >= cutoffISO && !isProbablyRace(a));
-  let easyMi = 0, hardMi = 0;
+  let easyMi = 0, hardMi = 0, unknownMi = 0;
   let samplesWithHr = 0;
+  const classifications: EffortBalance['classifications'] = [];
+  let highConfidenceMi = 0;
   for (const a of inWindow) {
     if (a.avgHr != null) samplesWithHr++;
-    // Hard if EITHER the name says so OR avgHr is above threshold.
-    // This catches tempo workouts at sub-threshold HR (most common
-    // miss with the old purely-HR approach).
-    const hard = isProbablyHard(a) || (a.avgHr != null && a.avgHr >= hrThreshold);
-    if (hard) hardMi += a.distanceMi;
-    else easyMi += a.distanceMi;
+    const result = classifyEffort(a, vdot, hrThreshold);
+    classifications.push({
+      activityId: a.id,
+      name: a.name,
+      distanceMi: a.distanceMi,
+      effort: result.effort,
+      reason: result.reason,
+    });
+    if (result.effort === 'easy') easyMi += a.distanceMi;
+    else if (result.effort === 'hard') hardMi += a.distanceMi;
+    else unknownMi += a.distanceMi;
+    // Name + VDOT pace signals = high confidence; HR fallback
+    // and unknown = lower. (Used for the highConfidence flag.)
+    if (result.reason.startsWith('name') || result.reason.startsWith('pace')) {
+      highConfidenceMi += a.distanceMi;
+    }
   }
-  const totalMi = Math.round((easyMi + hardMi) * 10) / 10;
-  const easyShare = totalMi > 0 ? easyMi / totalMi : 0;
+  const totalMi = Math.round((easyMi + hardMi + unknownMi) * 10) / 10;
+  // easyShare denominator excludes unknown — better to report ratio
+  // over what we KNOW than to silently flatten unknowns into easy.
+  const classifiedMi = easyMi + hardMi;
+  const easyShare = classifiedMi > 0 ? easyMi / classifiedMi : 0;
   return {
     easyMi: Math.round(easyMi * 10) / 10,
     hardMi: Math.round(hardMi * 10) / 10,
+    unknownMi: Math.round(unknownMi * 10) / 10,
     easyShare,
     totalMi,
     windowDays,
+    highConfidence: totalMi > 0 ? highConfidenceMi / totalMi >= 0.7 : false,
+    classifications,
     hrThreshold,
     samplesWithHr,
     totalSamples: inWindow.length,

@@ -143,6 +143,61 @@ interface PastRace {
   daysAgo: number;
 }
 
+/** Lightweight VDOT lookup — same VDOT_LOOKUP_TABLE as
+ *  coach/doctrine/pace_zones.ts, inlined to avoid a circular import
+ *  via lib/vdot.ts (which imports CoachState's types). Used to
+ *  derive the runner's current VDOT estimate inside gatherCoachState
+ *  for the intensity classifier. Linear interp between table rows. */
+const VDOT_LOOKUP_FOR_STATE = [
+  // Subset matching the canonical table; each row maps a race
+  // distance in seconds to a VDOT.
+  { vdot: 30, mileS: 510, km3S: 1047, km5S: 1840, km10S: 3826, km15S: 5894, halfS: 8464,  marathonS: 17357 },
+  { vdot: 35, mileS: 444, km3S: 914,  km5S: 1612, km10S: 3361, km15S: 5183, halfS: 7448,  marathonS: 15300 },
+  { vdot: 40, mileS: 395, km3S: 815,  km5S: 1448, km10S: 3003, km15S: 4633, halfS: 6659,  marathonS: 13785 },
+  { vdot: 45, mileS: 356, km3S: 737,  km5S: 1310, km10S: 2716, km15S: 4193, halfS: 6020,  marathonS: 12506 },
+  { vdot: 50, mileS: 324, km3S: 671,  km5S: 1197, km10S: 2481, km15S: 3826, halfS: 5495,  marathonS: 11449 },
+  { vdot: 55, mileS: 298, km3S: 614,  km5S: 1102, km10S: 2286, km15S: 3524, halfS: 5058,  marathonS: 10561 },
+  { vdot: 60, mileS: 276, km3S: 567,  km5S: 1023, km10S: 2122, km15S: 3275, halfS: 4689,  marathonS: 9805  },
+  { vdot: 65, mileS: 258, km3S: 528,  km5S: 954,  km10S: 1981, km15S: 3063, halfS: 4375,  marathonS: 9155  },
+  { vdot: 70, mileS: 243, km3S: 495,  km5S: 895,  km10S: 1859, km15S: 2878, halfS: 4101,  marathonS: 8590  },
+  { vdot: 75, mileS: 230, km3S: 465,  km5S: 843,  km10S: 1754, km15S: 2718, halfS: 3863,  marathonS: 8095  },
+  { vdot: 80, mileS: 218, km3S: 441,  km5S: 798,  km10S: 1662, km15S: 2581, halfS: 3654,  marathonS: 7658  },
+] as const;
+
+type VdotKey = 'mileS' | 'km3S' | 'km5S' | 'km10S' | 'km15S' | 'halfS' | 'marathonS';
+
+function quickDistanceKey(distMi: number): VdotKey | null {
+  const candidates: Array<{ key: VdotKey; mi: number }> = [
+    { key: 'mileS',     mi: 1 },
+    { key: 'km3S',      mi: 1.864 },
+    { key: 'km5S',      mi: 3.107 },
+    { key: 'km10S',     mi: 6.214 },
+    { key: 'km15S',     mi: 9.321 },
+    { key: 'halfS',     mi: 13.109 },
+    { key: 'marathonS', mi: 26.219 },
+  ];
+  for (const c of candidates) {
+    if (Math.abs(distMi - c.mi) / c.mi < 0.05) return c.key;
+  }
+  return null;
+}
+
+function quickVdotFromRace(distMi: number, timeS: number): number | null {
+  const key = quickDistanceKey(distMi);
+  if (!key) return null;
+  const rows = VDOT_LOOKUP_FOR_STATE;
+  for (let i = 0; i < rows.length - 1; i++) {
+    const hi = rows[i], lo = rows[i + 1];
+    if (timeS <= hi[key] && timeS >= lo[key]) {
+      const t = (hi[key] - timeS) / (hi[key] - lo[key]);
+      return Math.round((hi.vdot + t * (lo.vdot - hi.vdot)) * 10) / 10;
+    }
+  }
+  if (timeS > rows[0][key]) return rows[0].vdot;
+  if (timeS < rows[rows.length - 1][key]) return rows[rows.length - 1].vdot;
+  return null;
+}
+
 function parseGoalHMS(s: string | undefined): number | null {
   if (!s) return null;
   const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
@@ -251,7 +306,21 @@ export async function gatherCoachState(): Promise<CoachState> {
   const longestLast28Mi = last28.length > 0 ? round1(Math.max(...last28.map(a => a.distanceMi))) : 0;
 
   // ── Intensity ─────────────────────────────────────────────
-  const balance = effortBalance(activities, 14);
+  // Derive a current-VDOT estimate from the strongest race in the
+  // freshness window, so the effort classifier can use Daniels'
+  // pace-zone signals (E zone = easy, M-pace-and-faster = hard).
+  // Inline the VDOT lookup here to avoid a circular import on
+  // lib/vdot.ts (which depends on this file's types).
+  const stateVdot = (() => {
+    let best: number | null = null;
+    for (const r of racesForVdot) {
+      if (r.finishS == null || r.distanceMi <= 0) continue;
+      const v = quickVdotFromRace(r.distanceMi, r.finishS);
+      if (v != null && (best == null || v > best)) best = v;
+    }
+    return best;
+  })();
+  const balance = effortBalance(activities, 14, 152, stateVdot);
 
   // ── Recovery ──────────────────────────────────────────────
   const sortedByDate = activities.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));

@@ -1405,6 +1405,48 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
    the dashboard always tells you "where you're at" before
    diving into vanity numbers. */
 function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import('../lib/strava-activities').NormalizedActivity[] }) {
+  // Pull VDOT + phase-aware easy-share target from /api/coach/today
+  // so the effort classifier uses pace-zone signals (research-anchored)
+  // and the "On target" verdict matches the runner's actual phase
+  // instead of a static 75% threshold. Failure is non-fatal — falls
+  // back to name + HR classification only.
+  const [vdot, setVdot] = useState<number | null>(null);
+  const [easyShareMin, setEasyShareMin] = useState<number>(0.80);  // base default
+  const [phaseLabel, setPhaseLabel] = useState<string>('base maintenance');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as {
+          ok: boolean;
+          vdot?: { vdot: number } | null;
+          today?: { phase: string };
+        };
+        if (cancelled) return;
+        if (json.ok) {
+          setVdot(json.vdot?.vdot ?? null);
+          // Phase → easy-share target (mirrors coach-principles.ts).
+          const phase = json.today?.phase ?? 'BASE_MAINTENANCE';
+          const targets: Record<string, { min: number; label: string }> = {
+            TAPER:            { min: 0.78, label: 'taper' },
+            PEAK:             { min: 0.75, label: 'peak' },
+            BUILD:            { min: 0.70, label: 'build' },
+            BASE:             { min: 0.80, label: 'base' },
+            BASE_MAINTENANCE: { min: 0.78, label: 'base maintenance' },
+            POST_RACE:        { min: 0.90, label: 'post-race' },
+            REBUILD:          { min: 0.85, label: 'rebuild' },
+          };
+          const t = targets[phase] ?? { min: 0.80, label: 'base maintenance' };
+          setEasyShareMin(t.min);
+          setPhaseLabel(t.label);
+        }
+      } catch {
+        /* fall back to defaults */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const weeks = weeklyMiles(runs, 8);
   const max = Math.max(...weeks.map(w => w.miles), 1);
   const phaseColor: Record<TrainingPulse['phase'], string> = {
@@ -1430,11 +1472,25 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
     : pulse.deltaPct > 0.10 ? 'var(--color-success)'
     : pulse.deltaPct < -0.15 ? 'var(--color-warning)'
     : 'var(--color-t2)';
-  const balance = effortBalance(runs, 14);
+  // Pass VDOT into the classifier so name patterns + pace zones drive
+  // the effort split (research-anchored). Without VDOT it falls back
+  // to name + HR + long-run defaults.
+  const balance = effortBalance(runs, 14, 152, vdot);
   const easyPct = Math.round(balance.easyShare * 100);
-  // 80/20 polarized-training rule: aim for ≥75% easy, ≤25% hard.
-  const easyColor = easyPct >= 75 ? 'var(--color-success)' : easyPct >= 60 ? 'var(--color-attention)' : 'var(--color-warning)';
-  const easyVerdict = easyPct >= 75 ? 'On target (≥75%)' : easyPct >= 60 ? 'A bit hard — back off' : 'Way too hard — drop intensity';
+  const easyShareMinPct = Math.round(easyShareMin * 100);
+  // Phase-aware verdict: the runner's actual phase target replaces
+  // the static 75% threshold. For BASE/POST_RACE the target is
+  // higher (≥80% / ≥90%); for BUILD/PEAK it can drop to 70-75%.
+  const easyColor = easyPct >= easyShareMinPct
+    ? 'var(--color-success)'
+    : easyPct >= easyShareMinPct - 15
+    ? 'var(--color-attention)'
+    : 'var(--color-warning)';
+  const easyVerdict = easyPct >= easyShareMinPct
+    ? `On target (≥${easyShareMinPct}% for ${phaseLabel})`
+    : easyPct >= easyShareMinPct - 15
+    ? `Below ${phaseLabel} target (≥${easyShareMinPct}%) — back off intensity`
+    : `Way too hard for ${phaseLabel} (target ≥${easyShareMinPct}%) — drop intensity`;
 
   // Format week-start ISO → "Mar 9" for bar labels
   const fmtBar = (iso: string) => {
@@ -1518,31 +1574,56 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           )}
         </div>
 
-        {/* Easy / hard balance — 80/20 polarized training */}
+        {/* Easy / hard balance — 80/20 polarized training, classified
+            from name patterns + VDOT pace zones + HR fallback. The
+            "unknown" bucket is explicit — better than hiding the
+            uncertainty in either side of the ratio. */}
         <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 220 }}>
-          <div className="tile-sub">Easy ratio</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: easyColor, letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {balance.totalMi > 0 ? `${easyPct}` : '—'}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 2 }}>%</small>
+          <div className="tile-h" style={{ alignItems: 'flex-start' }}>
+            <div className="tile-sub">Easy ratio</div>
+            {!balance.highConfidence && balance.totalMi > 0 && (
+              <span title="Low classification confidence — not enough name/pace/HR signal" style={{
+                fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px',
+                padding: '2px 6px', borderRadius: 3,
+                background: 'rgba(243,173,59,.15)', color: 'var(--color-attention)',
+              }}>LOW CONF</span>
+            )}
           </div>
-          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>Last 14 days · easy vs hard miles</div>
-          {/* Stacked bar showing easy / hard split */}
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: easyColor, letterSpacing: '-.025em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {balance.totalMi > 0 && (balance.easyMi + balance.hardMi) > 0 ? `${easyPct}` : '—'}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 2 }}>%</small>
+          </div>
+          <div className="tile-sub" style={{ color: 'var(--color-t3)' }}>
+            Last 14 days · target ≥{easyShareMinPct}% ({phaseLabel})
+          </div>
+          {/* Stacked bar showing easy / hard / unknown split */}
           {balance.totalMi > 0 && (
             <>
-              <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--color-l3)' }}>
-                <div style={{ width: `${easyPct}%`, background: easyColor }} />
-                <div style={{ width: `${100 - easyPct}%`, background: 'var(--color-l4)' }} />
+              {(() => {
+                const easyW = (balance.easyMi / balance.totalMi) * 100;
+                const hardW = (balance.hardMi / balance.totalMi) * 100;
+                const unkW  = (balance.unknownMi / balance.totalMi) * 100;
+                return (
+                  <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--color-l3)' }}>
+                    <div style={{ width: `${easyW}%`, background: 'var(--color-success)' }} title={`Easy ${balance.easyMi.toFixed(1)} mi`} />
+                    <div style={{ width: `${hardW}%`, background: 'var(--color-attention)' }} title={`Hard ${balance.hardMi.toFixed(1)} mi`} />
+                    <div style={{ width: `${unkW}%`,  background: 'var(--color-l4)' }} title={`Unclassified ${balance.unknownMi.toFixed(1)} mi`} />
+                  </div>
+                );
+              })()}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
+                <span style={{ color: 'var(--color-success)' }}>{balance.easyMi.toFixed(1)} EASY</span>
+                <span style={{ color: 'var(--color-attention)' }}>{balance.hardMi.toFixed(1)} HARD</span>
+                {balance.unknownMi > 0 && (
+                  <span style={{ color: 'var(--color-t3)' }}>{balance.unknownMi.toFixed(1)} ?</span>
+                )}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
-                <span>EASY {balance.easyMi.toFixed(1)} MI</span>
-                <span>HARD {balance.hardMi.toFixed(1)} MI</span>
-              </div>
-              <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: easyColor, lineHeight: 1.4 }}>
-                {easyVerdict}
+              <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.1px', color: easyColor, lineHeight: 1.4 }}>
+                {balance.easyMi + balance.hardMi > 0 ? easyVerdict : `${balance.unknownMi.toFixed(1)} mi unclassified — name your runs or wire HR data`}
               </div>
             </>
           )}
           {balance.totalMi === 0 && (
-            <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--color-t3)' }}>No HR data yet</div>
+            <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--color-t3)' }}>No runs in window</div>
           )}
         </div>
       </div>
