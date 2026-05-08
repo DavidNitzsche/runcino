@@ -285,52 +285,71 @@ export interface DefaultByDow {
   primary: RunWorkoutType;
 }
 
-export function defaultByDow(phase: Phase, dow: number): DefaultByDow {
-  // Within race-mode phases, place quality midweek and long Saturday.
-  // Within base-mode, fewer hard days, more general aerobic.
+export function defaultByDow(phase: Phase, dow: number, longRunDow: number = 0): DefaultByDow {
+  // Long run anchors the week. Runner sets the day via
+  // /profile → longRunDow (default 0=Sun). Other key days sit at
+  // fixed offsets from the anchor:
+  //
+  //   longDow + 0 : LONG run
+  //   longDow + 1 : RECOVERY (the day after — let the long absorb)
+  //   longDow + 2 : REST (chill, no quality)
+  //   longDow + 4 : QUALITY (mid-week threshold/intervals — 3 days
+  //                          before next long, 4 after this one)
+  //   longDow + 5 : MEDIUM-LONG (2 days before long)
+  //   longDow + 3, +6 : general aerobic fillers
+  //
+  // For Sat(6)-long this maps to the classic Pfitz pattern (Wed
+  // threshold, Thu medium-long, Sat long, Sun recovery).
+  // For Sun(0)-long: Mon recovery, Tue rest, Thu quality, Fri ML.
+  const longDow = ((longRunDow % 7) + 7) % 7;
+  const recoveryDow = (longDow + 1) % 7;
+  const restDow = (longDow + 2) % 7;
+  const qualityDow = (longDow + 4) % 7;
+  const mediumLongDow = (longDow + 5) % 7;
+
   if (phase === 'BASE') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 3) return { primary: 'threshold_intervals' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === qualityDow) return { primary: 'threshold_intervals' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'BUILD') {
-    if (dow === 6) return { primary: 'long_progression' };
-    if (dow === 3) return { primary: 'threshold_intervals' };
-    if (dow === 4) return { primary: 'medium_long' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_progression' };
+    if (dow === qualityDow) return { primary: 'threshold_intervals' };
+    if (dow === mediumLongDow) return { primary: 'medium_long' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'PEAK') {
-    if (dow === 6) return { primary: 'long_mp_block' };
-    if (dow === 3) return { primary: 'marathon_specific' };
-    if (dow === 4) return { primary: 'medium_long' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_mp_block' };
+    if (dow === qualityDow) return { primary: 'marathon_specific' };
+    if (dow === mediumLongDow) return { primary: 'medium_long' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'TAPER') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 3) return { primary: 'threshold' };
-    if (dow === 0) return { primary: 'recovery' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === qualityDow) return { primary: 'threshold' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'POST_RACE') {
-    if (dow === 1 || dow === 4) return { primary: 'rest' };
+    if (dow === restDow || dow === ((longDow + 4) % 7)) return { primary: 'rest' };
     return { primary: 'recovery' };
   }
   if (phase === 'REBUILD') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 1 || dow === 5) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === restDow || dow === ((longDow + 5) % 7)) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   // BASE_MAINTENANCE — default state.
-  if (dow === 6) return { primary: 'long_steady' };
-  if (dow === 3) return { primary: 'threshold' };
-  if (dow === 0) return { primary: 'recovery' };
-  if (dow === 1) return { primary: 'rest' };
+  if (dow === longDow) return { primary: 'long_steady' };
+  if (dow === qualityDow) return { primary: 'threshold' };
+  if (dow === recoveryDow) return { primary: 'recovery' };
+  if (dow === restDow) return { primary: 'rest' };
   return { primary: 'general_aerobic' };
 }
 

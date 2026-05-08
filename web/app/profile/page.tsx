@@ -29,6 +29,8 @@ const MILEAGE_CAPS: Record<RunType, number> = {
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DEFAULT_LONG_DAY = 'Sun';
+const DAY_TO_DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const DOW_TO_DAY: Record<number, string> = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
 // Page is a thin HubProvider wrapper around the inner content so the
 // new TrainingTierSection can read the runner's weeklyAvg4w from the
@@ -47,6 +49,34 @@ function ProfilePageInner() {
   const [editingShoe, setEditingShoe] = useState<Shoe | null>(null);
   const [addingShoe, setAddingShoe]   = useState(false);
   const [longDay, setLongDay]   = useState(DEFAULT_LONG_DAY);
+  const [longDaySaving, setLongDaySaving] = useState(false);
+
+  // Hydrate long-day from /api/runner-profile.long_run_dow on mount.
+  // Persist on every click via PUT (same auto-save pattern as the
+  // RunnerProfileSection fields). Server is the source of truth so
+  // engine reads pick up changes without a redeploy.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await loadRunnerProfile();
+        if (!cancelled && p.longRunDow != null) {
+          setLongDay(DOW_TO_DAY[p.longRunDow] ?? DEFAULT_LONG_DAY);
+        }
+      } catch { /* ignore — keep default */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function pickLongDay(d: string) {
+    setLongDay(d);
+    setLongDaySaving(true);
+    try {
+      const current = await loadRunnerProfile();
+      await saveRunnerProfile({ ...current, longRunDow: DAY_TO_DOW[d] });
+    } catch { /* ignore */ }
+    finally { setLongDaySaving(false); }
+  }
 
   useEffect(() => {
     fetch('/api/shoes')
@@ -121,7 +151,7 @@ function ProfilePageInner() {
                 {DAYS.map(d => (
                   <button
                     key={d}
-                    onClick={() => setLongDay(d)}
+                    onClick={() => pickLongDay(d)}
                     style={{
                       padding: '7px 12px', borderRadius: 8, border: '1px solid', cursor: 'pointer',
                       borderColor: longDay === d ? 'var(--color-attention)' : 'var(--color-l4)',
@@ -136,7 +166,7 @@ function ProfilePageInner() {
               </div>
             </div>
             <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)' }}>
-              Long run anchors the week. Coach fills remaining days as training load requires.
+              Long run anchors the week. The coach engine places quality 3 days before, medium-long 2 days before, recovery the day after — calibrated to your pick.{longDaySaving ? ' Saving…' : ''}
             </div>
           </div>
         </section>
@@ -625,7 +655,7 @@ function RunnerProfileSection() {
   const [profile, setProfile] = useState<RunnerProfile>({
     birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
     healthFlags: null, gpsWatchModel: null, kitNotes: null,
-    lastPeriodDate: null, cyclePhase: null,
+    lastPeriodDate: null, cyclePhase: null, longRunDow: null,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

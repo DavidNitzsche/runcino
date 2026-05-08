@@ -109,6 +109,12 @@ export interface CoachState {
      *  from age, otherwise null. The engine uses this for threshold
      *  derivation: 80% × hrmax = "yesterday was hard" cutoff. */
     resolvedHrmaxBpm: number | null;
+    /** Day-of-week the runner wants their long run placed on
+     *  (0=Sun..6=Sat). NULL → defaults to Sunday. Drives both
+     *  defaultByDow's long-run anchor + the longer rebuild day in
+     *  postRaceWorkout's stage 3/4 weeks. Sourced from
+     *  runner_profile.long_run_dow. */
+    longRunDow: number | null;
   };
 
   /** Recent post-workout RPE history (Borg CR-10), most recent first.
@@ -426,9 +432,10 @@ export async function gatherCoachState(): Promise<CoachState> {
         hrmaxBpm: p.hrmaxBpm,
         rhrBpm: p.rhrBpm,
         resolvedHrmaxBpm: hrmaxResolved?.bpm ?? null,
+        longRunDow: p.longRunDow,
       };
     } catch {
-      return { age: null, sex: 'unspecified' as const, hrmaxBpm: null, rhrBpm: null, resolvedHrmaxBpm: null };
+      return { age: null, sex: 'unspecified' as const, hrmaxBpm: null, rhrBpm: null, resolvedHrmaxBpm: null, longRunDow: null };
     }
   })();
 

@@ -37,6 +37,11 @@ export interface RunnerProfile {
   /** Self-reported cycle phase. Falls back to a date-derived value
    *  when lastPeriodDate is set but this isn't. */
   cyclePhase: CyclePhase;
+  /** Day-of-week the runner wants their long run on (0=Sun..6=Sat).
+   *  Drives defaultByDow's long-run placement + the longer rebuild
+   *  day in postRaceWorkout's stage 3/4 weeks. NULL → engine defaults
+   *  to 0 (Sunday). */
+  longRunDow: number | null;
   updatedAt: string | null;
 }
 
@@ -50,6 +55,7 @@ const DEFAULT: RunnerProfile = {
   kitNotes: null,
   lastPeriodDate: null,
   cyclePhase: null,
+  longRunDow: null,
   updatedAt: null,
 };
 
@@ -64,6 +70,7 @@ interface DbRow {
   kit_notes: string | null;
   last_period_date: Date | string | null;
   cycle_phase: string | null;
+  long_run_dow: number | null;
   updated_at: Date;
 }
 
@@ -89,6 +96,9 @@ function rowToProfile(row: DbRow): RunnerProfile {
     .includes(row.cycle_phase as Exclude<CyclePhase, null>)
     ? (row.cycle_phase as Exclude<CyclePhase, null>)
     : null;
+  const longRunDow = (row.long_run_dow != null && row.long_run_dow >= 0 && row.long_run_dow <= 6)
+    ? row.long_run_dow
+    : null;
   return {
     birthDate,
     sex,
@@ -99,6 +109,7 @@ function rowToProfile(row: DbRow): RunnerProfile {
     kitNotes: row.kit_notes,
     lastPeriodDate,
     cyclePhase,
+    longRunDow,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   };
 }
@@ -106,7 +117,8 @@ function rowToProfile(row: DbRow): RunnerProfile {
 export async function getRunnerProfile(): Promise<RunnerProfile> {
   const rows = await query<DbRow>(
     `SELECT birth_date, birth_year, sex, hrmax_bpm, rhr_bpm, health_flags,
-            gps_watch_model, kit_notes, last_period_date, cycle_phase, updated_at
+            gps_watch_model, kit_notes, last_period_date, cycle_phase,
+            long_run_dow, updated_at
      FROM runner_profile WHERE id = 1`,
   );
   return rows.length === 0 ? DEFAULT : rowToProfile(rows[0]);
@@ -148,12 +160,15 @@ export async function setRunnerProfile(profile: Partial<RunnerProfile>): Promise
     .includes(profile.cyclePhase as Exclude<CyclePhase, null>)
     ? (profile.cyclePhase as Exclude<CyclePhase, null>)
     : null;
+  const longRunDow = profile.longRunDow != null && profile.longRunDow >= 0 && profile.longRunDow <= 6
+    ? profile.longRunDow
+    : null;
 
   await query(
     `INSERT INTO runner_profile (id, birth_year, birth_date, sex, hrmax_bpm, rhr_bpm,
                                   health_flags, gps_watch_model, kit_notes,
-                                  last_period_date, cycle_phase, updated_at)
-     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                                  last_period_date, cycle_phase, long_run_dow, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
      ON CONFLICT (id) DO UPDATE SET
        birth_year = EXCLUDED.birth_year,
        birth_date = EXCLUDED.birth_date,
@@ -165,9 +180,10 @@ export async function setRunnerProfile(profile: Partial<RunnerProfile>): Promise
        kit_notes = EXCLUDED.kit_notes,
        last_period_date = EXCLUDED.last_period_date,
        cycle_phase = EXCLUDED.cycle_phase,
+       long_run_dow = EXCLUDED.long_run_dow,
        updated_at = NOW();`,
     [birthYearDerived, validBirthDate, sex, hrmaxBpm, rhrBpm,
-     healthFlags, gpsWatchModel, kitNotes, validLastPeriod, cyclePhase],
+     healthFlags, gpsWatchModel, kitNotes, validLastPeriod, cyclePhase, longRunDow],
   );
 
   return getRunnerProfile();

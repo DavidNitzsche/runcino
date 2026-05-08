@@ -252,7 +252,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   //   - Only fires when shouldPromptVdotTest reports a stale/missing
   //     signal — not when the current VDOT is fresh.
   if (phase !== 'TAPER' && phase !== 'POST_RACE' && shouldPromptVdotTest(state)) {
-    const def = defaultByDow(phase, dow);
+    const def = defaultByDow(phase, dow, state.runner.longRunDow ?? 0);
     const isQualityDay = def.primary === 'threshold'
                       || def.primary === 'threshold_intervals'
                       || def.primary === 'sub_threshold'
@@ -279,8 +279,9 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // Fallback: default by phase + day-of-week (from coach-workouts).
   // Used when no template applies, or when the template's sample-week
   // string didn't classify (e.g., a custom workout name we don't
-  // recognize — we default to the safer phase+dow lookup).
-  const def = defaultByDow(phase, dow);
+  // recognize — we default to the safer phase+dow lookup). Honors
+  // the runner's long-run-day preference (default Sunday).
+  const def = defaultByDow(phase, dow, state.runner.longRunDow ?? 0);
   return buildPrescriptionFor(def.primary, state, phase);
 }
 
@@ -416,13 +417,23 @@ function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null
       : `${days === 0 ? 'Race day' : `${days} day${days === 1 ? '' : 's'}`} since ${mostRecent.name}`;
     return rest(`${racesDesc}. Full rest today.${focusSuffix} ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
   }
+  // Day-of-week anchors derived from the runner's preferred long-run
+  // day (default Sunday). All post-race day patterns rotate around
+  // this anchor so the runner's preference is honored.
+  const longDow = ((state.runner.longRunDow ?? 0) + 7) % 7;
+  const recoveryDow = (longDow + 1) % 7;   // day after long
+  const restDow = (longDow + 2) % 7;        // chill day
+  const midRestDow = (longDow + 4) % 7;    // mid-week protective rest
+  const lightJogDays = [(longDow + 3) % 7, (longDow + 5) % 7, (longDow + 6) % 7];
+  const lightRestDays = [longDow, recoveryDow, restDow, midRestDow];
+  const isLightJogDay = lightJogDays.includes(dow);
+  const isLightRestDay = lightRestDays.includes(dow);
+
   // Stage-2 (light) — reverse-taper Week 1: "Days 4-7: 20-30 min very
   // easy jogs every other day". So light stage = run-day-rest-day
   // alternation, NOT 7 straight recovery jogs. 3 running days, 4 rest.
-  // Pattern: rest Sun/Mon/Wed/Fri, recover Tue/Thu/Sat.
   if (days <= lightEnd) {
-    const lightRestDow = [0, 1, 3, 5];  // Sun, Mon, Wed, Fri
-    if (lightRestDow.includes(dow)) {
+    if (isLightRestDay && !isLightJogDay) {
       return rest(`${days} days post ${active.name}. Light stage — protective rest, easy jog tomorrow.${focusSuffix}`);
     }
     // Recovery-jog floor scales with the runner's daily aerobic floor.
@@ -443,20 +454,16 @@ function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null
 
   // Stage-3 (easy aerobic, no quality) — reverse-taper Week 2-3:
   // "Rebuild frequency, most days short easy" → 5 running days, 2
-  // rest days, with a longer day on the weekend. Pattern:
-  //   Mon: rest (recover from weekend long)
-  //   Tue: easy
-  //   Wed: easy
-  //   Thu: rest (midweek recovery)
-  //   Fri: easy
-  //   Sat: longer easy (the "rebuild duration" anchor)
-  //   Sun: easy
+  // rest days, with a longer day on the long-run anchor. Pattern
+  // for Sun-anchored long: Mon rest (post-long), Tue/Wed easy,
+  // Thu rest (midweek), Fri easy, Sat easy, Sun longer rebuild.
   if (days <= easyEnd) {
     const baseEasy = baseEasyMi(state, 'POST_RACE');
-    if (dow === 1 || dow === 4) {
+    if (dow === recoveryDow || dow === midRestDow) {
       return rest(`${days} days post ${active.name}. Easy stage — protective rest, return to long-run rhythm.${focusSuffix}`);
     }
-    if (dow === 6) {  // Saturday — longer rebuild-duration day
+    if (dow === longDow) {
+      // Longer rebuild day on the runner's preferred long-run day.
       const longishMi = round1(Math.min(baseEasy * 1.5, baseEasy + 3));
       return {
         type: 'general_aerobic', label: 'Long easy (rebuild)',
@@ -482,10 +489,10 @@ function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null
   // a normal-shaped easy week with no quality, slightly elevated
   // volume vs stage-3.
   const baseEasy = baseEasyMi(state, 'POST_RACE');
-  if (dow === 1) {
-    return rest(`${days} days post ${active.name}. Recovery window still open — Monday rest.`);
+  if (dow === recoveryDow) {
+    return rest(`${days} days post ${active.name}. Recovery window still open — protective rest day.`);
   }
-  if (dow === 6) {
+  if (dow === longDow) {
     const longMi = round1(Math.min(baseEasy * 1.7, baseEasy + 4));
     return {
       type: 'general_aerobic', label: 'Long easy',

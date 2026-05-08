@@ -36,12 +36,17 @@ export interface RunnerProfile {
   lastPeriodDate: string | null;
   /** Self-reported current cycle phase. */
   cyclePhase: CyclePhase;
+  /** Day-of-week for the long run (0=Sun..6=Sat). NULL → engine
+   *  defaults to Sunday. Drives placement of the long run in
+   *  defaultByDow + the longer rebuild day in postRaceWorkout's
+   *  stage 3/4 weeks. */
+  longRunDow: number | null;
 }
 
 export const DEFAULT_PROFILE: RunnerProfile = {
   birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
   healthFlags: null, gpsWatchModel: null, kitNotes: null,
-  lastPeriodDate: null, cyclePhase: null,
+  lastPeriodDate: null, cyclePhase: null, longRunDow: null,
 };
 
 let cached: { profile: RunnerProfile; at: number } | null = null;
@@ -59,6 +64,7 @@ interface ApiResponse {
     kitNotes: string | null;
     lastPeriodDate: string | null;
     cyclePhase: CyclePhase;
+    longRunDow: number | null;
     updatedAt: string | null;
   } | null;
   error?: string;
@@ -72,6 +78,9 @@ function fromApi(api: ApiResponse['profile']): RunnerProfile {
   const sex: RunnerSex = (['male', 'female'] as const).includes(api.sex as 'male' | 'female')
     ? (api.sex as 'male' | 'female')
     : 'unspecified';
+  const longRunDow = (api.longRunDow != null && api.longRunDow >= 0 && api.longRunDow <= 6)
+    ? api.longRunDow
+    : null;
   return {
     birthDate: api.birthDate,
     sex,
@@ -82,6 +91,7 @@ function fromApi(api: ApiResponse['profile']): RunnerProfile {
     kitNotes: api.kitNotes ?? null,
     lastPeriodDate: api.lastPeriodDate ?? null,
     cyclePhase: api.cyclePhase ?? null,
+    longRunDow,
   };
 }
 
@@ -114,6 +124,7 @@ function readLegacy(): RunnerProfile | null {
         ? parsed.rhrBpm : null,
       healthFlags: typeof parsed.healthFlags === 'string' ? parsed.healthFlags : null,
       gpsWatchModel: null, kitNotes: null, lastPeriodDate: null, cyclePhase: null,
+      longRunDow: null,
     };
   } catch {
     return null;

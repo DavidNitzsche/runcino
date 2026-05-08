@@ -186,6 +186,13 @@ async function bootstrap(): Promise<void> {
         ADD COLUMN IF NOT EXISTS last_period_date DATE,
         ADD COLUMN IF NOT EXISTS cycle_phase TEXT;
     `);
+    // Long-run day-of-week preference (0=Sun..6=Sat). NULL → engine
+    // defaults to 0 (Sunday). Drives defaultByDow's long-run placement
+    // + the longer rebuild day in postRaceWorkout's stage 3/4 weeks.
+    await client.query(`
+      ALTER TABLE runner_profile
+        ADD COLUMN IF NOT EXISTS long_run_dow SMALLINT;
+    `);
     // Cache for the dashboard's /api/coach/today payload. Keyed by
     // (cache_date, latest_activity_id) so reads are cheap and the
     // cache auto-invalidates when a new activity lands. Pre-warmed
