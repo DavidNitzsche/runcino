@@ -35,6 +35,7 @@ import {
   prescribeStrength, strengthWeekContext, type StrengthPrescription,
 } from './coach-strength';
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
+import { validatePlan } from '../coach/plan-validator';
 import { shouldPromptVdotTest } from './vdot';
 import { longRunTargetMi } from './long-run-cap';
 import { POST_RACE_BY_DISTANCE, REVERSE_TAPER_PROTOCOL, MARATHON_RECOVERY_4WK_REVERSE_TAPER, MILEAGE_TIER_RECOVERY, mileageTier } from '../coach/doctrine';
@@ -79,6 +80,12 @@ export interface CoachToday {
     racePriority: 'A' | 'B' | 'C' | null;
   }>;
   alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
+  /** Plan integrity issues — rules from coach/doctrine/plan_integrity.ts
+   *  asserted by coach/plan-validator.ts after the engine produces its
+   *  output. Empty array = clean plan. Any errors here mean the
+   *  engine has a regression a refactor introduced; UI surfaces them
+   *  as a banner so the runner knows + so the developer sees. */
+  planIssues: import('../coach/plan-validator').PlanIssue[];
   /** Per-week trajectory toward the next A-race. Lets the runner SEE
    *  how the engine projects volume + quality count + long-run target
    *  scaling toward the goal, instead of trusting that BUILD/PEAK
@@ -134,6 +141,14 @@ export function coachDaily(state: CoachState): CoachToday {
   const buildCurve = simulateBuildCurveWeeks(state);
   const rationale = composeRationale(state, phase, run, strength);
 
+  // Plan-integrity validator. Runs declarative rules from
+  // coach/doctrine/plan_integrity.ts against the engine's generated
+  // plan. Any issues land on the response — UI surfaces them as a
+  // banner. This is the primary mechanism that catches engine
+  // regressions automatically; future refactors that break a rule
+  // produce visible warnings instead of silent broken plans.
+  const planIssues = validatePlan({ next30Days: next30, buildCurve, weekShape: week }, state);
+
   return {
     mode, modeDetail: describeMode(state, phase),
     phase,
@@ -143,6 +158,7 @@ export function coachDaily(state: CoachState): CoachToday {
     weekShape: week,
     next30Days: next30,
     alerts,
+    planIssues,
     buildCurve,
     generatedAt: new Date().toISOString(),
     isPlaceholder: false,

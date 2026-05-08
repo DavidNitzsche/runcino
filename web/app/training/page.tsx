@@ -146,6 +146,13 @@ function TrainingPageInner() {
         <Nav active="training" />
         <div className="body">
 
+          {/* Plan-integrity banner — shows up only when the validator
+              caught a rule violation in the engine's output. Visible
+              on every page load until the underlying engine bug is
+              fixed. Reads coach.today.planIssues; rules from doctrine
+              plan_integrity.ts. */}
+          <PlanIntegrityBanner issues={hub.coach.today?.planIssues ?? []} />
+
           <DailyBriefing
             now={now}
             data={coachToday}
@@ -174,6 +181,61 @@ function TrainingPageInner() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── PLAN INTEGRITY banner ──────────────────────────────────
+   Surfaces validator issues from coach/plan-validator.ts when the
+   engine generates a plan that violates doctrine rules
+   (plan_integrity.ts). Errors show prominently; warnings show in
+   a collapsed form. Each issue includes the doctrine citation so
+   the runner sees WHY the rule exists. The banner is the primary
+   visible mechanism that catches engine regressions automatically.
+   Empty array = no issues = banner doesn't render. */
+function PlanIntegrityBanner({ issues }: {
+  issues: Array<{ rule: string; severity: 'error' | 'warn' | 'info'; message: string; location: string; doctrineCitation: string }>;
+}) {
+  if (!issues || issues.length === 0) return null;
+  const errors = issues.filter(i => i.severity === 'error');
+  const warns = issues.filter(i => i.severity === 'warn');
+  const accent = errors.length > 0 ? 'var(--color-warning)' : 'var(--color-attention)';
+  const bg = errors.length > 0 ? 'rgba(252, 77, 84, 0.08)' : 'rgba(243, 173, 59, 0.08)';
+  const border = errors.length > 0 ? 'rgba(252, 77, 84, 0.30)' : 'rgba(243, 173, 59, 0.30)';
+  return (
+    <div className="tile" style={{
+      marginBottom: 14, padding: '16px 20px',
+      background: bg,
+      borderLeftWidth: 3, borderLeftColor: accent, borderColor: border,
+    }}>
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px',
+        color: accent, fontWeight: 800, textTransform: 'uppercase',
+      }}>
+        PLAN INTEGRITY · {errors.length} {errors.length === 1 ? 'ERROR' : 'ERRORS'}
+        {warns.length > 0 ? ` · ${warns.length} WARN` : ''}
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[...errors, ...warns].slice(0, 5).map((iss, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.5, fontWeight: 500 }}>
+              {iss.message}
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)',
+              letterSpacing: '0.6px', marginTop: 3,
+            }}>
+              {iss.location} · {iss.doctrineCitation}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        fontSize: 11, color: 'var(--color-t3)', marginTop: 12, lineHeight: 1.5,
+        paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic',
+      }}>
+        These warnings come from the plan-integrity validator (doctrine: plan_integrity.ts). They mean the engine produced a plan that violates a research-backed rule — surfacing instead of silently shipping a broken week.
+      </div>
+    </div>
   );
 }
 

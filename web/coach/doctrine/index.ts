@@ -42,6 +42,7 @@ export * from './race_week';
 export * from './injury_return';
 export * from './recovery_protocols';
 export * from './plan_templates';
+export * from './plan_integrity';
 export * from './hydration';
 export * from './cross_training';
 export * from './mental';
