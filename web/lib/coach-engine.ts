@@ -23,7 +23,7 @@ import type { CoachState } from './coach-state';
 import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
-  HEAVY_BLOCK_REST_DAYS, HARD_EFFORT_HR_DEFAULT_BPM,
+  HARD_EFFORT_HR_DEFAULT_BPM,
 } from './coach-principles';
 import {
   type RunWorkoutType, type RunPrescription,
@@ -37,7 +37,7 @@ import {
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 import { shouldPromptVdotTest } from './vdot';
 import { longRunTargetMi } from './long-run-cap';
-import { POST_RACE_BY_DISTANCE, REVERSE_TAPER_PROTOCOL, MARATHON_RECOVERY_4WK_REVERSE_TAPER } from '../coach/doctrine';
+import { POST_RACE_BY_DISTANCE, REVERSE_TAPER_PROTOCOL, MARATHON_RECOVERY_4WK_REVERSE_TAPER, MILEAGE_TIER_RECOVERY, mileageTier } from '../coach/doctrine';
 import { postRaceDistanceBand } from './recovery-distance';
 
 export type WorkoutType = RunWorkoutType;
@@ -178,10 +178,47 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     if (d === 1) return shakeout();
   }
 
-  // Heavy-block detected + base mode → mandate rest. Doc §13.3:
-  // a runner peaking ≥70 mpw needs 2-4 weeks of reduced training.
+  // Heavy-block detected + base mode → reduced training, calibrated
+  // to the runner's mileage tier. The previous logic mandated full
+  // rest every day until the heavy-block flag aged out, which over-
+  // recovered everyone — especially low-tier (20-40 mpw) runners
+  // whose fitness-bleed cost from extended rest is high relative to
+  // base. Now: prescribe protective rest on the tier's rest-day
+  // count, otherwise easy aerobic at ~50% of weekly average volume.
+  //
+  // Tier rest-day cadence (MILEAGE_TIER_RECOVERY high end):
+  //   low   (20-40):  2 rest/wk → Mon + Fri
+  //   mid   (40-60):  1 rest/wk → Mon
+  //   high  (60-80):  1 rest/wk → Mon (shake-out replaces rest mid-week)
+  //   elite (80+):    1 rest/wk → Mon (shake-outs preferred elsewhere)
+  //
+  // Doctrine: Research/00b §"Recovery Scaled to Weekly Mileage" +
+  // §13.3 (peaking ≥70 mpw needs 2-4 weeks reduced training).
   if (phase === 'BASE_MAINTENANCE' && state.flags.heavyBlockSuspected) {
-    return rest(`Heavy-block recovery (~${HEAVY_BLOCK_REST_DAYS} days). Full rest today.`);
+    const tier = mileageTier(state.volume.weeklyAvg4w);
+    const tierData = MILEAGE_TIER_RECOVERY.value[tier];
+    const restDays = tierData.restDaysPerWeekHigh;
+
+    // Sunday=0, Mon=1, ..., Sat=6
+    const isMon = dow === 1;
+    const isFri = dow === 5;
+    const isProtectiveRest = (restDays >= 2 && (isMon || isFri))
+      || (restDays === 1 && isMon);
+    if (isProtectiveRest) {
+      return rest(`Heavy-block recovery — protective rest day (tier ${tierData.label}: ${restDays} rest/wk).`);
+    }
+
+    // Reduced-volume easy aerobic. Cap at 50% of weekly average
+    // spread across the running days. Floor 2.5 mi.
+    const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
+    const reducedWeekly = wkAvg * 0.5;
+    const runningDays = 7 - restDays;
+    const dailyEasy = Math.max(2.5, round1(reducedWeekly / runningDays));
+    const ga = generalAerobic(dailyEasy, state);
+    return {
+      ...ga,
+      description: `${dailyEasy} mi easy aerobic · heavy-block recovery, holding ~50% of usual ${Math.round(wkAvg)} mi/wk volume to maintain frequency without compounding load`,
+    };
   }
 
   // POST_RACE — graduated recovery based on the LARGEST recent race's
@@ -295,22 +332,35 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   const heavy = state.flags.heavyBlockSuspected;
 
   // Stage gates derived from POST_RACE_BY_DISTANCE doctrine
-  // (Research/00b §Post-Race Recovery). Three bands per distance:
+  // (Research/00b §Post-Race Recovery) AND tier-calibrated against
+  // the runner's weekly mileage history (MILEAGE_TIER_RECOVERY).
+  //
   //   restEnd  = end of zero/very-light window (no running yet)
   //   lightEnd = START of return-to-long-runs window (easy aerobic ok now)
   //   easyEnd  = total no-quality recovery duration (no quality work yet)
   //
-  // For marathon: zero 5-10d → rest until day 10; return-to-long-runs
-  // 'Week 2-3' → start easy aerobic at day 14 (low end of week 2);
-  // no-quality 21-28d → quality returns at day 29.
+  // Tier calibration: lower-tier runners (20-40 mpw) exit recovery
+  // at the LOW end of each band — extended rest costs them more
+  // fitness than it gains in absorption. Higher-tier runners (60+
+  // mpw) honor the HIGH end — they have more absolute load to absorb.
   //
-  // Heavy-block suspicion stretches the windows ~2x — back-to-back
-  // races + heavy training compound and need more time.
+  // For a 'low' tier runner post-marathon: zero/very-light 5d (low end),
+  // start easy aerobic at day 14 (low end of week 2-3), quality returns
+  // at day 21 (low end of 21-28d). Total ~3 weeks.
+  //
+  // For a 'high' tier runner post-marathon: zero/very-light 10d (high end),
+  // start easy aerobic at day 21 (high end of week 2-3), quality returns
+  // at day 28 (high end). Total ~4 weeks.
+  //
+  // Heavy-block suspicion stretches windows ~1.8x — back-to-back races
+  // + heavy training compound and need more time.
   const band = POST_RACE_BY_DISTANCE.value[postRaceDistanceBand(distMi)];
+  const tier = mileageTier(state.volume.weeklyAvg4w);
+  const useHigh = tier === 'high' || tier === 'elite';
   const stageMul = heavy ? 1.8 : 1;
-  const restEnd  = Math.round(band.zeroOrVeryLightDaysHigh * stageMul);
-  const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, 'low') * stageMul);
-  const easyEnd  = Math.round(band.totalRecoveryDaysNoQualityHigh * stageMul);
+  const restEnd  = Math.round((useHigh ? band.zeroOrVeryLightDaysHigh : band.zeroOrVeryLightDaysLow) * stageMul);
+  const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, useHigh ? 'high' : 'low') * stageMul);
+  const easyEnd  = Math.round((useHigh ? band.totalRecoveryDaysNoQualityHigh : band.totalRecoveryDaysNoQualityLow) * stageMul);
 
   // Reverse-taper week-by-week focus from REVERSE_TAPER_PROTOCOL
   // (and the marathon-specific MARATHON_RECOVERY_4WK_REVERSE_TAPER
@@ -335,11 +385,22 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
     return rest(`${racesDesc}. Full rest today.${focusSuffix} ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
   }
   if (days <= lightEnd) {
+    // Recovery-jog floor scales with the runner's daily aerobic floor.
+    // A 2.5 mi recovery jog is built for a ~20 mpw runner (~3 mi/day);
+    // a 60 mpw runner whose daily floor is ~8 mi needs a longer jog
+    // to keep circulation honest without going hard. Floor = clamp
+    // (weeklyAvg4w / 7 × 0.55) into [2.0, 6.0]. Examples:
+    //   20 mpw → 1.6 → clamped to 2.0 mi
+    //   30 mpw → 2.4 → clamped to 2.5 mi (rounded)
+    //   55 mpw → 4.3 mi
+    //   80 mpw → 6.0 mi (clamped)
+    const dailyFloor = state.volume.weeklyAvg4w / 7;
+    const recoveryMi = Math.max(2.0, Math.min(6.0, round1(dailyFloor * 0.55)));
     return {
       type: 'recovery', label: 'Recovery run',
-      distanceMi: 2.5, durationMin: null,
+      distanceMi: recoveryMi, durationMin: null,
       paceTargetSPerMi: null, hrZone: 1,
-      description: `2-3 mi very easy · circulation, not adaptation · or rest if legs aren\'t ready${focusSuffix}`,
+      description: `${recoveryMi} mi very easy · circulation, not adaptation · or rest if legs aren\'t ready${focusSuffix}`,
       isQuality: false, isLong: false, appendStrides: false,
     };
   }

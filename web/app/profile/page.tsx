@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Nav } from '../../components/nav';
 import { Modal } from '../../components/modal';
+import { HubProvider, useHub } from '../../lib/hub-provider';
+import { MILEAGE_TIER_RECOVERY, mileageTier, type MileageTier } from '../../coach/doctrine';
 import type { Shoe, RunType } from '../../lib/shoe-utils';
 import { loadRunnerProfile, saveRunnerProfile, ageFromBirthDate, type RunnerProfile } from '../../lib/runner-profile';
 // (RunnerSex import removed — sex options are inlined as a {male,female}
@@ -28,7 +30,18 @@ const MILEAGE_CAPS: Record<RunType, number> = {
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DEFAULT_LONG_DAY = 'Sun';
 
+// Page is a thin HubProvider wrapper around the inner content so the
+// new TrainingTierSection can read the runner's weeklyAvg4w from the
+// hub via useHub().
 export default function ProfilePage() {
+  return (
+    <HubProvider>
+      <ProfilePageInner />
+    </HubProvider>
+  );
+}
+
+function ProfilePageInner() {
   const [shoes, setShoes]       = useState<Shoe[]>([]);
   const [loading, setLoading]   = useState(true);
   const [editingShoe, setEditingShoe] = useState<Shoe | null>(null);
@@ -91,6 +104,10 @@ export default function ProfilePage() {
 
         {/* ── Runner profile (age + sex for VDOT grading) ───────── */}
         <RunnerProfileSection />
+
+        {/* ── Training tier (mileage-history-aware recovery
+             calibration; doctrine MILEAGE_TIER_RECOVERY) ────────── */}
+        <TrainingTierSection />
 
         {/* ── Training preferences ──────────────────────────────── */}
         <section style={{ marginBottom: 40 }}>
@@ -465,6 +482,138 @@ const iconBtnStyle: React.CSSProperties = {
   fontSize: 12, cursor: 'pointer', display: 'grid', placeItems: 'center',
   fontFamily: 'inherit',
 };
+
+/* ── Training tier section ───────────────────────────────────
+   Surfaces the runner's mileage tier (low / mid / high / elite)
+   derived from their 4-week rolling weekly average. The tier
+   drives recovery calibration across the engine — rest-day
+   count, post-marathon return weeks, recovery-jog floor,
+   heavy-block volume reduction. Doctrine: MILEAGE_TIER_RECOVERY
+   (Research/00b §Recovery Scaled to Weekly Mileage). Read-only;
+   the tier auto-tracks weeklyAvg4w from real activities. */
+function TrainingTierSection() {
+  const hub = useHub();
+  if (hub === null) {
+    return (
+      <section style={{ marginBottom: 40 }}>
+        <div className="tile-sub" style={{ marginBottom: 16 }}>TRAINING TIER</div>
+        <div className="tile" style={{ minHeight: 120, opacity: 0.4 }}>Loading…</div>
+      </section>
+    );
+  }
+  const weeklyAvg4w = hub.coach.state.volume.weeklyAvg4w;
+  const weeklyAvg8w = hub.coach.state.volume.weeklyAvg8w;
+  const tier: MileageTier = mileageTier(weeklyAvg4w);
+  const data = MILEAGE_TIER_RECOVERY.value[tier];
+  const tierColor: Record<MileageTier, string> = {
+    low: 'var(--color-t1)',
+    mid: 'var(--color-corporate)',
+    high: 'var(--color-attention)',
+    elite: 'var(--color-warning)',
+  };
+  const TIERS: Array<{ key: MileageTier; label: string }> = [
+    { key: 'low',   label: '20-40' },
+    { key: 'mid',   label: '40-60' },
+    { key: 'high',  label: '60-80' },
+    { key: 'elite', label: '80+' },
+  ];
+  // Position inside the band (0-1) so the indicator dot lands at the
+  // right horizontal slot when rendered. Uses weeklyAvg4w clamped to
+  // [10, 100] so the strip stays meaningful across the spectrum.
+  const stripPos = (() => {
+    const v = Math.max(10, Math.min(100, weeklyAvg4w));
+    return ((v - 10) / 90) * 100;  // percentage along the strip
+  })();
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div className="tile-sub" style={{ marginBottom: 16 }}>TRAINING TIER</div>
+      <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36,
+              letterSpacing: '-.02em', lineHeight: 1, color: tierColor[tier],
+              textTransform: 'uppercase',
+            }}>
+              {tier}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginTop: 4 }}>
+              {data.label} band · you're at <strong style={{ color: 'var(--color-t0)' }}>{Math.round(weeklyAvg4w)} mi/wk</strong> (4-week avg)
+            </div>
+          </div>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, color: 'var(--color-t3)', textAlign: 'right' }}>
+            8w baseline: {Math.round(weeklyAvg8w)} mi/wk
+          </div>
+        </div>
+
+        {/* Tier strip — visualizes where the runner sits across the
+            full spectrum, with the dot at their actual avg. */}
+        <div>
+          <div style={{ position: 'relative', height: 8, background: 'var(--color-l3)', borderRadius: 4, marginTop: 4 }}>
+            <div style={{
+              position: 'absolute', top: -3, left: `calc(${stripPos}% - 7px)`, width: 14, height: 14,
+              borderRadius: 7, background: tierColor[tier], border: '2px solid var(--color-l0)',
+              boxShadow: '0 0 0 1px var(--color-l4)',
+            }} />
+          </div>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', marginTop: 6,
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700,
+            color: 'var(--color-t3)', letterSpacing: '0.06em',
+          }}>
+            {TIERS.map(t => (
+              <span key={t.key} style={{ color: t.key === tier ? tierColor[tier] : undefined }}>
+                {t.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Calibration grid — shows what the tier adjusts. */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14,
+          paddingTop: 12, borderTop: '1px solid var(--color-l4)',
+        }}>
+          <TierStat
+            label="Rest days/wk"
+            value={data.restDaysPerWeekLow === data.restDaysPerWeekHigh ? `${data.restDaysPerWeekLow}` : `${data.restDaysPerWeekLow}-${data.restDaysPerWeekHigh}`}
+          />
+          <TierStat
+            label="Cutback every"
+            value={data.cutbackEveryWeeksLow === data.cutbackEveryWeeksHigh ? `${data.cutbackEveryWeeksLow}w` : `${data.cutbackEveryWeeksLow}-${data.cutbackEveryWeeksHigh}w`}
+          />
+          <TierStat
+            label="Post-marathon"
+            value={`${data.postMarathonReturnWeeksLow}-${data.postMarathonReturnWeeksHigh}w`}
+          />
+          <TierStat
+            label="Sleep target"
+            value={`${data.sleepHoursLow}-${data.sleepHoursHigh}h`}
+          />
+        </div>
+
+        <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 8, borderTop: '1px solid var(--color-l4)', lineHeight: 1.55 }}>
+          Tier auto-tracks your 4-week rolling weekly mileage. Drives recovery posture across the app:
+          rest-day count, cutback cadence, post-race stage gates, recovery-jog floor, and heavy-block volume reduction.
+          {data.shakeoutReplacesRest ? ' At your tier, full rest is typically replaced by a 30-min shake-out.' : ''}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TierStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--color-t3)', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: 'var(--color-t0)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
 
 /* ── Runner profile section ──────────────────────────────────
    Birth year + sex + HRmax + RHR for VDOT age/sex grading

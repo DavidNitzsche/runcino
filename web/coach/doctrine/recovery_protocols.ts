@@ -398,6 +398,102 @@ export const MARATHON_RECOVERY_4WK_REVERSE_TAPER: Cited<Array<{
   ],
 };
 
+// ── Mileage-tier recovery calibration ─────────────────────────────
+//
+// Recovery requirements scale with absolute training load, but not
+// linearly — higher-mileage runners often have superior recovery
+// infrastructure (sleep habits, nutrition, fitness). Lower-mileage
+// runners can ALSO afford LESS recovery time after a race, because
+// the absolute aerobic load that depleted them was smaller and the
+// fitness-bleed cost of extended rest is higher relative to base.
+//
+// Engine consumers:
+//   - postRaceWorkout       → tier-aware stage gates (rest/light/easy)
+//                             + recovery-jog floor scales with weekly avg
+//   - pickRun(BASE_MAINTENANCE+heavyBlock)
+//                            → tier-aware rest-day count + reduced-volume
+//                              easy aerobic instead of rest-every-day
+
+export type MileageTier = 'low' | 'mid' | 'high' | 'elite';
+
+export const MILEAGE_TIER_RECOVERY: Cited<Record<MileageTier, {
+  /** mpw band label for the runner-facing copy. */
+  label: string;
+  weeklyMpwLow: number;
+  weeklyMpwHigh: number;          // null upper bound represented as 999
+  sleepHoursLow: number;
+  sleepHoursHigh: number;
+  restDaysPerWeekLow: number;
+  restDaysPerWeekHigh: number;
+  cutbackEveryWeeksLow: number;
+  cutbackEveryWeeksHigh: number;
+  cutbackDepthPctLow: number;
+  cutbackDepthPctHigh: number;
+  postMarathonReturnWeeksLow: number;
+  postMarathonReturnWeeksHigh: number;
+  /** Whether full-rest days should be replaced by ~30-min shake-out
+   *  runs at this tier (per doctrine — common at 60+ mpw). */
+  shakeoutReplacesRest: boolean;
+}>> = {
+  value: {
+    low: {
+      label: '20-40 mpw',
+      weeklyMpwLow: 20, weeklyMpwHigh: 40,
+      sleepHoursLow: 7.5, sleepHoursHigh: 9,
+      restDaysPerWeekLow: 1, restDaysPerWeekHigh: 2,
+      cutbackEveryWeeksLow: 3, cutbackEveryWeeksHigh: 3,
+      cutbackDepthPctLow: 25, cutbackDepthPctHigh: 30,
+      postMarathonReturnWeeksLow: 4, postMarathonReturnWeeksHigh: 5,
+      shakeoutReplacesRest: false,
+    },
+    mid: {
+      label: '40-60 mpw',
+      weeklyMpwLow: 40, weeklyMpwHigh: 60,
+      sleepHoursLow: 8, sleepHoursHigh: 9,
+      restDaysPerWeekLow: 1, restDaysPerWeekHigh: 1,
+      cutbackEveryWeeksLow: 3, cutbackEveryWeeksHigh: 4,
+      cutbackDepthPctLow: 20, cutbackDepthPctHigh: 30,
+      postMarathonReturnWeeksLow: 4, postMarathonReturnWeeksHigh: 6,
+      shakeoutReplacesRest: false,
+    },
+    high: {
+      label: '60-80 mpw',
+      weeklyMpwLow: 60, weeklyMpwHigh: 80,
+      sleepHoursLow: 8.5, sleepHoursHigh: 9.5,
+      restDaysPerWeekLow: 0, restDaysPerWeekHigh: 1,
+      cutbackEveryWeeksLow: 3, cutbackEveryWeeksHigh: 4,
+      cutbackDepthPctLow: 25, cutbackDepthPctHigh: 30,
+      postMarathonReturnWeeksLow: 5, postMarathonReturnWeeksHigh: 7,
+      shakeoutReplacesRest: true,
+    },
+    elite: {
+      label: '80+ mpw',
+      weeklyMpwLow: 80, weeklyMpwHigh: 999,
+      sleepHoursLow: 9, sleepHoursHigh: 10,
+      restDaysPerWeekLow: 0, restDaysPerWeekHigh: 1,
+      cutbackEveryWeeksLow: 2, cutbackEveryWeeksHigh: 3,
+      cutbackDepthPctLow: 25, cutbackDepthPctHigh: 35,
+      postMarathonReturnWeeksLow: 5, postMarathonReturnWeeksHigh: 8,
+      shakeoutReplacesRest: true,
+    },
+  },
+  note: 'Heuristic table. Tier picks the recovery posture: rest-day count, cutback cadence/depth, post-marathon timeline, and whether full rest is replaced by a shake-out. Lower tiers exit recovery sooner because their fitness-bleed cost of extended rest is higher relative to base; higher tiers stay in longer because absolute load takes longer to absorb.',
+  citations: [
+    cite('§Recovery Scaled to Weekly Mileage', '4-tier table: 20-40 / 40-60 / 60-80 / 80+ mpw with sleep, rest-days, cutback freq+depth, post-marathon return weeks, modality priority', 'research', '00b'),
+  ],
+};
+
+/** Resolve the runner's mileage tier from their 4-week rolling weekly
+ *  average. Picks by upper-bound: ≤40 → low, ≤60 → mid, ≤80 → high,
+ *  >80 → elite. The tier drives recovery posture decisions across the
+ *  engine — see MILEAGE_TIER_RECOVERY consumers above. */
+export function mileageTier(weeklyAvg4w: number): MileageTier {
+  if (weeklyAvg4w <= 40) return 'low';
+  if (weeklyAvg4w <= 60) return 'mid';
+  if (weeklyAvg4w <= 80) return 'high';
+  return 'elite';
+}
+
 // ── Multi-races-per-year cadence ──────────────────────────────────
 
 export const MULTI_RACE_CADENCE: Cited<{

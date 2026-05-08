@@ -21,7 +21,7 @@ import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner-profile';
-import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
+import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, MILEAGE_TIER_RECOVERY, mileageTier, type RunnerSex } from '../coach/doctrine';
 import { LONG_RUN_HARD_CAP_MULTIPLIER, TRAINING_PULSE_TO_ENGINE_PHASE, longRunTargetMi } from '../lib/long-run-cap';
 import { RpeInput } from '../components/RpeInput';
 import { ReadinessBanner } from '../components/coaching/ReadinessBanner';
@@ -360,7 +360,13 @@ function ModeHero({ daysToNext, next, hub }: {
   }
 
   // Heavy-block hero — when the engine flagged stacked races/load.
+  // Tier-aware copy: shows the runner what posture the engine is
+  // taking for THEIR mileage history, not a generic "rest two weeks".
   if (heavyBlock) {
+    const weeklyAvg4w = hub.coach.state?.volume?.weeklyAvg4w ?? 0;
+    const tier = mileageTier(weeklyAvg4w);
+    const tierData = MILEAGE_TIER_RECOVERY.value[tier];
+    const restDays = tierData.restDaysPerWeekHigh;
     return (
       <div className="tile" style={{
         marginBottom: 14, padding: '20px 24px',
@@ -372,7 +378,11 @@ function ModeHero({ daysToNext, next, hub }: {
           HEAVY BLOCK · DEEP RECOVERY
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--color-t1)', marginTop: 8, lineHeight: 1.55, maxWidth: 600 }}>
-          Recent training stacked harder than typical — multiple races, sustained high mileage, or both. Recovery IS the work right now. Volume drops are intentional, not a failure of consistency. Let the body absorb.
+          Recent training stacked harder than typical — multiple races, sustained high mileage, or both. Recovery IS the work right now. Volume drops are intentional, not a failure of consistency.
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-t2)', marginTop: 8, lineHeight: 1.55, maxWidth: 600 }}>
+          Calibrated to your <strong style={{ color: 'var(--color-t1)' }}>{tierData.label}</strong> tier ({Math.round(weeklyAvg4w)} mi/wk avg):
+          {restDays >= 1 ? ` ${restDays} rest day${restDays === 1 ? '' : 's'}/wk,` : ''} reduced-volume easy aerobic the rest of the week — not weeks of zero running.
         </div>
       </div>
     );

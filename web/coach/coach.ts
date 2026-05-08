@@ -28,6 +28,7 @@ import { composeVoiceLead } from './explanations';
 import { coachDaily, type CoachToday } from '../lib/coach-engine';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
+import { MILEAGE_TIER_RECOVERY, mileageTier } from './doctrine';
 import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInput } from '../lib/weather-slowdown';
 
 // ── Method-specific input types ──────────────────────────────────────
@@ -1062,6 +1063,7 @@ class CoachImpl implements Coach {
       `  Phase: ${phase}`,
       `  ${vdotLine}`,
       `  ${volLine}`,
+      `  Mileage tier: ${mileageTier(state.volume.weeklyAvg4w)} (${MILEAGE_TIER_RECOVERY.value[mileageTier(state.volume.weeklyAvg4w)].label}) — drives recovery posture`,
       `  Longest run last 28d: ${state.volume.longestLast28Mi.toFixed(1)} mi`,
       `  Easy/quality balance: ${(state.intensity.easyShare14d * 100).toFixed(0)}% easy`,
       ...flagLines.map(f => `  ${f}`),
