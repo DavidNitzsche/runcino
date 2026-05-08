@@ -34,6 +34,7 @@ import {
 import {
   prescribeStrength, strengthWeekContext, type StrengthPrescription,
 } from './coach-strength';
+import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 
 export type WorkoutType = RunWorkoutType;
 
@@ -179,7 +180,23 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     if (r) return r;
   }
 
-  // Default by phase + day-of-week (from coach-workouts).
+  // Plan-template path (Stage 4): pick the active template for this
+  // runner + goal race, classify today's slot in its sample peak week.
+  // The template gives the SHAPE of the week (which days are quality,
+  // which are long, which are easy); buildPrescriptionFor still
+  // applies user VDOT + state-driven distance/pace targets.
+  const template = selectActiveTemplate(state, phase);
+  if (template) {
+    const wkType = templateWorkoutType(template, dow);
+    if (wkType) {
+      return buildPrescriptionFor(wkType, state, phase);
+    }
+  }
+
+  // Fallback: default by phase + day-of-week (from coach-workouts).
+  // Used when no template applies, or when the template's sample-week
+  // string didn't classify (e.g., a custom workout name we don't
+  // recognize — we default to the safer phase+dow lookup).
   const def = defaultByDow(phase, dow);
   return buildPrescriptionFor(def.primary, state, phase);
 }

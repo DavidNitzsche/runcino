@@ -71,6 +71,10 @@ export interface CoachState {
     consecutiveRunDays: number;
     /** Yesterday's run summary, if any. */
     yesterday: { distMi: number; paceSPerMi: number; avgHr: number | null; name: string; activityId: number } | null;
+    /** Today's run summary, if any. Drives mid-day reconciliation:
+     *  if the user runs after the morning prescription, the coach
+     *  reads this to revise the day's voice + adjust tomorrow. */
+    today: { distMi: number; paceSPerMi: number; avgHr: number | null; name: string; activityId: number } | null;
     /** M2 — HealthKit-driven. */
     hrv7dAvgMs: number | null;
     rhrBpm: number | null;
@@ -222,6 +226,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   const daysSinceLastRun = lastRun ? daysBetween(lastRun.date, todayISO) : Infinity;
   const yesterdayISO = isoDateOffset(today, -1);
   const yesterdayRun = activities.find(a => a.date === yesterdayISO) ?? null;
+  const todayRun = activities.find(a => a.date === todayISO) ?? null;
   let consecutiveRunDays = 0;
   for (let i = 0; i < 60; i++) {
     const d = isoDateOffset(today, -i);
@@ -285,6 +290,13 @@ export async function gatherCoachState(): Promise<CoachState> {
         avgHr: yesterdayRun.avgHr,
         name: yesterdayRun.name,
         activityId: yesterdayRun.id,
+      } : null,
+      today: todayRun ? {
+        distMi: todayRun.distanceMi,
+        paceSPerMi: todayRun.paceSPerMi,
+        avgHr: todayRun.avgHr,
+        name: todayRun.name,
+        activityId: todayRun.id,
       } : null,
       hrv7dAvgMs: null,
       rhrBpm: null,
