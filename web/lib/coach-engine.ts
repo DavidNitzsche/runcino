@@ -297,14 +297,19 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   // Stage gates derived from POST_RACE_BY_DISTANCE doctrine
   // (Research/00b §Post-Race Recovery). Three bands per distance:
   //   restEnd  = end of zero/very-light window (no running yet)
-  //   lightEnd = parsed return-to-long-runs day (recovery jogs ok)
+  //   lightEnd = START of return-to-long-runs window (easy aerobic ok now)
   //   easyEnd  = total no-quality recovery duration (no quality work yet)
+  //
+  // For marathon: zero 5-10d → rest until day 10; return-to-long-runs
+  // 'Week 2-3' → start easy aerobic at day 14 (low end of week 2);
+  // no-quality 21-28d → quality returns at day 29.
+  //
   // Heavy-block suspicion stretches the windows ~2x — back-to-back
   // races + heavy training compound and need more time.
   const band = POST_RACE_BY_DISTANCE.value[postRaceDistanceBand(distMi)];
   const stageMul = heavy ? 1.8 : 1;
   const restEnd  = Math.round(band.zeroOrVeryLightDaysHigh * stageMul);
-  const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, 'high') * stageMul);
+  const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, 'low') * stageMul);
   const easyEnd  = Math.round(band.totalRecoveryDaysNoQualityHigh * stageMul);
 
   // Reverse-taper week-by-week focus from REVERSE_TAPER_PROTOCOL
@@ -605,15 +610,37 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
     d.setUTCDate(d.getUTCDate() + daysOffset);
     return d.toISOString().slice(0, 10);
   })();
+  // Age every recent race forward by N days. A race that was 5 days
+  // ago is now 5+N days ago — drops out of recovery + heavy-block
+  // windows once it ages past their thresholds.
+  const advancedRecent = state.races.recent.map(r => ({ ...r, daysAgo: r.daysAgo + daysOffset }));
+
+  // Recompute heavyBlockSuspected for the advanced clock. The flag
+  // ages out as races leave the 14/21-day windows. Without this
+  // recomputation, the future-day simulation stays "heavy block" for
+  // 30 days even when the actual races have aged past relevance —
+  // which then trips the BASE_MAINTENANCE → rest-every-day branch.
+  // The mileage-spike component of the original flag isn't preserved
+  // because we don't simulate future mileage; for projection we only
+  // honor the race-count signals which is the right shape anyway.
+  const racesIn21 = advancedRecent.filter(r => r.daysAgo <= 21).length;
+  const racesIn14 = advancedRecent.filter(r => r.daysAgo <= 14).length;
+  const marathonIn14 = advancedRecent.some(r => r.daysAgo <= 14 && r.distanceMi >= 22);
+  const heavyBlockSuspected = racesIn21 >= 3 || racesIn14 >= 2 || marathonIn14;
+
   return {
     ...state,
     now: advancedNow,
     races: {
       ...state.races,
-      recent: state.races.recent.map(r => ({ ...r, daysAgo: r.daysAgo + daysOffset })),
+      recent: advancedRecent,
       nextA: state.races.nextA
         ? { ...state.races.nextA, daysAway: state.races.nextA.daysAway - daysOffset }
         : null,
+    },
+    flags: {
+      ...state.flags,
+      heavyBlockSuspected,
     },
   };
 }
