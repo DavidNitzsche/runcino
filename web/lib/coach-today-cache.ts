@@ -45,7 +45,7 @@ interface DbRow {
  *  in a way that should invalidate previously-computed payloads.
  *  Old rows with a different version simply won't match and the next
  *  read recomputes (which is the goal). */
-const CACHE_CODE_VERSION = 9;
+const CACHE_CODE_VERSION = 10;
 
 async function currentCacheKey(): Promise<{ date: string; latestActivityId: number | null }> {
   // LA-calendar date. Mirrors gatherCoachState's todayLAISO().

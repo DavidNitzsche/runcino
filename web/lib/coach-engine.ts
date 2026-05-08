@@ -79,6 +79,26 @@ export interface CoachToday {
     racePriority: 'A' | 'B' | 'C' | null;
   }>;
   alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
+  /** Per-week trajectory toward the next A-race. Lets the runner SEE
+   *  how the engine projects volume + quality count + long-run target
+   *  scaling toward the goal, instead of trusting that BUILD/PEAK
+   *  weeks will arrive. Forward weeks only — past weeks come from
+   *  real activity data on the client side.
+   *
+   *  Generated for up to N weeks (currently 14, capped at days-to-A
+   *  rounded up + 2 weeks of taper headroom). Empty array when there's
+   *  no A-race scheduled. */
+  buildCurve: Array<{
+    weekStartISO: string;       // Monday of the week (LA timezone date)
+    weekIndex: number;          // 0 = this week, +1 next, etc.
+    daysToRace: number;         // mid-week days-to-A
+    phase: Phase;
+    totalMi: number;
+    longRunMi: number;
+    qualityCount: number;
+    hasMpBlock: boolean;        // contains a marathon-specific or long-MP-block session
+    isRaceWeek: boolean;
+  }>;
   generatedAt: string;
   isPlaceholder: boolean;
 }
@@ -111,6 +131,7 @@ export function coachDaily(state: CoachState): CoachToday {
   const alerts = computeAlerts(state, phase);
   const week = simulateWeek(state, phase, todayDow);
   const next30 = simulateNext30Days(state, phase);
+  const buildCurve = simulateBuildCurveWeeks(state);
   const rationale = composeRationale(state, phase, run, strength);
 
   return {
@@ -122,6 +143,7 @@ export function coachDaily(state: CoachState): CoachToday {
     weekShape: week,
     next30Days: next30,
     alerts,
+    buildCurve,
     generatedAt: new Date().toISOString(),
     isPlaceholder: false,
   };
@@ -536,26 +558,97 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
   }
 }
 
+/** Adaptive training-response score — −1 (struggling) to +1 (crushing).
+ *  Reads observable signals to detect whether the runner is absorbing
+ *  current load well, then bumps volume/intensity targets accordingly.
+ *  Per the user's spec: "if I'm crushing it, amp up training" — not a
+ *  configurable knob, an automatic response.
+ *
+ *  Signals (each contributes ±0.25, score clipped to [-1, +1]):
+ *    + RPE drift NEGATIVE     — workouts feeling EASIER for same prescription
+ *    + ACWR in [0.8, 1.2]     — load build is sustainable
+ *    + weeklyAvg4w > weeklyAvg8w — actually building, not stagnant
+ *    + No incomplete-recovery signals firing this week
+ *    − RPE recentHeavy       — recent quality felt too hard
+ *    − rebuildAfterBreak     — coming back, dial down
+ *    − heavyBlockSuspected    — already in deep recovery, no extra load
+ *
+ *  Returns 0 (neutral) on no/insufficient data so first-time runners
+ *  don't get amplified prescriptions before a baseline exists. */
+function trainingResponseScore(state: CoachState): number {
+  // Hard blockers — never amp up during recovery or rebuild.
+  if (state.flags.heavyBlockSuspected) return -0.5;
+  if (state.flags.rebuildAfterBreak) return -0.3;
+
+  let score = 0;
+  // RPE drift: negative drift = workouts feeling easier than they used
+  // to. The classic sign of fitness moving forward. Threshold ±0.5
+  // RPE points (Borg CR-10 scale).
+  if (state.rpe.drift != null) {
+    if (state.rpe.drift < -0.5) score += 0.25;
+    else if (state.rpe.drift > 0.5) score -= 0.25;
+  }
+  if (state.rpe.recentHeavy) score -= 0.25;
+
+  // ACWR sustainable band [0.8, 1.2]. Above 1.3 = injury-risk zone;
+  // below 0.7 = detraining.
+  const ratio = acwr(state);
+  if (ratio != null) {
+    if (ratio >= 0.8 && ratio <= 1.2) score += 0.25;
+    else if (ratio > 1.3) score -= 0.25;
+  }
+
+  // Volume momentum: weeklyAvg4w climbing relative to weeklyAvg8w.
+  // +5% trailing means the runner is in a real build trend.
+  if (state.volume.deltaPct4v4 != null) {
+    if (state.volume.deltaPct4v4 > 0.05) score += 0.25;
+    else if (state.volume.deltaPct4v4 < -0.10) score -= 0.25;
+  }
+
+  // Easy-share at or above target = polarized training intact, not
+  // grinding the middle. Doctrine target ~0.80.
+  if (state.intensity.easyShare14d >= 0.78) score += 0.25;
+  else if (state.intensity.easyShare14d < 0.65) score -= 0.25;
+
+  return Math.max(-1, Math.min(1, score));
+}
+
 /** Daily easy mileage scaled to recent volume + phase. Floors at 3,
  *  caps at 25% of weekly average so a single easy day doesn't blow the
- *  weekly budget. */
+ *  weekly budget. Bumped/dampened by trainingResponseScore so the
+ *  engine is responsive to how the runner is absorbing load —
+ *  crushing it (score +0.5+) → up to +12% volume; struggling
+ *  (score -0.5-) → down to −20%. */
 function baseEasyMi(state: CoachState, phase: Phase): number {
   const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
   const dailyShare = wkAvg / 5;  // Assume ~5 running days/week
+  // Adaptive multiplier — only applies during normal training phases;
+  // recovery phases (POST_RACE/REBUILD) keep doctrine windows intact.
+  const responseMul = (phase === 'POST_RACE' || phase === 'REBUILD' || phase === 'TAPER')
+    ? 1
+    : 1 + (trainingResponseScore(state) * 0.12);
   if (phase === 'POST_RACE') return Math.max(3, dailyShare * 0.5);
   if (phase === 'REBUILD')   return Math.max(3, dailyShare * 0.7);
   if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.8);
-  return Math.max(3, Math.min(dailyShare, 12));
+  return Math.max(3, Math.min(dailyShare * responseMul, 14));
 }
 
 /** Long-run target — capped at 110% of longest run in last 30 days
  *  (single-session-spike rule, doc §13.1). Phase-specific multipliers
  *  + floors live in lib/long-run-cap.ts so engine + dashboard share
- *  ONE source of truth. */
+ *  ONE source of truth. The cap is the safety ceiling; the adaptive
+ *  response can lift the TARGET toward the cap when the runner is
+ *  absorbing load well, or pull it back when they aren't. */
 function longRunTarget(state: CoachState, phase: Phase): number {
   const cap = maxLongRunMi(state);
   const peakLast = state.volume.longestLast28Mi;
-  return Math.min(cap, longRunTargetMi(phase, peakLast));
+  const target = longRunTargetMi(phase, peakLast);
+  // Adaptive response — only applies in BUILD/PEAK/BASE; recovery
+  // phases honor doctrine targets exactly.
+  const responseMul = (phase === 'POST_RACE' || phase === 'REBUILD' || phase === 'TAPER')
+    ? 1
+    : 1 + (trainingResponseScore(state) * 0.10);
+  return Math.min(cap, target * responseMul);
 }
 
 /* ── Hard constraints ───────────────────────────────────────── */
@@ -739,6 +832,93 @@ function simulateNext30Days(state: CoachState, phase: Phase): CoachToday['next30
       isToday,
       raceName: raceMeta?.name ?? null,
       racePriority: raceMeta?.priority ?? null,
+    });
+  }
+  return out;
+}
+
+/** Project per-week aggregates from today through the next A-race.
+ *  Same engine path as simulateNext30Days but rolled up to weekly
+ *  totals so the dashboard's build-curve view can show real engine
+ *  trajectory (volume, long run, quality count) instead of a flat
+ *  last-4-week-avg projection.
+ *
+ *  Only fires when there's a next-A race scheduled. Caps at 14 weeks
+ *  forward (long enough for a full marathon block + a couple weeks
+ *  past the race for a return-to-base view). */
+function simulateBuildCurveWeeks(state: CoachState): CoachToday['buildCurve'] {
+  const nextA = state.races.nextA;
+  if (!nextA) return [];
+
+  // Walk Monday-anchored weeks. We anchor on Monday of the runner's
+  // current week (LA timezone-naive — same convention as the rest of
+  // the engine) so weekIndex 0 always covers a clean Mon-Sun window.
+  const today = new Date(state.now + 'T12:00:00Z');
+  const todayDow = today.getUTCDay();
+  const daysToMonday = todayDow === 0 ? -6 : 1 - todayDow;
+  const thisMonday = new Date(today);
+  thisMonday.setUTCDate(thisMonday.getUTCDate() + daysToMonday);
+  const todayMs = today.getTime();
+  const raceMs = new Date(nextA.date + 'T12:00:00Z').getTime();
+  const totalDaysToRace = Math.round((raceMs - todayMs) / 86_400_000);
+  // Project up to (race week + 1 post-race week), capped at 14 weeks
+  // total so the curve stays bounded for far-out goals.
+  const weeksToShow = Math.min(14, Math.max(2, Math.ceil(totalDaysToRace / 7) + 1));
+
+  const out: CoachToday['buildCurve'] = [];
+  for (let w = 0; w < weeksToShow; w++) {
+    const weekStart = new Date(thisMonday);
+    weekStart.setUTCDate(thisMonday.getUTCDate() + w * 7);
+    const weekStartISO = weekStart.toISOString().slice(0, 10);
+
+    // Sum each day in the week. Stop simulating once a day is past
+    // the race date (race itself replaces that day's prescription).
+    let totalMi = 0;
+    let longRunMi = 0;
+    let qualityCount = 0;
+    let hasMpBlock = false;
+    let isRaceWeek = false;
+    let midWeekDaysToRace = 0;
+    let midWeekPhase: Phase = 'BASE_MAINTENANCE';
+
+    for (let d = 0; d < 7; d++) {
+      const dayDate = new Date(weekStart);
+      dayDate.setUTCDate(weekStart.getUTCDate() + d);
+      const offsetFromToday = Math.round((dayDate.getTime() - todayMs) / 86_400_000);
+      // Skip days before today (current week's already-elapsed days).
+      if (offsetFromToday < 0) continue;
+      // Stop at race date — the race itself isn't a training day.
+      if (dayDate.getTime() > raceMs) {
+        isRaceWeek = true;
+        break;
+      }
+      const dayState = offsetFromToday > 0 ? advanceState(state, offsetFromToday) : state;
+      const dayPhase = offsetFromToday > 0 ? decidePhase(dayState, decideMode(dayState)) : decidePhase(state, decideMode(state));
+      const dow = dayDate.getUTCDay();
+      const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
+      totalMi += run.distanceMi;
+      if (run.isLong && run.distanceMi > longRunMi) longRunMi = run.distanceMi;
+      if (run.isQuality) qualityCount += 1;
+      if (run.type === 'long_mp_block' || run.type === 'marathon_specific') hasMpBlock = true;
+      // Capture phase + days-to-race from the week's middle day (Thu)
+      // so the row representation isn't biased by a single day's
+      // POST_RACE flip mid-week.
+      if (d === 3) {
+        midWeekDaysToRace = nextA.daysAway - offsetFromToday;
+        midWeekPhase = dayPhase;
+      }
+    }
+
+    out.push({
+      weekStartISO,
+      weekIndex: w,
+      daysToRace: midWeekDaysToRace,
+      phase: midWeekPhase,
+      totalMi: round1(totalMi),
+      longRunMi: round1(longRunMi),
+      qualityCount,
+      hasMpBlock,
+      isRaceWeek,
     });
   }
   return out;

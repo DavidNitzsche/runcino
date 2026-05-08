@@ -173,6 +173,12 @@ interface NextRace {
   distanceMi: number;
   goalDisplay: string;
   goalFinishS: number | null;
+  /** Goal pace in seconds-per-mile, derived from goalFinishS /
+   *  distanceMi. Null when no goal time is set. The engine layers
+   *  this with VDOT-derived paces — VDOT tells us what the runner
+   *  CAN do today; goalPaceSPerMi tells us what the workout SHOULD
+   *  feel like to be on track. */
+  goalPaceSPerMi: number | null;
   priority: 'A' | 'B' | 'C';
   daysAway: number;
 }
@@ -544,13 +550,18 @@ function toNextRace(r: SavedRace): NextRace {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const target = new Date(r.meta.date + 'T12:00:00Z');
   const daysAway = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  const goalFinishS = parseGoalHMS(r.meta.goalDisplay);
+  const goalPaceSPerMi = goalFinishS != null && r.meta.distanceMi > 0
+    ? Math.round(goalFinishS / r.meta.distanceMi)
+    : null;
   return {
     slug: r.slug,
     name: r.meta.name,
     date: r.meta.date,
     distanceMi: r.meta.distanceMi,
     goalDisplay: r.meta.goalDisplay,
-    goalFinishS: parseGoalHMS(r.meta.goalDisplay),
+    goalFinishS,
+    goalPaceSPerMi,
     priority: r.meta.priority ?? 'A',
     daysAway,
   };

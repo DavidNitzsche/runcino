@@ -166,7 +166,7 @@ function TrainingPageInner() {
 
           {/* Long-arc visual context — repositioned below the
               concrete plan above. Answers "the big picture." */}
-          {runs && runs.length > 0 && <BuildCurveTile runs={runs} now={now} goalRace={goalRace} />}
+          {runs && runs.length > 0 && <BuildCurveTile runs={runs} now={now} goalRace={goalRace} buildCurve={hub.coach.today?.buildCurve ?? []} />}
 
           {/* Pattern of what landed — retrospective. */}
           {runs && runs.length > 0 && <QualityDayGridTile runs={runs} />}
@@ -721,20 +721,42 @@ function weekRangeLabel(weekShape: Array<{ date: string }>): string {
    The runner reads the macro shape: "I'm 6 weeks out, in PEAK
    block, last week was 32 mi, the curve is climbing on schedule."
    Hides if there's no next race (no taper math to anchor against). */
-function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; now: Date; goalRace: SavedRace | null }) {
+function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
+  runs: NormalizedActivity[];
+  now: Date;
+  goalRace: SavedRace | null;
+  buildCurve: Array<{ weekStartISO: string; weekIndex: number; daysToRace: number; phase: string; totalMi: number; longRunMi: number; qualityCount: number; hasMpBlock: boolean; isRaceWeek: boolean }>;
+}) {
   if (!goalRace) return null;
   const today = new Date(now); today.setHours(0, 0, 0, 0);
   const raceDate = new Date(goalRace.meta.date + 'T12:00:00Z');
   const daysToRace = Math.round((raceDate.getTime() - today.getTime()) / 86_400_000);
   if (daysToRace < 0) return null;  // race already happened
 
-  // 12 weeks past + 8 weeks forward = 20-week strip
-  const weeks: Array<{ start: Date; weekISO: string; miles: number; isFuture: boolean; isRaceWeek: boolean; phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST' }> = [];
+  // 12 weeks past + N forward (from engine buildCurve)
+  type WeekRow = {
+    start: Date;
+    weekISO: string;
+    miles: number;
+    longRunMi: number | null;
+    qualityCount: number | null;
+    isFuture: boolean;
+    isRaceWeek: boolean;
+    phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST';
+    isProjected: boolean;
+  };
+  const weeks: WeekRow[] = [];
   const dow = today.getDay();
   const daysToMonday = dow === 0 ? -6 : 1 - dow;
   const thisMonday = new Date(today); thisMonday.setDate(thisMonday.getDate() + daysToMonday);
 
-  for (let w = -12; w <= 8; w++) {
+  // Build a lookup of engine-projected weeks by Monday-ISO so we can
+  // splice real engine output into the future strip.
+  const projectedByMonday = new Map(buildCurve.map(b => [b.weekStartISO, b]));
+
+  // 12 weeks back + (engine projection length, capped 12 weeks fwd)
+  const forwardWeeks = Math.min(12, Math.max(8, buildCurve.length));
+  for (let w = -12; w <= forwardWeeks; w++) {
     const start = new Date(thisMonday);
     start.setDate(start.getDate() + w * 7);
     const weekEnd = new Date(start); weekEnd.setDate(weekEnd.getDate() + 7);
@@ -744,14 +766,7 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
     const daysFromRace = Math.round((raceDate.getTime() - start.getTime()) / 86_400_000);
     const isRaceWeek = daysFromRace >= 0 && daysFromRace < 7;
 
-    // Sum miles in this week from runs (past) or estimate forward
-    // (simple ramp: hold last 4-week avg, drop to 50% in race week)
-    const weekMi = runs
-      .filter(r => r.date >= startISO && r.date < endISO)
-      .reduce((s, r) => s + r.distanceMi, 0);
-
     // Phase by distance-to-race (mirrors engine's raceSubPhase):
-    //   ≤7d = TAPER, 8-21d = PEAK, 22-56d = BUILD, >56d = BASE
     const phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST' = (() => {
       if (daysFromRace < 0) return 'POST';
       if (daysFromRace <= 7) return 'TAPER';
@@ -760,17 +775,42 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
       return 'BASE';
     })();
 
-    weeks.push({ start, weekISO: startISO, miles: weekMi, isFuture, isRaceWeek, phase });
+    // Past weeks: real activity miles. Future weeks: prefer engine
+    // projection if available; fall back to last-4-week trailing.
+    if (!isFuture) {
+      const weekMi = runs
+        .filter(r => r.date >= startISO && r.date < endISO)
+        .reduce((s, r) => s + r.distanceMi, 0);
+      weeks.push({
+        start, weekISO: startISO, miles: weekMi, longRunMi: null, qualityCount: null,
+        isFuture: false, isRaceWeek, phase, isProjected: false,
+      });
+    } else {
+      const proj = projectedByMonday.get(startISO);
+      if (proj) {
+        weeks.push({
+          start, weekISO: startISO, miles: proj.totalMi,
+          longRunMi: proj.longRunMi, qualityCount: proj.qualityCount,
+          isFuture: true, isRaceWeek: proj.isRaceWeek || isRaceWeek, phase, isProjected: true,
+        });
+      } else {
+        weeks.push({
+          start, weekISO: startISO, miles: 0, longRunMi: null, qualityCount: null,
+          isFuture: true, isRaceWeek, phase, isProjected: false,
+        });
+      }
+    }
   }
 
   const max = Math.max(...weeks.map(w => w.miles), 1);
-  // Estimate forward miles using last 4-week avg as "what would
-  // standard volume look like." Runner's actual ramp comes from the
-  // engine; this is a visual reference.
   const last4Avg = (() => {
     const past4 = weeks.filter(w => !w.isFuture).slice(-4);
     return past4.length > 0 ? past4.reduce((s, w) => s + w.miles, 0) / past4.length : 0;
   })();
+  // Peak projected week — for the "you'll be at X mpw at peak" callout.
+  const peakProjected = weeks
+    .filter(w => w.isFuture && w.isProjected)
+    .reduce<WeekRow | null>((best, w) => (best == null || w.miles > best.miles) ? w : best, null);
 
   const phaseColor: Record<typeof weeks[number]['phase'], string> = {
     BASE:  'rgba(120, 120, 120, 0.10)',
@@ -799,12 +839,20 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
       {/* Bar chart */}
       <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 140, marginTop: 16, position: 'relative' }}>
         {weeks.map((w, i) => {
-          // Future-week bars now project the runner's last-4-week
-          // trailing average so the long-arc shape is actually visible
-          // instead of empty grey space. Audit #14.
-          const heightMi = w.isFuture && last4Avg > 0 ? last4Avg : w.miles;
+          // Future weeks now use the engine projection (real per-day
+          // simulation rolled to weekly totals). Falls back to last-4-
+          // week trailing avg only if the engine projection didn't
+          // cover this week (rare — happens beyond the 14-week cap).
+          const heightMi = !w.isFuture
+            ? w.miles
+            : (w.isProjected ? w.miles : (last4Avg > 0 ? last4Avg : 0));
           const heightPct = heightMi > 0 ? (heightMi / max) * 100 : 0;
           const color = phaseAccent[w.phase];
+          const tooltip = w.isFuture
+            ? (w.isProjected
+                ? `${w.weekISO} · ${heightMi.toFixed(1)} mi projected · ${w.phase}${w.longRunMi ? ` · long ${w.longRunMi.toFixed(1)} mi` : ''}${w.qualityCount ? ` · ${w.qualityCount} quality` : ''}`
+                : `${w.weekISO} · ~${heightMi.toFixed(0)} mi (last-4-wk fallback) · ${w.phase}`)
+            : `${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`;
           return (
             <div key={i} style={{
               flex: 1, height: '100%',
@@ -818,15 +866,15 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
                 <div style={{
                   width: '70%',
                   height: `${heightPct}%`,
-                  // Future weeks: dashed-border outline, semi-transparent
-                  // fill in the phase color so projection IS visible.
-                  background: w.isFuture ? `${color}33` : color,
-                  border: w.isFuture ? `2px dashed ${color}` : 'none',
+                  // Future weeks: dashed-border outline if engine-projected,
+                  // dotted if fallback. Solid for past actual.
+                  background: w.isFuture ? `${color}55` : color,
+                  border: w.isFuture
+                    ? (w.isProjected ? `2px dashed ${color}` : `1px dotted ${color}`)
+                    : 'none',
                   borderRadius: 2,
                   boxSizing: 'border-box',
-                }} title={w.isFuture
-                  ? `${w.weekISO} · projected ~${heightMi.toFixed(0)} mi · ${w.phase}`
-                  : `${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`} />
+                }} title={tooltip} />
               )}
             </div>
           );
@@ -860,8 +908,20 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
         <PhaseLegend bg="rgba(252, 77, 84, 0.16)" accent="var(--color-warning)" label="Taper" />
       </div>
 
+      {peakProjected && (
+        <div style={{
+          marginTop: 12, padding: '10px 12px',
+          background: 'rgba(243, 173, 59, 0.08)',
+          border: '1px solid rgba(243, 173, 59, 0.20)',
+          borderRadius: 6,
+          fontSize: 12.5, color: 'var(--color-t1)', lineHeight: 1.55,
+        }}>
+          Engine projects peak week at <strong style={{ color: 'var(--color-attention)' }}>{peakProjected.miles.toFixed(0)} mi</strong>{peakProjected.longRunMi ? ` with a ${peakProjected.longRunMi.toFixed(0)}-mile long run` : ''} — {Math.max(0, Math.round((raceDate.getTime() - peakProjected.start.getTime()) / 86_400_000))} days out from {goalRace.meta.name}.
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>
-        Past weeks solid; future-week bars show where last-4-week average would land if held flat (the engine&apos;s actual prescription will deviate).
+        Past weeks solid; future weeks dashed are engine-projected (per-day simulation rolled up). Hover for details.
       </div>
     </div>
   );
