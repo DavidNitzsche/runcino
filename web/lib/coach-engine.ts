@@ -71,6 +71,14 @@ export interface CoachToday {
     type: WorkoutType;
     label: string;
     distanceMi: number;
+    /** Pace target band — same shape as today's prescription. Carries
+     *  forward so /workout/[date] for any future day shows the
+     *  intended pace, not a "—" fallback. Comes from the engine's
+     *  full pickRun + applyConstraints path, so respects VDOT, phase,
+     *  and any quality downshifts. */
+    paceTargetSPerMi: { lowS: number; highS: number } | null;
+    hrZone: number | null;
+    description: string;
     isQuality: boolean;
     isLong: boolean;
     isToday: boolean;
@@ -858,6 +866,9 @@ function simulateNext30Days(state: CoachState, phase: Phase): CoachToday['next30
       type: run.type,
       label: run.label,
       distanceMi: run.distanceMi,
+      paceTargetSPerMi: run.paceTargetSPerMi,
+      hrZone: run.hrZone,
+      description: run.description,
       isQuality: run.isQuality,
       isLong: run.isLong,
       isToday,

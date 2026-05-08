@@ -873,9 +873,20 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
     return past4.length > 0 ? past4.reduce((s, w) => s + w.miles, 0) / past4.length : 0;
   })();
   // Peak projected week — for the "you'll be at X mpw at peak" callout.
-  const peakProjected = weeks
-    .filter(w => w.isFuture && w.isProjected)
-    .reduce<WeekRow | null>((best, w) => (best == null || w.miles > best.miles) ? w : best, null);
+  // Picks the LAST week tied for max mileage (closest to the race), so a
+  // flat plateau labels the latest week as "peak" rather than the
+  // earliest. Also surfaces whether the engine's curve is actually
+  // ramping (true peak) or just flat (engine prescribes peak-week
+  // pattern across all build weeks — a known engine limitation).
+  const futureProjected = weeks.filter(w => w.isFuture && w.isProjected);
+  const maxMi = futureProjected.reduce((m, w) => Math.max(m, w.miles), 0);
+  const peakProjected = [...futureProjected].reverse().find(w => w.miles === maxMi) ?? null;
+  // Curve is "flat" when ≥3 consecutive future weeks all hit max
+  // mileage — that's a sign the engine isn't progressively ramping.
+  const flatPlateauCount = peakProjected
+    ? futureProjected.filter(w => w.miles >= maxMi * 0.95).length
+    : 0;
+  const isFlatCurve = flatPlateauCount >= 3;
 
   const phaseColor: Record<typeof weeks[number]['phase'], string> = {
     BASE:  'rgba(120, 120, 120, 0.10)',
@@ -981,7 +992,16 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
           borderRadius: 6,
           fontSize: 12.5, color: 'var(--color-t1)', lineHeight: 1.55,
         }}>
-          Engine projects peak week at <strong style={{ color: 'var(--color-attention)' }}>{peakProjected.miles.toFixed(0)} mi</strong>{peakProjected.longRunMi ? ` with a ${peakProjected.longRunMi.toFixed(0)}-mile long run` : ''} — {Math.max(0, Math.round((raceDate.getTime() - peakProjected.start.getTime()) / 86_400_000))} days out from {goalRace.meta.name}.
+          {isFlatCurve ? (
+            <>
+              Engine projects build weeks at <strong style={{ color: 'var(--color-attention)' }}>~{peakProjected.miles.toFixed(0)} mi</strong>
+              {peakProjected.longRunMi ? ` with a ${peakProjected.longRunMi.toFixed(0)}-mile long run` : ''} through the build window. <em>(Real Pfitz/Daniels plans ramp toward peak; Runcino's progressive ramp is a known engine gap — work in progress.)</em>
+            </>
+          ) : (
+            <>
+              Engine projects peak week at <strong style={{ color: 'var(--color-attention)' }}>{peakProjected.miles.toFixed(0)} mi</strong>{peakProjected.longRunMi ? ` with a ${peakProjected.longRunMi.toFixed(0)}-mile long run` : ''} — {Math.max(0, Math.round((raceDate.getTime() - peakProjected.start.getTime()) / 86_400_000))} days out from {goalRace.meta.name}.
+            </>
+          )}
         </div>
       )}
 

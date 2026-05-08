@@ -70,7 +70,9 @@ function baseState(overrides: Partial<{
 function makeDay(date: string, type: string, distanceMi: number, isQuality = false, isLong = false): CoachToday['next30Days'][number] {
   return {
     date, type: type as CoachToday['next30Days'][number]['type'], label: type,
-    distanceMi, isQuality, isLong, isToday: false,
+    distanceMi,
+    paceTargetSPerMi: null, hrZone: null, description: '',
+    isQuality, isLong, isToday: false,
     raceName: null, racePriority: null,
   };
 }
