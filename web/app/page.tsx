@@ -20,7 +20,7 @@ import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 import { loadRunnerProfile, ageFromBirthYear, resolveHrmax } from '../lib/runner-profile';
-import { gradeVdot, HRMAX_ZONES_5 } from '../coach/doctrine';
+import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES } from '../coach/doctrine';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -84,6 +84,8 @@ export default function OverviewPage() {
           </div>
 
           <CoachTodayCard />
+
+          <PhaseGuidanceCard />
 
           <Next30DaysCard />
 
@@ -1191,6 +1193,237 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Phase guidance card ─────────────────────────────────────
+   When the runner is in a "special" phase (TAPER / POST_RACE /
+   REBUILD), surface research-backed guidance for that phase.
+   Hidden during BASE / BUILD / PEAK because the regular daily
+   brief already covers those — this card is for the moments
+   when the playbook is non-obvious. */
+function PhaseGuidanceCard() {
+  const [phase, setPhase] = useState<string | null>(null);
+  const [nextRace, setNextRace] = useState<{ name: string; daysAway: number; distanceMi: number } | null>(null);
+  const [recentRace, setRecentRace] = useState<{ name: string; daysAgo: number; distanceMi: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as {
+          ok: boolean;
+          today?: { phase: string };
+          state?: {
+            races?: {
+              nextA?: { name: string; daysAway: number; distanceMi: number } | null;
+              recent?: Array<{ name: string; daysAgo: number; distanceMi: number }>;
+            };
+          };
+          error?: string;
+        };
+        if (cancelled) return;
+        if (json.ok) {
+          setPhase(json.today?.phase ?? null);
+          setNextRace(json.state?.races?.nextA ?? null);
+          // Largest recent race drives post-race guidance.
+          const recent = json.state?.races?.recent ?? [];
+          const biggest = recent.length > 0 ? recent.reduce((a, b) => a.distanceMi >= b.distanceMi ? a : b) : null;
+          setRecentRace(biggest);
+        } else {
+          setError(json.error ?? 'unavailable');
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) return null;
+  if (!phase) return null;
+  // Only fire on special phases — others use the regular brief.
+  if (phase !== 'TAPER' && phase !== 'POST_RACE' && phase !== 'REBUILD') return null;
+
+  if (phase === 'TAPER' && nextRace) {
+    return <TaperGuidancePanel race={nextRace} />;
+  }
+  if (phase === 'POST_RACE' && recentRace) {
+    return <PostRaceGuidancePanel race={recentRace} />;
+  }
+  if (phase === 'REBUILD') {
+    return <RebuildGuidancePanel />;
+  }
+  return null;
+}
+
+function TaperGuidancePanel({ race }: { race: { name: string; daysAway: number; distanceMi: number } }) {
+  // Distance-aware taper window per doctrine TAPER_DURATION_WEEKS.
+  const distance = race.distanceMi >= 22 ? 'marathon' : race.distanceMi >= 11 ? 'half_marathon' : race.distanceMi >= 5 ? 'tenK' : 'fiveK';
+  const taperLabel = { marathon: 'Marathon (2-3wk)', half_marathon: 'Half (1-2wk)', tenK: '10K (1wk)', fiveK: '5K (1wk)' }[distance];
+  const vol = TAPER_VOLUME_REDUCTION.value;
+  const benefit = TAPER_BENEFIT.value;
+
+  return (
+    <>
+      <SectionHeader title="Taper guidance" sub={`${race.daysAway} days to ${race.name} · ${taperLabel}`} />
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+        <div style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-t1)' }}>
+          The fitness is built. The job now is to arrive at the start line rested without losing edge.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+          <PhaseGuidanceBlock
+            label="VOLUME"
+            primary={`Cut ${vol.totalReductionPctLow}–${vol.totalReductionPctHigh}% from peak`}
+            detail={`Frequency stays near ${vol.frequencyPctOfNormal}% of normal. Keep the rhythm — don't suddenly add rest days.`}
+          />
+          <PhaseGuidanceBlock
+            label="INTENSITY"
+            primary="Preserve short, sharp work at race pace"
+            detail={TAPER_INTENSITY_PRESERVATION.value.noIntensityIsBad ? 'Eliminating intensity entirely is detrimental.' : ''}
+          />
+          <PhaseGuidanceBlock
+            label="EXPECTED BENEFIT"
+            primary={`~${benefit.marathonImprovementMinutes}:${String(benefit.marathonImprovementSeconds).padStart(2, '0')} marathon improvement`}
+            detail="Average across one large recreational-runner data set."
+          />
+        </div>
+        <div>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-warning)', marginBottom: 6 }}>
+            COMMON ERRORS
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+            {TAPER_ERRORS.value.map(err => (
+              <li key={err} style={{ marginBottom: 3 }}>{err}</li>
+            ))}
+          </ul>
+        </div>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
+          RESEARCH/14 · TAPER DOCTRINE
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PostRaceGuidancePanel({ race }: { race: { name: string; daysAgo: number; distanceMi: number } }) {
+  // Pick the matching POST_RACE_STAGES entry by distance band.
+  const stage = POST_RACE_STAGES.value.stages.find(s => race.distanceMi >= s.minRaceMi)!;
+  const day = race.daysAgo;
+  const phase = day <= stage.restEndDay ? 'REST'
+    : day <= stage.lightEndDay ? 'LIGHT'
+    : day <= stage.easyEndDay ? 'EASY'
+    : 'RETURN';
+  const daysLeftInWindow = phase === 'REST' ? stage.restEndDay - day
+    : phase === 'LIGHT' ? stage.lightEndDay - day
+    : phase === 'EASY' ? stage.easyEndDay - day
+    : 0;
+  const phaseColors: Record<typeof phase, string> = {
+    REST:   'var(--color-warning)',
+    LIGHT:  'var(--color-attention)',
+    EASY:   'var(--color-corporate)',
+    RETURN: 'var(--color-success)',
+  };
+  const phaseDesc: Record<typeof phase, string> = {
+    REST:   'Full rest is the highest-leverage workout right now. Sleep, eat, walk only.',
+    LIGHT:  'Easy 2-3 mi recovery jogs. No quality. Skin still moves; muscle damage is still resolving.',
+    EASY:   'Easy aerobic miles at 30-50% of peak volume. Long run can return at moderate length. No quality.',
+    RETURN: 'Window closed — base training resumes. Doctrine: ready for structured workouts again.',
+  };
+
+  return (
+    <>
+      <SectionHeader title="Post-race recovery" sub={`Day ${day} since ${race.name} · ${race.distanceMi.toFixed(1)}mi`} />
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36,
+            color: phaseColors[phase], lineHeight: 1, textTransform: 'uppercase',
+          }}>{phase}</div>
+          <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.5 }}>
+            {phaseDesc[phase]}
+            {daysLeftInWindow > 0 && (
+              <span style={{ color: 'var(--color-t3)', display: 'block', marginTop: 4 }}>
+                {daysLeftInWindow} day{daysLeftInWindow === 1 ? '' : 's'} until next stage.
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Stage progress bar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: 'var(--color-l3)' }}>
+            <div style={{
+              flex: stage.restEndDay,
+              background: phase === 'REST' ? 'var(--color-warning)' : 'var(--color-l5)',
+              borderRight: '2px solid var(--color-l1)',
+            }} />
+            <div style={{
+              flex: stage.lightEndDay - stage.restEndDay,
+              background: phase === 'LIGHT' ? 'var(--color-attention)' : 'var(--color-l5)',
+              borderRight: '2px solid var(--color-l1)',
+            }} />
+            <div style={{
+              flex: stage.easyEndDay - stage.lightEndDay,
+              background: phase === 'EASY' ? 'var(--color-corporate)' : 'var(--color-l5)',
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.8px', color: 'var(--color-t3)' }}>
+            <span>D0</span>
+            <span>D{stage.restEndDay} · END REST</span>
+            <span>D{stage.lightEndDay} · END LIGHT</span>
+            <span>D{stage.easyEndDay} · BACK TO BASE</span>
+          </div>
+        </div>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
+          RESEARCH/00b · POST_RACE_STAGES (§8.3 + §13.3)
+        </div>
+      </div>
+    </>
+  );
+}
+
+function RebuildGuidancePanel() {
+  return (
+    <>
+      <SectionHeader title="Rebuild" sub="Coming back from a layoff — handle gently" />
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 10 }}>
+        <div style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--color-t1)' }}>
+          Volume drop is big enough that the engine's flagging this as a rebuild block. Easy mileage at 30-50% of pre-layoff peak, no quality work, until volume returns to ~80% of baseline.
+        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+          <li>Don't try to make up missed miles in one week — Daniels: ramp ≤10% per week.</li>
+          <li>VDOT estimate has dropped 3-8 points (depends on layoff length); field-test only after 2-3 weeks of consistent base.</li>
+          <li>First quality work returns when easy share consistently hits ≥85%.</li>
+        </ul>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', borderTop: '1px solid var(--color-l4)', paddingTop: 8 }}>
+          RESEARCH/01 · §"Returning from layoff"
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PhaseGuidanceBlock({ label, primary, detail }: { label: string; primary: string; detail: string }) {
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 8,
+      background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.4 }}>
+        {primary}
+      </div>
+      {detail && (
+        <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.45 }}>
+          {detail}
+        </div>
+      )}
+    </div>
   );
 }
 
