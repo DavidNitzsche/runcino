@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Nav } from '../../components/nav';
 import { Modal } from '../../components/modal';
 import type { Shoe, RunType } from '../../lib/shoe-utils';
+import { loadRunnerProfile, saveRunnerProfile, ageFromBirthYear, type RunnerProfile } from '../../lib/runner-profile';
+import type { RunnerSex } from '../../coach/doctrine';
 
 const RUN_TYPE_LABELS: Record<RunType, string> = {
   race:       'Race',
@@ -85,6 +87,9 @@ export default function ProfilePage() {
             <h1 style={{ fontSize: 48, letterSpacing: '-0.03em' }}>Profile</h1>
           </div>
         </div>
+
+        {/* ── Runner profile (age + sex for VDOT grading) ───────── */}
+        <RunnerProfileSection />
 
         {/* ── Training preferences ──────────────────────────────── */}
         <section style={{ marginBottom: 40 }}>
@@ -459,3 +464,89 @@ const iconBtnStyle: React.CSSProperties = {
   fontSize: 12, cursor: 'pointer', display: 'grid', placeItems: 'center',
   fontFamily: 'inherit',
 };
+
+/* ── Runner profile section ──────────────────────────────────
+   Birth year + sex for VDOT age/sex grading (Research/24).
+   localStorage-backed; both fields optional. Auto-saves on
+   change so there's no Save button — just edit and move on. */
+function RunnerProfileSection() {
+  const [profile, setProfile] = useState<RunnerProfile>({ birthYear: null, sex: 'unspecified' });
+
+  useEffect(() => {
+    setProfile(loadRunnerProfile());
+  }, []);
+
+  function update(patch: Partial<RunnerProfile>) {
+    const next = { ...profile, ...patch };
+    setProfile(next);
+    saveRunnerProfile(next);
+  }
+
+  const age = ageFromBirthYear(profile.birthYear);
+  const SEX_OPTIONS: Array<{ value: RunnerSex; label: string }> = [
+    { value: 'unspecified', label: 'Prefer not to say' },
+    { value: 'male',        label: 'Male' },
+    { value: 'female',      label: 'Female' },
+    { value: 'other',       label: 'Other' },
+  ];
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div className="tile-sub" style={{ marginBottom: 16 }}>RUNNER PROFILE</div>
+      <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              Birth year
+            </div>
+            <input
+              type="number"
+              value={profile.birthYear ?? ''}
+              onChange={e => update({ birthYear: e.target.value === '' ? null : Number(e.target.value) })}
+              placeholder="e.g. 1985"
+              min={1900}
+              max={new Date().getFullYear()}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                color: 'var(--color-t0)', fontFamily: 'var(--font-data)', fontSize: 14,
+                fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+              }}
+            />
+            {age != null && (
+              <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 4 }}>
+                Age {age}
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              Sex
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {SEX_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => update({ sex: opt.value })}
+                  style={{
+                    padding: '7px 12px', borderRadius: 8, border: '1px solid', cursor: 'pointer',
+                    borderColor: profile.sex === opt.value ? 'var(--color-corporate)' : 'var(--color-l4)',
+                    background: profile.sex === opt.value ? 'rgba(38,127,255,.18)' : 'transparent',
+                    color: profile.sex === opt.value ? 'var(--color-corporate)' : 'var(--color-t2)',
+                    fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)', lineHeight: 1.5 }}>
+          Used to compute age-graded VDOT and sex-cohort tier framing on the dashboard.
+          Both fields are optional — leave blank for open-class only. No data leaves your browser.
+        </div>
+      </div>
+    </section>
+  );
+}

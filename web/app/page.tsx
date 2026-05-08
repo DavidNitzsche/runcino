@@ -19,6 +19,8 @@ import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
+import { loadRunnerProfile, ageFromBirthYear } from '../lib/runner-profile';
+import { gradeVdot } from '../coach/doctrine';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -889,6 +891,15 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
     ? 'yesterday'
     : `${vdot.source.daysAgo} days ago`;
 
+  // Age + sex grading (Research/24). Computed client-side because
+  // the profile is localStorage-only for now. When age/sex are
+  // unspecified, gradeVdot returns ageGraded = null and the
+  // secondary line just doesn't render.
+  const profile = typeof window !== 'undefined' ? loadRunnerProfile() : { birthYear: null, sex: 'unspecified' as const };
+  const runnerAge = ageFromBirthYear(profile.birthYear);
+  const grading = gradeVdot(vdot.vdot, runnerAge, profile.sex);
+  const showAgeGraded = grading.ageGraded != null && runnerAge != null && runnerAge > 30 && Math.abs(grading.ageGraded - vdot.vdot) >= 1;
+
   // Color-code tier so the badge has visual weight.
   const tierColor: Record<VdotTilePayload['tier'], string> = {
     novice:       'var(--color-t2)',
@@ -940,6 +951,16 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
             {(vdot.freshness === 'stale' || vdot.freshness === 'expired') && (
               <div style={{ fontSize: 11.5, color: 'var(--color-t3)', lineHeight: 1.5, marginTop: 4, fontStyle: 'italic' }}>
                 {vdot.freshnessNote} Coach can plan a 5K time trial — see today&apos;s prescription.
+              </div>
+            )}
+            {showAgeGraded && grading.ageGraded != null && (
+              <div style={{
+                fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4,
+                paddingTop: 6, borderTop: '1px solid var(--color-l4)',
+              }}>
+                <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, fontSize: 10, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>AGE-GRADED · </span>
+                <span style={{ fontFamily: 'var(--font-data)', fontWeight: 800, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>VDOT {grading.ageGraded.toFixed(1)}</span>
+                <span style={{ color: 'var(--color-t3)' }}> {grading.rationale}</span>
               </div>
             )}
           </div>

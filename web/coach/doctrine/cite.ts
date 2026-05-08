@@ -33,7 +33,8 @@ export type ResearchDocId =
   | '09' | '10' | '11' | '12'
   | '13' | '14' | '15' | '16'
   | '17' | '18' | '19'
-  | '20' | '21' | '22';
+  | '20' | '21' | '22'
+  | '24';
 
 const RESEARCH_DOC_FILES: Record<ResearchDocId, string> = {
   '00a': '00a-distance-running-training.md',
@@ -60,6 +61,7 @@ const RESEARCH_DOC_FILES: Record<ResearchDocId, string> = {
   '20':  '20-mental-training.md',
   '21':  '21-form-corrections.md',
   '22':  '22-plan-templates.md',
+  '24':  '24-vdot-age-sex-grading.md',
 };
 
 /** Convenience builder. Three forms:
