@@ -22,6 +22,7 @@ import { HubProvider, useHub } from '../../lib/hub-provider';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
 import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
 import { daysUntil, formatShort, todayISO } from '../../lib/dates';
+import { RpeInput } from '../../components/RpeInput';
 
 // ── Types from /api/coach/today ─────────────────────────────────────
 type Citation = { doc: string; section: string; snippet?: string };
@@ -152,6 +153,8 @@ function TrainingPageInner() {
             runs={runs}
           />
 
+          <DailyFeedbackTile now={now} runs={runs} />
+
           {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
 
           {runs && runs.length > 0 && <QualityDayGridTile runs={runs} />}
@@ -169,6 +172,100 @@ function TrainingPageInner() {
    quality (red), long (blue), easy (green), rest (dark). Lets the
    runner see their training rhythm at a glance — "I always skip
    Wednesday tempos when work is busy" patterns become visible. */
+/* ── Daily feedback ──────────────────────────────────────────
+   The "tell the coach how it actually felt" tile. Lives directly
+   under the daily briefing on /training so the runner reads the
+   prescription, runs (or doesn't), and immediately feeds back.
+   Three flavors based on what the runner did vs what was prescribed:
+
+   1. Prescription was a workout, runner ran → "How did it feel?"
+   2. Prescription was rest, runner ran anyway → "Logged a run on
+      a planned rest day — talk to me about it" (the case the user
+      hit today: ran 7.4 mi when the engine had it as recovery)
+   3. Prescription was rest, runner rested → "Resting today?"
+      with a smaller "wasn't a true rest" affordance for honesty
+      ("crossfit / hike / lifted heavy" → still useful signal). */
+function DailyFeedbackTile({ now, runs }: { now: Date; runs: NormalizedActivity[] | null }) {
+  const hub = useHub();
+  if (!hub) return null;
+
+  const todayISOStr = now.toISOString().slice(0, 10);
+  const todayPres = hub.coach.today?.today ?? null;
+  const presIsRest = todayPres?.type === 'rest';
+  const todayRun = runs?.find(r => r.date === todayISOStr) ?? null;
+  const ranToday = todayRun != null && todayRun.distanceMi > 0;
+  const existing = hub.recentRpe.find(e => e.workoutDate === todayISOStr) ?? null;
+
+  // Headline copy — context-driven so the prompt matches what the
+  // runner just did, not a generic "rate today".
+  const headline = (() => {
+    if (presIsRest && ranToday) return 'You ran on a rest day — how did it feel?';
+    if (presIsRest && !ranToday) return 'Resting today — anything to flag?';
+    if (ranToday) return 'How did today\'s session feel?';
+    return 'Run not logged yet — come back after';
+  })();
+
+  const sublede = (() => {
+    if (presIsRest && ranToday) {
+      return `You logged ${todayRun!.distanceMi.toFixed(1)} mi when the plan was rest. The coach reads this — if it felt easy, that\'s useful information; if it felt like work, that\'s a signal to honor tomorrow\'s rest fully.`;
+    }
+    if (presIsRest && !ranToday) {
+      return 'Optional. If you cross-trained, slept poorly, or have anything else worth noting (weather, niggle, life stress), drop it in the notes — the coach reads it for tomorrow\'s context.';
+    }
+    if (ranToday) {
+      return `${todayRun!.distanceMi.toFixed(1)} mi · ${formatPaceFromActivity(todayRun!)}/mi · ${todayRun!.avgHr ? `${todayRun.avgHr} bpm avg HR` : 'no HR data'}. Tap a number — RPE 1 (barely working) → 10 (max effort).`;
+    }
+    return 'Once you log a run on Strava, this card will give you a one-tap effort feedback slot.';
+  })();
+
+  // Border color reflects the situation:
+  // - dashed warn when the runner ran on a rest day (the override case)
+  // - dashed attention when there's no entry yet on a workout day
+  // - solid when an entry already exists
+  const borderStyle = existing ? 'solid' : 'dashed';
+  const borderColor = existing
+    ? 'var(--color-l4)'
+    : (presIsRest && ranToday) ? 'var(--color-warning)'
+    : ranToday ? 'var(--color-attention)'
+    : 'var(--color-l4)';
+
+  return (
+    <div className="tile" style={{
+      marginTop: 14, padding: '20px 24px',
+      borderStyle, borderColor,
+      display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px',
+          color: 'var(--color-attention)', fontWeight: 700, textTransform: 'uppercase',
+        }}>
+          Daily feedback
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--color-t0)', lineHeight: 1.25 }}>
+          {headline}
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55, marginTop: 4 }}>
+          {sublede}
+        </div>
+      </div>
+
+      {/* Show the rating slot whenever the runner ran today OR they
+          want to leave a note on a rest day. Hide entirely if no
+          run + no existing entry — they have nothing to feed back yet. */}
+      {(ranToday || existing || presIsRest) && (
+        <RpeInput workoutDate={todayISOStr} existing={existing} />
+      )}
+    </div>
+  );
+}
+
+function formatPaceFromActivity(a: NormalizedActivity): string {
+  const m = Math.floor(a.paceSPerMi / 60);
+  const s = Math.round(a.paceSPerMi % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function QualityDayGridTile({ runs }: { runs: NormalizedActivity[] }) {
   // Build 12 weeks × 7 days grid. Today is the rightmost column,
   // bottom-aligned to the runner's own week (Mon-start).

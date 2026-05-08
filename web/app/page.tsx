@@ -1144,17 +1144,25 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
    Coach card so the runner taps a number right after the run.
    Doctrine: Research/00b §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS
    uses RPE drift between similarly-prescribed sessions to flag
-   accumulating fatigue. Hidden if the runner is on a rest day
-   (nothing to rate). Reads existing entry from the hub so taps
-   pre-fill. */
+   accumulating fatigue. Visible whenever the runner has SOMETHING
+   to rate — either a prescribed workout, an actual run today
+   (even on a rest day — the override case), or an already-logged
+   entry they might want to edit. Reads existing entry from the
+   hub so taps pre-fill. */
 function WorkoutRpeCard() {
   const hub = useHub();
   if (!hub) return null;
   const todayPrescription = hub.coach.today;
-  // Skip on rest days — no workout to rate.
-  if (!todayPrescription || todayPrescription.today.type === 'rest') return null;
+  if (!todayPrescription) return null;
   const todayISO = hub.meta.cacheDate;
   const existing = hub.recentRpe.find(e => e.workoutDate === todayISO) ?? null;
+  // Only hide when there's NOTHING to rate: prescription was rest,
+  // no actual run, and no existing entry. The "ran on a rest day"
+  // case (today's bug — user logged 7.4 mi when plan was recovery)
+  // now shows the slot so they can feed back.
+  const ranToday = hub.coach.state?.recovery?.today != null;
+  const isRestDay = todayPrescription.today.type === 'rest';
+  if (isRestDay && !ranToday && !existing) return null;
   return (
     <div className="tile" style={{
       marginBottom: 10, padding: '18px 22px',
