@@ -16,7 +16,7 @@
  *   - /races/[slug] page           → goal-time pacing plan display
  *
  * Heat/wind/altitude pacing adjustments live in weather.ts. */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Pacing strategy research foundation ───────────────────────────
 

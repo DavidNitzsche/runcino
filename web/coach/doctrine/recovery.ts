@@ -3,7 +3,7 @@
  *
  * Extracted from docs/coaching-research.md §8.1, §8.2, §8.3.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Sleep is the single highest-leverage recovery variable. */
 export const SLEEP: Cited<{

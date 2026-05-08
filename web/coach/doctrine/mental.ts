@@ -9,7 +9,7 @@
  *   - coach.adjustForReality   → POST_RACE_BLUES_DECISION
  *                                 + DNF_DECISION_RULES
  *   - profile / settings UI    → BURNOUT_WARNING_SIGNS */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Goal-setting ──────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
  * The mantra: in the final two weeks, the fitness is built. The job is
  * to arrive at the start line rested without losing edge.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Taper duration by race distance. */
 export const TAPER_DURATION_WEEKS: Cited<{

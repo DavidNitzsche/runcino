@@ -13,7 +13,7 @@
  * Note: Existing taper.ts has overlapping content; that file's values
  * are subsumed here as Research/08 is the canonical source. taper.ts
  * stays for backward compat until callers migrate. */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Taper ─────────────────────────────────────────────────────────
 

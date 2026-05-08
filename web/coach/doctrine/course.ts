@@ -9,7 +9,7 @@
  *   - /races/[slug]/page           → HILL_TRAINING_BY_RACE_PROFILE
  *                                    suggestions
  *   - coach.briefRaceMorning       → ALTITUDE_RACE_TIMING */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Hill training principles ──────────────────────────────────────
 

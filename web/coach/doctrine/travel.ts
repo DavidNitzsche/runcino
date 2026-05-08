@@ -6,7 +6,7 @@
  * Engine consumers:
  *   - coach.briefRaceMorning   → JET_LAG_PROTOCOL when race travel logged
  *   - /races/[slug] page       → ARRIVAL_TIMING display */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Arrival timing ───────────────────────────────────────────────
 

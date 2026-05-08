@@ -16,7 +16,7 @@
  * VDOT formulas + lookup live in pace_zones.ts (Research 01); this
  * file focuses on cross-distance prediction itself: Riegel, Cameron,
  * runner-type, age-grading, weighted multi-race fit. */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Power-law time-distance relationship ───────────────────────────
 

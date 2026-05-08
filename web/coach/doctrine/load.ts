@@ -5,7 +5,7 @@
  * The 10% rule is not the most important variable. Single-session
  * spikes are. ACWR sweet spot is 0.8–1.3.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Single-session spike — the strongest predictor of injury per the
  *  2025 5,200-runner cohort study. */

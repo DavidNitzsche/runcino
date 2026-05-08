@@ -18,7 +18,7 @@
  * 6 (`course.ts`) — keeping pace_zones.ts focused on the pace
  * prescription itself rather than environmental modifiers.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── VDOT formulas (Daniels & Gilbert 1979) ─────────────────────────
 

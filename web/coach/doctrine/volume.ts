@@ -5,7 +5,7 @@
  * What easy volume actually does, how much is realistic, and how to
  * structure maintenance phases between cycles.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Easy-pace anchors used to define what "easy aerobic running" means. */
 export const EASY_PACE_ANCHORS: Cited<{

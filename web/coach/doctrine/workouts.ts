@@ -20,7 +20,7 @@
  * engine already consumes by name. Their citations are migrated from
  * the legacy `coaching-research.md §5.x` to Research/04.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Typed lookups the engine reads by name ─────────────────────────
 

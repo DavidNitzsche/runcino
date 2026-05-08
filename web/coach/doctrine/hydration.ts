@@ -9,7 +9,7 @@
  *   - coach.briefRaceMorning             → PRE_RACE_HYDRATION
  *                                         + EAH_RISK_FACTORS
  *   - coach-strength sweat-rate intake   → SWEAT_RATE_PROTOCOL */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Daily baseline ────────────────────────────────────────────────
 

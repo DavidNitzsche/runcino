@@ -8,7 +8,7 @@
  *                                race_week.ts)
  *   - coach.prescribeWorkout   → WORKOUT_WARMUP + COOLDOWN_PROTOCOL
  *   - profile / settings UI    → DAILY_MOBILITY_ROUTINE */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Why dynamic pre / static post ─────────────────────────────────
 

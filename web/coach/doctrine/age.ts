@@ -11,7 +11,7 @@
  *   - profile / settings UI    → AGE_DEFAULTS_BY_DECADE prompts
  *   - coach.adjustForReality   → SCREENING_BY_AGE referrals
  *   - coach.prescribeWorkout   → recovery-day frequency by age */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Defaults by decade ───────────────────────────────────────────
 

@@ -10,7 +10,7 @@
  * because the research doesn't enumerate them. Each scaling is noted
  * inline so a future reader can challenge it.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** §8.3 — Recovery period after any hard training stress. The post-race
  *  rest stage is bounded by this rule. The high end (72h) applies to

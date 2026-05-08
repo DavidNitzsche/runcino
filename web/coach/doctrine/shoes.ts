@@ -3,7 +3,7 @@
  *
  * Extracted from docs/coaching-research.md §9.1, §9.2, §9.3.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** What super shoes actually buy you. */
 export const SUPER_SHOE_BENEFIT: Cited<{

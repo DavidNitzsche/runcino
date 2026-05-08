@@ -5,7 +5,7 @@
  * Carb intake during, before, and around training; hydration; daily
  * training nutrition; what underfueling actually breaks.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Carb-intake bands during the race itself. The historical 30–60 g/h
  *  is the floor, not the target. */

@@ -8,7 +8,7 @@
  *   - coach.prescribeWorkout            → suggest XT substitute on
  *                                         injury or weather flag
  *   - injury_return.ts CROSS_TRAIN_OK   pulls from this catalog */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Master decision rules ─────────────────────────────────────────
 

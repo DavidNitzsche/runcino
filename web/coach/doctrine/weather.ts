@@ -16,7 +16,7 @@
  *                              session can proceed
  *   - heat-acclim flag         HEAT_ACCLIMATION_TIMELINE for the
  *                              "hot day, easy first" guidance */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Optimal conditions reference ───────────────────────────────────
 

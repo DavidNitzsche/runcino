@@ -5,7 +5,7 @@
  * The 180-spm "rule" is myth; cadence intervention helps a specific
  * subset of runners.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Natural cadence ranges by pace. */
 export const NATURAL_CADENCE_BY_PACE: Cited<{

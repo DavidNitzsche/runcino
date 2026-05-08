@@ -4,7 +4,7 @@
  * Extracted from docs/coaching-research.md §12.
  * Age-related performance changes and what they mean for prescription.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Decline rates by physiological marker. */
 export const AGE_DECLINE_PER_DECADE: Cited<{

@@ -8,7 +8,7 @@
  *   - coach-state.ts            → TRAINING_LOAD_METRICS for state
  *                                 aggregation
  *   - profile / settings UI    → DEVICE_SOURCE_OF_TRUTH */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Training load metrics ─────────────────────────────────────────
 

@@ -18,7 +18,7 @@
  * Daniels HR percentages (E/M/T/I/R) live in pace_zones.ts since
  * they're paired with the Daniels pace prescription.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── HRmax estimation formulas ──────────────────────────────────────
 

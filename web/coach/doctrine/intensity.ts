@@ -10,7 +10,7 @@
  * No logic here. This file is data — every number is followed by a
  * Citation pointing to the research line that justifies it.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Percentage breakdown of weekly training time across intensity zones.
  *  Zones follow the LT1 / LT2 boundaries the research uses:

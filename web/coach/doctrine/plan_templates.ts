@@ -20,7 +20,7 @@
  *                                      day patterns
  *   - /races/[slug]                  → display "block: Pfitzinger 18/55"
  *                                      structure */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Zone shorthand ────────────────────────────────────────────────
 

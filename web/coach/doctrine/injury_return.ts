@@ -15,7 +15,7 @@
  *                                         cross-train when injury flag
  *                                         is active
  *   - /coach/today UI                    → red-flag prompts, MD referral */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── General principles ────────────────────────────────────────────
 

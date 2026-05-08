@@ -22,7 +22,7 @@
  *                                      MULTI_RACE_CADENCE
  *   - coach.briefRaceMorning          → RACE_PRIORITY_RECOVERY
  *   - coach.taperDepth                → POST_RACE_BY_DISTANCE */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Three categories of recovery ──────────────────────────────────
 

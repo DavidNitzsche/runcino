@@ -4,7 +4,7 @@
  * Extracted from docs/coaching-research.md §6.1, §6.2, §6.3 and
  * docs/amp-research.md (Amp resistance modes used by amp-workouts.ts).
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 export type RunPhase = 'base' | 'build' | 'peak' | 'taper';
 

@@ -5,7 +5,7 @@
  * For most amateurs heat acclimation is the practical, comparable-
  * magnitude alternative to altitude.
  */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 /** Heat acclimation block — produces hematological gains comparable
  *  to altitude (Rønnestad and colleagues, Scandinavian cycling/skiing). */

@@ -8,7 +8,7 @@
  *                                + RED_S_SCREENING_QUESTIONS
  *   - coach.briefRaceMorning    → cycle-aware adjustments (when known)
  *   - coach.adjustForReality    → IRON_DEFICIENCY_RED_FLAGS */
-import { cite, type Cited } from '.';
+import { cite, type Cited } from './cite';
 
 // ── Menstrual cycle ───────────────────────────────────────────────
 
