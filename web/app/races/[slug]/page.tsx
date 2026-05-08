@@ -1473,6 +1473,7 @@ function useAdaptiveBrief(race: SavedRace): {
             raceDate: race.meta.date,
             goalDisplay: race.meta.goalDisplay,
             weatherText,
+            daysToRace: days,                  // drives the brief's horizon
             phases: race.plan.phases.map(p => ({
               index: p.index,
               label: p.label,

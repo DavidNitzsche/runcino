@@ -22,6 +22,11 @@ type Body = {
   raceDate?: string;
   goalDisplay?: string;
   weatherText: string;
+  /** Days from today until the race. Drives the brief's adaptive
+   *  horizon — course brief / approach / race-week / race-morning.
+   *  When omitted, server falls back to recomputing it from raceDate
+   *  vs today (or 0 if neither is parseable). */
+  daysToRace?: number;
   phases: Array<{ index: number; label: string; startMi: number; endMi: number; paceSPerMi: number; grade: number }>;
 };
 
@@ -116,6 +121,18 @@ export async function POST(req: Request) {
   // skipping the altitude component (a no-op below 1000 ft).
   const elevationFt: number | undefined = undefined;
 
+  // Recompute daysToRace server-side as a fallback when the client
+  // didn't send it, so the horizon is always populated. Client value
+  // wins when present (clients already know their local clock state).
+  const serverDaysToRace = (() => {
+    if (body.daysToRace != null && Number.isFinite(body.daysToRace)) return Math.round(body.daysToRace);
+    if (!body.raceDate) return 0;
+    const t0 = new Date(today + 'T00:00:00Z').getTime();
+    const t1 = new Date(body.raceDate + 'T00:00:00Z').getTime();
+    if (!Number.isFinite(t0) || !Number.isFinite(t1)) return 0;
+    return Math.round((t1 - t0) / (24 * 3600 * 1000));
+  })();
+
   let decision: CoachDecision<string>;
   try {
     decision = await coach.briefRaceMorning({
@@ -129,6 +146,7 @@ export async function POST(req: Request) {
       abilityTier,
       elevationFt,
       raceDistanceMi: totalMi > 0 ? totalMi : undefined,
+      daysToRace: serverDaysToRace,
     });
   } catch (e) {
     return new Response(

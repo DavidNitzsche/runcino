@@ -155,6 +155,12 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
   /** Whether the runner is altitude-acclimatized (≥3 weeks at race
    *  altitude). Defaults to acute-traveler. */
   altitudeAcclimatized?: boolean;
+  /** Days from today until the race (0 = race morning, 100 = far out).
+   *  Drives the brief's framing — "what the course wants from your
+   *  training" 100 days out vs "first three miles slower than you
+   *  want" on race morning. Both use the same Coach voice; the focus
+   *  shifts with the time horizon. Defaults to 0 (race morning). */
+  daysToRace?: number;
 }
 
 export interface RetrospectInput extends CoachBaseContext {
@@ -419,12 +425,32 @@ class CoachImpl implements Coach {
         // <1.5%: informational only — don't make the runner second-guess.
         return `${tempStr} — typical race-day conditions for the course. Goal pace stands.`;
       })();
-      const bailClause = '';
+      // Branch the deterministic fallback by the same horizon the LLM
+      // path uses, so a deploy without ANTHROPIC_API_KEY still surfaces
+      // sensibly different copy 100 days out vs race morning.
+      const fallbackDays = input.daysToRace ?? 0;
+      const fallbackAnswer = (() => {
+        if (fallbackDays > 21) {
+          // Course brief — far out. No taper, no forecast in play.
+          return `${input.raceName} is ${fallbackDays} days out. The course summary: ${input.courseSummary} Build toward what this course rewards — terrain-specific work where it matters most, easy mileage everywhere else. Forecast and fueling specifics will sharpen up as the race gets closer.`;
+        }
+        if (fallbackDays > 7) {
+          // Approach — strategic, training is being finalized.
+          return `${input.raceName} is ${fallbackDays} days out. ${input.courseSummary} You're finishing the build. Sharpen the work that matches this course; taper hasn't started yet. Last year's weather is a reasonable baseline — anything sharper comes when NOAA publishes a forecast around race week.`;
+        }
+        if (fallbackDays > 0) {
+          // Race week — taper, weather forecast available.
+          return `Race week. ${fallbackDays} day${fallbackDays === 1 ? '' : 's'} out. Legs may feel weird; that's normal taper. ${weatherClause} Lock in sleep, carbs, and your kit. Don't go chasing fitness this week.`;
+        }
+        // Race morning — current behavior.
+        return `Morning. The training is done. ${weatherClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`;
+      })();
+
       return {
-        answer: `Morning. The training is done. ${weatherClause}${bailClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`,
+        answer: fallbackAnswer,
         rationale: slowdown
           ? `Weather slowdown computed: ${slowdown.totalPct.toFixed(1)}% (${slowdown.rationale.join('; ') || 'neutral conditions'}).`
-          : 'Conservative start + trust-the-plan default. No weather forecast provided.',
+          : `Deterministic ${fallbackDays > 21 ? 'course brief' : fallbackDays > 7 ? 'approach brief' : fallbackDays > 0 ? 'race-week brief' : 'race-morning brief'}. No LLM available.`,
         citations: [
           { doc: 'Research/06-weather-adjustments.md', section: '§10', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
           { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon — every fast plan dies in the opening miles' },
@@ -462,20 +488,59 @@ class CoachImpl implements Coach {
         ].filter((s): s is string => s != null).join('\n')
       : '';
 
+    // Brief horizon picks the framing. The Coach voice is the same
+    // across all four modes; the focus shifts so the brief is useful
+    // every time the runner opens the race page, not just on race
+    // morning. Lifted out of the prompt so adding a new mode is a
+    // one-line table edit, not a string surgery.
+    const days = input.daysToRace ?? 0;
+    const horizon = days <= 0   ? 'morning'
+                  : days <= 7   ? 'race_week'
+                  : days <= 21  ? 'approach'
+                                : 'course';
+
+    const horizonInstructions: Record<typeof horizon, string> = {
+      morning: [
+        'HORIZON: race morning. The runner is reading this over coffee, hours before the start.',
+        'Acknowledge real conditions using the computed slowdown number when provided, give pace-band guidance for the opening miles, mention fuel timing for THIS race, and end with a single line of focus.',
+        'One short paragraph.',
+      ].join(' '),
+      race_week: [
+        `HORIZON: race week (${days} day${days === 1 ? '' : 's'} to go).`,
+        'The runner is in taper. Talk about taper sanity (legs feel weird, this is normal), what to lock in this week (sleep, carbs, dress rehearsal), and the weather window if it\'s informative. Refer to the forecast as a forecast, not as today\'s conditions.',
+        'Do NOT prescribe specific opening-mile paces or gel timing — those land in the race-morning brief. Keep this strategic, not tactical.',
+        'One short paragraph.',
+      ].join(' '),
+      approach: [
+        `HORIZON: approach (${days} days out).`,
+        'The runner is finishing the build, sharpening into peak. Talk about how the course shapes what the last weeks of training should look like — where the race will be won or lost, what kind of runner this course rewards, the one or two specifics to dial in. Reference last year\'s weather as a baseline expectation, not a forecast.',
+        'Do NOT prescribe race-morning pacing or fueling. Strategic horizon, not tactical.',
+        'One short paragraph.',
+      ].join(' '),
+      course: [
+        `HORIZON: course brief (${days} days out — the race is far away).`,
+        'The runner is far enough out that taper and forecast aren\'t actionable. Talk about the COURSE: what kind of runner it wants, where the race is decided, the one or two terrain features that matter. If you mention weather, frame it as historical norms (e.g., "last year was 64°F at the gun — typical for August in San Diego"), never as a forecast.',
+        'Do NOT prescribe pacing, fueling, or first-three-miles tactics. This is education and orientation, not race-day execution.',
+        'One short paragraph.',
+      ].join(' '),
+    };
+
     const userPrompt = [
-      `Write a race-morning brief for ${input.raceName} on ${input.raceDate}.`,
+      `Write a race brief for ${input.raceName} on ${input.raceDate}.`,
       `Goal: ${input.goalDisplay}.`,
       `Course: ${input.courseSummary}`,
       weatherLine,
       slowdownContext,
       '',
-      'The brief is what the runner reads over coffee. One short paragraph. Voice rules apply (plain language, no §-numbers in the rationale, no jargon-without-translation). Acknowledge real conditions with the computed slowdown number when one is provided, give pace-band guidance for the opening miles, mention fuel timing, and end with a single line of focus.',
+      horizonInstructions[horizon],
+      '',
+      'Voice rules apply across all horizons: plain language, no §-numbers in the body, no jargon-without-translation, no hedge words, no false urgency.',
     ].join('\n');
 
     return callCoachLLM<string>({
       scope: 'running',
       userPrompt,
-      answerSchema: 'a single paragraph (3–6 sentences) of race-morning brief in the Coach voice',
+      answerSchema: `a single paragraph (3–6 sentences) of ${horizon === 'morning' ? 'race-morning' : horizon === 'race_week' ? 'race-week' : horizon === 'approach' ? 'approach' : 'course'} brief in the Coach voice`,
       maxTokens: 600,
     });
   }
