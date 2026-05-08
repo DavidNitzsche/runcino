@@ -225,14 +225,22 @@ export function trainingPulse(
     ? Math.round((longestPerWeek.reduce((s, m) => s + m, 0) / longestPerWeek.length) * 10) / 10
     : null;
 
-  // Current calendar-week quality day count (Strava workout_type === 3)
+  // Current calendar-week quality day count. Strava's
+  // workout_type === 3 ("workout") catches some, but most runners
+  // never set the type explicitly. Falls back to the same
+  // HARD_NAME_RE the effort classifier uses, so a "Tempo run"
+  // counts as quality even when the runner forgot to tag it.
   const wkStart = (() => {
     const d = new Date(today);
     const dow = d.getDay();
     d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
     return d.toISOString().slice(0, 10);
   })();
-  const qualityDaysThisWeek = activities.filter(a => a.date >= wkStart && a.workoutType === 3).length;
+  const qualityDaysThisWeek = activities.filter(a => {
+    if (a.date < wkStart) return false;
+    if (a.workoutType === 3) return true;
+    return HARD_NAME_RE.test(a.name);
+  }).length;
 
   // Days to next race
   let daysToRace: number | null = null;

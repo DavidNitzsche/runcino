@@ -1408,11 +1408,14 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
   // Pull VDOT + phase-aware easy-share target from /api/coach/today
   // so the effort classifier uses pace-zone signals (research-anchored)
   // and the "On target" verdict matches the runner's actual phase
-  // instead of a static 75% threshold. Failure is non-fatal — falls
-  // back to name + HR classification only.
+  // instead of a static 75% threshold. Also overrides the local
+  // pulse.phase with the engine's phase so the dashboard doesn't
+  // disagree with the Coach. Failure is non-fatal — falls back to
+  // the local heuristics.
   const [vdot, setVdot] = useState<number | null>(null);
-  const [easyShareMin, setEasyShareMin] = useState<number>(0.80);  // base default
+  const [easyShareMin, setEasyShareMin] = useState<number>(0.80);
   const [phaseLabel, setPhaseLabel] = useState<string>('base maintenance');
+  const [enginePhase, setEnginePhase] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1426,20 +1429,22 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
         if (cancelled) return;
         if (json.ok) {
           setVdot(json.vdot?.vdot ?? null);
-          // Phase → easy-share target (mirrors coach-principles.ts).
+          // Phase → easy-share target (mirrors coach-principles.ts)
+          // + display label that matches the dashboard's phase chip.
           const phase = json.today?.phase ?? 'BASE_MAINTENANCE';
-          const targets: Record<string, { min: number; label: string }> = {
-            TAPER:            { min: 0.78, label: 'taper' },
-            PEAK:             { min: 0.75, label: 'peak' },
-            BUILD:            { min: 0.70, label: 'build' },
-            BASE:             { min: 0.80, label: 'base' },
-            BASE_MAINTENANCE: { min: 0.78, label: 'base maintenance' },
-            POST_RACE:        { min: 0.90, label: 'post-race' },
-            REBUILD:          { min: 0.85, label: 'rebuild' },
+          const targets: Record<string, { min: number; label: string; display: string }> = {
+            TAPER:            { min: 0.78, label: 'taper',            display: 'TAPER' },
+            PEAK:             { min: 0.75, label: 'peak',             display: 'PEAK' },
+            BUILD:            { min: 0.70, label: 'build',            display: 'BUILDING' },
+            BASE:             { min: 0.80, label: 'base',             display: 'BASE BLOCK' },
+            BASE_MAINTENANCE: { min: 0.78, label: 'base maintenance', display: 'BASE BLOCK' },
+            POST_RACE:        { min: 0.90, label: 'post-race',        display: 'POST-RACE' },
+            REBUILD:          { min: 0.85, label: 'rebuild',          display: 'REBUILD' },
           };
-          const t = targets[phase] ?? { min: 0.80, label: 'base maintenance' };
+          const t = targets[phase] ?? { min: 0.80, label: 'base maintenance', display: 'BASE BLOCK' };
           setEasyShareMin(t.min);
           setPhaseLabel(t.label);
+          setEnginePhase(t.display);
         }
       } catch {
         /* fall back to defaults */
@@ -1447,6 +1452,10 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
     })();
     return () => { cancelled = true; };
   }, []);
+  // Engine phase wins when available — dashboard heuristic is a
+  // backup so the page renders cleanly before /api/coach/today
+  // resolves on first paint.
+  const displayPhase = (enginePhase ?? pulse.phase) as TrainingPulse['phase'];
   const weeks = weeklyMiles(runs, 8);
   const max = Math.max(...weeks.map(w => w.miles), 1);
   const phaseColor: Record<TrainingPulse['phase'], string> = {
@@ -1458,11 +1467,15 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
     'BASE BLOCK':  'var(--color-corporate)',
   };
   const phaseDescriptor = (() => {
-    if (pulse.phase === 'TAPER')        return pulse.daysToRace === 0 ? 'Race day' : pulse.daysToRace === 1 ? 'Race tomorrow' : `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — taper week`;
-    if (pulse.phase === 'PEAK')         return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — peak block`;
-    if (pulse.phase === 'RACE MONTH')   return `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — building`;
-    if (pulse.phase === 'POST-RACE')    return 'Recovery week — volume drop is by design, not detraining';
-    if (pulse.phase === 'BUILDING')     return 'Mileage trending up over the last 4 weeks';
+    // Engine phase wins — falls back to local heuristic before the
+    // first /api/coach/today resolves.
+    const p = displayPhase;
+    if (p === 'TAPER')      return pulse.daysToRace === 0 ? 'Race day' : pulse.daysToRace === 1 ? 'Race tomorrow' : `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — taper week`;
+    if (p === 'PEAK')       return pulse.daysToRace != null ? `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — peak block` : 'Peak block — race-specific work';
+    if (p === 'RACE MONTH') return pulse.daysToRace != null ? `${pulse.daysToRace} days to ${pulse.raceName ?? 'race day'} — building` : 'Race-month build';
+    if (p === 'POST-RACE')  return 'Recovery week — volume drop is by design, not detraining';
+    if (p === 'BUILDING')   return 'Mileage trending up over the last 4 weeks';
+    if (p === 'REBUILD' as TrainingPulse['phase']) return 'Rebuilding from a layoff — handle gently';
     return 'Maintain the base — steady volume, weekly long run, no peaking';
   })();
   const deltaText = pulse.deltaPct == null
@@ -1507,8 +1520,8 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
           <div className="tile-h">
             <div>
               <div className="tile-sub">Phase</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.01em', color: phaseColor[pulse.phase], marginTop: 4, lineHeight: 1, textTransform: 'uppercase' }}>
-                {pulse.phase}
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.01em', color: phaseColor[displayPhase] ?? phaseColor[pulse.phase], marginTop: 4, lineHeight: 1, textTransform: 'uppercase' }}>
+                {displayPhase}
               </div>
             </div>
             <span className="chip" style={{ fontSize: 9 }}>WEEKLY MI · LAST 8 WK</span>
