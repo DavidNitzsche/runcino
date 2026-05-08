@@ -254,7 +254,7 @@ function RacesShelf({ rows }: { rows: RaceRow[] }) {
   const totalMi = rows.reduce((s, r) => s + (r.kind === 'saved' ? r.race.meta.distanceMi : r.activity.distanceMi), 0);
   return (
     <>
-      <SectionHeader title="Race results" sub={`${total} race${total === 1 ? '' : 's'} this year · ${totalMi.toFixed(1)} race miles`} />
+      <SectionHeader title="Race results" sub={`${total} race${total === 1 ? '' : 's'} year-to-date · ${totalMi.toFixed(1)} race miles · /season tracks trailing 12 months for race-load planning`} />
       <div className="tile" style={{ padding: 0, overflow: 'hidden', marginBottom: 10 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>

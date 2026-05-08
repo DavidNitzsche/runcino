@@ -283,7 +283,12 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             </>
           )}
 
-          {analysis && (
+          {/* Course detail — research-grade nerd plots (gradient
+              distribution / heading rose / trackpoint spacing /
+              insights). Useful pre-race for course intelligence;
+              noise post-race when the runner is reading retrospect.
+              Hidden when isPastWithResult. Audit #16. */}
+          {analysis && !isPastWithResult(race) && (
             <section style={{ marginTop: 18 }}>
               <div style={{
                 fontSize: 11, color: 'var(--color-t3)',

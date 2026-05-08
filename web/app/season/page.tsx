@@ -257,7 +257,10 @@ function Timeline({ races, todayISO, segments }: { races: SavedRace[]; todayISO:
           <div className="tile-lbl">{races.length} race{races.length === 1 ? '' : 's'} · {Math.round(totalDays)} days span</div>
         </div>
       </div>
-      <div style={{ position: 'relative', height: 80, marginTop: 16, background: 'var(--color-l2)', borderRadius: 8, overflow: 'hidden' }}>
+      {/* Container height + space below for rotated race labels.
+          overflow:visible so labels can extend below the strip
+          without being clipped. Audit #15. */}
+      <div style={{ position: 'relative', height: 80, marginTop: 16, marginBottom: 100, background: 'var(--color-l2)', borderRadius: 8, overflow: 'visible' }}>
         {/* Phase segments */}
         {segments.map((s, i) => {
           if (!s.startISO || !s.endISO) return null;
@@ -318,14 +321,18 @@ function Timeline({ races, todayISO, segments }: { races: SavedRace[]; todayISO:
               }}>
                 {priority}
               </div>
+              {/* Race name label — rotated -55° below the bar so
+                  labels stack diagonally without overlapping at
+                  realistic season densities. Audit #15. */}
               <div style={{
-                position: 'absolute', bottom: -32, left: 0,
-                transform: 'translateX(-50%) rotate(-15deg)',
-                fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
+                position: 'absolute', bottom: -10, left: 4,
+                transform: 'rotate(-55deg)',
+                transformOrigin: '0 0',
+                fontFamily: 'var(--font-display)', fontSize: 10.5, fontWeight: 700,
                 color: 'var(--color-t1)', whiteSpace: 'nowrap',
-                transformOrigin: 'top left',
+                pointerEvents: 'none',
               }}>
-                {r.meta.name.slice(0, 18)}{r.meta.name.length > 18 ? '…' : ''}
+                {r.meta.name}
               </div>
             </Link>
           );
@@ -390,7 +397,12 @@ function SeasonStatsCard({ aCount, bCount, cCount, marathonCount, halfCount }: {
   const bUnder = bCount < bRecLow;
   return (
     <div className="tile">
-      <div className="tile-h"><div className="tile-lbl">Annual race load</div></div>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Annual race load</div>
+          <div className="tile-lbl">Trailing 12 months · all priorities</div>
+        </div>
+      </div>
       <StatRow label="A-races" value={aCount} target={`max ${aMax}`} warn={aOver} />
       <StatRow label="B-races" value={bCount} target={`${bRecLow}-${bRecHigh} typical`} warn={bUnder} />
       <StatRow label="C-races" value={cCount} target="" />

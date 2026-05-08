@@ -974,6 +974,10 @@ function CoachTodayCard({ runs }: { runs: NormalizedActivity[] | null }) {
               const typeLabel = d.type.replace(/_/g, ' ');
               const isPast = d.date < todayISOStr;
               const actualMi = actualByDate.get(d.date);
+              // Show actuals on past days OR on today when the runner
+              // has already run (avoids "FRI · REST" for today after
+              // a 7.4 mi rest-day override has been logged to Strava).
+              const showActual = (isPast || d.isToday) && actualMi != null;
               const ranOnRest = d.type === 'rest' && actualMi != null && actualMi > 0;
               return (
                 <div key={d.date} style={{
@@ -993,7 +997,7 @@ function CoachTodayCard({ runs }: { runs: NormalizedActivity[] | null }) {
                       get an "ACTUAL" stamp + the actual miles + a
                       "ran on rest day" footnote. Audit #11. */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {isPast && actualMi != null ? (
+                    {showActual && actualMi != null ? (
                       <>
                         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 13, color: 'var(--color-success)', textTransform: 'uppercase', letterSpacing: '-.005em', lineHeight: 1.1 }}>
                           DONE
