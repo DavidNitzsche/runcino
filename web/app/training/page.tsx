@@ -233,7 +233,9 @@ function ThisWeekSection({ now, runs, hub }: {
         </div>
         {totalActualMi > 0 && (
           <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, color: 'var(--color-t2)', letterSpacing: '1.2px', fontVariantNumeric: 'tabular-nums' }}>
-            {totalActualMi.toFixed(1)} MI LOGGED · {Math.round((totalActualMi / Math.max(totalPlannedMi, 0.1)) * 100)}% OF PLAN
+            {totalPlannedMi > 0
+              ? `${totalActualMi.toFixed(1)} MI LOGGED · ${Math.round((totalActualMi / totalPlannedMi) * 100)}% OF PLAN`
+              : `${totalActualMi.toFixed(1)} MI LOGGED · ON A REST WEEK`}
           </div>
         )}
       </div>
@@ -452,25 +454,53 @@ function NextFourWeeksSection({ now, hub, goalRace }: {
     weeks.push({ start, days });
   }
 
-  // Theme inference per week — based on phase distribution + race-week
+  // Theme inference per week — uses the engine's current phase as
+  // first signal, then race-week proximity, then per-week composition.
+  // Each week of next30 inherits the engine's current phase (POST_RACE,
+  // BUILD, etc) unless its own composition + days-from-goal say otherwise.
   const goalDateMs = goalRace ? Date.parse(goalRace.meta.date + 'T12:00:00Z') : null;
+  const enginePhase = hub.coach.today?.phase ?? null;
+  const recentRace = hub.coach.state?.races?.recent?.[0];
+  const inPostRaceRecovery = recentRace && recentRace.daysAgo <= 14;
   function themeFor(week: typeof weeks[number], wIdx: number): { label: string; phase: string; color: string } {
     const totalMi = week.days.reduce((s, d) => s + (d.entry?.distanceMi ?? 0), 0);
+    const restCount = week.days.filter(d => d.entry == null || d.entry.type === 'rest').length;
     const qualityCount = week.days.filter(d => d.entry?.isQuality).length;
     const hasRace = week.days.some(d => d.entry?.raceName != null);
 
     if (hasRace) return { label: 'Race week', phase: 'TAPER', color: 'var(--color-warning)' };
+
+    // Race proximity wins when there's a goal race
     if (goalDateMs) {
       const daysFromGoal = Math.round((goalDateMs - week.start.getTime()) / 86_400_000);
       if (daysFromGoal >= 0 && daysFromGoal <= 7) return { label: 'Race week', phase: 'TAPER', color: 'var(--color-warning)' };
       if (daysFromGoal > 7 && daysFromGoal <= 21) return { label: 'Sharpening · race-specific work', phase: 'PEAK', color: 'var(--color-attention)' };
       if (daysFromGoal > 21 && daysFromGoal <= 56) return { label: qualityCount >= 2 ? 'Build · adding quality' : 'Build · volume foundation', phase: 'BUILD', color: 'var(--color-success)' };
     }
-    // Heuristic — ramp-up week if miles climb, cutback if miles drop
+
+    // POST-RACE — runner is in active recovery. The first week or two
+    // of next30 will show all-rest because the engine prescribes rest
+    // through the recovery window. Honor that.
+    if (inPostRaceRecovery && wIdx <= 1 && (restCount >= 5 || totalMi < 5)) {
+      return { label: 'Recovery week · reverse taper', phase: 'POST_RACE', color: 'var(--color-corporate)' };
+    }
+
+    // Heuristic for everything else — cutback if miles drop sharply
     const priorWk = wIdx > 0 ? weeks[wIdx - 1] : null;
     const priorMi = priorWk ? priorWk.days.reduce((s, d) => s + (d.entry?.distanceMi ?? 0), 0) : 0;
-    if (priorWk && priorMi > 0 && totalMi < priorMi * 0.75) {
+    if (priorWk && priorMi > 5 && totalMi < priorMi * 0.75) {
       return { label: 'Cutback week', phase: 'BASE', color: 'var(--color-corporate)' };
+    }
+
+    // Use engine's current phase as the carry-forward when nothing else fires
+    if (enginePhase === 'POST_RACE' || enginePhase === 'REBUILD') {
+      return { label: enginePhase === 'POST_RACE' ? 'Returning to volume' : 'Rebuild phase', phase: enginePhase, color: 'var(--color-corporate)' };
+    }
+    if (enginePhase === 'BUILD') {
+      return { label: qualityCount >= 1 ? 'Build · maintaining quality' : 'Build · volume foundation', phase: 'BUILD', color: 'var(--color-success)' };
+    }
+    if (enginePhase === 'PEAK') {
+      return { label: 'Peak block · top-end work', phase: 'PEAK', color: 'var(--color-attention)' };
     }
     return { label: 'Steady aerobic build', phase: 'BASE', color: 'var(--color-t2)' };
   }

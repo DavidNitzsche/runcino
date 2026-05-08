@@ -40,6 +40,13 @@ interface DbRow {
  *  (state.races.recent + recovery), which produced eternal misses
  *  for any activity that wasn't a saved race or yesterday/today's
  *  run. */
+/** Code version baked into cache reads/writes. Bump this any time
+ *  the readiness logic, signal computation, or payload shape changes
+ *  in a way that should invalidate previously-computed payloads.
+ *  Old rows with a different version simply won't match and the next
+ *  read recomputes (which is the goal). */
+const CACHE_CODE_VERSION = 2;
+
 async function currentCacheKey(): Promise<{ date: string; latestActivityId: number | null }> {
   // LA-calendar date. Mirrors gatherCoachState's todayLAISO().
   const date = (() => {
@@ -50,11 +57,14 @@ async function currentCacheKey(): Promise<{ date: string; latestActivityId: numb
     return fmt.format(new Date());
   })();
   // Latest activity ID from the canonical table. Numeric. NULL when
-  // the runner has no Strava activities yet.
+  // the runner has no Strava activities yet. Code version is folded
+  // in as `(rawId * 1000) + version` so cache rows from an older
+  // deploy never match a new deploy's read key — forces recompute.
   const ids = await query<{ id: string }>(
     `SELECT id::text FROM strava_activities ORDER BY id DESC LIMIT 1`,
   ).catch(() => [] as Array<{ id: string }>);
-  const latestActivityId = ids.length > 0 ? Number(ids[0].id) : null;
+  const rawId = ids.length > 0 ? Number(ids[0].id) : null;
+  const latestActivityId = rawId != null ? rawId * 1000 + CACHE_CODE_VERSION : null;
   return { date, latestActivityId };
 }
 

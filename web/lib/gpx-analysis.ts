@@ -175,13 +175,16 @@ export function analyzeGpx(gpxText: string): CourseAnalysis {
   }
   const meanGradePct = (n - 1) > 0 ? absGradeSum / (n - 1) : 0;
 
-  // Steepest grade over a 100m sliding window — the meaningful "steepest
+  // Steepest grade over a 200m sliding window — the meaningful "steepest
   // part of the course" rather than per-trackpoint GPS-jitter noise.
-  // Single-trackpoint grades can hit 1000+% when consecutive points are
-  // 0.5m apart but elevation flickers a few meters; the window smooths
-  // that out. Coaches care about "is there a section I have to manage,"
-  // not the worst sample.
-  const SMOOTH_WINDOW_M = 100;
+  // 200m is wide enough that endpoint outliers stop dominating but
+  // narrow enough to surface real climbs/descents. Coaches care about
+  // "is there a section I have to manage," not the worst sample.
+  // Outputs are also capped at ±25% — anything beyond that is almost
+  // certainly noise (real-world running surfaces rarely exceed 20%
+  // grade for any meaningful distance).
+  const SMOOTH_WINDOW_M = 200;
+  const MAX_DISPLAYED_GRADE_PCT = 25;
   let maxUpGradePct = 0, maxDownGradePct = 0;
   let maxUpIdx = 0, maxDownIdx = 0;
   let j = 0;
@@ -192,9 +195,15 @@ export function analyzeGpx(gpxText: string): CourseAnalysis {
     if (distM <= 0) continue;
     const eleDelta = pts[j].eleM - pts[i].eleM;
     const g = (eleDelta / distM) * 100;
+    // Skip values that smell like GPS noise — even with 200m smoothing,
+    // a fenceline-on-a-cliff scan can produce nonsense.
+    if (Math.abs(g) > MAX_DISPLAYED_GRADE_PCT * 1.5) continue;
     if (g > maxUpGradePct)   { maxUpGradePct = g;   maxUpIdx = i; }
     if (g < maxDownGradePct) { maxDownGradePct = g; maxDownIdx = i; }
   }
+  // Final clamp at ±25% so the display is always trustworthy.
+  maxUpGradePct = Math.min(maxUpGradePct, MAX_DISPLAYED_GRADE_PCT);
+  maxDownGradePct = Math.max(maxDownGradePct, -MAX_DISPLAYED_GRADE_PCT);
 
   // Min/max elevation indices
   let minEleM = pts[0].eleM, maxEleM = pts[0].eleM;
