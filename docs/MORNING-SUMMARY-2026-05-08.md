@@ -1,17 +1,31 @@
 # Morning Summary — 2026-05-08
 
-What landed overnight while you were asleep. Everything is on `main`,
-deployed via Railway (now correctly tracking `main` after we set it
-up earlier). Open the dashboard + a race detail page and the changes
-are live.
+What landed overnight while you were asleep. All on `main`,
+all deployed via Railway (which now correctly tracks `main` after
+we set it up earlier in the session).
 
 ## TL;DR
 
-10 commits + 1 audit doc. ~2,500 lines of code change. Three big
-arcs: (1) make VDOT meaningful, not just a number; (2) bridge
-"today's prescription" to "the race calendar" with new dashboard
-surfaces; (3) start consuming doctrine that the audit flagged as
-fully extracted but invisible.
+**16 commits + 1 audit + 1 fresh end-of-night audit + this summary.**
+Three arcs:
+
+1. **VDOT becomes a complete coaching layer** — tier classification,
+   freshness, age + sex grading, automatic test prescription, and
+   the runner profile to support it.
+
+2. **Dashboard becomes a real coaching surface** — readiness banner
+   with research-backed signals, daily voice brief with citations,
+   30-day outlook strip, HR zones tile, phase-aware guidance for
+   taper / post-race / rebuild, quality day count, long-run cap.
+
+3. **Stat correctness pass** — audited every dashboard stat for
+   accuracy. Fixed the easy-ratio classifier (was reading 100% on
+   runners with hard miles), unified phase vocabulary with the engine,
+   fixed quality day count to use the same name regex as the effort
+   classifier.
+
+Every new surface cites the doctrine that backs it (Research/00b,
+Research/01, Research/03, Research/14, Research/19, Research/24).
 
 ## Commit log
 
@@ -21,114 +35,212 @@ fully extracted but invisible.
 | `1207464` | VDOT C2 — UX states (badge, staleness, no-data) | Dashboard tile shows tier (NOVICE/INTERMEDIATE/ADVANCED/ELITE), freshness chip (FRESH/STALE SOON/STALE/EXPIRED), and a NoVdotPanel listing field-test options when no recent race exists |
 | `cf95b30` | VDOT C3 — age + sex grading + runner profile | New Research/24 doc; doctrine/grading.ts; localStorage runner profile (birth year + sex) editable on /profile; age-graded VDOT renders on the dashboard tile when known |
 | `fb42263` | Coach plans a 5K time trial when VDOT is stale | New `vdot_test_5k` workout type; pickRun() swaps the next quality day for a TT when shouldPromptVdotTest fires; guards on TAPER + POST_RACE |
-| `2f69332` | Next-30-days dashboard tile | simulateNext30Days() + NextSerialDaysTile; color-coded strip with race flags, month dividers, today ring; bridges "today" and "the race calendar" |
+| `2f69332` | Next-30-days dashboard tile | simulateNext30Days() + Next30DaysTile; color-coded strip with race flags, month dividers, today ring; bridges "today" and "the race calendar" |
 | `eb2604e` | Daily training brief on dashboard + "why?" affordance | New coach.briefDailyTraining() method (LLM + deterministic); CoachDailyBrief replaces the old WHY one-liner; same why-toggle now also on the race brief revealing citations + rationale |
 | `cf8fc42` | Readiness banner — surface verdict + cite recovery doctrine | ReadinessAssessment grew signals + recommendedAction fields keyed to INCOMPLETE_RECOVERY_DECISION_MATRIX; new ReadinessBanner on the dashboard with green/yellow/red + expandable signals panel |
 | `3d8e61d` | Hydration tile from Research/19 | HydrationTile on race detail: 24h/2-4h/final-hour pre-race plan, distance×temp ml/hr table, EAH guardrails. Direct response to audit's #2 finding |
-| `269f8d9` | Brief owns description column (earlier in session) | Static narrative paragraphs killed; coach brief becomes the section's content; horizon-aware framing |
-| `9f72bb9` | Brief reads training state — on-track/headroom/stretch (earlier) | trainingContext flows VDOT vs goal + volume picture into the brief prompt |
+| **`831d469`** | **Easy ratio classifier — research-backed** | **The 100% bug. New cascade: name patterns → VDOT pace zones → HR threshold → long-run default → explicit unknown bucket. Phase-aware "On target" verdict. UI shows easy/hard/unknown 3-segment bar with low-confidence chip.** |
+| `d393516` | Phase + quality count match the engine | TrainingPulseTile pulls phase from /api/coach/today (engine wins). Quality day count now also uses HARD_NAME_RE not just Strava workoutType=3 |
+| `a233c36` | HR zones tile + HRmax/RHR profile fields | New HrZonesCard derived from HRMAX_ZONES_5 (Research/03). HRmax priority: measured > Tanaka estimate (208 - 0.7×age) > hidden. Profile editor adds HRmax + RHR inputs |
+| `9300cca` | Quality day count + Daniels long-run cap on Training Pulse | "X / Y QUALITY THIS WEEK" line; "≤ X.X MI · DANIELS +10% RULE" next-week cap with phase ceiling |
+| `60be8b5` | Phase-aware guidance card (taper / post-race / rebuild) | New PhaseGuidanceCard between CoachTodayCard and Next30DaysCard. Wires taper.ts (was unwired) + recovery_protocols.POST_RACE_STAGES (was unwired). Hidden in BASE/BUILD/PEAK |
 
-`docs/AUDIT-2026-05-08.md` — 511-line audit covering research
-coverage, UI surface inventory, state flow, coach prompt inventory,
-gap analysis (info we have but don't show), gap analysis (info we
-want but don't have), and a prioritized recommendations queue.
+(Plus earlier in the session: `269f8d9` brief owns description, `9f72bb9` brief reads training state, `0fd5408` weather + brief auto-load, `5b406b2` brief horizon, `eadb51e` VDOT dashboard tile, `afa4410` VDOT pipeline.)
+
+## Bug fixes (correctness pass)
+
+The user explicitly flagged the easy ratio bug. Tracking down why
+that broke surfaced two more parallel issues. All three fixed:
+
+### 1. Easy ratio always reading 100% (`831d469`)
+
+**Root cause:** the classifier was firing "hard" only on a narrow
+regex match (15 patterns) OR HR ≥ 152 BPM. A runner doing tempo
+work with a generic "Morning run" name and HR 145 (well-trained
+runners hit threshold under 152) got classified as easy. Activities
+without HR data defaulted to easy. Result: 100% easy on most
+real-world Strava feeds.
+
+**Fix:** research-anchored cascade with explicit unknown bucket.
+
+```
+1. NAME PATTERN — runner's intent (highest confidence)
+   HARD_NAME_RE expanded from ~15 to ~30 patterns:
+     tempo / threshold / intervals / repeats / fartlek /
+     progression / VO2 / cutdown / ladder / track / hills /
+     surges / pickups / cruise / sub-threshold / MP block /
+     marathon pace / wave tempo / alternations / 400s / 800s /
+     1k / 1200s / 1600s / strides / pyramid
+   New EASY_NAME_RE for explicit easy-tagged runs:
+     recovery / shakeout / base / MAF / Z2 / aerobic /
+     conversational / chill / jog
+2. VDOT PACE ZONES — when current VDOT exists, M-pace-or-faster =
+   hard, E-zone or slower = easy. Daniels' 80/20 rule.
+3. HR THRESHOLD — fallback when no name + no VDOT.
+4. LONG RUN DEFAULT — runs ≥12 mi without quality signal → easy.
+5. UNKNOWN — explicit when no signal applies. Don't lie that it
+   was easy.
+```
+
+UI now shows the easy/hard/**unknown** breakdown as a 3-segment bar
+with a `LOW CONF` chip when classification confidence drops below 70%.
+"On target" verdict is **phase-aware** — pulls from coach-principles
+(TAPER 78% / PEAK 75% / BUILD 70% / BASE 80% / POST_RACE 90% / REBUILD 85%)
+instead of a static 75% threshold.
+
+17 tests cover the cases. Doctrine source: Research/01 (VDOT pace zones)
++ intensity.ts polarized 80/20.
+
+### 2. Two parallel phase vocabularies (`d393516`)
+
+The dashboard's TrainingPulse computed its own phase ('TAPER' / 'PEAK'
+/ 'RACE MONTH' / 'POST-RACE' / 'BUILDING' / 'BASE BLOCK') from local
+heuristics. The engine returns a different vocabulary ('BASE' / 'BUILD'
+/ 'PEAK' / 'TAPER' / 'BASE_MAINTENANCE' / 'POST_RACE' / 'REBUILD').
+They could disagree — dashboard could say BUILDING while the engine
+called it BASE_MAINTENANCE.
+
+**Fix:** TrainingPulseTile now fetches /api/coach/today and uses the
+engine's phase (mapped to the dashboard's display vocabulary). The
+local heuristic stays as a backup for the moment before the API
+resolves on first paint.
+
+### 3. Quality day count missing untagged workouts (`d393516`)
+
+trainingPulse() was counting `Strava workout_type === 3` only. Most
+runners never set the type explicitly. A "Tempo run" with default
+type counted as zero quality.
+
+**Fix:** also matches `HARD_NAME_RE` so name-tagged runs count
+without needing the Strava metadata.
 
 ## What you'll see
 
-**Dashboard (`/`):**
-- New: **READINESS banner** above the daily prescription — green/yellow/red
-  with expandable signals (heavy block, ACWR, easy/hard imbalance, etc.)
-- New: **COACH SAYS brief** — voice paragraph above the engine WHY
-  one-liner; ▸ WHY? toggle reveals citations + rationale
-- New: **NEXT 30 DAYS strip** — color-coded by workout type, race
-  flags, distance numbers in cells ≥8 mi
-- Updated: **VDOT tile** now shows tier (e.g. "INTERMEDIATE"),
-  freshness chip ("FRESH"), age-graded VDOT line if profile is set,
-  or a NoVdotPanel with test options when there's no recent race
+### Dashboard (`/`)
 
-**Race detail (`/races/[slug]`):**
-- New: **HYDRATION tile** below splits + fueling — pre-race plan +
-  during-race ml/hr table by temp band
-- Updated: **brief** has a ▸ WHY? toggle revealing citations
+```
+┌───────────────────────────────────────────────────────────┐
+│ Greeting / next race / recent run / weekly mi / YTD       │
+├───────────────────────────────────────────────────────────┤
+│ This week strip · Today's plan                            │
+├───────────────────────────────────────────────────────────┤
+│ Coach says (today's mode)                                 │
+│ ┃ READINESS BANNER — green/yellow/red, expandable signals │
+│ ┃ Today's run + strength prescription                     │
+│ ┃ COACH SAYS · voice paragraph + ▸ WHY? affordance        │
+│ ┃ Week shape strip                                        │
+├───────────────────────────────────────────────────────────┤
+│ PHASE GUIDANCE CARD — only fires in TAPER/POST_RACE/REBUILD│
+│   - Taper: window / volume rule / intensity rule / errors  │
+│   - Post-race: stage banner + progress bar + day count    │
+│   - Rebuild: returning-from-layoff playbook               │
+├───────────────────────────────────────────────────────────┤
+│ NEXT 30 DAYS — color-coded strip, race flags, month rules │
+├───────────────────────────────────────────────────────────┤
+│ VDOT FITNESS                                              │
+│   VDOT 47.1 · INTERMEDIATE · FRESH chip                   │
+│   AFC Half · 14 days ago · 13.26mi 1:36:31 7:17/mi        │
+│   Age-graded VDOT 60.6 · age 55: +13.5 for age-grading    │
+│   E / M / T / I / R pace zones with full labels           │
+├───────────────────────────────────────────────────────────┤
+│ HR ZONES — 5-zone (ACSM) computed from HRmax              │
+│   Z1 RECOVERY · Z2 EASY · Z3 AEROBIC · Z4 THRESHOLD · Z5 VO│
+│   BPM ranges + %HRmax + purpose + talk test               │
+├───────────────────────────────────────────────────────────┤
+│ Recovery widget                                           │
+├───────────────────────────────────────────────────────────┤
+│ TRAINING PULSE                                            │
+│   Phase + 8wk bars + N/Y QUALITY THIS WEEK                │
+│   Weekly avg + delta vs prior 4w                          │
+│   Long run avg + peak last 28d + NEXT-WEEK CAP (Daniels)  │
+│   Easy ratio % + 3-bucket bar + phase target              │
+├───────────────────────────────────────────────────────────┤
+│ Year-of-running heatmap · Fun stats                       │
+└───────────────────────────────────────────────────────────┘
+```
 
-**Profile (`/profile`):**
-- New: **RUNNER PROFILE** section above training schedule —
-  birth year + sex inputs (both optional), localStorage-backed,
-  feeds the age-graded VDOT layer
+### Race detail (`/races/[slug]`)
 
-**Engine:**
-- VDOT pulls from a 56-day window now (was 28d), strongest race wins
-- Coach prescribes a 5K TT when VDOT is stale or absent
-- Readiness verdict cites Research/00b decision matrix
+- Hero PosterCard with adaptive Coach brief + ▸ WHY? affordance
+- PhaseCards
+- Race-day weather (auto-loaded, ≤7d NOAA / >7d Open-Meteo last year)
+- Mile splits + Fueling tile + **NEW Hydration tile** (Research/19)
+- Course detail (charts, splits, elevation)
 
-## Audit findings worth your attention
+### Profile (`/profile`)
 
-Top gaps the audit surfaced that I did NOT close overnight (high
-value, scoped enough to deserve a focused session):
+- **NEW RUNNER PROFILE section** above training schedule:
+  - Birth year (drives age + age-graded VDOT)
+  - Sex (drives sex-cohort framing)
+  - HRmax BPM (drives HR zones; falls back to Tanaka estimate)
+  - RHR BPM (for future Karvonen / HRR zones)
+- All localStorage-backed, optional, auto-save on change
 
-1. **`recovery_protocols.ts` is still mostly unconsumed.** The
-   readiness banner taps INCOMPLETE_RECOVERY_DECISION_MATRIX, but
-   POST_RACE_BY_DISTANCE, RACE_PRIORITY_RECOVERY, MARATHON_BIOMARKER_TIMELINE,
-   REVERSE_TAPER_PROTOCOL — all defined, none consumed. The
-   engine still has its own ad-hoc post-race ladder in
-   `lib/coach-engine.ts:228-278`. Audit recommends consolidating.
+## Audit findings
 
-2. **`/workout/[date]` page is entirely static placeholder.** Audit
-   §2 §163 — this is on the dashboard's TODAY tile click-through
-   path and is fake. Should render the actual day's prescription.
+The fresh end-of-night audit is at `docs/AUDIT-2026-05-08-final.md`.
+It supersedes the early-session audit and reflects everything shipped
+during the night.
 
-3. **`/health` page has 4 hardcoded "M2 placeholder" cards.** HRV,
-   RHR, Sleep, Recovery score — all fake. HealthKit integration
-   would unlock those plus 4 unwired CoachState fields.
+**Key remaining gaps** (audit recommendations queue):
 
-4. **`/profile` long-run-day picker doesn't persist.** Local component
-   state only. The runner profile I added (birth year + sex) DOES
-   persist (localStorage); the picker should switch to the same.
-
-5. **4 Coach methods still throw stubs.** paceStrategy, taperDepth,
-   fuelingFor, retrospect, adjustForReality. The site has direct
-   API paths bypassing each — Audit §4 details which.
-
-6. **No HRmax / LTHR in CoachState.** The engine assumes 152 bpm
-   for "yesterday hard" detection (190 × 0.80 hardcoded). Profile
-   needs an HRmax field; assessReadiness would benefit immediately.
-
-7. **Two parallel daily-card surfaces** — dashboard `CoachTodayCard`
-   and `/training` `DailyBriefing`. Show overlapping but not
-   identical content. Worth consolidating.
+1. **`recovery_protocols.ts` — partial wiring done (4/22 constants used).**
+   Still unconsumed: MARATHON_BIOMARKER_TIMELINE, REVERSE_TAPER_PROTOCOL,
+   MARATHON_RECOVERY_4WK_REVERSE_TAPER, MULTI_RACE_CADENCE,
+   CARBON_PLATE_RECOVERY_EFFECTS, plus the qualitative-signals matrix
+   when HealthKit lands.
+2. **HR zones — partial (5-zone wired, 7-zone + Karvonen + LTHR test
+   protocols still unconsumed).** Karvonen needs RHR (now in profile
+   but not yet in HrZonesCard).
+3. **`hydration.ts` — partial (FLUID_DURING_RACE + PRE_RACE_HYDRATION
+   wired).** SWEAT_RATE_PROTOCOL (sweat-test workflow), EAH_RISK_FACTORS,
+   SWEAT_SODIUM_CLASSIFICATIONS still unconsumed.
+4. **6 fully-unwired research docs:** mobility, mental, sex (but
+   sex-cohort grading IS now wired), age, travel, cross_training,
+   form-biomechanics, form-corrections, footwear (the audit will
+   tell you what's most useful to wire first).
+5. **`/workout/[date]` page** is still entirely static placeholder —
+   click-through from the dashboard's TODAY tile.
+6. **`/health` page** has 4 hardcoded HealthKit placeholder cards.
+7. **Coach methods still throwing stubs:** paceStrategy, taperDepth,
+   fuelingFor, retrospect, adjustForReality.
+8. **CoachState still doesn't have age, sex, HRmax, RHR** server-side.
+   Profile is localStorage-only — fine for grading the dashboard but
+   the engine + brief LLM prompts can't see them yet.
 
 ## Test status
 
-- Typecheck clean (full `tsc --noEmit` runs in seconds, no errors)
-- 96 tests pass across 11 suites (1 unrelated suite skipped — missing
-  fixture `public/big-sur-3-50.runcino.json`, predates this session)
-- New: 9 grading tests, 4 VDOT tier/freshness tests
-- Total VDOT coverage: 30 assertions across vdot, vdot-sanity, grading
+- Typecheck clean across the entire `web/` tree
+- 113+ tests pass: VDOT (21), grading (9), effort balance (17), plus
+  the existing suites
+- One unrelated suite skipped (missing fixture from a prior session)
 
 ## Railway
 
-- Source branch is `main` (we set this up earlier in the session)
-- Latest deploys all passing — no crash emails since the source
-  switch. Most recent ACTIVE is `cf8fc42`; `3d8e61d` was building
-  when I checked at the end.
+- Source branch: `main` (we set this up)
+- Latest deploy successful
+- No crash emails since the source switch
 
-## Suggested next reads
+## Suggested next reads (in this order)
 
-- `docs/AUDIT-2026-05-08.md` for the full picture
-- Try the dashboard, then a race-detail page, then `/profile` —
-  fill in birth year + sex on the profile and watch the age-graded
-  VDOT appear on the dashboard
-- The brief is now adaptive on the race-detail (Course brief at 100
-  days, Race-morning brief at 0 days, with training context woven
-  in either way) — open AFC and a closer race to compare
+1. **`docs/AUDIT-2026-05-08-final.md`** — full picture of what's
+   surfaced + what's not. Section 5 (STAT ACCURACY AUDIT) is the
+   one to scan if you want a verdict per stat.
+2. **Walk the dashboard** — set birth year / sex / HRmax on `/profile`
+   first to light up age-graded VDOT and HR zones.
+3. **Open AFC race detail** — Hydration tile is at the bottom; Brief
+   has ▸ WHY? toggle now.
 
-## Open questions for you
+## Open questions
 
-- The Research/24 decline tables are Daniels-extrapolated. Long-term
-  fix is vendoring the full WMA age-grading tables. Worth scoping?
-- Recovery readiness uses ACWR-only signals today. The doctrine's
-  signal matrix has 6 quantitative + 8 qualitative signals — most
-  need HealthKit. Wire HealthKit next, or build Mock-HealthKit toggles
-  for testing the matrix path?
-- The engine's recovery ladder duplicates `recovery_protocols.ts`.
-  Worth a focused refactor session to consolidate?
+- Server-side profile (Postgres user table) vs continued localStorage?
+  The grading layer wants age + sex; the engine wants HRmax. Until
+  we have auth, localStorage is fine. Worth scoping the migration?
+- WMA age-grading tables (vendor the full lookup vs continue with
+  the Daniels-extrapolated decline approximation)?
+- HealthKit integration as the next big M2 unlock — would close
+  several audit gaps (RHR, HRV, sleep readiness signals).
+- The static `/workout/[date]` page is the one big remaining
+  static-placeholder surface. Worth replacing with a real day view
+  (the engine already produces every day's prescription via
+  simulateNext30Days).
