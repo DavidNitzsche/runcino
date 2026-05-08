@@ -111,6 +111,26 @@ export interface CoachState {
     resolvedHrmaxBpm: number | null;
   };
 
+  /** Recent post-workout RPE history (Borg CR-10), most recent first.
+   *  Sourced from `workout_rpe` Postgres table. Engine consumes this
+   *  to detect perceived-effort drift between similarly-prescribed
+   *  sessions — Research/00b §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS.
+   *  Empty array when the runner hasn't logged any. */
+  rpe: {
+    /** Last 14 days of entries, most recent first. */
+    recent: Array<{ workoutDate: string; rpe: number; notes: string | null }>;
+    /** Average RPE last 7d (null when no entries). */
+    avg7d: number | null;
+    /** Average RPE prior 7d (days 8-14). Null when no entries. */
+    avgPrior7d: number | null;
+    /** Drift = avg7d - avgPrior7d. Positive = "trending heavy",
+     *  negative = "trending light", null = insufficient data. */
+    drift: number | null;
+    /** True if any of the last 3 days has RPE ≥ 8 — suggests perceived
+     *  effort is exceeding what the prescription expected. */
+    recentHeavy: boolean;
+  };
+
   /** Engine-readable flags so it doesn't have to recompute these. */
   flags: {
     /** True when ANY of: 2+ races in 14 days; a marathon-distance race
@@ -407,6 +427,48 @@ export async function gatherCoachState(): Promise<CoachState> {
     }
   })();
 
+  // Recent RPE (post-workout perceived effort) — Research/00b
+  // §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS. We compute the 7d-vs-prior-7d
+  // drift here so the engine doesn't have to walk the array. Drift
+  // signal threshold: ≥1 point bump means perceived load is creeping
+  // up vs prior week, which often precedes overreaching by 1-2 weeks.
+  const rpeState = await (async () => {
+    try {
+      const { getRecentRpe } = await import('./rpe-store');
+      const recent = await getRecentRpe(14);
+      const todayDate = new Date(todayISO + 'T12:00:00Z');
+      const cutoff7 = new Date(todayDate); cutoff7.setUTCDate(cutoff7.getUTCDate() - 7);
+      const cutoff14 = new Date(todayDate); cutoff14.setUTCDate(cutoff14.getUTCDate() - 14);
+      const cutoff7ISO = cutoff7.toISOString().slice(0, 10);
+      const cutoff14ISO = cutoff14.toISOString().slice(0, 10);
+      const last7 = recent.filter(e => e.workoutDate >= cutoff7ISO);
+      const prior7 = recent.filter(e => e.workoutDate >= cutoff14ISO && e.workoutDate < cutoff7ISO);
+      const avg = (xs: number[]) => xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
+      const avg7d = avg(last7.map(e => e.rpe));
+      const avgPrior7d = avg(prior7.map(e => e.rpe));
+      const drift = (avg7d != null && avgPrior7d != null) ? avg7d - avgPrior7d : null;
+      // recentHeavy: any of the last 3 days has rpe >= 8.
+      const cutoff3 = new Date(todayDate); cutoff3.setUTCDate(cutoff3.getUTCDate() - 3);
+      const cutoff3ISO = cutoff3.toISOString().slice(0, 10);
+      const recentHeavy = recent.some(e => e.workoutDate >= cutoff3ISO && e.rpe >= 8);
+      return {
+        recent: recent.map(e => ({ workoutDate: e.workoutDate, rpe: e.rpe, notes: e.notes })),
+        avg7d,
+        avgPrior7d,
+        drift,
+        recentHeavy,
+      };
+    } catch {
+      return {
+        recent: [] as Array<{ workoutDate: string; rpe: number; notes: string | null }>,
+        avg7d: null,
+        avgPrior7d: null,
+        drift: null,
+        recentHeavy: false,
+      };
+    }
+  })();
+
   return {
     now: todayISO,
     races: {
@@ -445,6 +507,7 @@ export async function gatherCoachState(): Promise<CoachState> {
       sleep7dAvgHrs: null,
       strengthDaysThisWeek: null,
     },
+    rpe: rpeState,
     flags: {
       heavyBlockSuspected,
       rebuildAfterBreak,

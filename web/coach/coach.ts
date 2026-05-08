@@ -442,6 +442,12 @@ class CoachImpl implements Coach {
     } else if (missedRunsSignal) {
       level = 'yellow';
       reason = `${s.recovery.daysSinceLastRun} days since the last run. You're not falling apart — get out the door, easy pace, get some miles.`;
+    } else if (s.rpe.drift != null && s.rpe.drift >= 1.5) {
+      level = 'yellow';
+      reason = `Same prescribed workouts have been feeling +${s.rpe.drift.toFixed(1)} harder this week than last. That's perceived effort drifting up — let today be honestly easy.`;
+    } else if (s.rpe.recentHeavy && !inRaceRecovery && !heavyBlock) {
+      level = 'yellow';
+      reason = `You logged RPE 8+ in the last few days. If that wasn't a quality session, the body's telling you something. Hold today gently.`;
     } else {
       level = 'green';
       reason = `The legs look ready. Trust today's plan.`;
@@ -487,6 +493,34 @@ class CoachImpl implements Coach {
       severity: 'warn',
       detail: `${s.recovery.daysSinceLastRun} days since the last run.`,
     });
+
+    // RPE-based signals — Research/00b §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS.
+    // Two flavors:
+    //   1. Drift up: avg RPE last 7d is ≥1.0 higher than prior 7d.
+    //      Same prescriptions feeling harder is the canonical signal
+    //      that fitness is being eroded faster than it's being rebuilt.
+    //   2. Recent heavy: any of the last 3 days hit 8+ RPE. Either an
+    //      easy day felt hard (under-recovery) or a workout went deeper
+    //      than intended (push too hard, recover longer).
+    // We don't fire if there's not enough data — both halves of the
+    // 14-day window need entries for drift to mean anything.
+    const rpe = s.rpe;
+    if (rpe.drift != null && rpe.drift >= 1.0) {
+      signals.push({
+        label: 'Perceived effort drifting up',
+        severity: 'warn',
+        detail: `RPE last 7d averaged ${rpe.avg7d?.toFixed(1)}; prior 7d ${rpe.avgPrior7d?.toFixed(1)} — same workouts feeling +${rpe.drift.toFixed(1)} harder.`,
+      });
+    }
+    if (rpe.recentHeavy && !heavyBlock && !inRaceRecovery) {
+      const last3High = rpe.recent.filter(e => e.rpe >= 8).slice(0, 3);
+      const dates = last3High.map(e => e.workoutDate.slice(5)).join(', ');
+      signals.push({
+        label: 'Recent session(s) felt heavy',
+        severity: 'warn',
+        detail: `RPE 8+ on ${dates}. If easy days felt that hard, recovery isn't keeping up.`,
+      });
+    }
 
     // Map signal count to the doctrine decision matrix
     // (INCOMPLETE_RECOVERY_DECISION_MATRIX, Research/00b). HealthKit

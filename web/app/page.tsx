@@ -24,6 +24,8 @@ import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 import { LONG_RUN_HARD_CAP_MULTIPLIER, TRAINING_PULSE_TO_ENGINE_PHASE, longRunTargetMi } from '../lib/long-run-cap';
 import { RpeInput } from '../components/RpeInput';
+import { ReadinessBanner } from '../components/coaching/ReadinessBanner';
+import { CoachDailyBrief } from '../components/coaching/CoachDailyBrief';
 
 export default function OverviewPage() {
   // The whole page is wrapped in HubProvider so every consumer below
@@ -917,78 +919,7 @@ const ZONE_DEFS: Array<{
    from doctrine Research/00b's incomplete-recovery decision matrix.
    Sits at the top of CoachTodayCard so the runner sees the read
    on themselves before they see the prescription. */
-function ReadinessBanner({ readiness }: { readiness: ReadinessPayload['answer'] }) {
-  const [open, setOpen] = useState(false);
-  const colors: Record<typeof readiness.level, { bg: string; fg: string; label: string; icon: string }> = {
-    green:  { bg: 'rgba(16,185,129,.12)', fg: 'var(--color-success)',   label: 'READY',     icon: '●' },
-    yellow: { bg: 'rgba(243,173,59,.12)', fg: 'var(--color-attention)', label: 'EASE OFF',  icon: '◐' },
-    red:    { bg: 'rgba(252,77,84,.12)',  fg: 'var(--color-warning)',   label: 'PULL BACK', icon: '○' },
-  };
-  const c = colors[readiness.level];
-
-  return (
-    <div style={{
-      padding: '10px 14px', borderRadius: 8,
-      background: c.bg,
-      border: `1px solid ${c.fg.replace('var(', 'rgba(').replace(')', ', 0.3)')}`,
-      display: 'flex', flexDirection: 'column', gap: 8,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ color: c.fg, fontSize: 14, fontWeight: 700 }}>{c.icon}</span>
-          <span style={{
-            fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.6px',
-            color: c.fg,
-          }}>READINESS · {c.label}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '0.6px', color: 'var(--color-t3)', fontVariantNumeric: 'tabular-nums' }}>
-          {readiness.acwr != null && <span>ACWR {readiness.acwr.toFixed(2)}</span>}
-          {readiness.easyShare != null && <span>{Math.round(readiness.easyShare * 100)}% EASY</span>}
-        </div>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.5 }}>
-        {readiness.message}
-      </div>
-      {readiness.signals.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          style={{
-            alignSelf: 'flex-start', padding: '3px 8px',
-            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
-            background: 'transparent', color: 'var(--color-t3)',
-            border: '1px solid var(--color-l4)', borderRadius: 4, cursor: 'pointer',
-          }}
-        >
-          {open ? '▾ HIDE SIGNALS' : `▸ ${readiness.signals.length} SIGNAL${readiness.signals.length === 1 ? '' : 'S'}`}
-        </button>
-      )}
-      {open && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
-          {readiness.signals.map((sig, i) => (
-            <div key={i} style={{
-              fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.45,
-              padding: '6px 10px', background: 'var(--color-l3)', borderRadius: 4,
-              borderLeft: `2px solid ${sig.severity === 'warn' ? 'var(--color-attention)' : 'var(--color-corporate)'}`,
-            }}>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: sig.severity === 'warn' ? 'var(--color-attention)' : 'var(--color-corporate)' }}>
-                {sig.label.toUpperCase()}
-              </div>
-              <div>{sig.detail}</div>
-            </div>
-          ))}
-          <div style={{
-            fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.5,
-            paddingTop: 6, borderTop: '1px solid var(--color-l4)',
-          }}>
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>RECOMMENDED · </span>
-            {readiness.recommendedAction}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// ReadinessBanner extracted to web/components/coaching/ReadinessBanner.tsx
 
 /* ── Daily brief + "why?" affordance ─────────────────────────
    The brief is the voice paragraph from coach.briefDailyTraining.
@@ -996,85 +927,7 @@ function ReadinessBanner({ readiness }: { readiness: ReadinessPayload['answer'] 
    structured rationale + research citations. Same affordance is
    used on the race brief — keeps the model + reasoning visible
    without cluttering the default view. */
-function CoachDailyBrief({ brief, engineRationale }: {
-  brief: DailyBriefPayload;
-  engineRationale: string;
-}) {
-  const [showWhy, setShowWhy] = useState(false);
-  const isStub = brief.brain === 'deterministic';
-
-  return (
-    <div style={{
-      padding: '14px 16px', background: 'var(--color-l2)', borderRadius: 8,
-      borderLeft: '3px solid var(--color-corporate)',
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-          COACH SAYS
-        </span>
-        {isStub && (
-          <span style={{
-            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
-            padding: '2px 7px', borderRadius: 3,
-            background: 'rgba(255,255,255,.06)', color: 'var(--color-t3)',
-          }}>FALLBACK · NO API KEY</span>
-        )}
-      </div>
-      <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--color-t0)', whiteSpace: 'pre-wrap' }}>
-        {brief.answer}
-      </div>
-      <button
-        type="button"
-        onClick={() => setShowWhy(s => !s)}
-        style={{
-          alignSelf: 'flex-start',
-          padding: '4px 10px',
-          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
-          background: 'transparent',
-          color: 'var(--color-t3)',
-          border: '1px solid var(--color-l4)',
-          borderRadius: 4,
-          cursor: 'pointer',
-        }}
-      >
-        {showWhy ? '▾ HIDE WHY' : '▸ WHY?'}
-      </button>
-      {showWhy && (
-        <div style={{
-          fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.55,
-          padding: '10px 12px', background: 'var(--color-l3)', borderRadius: 6,
-          display: 'flex', flexDirection: 'column', gap: 8,
-        }}>
-          <div>
-            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>ENGINE RATIONALE</span>
-            {engineRationale}
-          </div>
-          {brief.rationale && brief.rationale !== engineRationale && (
-            <div>
-              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>VOICE RATIONALE</span>
-              {brief.rationale}
-            </div>
-          )}
-          {brief.citations && brief.citations.length > 0 && (
-            <div>
-              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>CITATIONS</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {brief.citations.map((c, i) => (
-                  <div key={i} style={{ fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.45 }}>
-                    <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, color: 'var(--color-corporate)' }}>{c.doc}</span>
-                    {c.section && <span style={{ color: 'var(--color-t3)' }}> · {c.section}</span>}
-                    {c.snippet && <span style={{ color: 'var(--color-t3)' }}> — &ldquo;{c.snippet}&rdquo;</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+// CoachDailyBrief extracted to web/components/coaching/CoachDailyBrief.tsx
 
 /* ── Next-30-days tile ──────────────────────────────────────
    Bridges "today's prescription" and "the race calendar" with a
