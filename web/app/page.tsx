@@ -19,8 +19,8 @@ import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
-import { loadRunnerProfile, ageFromBirthYear } from '../lib/runner-profile';
-import { gradeVdot } from '../coach/doctrine';
+import { loadRunnerProfile, ageFromBirthYear, resolveHrmax } from '../lib/runner-profile';
+import { gradeVdot, HRMAX_ZONES_5 } from '../coach/doctrine';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -88,6 +88,8 @@ export default function OverviewPage() {
           <Next30DaysCard />
 
           <VdotCard />
+
+          <HrZonesCard />
 
           <RecoveryWidget />
 
@@ -1187,6 +1189,88 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
           <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-warning)', borderRadius: 2, marginRight: 4 }} /> VO2 / TT</span>
           <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-l3)', borderRadius: 2, marginRight: 4 }} /> REST</span>
         </div>
+      </div>
+    </>
+  );
+}
+
+/* ── HR zones tile ───────────────────────────────────────────
+   Surfaces the runner's 5 HR zones derived from their HRmax (or
+   estimated from age via Tanaka when HRmax is unset). Doctrine:
+   HRMAX_ZONES_5 (Research/03). Hides itself entirely when neither
+   HRmax nor age is known — no zones to compute, no point showing
+   a placeholder. */
+function HrZonesCard() {
+  const [hrmax, setHrmax] = useState<{ bpm: number; source: 'measured' | 'tanaka_estimate' } | null>(null);
+
+  useEffect(() => {
+    setHrmax(resolveHrmax(loadRunnerProfile()));
+  }, []);
+
+  if (!hrmax) return null;
+  return <HrZonesTile hrmax={hrmax} />;
+}
+
+function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'tanaka_estimate' } }) {
+  const zoneOrder: Array<keyof typeof HRMAX_ZONES_5.value> = ['recovery', 'easy', 'aerobic_tempo', 'threshold', 'vo2max'];
+  const zoneColors: Record<keyof typeof HRMAX_ZONES_5.value, string> = {
+    recovery:      'var(--color-t3)',
+    easy:          'var(--color-success)',
+    aerobic_tempo: 'var(--color-corporate)',
+    threshold:     'var(--color-attention)',
+    vo2max:        'var(--color-warning)',
+  };
+  const zoneLabels: Record<keyof typeof HRMAX_ZONES_5.value, string> = {
+    recovery:      'Z1 · Recovery',
+    easy:          'Z2 · Easy',
+    aerobic_tempo: 'Z3 · Aerobic-tempo',
+    threshold:     'Z4 · Threshold',
+    vo2max:        'Z5 · VO2max',
+  };
+
+  return (
+    <>
+      <SectionHeader title="HR zones" sub={`%HRmax · 5-zone (Research/03) · HRmax ${hrmax.bpm} BPM ${hrmax.source === 'tanaka_estimate' ? '· Tanaka estimate' : '· measured'}`} />
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+          {zoneOrder.map(z => {
+            const def = HRMAX_ZONES_5.value[z];
+            const lo = Math.round((def.pctLow / 100) * hrmax.bpm);
+            const hi = Math.round((def.pctHigh / 100) * hrmax.bpm);
+            const c = zoneColors[z];
+            return (
+              <div key={z} style={{
+                padding: 12, borderRadius: 8,
+                background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+                display: 'flex', flexDirection: 'column', gap: 6, minHeight: 130,
+              }}>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, letterSpacing: '1.2px', color: c }}>
+                  {zoneLabels[z].toUpperCase()}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 16, fontWeight: 800,
+                  color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px',
+                }}>
+                  {lo}–{hi} <span style={{ fontSize: 10, color: 'var(--color-t3)', fontWeight: 700 }}>BPM</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', color: 'var(--color-t3)' }}>
+                  {def.pctLow}–{def.pctHigh}% HRmax
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>
+                  {def.purpose}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.35, marginTop: 'auto', fontStyle: 'italic' }}>
+                  {def.talkTest}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {hrmax.source === 'tanaka_estimate' && (
+          <div style={{ fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
+            HRmax estimated from age via Tanaka (208 − 0.7×age, ±10 BPM SE). Replace with a measured value (lab or field test) on the profile page for a tighter zone fit.
+          </div>
+        )}
       </div>
     </>
   );

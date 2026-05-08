@@ -470,7 +470,7 @@ const iconBtnStyle: React.CSSProperties = {
    localStorage-backed; both fields optional. Auto-saves on
    change so there's no Save button — just edit and move on. */
 function RunnerProfileSection() {
-  const [profile, setProfile] = useState<RunnerProfile>({ birthYear: null, sex: 'unspecified' });
+  const [profile, setProfile] = useState<RunnerProfile>({ birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
 
   useEffect(() => {
     setProfile(loadRunnerProfile());
@@ -541,10 +541,54 @@ function RunnerProfileSection() {
               ))}
             </div>
           </div>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              Max heart rate <span style={{ color: 'var(--color-t3)', fontWeight: 400 }}>(BPM, optional)</span>
+            </div>
+            <input
+              type="number"
+              value={profile.hrmaxBpm ?? ''}
+              onChange={e => update({ hrmaxBpm: e.target.value === '' ? null : Number(e.target.value) })}
+              placeholder="e.g. 188"
+              min={130}
+              max={230}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                color: 'var(--color-t0)', fontFamily: 'var(--font-data)', fontSize: 14,
+                fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+              }}
+            />
+            <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
+              Lab or field test if known. Otherwise estimated from age (Tanaka).
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              Resting heart rate <span style={{ color: 'var(--color-t3)', fontWeight: 400 }}>(BPM, optional)</span>
+            </div>
+            <input
+              type="number"
+              value={profile.rhrBpm ?? ''}
+              onChange={e => update({ rhrBpm: e.target.value === '' ? null : Number(e.target.value) })}
+              placeholder="e.g. 48"
+              min={30}
+              max={100}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                color: 'var(--color-t0)', fontFamily: 'var(--font-data)', fontSize: 14,
+                fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+              }}
+            />
+            <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
+              For Karvonen / HR-reserve zones. Optional.
+            </div>
+          </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)', lineHeight: 1.5 }}>
-          Used to compute age-graded VDOT and sex-cohort tier framing on the dashboard.
-          Both fields are optional — leave blank for open-class only. No data leaves your browser.
+          Used to compute age-graded VDOT, sex-cohort tier framing, and HR zone targets on the dashboard.
+          All fields optional — leave blank for open-class / age-estimated zones. No data leaves your browser.
         </div>
       </div>
     </section>
