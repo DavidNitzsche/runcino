@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory & Redesign · May 8 2026 · Runcino</title>
+<style>
+  :root {
+    --bg-0: #0A0E1A; --bg-1: #0F1420; --bg-2: #141B2D; --bg-3: #1B243A; --bg-4: #2A3656; --bg-5: #3A4A6E;
+    --text-0: #F4F6FB; --text-1: #D4DBEA; --text-2: #9AA5BC; --text-3: #5E6B85;
+    --success: #3EBD41; --corporate: #267FFF; --attention: #F3AD3B;
+    --warning: #FC4D54; --race: #F3AD3B; --active: #B26CFF;
+    --font-display: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-data: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg-0); color: var(--text-1);
+    font-family: var(--font-display);
+    font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  html { scroll-behavior: smooth; }
+  .stage { max-width: 1280px; margin: 0 auto; padding: 40px 32px 80px; }
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 32px; padding-bottom: 24px;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  .head h1 { font-weight: 800; font-size: 40px; letter-spacing: -0.025em; color: var(--text-0); line-height: 1.05; }
+  .head .sub {
+    font-family: var(--font-data); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.6px; color: var(--text-3);
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .head .right {
+    text-align: right; font-family: var(--font-data); font-size: 11px;
+    color: var(--text-3); letter-spacing: 1.4px;
+  }
+  section { margin-bottom: 44px; }
+  .section-h {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;
+  }
+  .section-h h2 { font-weight: 800; font-size: 24px; letter-spacing: -0.01em; color: var(--text-0); }
+  .section-h .meta {
+    font-family: var(--font-data); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.4px; color: var(--text-3); text-transform: uppercase;
+  }
+  /* TL;DR */
+  .tldr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 36px; }
+  .stat {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 20px 22px;
+  }
+  .stat .lbl {
+    font-family: var(--font-data); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.6px; text-transform: uppercase; color: var(--text-3);
+  }
+  .stat .val {
+    font-weight: 800; font-size: 36px; letter-spacing: -0.02em; line-height: 1;
+    color: var(--text-0); margin-top: 8px; font-variant-numeric: tabular-nums;
+  }
+  .stat .val.success { color: var(--success); }
+  .stat .val.corporate { color: var(--corporate); }
+  .stat .val.attention { color: var(--attention); }
+  .stat .val.warning { color: var(--warning); }
+  .stat .sub {
+    font-family: var(--font-data); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.6px; color: var(--text-3);
+    margin-top: 6px; text-transform: uppercase;
+  }
+  /* North Star block */
+  .northstar {
+    background: linear-gradient(135deg, rgba(38,127,255,.10), var(--bg-1));
+    border: 1px solid rgba(38,127,255,.35);
+    border-left: 4px solid var(--corporate);
+    border-radius: 10px; padding: 28px 32px;
+    margin-bottom: 36px;
+  }
+  .northstar h3 {
+    font-family: var(--font-data); font-size: 11px; font-weight: 800;
+    letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--corporate); margin-bottom: 12px;
+  }
+  .northstar .quote {
+    font-family: var(--font-display);
+    font-size: 22px; line-height: 1.4; font-weight: 600;
+    color: var(--text-0); letter-spacing: -0.005em;
+  }
+  .northstar .quote em { color: var(--corporate); font-style: normal; font-weight: 700; }
+  .northstar p { font-size: 14.5px; color: var(--text-1); line-height: 1.6; margin-top: 14px; }
+  /* Priority panels */
+  .priority {
+    border-radius: 10px; padding: 22px 26px; margin-bottom: 14px;
+  }
+  .priority.green { background: linear-gradient(135deg, rgba(62,189,65,.10), var(--bg-1)); border: 1px solid rgba(62,189,65,.3); border-left: 4px solid var(--success); }
+  .priority.amber { background: linear-gradient(135deg, rgba(243,173,59,.10), var(--bg-1)); border: 1px solid rgba(243,173,59,.3); border-left: 4px solid var(--attention); }
+  .priority.red { background: linear-gradient(135deg, rgba(252,77,84,.10), var(--bg-1)); border: 1px solid rgba(252,77,84,.3); border-left: 4px solid var(--warning); }
+  .priority.purple { background: linear-gradient(135deg, rgba(178,108,255,.10), var(--bg-1)); border: 1px solid rgba(178,108,255,.3); border-left: 4px solid var(--active); }
+  .priority h3 {
+    font-family: var(--font-data); font-size: 11px; font-weight: 800;
+    letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .priority.green h3 { color: var(--success); }
+  .priority.amber h3 { color: var(--attention); }
+  .priority.red h3 { color: var(--warning); }
+  .priority.purple h3 { color: var(--active); }
+  .priority .title {
+    font-weight: 800; font-size: 22px; color: var(--text-0);
+    letter-spacing: -0.01em; margin-bottom: 12px;
+  }
+  .priority p { font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 8px; }
+  /* Table */
+  table.t {
+    width: 100%; border-collapse: collapse;
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; overflow: hidden;
+  }
+  table.t th, table.t td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--bg-4); }
+  table.t tr:last-child td { border-bottom: none; }
+  table.t th {
+    font-family: var(--font-data); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 1.4px; color: var(--text-3);
+    text-transform: uppercase; background: var(--bg-2);
+  }
+  table.t td { font-size: 13px; color: var(--text-1); line-height: 1.5; }
+  table.t td.label { font-weight: 700; color: var(--text-0); }
+  table.t td .sha {
+    font-family: var(--font-data); font-size: 10px; color: var(--text-3);
+    margin-top: 4px; display: block;
+  }
+  /* Verdict / status pills */
+  .pill {
+    display: inline-block; font-family: var(--font-data);
+    font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+    padding: 3px 9px; border-radius: 4px; text-transform: uppercase;
+  }
+  .pill.success { background: rgba(62,189,65,.15); color: var(--success); }
+  .pill.warning { background: rgba(252,77,84,.15); color: var(--warning); }
+  .pill.attention { background: rgba(243,173,59,.15); color: var(--attention); }
+  .pill.corporate { background: rgba(38,127,255,.15); color: var(--corporate); }
+  .pill.active { background: rgba(178,108,255,.15); color: var(--active); }
+  .pill.muted { background: rgba(255,255,255,.06); color: var(--text-3); }
+  /* Mode grid */
+  .modes {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .mode {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-left: 3px solid var(--corporate);
+    border-radius: 8px; padding: 16px 18px;
+  }
+  .mode h3 {
+    font-family: var(--font-data); font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--corporate); margin-bottom: 8px;
+  }
+  .mode.warning h3, .mode.warning { border-left-color: var(--warning); }
+  .mode.warning h3 { color: var(--warning); }
+  .mode.attention h3, .mode.attention { border-left-color: var(--attention); }
+  .mode.attention h3 { color: var(--attention); }
+  .mode.success h3, .mode.success { border-left-color: var(--success); }
+  .mode.success h3 { color: var(--success); }
+  .mode.active h3, .mode.active { border-left-color: var(--active); }
+  .mode.active h3 { color: var(--active); }
+  .mode .title {
+    font-weight: 700; font-size: 16px; color: var(--text-0);
+    line-height: 1.3; margin-bottom: 6px;
+  }
+  .mode p { font-size: 13px; color: var(--text-2); line-height: 1.55; }
+  /* Hierarchy diagram */
+  .hierarchy {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 24px 28px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .hier-row {
+    display: grid; gap: 10px; align-items: center;
+  }
+  .hier-row.t1 { grid-template-columns: 100px 1fr; }
+  .hier-row.t2 { grid-template-columns: 100px 1fr 1fr; }
+  .hier-row.t3 { grid-template-columns: 100px repeat(4, 1fr); }
+  .hier-row.t4 { grid-template-columns: 100px 1fr; }
+  .hier-row.t5 { grid-template-columns: 100px 1fr; }
+  .hier-tier {
+    font-family: var(--font-data); font-size: 9.5px; font-weight: 800;
+    letter-spacing: 1.6px; color: var(--text-3); text-transform: uppercase;
+  }
+  .hier-block {
+    background: var(--bg-2); border: 1px solid var(--bg-4);
+    border-radius: 6px; padding: 12px 14px;
+  }
+  .hier-block.hero {
+    background: linear-gradient(135deg, rgba(243,173,59,.15), var(--bg-2));
+    border-color: rgba(243,173,59,.4); padding: 22px 24px;
+  }
+  .hier-block .name {
+    font-family: var(--font-data); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 1.2px; color: var(--text-3); text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .hier-block.hero .name { color: var(--attention); font-size: 10px; }
+  .hier-block .desc {
+    font-size: 13px; color: var(--text-1); line-height: 1.45;
+  }
+  .hier-block.hero .desc { color: var(--text-0); font-weight: 600; font-size: 14.5px; line-height: 1.5; }
+  .hier-block.expl { background: var(--bg-1); border-style: dashed; opacity: 0.7; }
+  /* Pages grid (proposed new) */
+  .pages-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+  .page-card {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-left: 3px solid var(--active);
+    border-radius: 8px; padding: 16px 18px;
+  }
+  .page-card h3 {
+    font-family: var(--font-data); font-size: 10px; font-weight: 800;
+    letter-spacing: 1.6px; color: var(--active);
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .page-card .name {
+    font-family: var(--font-data); font-weight: 800; font-size: 16px;
+    color: var(--text-0); margin-bottom: 6px;
+  }
+  .page-card .mission {
+    font-size: 13px; color: var(--text-1); line-height: 1.55; margin-bottom: 10px;
+  }
+  .page-card .top3 {
+    font-size: 12px; color: var(--text-2); line-height: 1.5;
+  }
+  .page-card .top3 b { color: var(--text-1); font-weight: 600; }
+  /* Roadmap */
+  .roadmap {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; overflow: hidden;
+  }
+  .week {
+    display: grid; grid-template-columns: 80px 1fr;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  .week:last-child { border-bottom: none; }
+  .week .label {
+    background: var(--bg-2);
+    padding: 18px 16px;
+    font-family: var(--font-data); font-size: 11px; font-weight: 800;
+    letter-spacing: 1.4px; color: var(--corporate);
+    border-right: 1px solid var(--bg-4);
+  }
+  .week .work {
+    padding: 16px 22px;
+  }
+  .week .theme {
+    font-weight: 800; font-size: 16px; color: var(--text-0);
+    margin-bottom: 8px;
+  }
+  .week ul {
+    list-style: none;
+    font-size: 13px; color: var(--text-1); line-height: 1.55;
+  }
+  .week li {
+    padding: 4px 0 4px 16px; position: relative;
+  }
+  .week li::before {
+    content: '·'; position: absolute; left: 4px;
+    color: var(--text-3); font-weight: 800;
+  }
+  /* Coverage matrix bars */
+  .coverage {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .cov {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .cov.success { border-color: rgba(62,189,65,.4); }
+  .cov.attention { border-color: rgba(243,173,59,.4); }
+  .cov.warning { border-color: rgba(252,77,84,.4); }
+  .cov .label {
+    font-family: var(--font-data); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-3);
+  }
+  .cov .num {
+    font-weight: 800; font-size: 36px; letter-spacing: -0.02em;
+    line-height: 1; margin-top: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cov.success .num { color: var(--success); }
+  .cov.attention .num { color: var(--attention); }
+  .cov.warning .num { color: var(--warning); }
+  .cov .docs {
+    font-family: var(--font-data); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.6px; color: var(--text-3);
+    margin-top: 6px;
+  }
+  /* ASCII / diagram */
+  .diagram {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 24px 28px;
+    font-family: var(--font-data); font-size: 12.5px; line-height: 1.6;
+    color: var(--text-1); white-space: pre; overflow-x: auto;
+  }
+  /* Bug callouts */
+  .bugs-list .bug {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-left: 3px solid var(--warning);
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 8px;
+  }
+  .bugs-list .bug h4 {
+    font-weight: 700; font-size: 14px; color: var(--text-0);
+    margin-bottom: 4px;
+  }
+  .bugs-list .bug p { font-size: 13px; color: var(--text-2); line-height: 1.55; }
+  .bugs-list .bug code {
+    font-family: var(--font-data); font-size: 11.5px;
+    background: rgba(255,255,255,.06); padding: 1px 6px;
+    border-radius: 3px; color: var(--text-1);
+  }
+  /* Inline code */
+  code {
+    font-family: var(--font-data); font-size: 0.92em;
+    background: rgba(255,255,255,.04); padding: 2px 6px;
+    border-radius: 3px; color: var(--text-1);
+  }
+  /* TOC nav */
+  .toc {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 18px 22px;
+    margin-bottom: 36px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 18px;
+  }
+  .toc a {
+    color: var(--text-2); text-decoration: none;
+    font-family: var(--font-data); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    padding: 4px 0;
+  }
+  .toc a:hover { color: var(--corporate); }
+  .toc .num {
+    color: var(--text-3); font-weight: 800; margin-right: 6px;
+    display: inline-block; min-width: 22px;
+  }
+  /* Footer */
+  footer {
+    margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--bg-4);
+    font-family: var(--font-data); font-size: 10.5px; letter-spacing: 1.2px;
+    color: var(--text-3); text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  footer a { color: var(--corporate); text-decoration: none; }
+  /* Responsive */
+  @media (max-width: 900px) {
+    .tldr, .modes, .pages-grid, .toc, .coverage { grid-template-columns: 1fr 1fr; }
+    .head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .head .right { text-align: left; }
+    .hier-row.t2, .hier-row.t3 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .tldr, .modes, .pages-grid, .toc, .coverage { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="head">
+    <div>
+      <div class="sub">Inventory + redesign brief · 2026-05-08</div>
+      <h1>The whole app, rethought</h1>
+    </div>
+    <div class="right">
+      Source · <a href="docs/INVENTORY-2026-05-08.md" style="color:var(--corporate);">INVENTORY-2026-05-08.md</a><br/>
+      2,538 lines · supersedes prior audits
+    </div>
+  </div>
+
+  <!-- TL;DR strip -->
+  <div class="tldr">
+    <div class="stat">
+      <div class="lbl">Pages audited</div>
+      <div class="val corporate">10</div>
+      <div class="sub">tile-by-tile</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Research docs</div>
+      <div class="val attention">24</div>
+      <div class="sub">+35 doctrine .ts files</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Stat issues found</div>
+      <div class="val warning">7</div>
+      <div class="sub">misleading-class</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">New pages proposed</div>
+      <div class="val success">6</div>
+      <div class="sub">+ 9 dashboard modes</div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <a href="#north"><span class="num">N</span>North star</a>
+    <a href="#coverage"><span class="num">1</span>Research coverage</a>
+    <a href="#bugs"><span class="num">2</span>Critical findings</a>
+    <a href="#mecca"><span class="num">3</span>The mecca gap</a>
+    <a href="#dashboard"><span class="num">4</span>Dashboard, redesigned</a>
+    <a href="#modes"><span class="num">5</span>9 dashboard modes</a>
+    <a href="#hierarchy"><span class="num">6</span>5-tier hierarchy</a>
+    <a href="#pages"><span class="num">7</span>6 new pages</a>
+    <a href="#hub"><span class="num">8</span>Hub data graph</a>
+    <a href="#priorities"><span class="num">9</span>Top-10 next builds</a>
+    <a href="#roadmap"><span class="num">10</span>4-week roadmap</a>
+    <a href="#components"><span class="num">11</span>Component plan</a>
+  </div>
+
+  <!-- North Star -->
+  <section id="north">
+    <div class="northstar">
+      <h3>The North Star</h3>
+      <div class="quote">
+        A runner who opens the app cold sees, within 5 seconds, exactly what to do today, why, and how it fits their goal. Every number traces back to a source. The coach <em>has memory</em> across weeks, asks how they feel, names patterns they don't see, and pushes back when goals are unrealistic.
+      </div>
+      <p style="margin-top: 16px;">
+        The app is <strong>coaching, not just dashboarding.</strong>
+        We're roughly <strong style="color: var(--corporate);">60% of the way there</strong>. The remaining 40% is what this document maps. The unifying principle: <em style="color: var(--text-0); font-style: normal; font-weight: 600;">one source of truth, many ways to use it</em> — the canonical RunnerHub backs every surface, every page is a projection of it.
+      </p>
+    </div>
+  </section>
+
+  <!-- Research coverage -->
+  <section id="coverage">
+    <div class="section-h">
+      <h2>Research coverage</h2>
+      <span class="meta">24 docs · 35 doctrine files</span>
+    </div>
+    <div class="coverage">
+      <div class="cov success">
+        <div class="label">Wired</div>
+        <div class="num">6</div>
+        <div class="docs">01 pace-zones · 06 weather · 22 plan-templates · 24 grading · plus parts of 03 + 14</div>
+      </div>
+      <div class="cov attention">
+        <div class="label">Partial</div>
+        <div class="num">11</div>
+        <div class="docs">00a, 00b, 03, 04, 07, 08, 11, 14, 15, 17, 18, 19 — wired but most exports unconsumed</div>
+      </div>
+      <div class="cov warning">
+        <div class="label">Unwired</div>
+        <div class="num">9</div>
+        <div class="docs">02 race-prediction · 05 injury · 09 cross-training · 10 mobility · 12 travel · 13 sex · 16 form · 20 mental · 21 form-corrections</div>
+      </div>
+    </div>
+    <p style="font-size: 13px; color: var(--text-2); line-height: 1.6; margin-top: 14px;">
+      <strong>Doctrine drift risk is the biggest architectural debt.</strong> Three tiles inline doctrine numbers as hand-copied literals: <code>HydrationTile</code>, <code>FuelingTile</code>, <code>NoVdotPanel</code>. When a research constant updates, those tiles silently fall out of sync. <a href="#priorities" style="color: var(--corporate);">Recommendation #3</a> targets this.
+    </p>
+  </section>
+
+  <!-- Critical findings -->
+  <section id="bugs">
+    <div class="section-h">
+      <h2>Critical findings worth your attention</h2>
+      <span class="meta">7 misleading-class issues</span>
+    </div>
+    <div class="bugs-list">
+      <div class="bug">
+        <h4>Long-run cap math disagrees between dashboard and engine</h4>
+        <p><code>TrainingPulseTile</code> (× 0.6 / 0.5 / 0.7 for TAPER / POST-RACE / REBUILD) vs engine <code>longRunTarget</code> (× 0.65 / 0.4 / 0.6). Runner sees one cap on the dashboard and a different long-run distance on the prescription. Direct trust erosion.</p>
+      </div>
+      <div class="bug">
+        <h4>Server-side coach state has no runner identity</h4>
+        <p>Age, sex, HRmax, RHR live in localStorage. The brief LLM never knows who the runner is — can't say "exceptional VDOT for a 60-year-old woman." Engine's "yesterday hard" gate is hardcoded 152 BPM regardless of HRmax. <strong>This is the #1 unlock</strong> — closing it makes ~5 doctrine pathways consumable at once.</p>
+      </div>
+      <div class="bug">
+        <h4>/workout/[date] is 100% static placeholder</h4>
+        <p>Linked from the dashboard week-strip, the 30-day strip, and the training-page next-up list. Three high-traffic doors all open into a frozen design canvas.</p>
+      </div>
+      <div class="bug">
+        <h4>FuelingTile uses planner default carb/hr, not doctrine</h4>
+        <p>Should pull from <code>RACE_CARB_TARGETS_G_PER_HR</code> like the new HydrationTile does. Same parallel-source-of-truth problem.</p>
+      </div>
+      <div class="bug">
+        <h4>CoachTodayCard.hrZone is a static 1–5</h4>
+        <p>Not derived from runner HRmax. A 60yo reading "HR Z4" gets misleading prescription guidance. Closes when bug #2 closes.</p>
+      </div>
+      <div class="bug">
+        <h4>Training page is essentially redundant with dashboard</h4>
+        <p>Two daily voice paragraphs, two week-shapes, two prescription views. Not technically a bug — a product issue. <a href="#dashboard" style="color: var(--corporate);">Section 4 below</a> proposes the split.</p>
+      </div>
+      <div class="bug">
+        <h4>Engine has parallel post-race ladder duplicating doctrine</h4>
+        <p>Hand-coded ladder in <code>coach-engine.ts:271-321</code> when <code>recovery_protocols.ts.POST_RACE_BY_DISTANCE</code> + <code>REVERSE_TAPER_PROTOCOL</code> already exist. Same shape, two sources, easy to drift.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mecca gap -->
+  <section id="mecca">
+    <div class="section-h">
+      <h2>The "mecca" gap</h2>
+      <span class="meta">Research we have, app doesn't show</span>
+    </div>
+    <div class="priority purple">
+      <h3>Information surplus, surface deficit</h3>
+      <div class="title">We have far more research than we surface</div>
+      <p>Beyond the 30+ specifically-flagged items in the inventory, the unwired buckets contain the bulk of the coaching IP. A few that would meaningfully change the user experience:</p>
+      <table class="t" style="margin-top: 12px;">
+        <thead><tr><th>What's available</th><th>Where</th><th>Surfaceable as</th></tr></thead>
+        <tbody>
+          <tr><td class="label">Race prediction (Riegel, Cameron, McMillan + asymmetry rules)</td><td>Research/02, all 16 exports unwired</td><td>"At your VDOT, predicted finish at this race: 3:24:18 (low) – 3:31:42 (high)"</td></tr>
+          <tr><td class="label">Norwegian double-threshold method</td><td>Research/00a + intensity.ts unwired</td><td>Workout type option for advanced runners</td></tr>
+          <tr><td class="label">EAH risk factors + sweat-rate protocol</td><td>Research/19 hydration.ts (8 of 12 unwired)</td><td>Personalized hydration targets, EAH overdrinking warnings</td></tr>
+          <tr><td class="label">Marathon biomarker timeline (1d, 7d, 14d, 21d)</td><td>Research/00b unwired</td><td>Post-race "what's recovering when" timeline</td></tr>
+          <tr><td class="label">Race-week kit dress rehearsal + meal logistics</td><td>Research/08 race_week.ts (19 unwired)</td><td>Race-week checklist surface</td></tr>
+          <tr><td class="label">A/B/C goals + DNF rules + pre-race anxiety</td><td>Research/20 mental.ts (13 unwired)</td><td>Three-tier goal slot per race + "I'm worried about ___" prompts</td></tr>
+          <tr><td class="label">Travel + jet lag protocols (east/west asymmetry)</td><td>Research/12 travel.ts (5 unwired)</td><td>Race-page travel block when away from home</td></tr>
+          <tr><td class="label">Cycle-aware training + hormonal-contraception notes</td><td>Research/13 sex.ts</td><td>Cycle-aware brief framing for women</td></tr>
+          <tr><td class="label">7-zone HR + Karvonen + LTHR field-test</td><td>Research/03 hr_zones.ts (most unwired)</td><td>Calibration page lets runner pick their preferred zone system</td></tr>
+          <tr><td class="label">Walk-run protocol + injury catalog</td><td>Research/05 injury_return.ts (all unwired)</td><td>Injury intake → engine routes around the affected work</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Dashboard redesign -->
+  <section id="dashboard">
+    <div class="section-h">
+      <h2>The dashboard, rethought</h2>
+      <span class="meta">From flat 14-tile stack to mode-aware hierarchy</span>
+    </div>
+    <p style="font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 16px;">
+      Today: a flat stack of 14 tiles, every weight equal. A runner on race-day morning sees the same hierarchy as one on a recovery Tuesday. The thing that matters most for THIS runner THIS minute is buried mid-page.
+    </p>
+    <p style="font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 16px;">
+      Tomorrow: <strong>9 distinct runner modes, each with its own hero tile</strong> elevated above the fold. The metric strip and explorers stay; the hero changes by context. Same component library, different ordering per <code>useRunnerMode()</code>.
+    </p>
+  </section>
+
+  <!-- 9 dashboard modes -->
+  <section id="modes">
+    <div class="section-h">
+      <h2>9 dashboard modes</h2>
+      <span class="meta">Detected from state · informs hero tile</span>
+    </div>
+    <div class="modes">
+      <div class="mode warning">
+        <h3>Race day</h3>
+        <div class="title">Race today</div>
+        <p>Race poster mini, gun time, weather, goal, brief paragraph, "READY" check.</p>
+      </div>
+      <div class="mode attention">
+        <h3>Race week</h3>
+        <div class="title">1–7 days out</div>
+        <p>Race poster, days-out countdown, brief, weather forecast band.</p>
+      </div>
+      <div class="mode active">
+        <h3>Taper</h3>
+        <div class="title">In taper window</div>
+        <p>Volume cut chart, "is this normal?" reassurance, intensity preservation rule.</p>
+      </div>
+      <div class="mode corporate">
+        <h3>Build</h3>
+        <div class="title">Race in 14–100+ days</div>
+        <p>Today's workout — distance, type, pace target, voice paragraph, ready/yellow/red verdict.</p>
+      </div>
+      <div class="mode warning">
+        <h3>Recovery alert</h3>
+        <div class="title">Yellow / red readiness</div>
+        <p>The readiness verdict <strong>elevates to hero</strong>, displacing today's workout below.</p>
+      </div>
+      <div class="mode active">
+        <h3>Post-race</h3>
+        <div class="title">Last 14 days post-race</div>
+        <p>Where you are in the recovery curve, what today permits, biomarker timeline.</p>
+      </div>
+      <div class="mode success">
+        <h3>Base</h3>
+        <div class="title">No race scheduled</div>
+        <p>"You're in base. Your foundation work is X miles/week." Long-term trajectory tile.</p>
+      </div>
+      <div class="mode attention">
+        <h3>Rebuild</h3>
+        <div class="title">Coming back from layoff</div>
+        <p>Rebuild guidance — slow ramp rules, reduced expectations, when to test fitness.</p>
+      </div>
+      <div class="mode success">
+        <h3>Rest day</h3>
+        <div class="title">No run scheduled</div>
+        <p>Why rest is the work, what tomorrow brings, optional mobility / strength suggestions.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5-tier hierarchy -->
+  <section id="hierarchy">
+    <div class="section-h">
+      <h2>The 5-tier hierarchy</h2>
+      <span class="meta">Same content, different weight</span>
+    </div>
+    <div class="hierarchy">
+      <div class="hier-row t1">
+        <div class="hier-tier">Tier 1 · hero</div>
+        <div class="hier-block hero">
+          <div class="name">⚡ Mode-driven · single hero, above the fold</div>
+          <div class="desc">Wide, tall, centered. Today's workout · race-day brief · recovery alert · post-race progress — whichever the runner's state demands. Has the eye for as long as needed.</div>
+        </div>
+      </div>
+      <div class="hier-row t2">
+        <div class="hier-tier">Tier 2 · context</div>
+        <div class="hier-block">
+          <div class="name">This week's shape</div>
+          <div class="desc">7-cell strip, today highlighted, ✓ or pace next to completed days.</div>
+        </div>
+        <div class="hier-block">
+          <div class="name">Where you are in the plan</div>
+          <div class="desc">"Marathon-intermediate · Week 8 of 16 · BUILD"</div>
+        </div>
+      </div>
+      <div class="hier-row t3">
+        <div class="hier-tier">Tier 3 · metrics</div>
+        <div class="hier-block">
+          <div class="name">VDOT</div>
+          <div class="desc">+ tier + freshness</div>
+        </div>
+        <div class="hier-block">
+          <div class="name">7d / 4w</div>
+          <div class="desc">ACWR-aware</div>
+        </div>
+        <div class="hier-block">
+          <div class="name">Easy %</div>
+          <div class="desc">+ phase target</div>
+        </div>
+        <div class="hier-block">
+          <div class="name">Readiness</div>
+          <div class="desc">color-coded</div>
+        </div>
+      </div>
+      <div class="hier-row t4">
+        <div class="hier-tier">Tier 4 · ahead</div>
+        <div class="hier-block">
+          <div class="name">30-day calendar</div>
+          <div class="desc">Build pattern + races + quality day rhythm. Single wide tile.</div>
+        </div>
+      </div>
+      <div class="hier-row t5">
+        <div class="hier-tier">Tier 5 · explore</div>
+        <div class="hier-block expl">
+          <div class="name">Collapsed by default</div>
+          <div class="desc">HR zones · phase guidance (TAPER/POST_RACE/REBUILD only) · year heatmap · fun stats · recovery widget. Expand on demand.</div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size: 13px; color: var(--text-2); line-height: 1.6; margin-top: 14px;">
+      <strong>The "?" affordance:</strong> every number on screen has a tap-to-trace path. A small <code>?</code> icon next to "VDOT 38.2" reveals the source race, the formula, the citation to Research/01. Solves "where did this come from" without bloating tiles.
+    </p>
+  </section>
+
+  <!-- 6 new pages -->
+  <section id="pages">
+    <div class="section-h">
+      <h2>6 new pages worth building</h2>
+      <span class="meta">From Section 8g</span>
+    </div>
+    <div class="pages-grid">
+      <div class="page-card">
+        <h3>Strategic</h3>
+        <div class="name">/season</div>
+        <div class="mission">Bird's-eye view of the runner's race calendar across the year — race blocks, recovery windows, base periods, fitness projection over months.</div>
+        <div class="top3">
+          <b>Top 3:</b> Race timeline · Phase blocks · Conflict detection (overlapping recoveries, peak collisions).
+        </div>
+      </div>
+      <div class="page-card">
+        <h3>Calibration</h3>
+        <div class="name">/calibration</div>
+        <div class="mission">Every dial in one place — pace zones, HR zones, fueling rate, hydration rate, sweat rate, stride cadence target. The runner's full coaching profile on one canvas.</div>
+        <div class="top3">
+          <b>Top 3:</b> All zones (pace + HR) · Fueling targets · Sweat / hydration calibration.
+        </div>
+      </div>
+      <div class="page-card">
+        <h3>Today (focused)</h3>
+        <div class="name">/today</div>
+        <div class="mission">When the dashboard is too much. Just today's workout, the brief, the warm-up sequence, the cool-down. Pre-run focus mode.</div>
+        <div class="top3">
+          <b>Top 3:</b> Today's workout · Voice brief · Warm-up checklist with timer.
+        </div>
+      </div>
+      <div class="page-card">
+        <h3>Library</h3>
+        <div class="name">/library</div>
+        <div class="mission">All workout types in the doctrine, browsable. When did you last do an MP block? What does Norwegian double-threshold actually look like? Each opens to definition + structure + when-to-use + last-attempt.</div>
+        <div class="top3">
+          <b>Top 3:</b> Workout type list · "Last done X ago" · Cited research per type.
+        </div>
+      </div>
+      <div class="page-card">
+        <h3>Research</h3>
+        <div class="name">/research</div>
+        <div class="mission">Browse the doctrine itself. Every research doc viewable in-app, with cross-links between them. The "why" behind every coaching decision exposed for runners who want to dig.</div>
+        <div class="top3">
+          <b>Top 3:</b> 24-doc index · In-app viewer · Cross-references and citations as links.
+        </div>
+      </div>
+      <div class="page-card">
+        <h3>Patterns</h3>
+        <div class="name">/patterns</div>
+        <div class="mission">Recurring patterns the runner doesn't see. When they tend to skip, when they push too hard, what time of day they run best, which Tuesdays go to threshold vs easy.</div>
+        <div class="top3">
+          <b>Top 3:</b> Skip / overtrain patterns · Day-of-week tendencies · Goal-vs-actual deltas.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hub diagram -->
+  <section id="hub">
+    <div class="section-h">
+      <h2>The Hub data graph</h2>
+      <span class="meta">One source of truth, many ways to use it</span>
+    </div>
+    <div class="diagram">                     ┌─────────────┐
+                     │  Strava     │
+                     │  Postgres   │
+                     │  HealthKit  │
+                     └──────┬──────┘
+                            │ ingest
+                            ▼
+                     ┌─────────────┐
+                     │  RunnerHub  │
+                     │             │
+                     │  - identity │
+                     │  - history  │
+                     │  - races    │
+                     │  - state    │
+                     │  - prescrip.│
+                     │  - retro    │
+                     └──────┬──────┘
+                            │ project
+              ┌─────────────┴─────────────┐
+              │             │             │
+        ┌─────▼─────┐ ┌─────▼─────┐ ┌─────▼─────┐
+        │  Page A   │ │  Page B   │ │  Page C   │
+        │ /         │ │ /training │ │ /races/x  │
+        └───────────┘ └───────────┘ └───────────┘
+              │
+              ▼
+       ┌──────────────┐
+       │  Components  │
+       │  (extracted) │
+       └──────────────┘</div>
+    <p style="font-size: 13px; color: var(--text-2); line-height: 1.6; margin-top: 14px;">
+      Each page subscribes to the slice of hub it cares about. Components subscribe to the slice they render. When the hub changes, every affected component re-renders. <strong>Doctrine drift becomes impossible because every constant is imported, not inlined.</strong>
+    </p>
+  </section>
+
+  <!-- Top-10 priorities -->
+  <section id="priorities">
+    <div class="section-h">
+      <h2>Top-10 next builds, by ROI</h2>
+      <span class="meta">From Appendix D</span>
+    </div>
+    <table class="t">
+      <thead>
+        <tr><th style="width:30px">#</th><th>Build</th><th>Why it matters</th><th style="width:60px">Size</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td class="label">Wire runner profile to server-side CoachState</td><td><strong>The single highest-leverage change in the entire backlog.</strong> Unlocks every age- and HRmax-dependent doctrine pathway. The 152 BPM magic number becomes per-runner.</td><td><span class="pill attention">M</span></td></tr>
+        <tr><td>2</td><td class="label">Build a real /workout/[date] page</td><td>Replace static placeholder with engine-driven data. Largest remaining placeholder. Three high-traffic doors land here.</td><td><span class="pill attention">M</span></td></tr>
+        <tr><td>3</td><td class="label">Eliminate doctrine-inlining</td><td>HydrationTile + FuelingTile + NoVdotPanel hand-inline numbers. Convert to imports + add a build-time check.</td><td><span class="pill success">S–M</span></td></tr>
+        <tr><td>4</td><td class="label">Reconcile the long-run cap math</td><td>Pick one source between TrainingPulseTile and engine longRunTarget. Trust erosion until fixed.</td><td><span class="pill success">S</span></td></tr>
+        <tr><td>5</td><td class="label">Wire recovery_protocols POST_RACE + REVERSE_TAPER into engine</td><td>Replace engine's hand-coded post-race ladder with doctrine-driven lookups.</td><td><span class="pill attention">M</span></td></tr>
+        <tr><td>6</td><td class="label">Build a /season page</td><td>Strategic race calendar. Multi-race seasons are reality; the app currently treats each race as solo.</td><td><span class="pill attention">M</span></td></tr>
+        <tr><td>7</td><td class="label">Build a /calibration page</td><td>Every dial in one place. High trust value, low complexity (just renders existing state + doctrine).</td><td><span class="pill success">S–M</span></td></tr>
+        <tr><td>8</td><td class="label">Surface SWEAT_RATE_PROTOCOL + EAH_RISK_FACTORS</td><td>Generic distance × temp bands aren't enough — personalize hydration from sweat-rate test.</td><td><span class="pill success">S</span></td></tr>
+        <tr><td>9</td><td class="label">Add "how did that feel" RPE input</td><td><strong>Highest-leverage missing input.</strong> Doctrine 00b's qualitative-signals matrix becomes consumable.</td><td><span class="pill success">S</span></td></tr>
+        <tr><td>10</td><td class="label">Wire HRmax to engine's "yesterday hard" gate</td><td>Replace hardcoded 152 BPM with 0.80 × runner.hrmax. Depends on #1.</td><td><span class="pill success">S</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4-week roadmap -->
+  <section id="roadmap">
+    <div class="section-h">
+      <h2>4-week roadmap</h2>
+      <span class="meta">Architecture first · redesigns after</span>
+    </div>
+    <div class="roadmap">
+      <div class="week">
+        <div class="label">Week 1</div>
+        <div class="work">
+          <div class="theme">The unlock week</div>
+          <ul>
+            <li>Schema migration: Postgres <code>runner_profile</code> table</li>
+            <li>Mirror lib/runner-profile.ts to server</li>
+            <li>gatherCoachState rewrite — adds <code>state.runner</code> with age/sex/weight/hrmax/lthr/rhr</li>
+            <li>Replace HARD_EFFORT_HR_DEFAULT_BPM with per-runner derivation</li>
+            <li>Verify per-runner HR gating works on dashboard</li>
+          </ul>
+        </div>
+      </div>
+      <div class="week">
+        <div class="label">Week 2</div>
+        <div class="work">
+          <div class="theme">The placeholder kill week</div>
+          <ul>
+            <li>Build /workout/[date] real implementation — hero + structure + history + conditions + shoe</li>
+            <li>Add post-workout RPE input (saves to activity row)</li>
+            <li>Wire prescription-history table for "Your History" tile</li>
+            <li>Verify week-strip clicks land on real data</li>
+          </ul>
+        </div>
+      </div>
+      <div class="week">
+        <div class="label">Week 3</div>
+        <div class="work">
+          <div class="theme">The doctrine integrity week</div>
+          <ul>
+            <li>Eliminate inline doctrine in HydrationTile + FuelingTile + NoVdotPanel</li>
+            <li>Reconcile long-run cap math between TrainingPulseTile and engine</li>
+            <li>Wire recovery_protocols POST_RACE_BY_DISTANCE + REVERSE_TAPER_PROTOCOL</li>
+            <li>Replace engine's hand-coded post-race ladder</li>
+          </ul>
+        </div>
+      </div>
+      <div class="week">
+        <div class="label">Week 4</div>
+        <div class="work">
+          <div class="theme">Season + calibration</div>
+          <ul>
+            <li>Build /season page — race timeline, phase blocks, fitness projection, conflict detection</li>
+            <li>Build /calibration page — every dial in one place</li>
+            <li>Soft launch to test users</li>
+          </ul>
+        </div>
+      </div>
+      <div class="week">
+        <div class="label">Wks 5–8</div>
+        <div class="work">
+          <div class="theme">Redesign deepening</div>
+          <ul>
+            <li>Dashboard mode-aware composition (the 9 modes)</li>
+            <li>Training page macro-redesign (build curve + quality-day grid)</li>
+            <li>Race detail expansion (similar races, course implications, A/B/C goals)</li>
+            <li>Run detail expansion (prescription context, plan-vs-actual)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="week">
+        <div class="label">Wks 9–12</div>
+        <div class="work">
+          <div class="theme">Experiential layer</div>
+          <ul>
+            <li>Profile expansion (cycle, health flags, equipment, connections)</li>
+            <li>Health page redesign (Recovery score, HRV, RHR, sleep, load, cycle)</li>
+            <li>"I'm worried about" race-week prompts</li>
+            <li>/patterns page if data is sufficient</li>
+            <li>coach.retrospect wiring</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Component plan -->
+  <section id="components">
+    <div class="section-h">
+      <h2>Component extraction plan</h2>
+      <span class="meta">From inlined to reusable</span>
+    </div>
+    <p style="font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 14px;">
+      Today's tiles are inlined as private components. The redesigns assume reuse across pages — same VdotTile on dashboard, calibration, run-detail. Extraction is mostly mechanical (~1–2 days), unlocks reuse across all 14 redesigned pages.
+    </p>
+    <table class="t">
+      <thead>
+        <tr><th>Component</th><th>Currently in</th><th>Used by (after extraction)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="label">HrZonesTile</td><td><code>app/page.tsx</code></td><td>dashboard, /calibration, /profile</td></tr>
+        <tr><td class="label">VdotTile</td><td><code>app/page.tsx</code></td><td>dashboard, /calibration, /runs/[id]</td></tr>
+        <tr><td class="label">ReadinessBanner</td><td><code>app/page.tsx</code></td><td>dashboard, /runs/[id]</td></tr>
+        <tr><td class="label">CoachDailyBrief</td><td><code>app/page.tsx</code></td><td>dashboard, /training, /today</td></tr>
+        <tr><td class="label">Next30DaysTile</td><td><code>app/page.tsx</code></td><td>dashboard, /training, /season</td></tr>
+        <tr><td class="label">TrainingPulseTile</td><td><code>app/page.tsx</code></td><td>dashboard, /training</td></tr>
+        <tr><td class="label">PhaseGuidanceCard</td><td><code>app/page.tsx</code></td><td>dashboard, /training</td></tr>
+        <tr><td class="label">HydrationTile</td><td><code>app/races/[slug]/page.tsx</code></td><td>race-detail, /calibration, /workout</td></tr>
+        <tr><td class="label">FuelingTile</td><td><code>app/races/[slug]/page.tsx</code></td><td>race-detail, /calibration</td></tr>
+        <tr><td class="label">CoachBriefBlock</td><td><code>app/races/[slug]/page.tsx</code></td><td>race-detail, /training</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Decision -->
+  <section id="decision">
+    <div class="section-h">
+      <h2>Decision time</h2>
+      <span class="meta">Path forward</span>
+    </div>
+    <div class="priority green">
+      <h3>Recommended path</h3>
+      <div class="title">Architecture first (weeks 1–3) · then redesign (weeks 4+)</div>
+      <p>
+        The redesigns assume the hub-as-backbone is in place. Building the dashboard mode-dispatcher before wiring the runner profile to the server means re-doing it after week 1 anyway. <strong>Front-load the unlocks. Back-load the polish.</strong>
+      </p>
+      <p style="margin-top: 10px;">The single highest-impact next move: <strong style="color: var(--text-0);">recommendation #1 — wire runner profile to server-side CoachState.</strong> Closing it unlocks #5 (recovery_protocols), #10 (HRmax gate), and the brief LLM finally seeing demographics. The 4-week roadmap above is structured to do exactly that, then build downward.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>2,538-line companion doc · 7 critical findings · 6 new pages · 9 dashboard modes</span>
+    <span>Runcino · <a href="https://runcino-production.up.railway.app">runcino-production.up.railway.app</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

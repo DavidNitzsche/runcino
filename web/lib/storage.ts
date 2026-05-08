@@ -140,7 +140,8 @@ export async function deleteRace(slug: string): Promise<void> {
  *  Wipes both the in-memory + localStorage cache so next listRaces
  *  call hits the network. */
 export function invalidateRacesCache(): void {
-  invalidateRacesCache();
+  cached = null;
+  inflight = null;
   if (typeof window === 'undefined') return;
   try { window.localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
 }
