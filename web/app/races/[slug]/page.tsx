@@ -228,12 +228,16 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
               these redundant or nonsensical (race-morning brief, etc). */}
           {!isPastWithResult(race) && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+              {/* Brief used to live to the right of weather; it's now
+                  folded into the PosterCard description block above
+                  (CoachBriefBlock) so the runner sees it on every
+                  visit without a Generate gate. Weather stays as its
+                  own tile, full-width below the hero. */}
+              <div style={{ marginTop: 10 }}>
                 <WeatherTile
                   start={analysis ? [analysis.trkpts[0][0], analysis.trkpts[0][1]] : null}
                   raceDate={race.meta.date}
                 />
-                <BriefTile race={enrichedRace} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10, marginTop: 10 }}>
@@ -548,6 +552,11 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
               <p className="pc-lede">{narrative.lede}</p>
               <p className="pc-para">{narrative.para1}</p>
               <p className="pc-para">{narrative.para2}</p>
+              {/* Adaptive coach brief — auto-loads, adapts language by
+                  daysUntil(raceDate). Folded into the poster
+                  description block per design: same place every visit,
+                  always relevant, never a "click to generate" gate. */}
+              {!isDebrief && <CoachBriefBlock race={race} />}
             </>
           )}
 
@@ -1412,53 +1421,28 @@ type BriefResponse = {
   };
 };
 
-/** Build a forecast string from a WeatherSummary the same way the
- *  user would have pasted one. Goes into the brief prompt so the
- *  Coach has real numbers to work with even when we're 30 days out. */
-function weatherSummaryToText(w: WeatherSummary | null): string {
-  if (!w) return 'no specific forecast — assume seasonal norms';
-  const a = w.start_period;
-  const b = w.second_period;
-  const wind = a.wind_speed_mph_max != null && a.wind_speed_mph_max > 0
-    ? `${a.wind_direction} wind ${a.wind_speed_mph_max} mph`
-    : 'calm';
-  const finish = b ? `, ${Math.round(b.temperature_f)}°F finish` : '';
-  const note = w.source === 'historical'
-    ? ' (last year actuals — forecast not yet available)'
-    : '';
-  return `${Math.round(a.temperature_f)}°F start${finish}, ${wind}, ${a.short_forecast.toLowerCase()}${note}`;
-}
-
-/** Pick a contextual title based on time-to-race. The brief content
- *  itself stays in the same Coach voice — only the framing label
- *  changes so a 30-days-out reading doesn't say "Race-morning brief". */
-function briefTitleFor(daysToRace: number): { sub: string; lbl: string } {
-  if (daysToRace <= 0) return { sub: 'Race-morning brief',  lbl: 'Coach says:' };
-  if (daysToRace <= 7)  return { sub: 'Race-week brief',     lbl: 'Coach says:' };
-  if (daysToRace <= 21) return { sub: 'Approach brief',      lbl: 'Coach says:' };
-  return { sub: 'Course brief', lbl: 'Coach says:' };
-}
-
-function BriefTile({ race }: { race: SavedRace }) {
+/* ── Adaptive brief hook ─────────────────────────────────────
+   Single source of truth for the Coach's race brief. Pulls weather
+   (NOAA forecast within 7 days, Open-Meteo last-year actuals
+   otherwise), feeds it into /api/brief, returns the result. Both
+   the in-poster CoachBriefBlock and any debug surface share this
+   hook so a single page render fires exactly one /api/brief call. */
+function useAdaptiveBrief(race: SavedRace): {
+  brief: BriefResponse | null;
+  weather: WeatherSummary | null;
+  loading: boolean;
+  err: string | null;
+  days: number;
+} {
   const [brief, setBrief] = useState<BriefResponse | null>(null);
+  const [weather, setWeather] = useState<WeatherSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [weather, setWeather] = useState<WeatherSummary | null>(null);
-
   const days = daysUntil(race.meta.date);
-  const titleParts = briefTitleFor(days);
 
-  // Auto-fetch on mount: pull weather (same logic as WeatherTile —
-  // forecast within 7 days, last year otherwise), then hand the
-  // resulting forecast string to /api/brief.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Pull the race's start coords from its GPX trace, then hit
-      // the same /api/weather route as WeatherTile (forecast within
-      // 7 days, last year otherwise). The forecast string feeds the
-      // /api/brief prompt so the Coach reads real numbers — even 30
-      // days out, when NOAA hasn't published a forecast yet.
       let weatherText = 'no specific forecast — assume seasonal norms';
       let weatherSummary: WeatherSummary | null = null;
       try {
@@ -1508,35 +1492,97 @@ function BriefTile({ race }: { race: SavedRace }) {
       }
     })();
     return () => { cancelled = true; };
-    // race.slug is stable per page; re-run on race id change.
+    // race.slug is the page-level identity key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [race.slug]);
 
+  return { brief, weather, loading, err, days };
+}
+
+/** Build a forecast string from a WeatherSummary the same way the
+ *  user would have pasted one. Goes into the brief prompt so the
+ *  Coach has real numbers to work with even when we're 30 days out. */
+function weatherSummaryToText(w: WeatherSummary | null): string {
+  if (!w) return 'no specific forecast — assume seasonal norms';
+  const a = w.start_period;
+  const b = w.second_period;
+  const wind = a.wind_speed_mph_max != null && a.wind_speed_mph_max > 0
+    ? `${a.wind_direction} wind ${a.wind_speed_mph_max} mph`
+    : 'calm';
+  const finish = b ? `, ${Math.round(b.temperature_f)}°F finish` : '';
+  const note = w.source === 'historical'
+    ? ' (last year actuals — forecast not yet available)'
+    : '';
+  return `${Math.round(a.temperature_f)}°F start${finish}, ${wind}, ${a.short_forecast.toLowerCase()}${note}`;
+}
+
+/** Pick a contextual title based on time-to-race. The brief content
+ *  itself stays in the same Coach voice — only the framing label
+ *  changes so a 30-days-out reading doesn't say "Race-morning brief". */
+function briefTitleFor(daysToRace: number): { sub: string; lbl: string } {
+  if (daysToRace <= 0) return { sub: 'Race-morning brief',  lbl: 'Coach says:' };
+  if (daysToRace <= 7)  return { sub: 'Race-week brief',     lbl: 'Coach says:' };
+  if (daysToRace <= 21) return { sub: 'Approach brief',      lbl: 'Coach says:' };
+  return { sub: 'Course brief', lbl: 'Coach says:' };
+}
+
+/* ── In-poster Coach brief block ─────────────────────────────
+   Renders the adaptive Coach brief inside the PosterCard's
+   description column, beneath the static course narrative. Styled
+   to match the poster theme (dark background, white-mode typography)
+   rather than the standard app tile look. The runner gets the brief
+   automatically — no buttons, no textarea — and it adapts as race
+   approaches via daysUntil-driven titles. */
+function CoachBriefBlock({ race }: { race: SavedRace }) {
+  const { brief, weather, loading, err, days } = useAdaptiveBrief(race);
+  const titleParts = briefTitleFor(days);
+  const showLastYrChip = weather?.source === 'historical' && !brief?.stub;
+
   return (
-    <div className="tile">
-      <div className="tile-h">
-        <div>
-          <div className="tile-sub">{titleParts.sub}</div>
-          <div className="tile-lbl">{loading ? 'Coach is reading the course…' : brief ? titleParts.lbl : 'Coach unavailable'}</div>
-        </div>
-        {brief?.stub && <span className="chip">FALLBACK · NO API KEY</span>}
-        {weather?.source === 'historical' && !brief?.stub && (
-          <span className="chip" style={{
+    <div style={{
+      marginTop: 18,
+      paddingTop: 16,
+      borderTop: '1px solid rgba(255,255,255,.1)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.6px', textTransform: 'uppercase',
+          color: 'var(--race)',
+        }}>{titleParts.sub}</span>
+        {brief?.stub && (
+          <span style={{
             fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
-            padding: '3px 7px', borderRadius: 3,
-            background: 'rgba(150,150,150,.18)', color: 'var(--color-t2)',
-          }}>USING LAST YR WX</span>
+            padding: '2px 7px', borderRadius: 3,
+            background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.55)',
+          }}>FALLBACK · NO API KEY</span>
+        )}
+        {showLastYrChip && (
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+            padding: '2px 7px', borderRadius: 3,
+            background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.55)',
+          }}>USING LAST YR WEATHER</span>
         )}
       </div>
-      {brief && (
-        <div style={{ padding: 14, background: 'var(--color-l2)', borderRadius: 8, fontSize: 13.5, color: 'var(--color-t0)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-          {brief.narrative}
-        </div>
+      {loading && (
+        <p className="pc-para" style={{ color: 'rgba(255,255,255,.45)', fontStyle: 'italic' }}>
+          Coach is reading the course…
+        </p>
       )}
-      {err && (
-        <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 8, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
-          {err}
-        </div>
+      {brief && !loading && (
+        <p className="pc-para" style={{
+          color: 'rgba(255,255,255,.85)', whiteSpace: 'pre-wrap',
+          borderLeft: '2px solid var(--race)', paddingLeft: 14,
+        }}>
+          {brief.narrative}
+        </p>
+      )}
+      {err && !loading && (
+        <p className="pc-para" style={{ color: 'rgba(252,77,84,.85)' }}>
+          Coach unavailable: {err}
+        </p>
       )}
     </div>
   );
