@@ -25,7 +25,11 @@
 import {
   VDOT_LOOKUP_TABLE,
   PACE_ZONE_WIDTH,
+  VDOT_FRESHNESS_WINDOW,
+  vdotTierFor,
+  vdotFreshnessFor,
   type DanielsPace,
+  type VdotTier,
 } from '../coach/doctrine';
 import type { CoachState } from './coach-state';
 import type { RunWorkoutType } from './coach-workouts';
@@ -207,16 +211,21 @@ interface RecentRace {
   name: string;
 }
 
-/** Pick the strongest recent race for VDOT inference. Heuristics:
- *  - state.races.recent is already filtered to the last 28 days
- *    (well within Daniels' ≤8w currency window).
+/** Pick the strongest race for VDOT inference. Heuristics:
+ *  - state.races.racesForVdot is filtered to the last 56 days (the
+ *    Daniels 8-week freshness window — VDOT_FRESHNESS_WINDOW).
  *  - Standard distance (within 5% of canonical Mile/5K/10K/15K/HM/M)
  *  - Highest derived VDOT wins. (Strongest race, not most recent —
- *    a runner's true fitness is the best of their recent results.)
+ *    a 6-week-old PR represents better fitness than a heat-affected
+ *    race last weekend.)
+ *  Falls back to state.races.recent (28-day window) if a caller
+ *  hasn't populated racesForVdot — preserves backward compatibility
+ *  with older fixtures and tests.
  *  Returns null when no usable race is available. */
 function pickStrongestRecentRace(state: CoachState): RecentRace | null {
   let best: { race: RecentRace; vdot: number } | null = null;
-  for (const r of state.races.recent) {
+  const pool = state.races.racesForVdot ?? state.races.recent;
+  for (const r of pool) {
     if (r.finishS == null) continue;                  // no time logged
     if (!distanceKeyForMi(r.distanceMi)) continue;    // non-canonical
     const vdot = vdotFromRace(r.distanceMi, r.finishS);
@@ -266,6 +275,19 @@ export function paceTargetFromVdot(
 export interface VdotSnapshot {
   /** Current VDOT (rounded to 1 decimal). */
   vdot: number;
+  /** Tier classification — Novice / Intermediate / Advanced / Elite.
+   *  Doctrine source: VDOT_TIERS (Research/01). */
+  tier: VdotTier;
+  /** Display-friendly tier label. */
+  tierLabel: string;
+  /** Freshness state of this VDOT signal:
+   *    fresh        ≤4 weeks since test — anchor pace prescription on it
+   *    stale_soon   4-8 weeks — still usable, prompt next test
+   *    stale        8-12 weeks — use as floor only, prompt fresh test
+   *    expired      >12 weeks — don't anchor pace; field-test required */
+  freshness: 'fresh' | 'stale_soon' | 'stale' | 'expired';
+  /** Human-readable freshness explanation pulled from doctrine. */
+  freshnessNote: string;
   /** The race the VDOT was inferred from. */
   source: {
     name: string;
@@ -280,12 +302,13 @@ export interface VdotSnapshot {
 }
 
 /** Bundle the VDOT picture for the dashboard tile: source race +
- *  current VDOT + all 5 pace bands. Returns null when no usable
- *  recent race is logged. */
+ *  current VDOT + tier + freshness + all 5 pace bands. Returns null
+ *  when no usable race is logged in the freshness window. */
 export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
-  // Walk recent races, pick the strongest by VDOT, return its details.
-  let best: { race: typeof state.races.recent[number]; vdot: number } | null = null;
-  for (const r of state.races.recent) {
+  // Walk the wider 56-day window, pick the strongest by VDOT.
+  const pool = state.races.racesForVdot ?? state.races.recent;
+  let best: { race: typeof pool[number]; vdot: number } | null = null;
+  for (const r of pool) {
     if (r.finishS == null) continue;
     if (!distanceKeyForMi(r.distanceMi)) continue;
     const v = vdotFromRace(r.distanceMi, r.finishS);
@@ -297,8 +320,16 @@ export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
   const paces = pacesFromVdot(best.vdot);
   if (!paces) return null;
 
+  const tier = vdotTierFor(best.vdot);
+  const freshness = vdotFreshnessFor(best.race.daysAgo);
+  const freshnessNote = VDOT_FRESHNESS_WINDOW.value.notes[freshness];
+
   return {
     vdot: best.vdot,
+    tier: tier.tier,
+    tierLabel: tier.label,
+    freshness,
+    freshnessNote,
     source: {
       name: best.race.name,
       date: best.race.date,
@@ -309,4 +340,13 @@ export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
     },
     paces,
   };
+}
+
+/** Whether the engine should prompt for a deliberate VDOT test.
+ *  True when there's no recent race at all, OR the freshest race
+ *  is stale/expired. Used by the workout planner + dashboard tile. */
+export function shouldPromptVdotTest(state: CoachState): boolean {
+  const snap = vdotSnapshot(state);
+  if (!snap) return true;                              // nothing to anchor
+  return snap.freshness === 'stale' || snap.freshness === 'expired';
 }

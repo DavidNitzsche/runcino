@@ -8,7 +8,7 @@
  * second look.
  */
 import { describe, it, expect } from 'vitest';
-import { vdotFromRace, pacesFromVdot, paceTargetFromVdot, vdotSnapshot } from '../vdot';
+import { vdotFromRace, pacesFromVdot, paceTargetFromVdot, vdotSnapshot, shouldPromptVdotTest } from '../vdot';
 import type { CoachState } from '../coach-state';
 
 const HM_DISTANCE_MI = 13.26;       // Strava-reported, slightly long course
@@ -137,8 +137,56 @@ describe('VDOT sanity — AFC half marathon 2025 actual', () => {
 
   it('vdotSnapshot returns null without race data', () => {
     const state = {
-      races: { recent: [], nextA: null, nextAny: null, inWindow: [], raceCount30d: 0 },
+      races: { recent: [], racesForVdot: [], nextA: null, nextAny: null, inWindow: [], raceCount30d: 0 },
     } as unknown as CoachState;
     expect(vdotSnapshot(state)).toBeNull();
+  });
+});
+
+describe('VDOT tiers + freshness', () => {
+  function buildStateWith(daysAgo: number): CoachState {
+    return {
+      races: {
+        racesForVdot: [
+          {
+            slug: 'afc',
+            activityId: null,
+            name: 'AFC Half',
+            date: '2025-08-31',
+            distanceMi: HM_DISTANCE_MI,
+            finishS: HM_TIME_S,
+            daysAgo,
+          },
+        ],
+        recent: [],
+        nextA: null, nextAny: null, inWindow: [], raceCount30d: 0,
+      },
+    } as unknown as CoachState;
+  }
+
+  it('tags an AFC-strength runner as Intermediate', () => {
+    // VDOT 47.1 → "intermediate" tier (40-50 range).
+    const snap = vdotSnapshot(buildStateWith(14));
+    expect(snap).not.toBeNull();
+    expect(snap!.tier).toBe('intermediate');
+    expect(snap!.tierLabel).toBe('Intermediate');
+  });
+
+  it('reports fresh signal for race ≤28d ago', () => {
+    expect(vdotSnapshot(buildStateWith(14))!.freshness).toBe('fresh');
+    expect(vdotSnapshot(buildStateWith(28))!.freshness).toBe('fresh');
+  });
+
+  it('reports stale_soon for 29-56d', () => {
+    expect(vdotSnapshot(buildStateWith(35))!.freshness).toBe('stale_soon');
+    expect(vdotSnapshot(buildStateWith(56))!.freshness).toBe('stale_soon');
+  });
+
+  it('shouldPromptVdotTest is false for fresh, true for empty', () => {
+    expect(shouldPromptVdotTest(buildStateWith(14))).toBe(false);
+    const empty = {
+      races: { racesForVdot: [], recent: [], nextA: null, nextAny: null, inWindow: [], raceCount30d: 0 },
+    } as unknown as CoachState;
+    expect(shouldPromptVdotTest(empty)).toBe(true);
   });
 });

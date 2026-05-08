@@ -415,6 +415,162 @@ export const PACE_ZONE_WIDTH: Cited<Record<DanielsPace, {
   ],
 };
 
+// ── VDOT context: tiers, freshness, testing cadence ────────────────
+
+/** VDOT tier classification — the consensus interpretation used to
+ *  give a runner's VDOT score *meaning* relative to the population.
+ *
+ *  These tier labels (Novice / Intermediate / Advanced / Sub-elite)
+ *  are interpretive — they do NOT correspond 1:1 to Daniels' numeric
+ *  performance levels (1-10) but track the same monotone scale and
+ *  are how VDOT is most commonly communicated to recreational runners.
+ *
+ *  Boundaries are conventional, not bright lines. A VDOT 39.8 and a
+ *  VDOT 40.2 represent essentially identical fitness; the tier label
+ *  is a guide to context, not a fitness verdict. */
+export type VdotTier = 'novice' | 'intermediate' | 'advanced' | 'elite';
+
+export const VDOT_TIERS: Cited<Array<{
+  tier: VdotTier;
+  /** Inclusive lower bound. */
+  lo: number;
+  /** Exclusive upper bound. (Last tier uses Infinity.) */
+  hi: number;
+  /** Display label for UI. */
+  label: string;
+  /** 5K race-time benchmark for this tier (informational). */
+  fiveKBenchmark: string;
+  /** Marathon benchmark (informational). */
+  marathonBenchmark: string;
+}>> = {
+  value: [
+    { tier: 'novice',       lo: 0,  hi: 40, label: 'Novice',         fiveKBenchmark: '~30:00+ 5K',     marathonBenchmark: '~4:30+ marathon' },
+    { tier: 'intermediate', lo: 40, hi: 50, label: 'Intermediate',   fiveKBenchmark: '~21:00–30:00 5K',marathonBenchmark: '~3:10–4:30 marathon' },
+    { tier: 'advanced',     lo: 50, hi: 60, label: 'Advanced',       fiveKBenchmark: '~17:00–21:00 5K',marathonBenchmark: '~2:35–3:10 marathon' },
+    { tier: 'elite',        lo: 60, hi: Infinity, label: 'Sub-elite/Elite', fiveKBenchmark: 'sub-17:00 5K', marathonBenchmark: 'sub-2:35 marathon' },
+  ],
+  note: 'Consensus interpretation — Daniels publishes a numeric performance-level scale (1-10) that tracks the same monotone scale but uses different vocabulary. Age and sex shift relative competitiveness substantially; age/sex grading is documented separately.',
+  citations: [
+    cite('VDOT context — tiers', 'Consensus 4-tier interpretation of the VDOT 30-85 range, keyed to 5K race-time benchmarks. Used by VDOT calculators and training-software UIs across the industry.', 'research', '01'),
+  ],
+};
+
+/** Map a VDOT score to its tier label. Returns the lowest tier when
+ *  the value sits below the table (shouldn't happen — all our table
+ *  rows are VDOT ≥ 30 — but defensive). */
+export function vdotTierFor(vdot: number): typeof VDOT_TIERS.value[number] {
+  return VDOT_TIERS.value.find(t => vdot >= t.lo && vdot < t.hi) ?? VDOT_TIERS.value[0];
+}
+
+/** How long a VDOT signal stays valid for current-fitness use. */
+export const VDOT_FRESHNESS_WINDOW: Cited<{
+  freshDays: number;
+  staleSoonDays: number;
+  expiredDays: number;
+  notes: Record<'fresh' | 'stale_soon' | 'stale' | 'expired', string>;
+}> = {
+  value: {
+    freshDays: 28,           // 0-4w: fresh
+    staleSoonDays: 56,       // 4-8w: still usable, prompt next test
+    expiredDays: 84,         // 8-12w: stale, use only as floor
+    notes: {
+      fresh:      'Fresh signal. Anchor pace prescription on this VDOT.',
+      stale_soon: 'Slightly stale. Still usable, but next race or test should refresh.',
+      stale:      'Stale. Runner\'s fitness has likely moved meaningfully (build, taper, or layoff). Use only as a floor; prompt for a fresh test.',
+      expired:    'Expired. Don\'t anchor pace prescription on this VDOT. Field-test or run a 5K race to refresh.',
+    },
+  },
+  note: 'Daniels recommends reassessing every 4-6 weeks. The 56-day operative window is the inclusive limit; beyond it the engine should prompt for a deliberate test rather than continue prescribing on stale data.',
+  citations: [
+    cite('VDOT context — freshness', 'Time-since-race validity windows for VDOT as a current-fitness signal. Within 8 weeks (≤56 days) the strongest race result is the canonical input; beyond that, prompt for a fresh test.', 'research', '01'),
+  ],
+};
+
+/** Classify the staleness of a VDOT score by days-since-test. */
+export function vdotFreshnessFor(daysSinceTest: number): 'fresh' | 'stale_soon' | 'stale' | 'expired' {
+  const w = VDOT_FRESHNESS_WINDOW.value;
+  if (daysSinceTest <= w.freshDays)      return 'fresh';
+  if (daysSinceTest <= w.staleSoonDays)  return 'stale_soon';
+  if (daysSinceTest <= w.expiredDays)    return 'stale';
+  return 'expired';
+}
+
+/** Field-test protocols the Coach can prescribe when the runner has
+ *  no recent race or VDOT is stale/expired. Ranked by accuracy + UX
+ *  cost; the engine should typically pick the first feasible one. */
+export const VDOT_FIELD_TESTS: Cited<Array<{
+  protocol: '5k_tt' | '30min_tt' | '3k_5k_combo' | 'cooper';
+  label: string;
+  description: string;
+  durationMin: number;
+  accuracyNote: string;
+  /** Daniels correction for solo (non-race) effort. */
+  vdotCorrection: string | null;
+}>> = {
+  value: [
+    {
+      protocol: '5k_tt',
+      label: '5K time trial',
+      description: 'Run all-out for 5K on a flat course or track, with a 15-minute warm-up. Treat as a race — go to the well.',
+      durationMin: 35,         // warm-up + 20-25 min effort + cool-down
+      accuracyNote: 'Most accurate field protocol. Solo effort under-reads VDOT by ~1 point vs a real race.',
+      vdotCorrection: '+1 VDOT for solo effort',
+    },
+    {
+      protocol: '30min_tt',
+      label: '30-minute time trial',
+      description: 'After 15-min warm-up, run as far as possible in 30 minutes (flat course or track). Average pace of last 20 minutes ≈ LT pace.',
+      durationMin: 50,
+      accuracyNote: 'Surfaces threshold pace directly; VDOT can be back-derived. Less psychologically demanding than a 5K all-out.',
+      vdotCorrection: null,
+    },
+    {
+      protocol: '3k_5k_combo',
+      label: '3K + 5K combined',
+      description: 'Two time trials on separate days. Take the better-fit VDOT.',
+      durationMin: 0,          // multi-day; not a single workout
+      accuracyNote: 'Higher confidence than a single TT. Use when the runner wants a robust read.',
+      vdotCorrection: '+1 VDOT for solo effort',
+    },
+    {
+      protocol: 'cooper',
+      label: 'Cooper test (12-min run)',
+      description: '12 minutes all-out on a flat course or track. Distance covered → coarse VO2max estimate.',
+      durationMin: 25,
+      accuracyNote: 'Coarse and less accurate than VDOT. Use only when the above aren\'t feasible.',
+      vdotCorrection: null,
+    },
+  ],
+  note: 'When the engine needs to plan a deliberate test, prefer the 5K TT for runners who can handle the all-out demand; default to the 30-minute TT otherwise. The test replaces a quality session, not added on top.',
+  citations: [
+    cite('VDOT context — field tests', 'Field-test protocols when no recent race exists. Ranked by accuracy: 5K TT > 30-min TT > 3K+5K combo > Cooper.', 'research', '01'),
+  ],
+};
+
+/** When the Coach should prompt for a deliberate VDOT test, even
+ *  without a stale signal — calendar-driven cadence + the
+ *  recalibration triggers from Research/01 §"Triggers to retest". */
+export const VDOT_TEST_TRIGGERS: Cited<{
+  calendarWeeks: number;
+  triggers: Array<{ trigger: string; estimatedDelta: string; followUp: string }>;
+}> = {
+  value: {
+    calendarWeeks: 6,    // ≥6 weeks since last test/race → recommend a test
+    triggers: [
+      { trigger: 'Tempo runs feel notably easier at the same target pace', estimatedDelta: '+1 VDOT', followUp: 'Field-test within 2 weeks to confirm' },
+      { trigger: 'Last race beat predicted time by >30 sec/mi',            estimatedDelta: '+2 to +3 VDOT', followUp: 'Field-test to confirm magnitude' },
+      { trigger: 'HR is 5+ bpm lower at the same workout pace, sustained ≥2 weeks', estimatedDelta: '+1 VDOT', followUp: 'Field-test' },
+      { trigger: 'Tempo runs unexpectedly hard for ≥2 sessions',           estimatedDelta: '-1 to -2 VDOT', followUp: 'Check overtraining markers; field-test' },
+      { trigger: 'Returning from layoff ≥2 weeks',                         estimatedDelta: '-3 to -5 VDOT', followUp: 'Rebuild then field-test' },
+      { trigger: 'Returning from layoff ≥6 weeks',                         estimatedDelta: '-5 to -8 VDOT', followUp: 'Rebuild from base then field-test' },
+    ],
+  },
+  note: 'Calendar trigger plus subjective/HR cues. The engine drives test scheduling off these — when one fires, plan a 5K TT as the upcoming quality day.',
+  citations: [
+    cite('VDOT context — testing cadence', '4-6 week calendar cadence for deliberate testing, plus subjective and HR-based triggers for off-cycle retests.', 'research', '01'),
+  ],
+};
+
 /** Situations that change the pace-prescription style. */
 export const PACE_LOCK_BY_SITUATION: Cited<Array<{
   situation: string;

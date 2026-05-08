@@ -35,8 +35,16 @@ export interface CoachState {
     nextAny: NextRace | null;
     /** Every race in the future within a distance-aware build window from today. */
     inWindow: NextRace[];
-    /** Races finished in the last 28 days, newest first. */
+    /** Races finished in the last 28 days, newest first. Sized for
+     *  heavy-block detection and recovery-window math, NOT for VDOT
+     *  (use racesForVdot for that — it has the wider 56-day window
+     *  Daniels recommends for current-fitness signals). */
     recent: PastRace[];
+    /** Races finished in the last 56 days (Daniels' 8-week freshness
+     *  window for VDOT inputs). Newest first. The VDOT pipeline
+     *  walks this and picks the strongest by derived VDOT. Doctrine:
+     *  VDOT_FRESHNESS_WINDOW (Research/01). */
+    racesForVdot: PastRace[];
     /** Number of races (any priority) finished in the last 30 days. Heavy-block signal. */
     raceCount30d: number;
   };
@@ -195,6 +203,31 @@ export async function gatherCoachState(): Promise<CoachState> {
     }));
   const recent = [...recentSaved, ...recentStrava].sort((a, b) => b.date.localeCompare(a.date));
 
+  // VDOT freshness window: 56 days (Daniels' 8-week rule, doctrine
+  // VDOT_FRESHNESS_WINDOW). Walks the same saved-races + Strava-flagged
+  // sources as `recent`, just on a wider cutoff. Kept separate from
+  // `recent` because the 28d window is right for heavy-block detection
+  // but too tight for current-fitness inference.
+  const cutoff56 = isoDateOffset(today, -56);
+  const vdotSaved = savedRaces
+    .filter(r => r.meta.date >= cutoff56 && r.meta.date <= todayISO && r.actualResult)
+    .map<PastRace>(r => ({
+      slug: r.slug, activityId: r.actualResult?.stravaActivityId ?? null,
+      name: r.meta.name, date: r.meta.date, distanceMi: r.meta.distanceMi,
+      finishS: r.actualResult?.finishS ?? null,
+      daysAgo: daysBetween(r.meta.date, todayISO),
+    }));
+  const vdotSavedActIds = new Set(vdotSaved.map(r => r.activityId).filter((id): id is number => id != null));
+  const vdotStrava = activities
+    .filter(a => a.date >= cutoff56 && a.date <= todayISO && isProbablyRace(a) && !vdotSavedActIds.has(a.id))
+    .map<PastRace>(a => ({
+      slug: null, activityId: a.id,
+      name: a.name, date: a.date, distanceMi: a.distanceMi,
+      finishS: a.movingTimeS,
+      daysAgo: daysBetween(a.date, todayISO),
+    }));
+  const racesForVdot = [...vdotSaved, ...vdotStrava].sort((a, b) => b.date.localeCompare(a.date));
+
   const cutoff30 = isoDateOffset(today, -30);
   const raceCount30d = activities.filter(a => a.date >= cutoff30 && a.date <= todayISO && isProbablyRace(a)).length
     + savedRaces.filter(r => r.meta.date >= cutoff30 && r.meta.date <= todayISO && r.actualResult).length;
@@ -269,7 +302,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   return {
     now: todayISO,
     races: {
-      nextA, nextAny, inWindow, recent, raceCount30d,
+      nextA, nextAny, inWindow, recent, racesForVdot, raceCount30d,
     },
     volume: {
       last7Mi, last28Mi, last7Days,
