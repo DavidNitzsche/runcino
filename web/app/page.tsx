@@ -495,14 +495,30 @@ interface CoachTodayApiResponse {
 }
 const CoachTodayContext = createContext<CoachTodayApiResponse | null>(null);
 function CoachTodayProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<CoachTodayApiResponse | null>(null);
+  // Stale-while-revalidate: render from localStorage cache instantly,
+  // re-fetch in background. Layered on top of the server-side
+  // coach_today_cache so the client never blocks on a network call
+  // when there's a recent local cache.
+  const [data, setData] = useState<CoachTodayApiResponse | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem('runcino:coach-today-cache:v1');
+      if (!raw) return null;
+      const entry = JSON.parse(raw) as { payload: CoachTodayApiResponse; storedAt: number };
+      // 6h TTL — fresher than that, render immediately.
+      if (Date.now() - entry.storedAt > 6 * 60 * 60 * 1000) return null;
+      return entry.payload;
+    } catch { return null; }
+  });
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as CoachTodayApiResponse;
-        if (!cancelled) setData(json);
+        const { fresh } = await import('../lib/coach-today-client-cache')
+          .then(m => ({ fresh: m.readCoachTodayWithRevalidate<CoachTodayApiResponse>().fresh }));
+        const json = await fresh;
+        if (!cancelled && json) setData(json);
       } catch (e) {
         if (!cancelled) setData({ ok: false, error: e instanceof Error ? e.message : String(e) });
       }

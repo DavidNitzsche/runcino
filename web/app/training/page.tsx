@@ -99,17 +99,29 @@ const TYPE_LABEL: Record<string, string> = {
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [races, setRaces] = useState<SavedRace[] | null>(null);
-  const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(null);
+  // Stale-while-revalidate for coach data — render localStorage cache
+  // instantly on revisit, refresh in background.
+  const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem('runcino:coach-today-cache:v1');
+      if (!raw) return null;
+      const entry = JSON.parse(raw) as { payload: CoachTodayResponse; storedAt: number };
+      if (Date.now() - entry.storedAt > 6 * 60 * 60 * 1000) return null;
+      return entry.payload;
+    } catch { return null; }
+  });
   const { activities } = useActivities();
 
   useEffect(() => {
     let cancelled = false;
     setNow(new Date());
     listRaces().then(rs => { if (!cancelled) setRaces(rs); });
-    fetch('/api/coach/today')
-      .then(r => r.json())
-      .then((data: CoachTodayResponse) => { if (!cancelled) setCoachToday(data); })
-      .catch(() => { /* non-fatal — briefing shows the unavailable state */ });
+    import('../../lib/coach-today-client-cache').then(({ readCoachTodayWithRevalidate }) => {
+      readCoachTodayWithRevalidate<CoachTodayResponse>().fresh
+        .then(data => { if (!cancelled && data) setCoachToday(data); })
+        .catch(() => { /* non-fatal */ });
+    });
     return () => { cancelled = true; };
   }, []);
 
