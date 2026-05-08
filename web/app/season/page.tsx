@@ -402,9 +402,6 @@ function SeasonStatsCard({ aCount, bCount, cCount, marathonCount, halfCount }: {
       <StatRow label="C-races" value={cCount} target="" />
       <StatRow label="Marathons" value={marathonCount} target="" />
       <StatRow label="Half-marathons" value={halfCount} target="" />
-      <div style={{ marginTop: 8, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
-        RESEARCH/00b · MULTI_RACE_CADENCE
-      </div>
     </div>
   );
 }
