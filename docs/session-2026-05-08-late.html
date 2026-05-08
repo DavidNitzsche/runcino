@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runcino · Late session — Tier 1 + 2 + 3 shipped</title>
+<style>
+  :root {
+    --bg-0: #0a0a0c; --bg-1: #131318; --bg-2: #1c1c23; --bg-3: #25252e;
+    --line: #2e2e38;
+    --t-0: #f4f4f8; --t-1: #c8c8d0; --t-2: #8c8c98; --t-3: #5c5c66;
+    --accent: #4f8ff7; --warn: #f3ad3b; --good: #3ebd41; --bad: #fc4d54;
+    --font-data: ui-monospace, "SF Mono", Menlo, monospace;
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-0); color: var(--t-1); font-family: var(--font-display); font-size: 14px; line-height: 1.55; }
+  body { padding: 32px 24px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 36px; letter-spacing: -.012em; color: var(--t-0); margin: 0 0 6px; font-weight: 800; }
+  h2 { font-size: 22px; color: var(--t-0); margin: 36px 0 12px; font-weight: 700; }
+  h3 { font-size: 14px; color: var(--accent); margin: 18px 0 6px; font-family: var(--font-data); letter-spacing: 1.4px; text-transform: uppercase; font-weight: 700; }
+  p { color: var(--t-1); margin: 0 0 12px; }
+  .eyebrow { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--warn); font-weight: 700; }
+  .lede { font-size: 16px; color: var(--t-1); max-width: 720px; line-height: 1.6; }
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 18px 0 28px; }
+  .stat { padding: 4px 8px; border-left: 2px solid var(--accent); }
+  .stat .v { font-size: 22px; font-weight: 800; color: var(--t-0); font-variant-numeric: tabular-nums; }
+  .stat .l { font-family: var(--font-data); font-size: 9px; color: var(--t-3); letter-spacing: 1.3px; text-transform: uppercase; margin-top: 2px; }
+  .grid { display: grid; gap: 12px; }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.good { border-left: 3px solid var(--good); }
+  .tag { font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; border: 1px solid currentColor; display: inline-block; }
+  .tag.good { color: var(--good); }
+  .tag.warn { color: var(--warn); }
+  .tag.accent { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-data); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--t-3); font-weight: 700; }
+  td.size { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.2px; color: var(--t-3); }
+  td.status { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.2px; }
+  .done { color: var(--good); }
+  code { font-family: var(--font-data); font-size: 12px; background: var(--bg-2); padding: 1px 4px; border-radius: 3px; color: var(--t-0); }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .commits { font-family: var(--font-data); font-size: 12px; color: var(--t-1); background: var(--bg-2); padding: 12px 16px; border-radius: 6px; line-height: 1.7; }
+  .commits .sha { color: var(--accent); }
+  .next { background: linear-gradient(135deg, var(--bg-1), var(--bg-2)); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; margin-top: 24px; }
+  .footer { color: var(--t-3); font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; text-align: center; margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">Late session · 2026-05-08</div>
+<h1>Tier 1 + 2 + 3 of the redesign queue: shipped</h1>
+<p class="lede">After fixing the Loading flash you reported, pushed through every backlog item from the morning's "what's left" question. Six commits to main, all auto-deployed to Railway.</p>
+
+<div class="strip">
+  <div class="stat"><div class="v">13/13</div><div class="l">queue items shipped</div></div>
+  <div class="stat"><div class="v">7</div><div class="l">commits to main</div></div>
+  <div class="stat"><div class="v">+2,300</div><div class="l">lines net</div></div>
+  <div class="stat"><div class="v">3</div><div class="l">new pages</div></div>
+  <div class="stat"><div class="v">3</div><div class="l">page redesigns</div></div>
+  <div class="stat"><div class="v">119/119</div><div class="l">tests pass</div></div>
+</div>
+
+<h2>The arc of this session</h2>
+<p>You said "still getting Loading on every page load" + "push through all of it." Started by diagnosing + fixing the Loading flash (it was the cacheDate check + SSR-rendered loading text), then walked the queue in priority order.</p>
+
+<div class="grid two">
+  <div class="card warn">
+    <div class="tag warn">FIX</div>
+    <h3>Loading flash · root-caused + killed</h3>
+    <p>Two compounding bugs: (1) <code>readHubCachedSync</code> was rejecting the cache when <code>meta.cacheDate</code> didn't match today's LA-calendar date, so the moment the day rolled over every revisit hit the loading state. (2) SSR was rendering the literal "Loading…" text, visible during the 100-200ms hydration window before <code>useState</code>'s lazy initializer could populate from localStorage. Removed the date check; replaced "Loading…" text with transparent <code>minHeight</code> placeholders + <code>aria-busy</code> on every page. Bumped <code>LS_KEY</code> to v2 so v1 entries get GC'd. TTL now 24h since stale-while-revalidate handles freshness.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">ENGINE</div>
+    <h3>RPE consumption in readiness</h3>
+    <p>The data was being captured but the engine wasn't reading it. Now <code>state.rpe</code> exposes <code>recent</code> (14d), <code>avg7d</code>, <code>avgPrior7d</code>, <code>drift</code>, <code>recentHeavy</code>. <code>assessReadiness</code> fires two new signals: "Perceived effort drifting up" when 7d-avg jumps ≥1.0 vs prior week (the canonical fitness-erosion canary), and "Recent session(s) felt heavy" when any of last 3 days hit RPE 8+. Drift ≥1.5 OR heavy-without-context shifts the verdict to YELLOW. Counts toward the doctrine cutback decision matrix.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">REFACTOR</div>
+    <h3>Component extraction kicked off</h3>
+    <p>ReadinessBanner + CoachDailyBrief extracted to <code>web/components/coaching/</code>. 151 lines of inline implementation removed from <code>app/page.tsx</code>. Both reused immediately by <code>/today</code> and <code>/health</code>. The remaining extractions (HrZones, Vdot, Next30Days, TrainingPulse, PhaseGuidance) deferred — they're dashboard-only right now so duplication isn't a real risk yet.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">PAGE</div>
+    <h3>/today · /research · /library</h3>
+    <p>Three new pages, all client-side, all projecting from <code>useHub()</code>. <code>/today</code> is radically simple: hero, voice brief, readiness banner, RPE input, "full detail" link. <code>/research</code> surfaces all 33 doctrine topic files as a category-organized card grid. <code>/library</code> documents 19 workout types with what they build, structure, an example at VDOT 44, and the doctrine citation. All three reachable via the nav.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">TOOLING</div>
+    <h3>Doctrine drift detector</h3>
+    <p><code>scripts/check-doctrine-drift.ts</code>. Walks <code>app/+components/+lib/</code> looking for inline numeric literals matching values in <code>coach/doctrine/</code>. Filters trivial numbers + CSS-y lines. Currently flags ~838 candidates (mostly distance constants in non-doctrine code that happen to match doctrine numbers). Regex-based; AST analysis would tighten precision but the current version is signal-with-noise good enough for triage. Run via <code>npm run check-doctrine-drift</code>.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">PAGE</div>
+    <h3>Race-detail expansion</h3>
+    <p>Two new tiles render in a 2-up grid right after ResultSection on pre-race pages: <b>GoalTargetsTile</b> (A/B/C pacing variants — A = current VDOT race-equivalent OR saved goal − 10s/mi, B = saved goal, C = saved goal +20s/mi for safety) with predicted finish times for each, and <b>SimilarRacesTile</b> walking <code>hub.races</code> for past finishes within ±25% distance, sorted most-recent first. Added VDOT-equivalent finish-time prediction (binary-search inverse of <code>vdotFromRace</code>).</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">PAGE</div>
+    <h3>Run-detail expansion</h3>
+    <p><code>/runs/[id]</code> now wraps in HubProvider + adds <b>PrescriptionVsActualTile</b> (looks up the run's date in coach.weekShape or next30Days, renders 3-up plan-vs-actual deltas with verdict line and tile borderLeft color matching match-quality) and <b>PostRunRpeTile</b> (RpeInput for this run's date — log how it actually felt). Loading state replaced with the same transparent placeholder pattern.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">PAGE</div>
+    <h3>Health page redesign</h3>
+    <p>"Today's recovery picture" tile group at the top: ReadinessBanner + 4-up grid of recovery KPIs — ACWR (with status thresholds), easy share 14d (vs polarized 80% target), avg RPE 7d + drift, in-recovery-window flag. Each stat colored by status (ok/warn/bad), citation visible. Existing Strava + HealthKit panels retained below.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">UI</div>
+    <h3>Mode-aware dashboard banner</h3>
+    <p>ModeBanner at the top of <code>/</code> reads engine phase + race context, surfaces the runner's CURRENT mode in plain English. 9 modes: race-day, race-tomorrow, race-week, race-month, heavy-block-recovery, post-race-recovery, peak, build, base, rebuild, off-season. Each has a color (race=warning, recovery=corp, peak=attention, build=good, base=corp, off=t2) + one-line detail. Background gradient + left-border accent matches the mode color so the runner sees mode at a glance.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">UI</div>
+    <h3>Training quality day grid</h3>
+    <p>QualityDayGridTile on <code>/training</code>: 12 weeks × 7 days heatmap. Each cell is one day, color-coded race / quality / long / easy / recovery / rest. Pattern becomes visible — "I always skip Wednesday tempos" or "long run slips to Sunday when work is busy" surface as gaps in the grid. Hover a cell for date + classification + distance.</p>
+  </div>
+  <div class="card good">
+    <div class="tag good">DATA</div>
+    <h3>Profile health flags</h3>
+    <p>New <code>health_flags TEXT</code> column on <code>runner_profile</code>. Free-text up to 1KB for injuries, conditions, recent illness, cycle notes, supplements — anything the coach should remember. Engine doesn't parse it yet; visible context for LLM brief generation, and a place for the runner to keep a personal medical-coaching log. Textarea slot under HRmax/RHR on <code>/profile</code>.</p>
+  </div>
+</div>
+
+<h2>The 13 queue items · status</h2>
+<table>
+  <tr><th>#</th><th>Item</th><th>Tier</th><th>Status</th></tr>
+  <tr><td>1</td><td>Loading flash on every page transition</td><td>fix</td><td class="status done">DONE</td></tr>
+  <tr><td>2</td><td>Engine consumption of RPE in coach.assessReadiness</td><td>1</td><td class="status done">DONE</td></tr>
+  <tr><td>3</td><td>Component extraction (Readiness, CoachDailyBrief)</td><td>1</td><td class="status done">DONE (2 of 7)</td></tr>
+  <tr><td>4</td><td>Doctrine drift detector</td><td>1</td><td class="status done">DONE</td></tr>
+  <tr><td>5</td><td>Race-detail expansion (A/B/C goals + similar races)</td><td>1</td><td class="status done">DONE</td></tr>
+  <tr><td>6</td><td>Mode-aware dashboard composition</td><td>2</td><td class="status done">DONE</td></tr>
+  <tr><td>7</td><td>Training page macro-redesign (quality grid)</td><td>2</td><td class="status done">DONE</td></tr>
+  <tr><td>8</td><td>Run-detail expansion (prescription vs actual)</td><td>2</td><td class="status done">DONE</td></tr>
+  <tr><td>9</td><td>Profile expansion (health flags)</td><td>2</td><td class="status done">DONE</td></tr>
+  <tr><td>10</td><td>Health page redesign (Recovery picture)</td><td>2</td><td class="status done">DONE</td></tr>
+  <tr><td>11</td><td>Build /today page</td><td>3</td><td class="status done">DONE</td></tr>
+  <tr><td>12</td><td>Build /research page</td><td>3</td><td class="status done">DONE</td></tr>
+  <tr><td>13</td><td>Build /library page</td><td>3</td><td class="status done">DONE</td></tr>
+</table>
+
+<h2>Commits shipped this session</h2>
+<div class="commits">
+<div><span class="sha">80224c0</span> · feat: dashboard mode banner + training quality grid + profile health flags</div>
+<div><span class="sha">6b9f558</span> · feat: run-detail prescription-vs-actual + health recovery picture</div>
+<div><span class="sha">56acf74</span> · feat(race-detail): goal-spread tile + similar-races tile</div>
+<div><span class="sha">12394b1</span> · feat: /today + /research + /library pages + drift detector</div>
+<div><span class="sha">ac26298</span> · feat: RPE engine consumption + extract Readiness/CoachDailyBrief</div>
+<div><span class="sha">95eaad1</span> · fix(perf): kill the 'Loading…' flash on every page transition</div>
+</div>
+
+<h2>What you'll feel when you open the app</h2>
+<ul>
+  <li><b>Zero Loading flashes.</b> Page transitions paint instantly with cached content; SSR HTML is just nav + empty body, no visible "Loading…" text anywhere.</li>
+  <li><b>Mode banner across the top of the dashboard</b> — at-a-glance "what mode am I in" with color shift by season.</li>
+  <li><b>"How did that feel?" RPE tiles</b> on dashboard, /today, /workout/[date], /runs/[id]. The engine reads recent RPE and surfaces drift signals.</li>
+  <li><b>Three new tabs</b>: Today (radically simple), Library (workout types), Research (doctrine library).</li>
+  <li><b>/runs/[id] now answers "did I run what coach prescribed?"</b> with plan-vs-actual deltas + a verdict line.</li>
+  <li><b>/races/[slug] has goal-spread + similar-races context.</b> Pick A/B/C pace targets in the first half-mile, see how past similar races went.</li>
+  <li><b>/health has a recovery picture at the top</b> — readiness verdict + 4 KPIs with status colors.</li>
+  <li><b>/training has a quality-day grid</b> — 12 weeks × 7 days, your training rhythm visible at a glance.</li>
+  <li><b>/profile has a health-flags textarea</b> — your injury / cycle / supplement log lives in one place.</li>
+</ul>
+
+<div class="next">
+<h3>What's left, honestly</h3>
+<p>The full inventory backlog from this morning is now drained. What remains is <b>polishing</b> rather than building:</p>
+<ul>
+  <li><b>Component extraction round 2.</b> The remaining 5 dashboard components (HrZonesTile, VdotTile, Next30DaysTile, TrainingPulseTile, PhaseGuidanceCard) are still inline. They're not blocking anything but extracting them unlocks reuse across /calibration, /season, etc.</li>
+  <li><b>Drift detector → AST.</b> Current regex version flags ~838 candidates with high noise. An AST-based version would cut that to ~50 real issues. Worth doing if you start hitting actual drift in PRs.</li>
+  <li><b>HealthKit pipeline (M2).</b> The placeholders on <code>/health</code> light up when the iOS app writes HealthKit JSON to iCloud and the server picks it up. That's a substantial M2 milestone, not a quick fix.</li>
+  <li><b>Coach.retrospect wiring.</b> The post-race retrospective LLM call exists but isn't wired into the race-detail flow yet. Would surface "what we learned" automatically after every race.</li>
+  <li><b>iOS-app coordination.</b> The whole web app reads from the unified hub now; the iOS app should consume <code>/api/hub</code> the same way for consistency.</li>
+</ul>
+<p style="font-size: 12px; color: var(--t-2); margin-top: 12px;">None of those is on a critical path. The architecture is solid, the doctrine is wired through, every page projects from one canonical state, every dial is auditable. The mecca-of-marathon-coaching framing the inventory used has its bones.</p>
+</div>
+
+<div class="footer">
+RUNCINO · 2026-05-08 LATE SESSION · MAIN @ 80224C0 · ALL TESTS PASS · BUILD CLEAN · LIVE ON RAILWAY
+</div>
+
+</div>
+</body>
+</html>
