@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overnight Report · May 8 2026 · Runcino</title>
+<style>
+  :root {
+    --bg-0: #0A0E1A;
+    --bg-1: #0F1420;
+    --bg-2: #141B2D;
+    --bg-3: #1B243A;
+    --bg-4: #2A3656;
+    --text-0: #F4F6FB;
+    --text-1: #D4DBEA;
+    --text-2: #9AA5BC;
+    --text-3: #5E6B85;
+    --success: #3EBD41;
+    --corporate: #267FFF;
+    --attention: #F3AD3B;
+    --warning: #FC4D54;
+    --race: #F3AD3B;
+    --active: #B26CFF;
+    --font-display: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-data: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg-0);
+    color: var(--text-1);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+  }
+  /* Header */
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  .head h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 40px;
+    letter-spacing: -0.025em;
+    color: var(--text-0);
+    line-height: 1.05;
+  }
+  .head .sub {
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .head .right {
+    text-align: right;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-3);
+    letter-spacing: 1.4px;
+  }
+  /* Section */
+  section {
+    margin-bottom: 40px;
+  }
+  .section-h {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 16px;
+  }
+  .section-h h2 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--text-0);
+  }
+  .section-h .meta {
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: var(--text-3);
+    text-transform: uppercase;
+  }
+  /* TLDR top stats */
+  .tldr {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 36px;
+  }
+  .stat {
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-radius: 10px;
+    padding: 20px 22px;
+  }
+  .stat .lbl {
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .stat .val {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text-0);
+    margin-top: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .val.success { color: var(--success); }
+  .stat .val.warning { color: var(--warning); }
+  .stat .val.attention { color: var(--attention); }
+  .stat .val.corporate { color: var(--corporate); }
+  .stat .sub {
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-3);
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+  /* Tile / card */
+  .tile {
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+  }
+  /* Feature cards grid */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .feature {
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-left: 3px solid var(--corporate);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .feature.fix { border-left-color: var(--success); }
+  .feature.bug { border-left-color: var(--warning); }
+  .feature.research { border-left-color: var(--active); }
+  .feature h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text-0);
+    line-height: 1.3;
+    margin-bottom: 6px;
+  }
+  .feature .why {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.55;
+    margin-bottom: 8px;
+  }
+  .feature .meta {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .meta .sha { color: var(--text-3); }
+  .meta .tag {
+    background: rgba(38,127,255,.15);
+    color: var(--corporate);
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .meta .tag.success {
+    background: rgba(62,189,65,.15);
+    color: var(--success);
+  }
+  .meta .tag.warning {
+    background: rgba(252,77,84,.15);
+    color: var(--warning);
+  }
+  .meta .tag.research {
+    background: rgba(178,108,255,.15);
+    color: var(--active);
+  }
+  /* Bug fix table */
+  table.bugs {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table.bugs th, table.bugs td {
+    padding: 14px 18px;
+    text-align: left;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  table.bugs tr:last-child td { border-bottom: none; }
+  table.bugs th {
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    background: var(--bg-2);
+  }
+  table.bugs td {
+    font-size: 13.5px;
+    color: var(--text-1);
+    line-height: 1.5;
+  }
+  table.bugs td.label {
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: var(--text-0);
+    width: 30%;
+  }
+  table.bugs td .sha {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-3);
+    margin-top: 4px;
+    display: block;
+  }
+  /* Verdict badges */
+  .verdict {
+    display: inline-block;
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .verdict.ok { background: rgba(62,189,65,.15); color: var(--success); }
+  .verdict.warn { background: rgba(243,173,59,.15); color: var(--attention); }
+  .verdict.bug { background: rgba(252,77,84,.15); color: var(--warning); }
+  .verdict.fixed { background: rgba(62,189,65,.15); color: var(--success); }
+  .verdict.deferred { background: rgba(154,165,188,.15); color: var(--text-2); }
+  /* Priority */
+  .priority {
+    background: linear-gradient(135deg, rgba(243,173,59,.10), var(--bg-1));
+    border: 1px solid rgba(243,173,59,.3);
+    border-left: 4px solid var(--attention);
+    border-radius: 10px;
+    padding: 22px 26px;
+  }
+  .priority h3 {
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.6px;
+    color: var(--attention);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .priority .title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--text-0);
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  .priority p {
+    font-size: 14px;
+    color: var(--text-1);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .priority ul { margin: 8px 0 12px 22px; }
+  .priority li {
+    font-size: 13.5px;
+    color: var(--text-2);
+    line-height: 1.55;
+    margin-bottom: 4px;
+  }
+  /* Two-col layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  /* Mini list */
+  .mini-list {
+    list-style: none;
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .mini-list li {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--bg-4);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .mini-list li:last-child { border-bottom: none; }
+  .mini-list li .text {
+    font-size: 13.5px;
+    color: var(--text-1);
+    line-height: 1.45;
+  }
+  .mini-list li .text strong {
+    color: var(--text-0);
+    font-weight: 600;
+  }
+  /* Walkthrough numbered list */
+  .walkthrough {
+    counter-reset: step;
+    list-style: none;
+  }
+  .walkthrough li {
+    counter-increment: step;
+    background: var(--bg-1);
+    border: 1px solid var(--bg-4);
+    border-radius: 8px;
+    padding: 14px 18px 14px 56px;
+    margin-bottom: 8px;
+    position: relative;
+    font-size: 14px;
+    color: var(--text-1);
+    line-height: 1.55;
+  }
+  .walkthrough li::before {
+    content: counter(step);
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--corporate);
+    color: white;
+    font-family: var(--font-data);
+    font-weight: 800;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Code-y */
+  code, .mono {
+    font-family: var(--font-data);
+    font-size: 0.92em;
+    background: rgba(255,255,255,.04);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--text-1);
+  }
+  /* Responsive */
+  @media (max-width: 900px) {
+    .tldr { grid-template-columns: repeat(2, 1fr); }
+    .features { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .head .right { text-align: left; }
+  }
+  /* Anchor smoothness */
+  html { scroll-behavior: smooth; }
+  /* Footer */
+  footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--bg-4);
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    letter-spacing: 1.2px;
+    color: var(--text-3);
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+  }
+  footer a {
+    color: var(--corporate);
+    text-decoration: none;
+  }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- Header -->
+  <div class="head">
+    <div>
+      <div class="sub">Overnight report · 2026-05-08</div>
+      <h1>What landed last night</h1>
+    </div>
+    <div class="right">
+      Runcino · <a href="https://runcino-production.up.railway.app" style="color:var(--corporate);text-decoration:none;">Production</a><br/>
+      <span style="color:var(--success);">● Healthy</span>
+    </div>
+  </div>
+
+  <!-- TL;DR stats -->
+  <div class="tldr">
+    <div class="stat">
+      <div class="lbl">Commits</div>
+      <div class="val corporate">21</div>
+      <div class="sub">all on main</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Tests passing</div>
+      <div class="val success">113</div>
+      <div class="sub">no regressions</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Real bugs fixed</div>
+      <div class="val success">3</div>
+      <div class="sub">+ doctrine inlines</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">New surfaces</div>
+      <div class="val attention">9</div>
+      <div class="sub">all research-cited</div>
+    </div>
+  </div>
+
+  <!-- The Bug -->
+  <section>
+    <div class="section-h">
+      <h2>The bug you flagged</h2>
+      <span class="meta">Was the easy ratio reading 100%</span>
+    </div>
+    <div class="priority" style="background: linear-gradient(135deg, rgba(62,189,65,.10), var(--bg-1)); border-color: rgba(62,189,65,.3); border-left-color: var(--success);">
+      <h3 style="color: var(--success);">Fixed · Commit 831d469</h3>
+      <div class="title">Easy ratio classifier rewritten with research-anchored cascade</div>
+      <p>
+        Old logic: hard if name matched 15 patterns OR avgHr ≥ 152 BPM. A runner doing tempo work at 145 BPM with a generic "Morning run" name got classified as easy. Activities without HR data defaulted to easy. Result: 100% easy on most real Strava feeds.
+      </p>
+      <p style="color: var(--text-2);">New logic, cited to Daniels' 80/20 distribution (Research/01 + intensity.ts):</p>
+      <ol class="walkthrough" style="margin-top: 10px;">
+        <li><strong>Name pattern</strong> — runner's intent. Regex expanded ~15 → ~30 patterns: tempo / threshold / intervals / fartlek / progression / VO2 / cutdown / ladder / track / hills / surges / pickups / cruise / sub-threshold / MP miles / marathon pace / wave tempo / 400s / 800s / 1k / 1200s / 1600s / strides / pyramid. New EASY_NAME_RE catches recovery / shakeout / base / MAF / Z2 / aerobic / chill / jog.</li>
+        <li><strong>VDOT pace zones</strong> — when current VDOT exists, M-pace-or-faster = hard, E-zone or slower = easy. Daniels' 80/20 boundary.</li>
+        <li><strong>HR threshold</strong> — fallback when no name + no VDOT.</li>
+        <li><strong>Long run default</strong> — runs ≥12 mi without quality signal → easy.</li>
+        <li><strong>Unknown bucket</strong> — explicit when no signal applies. Don't lie that it was easy.</li>
+      </ol>
+      <p style="color: var(--text-2); margin-top: 12px;">
+        UI now shows easy / hard / <strong>unknown</strong> as a 3-segment bar with a <code>LOW CONF</code> chip when classification confidence drops below 70%. "On target" verdict is phase-aware — pulls from <code>coach-principles</code> (TAPER 78% / PEAK 75% / BUILD 70% / BASE 80% / POST_RACE 90% / REBUILD 85%) instead of a static 75%.
+      </p>
+      <div class="meta" style="margin-top: 12px;">
+        <span class="tag success">17 NEW TESTS</span>
+        <span class="tag research">RESEARCH/01</span>
+        <span class="sha">831d469</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Two more bugs surfaced + audit-found bug -->
+  <section>
+    <div class="section-h">
+      <h2>Other correctness bugs caught + fixed</h2>
+      <span class="meta">Surfaced while debugging the easy ratio + post-audit pass</span>
+    </div>
+    <table class="bugs">
+      <thead>
+        <tr>
+          <th style="width:30%;">Issue</th>
+          <th>What was wrong</th>
+          <th style="width:18%;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="label">Two parallel phase systems<span class="sha">d393516</span></td>
+          <td>Dashboard had its own phase vocabulary ('TAPER' / 'PEAK' / 'RACE MONTH' / 'BUILDING' / 'BASE BLOCK') derived from local heuristics. Engine used 'BASE' / 'BUILD' / 'PEAK' / 'TAPER' / 'BASE_MAINTENANCE' / 'POST_RACE' / 'REBUILD'. They could disagree — the dashboard might say "BUILDING" while the engine called it BASE_MAINTENANCE.</td>
+          <td><span class="verdict fixed">Fixed</span></td>
+        </tr>
+        <tr>
+          <td class="label">Quality day count missing untagged workouts<span class="sha">d393516</span></td>
+          <td><code>trainingPulse()</code> counted Strava <code>workout_type === 3</code> only. Most runners never set the type explicitly. A "Tempo run" with default type counted as zero quality.</td>
+          <td><span class="verdict fixed">Fixed</span></td>
+        </tr>
+        <tr>
+          <td class="label">Long-run cap math diverged<span class="sha">0ea5c64</span></td>
+          <td>Audit caught a real one I'd shipped earlier in the session: dashboard's "next-week cap" used different multipliers than the engine. Runner saw one cap on TrainingPulse and a different long-run distance on the prescription. TAPER 0.6 vs 0.65, POST-RACE 0.5 vs 0.4, REBUILD 0.7 vs 0.6.</td>
+          <td><span class="verdict fixed">Fixed</span></td>
+        </tr>
+        <tr>
+          <td class="label">Doctrine inlined in 3 tiles<span class="sha">0ea5c64</span></td>
+          <td>HydrationTile, NoVdotPanel, and FuelingTile had hand-written copies of doctrine constants (FLUID_DURING_RACE, PRE_RACE_HYDRATION, VDOT_FIELD_TESTS). When doctrine evolves, the tiles drift. Fixed for hydration + VDOT (FuelingTile deferred — uses planner default, separate refactor).</td>
+          <td><span class="verdict fixed">Fixed (2/3)</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- New surfaces -->
+  <section>
+    <div class="section-h">
+      <h2>New research-cited surfaces</h2>
+      <span class="meta">Everything ties back to a doc</span>
+    </div>
+    <div class="features">
+      <div class="feature research">
+        <h3>VDOT tier · freshness · age/sex grading</h3>
+        <div class="why">Tier (Novice / Intermediate / Advanced / Elite), 56-day freshness chip, age-graded VDOT computed from runner profile. Auto 5K time-trial prescription when stale.</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/01 + 24</span>
+          <span class="sha">a35a305 · 1207464 · cf95b30 · fb42263</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Daily Coach voice brief</h3>
+        <div class="why">Above the prescription tile. Anchored on TODAY (workout + trajectory). LLM with deterministic fallback. ▸ WHY? toggle reveals citations + rationale.</div>
+        <div class="meta">
+          <span class="tag research">VOICE.MD</span>
+          <span class="sha">eb2604e</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Readiness banner + signals</h3>
+        <div class="why">Green / yellow / red verdict with detected stress signals (heavy block, ACWR drift, easy/hard imbalance, missed runs) and recommended action from the doctrine matrix.</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/00b</span>
+          <span class="sha">cf8fc42</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Next 30 days outlook</h3>
+        <div class="why">Color-coded strip. Race flags + month dividers. Bridges "today's prescription" and "the race calendar" — the missing middle layer.</div>
+        <div class="meta">
+          <span class="tag research">ENGINE-DERIVED</span>
+          <span class="sha">2f69332</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>HR zones tile</h3>
+        <div class="why">5-zone ACSM table from runner's HRmax. Tanaka estimate (208 − 0.7×age) when not measured. BPM ranges + purpose + talk test per zone.</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/03</span>
+          <span class="sha">a233c36</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Phase guidance card</h3>
+        <div class="why">Auto-fires in TAPER / POST-RACE / REBUILD. Distance-aware taper window, post-race stage progress bar, layoff-rebuild rules. Hidden in BASE / BUILD / PEAK.</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/14 + 00b</span>
+          <span class="sha">60be8b5</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Hydration tile</h3>
+        <div class="why">On race-detail page. 24h / 2-4h / final-hour pre-race plan + during-race ml/hr table by distance × temperature + EAH guardrails.</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/19</span>
+          <span class="sha">3d8e61d</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Cutback cycle indicator</h3>
+        <div class="why">Detects cutback weeks in 8-week strip (≥30% drop from prior peak). Surfaces "CUTBACK RECOMMENDED NEXT WEEK · 3W SINCE LAST" / "WEEK 2 OF BUILD CYCLE".</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/00b</span>
+          <span class="sha">a0bdd1b</span>
+        </div>
+      </div>
+      <div class="feature research">
+        <h3>Quality count + long-run cap</h3>
+        <div class="why">"X / Y QUALITY THIS WEEK" against phase target. Long-run cap mirrors engine math (now correctly aligned).</div>
+        <div class="meta">
+          <span class="tag research">RESEARCH/00a + 01</span>
+          <span class="sha">9300cca · 0ea5c64</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Walk through the dashboard -->
+  <section>
+    <div class="section-h">
+      <h2>To see it for yourself</h2>
+      <span class="meta">Quickstart · ~3 min</span>
+    </div>
+    <ol class="walkthrough">
+      <li><strong>Open <a href="https://runcino-production.up.railway.app/profile" style="color:var(--corporate);">/profile</a></strong> first. Set your birth year, sex, and HRmax. This unlocks age-graded VDOT and the HR zones tile.</li>
+      <li><strong>Open <a href="https://runcino-production.up.railway.app/" style="color:var(--corporate);">/</a> (dashboard)</strong>. New surfaces from top to bottom: readiness banner → daily Coach brief → phase guidance (if special phase) → next 30 days strip → VDOT tile (with tier badge + age-graded line) → HR zones tile → Training Pulse with cutback indicator + quality count + long-run cap.</li>
+      <li><strong>Click ▸ WHY?</strong> on the daily brief — citations + rationale appear. Same affordance now on the race-page brief.</li>
+      <li><strong>Open any race detail page</strong> (e.g. <a href="https://runcino-production.up.railway.app/races/afc-2025" style="color:var(--corporate);">AFC</a>). New <strong>Hydration tile</strong> at the bottom. The brief in the hero is adaptive by daysToRace.</li>
+    </ol>
+  </section>
+
+  <!-- Top priority for next session -->
+  <section>
+    <div class="section-h">
+      <h2>Top priority for next session</h2>
+      <span class="meta">Per the audit's #1 finding</span>
+    </div>
+    <div class="priority">
+      <h3>HIGHEST LEVERAGE</h3>
+      <div class="title">Wire <code>runner-profile.ts</code> to server-side <code>CoachState</code></div>
+      <p>
+        The runner's age, sex, HRmax, and RHR live in localStorage. The dashboard reads them client-side — VDOT tile shows age-graded VDOT, HR zones tile shows BPM ranges, profile editor saves them. <strong>But the server-side coach engine never sees them.</strong>
+      </p>
+      <p>
+        <code>coach.briefRaceMorning</code>, <code>coach.briefDailyTraining</code>, and <code>coach.assessReadiness</code> all run with no profile. The brief never says "exceptional VDOT for a 60yo woman" because the route doesn't have age + sex. The engine's "yesterday hard" gate is still hardcoded <code>152 BPM</code> even when the runner has set a measured HRmax of 175.
+      </p>
+      <p style="color: var(--text-2);"><strong>What closing this would unlock:</strong></p>
+      <ul>
+        <li>LLM brief contextualization on age + sex (prompt sees them, voice can use them)</li>
+        <li>HRmax-aware "yesterday hard" detection (no more hardcoded 152)</li>
+        <li>Karvonen / HRR zones (need RHR server-side)</li>
+        <li>Future age-specific recovery rules from Research/14</li>
+      </ul>
+      <p style="color: var(--text-2);"><strong>Two paths:</strong> (1) pass the profile from client to API on each call (header or body) — quick, no DB migration; (2) migrate to a Postgres <code>runner_profiles</code> table once auth is in. Path 1 is the right move for the next session; path 2 is the migration when auth lands.</p>
+    </div>
+  </section>
+
+  <!-- Other open items -->
+  <section>
+    <div class="section-h">
+      <h2>Other open items</h2>
+      <span class="meta">Audit backlog</span>
+    </div>
+    <ul class="mini-list">
+      <li>
+        <span class="text"><strong>Static <code>/workout/[date]</code> page.</strong> Only big remaining static-placeholder surface. Engine already produces every day's prescription via <code>simulateNext30Days</code> — could feed the page.</span>
+        <span class="verdict deferred">Deferred</span>
+      </li>
+      <li>
+        <span class="text"><strong>Static <code>/health</code> placeholder cards.</strong> 4 hardcoded HRV / RHR / Sleep / Recovery score cards. Closes when HealthKit lands.</span>
+        <span class="verdict deferred">Awaiting M2</span>
+      </li>
+      <li>
+        <span class="text"><strong>FuelingTile uses planner default carb/hr.</strong> Should pull from <code>RACE_CARB_TARGETS_G_PER_HR</code> doctrine like Hydration now does.</span>
+        <span class="verdict deferred">Audit #4</span>
+      </li>
+      <li>
+        <span class="text"><strong>CoachTodayCard.hrZone is static 1-5</strong> not derived from runner's HRmax. A 60yo reading "HR Z4" gets misleading guidance.</span>
+        <span class="verdict deferred">After profile→server</span>
+      </li>
+      <li>
+        <span class="text"><strong>4 Coach methods still throw stubs:</strong> <code>paceStrategy</code>, <code>taperDepth</code>, <code>fuelingFor</code>, <code>retrospect</code>, <code>adjustForReality</code>. Direct API paths bypass each.</span>
+        <span class="verdict deferred">Future stages</span>
+      </li>
+      <li>
+        <span class="text"><strong>Engine's parallel post-race ladder</strong> (lib/coach-engine.ts:228-278) duplicates <code>recovery_protocols.ts.POST_RACE_STAGES</code>. Same shape, two sources of truth. Consolidation is cleaner long-term.</span>
+        <span class="verdict deferred">Refactor</span>
+      </li>
+      <li>
+        <span class="text"><strong>WMA age-grading tables.</strong> Tonight's age-grading is a Daniels-extrapolated approximation. Vendoring the full WMA tables is the gold-standard fix.</span>
+        <span class="verdict deferred">Future research</span>
+      </li>
+      <li>
+        <span class="text"><strong>6 fully-unwired research docs:</strong> mobility, mental, age, travel, cross_training, footwear, form-biomechanics, form-corrections. Lower priority but each has rich content waiting to surface.</span>
+        <span class="verdict deferred">Future</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- Quick links -->
+  <section>
+    <div class="section-h">
+      <h2>Quick links</h2>
+    </div>
+    <div class="two-col">
+      <ul class="mini-list">
+        <li>
+          <span class="text"><strong>Production site</strong> — Runcino on Railway</span>
+          <a href="https://runcino-production.up.railway.app" style="color:var(--corporate);text-decoration:none;font-family:var(--font-data);font-size:11px;font-weight:700;">OPEN ↗</a>
+        </li>
+        <li>
+          <span class="text"><strong>Profile</strong> — set birth year + sex + HRmax</span>
+          <a href="https://runcino-production.up.railway.app/profile" style="color:var(--corporate);text-decoration:none;font-family:var(--font-data);font-size:11px;font-weight:700;">OPEN ↗</a>
+        </li>
+        <li>
+          <span class="text"><strong>Dashboard</strong> — all the new surfaces</span>
+          <a href="https://runcino-production.up.railway.app" style="color:var(--corporate);text-decoration:none;font-family:var(--font-data);font-size:11px;font-weight:700;">OPEN ↗</a>
+        </li>
+      </ul>
+      <ul class="mini-list">
+        <li>
+          <span class="text"><strong>End-of-night audit</strong> — full 650-line report</span>
+          <code style="font-size:10px;">docs/AUDIT-2026-05-08-final.md</code>
+        </li>
+        <li>
+          <span class="text"><strong>Morning summary (markdown)</strong> — long form</span>
+          <code style="font-size:10px;">docs/MORNING-SUMMARY-2026-05-08.md</code>
+        </li>
+        <li>
+          <span class="text"><strong>This report (HTML)</strong> — what you're reading</span>
+          <code style="font-size:10px;">/reports/morning-2026-05-08.html</code>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <span>Generated 2026-05-08 · 21 commits · 0 regressions</span>
+    <span>Runcino · <a href="https://runcino-production.up.railway.app">runcino-production.up.railway.app</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
