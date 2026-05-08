@@ -28,6 +28,7 @@ import { composeVoiceLead } from './explanations';
 import { coachDaily, type CoachToday } from '../lib/coach-engine';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
+import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInput } from '../lib/weather-slowdown';
 
 // ── Method-specific input types ──────────────────────────────────────
 // Defined inline here so the Coach's API surface stays in one file.
@@ -127,9 +128,28 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
   raceDate: string;
   goalDisplay: string;
   /** Any field can be omitted when the runner hasn't pasted a forecast. */
-  weather?: { tempF?: number; windMph?: number; conditions?: string };
+  weather?: {
+    tempF?: number;
+    /** Dewpoint °F. When present, drives a more accurate Td-aware
+     *  slowdown calculation (Research/06 §2 + §10). */
+    dewpointF?: number;
+    windMph?: number;
+    conditions?: string;
+  };
   /** Top-line course summary the brief can reference (peak mile, etc.). */
   courseSummary: string;
+  /** Race-start elevation, feet. Used for altitude slowdown when
+   *  >1000 ft (Research/06 §7). Optional — defaults to sea level. */
+  elevationFt?: number;
+  /** Goal pace in seconds-per-mile, used to convert the slowdown
+   *  percentage into a per-mile seconds adjustment for the brief. */
+  goalPaceSPerMi?: number;
+  /** Runner ability tier — picks the right Maughan curve. Default
+   *  'mid_pack'. Future: derive from VDOT or recent race times. */
+  abilityTier?: 'elite' | 'mid_pack' | 'slow';
+  /** Whether the runner is altitude-acclimatized (≥3 weeks at race
+   *  altitude). Defaults to acute-traveler. */
+  altitudeAcclimatized?: boolean;
 }
 
 export interface RetrospectInput extends CoachBaseContext {
@@ -341,32 +361,78 @@ class CoachImpl implements Coach {
   // back at coaching-research §3, §5, §7, §11, §14 depending on what
   // the brief leans on.
   async briefRaceMorning(input: RaceMorningBriefInput): Promise<CoachDecision<string>> {
+    // Compute the deterministic weather slowdown — this runs whether
+    // or not the LLM is available, and feeds both the fallback voice
+    // and the LLM context. Single source of numeric truth (per
+    // Research/06 §10 race-day decision flow).
+    const slowdown = input.weather?.tempF != null
+      ? computeWeatherSlowdown({
+          tairF: input.weather.tempF,
+          dewpointF: input.weather.dewpointF,
+          windMph: input.weather.windMph,
+          elevationFt: input.elevationFt,
+          altitudeAcclimatized: input.altitudeAcclimatized,
+          runnerPaceSPerMi: input.goalPaceSPerMi,
+          abilityTier: input.abilityTier ?? 'mid_pack',
+        })
+      : null;
+    const slowdownLine = slowdown ? formatSlowdownForBrief(slowdown) : null;
+
     if (!llmAvailable()) {
       // Deterministic fallback — keeps the page working without an
       // ANTHROPIC_API_KEY. Voice stays close but obviously generic.
+      // Now incorporates the computed slowdown number rather than the
+      // old "75°F = conservative" handwave.
+      const weatherClause = slowdown && slowdown.totalPct >= 0.5
+        ? `${Math.round(input.weather!.tempF!)}°F${input.weather!.dewpointF != null ? ` / ${Math.round(input.weather!.dewpointF)}°F dewpoint` : ''} — ${slowdownLine}. Adjust the pace plan accordingly; don't try to muscle through a hot day.`
+        : input.weather?.tempF != null
+          ? `${Math.round(input.weather.tempF)}°F start — favorable conditions, run the plan as written.`
+          : 'Trust the plan.';
+      const bailClause = slowdown?.bailFlag === 'cancel'
+        ? ` HEADS UP: ${slowdown.bailReason} If conditions hold, the goal becomes finish over time.`
+        : slowdown?.bailFlag === 'easy_only'
+          ? ` This is a survival-mode day; effort over time.`
+          : '';
       return {
-        answer: `Morning. The training is done. ${input.weather?.tempF != null
-          ? `${Math.round(input.weather.tempF)}°F start — ${input.weather.tempF > 75 ? 'start conservative, the heat will catch up' : input.weather.tempF < 50 ? 'cool and favorable, don\'t overdress' : 'comfortable conditions, run the plan'}.`
-          : 'Trust the plan.'} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`,
-        rationale: 'Conservative start + trust-the-plan default. No LLM available.',
+        answer: `Morning. The training is done. ${weatherClause}${bailClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`,
+        rationale: slowdown
+          ? `Weather slowdown computed: ${slowdown.totalPct.toFixed(1)}% (${slowdown.rationale.join('; ') || 'neutral conditions'}).`
+          : 'Conservative start + trust-the-plan default. No weather forecast provided.',
         citations: [
-          { doc: 'docs/coaching-research.md', section: '§14', snippet: 'in the final two weeks, the fitness is built. The job is to arrive at the start line rested without losing edge.' },
+          { doc: 'Research/06-weather-adjustments.md', section: '§10', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
+          { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon — every fast plan dies in the opening miles' },
         ],
         brain: 'deterministic',
       };
     }
 
     const weatherLine = input.weather
-      ? `Weather: ${input.weather.tempF}°F${input.weather.windMph != null ? `, ${input.weather.windMph} mph wind` : ''}${input.weather.conditions ? `, ${input.weather.conditions}` : ''}.`
+      ? `Weather: ${input.weather.tempF}°F${input.weather.dewpointF != null ? `, ${input.weather.dewpointF}°F dewpoint` : ''}${input.weather.windMph != null ? `, ${input.weather.windMph} mph wind` : ''}${input.weather.conditions ? `, ${input.weather.conditions}` : ''}.`
       : 'Weather: no specific forecast.';
+
+    // Inject the deterministic slowdown into the LLM context so the
+    // model uses a real number rather than guessing at heat impact.
+    const slowdownContext = slowdown && slowdown.totalPct >= 0.5
+      ? [
+          '',
+          `COMPUTED WEATHER SLOWDOWN (per Research/06 race-day decision flow):`,
+          `  Total adjustment: ${slowdown.totalPct.toFixed(1)}% slower than cool-day goal`,
+          slowdown.perMileSecs != null ? `  Per-mile cost: about +${slowdown.perMileSecs} sec/mi` : null,
+          ...slowdown.rationale.map(r => `  • ${r}`),
+          slowdown.bailFlag ? `  BAIL FLAG: ${slowdown.bailFlag} — ${slowdown.bailReason}` : null,
+          '',
+          'Use these numbers in the brief. Don\'t guess at heat impact; the calculation is research-anchored.',
+        ].filter((s): s is string => s != null).join('\n')
+      : '';
 
     const userPrompt = [
       `Write a race-morning brief for ${input.raceName} on ${input.raceDate}.`,
       `Goal: ${input.goalDisplay}.`,
       `Course: ${input.courseSummary}`,
       weatherLine,
+      slowdownContext,
       '',
-      'The brief is what the runner reads over coffee. One short paragraph. Voice rules apply (plain language, no §-numbers in the rationale, no jargon-without-translation). Acknowledge real conditions, give pace-band guidance for the opening miles, mention fuel timing, and end with a single line of focus.',
+      'The brief is what the runner reads over coffee. One short paragraph. Voice rules apply (plain language, no §-numbers in the rationale, no jargon-without-translation). Acknowledge real conditions with the computed slowdown number when one is provided, give pace-band guidance for the opening miles, mention fuel timing, and end with a single line of focus.',
     ].join('\n');
 
     return callCoachLLM<string>({
