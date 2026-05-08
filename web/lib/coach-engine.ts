@@ -38,7 +38,7 @@ import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 import { shouldPromptVdotTest } from './vdot';
 import { longRunTargetMi } from './long-run-cap';
 import { POST_RACE_BY_DISTANCE } from '../coach/doctrine';
-import { postRaceDistanceBand } from './coach-state';
+import { postRaceDistanceBand } from './recovery-distance';
 
 export type WorkoutType = RunWorkoutType;
 
