@@ -1,79 +1,31 @@
 /**
  * /api/coach/today — daily prescription endpoint.
  *
- * Stage 3 wired: routes through `coach.prescribeWorkout` + `coach.
- * assessReadiness`. Both are deterministic — no Claude call, no API
- * key needed. The legacy `today` + `state` envelope is preserved
- * (iOS reads them); a `coach` sub-object carries the workout
- * prescription, readiness, and citations.
+ * Reads through the coach_today_cache (Option C). Cache key is
+ * (LA-calendar-date, latest-strava-activity-id) so it auto-
+ * invalidates when:
+ *   - a new run lands (activity ID changes)
+ *   - a new day starts (date rolls over; midnight cron pre-warms)
+ *   - the Strava webhook fires (regenerates eagerly)
  *
- * GET → {
- *   ok: true,
- *   today: CoachToday,                  // legacy shape from coachDaily()
- *   state: CoachState,                  // raw aggregated state
- *   coach: {
- *     workout: CoachDecision<WorkoutPrescription>,
- *     readiness: CoachDecision<ReadinessAssessment>,
- *   }
- * }
+ * Cache miss: computes the full payload (gatherCoachState +
+ * coachDaily + briefDailyTraining LLM call), writes to cache,
+ * returns. ~150ms deterministic + 2-5s LLM. Hit: ~10ms Postgres
+ * read + return cached payload.
+ *
+ * Response shape preserved from before: legacy iOS/dashboard
+ * consumers still see { ok, today, state, vdot, vdotTestPrompt,
+ * dailyBrief, coach: { workout, readiness } }. New top-level field
+ * `cacheHit` exposes whether this came from cache (for debugging
+ * + telemetry).
  */
-import { gatherCoachState } from '../../../../lib/coach-state';
-import { coachDaily } from '../../../../lib/coach-engine';
-import { coach } from '../../../../coach/coach';
-import { vdotSnapshot, shouldPromptVdotTest } from '../../../../lib/vdot';
-import { getRunnerProfile, ageFromBirthYear } from '../../../../lib/runner-profile-store';
+
+import { getCachedOrCompute } from '../../../../lib/coach-today-cache';
 
 export async function GET() {
   try {
-    const state = await gatherCoachState();
-    const today = coachDaily(state);
-    const isoToday = state.now.slice(0, 10);
-    const [workout, readiness] = await Promise.all([
-      coach.prescribeWorkout({ today: isoToday, state }),
-      coach.assessReadiness({ today: isoToday, state }),
-    ]);
-    const vdot = vdotSnapshot(state);
-    const vdotTestPrompt = shouldPromptVdotTest(state);
-
-    // Fetch runner profile so the brief LLM sees age + sex + HRmax.
-    // Audit's #1 priority — runner profile lives in Postgres, the
-    // brief route reads it and passes it through. Empty profile is
-    // fine; brief skips demographic framing.
-    const profile = await getRunnerProfile().catch(() => null);
-    const runnerProfileForBrief = profile ? {
-      age: ageFromBirthYear(profile.birthYear),
-      sex: profile.sex,
-      hrmaxBpm: profile.hrmaxBpm,
-      rhrBpm: profile.rhrBpm,
-    } : undefined;
-
-    // Today's training brief — voice paragraph for the dashboard.
-    // Generated separately from the race brief because it anchors on
-    // TODAY (workout + trajectory) rather than on a specific race.
-    const dailyBrief = await coach.briefDailyTraining({
-      today: isoToday,
-      state,
-      prescription: today,
-      vdot: vdot ? {
-        vdot: vdot.vdot,
-        tier: vdot.tierLabel,
-        freshness: vdot.freshness,
-        daysAgo: vdot.source.daysAgo,
-        sourceName: vdot.source.name,
-      } : null,
-      vdotTestPrompt,
-      runnerProfile: runnerProfileForBrief,
-    }).catch(() => null);
-
-    return Response.json({
-      ok: true,
-      today,
-      state,
-      vdot,
-      vdotTestPrompt,
-      dailyBrief,              // CoachDecision<string> | null
-      coach: { workout, readiness },
-    });
+    const { payload, cacheHit } = await getCachedOrCompute();
+    return Response.json({ ...payload, cacheHit });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 200 });
   }
