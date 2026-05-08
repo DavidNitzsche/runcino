@@ -766,6 +766,12 @@ function fmtHMS(s: number): string {
 
 interface VdotTilePayload {
   vdot: number;
+  /** Tier classification — Novice / Intermediate / Advanced / Elite. */
+  tier: 'novice' | 'intermediate' | 'advanced' | 'elite';
+  tierLabel: string;
+  /** Freshness state of the signal (how stale is the source race). */
+  freshness: 'fresh' | 'stale_soon' | 'stale' | 'expired';
+  freshnessNote: string;
   source: {
     name: string;
     date: string;
@@ -800,6 +806,7 @@ const ZONE_DEFS: Array<{
 
 function VdotCard() {
   const [vdot, setVdot] = useState<VdotTilePayload | null>(null);
+  const [testPrompt, setTestPrompt] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -807,10 +814,14 @@ function VdotCard() {
     (async () => {
       try {
         const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as { ok: boolean; vdot?: VdotTilePayload | null; error?: string };
+        const json = await res.json() as { ok: boolean; vdot?: VdotTilePayload | null; vdotTestPrompt?: boolean; error?: string };
         if (cancelled) return;
-        if (json.ok) setVdot(json.vdot ?? null);
-        else setError(json.error ?? 'VDOT unavailable');
+        if (json.ok) {
+          setVdot(json.vdot ?? null);
+          setTestPrompt(json.vdotTestPrompt ?? false);
+        } else {
+          setError(json.error ?? 'VDOT unavailable');
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -819,8 +830,56 @@ function VdotCard() {
   }, []);
 
   if (error) return null;     // silent skip — non-critical
-  if (vdot == null) return null; // hides itself when no recent race
+  // No VDOT signal at all → render the test-prompt panel so the
+  // runner has a concrete next step instead of an empty surface.
+  if (vdot == null && testPrompt) return <NoVdotPanel />;
+  if (vdot == null) return null;
   return <VdotTile vdot={vdot} />;
+}
+
+/** When there's no recent race to anchor a VDOT, surface the
+ *  field-test options so the runner has an actionable next step
+ *  instead of just hiding the tile. Mirrors the protocols documented
+ *  in Research/01 + VDOT_FIELD_TESTS doctrine. */
+function NoVdotPanel() {
+  return (
+    <>
+      <SectionHeader title="VDOT fitness" sub="DANIELS · NEEDS A FRESH RACE TO ANCHOR" />
+      <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="tile-sub">No current VDOT</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--color-t0)', lineHeight: 1.3 }}>
+            Run a hard effort to anchor your training paces.
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+            VDOT maps a race result onto your full E/M/T/I/R pace prescription. Without one, paces fall back to a goal-anchored estimate that&apos;s less precise. Pick the test that fits — Daniels recommends one every 4–6 weeks during a build.
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 4 }}>
+          {[
+            { label: '5K time trial',          dur: '~35 min',  note: 'Most accurate. All-out 5K on flat course or track after a 15-min warm-up. Apply +1 VDOT correction for solo effort.' },
+            { label: '30-minute time trial',   dur: '~50 min',  note: 'Surfaces threshold pace directly. Run as far as possible in 30 min after warm-up; last 20 min average ≈ LT pace.' },
+            { label: '3K + 5K combo',          dur: '2 days',   note: 'Two TTs on separate days. Take the better-fit VDOT. Higher confidence than one trial.' },
+            { label: 'Race anything',          dur: 'Whenever', note: 'Mile / 5K / 10K / 15K / Half / Marathon — any all-out, well-paced race anchors VDOT directly.' },
+          ].map(t => (
+            <div key={t.label} style={{
+              padding: '12px 14px',
+              borderRadius: 8,
+              background: 'var(--color-l2)',
+              border: '1px solid var(--color-l4)',
+              display: 'flex', flexDirection: 'column', gap: 4,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)' }}>{t.label}</span>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>{t.dur}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.45 }}>{t.note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
 }
 
 function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
@@ -830,15 +889,31 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
     ? 'yesterday'
     : `${vdot.source.daysAgo} days ago`;
 
+  // Color-code tier so the badge has visual weight.
+  const tierColor: Record<VdotTilePayload['tier'], string> = {
+    novice:       'var(--color-t2)',
+    intermediate: 'var(--color-corporate)',
+    advanced:     'var(--color-attention)',
+    elite:        'var(--color-warning)',
+  };
+  // Color-code freshness so stale chips read as warnings.
+  const freshChipColors: Record<VdotTilePayload['freshness'], { bg: string; fg: string; label: string }> = {
+    fresh:      { bg: 'rgba(16,185,129,.18)', fg: 'var(--color-success)',   label: 'FRESH' },
+    stale_soon: { bg: 'rgba(38,127,255,.18)', fg: 'var(--color-corporate)', label: 'STALE SOON' },
+    stale:      { bg: 'rgba(243,173,59,.18)', fg: 'var(--color-attention)', label: 'STALE' },
+    expired:    { bg: 'rgba(252,77,84,.18)',  fg: 'var(--color-warning)',   label: 'EXPIRED' },
+  };
+  const freshChip = freshChipColors[vdot.freshness];
+
   return (
     <>
       <SectionHeader title="VDOT fitness" sub="DANIELS · ANCHORED ON YOUR LAST RACE" />
 
       <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
-        {/* Top: big VDOT number + source race */}
+        {/* Top: big VDOT number + tier badge + source race + freshness chip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'center' }}>
           <div>
-            <div className="tile-sub" style={{ marginBottom: 4 }}>VDOT</div>
+            <div className="tile-sub" style={{ marginBottom: 4 }}>VDOT · <span style={{ color: tierColor[vdot.tier] }}>{vdot.tierLabel.toUpperCase()}</span></div>
             <div style={{
               fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 64,
               letterSpacing: '-.03em', lineHeight: 1, color: 'var(--color-corporate)',
@@ -848,13 +923,25 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div className="tile-sub">Last tested · {ageLabel}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <span className="tile-sub">Last tested · {ageLabel}</span>
+              <span style={{
+                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+                padding: '2px 7px', borderRadius: 3,
+                background: freshChip.bg, color: freshChip.fg,
+              }}>{freshChip.label}</span>
+            </div>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-t0)', lineHeight: 1.2 }}>
               {vdot.source.name}
             </div>
             <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '0.5px' }}>
               {vdot.source.distanceMi.toFixed(2)} MI · {fmtHMS(vdot.source.timeS)} · {fmtMinSec(vdot.source.paceSPerMi)}/MI
             </div>
+            {(vdot.freshness === 'stale' || vdot.freshness === 'expired') && (
+              <div style={{ fontSize: 11.5, color: 'var(--color-t3)', lineHeight: 1.5, marginTop: 4, fontStyle: 'italic' }}>
+                {vdot.freshnessNote} Coach can plan a 5K time trial — see today&apos;s prescription.
+              </div>
+            )}
           </div>
         </div>
 

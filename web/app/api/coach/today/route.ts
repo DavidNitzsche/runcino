@@ -20,7 +20,7 @@
 import { gatherCoachState } from '../../../../lib/coach-state';
 import { coachDaily } from '../../../../lib/coach-engine';
 import { coach } from '../../../../coach/coach';
-import { vdotSnapshot } from '../../../../lib/vdot';
+import { vdotSnapshot, shouldPromptVdotTest } from '../../../../lib/vdot';
 
 export async function GET() {
   try {
@@ -32,11 +32,16 @@ export async function GET() {
       coach.assessReadiness({ today: isoToday, state }),
     ]);
     const vdot = vdotSnapshot(state);
+    // Surface the test-prompt gate so the dashboard tile can flip
+    // into a "Run a 5K to anchor your fitness" state when there's no
+    // recent race, or the race is stale/expired.
+    const vdotTestPrompt = shouldPromptVdotTest(state);
     return Response.json({
       ok: true,
       today,
       state,
-      vdot,                    // null when no usable recent race; tile hides itself
+      vdot,                    // null when no usable recent race
+      vdotTestPrompt,          // true → tile renders the no-data / test prompt panel
       coach: { workout, readiness },
     });
   } catch (e) {
