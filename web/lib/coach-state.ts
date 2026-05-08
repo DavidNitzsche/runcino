@@ -341,7 +341,12 @@ export async function gatherCoachState(): Promise<CoachState> {
   const weeklyAvg4w = round1(recent4wkMi / 4);
   const weeklyAvg8w = round1((recent4wkMi + prior4wkMi) / 8);
   const deltaPct4v4 = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
-  const longestLast28Mi = last28.length > 0 ? round1(Math.max(...last28.map(a => a.distanceMi))) : 0;
+  // Filter out races so a 26.2mi marathon doesn't pose as the
+  // runner's "longest run" — the long-run-spike rule (10% over) would
+  // then cap day-X long_steady at 28.8mi, which is absurd. The cap
+  // should track training long runs only.
+  const last28NonRace = last28.filter(a => !isProbablyRace(a));
+  const longestLast28Mi = last28NonRace.length > 0 ? round1(Math.max(...last28NonRace.map(a => a.distanceMi))) : 0;
 
   // ── Intensity ─────────────────────────────────────────────
   // Derive a current-VDOT estimate from the strongest race in the

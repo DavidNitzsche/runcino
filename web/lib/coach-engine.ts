@@ -235,7 +235,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // Heavy block (marathon-in-14d, 2+ races in 14d, etc) — every stage
   // extends ~2x because the second race compounded the damage.
   if (phase === 'POST_RACE') {
-    const r = postRaceWorkout(state);
+    const r = postRaceWorkout(state, dow);
     if (r) return r;
   }
 
@@ -321,14 +321,46 @@ function parseDayRange(s: string, which: 'low' | 'high'): number {
   return (which === 'low' ? lo : hi) * unit;
 }
 
-function postRaceWorkout(state: CoachState): RunPrescription | null {
+/** Pick the race that's currently the active recovery driver — the
+ *  one whose no-quality window has the most days remaining. The
+ *  previous logic used `biggest = largest distance` measured from
+ *  `mostRecent = newest race's daysAgo`, which over-recovered runners
+ *  with a stale-but-bigger race (e.g. marathon 28d ago + half 5d ago
+ *  applied marathon's 21-day window from the half's 5-day clock —
+ *  result: 2 weeks of recovery jogs when the half was already past
+ *  its own 10-day window). The active model: race A is the active
+ *  driver when (band.totalRecoveryDays - daysAgo) is largest. The
+ *  marathon may not be active even though it's biggest. */
+function pickActiveRecoveryRace(state: CoachState): { distanceMi: number; daysAgo: number; name: string } | null {
   if (state.races.recent.length === 0) return null;
-  // Largest race is the load-bearing one for recovery duration.
-  const biggest = state.races.recent.slice().sort((a, b) => b.distanceMi - a.distanceMi)[0];
-  // Most-recent race tells us how many days have actually passed.
+  const tier = mileageTier(state.volume.weeklyAvg4w);
+  const useHigh = tier === 'high' || tier === 'elite';
+  const heavy = state.flags.heavyBlockSuspected;
+  const stageMul = heavy ? 1.8 : 1;
+  let best: { race: { distanceMi: number; daysAgo: number; name: string }; remaining: number } | null = null;
+  for (const r of state.races.recent) {
+    const band = POST_RACE_BY_DISTANCE.value[postRaceDistanceBand(r.distanceMi)];
+    const totalDays = (useHigh ? band.totalRecoveryDaysNoQualityHigh : band.totalRecoveryDaysNoQualityLow) * stageMul;
+    const remaining = totalDays - r.daysAgo;
+    if (remaining < 0) continue;  // window already closed
+    if (best == null || remaining > best.remaining) {
+      best = { race: r, remaining };
+    }
+  }
+  if (best != null) return best.race;
+  // No active driver — fall back to most-recent race so the engine
+  // still has SOMETHING to anchor stage-4 (past easyEnd but
+  // recoveryWindowEndsISO still says POST_RACE) prescriptions to.
+  return state.races.recent[0];
+}
+
+function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null {
+  if (state.races.recent.length === 0) return null;
+  const active = pickActiveRecoveryRace(state);
+  if (!active) return null;
+  const days = active.daysAgo;
+  const distMi = active.distanceMi;
   const mostRecent = state.races.recent[0];
-  const days = mostRecent.daysAgo;
-  const distMi = biggest.distanceMi;
   const heavy = state.flags.heavyBlockSuspected;
 
   // Stage gates derived from POST_RACE_BY_DISTANCE doctrine
@@ -384,16 +416,20 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
       : `${days === 0 ? 'Race day' : `${days} day${days === 1 ? '' : 's'}`} since ${mostRecent.name}`;
     return rest(`${racesDesc}. Full rest today.${focusSuffix} ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
   }
+  // Stage-2 (light) — reverse-taper Week 1: "Days 4-7: 20-30 min very
+  // easy jogs every other day". So light stage = run-day-rest-day
+  // alternation, NOT 7 straight recovery jogs. 3 running days, 4 rest.
+  // Pattern: rest Sun/Mon/Wed/Fri, recover Tue/Thu/Sat.
   if (days <= lightEnd) {
+    const lightRestDow = [0, 1, 3, 5];  // Sun, Mon, Wed, Fri
+    if (lightRestDow.includes(dow)) {
+      return rest(`${days} days post ${active.name}. Light stage — protective rest, easy jog tomorrow.${focusSuffix}`);
+    }
     // Recovery-jog floor scales with the runner's daily aerobic floor.
     // A 2.5 mi recovery jog is built for a ~20 mpw runner (~3 mi/day);
     // a 60 mpw runner whose daily floor is ~8 mi needs a longer jog
     // to keep circulation honest without going hard. Floor = clamp
-    // (weeklyAvg4w / 7 × 0.55) into [2.0, 6.0]. Examples:
-    //   20 mpw → 1.6 → clamped to 2.0 mi
-    //   30 mpw → 2.4 → clamped to 2.5 mi (rounded)
-    //   55 mpw → 4.3 mi
-    //   80 mpw → 6.0 mi (clamped)
+    // (weeklyAvg4w / 7 × 0.55) into [2.0, 6.0].
     const dailyFloor = state.volume.weeklyAvg4w / 7;
     const recoveryMi = Math.max(2.0, Math.min(6.0, round1(dailyFloor * 0.55)));
     return {
@@ -404,25 +440,67 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
       isQuality: false, isLong: false, appendStrides: false,
     };
   }
+
+  // Stage-3 (easy aerobic, no quality) — reverse-taper Week 2-3:
+  // "Rebuild frequency, most days short easy" → 5 running days, 2
+  // rest days, with a longer day on the weekend. Pattern:
+  //   Mon: rest (recover from weekend long)
+  //   Tue: easy
+  //   Wed: easy
+  //   Thu: rest (midweek recovery)
+  //   Fri: easy
+  //   Sat: longer easy (the "rebuild duration" anchor)
+  //   Sun: easy
   if (days <= easyEnd) {
     const baseEasy = baseEasyMi(state, 'POST_RACE');
-    const milesPrescribed = round1(Math.max(3, Math.min(baseEasy * 0.7, 6)));
+    if (dow === 1 || dow === 4) {
+      return rest(`${days} days post ${active.name}. Easy stage — protective rest, return to long-run rhythm.${focusSuffix}`);
+    }
+    if (dow === 6) {  // Saturday — longer rebuild-duration day
+      const longishMi = round1(Math.min(baseEasy * 1.5, baseEasy + 3));
+      return {
+        type: 'general_aerobic', label: 'Long easy (rebuild)',
+        distanceMi: longishMi, durationMin: null,
+        paceTargetSPerMi: null, hrZone: 2,
+        description: `${longishMi} mi easy · the rebuild-duration anchor of the week · conversational throughout${focusSuffix}`,
+        isQuality: false, isLong: true, appendStrides: false,
+      };
+    }
+    const milesPrescribed = round1(Math.max(3, Math.min(baseEasy * 0.85, 7)));
     return {
       type: 'general_aerobic', label: 'General aerobic',
       distanceMi: milesPrescribed, durationMin: null,
       paceTargetSPerMi: null, hrZone: 2,
-      description: `${milesPrescribed} mi easy aerobic · stay conversational · gradual return${focusSuffix}`,
+      description: `${milesPrescribed} mi easy aerobic · stay conversational · rebuild frequency${focusSuffix}`,
       isQuality: false, isLong: false, appendStrides: false,
     };
   }
-  // Past the easy window but recoveryWindowEndsISO still says POST_RACE
-  // (e.g. day 15-26 after a marathon). Allow general aerobic at base
-  // volume but no quality work.
+
+  // Stage-4 — past easyEnd but recoveryWindowEndsISO still says
+  // POST_RACE (rare; happens for stacked-race scenarios where the
+  // overall window outlasts the active driver's stage gates). Run
+  // a normal-shaped easy week with no quality, slightly elevated
+  // volume vs stage-3.
+  const baseEasy = baseEasyMi(state, 'POST_RACE');
+  if (dow === 1) {
+    return rest(`${days} days post ${active.name}. Recovery window still open — Monday rest.`);
+  }
+  if (dow === 6) {
+    const longMi = round1(Math.min(baseEasy * 1.7, baseEasy + 4));
+    return {
+      type: 'general_aerobic', label: 'Long easy',
+      distanceMi: longMi, durationMin: null,
+      paceTargetSPerMi: null, hrZone: 2,
+      description: `${longMi} mi easy long · still inside recovery window — no quality, build duration${focusSuffix}`,
+      isQuality: false, isLong: true, appendStrides: false,
+    };
+  }
+  const milesPrescribed = round1(baseEasy);
   return {
     type: 'general_aerobic', label: 'General aerobic',
-    distanceMi: round1(baseEasyMi(state, 'POST_RACE')), durationMin: null,
+    distanceMi: milesPrescribed, durationMin: null,
     paceTargetSPerMi: null, hrZone: 2,
-    description: `${round1(baseEasyMi(state, 'POST_RACE'))} mi easy aerobic · still inside the marathon recovery window — no quality yet`,
+    description: `${milesPrescribed} mi easy aerobic · still inside recovery window — no quality yet${focusSuffix}`,
     isQuality: false, isLong: false, appendStrides: false,
   };
 }
