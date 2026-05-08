@@ -464,14 +464,24 @@ function WeekCell({ day }: { day: StripDay }) {
   const isPast = !day.isFuture && !isToday;
   const isRest = day.plannedType === 'rest';
 
-  // Resolved values: actuals beat plans for past days; plans for
-  // today/future. distanceMi can be 0 (rest day) — that's a real
-  // value, not "missing data".
+  // Resolved values:
+  //   - past + actual ran   → show actual
+  //   - today + actual ran  → show actual (the run that just happened
+  //                           takes precedence over the prescription)
+  //   - else                → show planned
+  // distanceMi can be 0 (rest day) — that's a real value, not "missing".
+  const ranActual = day.actualMi != null && day.actualMi > 0;
   const distance: number | null =
-    isPast && day.actualMi != null && day.actualMi > 0
+    (isPast || isToday) && ranActual
       ? day.actualMi
       : day.plannedMi;
-  const showLabel = day.plannedLabel || (isPast ? null : null);
+
+  // When today's actual run shows up, label it "Done" so the cell
+  // visibly reconciles with the run rather than continuing to render
+  // the prescribed type ("Rest").
+  const showLabel = isToday && ranActual
+    ? 'Done'
+    : day.plannedLabel ?? null;
 
   // Color logic — today = white on orange; rest = dim; everything else
   // gets the standard t0/t2 palette.

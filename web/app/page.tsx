@@ -372,7 +372,10 @@ function TodayTile({ now, next, daysToNext, runs }: { now: Date; next: SavedRace
   const isRaceTomorrow = daysToNext === 1 && next;
   const todayDow = now.toLocaleDateString('en-US', { weekday: 'long' });
   const todayShort = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const todayISOStr = now.toISOString().slice(0, 10);
+  // todayISO() is LA-tz-aware; raw `now.toISOString().slice(0,10)` would
+  // return the UTC date and miss runs after ~4pm PT (when UTC has already
+  // ticked over to "tomorrow").
+  const todayISOStr = todayISO();
   const todayRuns = runs ? runs.filter(r => r.date === todayISOStr) : [];
 
   return (
