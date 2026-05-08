@@ -75,7 +75,7 @@ export default function RacesIndexPage() {
             </div>
           </div>
 
-          {races === null && <div className="hint" style={{ padding: 16 }}>Reading saved plans from localStorage…</div>}
+          {races === null && <div className="hint" style={{ padding: 16 }}>Loading races…</div>}
 
           {races !== null && races.length === 0 && (
             <EmptyState />

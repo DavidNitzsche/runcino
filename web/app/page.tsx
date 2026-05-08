@@ -20,7 +20,7 @@ import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 import { loadRunnerProfile, ageFromBirthYear, resolveHrmax } from '../lib/runner-profile';
-import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS } from '../coach/doctrine';
+import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -1406,7 +1406,13 @@ function HrZonesCard() {
   const [hrmax, setHrmax] = useState<{ bpm: number; source: 'measured' | 'tanaka_estimate' } | null>(null);
 
   useEffect(() => {
-    setHrmax(resolveHrmax(loadRunnerProfile()));
+    let cancelled = false;
+    (async () => {
+      const profile = await loadRunnerProfile();
+      if (cancelled) return;
+      setHrmax(resolveHrmax(profile));
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   if (!hrmax) return null;
@@ -1547,11 +1553,19 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
     ? 'yesterday'
     : `${vdot.source.daysAgo} days ago`;
 
-  // Age + sex grading (Research/24). Computed client-side because
-  // the profile is localStorage-only for now. When age/sex are
-  // unspecified, gradeVdot returns ageGraded = null and the
-  // secondary line just doesn't render.
-  const profile = typeof window !== 'undefined' ? loadRunnerProfile() : { birthYear: null, sex: 'unspecified' as const };
+  // Age + sex grading (Research/24). Profile lives server-side
+  // (Postgres) — fetched async on mount. Until it resolves we
+  // render raw VDOT; the age-graded line appears once profile
+  // lands. SSR-safe via DEFAULT_PROFILE.
+  const [profile, setProfile] = useState<{ birthYear: number | null; sex: RunnerSex; hrmaxBpm: number | null; rhrBpm: number | null }>({ birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const p = await loadRunnerProfile();
+      if (!cancelled) setProfile(p);
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const runnerAge = ageFromBirthYear(profile.birthYear);
   const grading = gradeVdot(vdot.vdot, runnerAge, profile.sex);
   const showAgeGraded = grading.ageGraded != null && runnerAge != null && runnerAge > 30 && Math.abs(grading.ageGraded - vdot.vdot) >= 1;

@@ -1,91 +1,169 @@
 /**
- * Runner profile — birth year + sex, localStorage-backed.
+ * Runner profile — client-side wrapper over the server-side store
+ * at /api/runner-profile (Postgres-backed). Replaces the prior
+ * localStorage-only implementation.
  *
- * Fuels age + sex grading on the VDOT tile (Research/24). Both
- * fields are optional — when absent, the dashboard surfaces raw
- * VDOT only with no age/sex framing.
+ * Cross-device synced: phone + desktop see the same profile. The
+ * server-side coach engine sees it too, so briefDailyTraining /
+ * briefRaceMorning / assessReadiness can use age + sex + HRmax
+ * for context (the audit's #1 priority).
  *
- * Server-side persistence (Postgres user table) is a future
- * migration; localStorage is sufficient until we add auth and
- * multi-device sync.
+ * Migration: on first load, if a localStorage profile exists, push
+ * it to the server then forget it. The legacy key is preserved
+ * during migration but no longer read.
  */
 
 import type { RunnerSex } from '../coach/doctrine';
 
-const KEY = 'runcino:runner-profile';
+const LEGACY_KEY = 'runcino:runner-profile';
 
 export interface RunnerProfile {
-  /** 4-digit birth year (e.g. 1985). Used to compute age. Null
-   *  when unspecified. */
   birthYear: number | null;
-  /** Sex at the level of granularity needed for age + sex grading.
-   *  'unspecified' is the default — no age/sex VDOT framing. */
   sex: RunnerSex;
-  /** Maximum heart rate, BPM. When known (lab test or field test
-   *  per Research/03 §HRmax field-test protocols), drives 5-zone
-   *  HR-zone derivation on the dashboard. When null, the dashboard
-   *  estimates from age via HRMAX_FORMULAS (Tanaka by default —
-   *  208 - 0.7×age, ±10 BPM SE). */
   hrmaxBpm: number | null;
-  /** Resting heart rate, BPM. Optional — needed for Karvonen / HRR
-   *  zones. Most runners can leave this null and use %HRmax zones. */
   rhrBpm: number | null;
 }
 
-const DEFAULT: RunnerProfile = { birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null };
+export const DEFAULT_PROFILE: RunnerProfile = {
+  birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
+};
 
-/** Server-safe: returns the default profile when called outside
- *  the browser (SSR). The dashboard tile re-reads on mount so
- *  the actual profile lands client-side. */
-export function loadRunnerProfile(): RunnerProfile {
-  if (typeof window === 'undefined') return DEFAULT;
+let cached: { profile: RunnerProfile; at: number } | null = null;
+let inflight: Promise<RunnerProfile> | null = null;
+const CACHE_TTL_MS = 60_000;
+
+interface ApiResponse {
+  profile: {
+    birthYear: number | null;
+    sex: RunnerSex | null;
+    hrmaxBpm: number | null;
+    rhrBpm: number | null;
+    updatedAt: string | null;
+  } | null;
+  error?: string;
+}
+
+function fromApi(api: ApiResponse['profile']): RunnerProfile {
+  if (!api) return DEFAULT_PROFILE;
+  const sex: RunnerSex = (['male', 'female', 'other', 'unspecified'] as const).includes(api.sex as RunnerSex)
+    ? (api.sex as RunnerSex)
+    : 'unspecified';
+  return {
+    birthYear: api.birthYear,
+    sex,
+    hrmaxBpm: api.hrmaxBpm,
+    rhrBpm: api.rhrBpm,
+  };
+}
+
+/** Read a legacy localStorage profile (if any). Used once during
+ *  migration to seed the server, then ignored. */
+function readLegacy(): RunnerProfile | null {
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT;
+    const raw = window.localStorage.getItem(LEGACY_KEY);
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<RunnerProfile>;
     return {
       birthYear: typeof parsed.birthYear === 'number' && parsed.birthYear > 1900 && parsed.birthYear < 2030
-        ? parsed.birthYear
-        : null,
+        ? parsed.birthYear : null,
       sex: (['male', 'female', 'other', 'unspecified'] as RunnerSex[]).includes(parsed.sex as RunnerSex)
-        ? parsed.sex as RunnerSex
-        : 'unspecified',
+        ? (parsed.sex as RunnerSex) : 'unspecified',
       hrmaxBpm: typeof parsed.hrmaxBpm === 'number' && parsed.hrmaxBpm >= 130 && parsed.hrmaxBpm <= 230
-        ? parsed.hrmaxBpm
-        : null,
+        ? parsed.hrmaxBpm : null,
       rhrBpm: typeof parsed.rhrBpm === 'number' && parsed.rhrBpm >= 30 && parsed.rhrBpm <= 100
-        ? parsed.rhrBpm
-        : null,
+        ? parsed.rhrBpm : null,
     };
   } catch {
-    return DEFAULT;
+    return null;
   }
 }
 
-export function saveRunnerProfile(profile: RunnerProfile): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(profile));
-  } catch {
-    // localStorage full or disabled — silently no-op.
-  }
+/** Async loader — fetches profile from server. In-memory cache with
+ *  60s TTL deduplicates concurrent reads across the dashboard's
+ *  shared context. SSR-safe (returns DEFAULT). */
+export async function loadRunnerProfile(force = false): Promise<RunnerProfile> {
+  if (typeof window === 'undefined') return DEFAULT_PROFILE;
+  if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.profile;
+  if (!force && inflight) return inflight;
+
+  inflight = (async () => {
+    try {
+      const res = await fetch('/api/runner-profile', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`/api/runner-profile ${res.status}`);
+      const json = await res.json() as ApiResponse;
+      let profile = fromApi(json.profile);
+
+      // First-load legacy migration: if the server profile is empty
+      // but the browser has a localStorage profile, push it up.
+      // Then mark the legacy key as migrated (don't delete — keeps
+      // a backup if anything goes wrong).
+      const isEmpty = profile.birthYear == null && profile.sex === 'unspecified'
+                   && profile.hrmaxBpm == null && profile.rhrBpm == null;
+      const legacy = isEmpty ? readLegacy() : null;
+      if (legacy && (legacy.birthYear != null || legacy.sex !== 'unspecified' || legacy.hrmaxBpm != null || legacy.rhrBpm != null)) {
+        try {
+          const migrateRes = await fetch('/api/runner-profile', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(legacy),
+          });
+          if (migrateRes.ok) {
+            const migrated = await migrateRes.json() as ApiResponse;
+            profile = fromApi(migrated.profile);
+            window.localStorage.setItem(LEGACY_KEY + ':migrated', String(Date.now()));
+          }
+        } catch {
+          // Migration failure is non-fatal — keep the server's
+          // (empty) profile and try again next time.
+        }
+      }
+
+      cached = { profile, at: Date.now() };
+      return profile;
+    } catch {
+      return DEFAULT_PROFILE;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
-/** Compute age from birth year. Returns null when birthYear is
- *  missing or invalid. Uses calendar year only (not birthday) —
- *  good enough for VDOT age-grading where year-level granularity
- *  is the standard. */
+/** Save the profile back to the server. Updates the local cache so
+ *  consumers re-rendering after the save see the new values without
+ *  another fetch. */
+export async function saveRunnerProfile(profile: RunnerProfile): Promise<RunnerProfile> {
+  if (typeof window === 'undefined') return profile;
+  const res = await fetch('/api/runner-profile', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) throw new Error(`save profile failed: ${res.status}`);
+  const json = await res.json() as ApiResponse;
+  const next = fromApi(json.profile);
+  cached = { profile: next, at: Date.now() };
+  return next;
+}
+
+/** Synchronous read of the most recent cached profile, for components
+ *  that have already triggered loadRunnerProfile elsewhere on the
+ *  page. Returns DEFAULT_PROFILE before the first fetch resolves. */
+export function getCachedRunnerProfile(): RunnerProfile {
+  return cached?.profile ?? DEFAULT_PROFILE;
+}
+
+/** Compute age from birth year. */
 export function ageFromBirthYear(birthYear: number | null, today: Date = new Date()): number | null {
   if (birthYear == null) return null;
   const age = today.getFullYear() - birthYear;
   return age > 0 && age < 130 ? age : null;
 }
 
-/** Resolve the runner's HRmax. Prefers the entered value (lab test or
- *  field test); falls back to a Tanaka estimate from age. Tanaka is
- *  more accurate than Fox/Haskell (208 - 0.7×age, SE ±10 BPM, vs Fox's
- *  220-age SE ±13 BPM). Doctrine: HRMAX_FORMULAS (Research/03).
- *  Returns null when neither HRmax nor age are known. */
+/** Resolve HRmax. Prefers measured, falls back to Tanaka estimate
+ *  from age (208 - 0.7×age, ±10 BPM SE). Doctrine: HRMAX_FORMULAS
+ *  in Research/03. */
 export function resolveHrmax(profile: RunnerProfile): { bpm: number; source: 'measured' | 'tanaka_estimate' } | null {
   if (profile.hrmaxBpm != null) return { bpm: profile.hrmaxBpm, source: 'measured' };
   const age = ageFromBirthYear(profile.birthYear);

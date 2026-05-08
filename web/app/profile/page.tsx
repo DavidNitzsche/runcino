@@ -466,20 +466,34 @@ const iconBtnStyle: React.CSSProperties = {
 };
 
 /* ── Runner profile section ──────────────────────────────────
-   Birth year + sex for VDOT age/sex grading (Research/24).
-   localStorage-backed; both fields optional. Auto-saves on
-   change so there's no Save button — just edit and move on. */
+   Birth year + sex + HRmax + RHR for VDOT age/sex grading
+   (Research/24) and HR-zone derivation (Research/03). Server-side
+   Postgres-backed — cross-device synced, visible to the coach
+   engine. Auto-saves on change so there's no Save button.
+   Migrates any pre-existing localStorage profile on first load. */
 function RunnerProfileSection() {
   const [profile, setProfile] = useState<RunnerProfile>({ birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setProfile(loadRunnerProfile());
+    let cancelled = false;
+    (async () => {
+      const loaded = await loadRunnerProfile();
+      if (!cancelled) setProfile(loaded);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   function update(patch: Partial<RunnerProfile>) {
     const next = { ...profile, ...patch };
     setProfile(next);
-    saveRunnerProfile(next);
+    setError(null);
+    setSaving(true);
+    saveRunnerProfile(next)
+      .then(saved => setProfile(saved))
+      .catch(e => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setSaving(false));
   }
 
   const age = ageFromBirthYear(profile.birthYear);
@@ -588,7 +602,7 @@ function RunnerProfileSection() {
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)', lineHeight: 1.5 }}>
           Used to compute age-graded VDOT, sex-cohort tier framing, and HR zone targets on the dashboard.
-          All fields optional — leave blank for open-class / age-estimated zones. No data leaves your browser.
+          All fields optional — leave blank for open-class / age-estimated zones. Synced across devices. {saving && <span style={{ color: 'var(--color-corporate)', fontWeight: 700 }}>· Saving…</span>}{error && <span style={{ color: 'var(--color-warning)', fontWeight: 700 }}>· {error}</span>}
         </div>
       </div>
     </section>

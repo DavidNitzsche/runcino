@@ -140,6 +140,38 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS recovery_sessions_date_idx ON recovery_sessions (date);
     `);
+    // Single-row runner profile (no auth yet — assumes one runner per
+    // deploy). When auth lands, add a user_id PK + drop the singleton
+    // constraint. Fields all nullable so an empty profile is valid.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS runner_profile (
+        id            INTEGER PRIMARY KEY DEFAULT 1,
+        birth_year    INTEGER,
+        sex           TEXT,
+        hrmax_bpm     INTEGER,
+        rhr_bpm       INTEGER,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT runner_profile_singleton CHECK (id = 1)
+      );
+    `);
+    // Cache for the dashboard's /api/coach/today payload. Keyed by
+    // (cache_date, latest_activity_id) so reads are cheap and the
+    // cache auto-invalidates when a new activity lands. Pre-warmed
+    // by the Strava webhook + a midnight cron.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coach_today_cache (
+        id                  SERIAL PRIMARY KEY,
+        cache_date          DATE NOT NULL,
+        latest_activity_id  BIGINT,
+        payload             JSONB NOT NULL,
+        computed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (cache_date, latest_activity_id)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS coach_today_cache_date_idx
+        ON coach_today_cache (cache_date DESC, computed_at DESC);
+    `);
   } finally {
     client.release();
   }
