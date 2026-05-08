@@ -99,6 +99,20 @@ export interface ReadinessAssessment {
   acwr: number | null;
   /** 14-day easy-share fraction (0–1); null if no recent intensity data. */
   easyShare: number | null;
+  /** Engine-detected incomplete-recovery signals (from doctrine
+   *  Research/00b § "Incomplete Recovery Signals"). Each signal flags
+   *  one of: easy/hard imbalance, missed runs, heavy block, ACWR drift,
+   *  race recovery still active. The dashboard surfaces them so the
+   *  runner sees what's actually being measured. */
+  signals: Array<{
+    label: string;
+    severity: 'info' | 'warn';
+    detail: string;
+  }>;
+  /** Action recommendation pulled from INCOMPLETE_RECOVERY_DECISION_MATRIX
+   *  per doctrine Research/00b. e.g. "Continue training" / "Insert easy
+   *  days; defer next quality session 24-48h" / etc. */
+  recommendedAction: string;
 }
 
 export interface TaperDepthInput extends CoachBaseContext {
@@ -412,15 +426,73 @@ class CoachImpl implements Coach {
       reason = `The legs look ready. Trust today's plan.`;
     }
 
+    // Collect incomplete-recovery signals (Research/00b doctrine) the
+    // engine CAN detect from current state. HRV / RHR / sleep land
+    // when HealthKit is wired; for now we surface the volume +
+    // intensity + race-recovery signals we already track.
+    const signals: ReadinessAssessment['signals'] = [];
+    if (heavyBlock) signals.push({
+      label: 'Heavy-block recovery active',
+      severity: 'info',
+      detail: `${s.races.raceCount30d} races in the last 30 days. Recovery is the work right now.`,
+    });
+    if (inRaceRecovery && recentRace) signals.push({
+      label: 'Race recovery active',
+      severity: 'info',
+      detail: `${recentRace.daysAgo} day${recentRace.daysAgo === 1 ? '' : 's'} since ${recentRace.name}.`,
+    });
+    if (ratio != null && (ratio > 1.5 || ratio < 0.5)) signals.push({
+      label: 'Volume out of band',
+      severity: 'warn',
+      detail: `Last 7 days are ${Math.round(ratio * 100)}% of your usual weekly average.`,
+    });
+    if (ratio != null && ratio > ACWR_HIGH && ratio <= 1.5) signals.push({
+      label: 'ACWR running hot',
+      severity: 'warn',
+      detail: `Acute:chronic load ratio ${ratio.toFixed(2)} — above the ${ACWR_HIGH} comfort ceiling.`,
+    });
+    if (ratio != null && ratio < ACWR_LOW && ratio >= 0.5) signals.push({
+      label: 'ACWR low',
+      severity: 'warn',
+      detail: `Acute:chronic load ratio ${ratio.toFixed(2)} — below the ${ACWR_LOW} maintenance floor.`,
+    });
+    if (easy > 0 && easy < target.easyShareMin) signals.push({
+      label: 'Easy/hard imbalance',
+      severity: 'warn',
+      detail: `Only ${Math.round(easy * 100)}% of the last 14 days were truly easy (target ≥${Math.round(target.easyShareMin * 100)}%).`,
+    });
+    if (missedRunsSignal) signals.push({
+      label: 'Missed runs',
+      severity: 'warn',
+      detail: `${s.recovery.daysSinceLastRun} days since the last run.`,
+    });
+
+    // Map signal count to the doctrine decision matrix
+    // (INCOMPLETE_RECOVERY_DECISION_MATRIX, Research/00b). HealthKit
+    // signals will plug in as additional rows once those land.
+    const warnSignals = signals.filter(sg => sg.severity === 'warn').length;
+    const recommendedAction = (() => {
+      if (heavyBlock || inRaceRecovery)        return 'Recovery active — let the body absorb the load.';
+      if (warnSignals >= 3)                    return 'Multiple stress signals. Consider a 3-5 day cutback (50% volume, no quality).';
+      if (warnSignals === 2)                   return 'Insert easy days; defer next quality session 24-48h.';
+      if (warnSignals === 1)                   return 'One signal flagged — handle gently today, watch tomorrow.';
+      return 'Continue training as planned.';
+    })();
+
     return {
       answer: {
         level,
         message: reason,
         acwr: ratio,
         easyShare: easy > 0 ? easy : null,
+        signals,
+        recommendedAction,
       },
       rationale: reason,
-      citations: citationsForReadiness(level),
+      citations: [
+        ...citationsForReadiness(level),
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery', snippet: 'Signal-count → action mapping (continue / 24-48h defer / 3-5d cutback / full cutback / stop).' },
+      ],
       brain: 'deterministic',
     };
   }
