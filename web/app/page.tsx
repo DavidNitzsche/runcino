@@ -20,7 +20,7 @@ import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 import { loadRunnerProfile, ageFromBirthYear, resolveHrmax } from '../lib/runner-profile';
-import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES } from '../coach/doctrine';
+import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS } from '../coach/doctrine';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -1507,11 +1507,18 @@ function NoVdotPanel() {
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 4 }}>
+          {/* Field-test options sourced from VDOT_FIELD_TESTS doctrine
+              (Research/01) — when doctrine evolves, this surface
+              follows. Plus a "Race anything" catch-all that doesn't
+              live in the doctrine since it's a UX prompt, not a test
+              protocol. */}
           {[
-            { label: '5K time trial',          dur: '~35 min',  note: 'Most accurate. All-out 5K on flat course or track after a 15-min warm-up. Apply +1 VDOT correction for solo effort.' },
-            { label: '30-minute time trial',   dur: '~50 min',  note: 'Surfaces threshold pace directly. Run as far as possible in 30 min after warm-up; last 20 min average ≈ LT pace.' },
-            { label: '3K + 5K combo',          dur: '2 days',   note: 'Two TTs on separate days. Take the better-fit VDOT. Higher confidence than one trial.' },
-            { label: 'Race anything',          dur: 'Whenever', note: 'Mile / 5K / 10K / 15K / Half / Marathon — any all-out, well-paced race anchors VDOT directly.' },
+            ...VDOT_FIELD_TESTS.value.map(t => ({
+              label: t.label,
+              dur: t.durationMin > 0 ? `~${t.durationMin} min` : '2 days',
+              note: `${t.description} ${t.accuracyNote}${t.vdotCorrection ? ` · ${t.vdotCorrection}.` : ''}`,
+            })),
+            { label: 'Race anything', dur: 'Whenever', note: 'Mile / 5K / 10K / 15K / Half / Marathon — any all-out, well-paced race anchors VDOT directly.' },
           ].map(t => (
             <div key={t.label} style={{
               padding: '12px 14px',
@@ -1901,25 +1908,32 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
               <span style={{ color: 'var(--color-t1)' }}>{pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS</span>
             </div>
           )}
-          {/* Next-week cap: 10% over peak (Daniels). TAPER caps lower
-              (short long runs); POST_RACE / REBUILD cap by phase. */}
+          {/* Next-week long-run cap. Mirrors the engine's longRunTarget
+              math (lib/coach-engine.ts:362-374) so the dashboard
+              doesn't disagree with the prescription. The 110%
+              ceiling is doctrine §13.1 (Daniels' single-session-spike
+              rule); per-phase multipliers come from the engine. */}
           {pulse.longestRecentMi > 0 && (() => {
-            const danielsTen = Math.round(pulse.longestRecentMi * 1.10 * 10) / 10;
-            const phaseCap: Record<string, number | null> = {
-              'TAPER':      Math.min(danielsTen, Math.max(8, pulse.longestRecentMi * 0.6)),
-              'PEAK':       danielsTen,
-              'BUILDING':   danielsTen,
-              'BASE BLOCK': danielsTen,
-              'POST-RACE':  Math.min(danielsTen, Math.max(4, pulse.longestRecentMi * 0.5)),
-              'REBUILD':    Math.min(danielsTen, Math.max(6, pulse.longestRecentMi * 0.7)),
-              'RACE MONTH': danielsTen,
+            const peakLast = pulse.longestRecentMi;
+            // Hard ceiling: never >110% of peak last 28d. Single-
+            // session-spike rule, Research/01 §"Returning from layoff"
+            // + general Daniels +10% guidance.
+            const hardCap = peakLast * 1.10;
+            // Per-phase target — same constants as engine longRunTarget.
+            const phaseTarget: Record<string, number | null> = {
+              'TAPER':      Math.min(hardCap, Math.max(8,  peakLast * 0.65)),
+              'PEAK':       Math.min(hardCap, Math.max(14, peakLast * 1.05)),
+              'BUILDING':   Math.min(hardCap, Math.max(10, peakLast * 1.05)),
+              'BASE BLOCK': Math.min(hardCap, Math.max(8,  peakLast * 1.00)),
+              'POST-RACE':  Math.min(hardCap, Math.max(6,  peakLast * 0.40)),
+              'RACE MONTH': Math.min(hardCap, Math.max(10, peakLast * 1.05)),
             };
-            const cap = phaseCap[displayPhase];
+            const cap = phaseTarget[displayPhase] ?? phaseTarget['BASE BLOCK'];
             if (cap == null) return null;
             return (
               <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)', lineHeight: 1.4, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
                 NEXT-WEEK CAP<br />
-                <span style={{ color: 'var(--color-t1)' }}>≤ {cap.toFixed(1)} MI <span style={{ color: 'var(--color-t3)', fontSize: 9 }}>· DANIELS +10% RULE</span></span>
+                <span style={{ color: 'var(--color-t1)' }}>≤ {cap.toFixed(1)} MI <span style={{ color: 'var(--color-t3)', fontSize: 9 }}>· {displayPhase} TARGET (RESEARCH/01)</span></span>
               </div>
             );
           })()}

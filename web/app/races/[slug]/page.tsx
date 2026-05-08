@@ -28,6 +28,7 @@ import {
   RouteMap, ElevationProfile,
   SplitsTables, ChartsRow, SpacingAndDistance, Insights,
 } from '../../../components/CoursePreview';
+import { PRE_RACE_HYDRATION, FLUID_DURING_RACE } from '../../../coach/doctrine';
 
 const FT_PER_M = 3.28084;
 
@@ -852,33 +853,37 @@ function HydrationTile({ race }: { race: SavedRace }) {
     : distMi >= 11 ? 'half'
     : distMi >= 7  ? '10K'
     : '5K';
-  // Pre-race plan: 24h pre + 2-4h pre + final hour, per
-  // PRE_RACE_HYDRATION (Research/19). Numbers are dose-anchored.
+  // Pre-race plan from doctrine PRE_RACE_HYDRATION (Research/19).
+  // Reads numbers off the doctrine constant rather than inlining
+  // them — when doctrine changes, the tile follows.
+  const pre = PRE_RACE_HYDRATION.value;
   const preBlocks = [
-    { phase: '24h pre',  primary: 'Daily baseline + 500-1000 ml extra fluid', detail: 'Liberal salt with meals · no alcohol · maintain habitual caffeine.' },
-    { phase: '2-4h pre', primary: '5-10 ml/kg fluid · 1000-1500 mg sodium', detail: 'Sodium loading at this window expands plasma volume and reduces urine loss. Standard sports drinks alone are insufficient.' },
-    { phase: 'Final hr', primary: '60-30m: stop bolus drinking · 15-10m: 150-250 ml top-up if thirsty', detail: 'Goal: euhydrated start with mild plasma expansion, not over-volumed.' },
+    {
+      phase: '24h pre',
+      primary: `Daily baseline + ${pre.twentyFourHourPre.addExtraMlLow}–${pre.twentyFourHourPre.addExtraMlHigh} ml extra fluid`,
+      detail: pre.twentyFourHourPre.notes.join(' · ') + '.',
+    },
+    {
+      phase: '2-4h pre',
+      primary: `${pre.twoToFourHourPre.volumeMlPerKgLow}–${pre.twoToFourHourPre.volumeMlPerKgHigh} ml/kg fluid · ${pre.twoToFourHourPre.sodiumMgLow}–${pre.twoToFourHourPre.sodiumMgHigh} mg sodium`,
+      detail: pre.twoToFourHourPre.sodiumLoadingNote,
+    },
+    {
+      phase: 'Final hr',
+      primary: pre.finalHourPre.slice(0, 2).join(' · '),
+      detail: pre.finalHourPre[3] ?? 'Goal: euhydrated start with mild plasma expansion, not over-volumed.',
+    },
   ];
-  // During-race fluid bands per condition. We don't yet pull the
-  // actual forecast into this tile (cross-tile state lift TODO);
-  // for now we show all four temp bands and let the runner pick
-  // the column matching their forecast.
-  const conditions: Array<{ key: 'cool' | 'temperate' | 'warm' | 'hot'; label: string; ml: { lo: number; hi: number } }> = (() => {
-    // Distance × condition table from FLUID_DURING_RACE doctrine
-    const table = {
-      '5K':       { cool: [0,0],     temperate: [0,0],     warm: [0,100],   hot: [100,200] },
-      '10K':      { cool: [0,200],   temperate: [100,300], warm: [200,400], hot: [300,500] },
-      half:       { cool: [200,400], temperate: [300,500], warm: [400,600], hot: [500,800] },
-      marathon:   { cool: [300,500], temperate: [400,600], warm: [500,700], hot: [600,900] },
-    } as const;
-    const row = table[bucket];
-    return [
-      { key: 'cool',      label: 'Cool · <50°F',  ml: { lo: row.cool[0],      hi: row.cool[1] } },
-      { key: 'temperate', label: 'Temperate · 50-65°F', ml: { lo: row.temperate[0], hi: row.temperate[1] } },
-      { key: 'warm',      label: 'Warm · 65-75°F', ml: { lo: row.warm[0],      hi: row.warm[1] } },
-      { key: 'hot',       label: 'Hot · 75°F+',   ml: { lo: row.hot[0],       hi: row.hot[1] } },
-    ];
-  })();
+  // During-race fluid bands keyed off FLUID_DURING_RACE doctrine.
+  // Source the row by bucket; render all four temp bands so the
+  // runner picks the matching column for their forecast.
+  const fluidRow = FLUID_DURING_RACE.value[bucket];
+  const conditions: Array<{ key: 'cool' | 'temperate' | 'warm' | 'hot'; label: string; ml: { lo: number; hi: number } }> = [
+    { key: 'cool',      label: 'Cool · <50°F',         ml: { lo: fluidRow.cool.lowMlPerHr,      hi: fluidRow.cool.highMlPerHr } },
+    { key: 'temperate', label: 'Temperate · 50-65°F',  ml: { lo: fluidRow.temperate.lowMlPerHr, hi: fluidRow.temperate.highMlPerHr } },
+    { key: 'warm',      label: 'Warm · 65-75°F',       ml: { lo: fluidRow.warm.lowMlPerHr,      hi: fluidRow.warm.highMlPerHr } },
+    { key: 'hot',       label: 'Hot · 75°F+',          ml: { lo: fluidRow.hot.lowMlPerHr,       hi: fluidRow.hot.highMlPerHr } },
+  ];
 
   return (
     <div className="tile">
