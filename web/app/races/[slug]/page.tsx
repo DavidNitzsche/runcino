@@ -244,6 +244,10 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
                 <MileSplits race={enrichedRace} />
                 <FuelingTile race={enrichedRace} />
               </div>
+
+              <div style={{ marginTop: 10 }}>
+                <HydrationTile race={enrichedRace} />
+              </div>
             </>
           )}
 
@@ -835,6 +839,114 @@ function FuelingTile({ race }: { race: SavedRace }) {
    This is the on-ramp for race results until M2 wires Strava — at
    which point the matching Strava activity auto-fills this block
    and the form becomes "edit / verify". */
+/* ── Hydration tile ──────────────────────────────────────────
+   Surfaces the doctrine in Research/19 as actionable race-day
+   numbers: pre-race fluid + sodium plan, during-race ml/hr keyed
+   to race distance + the same temperature data the WeatherTile
+   shows. Lives below MileSplits + FuelingTile because it depends
+   on weather to pick the right temp band. */
+function HydrationTile({ race }: { race: SavedRace }) {
+  const distMi = race.meta.distanceMi;
+  // Map race distance to the doctrine's distance bucket.
+  const bucket: 'half' | 'marathon' | '10K' | '5K' = distMi >= 22 ? 'marathon'
+    : distMi >= 11 ? 'half'
+    : distMi >= 7  ? '10K'
+    : '5K';
+  // Pre-race plan: 24h pre + 2-4h pre + final hour, per
+  // PRE_RACE_HYDRATION (Research/19). Numbers are dose-anchored.
+  const preBlocks = [
+    { phase: '24h pre',  primary: 'Daily baseline + 500-1000 ml extra fluid', detail: 'Liberal salt with meals · no alcohol · maintain habitual caffeine.' },
+    { phase: '2-4h pre', primary: '5-10 ml/kg fluid · 1000-1500 mg sodium', detail: 'Sodium loading at this window expands plasma volume and reduces urine loss. Standard sports drinks alone are insufficient.' },
+    { phase: 'Final hr', primary: '60-30m: stop bolus drinking · 15-10m: 150-250 ml top-up if thirsty', detail: 'Goal: euhydrated start with mild plasma expansion, not over-volumed.' },
+  ];
+  // During-race fluid bands per condition. We don't yet pull the
+  // actual forecast into this tile (cross-tile state lift TODO);
+  // for now we show all four temp bands and let the runner pick
+  // the column matching their forecast.
+  const conditions: Array<{ key: 'cool' | 'temperate' | 'warm' | 'hot'; label: string; ml: { lo: number; hi: number } }> = (() => {
+    // Distance × condition table from FLUID_DURING_RACE doctrine
+    const table = {
+      '5K':       { cool: [0,0],     temperate: [0,0],     warm: [0,100],   hot: [100,200] },
+      '10K':      { cool: [0,200],   temperate: [100,300], warm: [200,400], hot: [300,500] },
+      half:       { cool: [200,400], temperate: [300,500], warm: [400,600], hot: [500,800] },
+      marathon:   { cool: [300,500], temperate: [400,600], warm: [500,700], hot: [600,900] },
+    } as const;
+    const row = table[bucket];
+    return [
+      { key: 'cool',      label: 'Cool · <50°F',  ml: { lo: row.cool[0],      hi: row.cool[1] } },
+      { key: 'temperate', label: 'Temperate · 50-65°F', ml: { lo: row.temperate[0], hi: row.temperate[1] } },
+      { key: 'warm',      label: 'Warm · 65-75°F', ml: { lo: row.warm[0],      hi: row.warm[1] } },
+      { key: 'hot',       label: 'Hot · 75°F+',   ml: { lo: row.hot[0],       hi: row.hot[1] } },
+    ];
+  })();
+
+  return (
+    <div className="tile">
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Hydration plan</div>
+          <div className="tile-lbl">Pre + during · {bucket} race</div>
+        </div>
+        <span className="chip" style={{
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+          padding: '3px 7px', borderRadius: 3,
+          background: 'rgba(38,127,255,.18)', color: 'var(--color-corporate)',
+        }}>RESEARCH/19</span>
+      </div>
+
+      {/* Pre-race plan */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 4 }}>
+        {preBlocks.map(b => (
+          <div key={b.phase} style={{
+            padding: '12px 14px', borderRadius: 8,
+            background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+              {b.phase.toUpperCase()}
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.4 }}>
+              {b.primary}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>
+              {b.detail}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* During-race table */}
+      <div style={{
+        marginTop: 8, padding: '12px 14px', borderRadius: 8,
+        background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+          DURING-RACE · ML/HR · {bucket.toUpperCase()}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+          {conditions.map(c => (
+            <div key={c.key} style={{
+              padding: '8px', borderRadius: 6, background: 'var(--color-l3)',
+              display: 'flex', flexDirection: 'column', gap: 3,
+            }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.6px', color: 'var(--color-t3)' }}>
+                {c.label.toUpperCase()}
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 13, fontWeight: 800, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
+                {c.ml.lo === 0 && c.ml.hi === 0 ? '—' : `${c.ml.lo}-${c.ml.hi}`}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.5 }}>
+          Per-aid-station (every 10-15 min): 400 ml/hr → 100 ml/station; 600 → 150; 800 → 200. Body mass should drop 1-3% during long events; weight gain post-race indicates over-drinking (EAH risk). General upper limit: ~800 ml/hr.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Race debrief tile ──────────────────────────────────────
    Sits below the poster card on past races. Contains the rich
    Strava enrichment that doesn't fit in the hero: per-phase
