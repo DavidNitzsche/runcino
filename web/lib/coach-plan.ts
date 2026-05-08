@@ -22,19 +22,42 @@ import type { RunWorkoutType } from './coach-workouts';
 // ── Active-template selection ───────────────────────────────────
 
 /** Pick the active plan template for the given state. Returns null
- *  when no template applies (e.g., no goal race + no clear base mode). */
+ *  when no template applies (e.g., no goal race + no clear base mode).
+ *
+ *  Race-specific templates (e.g. half_marathon_intermediate) prescribe
+ *  the SAMPLE PEAK WEEK — Tue threshold, Thu intervals, Sun long with
+ *  HMP segments. Two quality days/wk. Those are appropriate during
+ *  BUILD/PEAK/TAPER, NOT during BASE phase (when the runner is still
+ *  outside the build window — e.g. 14 weeks before a half).
+ *
+ *  The engine previously fired the race template the moment any A
+ *  race was scheduled, regardless of how far out — which prescribed
+ *  2 quality/wk during a phase doctrine says is 1/wk. Plan-validator
+ *  caught it as `quality_cadence: BASE_MAINTENANCE has 2 quality
+ *  session(s) — exceeds the 1-1 cap`. Now: race templates only fire
+ *  in BUILD/PEAK/TAPER. BASE/BASE_MAINTENANCE/REBUILD/POST_RACE use
+ *  the simpler base_building or maintenance template (1 quality/wk).
+ *
+ *  Doctrine: Research/00b §Build/Peak/Taper Phase Cadence —
+ *  quality density 0-1 in BASE, 1-2 in BUILD, 2 in PEAK, 1 in TAPER. */
 export function selectActiveTemplate(state: CoachState, phase: Phase): PlanTemplate | null {
-  // No goal race → base building or maintenance template
-  if (!state.races.nextA) {
-    if (phase === 'REBUILD' || phase === 'POST_RACE') {
-      return findById('base_building');
-    }
-    if (phase === 'BASE_MAINTENANCE') {
-      return findById('maintenance');
-    }
+  // Phases outside the build window (or no race) → base templates only.
+  if (phase === 'POST_RACE' || phase === 'REBUILD') {
     return findById('base_building');
   }
+  if (phase === 'BASE' || phase === 'BASE_MAINTENANCE') {
+    // BASE phase = pre-build window. Use maintenance template if a
+    // race is scheduled (knows about the race for context) but never
+    // the race-specific one — that's reserved for BUILD onward.
+    return findById('maintenance');
+  }
 
+  // No goal race in BUILD/PEAK/TAPER (shouldn't happen, but defensive).
+  if (!state.races.nextA) {
+    return findById('maintenance');
+  }
+
+  // BUILD / PEAK / TAPER → race-specific template by distance + level.
   const distMi = state.races.nextA.distanceMi;
   const planDist: PlanDistance =
     distMi >= 22 ? 'marathon' :

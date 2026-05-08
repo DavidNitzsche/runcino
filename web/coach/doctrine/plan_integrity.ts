@@ -94,17 +94,27 @@ export const MIN_WEEKLY_MILEAGE_FRAC_BY_PHASE: Cited<Record<string, number>> = {
 
 export const QUALITY_DAYS_PER_WEEK_BY_PHASE: Cited<Record<string, { min: number; max: number }>> = {
   value: {
-    BASE:             { min: 0, max: 1 },
+    // Inside-build-window phases — Pfitz half-marathon-intermediate
+    // and equivalent templates prescribe 2 quality/wk through most
+    // of the build, including the early phase (Tue threshold + Thu
+    // intervals). Doctrine matches the templates so the validator
+    // doesn't flag legitimate Pfitz prescriptions as cadence errors.
+    BASE:             { min: 1, max: 2 },  // early build: tempo + intervals
     BUILD:            { min: 1, max: 2 },
     PEAK:             { min: 2, max: 2 },
     TAPER:            { min: 1, max: 1 },  // intensity preserved, volume cut
-    BASE_MAINTENANCE: { min: 1, max: 1 },
+
+    // Outside-build-window phases — pure aerobic, 1 quality/wk max.
+    // The "maintenance" template gives 1 LT day; otherwise just E.
+    BASE_MAINTENANCE: { min: 0, max: 1 },
     REBUILD:          { min: 0, max: 1 },
     POST_RACE:        { min: 0, max: 0 },  // no quality during recovery
   },
+  note: 'Race-mode phases (inside build window) honor Pfitz/Daniels template structure (2 quality/wk in BASE/BUILD). Base-mode (no race in window) honors aerobic-only doctrine (≤1 quality/wk).',
   citations: [
     cite('§3.1 Polarized Distribution', '~80% easy / 20% quality split; max 2 quality/wk to absorb', 'research', '00a'),
-    cite('§Build/Peak/Taper Phase Cadence', 'Quality density by phase', 'research', '00b'),
+    cite('§Build/Peak/Taper Phase Cadence', 'Quality density by phase; templates prescribe 2/wk in BUILD', 'research', '00b'),
+    cite('§Half Marathon Intermediate Sample Peak Week', 'Tue tempo + Thu intervals = 2 quality/wk standard', 'research', '22'),
     cite('§Taper Intensity Preservation', 'Taper drops volume but holds 1 quality session', 'research', '14'),
   ],
 };

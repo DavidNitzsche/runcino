@@ -191,6 +191,34 @@ describe('validatePlan', () => {
     expect(cadIssue).toBeDefined();
   });
 
+  it('accepts BASE phase with 2 quality (Pfitz-aligned)', () => {
+    const issues = validatePlan({
+      next30Days: [],
+      buildCurve: [{
+        weekStartISO: '2026-05-11', weekIndex: 0, daysToRace: 80,
+        phase: 'BASE', totalMi: 30, longRunMi: 10, qualityCount: 2,
+        hasMpBlock: false, isRaceWeek: false,
+      }],
+      weekShape: [],
+    }, baseState({ weeklyAvg4w: 30, longestLast28Mi: 10 }));
+    const cadIssue = issues.find(i => i.rule === 'quality_cadence');
+    expect(cadIssue).toBeUndefined();
+  });
+
+  it('flags BASE_MAINTENANCE with 2 quality (above the 1-Q cap for outside-window)', () => {
+    const issues = validatePlan({
+      next30Days: [],
+      buildCurve: [{
+        weekStartISO: '2026-05-11', weekIndex: 0, daysToRace: 100,
+        phase: 'BASE_MAINTENANCE', totalMi: 30, longRunMi: 10, qualityCount: 2,
+        hasMpBlock: false, isRaceWeek: false,
+      }],
+      weekShape: [],
+    }, baseState({ weeklyAvg4w: 30, longestLast28Mi: 10 }));
+    const cadIssue = issues.find(i => i.rule === 'quality_cadence' && i.severity === 'error');
+    expect(cadIssue).toBeDefined();
+  });
+
   it('catches a BUILD week with too many quality sessions (3)', () => {
     const issues = validatePlan({
       next30Days: [],

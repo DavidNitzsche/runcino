@@ -146,12 +146,15 @@ function TrainingPageInner() {
         <Nav active="training" />
         <div className="body">
 
-          {/* Plan-integrity banner — shows up only when the validator
-              caught a rule violation in the engine's output. Visible
-              on every page load until the underlying engine bug is
-              fixed. Reads coach.today.planIssues; rules from doctrine
-              plan_integrity.ts. */}
-          <PlanIntegrityBanner issues={hub.coach.today?.planIssues ?? []} />
+          {/* Plan-integrity validator output is in the response
+              (hub.coach.today.planIssues) — read by the developer,
+              NOT surfaced to the runner as a panel. The runner
+              shouldn't see "your plan has 13 errors" as a front-page
+              banner; the validator's job is to make engine bugs
+              visible to me so I fix them, not to shake the runner's
+              trust in the plan. Re-enable here when issues become
+              runner-actionable (e.g. "your long run is too aggressive
+              given recent training" → 1 plain-language line). */}
 
           <DailyBriefing
             now={now}
