@@ -85,6 +85,8 @@ export default function OverviewPage() {
 
           <CoachTodayCard />
 
+          <Next30DaysCard />
+
           <VdotCard />
 
           <RecoveryWidget />
@@ -478,6 +480,17 @@ interface CoachTodayPayload {
   strength: CoachStrengthPayload | null;
   rationale: string;
   weekShape: Array<{ date: string; type: string; distanceMi: number; isToday: boolean; hasStrength: boolean }>;
+  next30Days: Array<{
+    date: string;
+    type: string;
+    label: string;
+    distanceMi: number;
+    isQuality: boolean;
+    isLong: boolean;
+    isToday: boolean;
+    raceName: string | null;
+    racePriority: 'A' | 'B' | 'C' | null;
+  }>;
   alerts: CoachAlert[];
   isPlaceholder: boolean;
 }
@@ -806,6 +819,163 @@ const ZONE_DEFS: Array<{
   { key: 'I', label: 'Intervals',  sub: 'VO2max · ~5K pace',   color: 'var(--color-warning)',    blurb: '3–5 min reps with equal jog. Stresses oxygen ceiling.' },
   { key: 'R', label: 'Reps',       sub: 'Mile pace · neuromuscular', color: 'var(--color-active)', blurb: '200–400m fast with full recovery. Speed + economy.' },
 ];
+
+/* ── Next-30-days tile ──────────────────────────────────────
+   Bridges "today's prescription" and "the race calendar" with a
+   30-day strip color-coded by workout type. Long runs get a
+   darker chip; races flag with a colored bar above the cell.
+   Re-derived every dashboard load (same engine path as weekShape). */
+function Next30DaysCard() {
+  const [days, setDays] = useState<CoachTodayPayload['next30Days'] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/coach/today', { cache: 'no-store' });
+        const json = await res.json() as { ok: boolean; today?: CoachTodayPayload; error?: string };
+        if (cancelled) return;
+        if (json.ok && json.today) setDays(json.today.next30Days ?? null);
+        else setError(json.error ?? 'Forecast unavailable');
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error || !days || days.length === 0) return null;
+  return <Next30DaysTile days={days} />;
+}
+
+function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30Days']> }) {
+  // Same color vocabulary as CoachTodayCard's typeColor map; kept
+  // local so the strip can evolve independently.
+  const typeColor: Record<string, string> = {
+    recovery:            'var(--color-t3)',
+    general_aerobic:     'var(--color-success)',
+    medium_long:         'var(--color-corporate)',
+    long_steady:         'var(--color-corporate)',
+    long_progression:    'var(--color-corporate)',
+    long_mp_block:       'var(--color-attention)',
+    threshold:           'var(--color-attention)',
+    threshold_intervals: 'var(--color-attention)',
+    sub_threshold:       'var(--color-attention)',
+    vo2:                 'var(--color-warning)',
+    vdot_test_5k:        'var(--color-warning)',
+    marathon_specific:   'var(--color-attention)',
+    strides_appended:    'var(--color-success)',
+    shakeout:            'var(--color-success)',
+    rest:                'var(--color-l4)',
+    race:                'var(--color-attention)',
+  };
+  const racePriorityColor: Record<'A' | 'B' | 'C', string> = {
+    A: 'var(--color-warning)',
+    B: 'var(--color-attention)',
+    C: 'var(--color-corporate)',
+  };
+  const totalMi = days.reduce((s, d) => s + d.distanceMi, 0);
+  const qualityCount = days.filter(d => d.isQuality).length;
+  const longCount = days.filter(d => d.isLong).length;
+  const races = days.filter(d => d.raceName);
+
+  const dayLabels = ['M','T','W','T','F','S','S'];
+  const dowLabel = (iso: string) => {
+    const d = new Date(iso + 'T12:00:00Z').getUTCDay();
+    return dayLabels[(d + 6) % 7];
+  };
+
+  return (
+    <>
+      <SectionHeader title="Next 30 days" sub={`${Math.round(totalMi)} mi · ${qualityCount} quality · ${longCount} long`} />
+
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
+        {/* 30-day strip — fixed-width grid, scrolls horizontally on
+            narrow viewports. Cells 32px wide give a compact bird's-eye
+            view; type encoded by background, races by colored top bar. */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(30, 1fr)', gap: 4,
+          minWidth: 30 * 32,
+        }}>
+          {days.map((d, idx) => {
+            const c = typeColor[d.type] ?? 'var(--color-l3)';
+            const isRest = d.type === 'rest';
+            const raceColor = d.racePriority ? racePriorityColor[d.racePriority] : null;
+            const isFirstOfMonth = new Date(d.date + 'T12:00:00Z').getUTCDate() <= 7 && idx > 0 && new Date(days[idx - 1].date + 'T12:00:00Z').getUTCMonth() !== new Date(d.date + 'T12:00:00Z').getUTCMonth();
+            return (
+              <div key={d.date} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                position: 'relative',
+                marginLeft: isFirstOfMonth ? 4 : 0,
+                paddingLeft: isFirstOfMonth ? 4 : 0,
+                borderLeft: isFirstOfMonth ? '1px solid var(--color-l5)' : 'none',
+              }}>
+                {/* Race flag */}
+                {raceColor && (
+                  <div title={d.raceName ?? ''} style={{
+                    height: 4, width: '100%', borderRadius: 2, background: raceColor, marginBottom: 2,
+                  }} />
+                )}
+                {/* Day-of-week + date */}
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, color: 'var(--color-t3)', fontWeight: 700, lineHeight: 1 }}>
+                  {dowLabel(d.date)}
+                </div>
+                {/* Workout type cell */}
+                <div title={`${d.label} · ${d.distanceMi.toFixed(1)} mi`} style={{
+                  width: '100%',
+                  minHeight: d.isLong ? 38 : isRest ? 14 : d.isQuality ? 30 : 22,
+                  borderRadius: 3,
+                  background: isRest ? 'var(--color-l3)' : c,
+                  opacity: d.isToday ? 1 : (isRest ? 0.6 : 0.85),
+                  border: d.isToday ? '1.5px solid var(--color-attention)' : '1px solid transparent',
+                  marginTop: 2,
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                  paddingBottom: 2,
+                }}>
+                  {!isRest && d.distanceMi >= 8 && (
+                    <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, color: 'var(--color-l0)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                      {Math.round(d.distanceMi)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Race callouts */}
+        {races.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: '1px solid var(--color-l4)' }}>
+            {races.map(r => {
+              const daysOut = Math.round((new Date(r.date + 'T12:00:00Z').getTime() - new Date(days[0].date + 'T12:00:00Z').getTime()) / 86_400_000);
+              const c = r.racePriority ? racePriorityColor[r.racePriority] : 'var(--color-corporate)';
+              return (
+                <div key={r.date} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--color-t1)' }}>
+                  <span style={{
+                    fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+                    padding: '2px 6px', borderRadius: 3,
+                    background: 'rgba(255,255,255,.04)', color: c,
+                  }}>{r.racePriority} · {daysOut === 0 ? 'TODAY' : `${daysOut}D`}</span>
+                  <span>{r.raceName}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Legend */}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', paddingTop: 4 }}>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-success)', borderRadius: 2, marginRight: 4 }} /> EASY</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-corporate)', borderRadius: 2, marginRight: 4 }} /> LONG</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-attention)', borderRadius: 2, marginRight: 4 }} /> QUALITY</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-warning)', borderRadius: 2, marginRight: 4 }} /> VO2 / TT</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, background: 'var(--color-l3)', borderRadius: 2, marginRight: 4 }} /> REST</span>
+        </div>
+      </div>
+    </>
+  );
+}
 
 function VdotCard() {
   const [vdot, setVdot] = useState<VdotTilePayload | null>(null);

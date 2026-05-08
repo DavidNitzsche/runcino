@@ -59,6 +59,22 @@ export interface CoachToday {
     isToday: boolean;
     hasStrength: boolean;
   }>;
+  /** 30-day outlook from today forward — bridges the gap between
+   *  today's prescription and the race calendar. Re-derived every
+   *  morning, like weekShape. */
+  next30Days: Array<{
+    date: string;
+    type: WorkoutType;
+    label: string;
+    distanceMi: number;
+    isQuality: boolean;
+    isLong: boolean;
+    isToday: boolean;
+    /** Race scheduled on this day, if any. Renders as a flag in the
+     *  strip so the runner sees the destination relative to today. */
+    raceName: string | null;
+    racePriority: 'A' | 'B' | 'C' | null;
+  }>;
   alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
   generatedAt: string;
   isPlaceholder: boolean;
@@ -91,6 +107,7 @@ export function coachDaily(state: CoachState): CoachToday {
 
   const alerts = computeAlerts(state, phase);
   const week = simulateWeek(state, phase, todayDow);
+  const next30 = simulateNext30Days(state, phase);
   const rationale = composeRationale(state, phase, run, strength);
 
   return {
@@ -100,6 +117,7 @@ export function coachDaily(state: CoachState): CoachToday {
     strength,
     rationale,
     weekShape: week,
+    next30Days: next30,
     alerts,
     generatedAt: new Date().toISOString(),
     isPlaceholder: false,
@@ -484,6 +502,52 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
       isLong: run.isLong,
       isToday,
       hasStrength,
+    });
+  }
+  return out;
+}
+
+/** Simulate the next 30 days from today forward. Same engine path
+ *  as simulateWeek (advance state, re-derive phase, run pickRun)
+ *  with race overlays — when a race is scheduled on a day, attach
+ *  raceName/racePriority so the strip can flag it.
+ *
+ *  Used by the dashboard's 30-day outlook tile, which fills the
+ *  gap between today's prescription and the race calendar. */
+function simulateNext30Days(state: CoachState, phase: Phase): CoachToday['next30Days'] {
+  const today = new Date(state.now + 'T12:00:00Z');
+  const out: CoachToday['next30Days'] = [];
+
+  // Map race ISO date → race meta for overlay lookup. Walk every
+  // future race in the build window plus next-A so out-of-window
+  // races also show up.
+  const raceByDate = new Map<string, { name: string; priority: 'A' | 'B' | 'C' }>();
+  for (const r of state.races.inWindow) raceByDate.set(r.date, { name: r.name, priority: r.priority });
+  if (state.races.nextA && !raceByDate.has(state.races.nextA.date)) {
+    raceByDate.set(state.races.nextA.date, { name: state.races.nextA.name, priority: state.races.nextA.priority });
+  }
+
+  for (let offset = 0; offset < 30; offset++) {
+    const d = new Date(today); d.setUTCDate(today.getUTCDate() + offset);
+    const iso = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
+    const isToday = offset === 0;
+
+    const dayState = offset > 0 ? advanceState(state, offset) : state;
+    const dayPhase = offset > 0 ? decidePhase(dayState, decideMode(dayState)) : phase;
+    const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
+
+    const raceMeta = raceByDate.get(iso) ?? null;
+    out.push({
+      date: iso,
+      type: run.type,
+      label: run.label,
+      distanceMi: run.distanceMi,
+      isQuality: run.isQuality,
+      isLong: run.isLong,
+      isToday,
+      raceName: raceMeta?.name ?? null,
+      racePriority: raceMeta?.priority ?? null,
     });
   }
   return out;
