@@ -98,6 +98,14 @@ export async function getRace(slug: string): Promise<SavedRace | null> {
   }
 }
 
+/** Synchronous read of a single race from the localStorage list
+ *  cache. Used for sync-init on the race-detail page so the page
+ *  can render content on first paint instead of "Loading…". */
+export function getRaceCachedSync(slug: string): SavedRace | null {
+  const list = listRacesCachedSync();
+  return list?.find(r => r.slug === slug) ?? null;
+}
+
 export async function saveRace(race: SavedRace): Promise<void> {
   if (typeof window === 'undefined') return;
   invalidateRacesCache();

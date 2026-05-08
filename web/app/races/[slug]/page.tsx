@@ -21,7 +21,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
-import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
+import { deleteRace, getRace, getRaceCachedSync, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
 import {
@@ -80,7 +80,14 @@ export default function RaceDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const slug = params?.slug;
-  const [race, setRace] = useState<SavedRace | null | 'loading'>('loading');
+  // Synchronous init from the localStorage races cache so revisits
+  // paint with race content immediately. First-ever visit (no
+  // cache or different slug than cached) falls through to the
+  // 'loading' state until the network fetch returns.
+  const [race, setRace] = useState<SavedRace | null | 'loading'>(() => {
+    if (typeof window === 'undefined' || !slug) return 'loading';
+    return getRaceCachedSync(slug) ?? 'loading';
+  });
 
   useEffect(() => {
     if (!slug) return;
@@ -1543,6 +1550,41 @@ type BriefResponse = {
    otherwise), feeds it into /api/brief, returns the result. Both
    the in-poster CoachBriefBlock and any debug surface share this
    hook so a single page render fires exactly one /api/brief call. */
+/** localStorage cache for the per-race brief + weather bundle.
+ *  Stale-while-revalidate, 6h TTL. Keyed by race slug so each race
+ *  has its own cache. Mirrors the coach-today client cache pattern. */
+const BRIEF_LS_KEY = (slug: string) => `runcino:brief-cache:v1:${slug}`;
+const BRIEF_LS_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface BriefCacheEntry {
+  brief: BriefResponse | null;
+  weather: WeatherSummary | null;
+  storedAt: number;
+}
+
+function readBriefCache(slug: string): BriefCacheEntry | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(BRIEF_LS_KEY(slug));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as BriefCacheEntry;
+    if (Date.now() - entry.storedAt > BRIEF_LS_TTL_MS) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeBriefCache(slug: string, brief: BriefResponse | null, weather: WeatherSummary | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const entry: BriefCacheEntry = { brief, weather, storedAt: Date.now() };
+    window.localStorage.setItem(BRIEF_LS_KEY(slug), JSON.stringify(entry));
+  } catch {
+    /* quota — ignore */
+  }
+}
+
 function useAdaptiveBrief(race: SavedRace): {
   brief: BriefResponse | null;
   weather: WeatherSummary | null;
@@ -1550,9 +1592,13 @@ function useAdaptiveBrief(race: SavedRace): {
   err: string | null;
   days: number;
 } {
-  const [brief, setBrief] = useState<BriefResponse | null>(null);
-  const [weather, setWeather] = useState<WeatherSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Synchronous init from localStorage so revisits paint with the
+  // brief content immediately. First-ever visit (no cache) falls
+  // through to the loading state.
+  const initialCache = typeof window !== 'undefined' ? readBriefCache(race.slug) : null;
+  const [brief, setBrief] = useState<BriefResponse | null>(initialCache?.brief ?? null);
+  const [weather, setWeather] = useState<WeatherSummary | null>(initialCache?.weather ?? null);
+  const [loading, setLoading] = useState(initialCache?.brief == null);
   const [err, setErr] = useState<string | null>(null);
   const days = daysUntil(race.meta.date);
 
@@ -1601,7 +1647,10 @@ function useAdaptiveBrief(race: SavedRace): {
           }),
         });
         if (!res.ok) throw new Error(await res.text());
-        if (!cancelled) setBrief(await res.json());
+        const fresh = await res.json() as BriefResponse;
+        if (!cancelled) setBrief(fresh);
+        // Write-through: keep the localStorage cache fresh for next visit.
+        writeBriefCache(race.slug, fresh, weatherSummary);
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
       } finally {
