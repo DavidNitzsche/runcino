@@ -1,0 +1,46 @@
+# Daily cron that warms the coach_today_cache so the runner's first
+# dashboard visit of the new day is instant rather than blocking on
+# the LLM brief. Runs in GitHub Actions infrastructure (free, no
+# Railway cron service needed).
+#
+# Schedule: 07:01 UTC and 08:01 UTC daily — covers both PT (UTC-7
+# during PDT, UTC-8 during PST) just-after-midnight, so the cache
+# is fresh before the runner is awake regardless of season.
+#
+# Auth: Bearer token in CRON_SECRET GitHub secret. Must match the
+# CRON_SECRET env var set on Railway. See README/morning-2026-05-08-pm.html
+# for setup notes.
+name: coach-refresh
+
+on:
+  schedule:
+    # 7am UTC — handles PDT (just past midnight LA when DST is on)
+    - cron: '1 7 * * *'
+    # 8am UTC — handles PST (just past midnight LA when DST is off)
+    - cron: '1 8 * * *'
+  # Manual trigger for testing or recovering from a missed run.
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/coach-refresh
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not set on this repo. Set it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          response=$(curl -s -w "\nHTTP %{http_code}\n" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://runcino-production.up.railway.app/api/cron/coach-refresh)
+          echo "$response"
+          # Fail the workflow if the endpoint returned non-200.
+          status=$(echo "$response" | tail -n 1 | awk '{print $2}')
+          if [ "$status" != "200" ]; then
+            echo "::error::cron endpoint returned $status"
+            exit 1
+          fi
