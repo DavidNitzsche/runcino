@@ -1598,6 +1598,69 @@ function CoachBriefBlock({ race }: { race: SavedRace }) {
           Coach unavailable: {err}
         </p>
       )}
+      {brief && !loading && brief.coach && (
+        <CoachBriefWhy
+          rationale={brief.coach.rationale}
+          citations={brief.coach.citations}
+        />
+      )}
+    </div>
+  );
+}
+
+/** "Why?" affordance for the race brief — toggles into a panel
+ *  showing the engine's structured rationale + research citations.
+ *  Mirrors the dashboard's CoachDailyBrief why-toggle. Styled for
+ *  the dark poster theme. */
+function CoachBriefWhy({ rationale, citations }: {
+  rationale: string;
+  citations: Array<{ doc: string; section: string; snippet?: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          alignSelf: 'flex-start',
+          padding: '4px 10px',
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+          background: 'transparent',
+          color: 'rgba(255,255,255,.55)',
+          border: '1px solid rgba(255,255,255,.15)',
+          borderRadius: 4,
+          cursor: 'pointer',
+        }}
+      >
+        {open ? '▾ HIDE WHY' : '▸ WHY?'}
+      </button>
+      {open && (
+        <div style={{
+          fontSize: 12, color: 'rgba(255,255,255,.7)', lineHeight: 1.55,
+          padding: '10px 14px', background: 'rgba(255,255,255,.04)', borderRadius: 6,
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'rgba(255,255,255,.5)', display: 'block', marginBottom: 3 }}>RATIONALE</span>
+            {rationale}
+          </div>
+          {citations.length > 0 && (
+            <div>
+              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'rgba(255,255,255,.5)', display: 'block', marginBottom: 3 }}>CITATIONS</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {citations.map((c, i) => (
+                  <div key={i} style={{ fontSize: 11.5, color: 'rgba(255,255,255,.6)', lineHeight: 1.45 }}>
+                    <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, color: 'var(--race)' }}>{c.doc}</span>
+                    {c.section && <span style={{ color: 'rgba(255,255,255,.5)' }}> · {c.section}</span>}
+                    {c.snippet && <span style={{ color: 'rgba(255,255,255,.5)' }}> — &ldquo;{c.snippet}&rdquo;</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

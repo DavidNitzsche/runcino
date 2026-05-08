@@ -32,16 +32,32 @@ export async function GET() {
       coach.assessReadiness({ today: isoToday, state }),
     ]);
     const vdot = vdotSnapshot(state);
-    // Surface the test-prompt gate so the dashboard tile can flip
-    // into a "Run a 5K to anchor your fitness" state when there's no
-    // recent race, or the race is stale/expired.
     const vdotTestPrompt = shouldPromptVdotTest(state);
+
+    // Today's training brief — voice paragraph for the dashboard.
+    // Generated separately from the race brief because it anchors on
+    // TODAY (workout + trajectory) rather than on a specific race.
+    const dailyBrief = await coach.briefDailyTraining({
+      today: isoToday,
+      state,
+      prescription: today,
+      vdot: vdot ? {
+        vdot: vdot.vdot,
+        tier: vdot.tierLabel,
+        freshness: vdot.freshness,
+        daysAgo: vdot.source.daysAgo,
+        sourceName: vdot.source.name,
+      } : null,
+      vdotTestPrompt,
+    }).catch(() => null);
+
     return Response.json({
       ok: true,
       today,
       state,
-      vdot,                    // null when no usable recent race
-      vdotTestPrompt,          // true → tile renders the no-data / test prompt panel
+      vdot,
+      vdotTestPrompt,
+      dailyBrief,              // CoachDecision<string> | null
       coach: { workout, readiness },
     });
   } catch (e) {

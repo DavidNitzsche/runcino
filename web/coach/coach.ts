@@ -272,6 +272,34 @@ export interface Coach {
    *  illness flag) and decide whether today's scheduled workout still
    *  makes sense. (Wired Stage 5.) */
   adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>>;
+
+  /** Voice paragraph about today's training — what's prescribed, why,
+   *  how the runner's trajectory looks, what to focus on. The dashboard
+   *  hub's "Coach says" surface. Different from briefRaceMorning (which
+   *  anchors on a specific race) — this anchors on TODAY. LLM brain
+   *  with deterministic fallback. */
+  briefDailyTraining(input: DailyTrainingBriefInput): Promise<CoachDecision<string>>;
+}
+
+export interface DailyTrainingBriefInput extends CoachBaseContext {
+  /** Full runner state — same input prescribeWorkout takes. */
+  state: CoachState;
+  /** Today's prescription (already computed by coachDaily) so the
+   *  brief talks about the actual workout, not a re-derivation.
+   *  Named `prescription` to avoid colliding with CoachBaseContext.today
+   *  (which is the ISO date string). */
+  prescription: CoachToday;
+  /** Optional VDOT snapshot for the brief to reference. Null when
+   *  no recent race anchors VDOT. */
+  vdot: {
+    vdot: number;
+    tier: string;
+    freshness: 'fresh' | 'stale_soon' | 'stale' | 'expired';
+    daysAgo: number;
+    sourceName: string;
+  } | null;
+  /** Whether the engine is recommending a deliberate VDOT test. */
+  vdotTestPrompt: boolean;
 }
 
 // ── Coach implementation ─────────────────────────────────────────────
@@ -639,6 +667,112 @@ class CoachImpl implements Coach {
       scope: 'running',
       userPrompt,
       answerSchema: `a single paragraph (3–6 sentences) of ${horizon === 'morning' ? 'race-morning' : horizon === 'race_week' ? 'race-week' : horizon === 'approach' ? 'approach' : 'course'} brief in the Coach voice`,
+      maxTokens: 600,
+    });
+  }
+
+  // ── Daily training brief ───────────────────────────────────────────
+  // Voice paragraph for the dashboard hub. Different from briefRaceMorning
+  // (which anchors on a race) — this anchors on TODAY, talks about the
+  // prescribed workout, the runner's trajectory, and the next focus.
+  async briefDailyTraining(input: DailyTrainingBriefInput): Promise<CoachDecision<string>> {
+    const t = input.prescription.today;
+    const phase = input.prescription.phase;
+    const state = input.state;
+    const nextRace = state.races.nextA;
+    const daysToA = nextRace?.daysAway ?? null;
+
+    if (!llmAvailable()) {
+      // Deterministic fallback — assembles a serviceable paragraph
+      // from the structured pieces, no LLM. Less colorful than the
+      // real Coach voice but stays in tone.
+      const parts: string[] = [];
+      // Lead with the workout.
+      const dist = t.distanceMi > 0 ? `${t.distanceMi.toFixed(1)} mi` : '';
+      parts.push(`${t.label || t.type.replace(/_/g, ' ')}${dist ? ` · ${dist}` : ''}.`);
+      // VDOT test override gets its own framing.
+      if (t.type === 'vdot_test_5k') {
+        parts.push('We need a fresh fitness anchor — every pace prescription downstream of this trial gets sharper after we have the result.');
+      } else if (input.vdotTestPrompt && !input.vdot) {
+        parts.push('No recent race on file — once you anchor a VDOT, the Coach can prescribe paces with real precision.');
+      } else if (input.vdot && input.vdot.freshness === 'expired') {
+        parts.push('Your VDOT signal is stale — Coach is planning a 5K time trial on the next quality day.');
+      }
+      // Volume note.
+      const volNote = state.volume.deltaPct4v4 == null
+        ? `Recent volume: ${state.volume.weeklyAvg4w} mi/wk.`
+        : state.volume.deltaPct4v4 > 0.15
+        ? `Volume building (${state.volume.weeklyAvg4w} mi/wk recent vs ${state.volume.weeklyAvg8w} 8w baseline).`
+        : state.volume.deltaPct4v4 < -0.15
+        ? `Volume rebuilding from a dip.`
+        : `Volume steady around ${state.volume.weeklyAvg4w} mi/wk.`;
+      parts.push(volNote);
+      // Race horizon.
+      if (nextRace && daysToA != null) {
+        if (daysToA === 0)         parts.push(`${nextRace.name} is today.`);
+        else if (daysToA <= 7)     parts.push(`${nextRace.name} in ${daysToA} day${daysToA === 1 ? '' : 's'} — taper week.`);
+        else if (daysToA <= 28)    parts.push(`${nextRace.name} in ${daysToA} days — peak block.`);
+        else                       parts.push(`${nextRace.name} in ${daysToA} days; build is on track.`);
+      }
+      return {
+        answer: parts.join(' '),
+        rationale: `Deterministic daily-brief assembly. Phase: ${phase}.`,
+        citations: [
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT context', snippet: 'Daniels VDOT lookup + 4-tier interpretation.' },
+        ],
+        brain: 'deterministic',
+      };
+    }
+
+    // LLM path — give the model the runner's full picture, ask for
+    // a single short paragraph in voice. Same voice rules as the
+    // race brief.
+    const vdotLine = input.vdot
+      ? `VDOT ${input.vdot.vdot.toFixed(1)} (${input.vdot.tier}, ${input.vdot.freshness.replace('_', ' ')}, anchored on ${input.vdot.sourceName} ${input.vdot.daysAgo} days ago)`
+      : 'No current VDOT — runner hasn\'t logged a recent race.';
+    const volLine = state.volume.deltaPct4v4 == null
+      ? `${state.volume.weeklyAvg4w} mi/wk recent (no 4v4 delta)`
+      : state.volume.deltaPct4v4 > 0.15
+      ? `volume building: ${state.volume.weeklyAvg4w} mi/wk recent vs ${state.volume.weeklyAvg8w} 8w baseline (+${(state.volume.deltaPct4v4 * 100).toFixed(0)}%)`
+      : state.volume.deltaPct4v4 < -0.15
+      ? `volume rebuilding: ${state.volume.weeklyAvg4w} mi/wk recent vs ${state.volume.weeklyAvg8w} 8w baseline (-${(Math.abs(state.volume.deltaPct4v4) * 100).toFixed(0)}%)`
+      : `volume steady at ${state.volume.weeklyAvg4w} mi/wk`;
+    const raceLine = nextRace && daysToA != null
+      ? `Next A race: ${nextRace.name} in ${daysToA} days (${nextRace.distanceMi.toFixed(1)} mi). Goal: ${nextRace.goalDisplay ?? 'unset'}.`
+      : 'No A race in window.';
+    const flagLines: string[] = [];
+    if (state.flags.heavyBlockSuspected) flagLines.push('HEAVY BLOCK FLAG — recent stretch has been heavy.');
+    if (state.flags.rebuildAfterBreak) flagLines.push('REBUILD FLAG — coming back from a break.');
+    if (input.vdotTestPrompt) flagLines.push('VDOT TEST FLAG — Coach is planning a 5K time trial; surface why it matters.');
+
+    const userPrompt = [
+      `Write today's training brief for the runner. Date: ${input.prescription.generatedAt.slice(0, 10)}.`,
+      ``,
+      `TODAY'S WORKOUT:`,
+      `  Type: ${t.label || t.type}`,
+      `  Distance: ${t.distanceMi > 0 ? `${t.distanceMi.toFixed(1)} mi` : 'rest day'}`,
+      `  Description: ${t.description}`,
+      ``,
+      `TRAINING STATE:`,
+      `  Phase: ${phase}`,
+      `  ${vdotLine}`,
+      `  ${volLine}`,
+      `  Longest run last 28d: ${state.volume.longestLast28Mi.toFixed(1)} mi`,
+      `  Easy/quality balance: ${(state.intensity.easyShare14d * 100).toFixed(0)}% easy`,
+      ...flagLines.map(f => `  ${f}`),
+      ``,
+      `RACE CALENDAR:`,
+      `  ${raceLine}`,
+      ``,
+      'Write ONE short paragraph (3-5 sentences) addressing the runner directly. Talk about today\'s session — what it is, why it makes sense for where they are, what to feel/aim for. Weave in trajectory ("you\'re building well", "the goal is in reach", "we need to anchor a VDOT before we can prescribe sharper paces") naturally. End with a single line of focus or reminder.',
+      ``,
+      'Voice rules: plain language, no §-numbers, no jargon-without-translation, no hedge words, no false urgency. Don\'t parrot the numbers — use them. Don\'t label the brief as "Daily Brief" or open with "Today\'s training:" — just speak.',
+    ].join('\n');
+
+    return callCoachLLM<string>({
+      scope: 'running',
+      userPrompt,
+      answerSchema: 'a single paragraph (3-5 sentences) of daily training brief in the Coach voice',
       maxTokens: 600,
     });
   }

@@ -495,8 +495,16 @@ interface CoachTodayPayload {
   isPlaceholder: boolean;
 }
 
+interface DailyBriefPayload {
+  answer: string;
+  rationale?: string;
+  citations?: Array<{ doc: string; section: string; snippet?: string }>;
+  brain?: 'deterministic' | 'llm';
+}
+
 function CoachTodayCard() {
   const [payload, setPayload] = useState<CoachTodayPayload | null>(null);
+  const [dailyBrief, setDailyBrief] = useState<DailyBriefPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -504,10 +512,19 @@ function CoachTodayCard() {
     (async () => {
       try {
         const res = await fetch('/api/coach/today', { cache: 'no-store' });
-        const json = await res.json() as { ok: boolean; today?: CoachTodayPayload; error?: string };
+        const json = await res.json() as {
+          ok: boolean;
+          today?: CoachTodayPayload;
+          dailyBrief?: DailyBriefPayload | null;
+          error?: string;
+        };
         if (cancelled) return;
-        if (json.ok && json.today) setPayload(json.today);
-        else setError(json.error ?? 'Coach unavailable');
+        if (json.ok && json.today) {
+          setPayload(json.today);
+          setDailyBrief(json.dailyBrief ?? null);
+        } else {
+          setError(json.error ?? 'Coach unavailable');
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -595,14 +612,25 @@ function CoachTodayCard() {
           {payload.strength && <StrengthTile strength={payload.strength} />}
         </div>
 
-        <div style={{
-          fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
-          padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8,
-          borderLeft: '3px solid var(--color-corporate)',
-        }}>
-          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
-          {payload.rationale}
-        </div>
+        {/* Daily training brief — voice paragraph anchored on TODAY.
+            When the LLM is available it gets the rich Coach voice;
+            otherwise the deterministic fallback assembles a shorter
+            paragraph from the structured pieces. The deterministic
+            engine rationale (one-liner) sits below as the "why" so
+            the runner can always trace back to first principles. */}
+        {dailyBrief && (
+          <CoachDailyBrief brief={dailyBrief} engineRationale={payload.rationale} />
+        )}
+        {!dailyBrief && (
+          <div style={{
+            fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55,
+            padding: '10px 14px', background: 'var(--color-l2)', borderRadius: 8,
+            borderLeft: '3px solid var(--color-corporate)',
+          }}>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)', display: 'block', marginBottom: 4 }}>WHY</span>
+            {payload.rationale}
+          </div>
+        )}
 
         {/* Plausible week shape — re-derived every morning, not promised */}
         <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -819,6 +847,92 @@ const ZONE_DEFS: Array<{
   { key: 'I', label: 'Intervals',  sub: 'VO2max · ~5K pace',   color: 'var(--color-warning)',    blurb: '3–5 min reps with equal jog. Stresses oxygen ceiling.' },
   { key: 'R', label: 'Reps',       sub: 'Mile pace · neuromuscular', color: 'var(--color-active)', blurb: '200–400m fast with full recovery. Speed + economy.' },
 ];
+
+/* ── Daily brief + "why?" affordance ─────────────────────────
+   The brief is the voice paragraph from coach.briefDailyTraining.
+   Below it sits a "Why?" toggle that expands into the engine's
+   structured rationale + research citations. Same affordance is
+   used on the race brief — keeps the model + reasoning visible
+   without cluttering the default view. */
+function CoachDailyBrief({ brief, engineRationale }: {
+  brief: DailyBriefPayload;
+  engineRationale: string;
+}) {
+  const [showWhy, setShowWhy] = useState(false);
+  const isStub = brief.brain === 'deterministic';
+
+  return (
+    <div style={{
+      padding: '14px 16px', background: 'var(--color-l2)', borderRadius: 8,
+      borderLeft: '3px solid var(--color-corporate)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+          COACH SAYS
+        </span>
+        {isStub && (
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+            padding: '2px 7px', borderRadius: 3,
+            background: 'rgba(255,255,255,.06)', color: 'var(--color-t3)',
+          }}>FALLBACK · NO API KEY</span>
+        )}
+      </div>
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--color-t0)', whiteSpace: 'pre-wrap' }}>
+        {brief.answer}
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowWhy(s => !s)}
+        style={{
+          alignSelf: 'flex-start',
+          padding: '4px 10px',
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+          background: 'transparent',
+          color: 'var(--color-t3)',
+          border: '1px solid var(--color-l4)',
+          borderRadius: 4,
+          cursor: 'pointer',
+        }}
+      >
+        {showWhy ? '▾ HIDE WHY' : '▸ WHY?'}
+      </button>
+      {showWhy && (
+        <div style={{
+          fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.55,
+          padding: '10px 12px', background: 'var(--color-l3)', borderRadius: 6,
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>ENGINE RATIONALE</span>
+            {engineRationale}
+          </div>
+          {brief.rationale && brief.rationale !== engineRationale && (
+            <div>
+              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>VOICE RATIONALE</span>
+              {brief.rationale}
+            </div>
+          )}
+          {brief.citations && brief.citations.length > 0 && (
+            <div>
+              <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', display: 'block', marginBottom: 3 }}>CITATIONS</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {brief.citations.map((c, i) => (
+                  <div key={i} style={{ fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.45 }}>
+                    <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, color: 'var(--color-corporate)' }}>{c.doc}</span>
+                    {c.section && <span style={{ color: 'var(--color-t3)' }}> · {c.section}</span>}
+                    {c.snippet && <span style={{ color: 'var(--color-t3)' }}> — &ldquo;{c.snippet}&rdquo;</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── Next-30-days tile ──────────────────────────────────────
    Bridges "today's prescription" and "the race calendar" with a
