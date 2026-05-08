@@ -30,6 +30,7 @@ import {
   SplitsTables, ChartsRow, SpacingAndDistance, Insights,
 } from '../../../components/CoursePreview';
 import { PRE_RACE_HYDRATION, FLUID_DURING_RACE, SWEAT_RATE_PROTOCOL, EAH_RISK_FACTORS } from '../../../coach/doctrine';
+import { vdotFromRace } from '../../../lib/vdot';
 
 const FT_PER_M = 3.28084;
 
@@ -235,6 +236,14 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           <PhaseCards race={enrichedRace} phases={enrichedRace.plan.phases} />
 
           <ResultSection race={enrichedRace} />
+
+          {/* Goal-spread + similar-races context — pre-race planning. */}
+          {!isPastWithResult(race) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+              <GoalTargetsTile race={enrichedRace} />
+              <SimilarRacesTile race={enrichedRace} />
+            </div>
+          )}
 
           {/* Pre-race planning tiles. Hidden once the race is past +
               has a recorded result — at that point the per-mile +
@@ -806,6 +815,221 @@ function fmtTime(s: number): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+/* ── Goal targets — A/B/C pacing variants ─────────────────────
+   Three named goal lines based on the runner's current VDOT (from
+   their freshest anchored race) plus the race's saved goal pace.
+   - A "stretch": fastest of (current VDOT race-equivalent, saved goal − 10s/mi)
+   - B "target": the saved goal pace
+   - C "safety": +20s/mi (race-day rough conditions / start-easy buffer)
+   The runner sees what each goal asks of them (pace, finish time,
+   per-mile cushion to A) without setting up a separate goals system. */
+function GoalTargetsTile({ race }: { race: SavedRace }) {
+  const hub = useHub();
+  const vdot = hub?.coach.vdot?.vdot ?? null;
+  const distMi = race.meta.distanceMi;
+
+  const goalSavedPace = parseGoalToPaceSPerMi(race.meta.goalDisplay, distMi);
+  const goalSavedFinishS = goalSavedPace ? goalSavedPace * distMi : null;
+
+  // VDOT-equivalent finish (the runner's CURRENT capability, predicted).
+  const vdotEquivFinishS = (() => {
+    if (!vdot) return null;
+    return finishTimeFromVdotForDistance(vdot, distMi);
+  })();
+  const vdotEquivPace = vdotEquivFinishS ? vdotEquivFinishS / distMi : null;
+
+  const aPace = vdotEquivPace && goalSavedPace
+    ? Math.min(vdotEquivPace, goalSavedPace - 10)
+    : (vdotEquivPace ?? (goalSavedPace ? goalSavedPace - 10 : null));
+  const bPace = goalSavedPace;
+  const cPace = goalSavedPace ? goalSavedPace + 20 : (aPace ? aPace + 30 : null);
+
+  const targets: Array<{ tier: 'A' | 'B' | 'C'; label: string; pace: number | null; description: string }> = [
+    { tier: 'A', label: 'Stretch', pace: aPace, description: vdot != null ? `Current VDOT ${vdot.toFixed(1)} · everything goes right` : 'Saved goal − 10s/mi · stretch' },
+    { tier: 'B', label: 'Target',  pace: bPace, description: 'Saved goal pace · the realistic plan' },
+    { tier: 'C', label: 'Safety',  pace: cPace, description: 'Saved goal +20s/mi · rough day buffer' },
+  ];
+
+  return (
+    <div className="tile">
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Goal spread</div>
+          <div className="tile-lbl">A · B · C pace targets</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+          RESEARCH/14
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+        {targets.map(t => {
+          if (t.pace == null) return null;
+          const finishS = t.pace * distMi;
+          const tierColor = t.tier === 'A' ? 'var(--color-warning)'
+                          : t.tier === 'B' ? 'var(--color-attention)'
+                          : 'var(--color-corporate)';
+          return (
+            <div key={t.tier} style={{
+              display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: 12, alignItems: 'baseline',
+              padding: '10px 12px', background: 'var(--color-l2)', borderRadius: 6,
+              borderLeft: `3px solid ${tierColor}`,
+            }}>
+              <div style={{
+                fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 800, color: tierColor,
+              }}>
+                {t.tier}
+              </div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)' }}>
+                  {t.label} · {formatPace(t.pace)}/mi
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-t2)', marginTop: 3, lineHeight: 1.4 }}>
+                  {t.description}
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 800, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
+                {formatHms(finishS)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.45, fontStyle: 'italic' }}>
+        Pick the goal in the first half-mile based on how the day actually feels — not what you wanted in your head three weeks ago.
+      </div>
+    </div>
+  );
+}
+
+/* ── Similar races — context from past races ──────────────────
+   Walks the runner's race history for past finishes at similar
+   distance + (when available) similar elevation gain. Surfaces
+   what they ran, how it felt, and any lessons in the notes. The
+   runner sees their OWN pattern, not a generic 'others ran this'. */
+function SimilarRacesTile({ race }: { race: SavedRace }) {
+  const hub = useHub();
+  if (!hub) return null;
+  const distMi = race.meta.distanceMi;
+
+  // Past races with a result, similar distance band (±25%).
+  // Sorted most-recent first.
+  const similar = hub.races
+    .filter(r => r.slug !== race.slug)
+    .filter(r => r.actualResult != null)
+    .filter(r => Math.abs(r.meta.distanceMi - distMi) / distMi < 0.25)
+    .sort((a, b) => b.meta.date.localeCompare(a.meta.date))
+    .slice(0, 4);
+
+  if (similar.length === 0) {
+    return (
+      <div className="tile" style={{ borderStyle: 'dashed' }}>
+        <div className="tile-h">
+          <div>
+            <div className="tile-sub">Your similar races</div>
+            <div className="tile-lbl">No past references yet</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4 }}>
+          When you have completed races at similar distance to {race.meta.name}, they&apos;ll show here so race-day strategy can lean on what you actually did, not theory.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tile">
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Your similar races</div>
+          <div className="tile-lbl">±25% of {distMi.toFixed(1)} mi</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>
+          {similar.length}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+        {similar.map(r => {
+          const ar = r.actualResult!;
+          const isPR = ar.isPR === true;
+          return (
+            <Link key={r.slug} href={`/races/${r.slug}`} style={{
+              display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'baseline',
+              padding: '10px 12px', background: 'var(--color-l2)', borderRadius: 6,
+              textDecoration: 'none',
+              borderLeft: `3px solid ${isPR ? 'var(--color-warning)' : 'var(--color-corporate)'}`,
+            }}>
+              <div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>
+                  {r.meta.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-t2)', marginTop: 2 }}>
+                  {r.meta.date} · {r.meta.distanceMi.toFixed(1)} mi
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+                {ar.finishDisplay}
+                <div style={{ fontSize: 9.5, color: 'var(--color-t3)', marginTop: 2 }}>{ar.paceDisplay}/mi</div>
+              </div>
+              {isPR && (
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-warning)' }}>
+                  PR
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── helpers used by the new tiles ────────────────────────────────
+/** Parse "3:50" / "1:35:00" / "1:35" goal display → seconds-per-mile. */
+function parseGoalToPaceSPerMi(goalDisplay: string, distMi: number): number | null {
+  const parts = goalDisplay.split(':').map(p => Number(p.trim()));
+  if (parts.some(p => !Number.isFinite(p))) return null;
+  let totalSec: number;
+  if (parts.length === 3) totalSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  else if (parts.length === 2) totalSec = parts[0] * 60 + parts[1];
+  else return null;
+  return distMi > 0 ? totalSec / distMi : null;
+}
+
+function formatHms(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.round(s % 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function formatPace(secPerMi: number): string {
+  const m = Math.floor(secPerMi / 60);
+  const sec = Math.round(secPerMi % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+/** Predict finish time at a given distance from VDOT. Inverse of
+ *  vdotFromRace — walks the table, finds the VDOT row, returns the
+ *  time at the requested distance. Returns null when distance isn't
+ *  on the canonical lookup. Uses Riegel-style interp via the existing
+ *  vdotFromRace helper running in reverse (probe times). */
+function finishTimeFromVdotForDistance(vdot: number, distMi: number): number | null {
+  // Binary-search by guessing finish times and inverting via vdotFromRace.
+  // Use generous bounds: 5 min minimum (sub-elite mile), 8 hour max
+  // (back-of-pack ultra).
+  let lo = 60 * 5;
+  let hi = 60 * 60 * 8;
+  for (let i = 0; i < 28; i++) {
+    const mid = (lo + hi) / 2;
+    const probedVdot = vdotFromRace(distMi, mid);
+    if (probedVdot == null) return null;
+    if (Math.abs(probedVdot - vdot) < 0.05) return mid;
+    if (probedVdot < vdot) hi = mid;        // probed VDOT too low → time too slow → reduce time
+    else lo = mid;                           // probed VDOT too high → time too fast → increase time
+  }
+  return (lo + hi) / 2;
 }
 
 function FuelingTile({ race }: { race: SavedRace }) {
