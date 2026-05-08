@@ -16,6 +16,8 @@ import type { RunnerSex } from '../coach/doctrine';
 
 const LEGACY_KEY = 'runcino:runner-profile';
 
+export type CyclePhase = 'menstruation' | 'follicular' | 'ovulation' | 'luteal' | null;
+
 export interface RunnerProfile {
   /** ISO YYYY-MM-DD. Null when unset. */
   birthDate: string | null;
@@ -25,10 +27,21 @@ export interface RunnerProfile {
   /** Free-text injuries / conditions / cycle notes — anything the
    *  coach should remember about the runner's current state. */
   healthFlags: string | null;
+  /** GPS watch / running computer (free text). */
+  gpsWatchModel: string | null;
+  /** Free text for kit notes. */
+  kitNotes: string | null;
+  /** Start of most recent menstruation. Used for cycle-phase
+   *  derivation; only relevant when sex='female'. */
+  lastPeriodDate: string | null;
+  /** Self-reported current cycle phase. */
+  cyclePhase: CyclePhase;
 }
 
 export const DEFAULT_PROFILE: RunnerProfile = {
-  birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null, healthFlags: null,
+  birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
+  healthFlags: null, gpsWatchModel: null, kitNotes: null,
+  lastPeriodDate: null, cyclePhase: null,
 };
 
 let cached: { profile: RunnerProfile; at: number } | null = null;
@@ -42,6 +55,10 @@ interface ApiResponse {
     hrmaxBpm: number | null;
     rhrBpm: number | null;
     healthFlags: string | null;
+    gpsWatchModel: string | null;
+    kitNotes: string | null;
+    lastPeriodDate: string | null;
+    cyclePhase: CyclePhase;
     updatedAt: string | null;
   } | null;
   error?: string;
@@ -61,6 +78,10 @@ function fromApi(api: ApiResponse['profile']): RunnerProfile {
     hrmaxBpm: api.hrmaxBpm,
     rhrBpm: api.rhrBpm,
     healthFlags: api.healthFlags ?? null,
+    gpsWatchModel: api.gpsWatchModel ?? null,
+    kitNotes: api.kitNotes ?? null,
+    lastPeriodDate: api.lastPeriodDate ?? null,
+    cyclePhase: api.cyclePhase ?? null,
   };
 }
 
@@ -92,6 +113,7 @@ function readLegacy(): RunnerProfile | null {
       rhrBpm: typeof parsed.rhrBpm === 'number' && parsed.rhrBpm >= 30 && parsed.rhrBpm <= 100
         ? parsed.rhrBpm : null,
       healthFlags: typeof parsed.healthFlags === 'string' ? parsed.healthFlags : null,
+      gpsWatchModel: null, kitNotes: null, lastPeriodDate: null, cyclePhase: null,
     };
   } catch {
     return null;

@@ -59,8 +59,20 @@ function HealthInner() {
             </div>
           </div>
 
+          {/* Recovery score — composite 0-100 from all the inputs we have */}
+          <SectionHeader title="Recovery score" sub="Composite from training load + perceived effort + race recovery state" />
+          <RecoveryScoreCard
+            acwr={readiness?.acwr ?? null}
+            easyShare={readiness?.easyShare ?? null}
+            rpeAvg7d={rpe?.avg7d ?? null}
+            rpeDrift={rpe?.drift ?? null}
+            rpeRecentHeavy={rpe?.recentHeavy ?? false}
+            inRecoveryWindow={!!recoveryWindowEndsISO}
+            daysSinceLastRun={hub?.coach.state?.recovery?.daysSinceLastRun ?? null}
+          />
+
           {/* Today's recovery picture — composite from the engine + RPE */}
-          <SectionHeader title="Today's recovery picture" sub="Composite verdict + the signals driving it" />
+          <SectionHeader title="Today's recovery picture" sub="Verdict + the signals driving it" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
             {readiness && <ReadinessBanner readiness={readiness} />}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
@@ -116,6 +128,166 @@ function HealthInner() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Recovery score ──────────────────────────────────────────
+   Composite 0-100 score derived from the signals we have without
+   HealthKit:
+     - ACWR (acute:chronic load ratio)
+     - Easy share 14d (polarized adherence)
+     - RPE drift (perceived effort 7d vs prior 7d)
+     - Recent heavy RPE flag
+     - Race-recovery window active
+     - Days-since-last-run extremes
+
+   Score band:
+     90+: Push freely · ramp risk low
+     75-89: Standard training · normal stress
+     60-74: Multiple yellows · pull intensity back
+     45-59: Significant fatigue · plan a cutback
+     <45: Cut hard · 3-5 easy days
+
+   Floor at 30 — sub-30 catastrophic numbers don't help anybody. */
+function RecoveryScoreCard({ acwr, easyShare, rpeAvg7d, rpeDrift, rpeRecentHeavy, inRecoveryWindow, daysSinceLastRun }: {
+  acwr: number | null;
+  easyShare: number | null;
+  rpeAvg7d: number | null;
+  rpeDrift: number | null;
+  rpeRecentHeavy: boolean;
+  inRecoveryWindow: boolean;
+  daysSinceLastRun: number | null;
+}) {
+  const factors: Array<{ label: string; cost: number; reason: string }> = [];
+  let score = 100;
+
+  // ACWR cost
+  if (acwr != null) {
+    if (acwr > 1.5 || acwr < 0.5) {
+      factors.push({ label: 'ACWR out of band', cost: 15, reason: `Last 7 days ${Math.round(acwr * 100)}% of usual — a real load shock.` });
+      score -= 15;
+    } else if (acwr > 1.3 || acwr < 0.7) {
+      factors.push({ label: 'ACWR running hot/cold', cost: 8, reason: `${acwr.toFixed(2)} — outside the 0.7-1.3 comfort band.` });
+      score -= 8;
+    }
+  }
+
+  // Easy share cost
+  if (easyShare != null) {
+    if (easyShare < 0.65) {
+      factors.push({ label: 'Easy share low', cost: 12, reason: `${Math.round(easyShare * 100)}% easy in last 14d — too much hard, not enough easy.` });
+      score -= 12;
+    } else if (easyShare < 0.78) {
+      factors.push({ label: 'Easy share marginal', cost: 5, reason: `${Math.round(easyShare * 100)}% easy in last 14d — a little under polarized target.` });
+      score -= 5;
+    }
+  }
+
+  // RPE drift cost
+  if (rpeDrift != null) {
+    if (rpeDrift >= 1.5) {
+      factors.push({ label: 'Perceived effort drifting up', cost: 10, reason: `Same prescriptions feeling +${rpeDrift.toFixed(1)} harder than prior week.` });
+      score -= 10;
+    } else if (rpeDrift >= 1.0) {
+      factors.push({ label: 'Mild perceived-effort drift', cost: 5, reason: `+${rpeDrift.toFixed(1)} vs prior week — watch for accumulation.` });
+      score -= 5;
+    }
+  }
+
+  // Recent heavy
+  if (rpeRecentHeavy && !inRecoveryWindow) {
+    factors.push({ label: 'Recent session(s) felt heavy', cost: 8, reason: 'Last 3 days had RPE 8+. If those weren\'t scheduled hard sessions, the body\'s telling you something.' });
+    score -= 8;
+  }
+
+  // Days since last run extremes
+  if (daysSinceLastRun != null) {
+    if (daysSinceLastRun >= 7) {
+      factors.push({ label: 'Long break', cost: 12, reason: `${daysSinceLastRun} days since last run — fitness erosion starts at ~7d.` });
+      score -= 12;
+    } else if (daysSinceLastRun >= 4) {
+      factors.push({ label: 'Missed runs', cost: 5, reason: `${daysSinceLastRun} days since last run.` });
+      score -= 5;
+    }
+  }
+
+  // In recovery window — neutral, not a cost. Surface as a context note.
+  const inRecoveryNote = inRecoveryWindow
+    ? 'Race-recovery window active — the volume drops are intentional, not training failure.'
+    : null;
+
+  // Floor at 30, cap at 100.
+  score = Math.max(30, Math.min(100, Math.round(score)));
+
+  const band = score >= 90 ? { label: 'PUSH FREELY', color: 'var(--color-success)', detail: 'Recovery in great shape — green light for the day\'s plan.' }
+             : score >= 75 ? { label: 'STANDARD', color: 'var(--color-success)', detail: 'Normal training stress, no flags. Trust the day\'s plan.' }
+             : score >= 60 ? { label: 'EASE INTENSITY', color: 'var(--color-attention)', detail: 'Multiple yellows. Hold the easy days honestly; defer next quality 24-48h.' }
+             : score >= 45 ? { label: 'CUTBACK', color: 'var(--color-attention)', detail: 'Significant fatigue. Plan a 3-5 day cutback (50% volume, no quality).' }
+             : { label: 'CUT HARD', color: 'var(--color-warning)', detail: 'Body is asking for rest. 3-5 fully easy days minimum; revisit when signals reset.' };
+
+  return (
+    <div className="tile" style={{
+      marginBottom: 18, padding: '24px 28px',
+      borderLeft: `3px solid ${band.color}`,
+      display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'flex-start',
+    }}>
+      {/* Score number + band */}
+      <div style={{ textAlign: 'center', minWidth: 140 }}>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 96,
+          letterSpacing: '-.04em', lineHeight: 1, color: band.color,
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {score}
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.6px',
+          color: band.color, marginTop: 6,
+        }}>
+          {band.label}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--color-t3)', marginTop: 6 }}>out of 100</div>
+      </div>
+
+      {/* Detail + factor list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, color: 'var(--color-t0)', lineHeight: 1.4 }}>
+          {band.detail}
+        </div>
+        {inRecoveryNote && (
+          <div style={{ fontSize: 12, color: 'var(--color-corporate)', lineHeight: 1.5, fontStyle: 'italic' }}>
+            {inRecoveryNote}
+          </div>
+        )}
+
+        {factors.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)', textTransform: 'uppercase' }}>
+              Why this score · what's costing you
+            </div>
+            {factors.map((f, i) => (
+              <div key={i} style={{
+                display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'baseline',
+                padding: '8px 12px', background: 'var(--color-l2)', borderRadius: 4,
+                fontSize: 12, color: 'var(--color-t1)',
+              }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--color-t0)' }}>{f.label}</span>
+                <span style={{ color: 'var(--color-t2)', lineHeight: 1.45 }}>{f.reason}</span>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, color: 'var(--color-warning)' }}>−{f.cost}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--color-t3)', fontStyle: 'italic' }}>
+            No detected stress signals — the score reflects current best evidence.
+          </div>
+        )}
+
+        <div style={{ marginTop: 8, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+          INPUTS · ACWR + EASY-SHARE + RPE DRIFT + RECOVERY WINDOW + LAST-RUN GAP
+        </div>
+      </div>
+    </div>
   );
 }
 

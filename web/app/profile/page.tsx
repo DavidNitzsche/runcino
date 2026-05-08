@@ -473,7 +473,11 @@ const iconBtnStyle: React.CSSProperties = {
    engine. Auto-saves on change so there's no Save button.
    Migrates any pre-existing localStorage profile on first load. */
 function RunnerProfileSection() {
-  const [profile, setProfile] = useState<RunnerProfile>({ birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null, healthFlags: null });
+  const [profile, setProfile] = useState<RunnerProfile>({
+    birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
+    healthFlags: null, gpsWatchModel: null, kitNotes: null,
+    lastPeriodDate: null, cyclePhase: null,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -626,11 +630,196 @@ function RunnerProfileSection() {
             Injuries, conditions, recent illness, cycle notes, supplements — anything you want the coach to keep in mind. Up to ~1KB.
           </div>
         </div>
+
+        {/* Equipment — GPS watch model + kit notes. Free text. */}
+        <div style={{ paddingTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              GPS watch / device <span style={{ color: 'var(--color-t3)', fontWeight: 400 }}>(model)</span>
+            </div>
+            <input
+              type="text"
+              value={profile.gpsWatchModel ?? ''}
+              onChange={e => update({ gpsWatchModel: e.target.value === '' ? null : e.target.value })}
+              placeholder="e.g. Garmin Forerunner 965, Apple Watch Ultra 2, COROS Pace 3"
+              maxLength={200}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                color: 'var(--color-t0)', fontFamily: 'var(--font-body, system-ui)', fontSize: 13,
+              }}
+            />
+            <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
+              Lets the coach reference your actual gear in briefs.
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+              Kit notes <span style={{ color: 'var(--color-t3)', fontWeight: 400 }}>(optional)</span>
+            </div>
+            <input
+              type="text"
+              value={profile.kitNotes ?? ''}
+              onChange={e => update({ kitNotes: e.target.value === '' ? null : e.target.value })}
+              placeholder="e.g. Tend toward Maurten 100s, hate caffeine after mile 18"
+              maxLength={500}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 6,
+                border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                color: 'var(--color-t0)', fontFamily: 'var(--font-body, system-ui)', fontSize: 13,
+              }}
+            />
+            <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
+              Fueling preferences, brand notes, anything else.
+            </div>
+          </div>
+        </div>
+
+        {/* Cycle tracking — only shown when sex='female'. Self-reported
+            phase + last-period date so the coach has cycle context for
+            future cycle-aware adjustments. */}
+        {profile.sex === 'female' && (
+          <div style={{
+            paddingTop: 14, marginTop: 14, borderTop: '1px solid var(--color-l4)',
+            display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-attention)', fontWeight: 700, textTransform: 'uppercase' }}>
+              Cycle tracking
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5 }}>
+              Optional. Cycle phase affects training response (luteal-phase heat sensitivity, follicular-phase strength gains, etc.). Research/24 §sex differences. Leave blank if you don&apos;t want to track here.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+                  Last period start
+                </div>
+                <input
+                  type="date"
+                  value={profile.lastPeriodDate ?? ''}
+                  onChange={e => update({ lastPeriodDate: e.target.value === '' ? null : e.target.value })}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 6,
+                    border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                    color: 'var(--color-t0)', fontFamily: 'var(--font-data)', fontSize: 13,
+                  }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+                  Current phase
+                </div>
+                <select
+                  value={profile.cyclePhase ?? ''}
+                  onChange={e => update({ cyclePhase: (e.target.value || null) as typeof profile.cyclePhase })}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 6,
+                    border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+                    color: 'var(--color-t0)', fontFamily: 'var(--font-body, system-ui)', fontSize: 13,
+                  }}
+                >
+                  <option value="">— self-report —</option>
+                  <option value="menstruation">Menstruation</option>
+                  <option value="follicular">Follicular</option>
+                  <option value="ovulation">Ovulation</option>
+                  <option value="luteal">Luteal</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Connections — Strava is the live one. Garmin/HealthKit are
+            future. Click-through to the Strava connect flow. */}
+        <ConnectionsRow />
+
         <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)', lineHeight: 1.5 }}>
           Used to compute age-graded VDOT, sex-cohort tier framing, and HR zone targets on the dashboard.
           All fields optional — leave blank for open-class / age-estimated zones. Synced across devices. {saving && <span style={{ color: 'var(--color-corporate)', fontWeight: 700 }}>· Saving…</span>}{error && <span style={{ color: 'var(--color-warning)', fontWeight: 700 }}>· {error}</span>}
         </div>
       </div>
     </section>
+  );
+}
+
+/* ── Connections row ─────────────────────────────────────────
+   Surfaces what's connected vs not. Strava is currently the only
+   live integration; HealthKit + Garmin are planned. The runner sees
+   their integration status in one row instead of having to find
+   the Strava connect page in the docs. */
+function ConnectionsRow() {
+  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Probe whether Strava tokens are present server-side. The
+    // /api/strava/sync endpoint returns a payload when connected,
+    // an error code when not — we just need a yes/no.
+    fetch('/api/strava/activities?limit=1')
+      .then(r => r.json())
+      .then((d: { activities?: unknown[]; error?: string }) => {
+        setStravaConnected(Array.isArray(d.activities));
+      })
+      .catch(() => setStravaConnected(false));
+  }, []);
+
+  return (
+    <div style={{
+      paddingTop: 14, marginTop: 14, borderTop: '1px solid var(--color-l4)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-corporate)', fontWeight: 700, textTransform: 'uppercase' }}>
+        Connections
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+        <ConnectionPill
+          name="Strava"
+          status={stravaConnected === null ? 'checking' : stravaConnected ? 'connected' : 'disconnected'}
+          actionHref={stravaConnected ? null : '/api/strava/connect'}
+          actionLabel={stravaConnected ? null : 'Connect'}
+        />
+        <ConnectionPill name="HealthKit" status="planned" sub="iOS app · M2" />
+        <ConnectionPill name="Garmin" status="planned" sub="future" />
+      </div>
+    </div>
+  );
+}
+
+function ConnectionPill({ name, status, sub, actionHref, actionLabel }: {
+  name: string;
+  status: 'connected' | 'disconnected' | 'checking' | 'planned';
+  sub?: string;
+  actionHref?: string | null;
+  actionLabel?: string | null;
+}) {
+  const color = status === 'connected' ? 'var(--color-success)'
+              : status === 'disconnected' ? 'var(--color-attention)'
+              : status === 'planned' ? 'var(--color-t3)'
+              : 'var(--color-t2)';
+  const label = status === 'connected' ? 'CONNECTED'
+              : status === 'disconnected' ? 'NOT CONNECTED'
+              : status === 'planned' ? 'PLANNED'
+              : 'CHECKING';
+  return (
+    <div style={{
+      padding: '10px 12px', borderRadius: 6, background: 'var(--color-l2)',
+      borderLeft: `3px solid ${color}`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--color-t0)' }}>{name}</span>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1.2px', color }}>
+          {label}
+        </span>
+      </div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--color-t3)' }}>{sub}</div>}
+      {actionHref && actionLabel && (
+        <a href={actionHref} style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.2px',
+          color: 'var(--color-corporate)', textDecoration: 'none', marginTop: 4,
+        }}>
+          {actionLabel} →
+        </a>
+      )}
+    </div>
   );
 }

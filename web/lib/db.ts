@@ -169,6 +169,23 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE runner_profile
         ADD COLUMN IF NOT EXISTS health_flags TEXT;
     `);
+    // Equipment — GPS watch model + kit notes (free text). Helps the
+    // coach reference the runner's actual gear in briefs ("your
+    // Forerunner..." vs generic "your watch").
+    await client.query(`
+      ALTER TABLE runner_profile
+        ADD COLUMN IF NOT EXISTS gps_watch_model TEXT,
+        ADD COLUMN IF NOT EXISTS kit_notes TEXT;
+    `);
+    // Cycle tracking — only applies when sex='female'. last_period_date
+    // is the start of the runner's most recent menstruation; cycle_phase
+    // is the runner's self-reported current phase. Used to surface
+    // cycle-aware training context (Research/24 §sex differences).
+    await client.query(`
+      ALTER TABLE runner_profile
+        ADD COLUMN IF NOT EXISTS last_period_date DATE,
+        ADD COLUMN IF NOT EXISTS cycle_phase TEXT;
+    `);
     // Cache for the dashboard's /api/coach/today payload. Keyed by
     // (cache_date, latest_activity_id) so reads are cheap and the
     // cache auto-invalidates when a new activity lands. Pre-warmed

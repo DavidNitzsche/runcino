@@ -248,6 +248,12 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             </div>
           )}
 
+          {/* Course implications — what the elevation profile means
+              for race-day strategy. Renders only with analysis data. */}
+          {!isPastWithResult(race) && analysis && (
+            <CourseImplicationsTile race={enrichedRace} analysis={analysis} />
+          )}
+
           {/* Pre-race planning tiles. Hidden once the race is past +
               has a recorded result — at that point the per-mile +
               per-phase plan-vs-Strava tables in ResultSection make
@@ -818,6 +824,181 @@ function fmtTime(s: number): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+/* ── Course implications ─────────────────────────────────────
+   Reads the GPX analysis stats and translates them into race-day
+   strategy callouts: where to be conservative, where to push,
+   what the descent/ascent split implies for pacing + fueling.
+   Each implication is a short prose sentence with the specific
+   numeric driver beside it. */
+function CourseImplicationsTile({ race, analysis }: { race: SavedRace; analysis: CourseAnalysis }) {
+  const stats = analysis.stats;
+  const distMi = race.meta.distanceMi;
+  const gainFt = stats.gainFt;
+  const lossFt = stats.lossFt;
+  const gainPerMi = distMi > 0 ? gainFt / distMi : 0;
+  const lossPerMi = distMi > 0 ? lossFt / distMi : 0;
+  const netDescent = lossFt - gainFt;
+  const isHilly = gainPerMi >= 50;
+  const isVeryHilly = gainPerMi >= 100;
+  const isFlat = gainPerMi < 25;
+  const maxUpPct = stats.maxUpGradePct;
+  const maxDownPct = Math.abs(stats.maxDownGradePct);
+  const maxUpMi = analysis.cumDistM[stats.maxUpIdx] / 1609.344;
+  const maxDownMi = analysis.cumDistM[stats.maxDownIdx] / 1609.344;
+
+  // Course shape implications
+  const courseShape = (() => {
+    if (stats.oabScorePct > 75) return 'out-and-back';
+    if (stats.startToEndM < 200) return 'loop';
+    return 'point-to-point';
+  })();
+
+  const implications: Array<{ severity: 'info' | 'warn' | 'high'; label: string; detail: string; cite?: string }> = [];
+
+  // Climb intensity
+  if (isVeryHilly) {
+    implications.push({
+      severity: 'high',
+      label: `Hilly course · ${Math.round(gainPerMi)} ft/mi gain`,
+      detail: `Climbs cost a measurable percentage of your goal pace. Don't pace by your flat-course splits — the engine adjusts goal time but on race day, climb by EFFORT, not pace. Walk steep grades if HR creeps over your tempo ceiling.`,
+      cite: 'Research/06 §grade adjustment',
+    });
+  } else if (isHilly) {
+    implications.push({
+      severity: 'warn',
+      label: `Rolling course · ${Math.round(gainPerMi)} ft/mi gain`,
+      detail: 'Manageable elevation but it adds up over the distance. Run climbs by effort (not pace), accelerate over the crest, settle on descents.',
+      cite: 'Research/06 §grade adjustment',
+    });
+  } else if (isFlat) {
+    implications.push({
+      severity: 'info',
+      label: `Flat course · ${Math.round(gainPerMi)} ft/mi gain`,
+      detail: 'Pace-driven race — your goal splits are realistic. The risk is not the terrain but the tempo of your start.',
+    });
+  }
+
+  // Steepest climb
+  if (maxUpPct > 8) {
+    implications.push({
+      severity: 'high',
+      label: `Steepest climb: ${maxUpPct.toFixed(1)}% at mile ${maxUpMi.toFixed(1)}`,
+      detail: 'A grade this steep at race pace is anaerobic. Drop pace dramatically — even walk briefly if the climb is short — and recover on the way down. Trying to run-time it kills the rest of the race.',
+      cite: 'Research/06 §grade cost ladder',
+    });
+  } else if (maxUpPct > 5) {
+    implications.push({
+      severity: 'warn',
+      label: `Steepest climb: ${maxUpPct.toFixed(1)}% at mile ${maxUpMi.toFixed(1)}`,
+      detail: 'Add 30-60 seconds per mile here vs your goal pace. Effort is what holds; the clock will reward it on the descent.',
+    });
+  }
+
+  // Steepest descent — quad bomb
+  if (maxDownPct > 8) {
+    implications.push({
+      severity: 'high',
+      label: `Steep descent: ${maxDownPct.toFixed(1)}% at mile ${maxDownMi.toFixed(1)}`,
+      detail: 'Eccentric load on the quads is the silent killer. Don\'t hammer down — short cadence, lean slightly forward, save the legs for late-race miles. A 4-6% descent is "free speed"; >8% just bombs the quads.',
+      cite: 'Research/00b §downhill quad protection',
+    });
+  }
+
+  // Net-down course
+  if (netDescent > 200) {
+    implications.push({
+      severity: 'warn',
+      label: `Net descent course (${Math.round(netDescent)} ft net loss)`,
+      detail: `${Math.round(lossFt)} ft down vs ${Math.round(gainFt)} ft up. Faster on paper but quad damage compounds — assume 0.5-1.0% slower late-race pace from leg fatigue regardless of cardio fitness. Long descents in training help.`,
+      cite: 'Research/00b §downhill protection',
+    });
+  } else if (Math.abs(netDescent) < 100 && gainFt > 800) {
+    implications.push({
+      severity: 'info',
+      label: `Loaded course (${Math.round(gainFt)} ft up, ${Math.round(lossFt)} ft down)`,
+      detail: 'Both directions of climbing — neither side gives you free speed. Pacing strategy should be effort-based throughout.',
+    });
+  }
+
+  // Course shape
+  if (courseShape === 'out-and-back') {
+    implications.push({
+      severity: 'info',
+      label: 'Out-and-back course',
+      detail: 'Whatever wind you face one direction, you get back on the return. Don\'t chase pace into a headwind on the outbound — you\'ll need that effort on the return when you\'re already tired.',
+    });
+  } else if (courseShape === 'point-to-point') {
+    implications.push({
+      severity: 'info',
+      label: 'Point-to-point course',
+      detail: 'Wind direction matters all day. Check forecast for prevailing direction relative to course bearing — a tailwind start can push you to over-pace early.',
+    });
+  }
+
+  // Fueling implication for hilly courses
+  if (isVeryHilly && distMi >= 13) {
+    implications.push({
+      severity: 'warn',
+      label: 'Hilly + long → higher fueling rate',
+      detail: 'Climbs spike effort and burn glycogen faster than flat work. Bias to the upper end of your carb-target range (e.g. 80-90 g/hr instead of 60). Test your gut tolerance in training.',
+      cite: 'Research/19 §carb intake by intensity',
+    });
+  }
+
+  // Empty state — totally flat, totally vanilla course (rare but render
+  // a positive message rather than nothing).
+  if (implications.length === 0) {
+    implications.push({
+      severity: 'info',
+      label: 'Vanilla course profile',
+      detail: 'No standout terrain features — pace-execution race. Trust your splits, hit your fueling intervals, finish strong.',
+    });
+  }
+
+  const severityColor: Record<typeof implications[number]['severity'], string> = {
+    info: 'var(--color-corporate)',
+    warn: 'var(--color-attention)',
+    high: 'var(--color-warning)',
+  };
+
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: '20px 24px' }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Course implications</div>
+          <div className="tile-lbl">{implications.length} callout{implications.length === 1 ? '' : 's'} from the elevation profile</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+          DERIVED FROM GPX
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+        {implications.map((imp, i) => (
+          <div key={i} style={{
+            padding: '12px 14px', borderRadius: 6, background: 'var(--color-l2)',
+            borderLeft: `3px solid ${severityColor[imp.severity]}`,
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)' }}>
+                {imp.label}
+              </div>
+              {imp.cite && (
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+                  {imp.cite}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+              {imp.detail}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ── Retrospect tile ─────────────────────────────────────────

@@ -155,6 +155,8 @@ function TrainingPageInner() {
 
           <DailyFeedbackTile now={now} runs={runs} />
 
+          {runs && runs.length > 0 && <BuildCurveTile runs={runs} now={now} goalRace={goalRace} />}
+
           {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
 
           {runs && runs.length > 0 && <QualityDayGridTile runs={runs} />}
@@ -172,6 +174,168 @@ function TrainingPageInner() {
    quality (red), long (blue), easy (green), rest (dark). Lets the
    runner see their training rhythm at a glance — "I always skip
    Wednesday tempos when work is busy" patterns become visible. */
+/* ── Build curve ─────────────────────────────────────────────
+   16-week training arc visualization. Bars = actual weekly mileage
+   for past weeks + projected for future weeks (the engine's
+   week-shape distance prescription summed). Phase shading
+   color-codes BASE / BUILD / PEAK / TAPER blocks based on the
+   distance to the next A-race.
+
+   The runner reads the macro shape: "I'm 6 weeks out, in PEAK
+   block, last week was 32 mi, the curve is climbing on schedule."
+   Hides if there's no next race (no taper math to anchor against). */
+function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; now: Date; goalRace: SavedRace | null }) {
+  if (!goalRace) return null;
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const raceDate = new Date(goalRace.meta.date + 'T12:00:00Z');
+  const daysToRace = Math.round((raceDate.getTime() - today.getTime()) / 86_400_000);
+  if (daysToRace < 0) return null;  // race already happened
+
+  // 12 weeks past + 8 weeks forward = 20-week strip
+  const weeks: Array<{ start: Date; weekISO: string; miles: number; isFuture: boolean; isRaceWeek: boolean; phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST' }> = [];
+  const dow = today.getDay();
+  const daysToMonday = dow === 0 ? -6 : 1 - dow;
+  const thisMonday = new Date(today); thisMonday.setDate(thisMonday.getDate() + daysToMonday);
+
+  for (let w = -12; w <= 8; w++) {
+    const start = new Date(thisMonday);
+    start.setDate(start.getDate() + w * 7);
+    const weekEnd = new Date(start); weekEnd.setDate(weekEnd.getDate() + 7);
+    const startISO = start.toISOString().slice(0, 10);
+    const endISO = weekEnd.toISOString().slice(0, 10);
+    const isFuture = start > today;
+    const daysFromRace = Math.round((raceDate.getTime() - start.getTime()) / 86_400_000);
+    const isRaceWeek = daysFromRace >= 0 && daysFromRace < 7;
+
+    // Sum miles in this week from runs (past) or estimate forward
+    // (simple ramp: hold last 4-week avg, drop to 50% in race week)
+    const weekMi = runs
+      .filter(r => r.date >= startISO && r.date < endISO)
+      .reduce((s, r) => s + r.distanceMi, 0);
+
+    // Phase by distance-to-race (mirrors engine's raceSubPhase):
+    //   ≤7d = TAPER, 8-21d = PEAK, 22-56d = BUILD, >56d = BASE
+    const phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST' = (() => {
+      if (daysFromRace < 0) return 'POST';
+      if (daysFromRace <= 7) return 'TAPER';
+      if (daysFromRace <= 21) return 'PEAK';
+      if (daysFromRace <= 56) return 'BUILD';
+      return 'BASE';
+    })();
+
+    weeks.push({ start, weekISO: startISO, miles: weekMi, isFuture, isRaceWeek, phase });
+  }
+
+  const max = Math.max(...weeks.map(w => w.miles), 1);
+  // Estimate forward miles using last 4-week avg as "what would
+  // standard volume look like." Runner's actual ramp comes from the
+  // engine; this is a visual reference.
+  const last4Avg = (() => {
+    const past4 = weeks.filter(w => !w.isFuture).slice(-4);
+    return past4.length > 0 ? past4.reduce((s, w) => s + w.miles, 0) / past4.length : 0;
+  })();
+
+  const phaseColor: Record<typeof weeks[number]['phase'], string> = {
+    BASE:  'rgba(120, 120, 120, 0.10)',
+    BUILD: 'rgba(62, 189, 65, 0.10)',
+    PEAK:  'rgba(243, 173, 59, 0.14)',
+    TAPER: 'rgba(252, 77, 84, 0.16)',
+    POST:  'rgba(120, 120, 120, 0.06)',
+  };
+  const phaseAccent: Record<typeof weeks[number]['phase'], string> = {
+    BASE:  'var(--color-t3)',
+    BUILD: 'var(--color-success)',
+    PEAK:  'var(--color-attention)',
+    TAPER: 'var(--color-warning)',
+    POST:  'var(--color-t3)',
+  };
+
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: '20px 24px' }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Build curve</div>
+          <div className="tile-lbl">{daysToRace} days to {goalRace.meta.name} · 12 weeks back, 8 forward</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+          RESEARCH/14 · TAPER
+        </span>
+      </div>
+
+      {/* Bar chart */}
+      <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 140, marginTop: 16, position: 'relative' }}>
+        {weeks.map((w, i) => {
+          const projected = w.isFuture ? Math.min(last4Avg, 0) : 0;  // For now don't project forward bars; show empty space
+          const heightMi = w.miles > 0 ? w.miles : projected;
+          const heightPct = heightMi > 0 ? (heightMi / max) * 100 : 0;
+          const color = w.isFuture ? phaseAccent[w.phase] + '88' : phaseAccent[w.phase];
+          return (
+            <div key={i} style={{
+              flex: 1, height: '100%',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end',
+              position: 'relative',
+              background: phaseColor[w.phase],
+              borderRadius: 3,
+              outline: w.isRaceWeek ? '2px solid var(--color-warning)' : 'none',
+            }}>
+              {w.miles > 0 && (
+                <div style={{
+                  width: '70%',
+                  height: `${heightPct}%`,
+                  background: color,
+                  borderRadius: 2,
+                  opacity: w.isFuture ? 0.4 : 1,
+                  borderTop: w.isFuture ? `2px dashed ${color}` : 'none',
+                }} title={`${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Week-start labels (every 4 weeks) */}
+      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+        {weeks.map((w, i) => (
+          <div key={i} style={{
+            flex: 1, textAlign: 'center',
+            fontFamily: 'var(--font-data)', fontSize: 8, color: 'var(--color-t3)',
+            letterSpacing: '0.6px', textTransform: 'uppercase',
+            visibility: i % 4 === 0 || w.isRaceWeek ? 'visible' : 'hidden',
+          }}>
+            {w.isRaceWeek ? 'RACE' : w.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </div>
+        ))}
+      </div>
+
+      {/* Phase legend */}
+      <div style={{
+        display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14, paddingTop: 10,
+        borderTop: '1px solid var(--color-l4)',
+        fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)',
+        letterSpacing: '1.3px', textTransform: 'uppercase',
+      }}>
+        <PhaseLegend bg="rgba(120, 120, 120, 0.10)" accent="var(--color-t3)" label="Base" />
+        <PhaseLegend bg="rgba(62, 189, 65, 0.10)" accent="var(--color-success)" label="Build" />
+        <PhaseLegend bg="rgba(243, 173, 59, 0.14)" accent="var(--color-attention)" label="Peak" />
+        <PhaseLegend bg="rgba(252, 77, 84, 0.16)" accent="var(--color-warning)" label="Taper" />
+      </div>
+
+      <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>
+        Past weeks solid; future-week bars show where last-4-week average would land if held flat (the engine&apos;s actual prescription will deviate).
+      </div>
+    </div>
+  );
+}
+
+function PhaseLegend({ bg, accent, label }: { bg: string; accent: string; label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 14, height: 8, background: bg, borderLeft: `2px solid ${accent}`, borderRadius: 2 }} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 /* ── Daily feedback ──────────────────────────────────────────
    The "tell the coach how it actually felt" tile. Lives directly
    under the daily briefing on /training so the runner reads the

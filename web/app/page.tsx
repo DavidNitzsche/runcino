@@ -87,6 +87,8 @@ function OverviewPageInner() {
 
           <ModeBanner daysToNext={daysToNext} hub={hub} />
 
+          <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
+
           <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
@@ -210,6 +212,154 @@ function ModeBanner({ daysToNext, hub }: { daysToNext: number | null; hub: impor
       )}
     </div>
   );
+}
+
+/* ── Mode-specific hero — overlay above the standard dashboard
+   when the runner is in a "special" mode (race-day / race-week /
+   post-race / heavy-block). Renders nothing in normal training so
+   the regular Greeting + 4-card grid + Today tile take over. */
+function ModeHero({ daysToNext, next, hub }: {
+  daysToNext: number | null;
+  next: SavedRace | null;
+  hub: import('../lib/hub-types').RunnerHub | null;
+}) {
+  if (!hub) return null;
+  const recentRace = hub.coach.state?.races?.recent?.[0] ?? null;
+  const heavyBlock = hub.coach.state?.flags?.heavyBlockSuspected ?? false;
+
+  // Race-day hero — dominant countdown, race-day-essentials list,
+  // direct link to the race detail page.
+  if (daysToNext === 0 && next) {
+    return (
+      <div className="tile" style={{
+        marginBottom: 14, padding: '32px 36px',
+        background: `linear-gradient(135deg, var(--color-l2) 0%, rgba(252, 77, 84, 0.18) 100%)`,
+        borderColor: 'rgba(252, 77, 84, 0.4)',
+        borderLeftWidth: 4,
+        borderLeftColor: 'var(--color-warning)',
+      }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.8px', color: 'var(--color-warning)', fontWeight: 800 }}>
+          RACE DAY · TODAY
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 56,
+          letterSpacing: '-.018em', lineHeight: 1, color: 'var(--color-t0)',
+          marginTop: 6, textTransform: 'uppercase',
+        }}>
+          {next.meta.name}
+        </div>
+        <div style={{ fontSize: 14, color: 'var(--color-t1)', marginTop: 10, maxWidth: 600, lineHeight: 1.55 }}>
+          The training is done. First three miles slower than you want; whatever you feel right now is nerves, not fitness. Trust the plan, eat the gels, hit your mile splits, and let the race come to you.
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <Link href={`/races/${next.slug}`} className="btn btn--primary">
+            Open race plan →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Race-week hero — countdown + taper essentials checklist.
+  if (daysToNext != null && daysToNext > 0 && daysToNext <= 7 && next) {
+    const checklist = [
+      'Sleep — bank the hours, especially 2 nights out',
+      'Hydration — carry a bottle through the day, sodium-rich foods',
+      'Nothing new — no new shoes, no new fueling, no new routes',
+      'Light shakeout 2 days out, full rest day before',
+      'Lay out kit + pin bib the night before',
+    ];
+    return (
+      <div className="tile" style={{
+        marginBottom: 14, padding: '24px 28px',
+        background: `linear-gradient(135deg, var(--color-l2) 0%, rgba(243, 173, 59, 0.10) 100%)`,
+        borderColor: 'rgba(243, 173, 59, 0.32)',
+        borderLeftWidth: 3,
+        borderLeftColor: 'var(--color-attention)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.8px', color: 'var(--color-attention)', fontWeight: 800 }}>
+              RACE WEEK · {daysToNext} DAY{daysToNext === 1 ? '' : 'S'} OUT
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 36,
+              letterSpacing: '-.005em', lineHeight: 1.05, color: 'var(--color-t0)', marginTop: 4,
+            }}>
+              {next.meta.name}
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--color-t2)', marginTop: 6, maxWidth: 480, lineHeight: 1.5 }}>
+              Taper protects freshness — no new fitness this week, just maintenance. Your job: protect sleep, fuel well, stay calm.
+            </div>
+          </div>
+          <Link href={`/races/${next.slug}`} className="btn btn--primary">Race plan →</Link>
+        </div>
+        <ul style={{ marginTop: 14, paddingLeft: 18, fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+          {checklist.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      </div>
+    );
+  }
+
+  // Post-race hero — graduated recovery panel using REVERSE_TAPER focus.
+  if (recentRace && recentRace.daysAgo <= 21) {
+    const weekPostRace = Math.floor(recentRace.daysAgo / 7) + 1;
+    const focusByWeek: Record<number, string> = {
+      1: 'Rest / walk / minimal jog. Days 0-3: walks only or rest. Days 4-7: 20-30 min very easy jogs every other day.',
+      2: 'Rebuild frequency — most days a short easy run. All easy, RPE 3-4. Strides only if legs feel clean.',
+      3: 'Rebuild duration — longer easy runs, no quality. First structured surges late in the week (4-6 × 1 min @ 10K effort).',
+      4: 'Reintroduce strides + one light tempo (15-20 min @ HMP). First true workout — re-evaluate before adding a second.',
+    };
+    const focus = focusByWeek[Math.min(weekPostRace, 4)] ?? 'Returning to full structure — quality work resumes this week.';
+    return (
+      <div className="tile" style={{
+        marginBottom: 14, padding: '24px 28px',
+        background: `linear-gradient(135deg, var(--color-l2) 0%, rgba(79, 143, 247, 0.12) 100%)`,
+        borderColor: 'rgba(79, 143, 247, 0.3)',
+        borderLeftWidth: 3,
+        borderLeftColor: 'var(--color-corporate)',
+      }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.8px', color: 'var(--color-corporate)', fontWeight: 800 }}>
+          POST-RACE · WEEK {weekPostRace} OF RECOVERY
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 30,
+          letterSpacing: '-.005em', lineHeight: 1.1, color: 'var(--color-t0)', marginTop: 4,
+        }}>
+          {recentRace.daysAgo === 0 ? 'Today' : `${recentRace.daysAgo} day${recentRace.daysAgo === 1 ? '' : 's'} since`} {recentRace.name}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--color-t1)', marginTop: 10, lineHeight: 1.55 }}>
+          {focus}
+        </div>
+        <div style={{ marginTop: 12, fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)' }}>
+          RESEARCH/00b · REVERSE_TAPER_PROTOCOL
+        </div>
+      </div>
+    );
+  }
+
+  // Heavy-block hero — when the engine flagged stacked races/load.
+  if (heavyBlock) {
+    return (
+      <div className="tile" style={{
+        marginBottom: 14, padding: '20px 24px',
+        background: `linear-gradient(135deg, var(--color-l2) 0%, rgba(252, 77, 84, 0.08) 100%)`,
+        borderLeftWidth: 3,
+        borderLeftColor: 'var(--color-warning)',
+      }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.8px', color: 'var(--color-warning)', fontWeight: 800 }}>
+          HEAVY BLOCK · DEEP RECOVERY
+        </div>
+        <div style={{ fontSize: 13.5, color: 'var(--color-t1)', marginTop: 8, lineHeight: 1.55, maxWidth: 600 }}>
+          Recent training stacked harder than typical — multiple races, sustained high mileage, or both. Recovery IS the work right now. Volume drops are intentional, not a failure of consistency. Let the body absorb.
+        </div>
+      </div>
+    );
+  }
+
+  // Standard mode — no hero needed. The Greeting + 4-card grid +
+  // CoachTodayCard handle daily prescription clearly.
+  return null;
 }
 
 function Greeting({

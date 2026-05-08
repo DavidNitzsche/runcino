@@ -13,6 +13,8 @@ import { query } from './db';
 
 export type RunnerSex = 'male' | 'female' | 'unspecified';
 
+export type CyclePhase = 'menstruation' | 'follicular' | 'ovulation' | 'luteal' | null;
+
 export interface RunnerProfile {
   /** ISO YYYY-MM-DD. Preferred over birth_year (precise age). */
   birthDate: string | null;
@@ -24,6 +26,17 @@ export interface RunnerProfile {
    *  Engine doesn't currently parse it; visible context for LLM
    *  brief generation. */
   healthFlags: string | null;
+  /** GPS watch / running computer model (free text). */
+  gpsWatchModel: string | null;
+  /** Free text for shoe rotation notes, kit, anything else gear. */
+  kitNotes: string | null;
+  /** Start of the runner's most recent menstruation. Used to derive
+   *  the current cycle phase + day-of-cycle. Only applicable when
+   *  sex='female'. */
+  lastPeriodDate: string | null;
+  /** Self-reported cycle phase. Falls back to a date-derived value
+   *  when lastPeriodDate is set but this isn't. */
+  cyclePhase: CyclePhase;
   updatedAt: string | null;
 }
 
@@ -33,6 +46,10 @@ const DEFAULT: RunnerProfile = {
   hrmaxBpm: null,
   rhrBpm: null,
   healthFlags: null,
+  gpsWatchModel: null,
+  kitNotes: null,
+  lastPeriodDate: null,
+  cyclePhase: null,
   updatedAt: null,
 };
 
@@ -43,6 +60,10 @@ interface DbRow {
   hrmax_bpm: number | null;
   rhr_bpm: number | null;
   health_flags: string | null;
+  gps_watch_model: string | null;
+  kit_notes: string | null;
+  last_period_date: Date | string | null;
+  cycle_phase: string | null;
   updated_at: Date;
 }
 
@@ -61,19 +82,31 @@ function rowToProfile(row: DbRow): RunnerProfile {
   const sex: RunnerSex = (['male', 'female', 'unspecified'] as const).includes(row.sex as RunnerSex)
     ? (row.sex as RunnerSex)
     : 'unspecified';
+  const lastPeriodDate: string | null = row.last_period_date instanceof Date
+    ? row.last_period_date.toISOString().slice(0, 10)
+    : (typeof row.last_period_date === 'string' ? row.last_period_date.slice(0, 10) : null);
+  const cyclePhase: CyclePhase = (['menstruation', 'follicular', 'ovulation', 'luteal'] as const)
+    .includes(row.cycle_phase as Exclude<CyclePhase, null>)
+    ? (row.cycle_phase as Exclude<CyclePhase, null>)
+    : null;
   return {
     birthDate,
     sex,
     hrmaxBpm: row.hrmax_bpm,
     rhrBpm: row.rhr_bpm,
     healthFlags: row.health_flags,
+    gpsWatchModel: row.gps_watch_model,
+    kitNotes: row.kit_notes,
+    lastPeriodDate,
+    cyclePhase,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   };
 }
 
 export async function getRunnerProfile(): Promise<RunnerProfile> {
   const rows = await query<DbRow>(
-    `SELECT birth_date, birth_year, sex, hrmax_bpm, rhr_bpm, health_flags, updated_at
+    `SELECT birth_date, birth_year, sex, hrmax_bpm, rhr_bpm, health_flags,
+            gps_watch_model, kit_notes, last_period_date, cycle_phase, updated_at
      FROM runner_profile WHERE id = 1`,
   );
   return rows.length === 0 ? DEFAULT : rowToProfile(rows[0]);
@@ -102,10 +135,25 @@ export async function setRunnerProfile(profile: Partial<RunnerProfile>): Promise
   const rhrBpm = profile.rhrBpm != null && profile.rhrBpm >= 30 && profile.rhrBpm <= 100
     ? profile.rhrBpm : null;
   const healthFlags = (profile.healthFlags ?? '').trim().slice(0, 1000) || null;
+  const gpsWatchModel = (profile.gpsWatchModel ?? '').trim().slice(0, 200) || null;
+  const kitNotes = (profile.kitNotes ?? '').trim().slice(0, 500) || null;
+  // Last-period date validation — same shape as birthDate.
+  const validLastPeriod = (() => {
+    const d = profile.lastPeriodDate ?? null;
+    if (!d) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    return d;
+  })();
+  const cyclePhase: CyclePhase = (['menstruation', 'follicular', 'ovulation', 'luteal'] as const)
+    .includes(profile.cyclePhase as Exclude<CyclePhase, null>)
+    ? (profile.cyclePhase as Exclude<CyclePhase, null>)
+    : null;
 
   await query(
-    `INSERT INTO runner_profile (id, birth_year, birth_date, sex, hrmax_bpm, rhr_bpm, health_flags, updated_at)
-     VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+    `INSERT INTO runner_profile (id, birth_year, birth_date, sex, hrmax_bpm, rhr_bpm,
+                                  health_flags, gps_watch_model, kit_notes,
+                                  last_period_date, cycle_phase, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      ON CONFLICT (id) DO UPDATE SET
        birth_year = EXCLUDED.birth_year,
        birth_date = EXCLUDED.birth_date,
@@ -113,8 +161,13 @@ export async function setRunnerProfile(profile: Partial<RunnerProfile>): Promise
        hrmax_bpm = EXCLUDED.hrmax_bpm,
        rhr_bpm = EXCLUDED.rhr_bpm,
        health_flags = EXCLUDED.health_flags,
+       gps_watch_model = EXCLUDED.gps_watch_model,
+       kit_notes = EXCLUDED.kit_notes,
+       last_period_date = EXCLUDED.last_period_date,
+       cycle_phase = EXCLUDED.cycle_phase,
        updated_at = NOW();`,
-    [birthYearDerived, validBirthDate, sex, hrmaxBpm, rhrBpm, healthFlags],
+    [birthYearDerived, validBirthDate, sex, hrmaxBpm, rhrBpm,
+     healthFlags, gpsWatchModel, kitNotes, validLastPeriod, cyclePhase],
   );
 
   return getRunnerProfile();
