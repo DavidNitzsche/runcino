@@ -76,23 +76,15 @@ export async function computeCoachTodayPayload(): Promise<CoachTodayPayloadShape
   };
 }
 
-/** The "freshness key" for the cache. Combines the LA-calendar date
- *  + the latest Strava activity ID. Cache hits when both match;
- *  miss → regenerate. The activity ID auto-invalidates whenever a
- *  new run lands. */
-export function cacheKey(payload: CoachTodayPayloadShape): { date: string; latestActivityId: number | null } {
-  const date = payload.state.now.slice(0, 10);
-  // Walk recent races (which include Strava activity IDs) to find
-  // the most recent activity ID we know about. Could also walk the
-  // full activity cache but that requires a separate read; the
-  // "recent races + recovery.yesterday + recovery.today" set covers
-  // the freshness signal we need.
-  const ids: number[] = [];
-  for (const r of payload.state.races.recent) {
-    if (r.activityId != null) ids.push(r.activityId);
-  }
-  if (payload.state.recovery.yesterday?.activityId != null) ids.push(payload.state.recovery.yesterday.activityId);
-  if (payload.state.recovery.today?.activityId != null) ids.push(payload.state.recovery.today.activityId);
-  const latestActivityId = ids.length > 0 ? Math.max(...ids) : null;
-  return { date, latestActivityId };
+/** Removed: the cache key is now derived in coach-today-cache.ts
+ *  via `currentCacheKey()` (single source for both read + write).
+ *  The previous version walked state.races.recent + recovery to
+ *  find the latest activity ID, which only saw activities flagged
+ *  as races or running yesterday/today — eternal cache miss for
+ *  every other run. The new path SELECTs from strava_activities
+ *  directly, matching what the read uses to look up the cache.
+ *  Keeping the function declaration as a noop that returns the
+ *  date alone, in case any future caller wants the date piece. */
+export function cacheKey(payload: CoachTodayPayloadShape): { date: string; latestActivityId: null } {
+  return { date: payload.state.now.slice(0, 10), latestActivityId: null };
 }
