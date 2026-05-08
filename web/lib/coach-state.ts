@@ -22,6 +22,7 @@ import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './s
 import { todayISO as todayLAISO, todayDate } from './dates';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
+import { POST_RACE_BY_DISTANCE, type PostRaceDistance } from '../coach/doctrine';
 
 export interface CoachState {
   /** ISO date the state was gathered. Engine should treat this as "today". */
@@ -452,13 +453,26 @@ export async function gatherCoachState(): Promise<CoachState> {
   };
 }
 
-/** Distance-driven recovery duration. Doc §13.3 + the legacy
- *  "1 day per mile" guideline. Floor 3 days, cap 28 days. */
+/** Distance-driven recovery duration. Reads from the canonical
+ *  doctrine table (Research/00b §Post-Race Recovery › Recovery by
+ *  Distance) — the high end of "no quality" days for each distance
+ *  band. Replaces the previous hand-coded ladder (3/7/14/26) with
+ *  a doctrine-traced source so changes to the research file flow
+ *  through automatically. */
+export function postRaceDistanceBand(distMi: number): PostRaceDistance {
+  if (distMi >= 90)  return '100_mile';
+  if (distMi >= 55)  return '100K';
+  if (distMi >= 40)  return '50_mile';
+  if (distMi >= 28)  return '50K';
+  if (distMi >= 22)  return 'marathon';
+  if (distMi >= 11)  return 'half_marathon';
+  if (distMi >= 5)   return '10K';
+  return '5K';
+}
+
 function recoveryDaysForDistance(distMi: number): number {
-  if (distMi >= 22) return 26;   // marathon
-  if (distMi >= 11) return 14;   // half
-  if (distMi >= 5)  return 7;    // 10K
-  return 3;                       // 5K-ish
+  const band = postRaceDistanceBand(distMi);
+  return POST_RACE_BY_DISTANCE.value[band].totalRecoveryDaysNoQualityHigh;
 }
 
 function toNextRace(r: SavedRace): NextRace {

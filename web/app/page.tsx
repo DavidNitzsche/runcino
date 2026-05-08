@@ -23,6 +23,7 @@ import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRa
 import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner-profile';
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 import { LONG_RUN_HARD_CAP_MULTIPLIER, TRAINING_PULSE_TO_ENGINE_PHASE, longRunTargetMi } from '../lib/long-run-cap';
+import { RpeInput } from '../components/RpeInput';
 
 export default function OverviewPage() {
   // The whole page is wrapped in HubProvider so every consumer below
@@ -97,6 +98,8 @@ function OverviewPageInner() {
           </div>
 
           <CoachTodayCard />
+
+          <WorkoutRpeCard />
 
           <PhaseGuidanceCard />
 
@@ -1207,6 +1210,58 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Workout RPE card ────────────────────────────────────────
+   Post-workout perceived-effort logger. Lives directly under the
+   Coach card so the runner taps a number right after the run.
+   Doctrine: Research/00b §INCOMPLETE_RECOVERY_QUALITATIVE_SIGNALS
+   uses RPE drift between similarly-prescribed sessions to flag
+   accumulating fatigue. Hidden if the runner is on a rest day
+   (nothing to rate). Reads existing entry from the hub so taps
+   pre-fill. */
+function WorkoutRpeCard() {
+  const hub = useHub();
+  if (!hub) return null;
+  const todayPrescription = hub.coach.today;
+  // Skip on rest days — no workout to rate.
+  if (!todayPrescription || todayPrescription.today.type === 'rest') return null;
+  const todayISO = hub.meta.cacheDate;
+  const existing = hub.recentRpe.find(e => e.workoutDate === todayISO) ?? null;
+  return (
+    <div className="tile" style={{
+      marginBottom: 10, padding: '18px 22px',
+      display: 'flex', flexDirection: 'column', gap: 12,
+      borderColor: existing ? 'var(--color-l4)' : 'var(--color-attention)',
+      borderStyle: existing ? 'solid' : 'dashed',
+    }}>
+      <RpeInput workoutDate={todayISO} existing={existing} />
+      {hub.recentRpe.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4, borderTop: '1px solid var(--color-l4)' }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-t3)' }}>
+            RECENT
+          </div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {hub.recentRpe.slice(0, 7).map(e => (
+              <span key={e.workoutDate} title={`${e.workoutDate}${e.notes ? ` · ${e.notes}` : ''}`} style={{
+                fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800,
+                padding: '3px 7px', borderRadius: 3,
+                background: e.rpe >= 8 ? 'rgba(252,77,84,.18)'
+                          : e.rpe >= 6 ? 'rgba(243,173,59,.18)'
+                          : 'rgba(62,189,65,.18)',
+                color: e.rpe >= 8 ? 'var(--color-warning)'
+                     : e.rpe >= 6 ? 'var(--color-attention)'
+                     : 'var(--color-success)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {e.rpe}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -37,6 +37,8 @@ import {
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 import { shouldPromptVdotTest } from './vdot';
 import { longRunTargetMi } from './long-run-cap';
+import { POST_RACE_BY_DISTANCE } from '../coach/doctrine';
+import { postRaceDistanceBand } from './coach-state';
 
 export type WorkoutType = RunWorkoutType;
 
@@ -269,6 +271,19 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
  *    reduced-volume window (more days at recovery + easy before
  *    structured workouts return), with the rest-stage scaling within
  *    the §8.3 24-72h envelope plus heavy-block accumulation. */
+/** Parse "Day 4-5" / "Week 2-3" / "Day 7-10" → number of days.
+ *  `which` picks low or high end. Used to consume the post-race
+ *  doctrine table's free-text day-range strings as numeric stage
+ *  boundaries for the engine's recovery ladder. */
+function parseDayRange(s: string, which: 'low' | 'high'): number {
+  const m = s.match(/(Day|Week)\s+(\d+)(?:[-–](\d+))?/i);
+  if (!m) return 7;
+  const unit = m[1].toLowerCase() === 'week' ? 7 : 1;
+  const lo = Number(m[2]);
+  const hi = m[3] ? Number(m[3]) : lo;
+  return (which === 'low' ? lo : hi) * unit;
+}
+
 function postRaceWorkout(state: CoachState): RunPrescription | null {
   if (state.races.recent.length === 0) return null;
   // Largest race is the load-bearing one for recovery duration.
@@ -279,10 +294,18 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   const distMi = biggest.distanceMi;
   const heavy = state.flags.heavyBlockSuspected;
 
-  const stageMul = heavy ? 1.8 : 1;   // heavy block ~2x reduced-volume window
-  const restEnd = Math.round((distMi >= 22 ? 3 : distMi >= 11 ? 2 : 1) * stageMul);
-  const lightEnd = Math.round((distMi >= 22 ? 7 : distMi >= 11 ? 5 : 3) * stageMul);
-  const easyEnd = Math.round((distMi >= 22 ? 14 : distMi >= 11 ? 9 : 5) * stageMul);
+  // Stage gates derived from POST_RACE_BY_DISTANCE doctrine
+  // (Research/00b §Post-Race Recovery). Three bands per distance:
+  //   restEnd  = end of zero/very-light window (no running yet)
+  //   lightEnd = parsed return-to-long-runs day (recovery jogs ok)
+  //   easyEnd  = total no-quality recovery duration (no quality work yet)
+  // Heavy-block suspicion stretches the windows ~2x — back-to-back
+  // races + heavy training compound and need more time.
+  const band = POST_RACE_BY_DISTANCE.value[postRaceDistanceBand(distMi)];
+  const stageMul = heavy ? 1.8 : 1;
+  const restEnd  = Math.round(band.zeroOrVeryLightDaysHigh * stageMul);
+  const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, 'high') * stageMul);
+  const easyEnd  = Math.round(band.totalRecoveryDaysNoQualityHigh * stageMul);
 
   if (days <= restEnd) {
     const racesDesc = state.races.recent.length > 1

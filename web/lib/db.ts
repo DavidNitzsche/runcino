@@ -181,6 +181,21 @@ async function bootstrap(): Promise<void> {
       CREATE INDEX IF NOT EXISTS coach_today_cache_date_idx
         ON coach_today_cache (cache_date DESC, computed_at DESC);
     `);
+    // Workout RPE log — runner self-reports how today's workout felt
+    // on a 1-10 scale (Borg CR-10 / RPE) along with optional notes.
+    // One entry per (workout_date) — re-saving the same date overwrites,
+    // so the runner can correct their answer if they tap wrong. Engine
+    // consumes recent RPE entries to detect drift between prescribed
+    // load and perceived load (a "Recovery 5/10" + "Hard 7/10" pattern
+    // says volume is fine but sessions feel heavier than expected).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workout_rpe (
+        workout_date  DATE PRIMARY KEY,
+        rpe           SMALLINT NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+        notes         TEXT,
+        recorded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
   } finally {
     client.release();
   }

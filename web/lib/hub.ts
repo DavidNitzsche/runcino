@@ -19,6 +19,7 @@
 import { getCachedOrCompute } from './coach-today-cache';
 import { listRacesDB } from './race-store';
 import { getRunnerProfile } from './runner-profile-store';
+import { getRecentRpe } from './rpe-store';
 import { query } from './db';
 import type { RunnerHub } from './hub-types';
 
@@ -43,14 +44,15 @@ async function latestActivityId(): Promise<number | null> {
  *  indicating whether the coach portion was a cache hit (lets the
  *  /api/hub route surface this for telemetry without two trips). */
 export async function getHub(): Promise<{ hub: RunnerHub; cacheHit: boolean }> {
-  // Fan out: coach (cached), races (Postgres), profile (Postgres).
-  // The coach call dominates — dispatching the others in parallel is
-  // free since they're cheap Postgres reads.
-  const [coachResult, races, profile, latestId] = await Promise.all([
+  // Fan out: coach (cached), races (Postgres), profile (Postgres),
+  // recent RPE (Postgres). The coach call dominates — the others
+  // are cheap Postgres reads and parallelize for free.
+  const [coachResult, races, profile, latestId, recentRpe] = await Promise.all([
     getCachedOrCompute(),
     listRacesDB(),
     getRunnerProfile().catch(() => null),
     latestActivityId(),
+    getRecentRpe(14).catch(() => []),
   ]);
 
   const hub: RunnerHub = {
@@ -62,6 +64,7 @@ export async function getHub(): Promise<{ hub: RunnerHub; cacheHit: boolean }> {
     // every meaningful field is empty.
     profile: profile && (profile.birthDate || profile.hrmaxBpm || profile.rhrBpm)
       ? profile : null,
+    recentRpe,
     meta: {
       computedAt: new Date().toISOString(),
       cacheDate: todayLAISO(),

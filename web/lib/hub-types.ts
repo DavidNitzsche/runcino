@@ -27,6 +27,7 @@
 import type { CoachTodayPayloadShape } from './coach-today-payload';
 import type { SavedRace } from './storage-types';
 import type { RunnerProfile } from './runner-profile-store';
+import type { WorkoutRpe } from './rpe-store';
 
 export interface RunnerHub {
   ok: true;
@@ -45,6 +46,11 @@ export interface RunnerHub {
    *  Postgres `runner_profile` singleton (id=1). Will be `null` until
    *  the runner has filled in /profile. */
   profile: RunnerProfile | null;
+
+  /** Recent post-workout RPE entries (Borg CR-10), most recent first.
+   *  Last 14 days' worth — enough context for the engine to spot
+   *  fatigue drift. Empty array when the runner hasn't logged any. */
+  recentRpe: WorkoutRpe[];
 
   /** Cache + provenance metadata. Lets clients know how fresh the
    *  payload is and whether they're seeing a cache hit. */
