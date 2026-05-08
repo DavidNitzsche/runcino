@@ -16,7 +16,7 @@ import { gatherCoachState } from './coach-state';
 import { coachDaily } from './coach-engine';
 import { coach } from '../coach/coach';
 import { vdotSnapshot, shouldPromptVdotTest } from './vdot';
-import { getRunnerProfile, ageFromBirthYear } from './runner-profile-store';
+import { getRunnerProfile, ageFromBirthDate } from './runner-profile-store';
 
 export interface CoachTodayPayloadShape {
   ok: true;
@@ -44,7 +44,7 @@ export async function computeCoachTodayPayload(): Promise<CoachTodayPayloadShape
 
   const profile = await getRunnerProfile().catch(() => null);
   const runnerProfileForBrief = profile ? {
-    age: ageFromBirthYear(profile.birthYear),
+    age: ageFromBirthDate(profile.birthDate),
     sex: profile.sex,
     hrmaxBpm: profile.hrmaxBpm,
     rhrBpm: profile.rhrBpm,

@@ -17,7 +17,7 @@ import { getCourseFacts } from '../../../lib/course-facts';
 import type { CoachDecision } from '../../../coach/types';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { vdotSnapshot, vdotRow } from '../../../lib/vdot';
-import { getRunnerProfile, ageFromBirthYear } from '../../../lib/runner-profile-store';
+import { getRunnerProfile, ageFromBirthDate } from '../../../lib/runner-profile-store';
 
 type Body = {
   courseSlug: string;
@@ -204,7 +204,7 @@ export async function POST(req: Request) {
     try {
       const p = await getRunnerProfile();
       return {
-        age: ageFromBirthYear(p.birthYear),
+        age: ageFromBirthDate(p.birthDate),
         sex: p.sex,
         hrmaxBpm: p.hrmaxBpm,
         rhrBpm: p.rhrBpm,

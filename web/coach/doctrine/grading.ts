@@ -21,7 +21,7 @@
 
 import { cite, type Cited } from './cite';
 
-export type RunnerSex = 'male' | 'female' | 'other' | 'unspecified';
+export type RunnerSex = 'male' | 'female' | 'unspecified';
 
 // ── Age decline (men, simplified Daniels model) ───────────────────
 
@@ -74,9 +74,9 @@ export const VDOT_AGE_DECLINE_FEMALE: Cited<Array<{
  *  Returns 0 for runners under 30 (peak window) or unspecified sex. */
 export function ageDeclineFromThirty(age: number, sex: RunnerSex): number {
   if (age <= 30) return 0;
-  if (sex === 'unspecified' || sex === 'other') {
-    // Average the male/female curves for unspecified/other — a
-    // reasonable midpoint that doesn't make a sex assumption.
+  if (sex === 'unspecified') {
+    // Average the male/female curves when sex is unset — reasonable
+    // midpoint that doesn't make an assumption.
     return (ageDeclineFromThirty(age, 'male') + ageDeclineFromThirty(age, 'female')) / 2;
   }
   const table = sex === 'female' ? VDOT_AGE_DECLINE_FEMALE.value : VDOT_AGE_DECLINE_MALE.value;
@@ -99,7 +99,6 @@ export const VDOT_SEX_COHORT_OFFSET: Cited<Record<RunnerSex, number>> = {
   value: {
     male:        0,
     female:      7,    // women's elite ceiling is ~7 VDOT below men's
-    other:       0,    // no cohort offset
     unspecified: 0,
   },
   note: 'Offset applied for sex-cohort tier interpretation only. Pace prescription remains keyed off raw VDOT for everyone — these offsets affect framing/tier labels, not pace targets.',

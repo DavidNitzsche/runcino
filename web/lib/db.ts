@@ -154,6 +154,15 @@ async function bootstrap(): Promise<void> {
         CONSTRAINT runner_profile_singleton CHECK (id = 1)
       );
     `);
+    // Migrate birth_year → birth_date so age computation can handle
+    // "has the birthday passed yet". Keep birth_year column populated
+    // (derived from birth_date) for any legacy reader. If only year
+    // is known, birth_date will be null and we fall back to year-only
+    // age (with the +/- 1 imprecision the user just flagged).
+    await client.query(`
+      ALTER TABLE runner_profile
+        ADD COLUMN IF NOT EXISTS birth_date DATE;
+    `);
     // Cache for the dashboard's /api/coach/today payload. Keyed by
     // (cache_date, latest_activity_id) so reads are cheap and the
     // cache auto-invalidates when a new activity lands. Pre-warmed

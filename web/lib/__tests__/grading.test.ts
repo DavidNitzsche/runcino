@@ -19,11 +19,10 @@ describe('ageDeclineFromThirty', () => {
     expect(ageDeclineFromThirty(50, 'female')).toBeCloseTo(7.5, 1);
   });
 
-  it('averages male/female for unspecified or other sex', () => {
+  it('averages male/female for unspecified sex', () => {
     const m50 = ageDeclineFromThirty(50, 'male');     // 9.0
     const f50 = ageDeclineFromThirty(50, 'female');   // 7.5
     expect(ageDeclineFromThirty(50, 'unspecified')).toBeCloseTo((m50 + f50) / 2, 1);
-    expect(ageDeclineFromThirty(50, 'other')).toBeCloseTo((m50 + f50) / 2, 1);
   });
 });
 
@@ -50,8 +49,7 @@ describe('gradeVdot', () => {
     expect(g.sexCohortVdot).toBe(57);
   });
 
-  it('no sex cohort offset for unspecified/other', () => {
+  it('no sex cohort offset for unspecified', () => {
     expect(gradeVdot(50, 35, 'unspecified').sexCohortVdot).toBeNull();
-    expect(gradeVdot(50, 35, 'other').sexCohortVdot).toBe(50);
   });
 });

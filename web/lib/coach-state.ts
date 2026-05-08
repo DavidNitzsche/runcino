@@ -389,9 +389,9 @@ export async function gatherCoachState(): Promise<CoachState> {
   // defaults (HARD_EFFORT_HR_DEFAULT_BPM, no age-graded VDOT, etc).
   const runnerProfile = await (async () => {
     try {
-      const { getRunnerProfile, ageFromBirthYear, resolveHrmax } = await import('./runner-profile-store');
+      const { getRunnerProfile, ageFromBirthDate, resolveHrmax } = await import('./runner-profile-store');
       const p = await getRunnerProfile();
-      const age = ageFromBirthYear(p.birthYear, today);
+      const age = ageFromBirthDate(p.birthDate, today);
       const hrmaxResolved = resolveHrmax(p);
       return {
         age,

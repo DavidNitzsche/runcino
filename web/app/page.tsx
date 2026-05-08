@@ -19,7 +19,7 @@ import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
-import { loadRunnerProfile, ageFromBirthYear, resolveHrmax } from '../lib/runner-profile';
+import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner-profile';
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 
 export default function OverviewPage() {
@@ -1557,7 +1557,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
   // (Postgres) — fetched async on mount. Until it resolves we
   // render raw VDOT; the age-graded line appears once profile
   // lands. SSR-safe via DEFAULT_PROFILE.
-  const [profile, setProfile] = useState<{ birthYear: number | null; sex: RunnerSex; hrmaxBpm: number | null; rhrBpm: number | null }>({ birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
+  const [profile, setProfile] = useState<{ birthDate: string | null; sex: RunnerSex; hrmaxBpm: number | null; rhrBpm: number | null }>({ birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1566,7 +1566,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
     })();
     return () => { cancelled = true; };
   }, []);
-  const runnerAge = ageFromBirthYear(profile.birthYear);
+  const runnerAge = ageFromBirthDate(profile.birthDate);
   const grading = gradeVdot(vdot.vdot, runnerAge, profile.sex);
   const showAgeGraded = grading.ageGraded != null && runnerAge != null && runnerAge > 30 && Math.abs(grading.ageGraded - vdot.vdot) >= 1;
 

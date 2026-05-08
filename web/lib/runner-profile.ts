@@ -1,16 +1,15 @@
 /**
- * Runner profile — client-side wrapper over the server-side store
- * at /api/runner-profile (Postgres-backed). Replaces the prior
- * localStorage-only implementation.
+ * Runner profile — client-side wrapper over /api/runner-profile
+ * (Postgres-backed, single-row, server-side store). Cross-device
+ * synced.
  *
- * Cross-device synced: phone + desktop see the same profile. The
- * server-side coach engine sees it too, so briefDailyTraining /
- * briefRaceMorning / assessReadiness can use age + sex + HRmax
- * for context (the audit's #1 priority).
+ * Birth as a full ISO date so age computation is precise — year
+ * alone is off by up to a year for most runners through their
+ * birthday.
  *
- * Migration: on first load, if a localStorage profile exists, push
- * it to the server then forget it. The legacy key is preserved
- * during migration but no longer read.
+ * Migration: on first load, if a localStorage profile exists from
+ * the legacy (birth_year + 'other'/'prefer not to say') schema,
+ * push it to the server then forget it.
  */
 
 import type { RunnerSex } from '../coach/doctrine';
@@ -18,14 +17,15 @@ import type { RunnerSex } from '../coach/doctrine';
 const LEGACY_KEY = 'runcino:runner-profile';
 
 export interface RunnerProfile {
-  birthYear: number | null;
+  /** ISO YYYY-MM-DD. Null when unset. */
+  birthDate: string | null;
   sex: RunnerSex;
   hrmaxBpm: number | null;
   rhrBpm: number | null;
 }
 
 export const DEFAULT_PROFILE: RunnerProfile = {
-  birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
+  birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
 };
 
 let cached: { profile: RunnerProfile; at: number } | null = null;
@@ -34,7 +34,7 @@ const CACHE_TTL_MS = 60_000;
 
 interface ApiResponse {
   profile: {
-    birthYear: number | null;
+    birthDate: string | null;
     sex: RunnerSex | null;
     hrmaxBpm: number | null;
     rhrBpm: number | null;
@@ -45,11 +45,14 @@ interface ApiResponse {
 
 function fromApi(api: ApiResponse['profile']): RunnerProfile {
   if (!api) return DEFAULT_PROFILE;
-  const sex: RunnerSex = (['male', 'female', 'other', 'unspecified'] as const).includes(api.sex as RunnerSex)
-    ? (api.sex as RunnerSex)
+  // Server may return legacy 'other'/'prefer not to say' — coerce
+  // to 'unspecified' for clients that expect the new {male/female/
+  // unspecified} contract.
+  const sex: RunnerSex = (['male', 'female'] as const).includes(api.sex as 'male' | 'female')
+    ? (api.sex as 'male' | 'female')
     : 'unspecified';
   return {
-    birthYear: api.birthYear,
+    birthDate: api.birthDate,
     sex,
     hrmaxBpm: api.hrmaxBpm,
     rhrBpm: api.rhrBpm,
@@ -57,18 +60,28 @@ function fromApi(api: ApiResponse['profile']): RunnerProfile {
 }
 
 /** Read a legacy localStorage profile (if any). Used once during
- *  migration to seed the server, then ignored. */
+ *  migration. Handles both schemas — legacy birth_year + the new
+ *  birth_date format. */
 function readLegacy(): RunnerProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(LEGACY_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RunnerProfile>;
+    const parsed = JSON.parse(raw) as Partial<RunnerProfile> & { birthYear?: number };
+
+    // Convert legacy birthYear → mid-year birth_date.
+    let birthDate: string | null = null;
+    if (typeof parsed.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.birthDate)) {
+      birthDate = parsed.birthDate;
+    } else if (typeof parsed.birthYear === 'number' && parsed.birthYear > 1900 && parsed.birthYear < 2030) {
+      birthDate = `${parsed.birthYear}-07-02`;
+    }
+
     return {
-      birthYear: typeof parsed.birthYear === 'number' && parsed.birthYear > 1900 && parsed.birthYear < 2030
-        ? parsed.birthYear : null,
-      sex: (['male', 'female', 'other', 'unspecified'] as RunnerSex[]).includes(parsed.sex as RunnerSex)
-        ? (parsed.sex as RunnerSex) : 'unspecified',
+      birthDate,
+      sex: (['male', 'female'] as const).includes(parsed.sex as 'male' | 'female')
+        ? (parsed.sex as 'male' | 'female')
+        : 'unspecified',
       hrmaxBpm: typeof parsed.hrmaxBpm === 'number' && parsed.hrmaxBpm >= 130 && parsed.hrmaxBpm <= 230
         ? parsed.hrmaxBpm : null,
       rhrBpm: typeof parsed.rhrBpm === 'number' && parsed.rhrBpm >= 30 && parsed.rhrBpm <= 100
@@ -79,9 +92,6 @@ function readLegacy(): RunnerProfile | null {
   }
 }
 
-/** Async loader — fetches profile from server. In-memory cache with
- *  60s TTL deduplicates concurrent reads across the dashboard's
- *  shared context. SSR-safe (returns DEFAULT). */
 export async function loadRunnerProfile(force = false): Promise<RunnerProfile> {
   if (typeof window === 'undefined') return DEFAULT_PROFILE;
   if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.profile;
@@ -94,14 +104,11 @@ export async function loadRunnerProfile(force = false): Promise<RunnerProfile> {
       const json = await res.json() as ApiResponse;
       let profile = fromApi(json.profile);
 
-      // First-load legacy migration: if the server profile is empty
-      // but the browser has a localStorage profile, push it up.
-      // Then mark the legacy key as migrated (don't delete — keeps
-      // a backup if anything goes wrong).
-      const isEmpty = profile.birthYear == null && profile.sex === 'unspecified'
+      // First-load legacy migration.
+      const isEmpty = profile.birthDate == null && profile.sex === 'unspecified'
                    && profile.hrmaxBpm == null && profile.rhrBpm == null;
       const legacy = isEmpty ? readLegacy() : null;
-      if (legacy && (legacy.birthYear != null || legacy.sex !== 'unspecified' || legacy.hrmaxBpm != null || legacy.rhrBpm != null)) {
+      if (legacy && (legacy.birthDate != null || legacy.sex !== 'unspecified' || legacy.hrmaxBpm != null || legacy.rhrBpm != null)) {
         try {
           const migrateRes = await fetch('/api/runner-profile', {
             method: 'PUT',
@@ -113,10 +120,7 @@ export async function loadRunnerProfile(force = false): Promise<RunnerProfile> {
             profile = fromApi(migrated.profile);
             window.localStorage.setItem(LEGACY_KEY + ':migrated', String(Date.now()));
           }
-        } catch {
-          // Migration failure is non-fatal — keep the server's
-          // (empty) profile and try again next time.
-        }
+        } catch { /* non-fatal */ }
       }
 
       cached = { profile, at: Date.now() };
@@ -130,9 +134,6 @@ export async function loadRunnerProfile(force = false): Promise<RunnerProfile> {
   return inflight;
 }
 
-/** Save the profile back to the server. Updates the local cache so
- *  consumers re-rendering after the save see the new values without
- *  another fetch. */
 export async function saveRunnerProfile(profile: RunnerProfile): Promise<RunnerProfile> {
   if (typeof window === 'undefined') return profile;
   const res = await fetch('/api/runner-profile', {
@@ -147,26 +148,25 @@ export async function saveRunnerProfile(profile: RunnerProfile): Promise<RunnerP
   return next;
 }
 
-/** Synchronous read of the most recent cached profile, for components
- *  that have already triggered loadRunnerProfile elsewhere on the
- *  page. Returns DEFAULT_PROFILE before the first fetch resolves. */
 export function getCachedRunnerProfile(): RunnerProfile {
   return cached?.profile ?? DEFAULT_PROFILE;
 }
 
-/** Compute age from birth year. */
-export function ageFromBirthYear(birthYear: number | null, today: Date = new Date()): number | null {
-  if (birthYear == null) return null;
-  const age = today.getFullYear() - birthYear;
+/** Compute age from a full birth date — accounts for whether the
+ *  birthday has passed yet this year. */
+export function ageFromBirthDate(birthDate: string | null, today: Date = new Date()): number | null {
+  if (!birthDate || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null;
+  const [y, m, d] = birthDate.split('-').map(Number);
+  let age = today.getFullYear() - y;
+  const todayMonth = today.getMonth() + 1;
+  const todayDay = today.getDate();
+  if (todayMonth < m || (todayMonth === m && todayDay < d)) age -= 1;
   return age > 0 && age < 130 ? age : null;
 }
 
-/** Resolve HRmax. Prefers measured, falls back to Tanaka estimate
- *  from age (208 - 0.7×age, ±10 BPM SE). Doctrine: HRMAX_FORMULAS
- *  in Research/03. */
 export function resolveHrmax(profile: RunnerProfile): { bpm: number; source: 'measured' | 'tanaka_estimate' } | null {
   if (profile.hrmaxBpm != null) return { bpm: profile.hrmaxBpm, source: 'measured' };
-  const age = ageFromBirthYear(profile.birthYear);
+  const age = ageFromBirthDate(profile.birthDate);
   if (age != null) {
     return { bpm: Math.round(208 - 0.7 * age), source: 'tanaka_estimate' };
   }

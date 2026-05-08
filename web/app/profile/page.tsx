@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Nav } from '../../components/nav';
 import { Modal } from '../../components/modal';
 import type { Shoe, RunType } from '../../lib/shoe-utils';
-import { loadRunnerProfile, saveRunnerProfile, ageFromBirthYear, type RunnerProfile } from '../../lib/runner-profile';
-import type { RunnerSex } from '../../coach/doctrine';
+import { loadRunnerProfile, saveRunnerProfile, ageFromBirthDate, type RunnerProfile } from '../../lib/runner-profile';
+// (RunnerSex import removed — sex options are inlined as a {male,female}
+// literal type below since 'unspecified' is an internal default, not a UI option.)
 
 const RUN_TYPE_LABELS: Record<RunType, string> = {
   race:       'Race',
@@ -472,7 +473,7 @@ const iconBtnStyle: React.CSSProperties = {
    engine. Auto-saves on change so there's no Save button.
    Migrates any pre-existing localStorage profile on first load. */
 function RunnerProfileSection() {
-  const [profile, setProfile] = useState<RunnerProfile>({ birthYear: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
+  const [profile, setProfile] = useState<RunnerProfile>({ birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -496,13 +497,14 @@ function RunnerProfileSection() {
       .finally(() => setSaving(false));
   }
 
-  const age = ageFromBirthYear(profile.birthYear);
-  const SEX_OPTIONS: Array<{ value: RunnerSex; label: string }> = [
-    { value: 'unspecified', label: 'Prefer not to say' },
-    { value: 'male',        label: 'Male' },
-    { value: 'female',      label: 'Female' },
-    { value: 'other',       label: 'Other' },
+  const age = ageFromBirthDate(profile.birthDate);
+  const SEX_OPTIONS: Array<{ value: 'male' | 'female'; label: string }> = [
+    { value: 'male',   label: 'Male' },
+    { value: 'female', label: 'Female' },
   ];
+  // Today's ISO date — caps the birth-date picker so the runner
+  // can't pick a future birthday.
+  const todayISOStr = new Date().toISOString().slice(0, 10);
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -511,15 +513,14 @@ function RunnerProfileSection() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <div>
             <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
-              Birth year
+              Birthday
             </div>
             <input
-              type="number"
-              value={profile.birthYear ?? ''}
-              onChange={e => update({ birthYear: e.target.value === '' ? null : Number(e.target.value) })}
-              placeholder="e.g. 1985"
-              min={1900}
-              max={new Date().getFullYear()}
+              type="date"
+              value={profile.birthDate ?? ''}
+              onChange={e => update({ birthDate: e.target.value === '' ? null : e.target.value })}
+              max={todayISOStr}
+              min="1900-01-01"
               style={{
                 width: '100%', padding: '8px 12px', borderRadius: 6,
                 border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
@@ -543,7 +544,7 @@ function RunnerProfileSection() {
                   key={opt.value}
                   onClick={() => update({ sex: opt.value })}
                   style={{
-                    padding: '7px 12px', borderRadius: 8, border: '1px solid', cursor: 'pointer',
+                    padding: '7px 14px', borderRadius: 8, border: '1px solid', cursor: 'pointer',
                     borderColor: profile.sex === opt.value ? 'var(--color-corporate)' : 'var(--color-l4)',
                     background: profile.sex === opt.value ? 'rgba(38,127,255,.18)' : 'transparent',
                     color: profile.sex === opt.value ? 'var(--color-corporate)' : 'var(--color-t2)',

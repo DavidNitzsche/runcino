@@ -214,7 +214,7 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
    *  brief just runs without age/sex framing. */
   runnerProfile?: {
     age: number | null;
-    sex: 'male' | 'female' | 'other' | 'unspecified';
+    sex: 'male' | 'female' | 'unspecified';
     hrmaxBpm: number | null;
     rhrBpm: number | null;
   };
@@ -331,7 +331,7 @@ export interface DailyTrainingBriefInput extends CoachBaseContext {
    *  demographic framing. */
   runnerProfile?: {
     age: number | null;
-    sex: 'male' | 'female' | 'other' | 'unspecified';
+    sex: 'male' | 'female' | 'unspecified';
     hrmaxBpm: number | null;
     rhrBpm: number | null;
   };
@@ -751,7 +751,7 @@ class CoachImpl implements Coach {
       if (!p) return '';
       const parts: string[] = [];
       if (p.age != null) parts.push(`age ${p.age}`);
-      if (p.sex !== 'unspecified' && p.sex !== 'other') parts.push(`${p.sex} runner`);
+      if (p.sex !== 'unspecified') parts.push(`${p.sex} runner`);
       if (p.hrmaxBpm != null) parts.push(`HRmax ${p.hrmaxBpm} BPM (measured)`);
       else if (p.age != null) parts.push(`HRmax ~${Math.round(208 - 0.7 * p.age)} BPM (Tanaka estimate)`);
       if (parts.length === 0) return '';
@@ -870,7 +870,7 @@ class CoachImpl implements Coach {
       if (!p) return [];
       const parts: string[] = [];
       if (p.age != null) parts.push(`age ${p.age}`);
-      if (p.sex !== 'unspecified' && p.sex !== 'other') parts.push(`${p.sex}`);
+      if (p.sex !== 'unspecified') parts.push(`${p.sex}`);
       if (p.hrmaxBpm != null) parts.push(`HRmax ${p.hrmaxBpm} BPM (measured)`);
       else if (p.age != null) parts.push(`HRmax ~${Math.round(208 - 0.7 * p.age)} BPM (Tanaka estimate)`);
       if (parts.length === 0) return [];
