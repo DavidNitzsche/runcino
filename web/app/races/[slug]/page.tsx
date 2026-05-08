@@ -21,7 +21,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Caption, Nav } from '../../../components/nav';
-import { deleteRace, getRace, getRaceCachedSync, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
+import { deleteRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
+import { HubProvider, useHub, useHubContext } from '../../../lib/hub-provider';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
 import {
@@ -77,37 +78,42 @@ function fmtPace(s: number): string {
 }
 
 export default function RaceDetailPage() {
+  return (
+    <HubProvider>
+      <RaceDetailPageInner />
+    </HubProvider>
+  );
+}
+
+function RaceDetailPageInner() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const slug = params?.slug;
-  // Synchronous init from the localStorage races cache so revisits
-  // paint with race content immediately. First-ever visit (no
-  // cache or different slug than cached) falls through to the
-  // 'loading' state until the network fetch returns.
-  const [race, setRace] = useState<SavedRace | null | 'loading'>(() => {
-    if (typeof window === 'undefined' || !slug) return 'loading';
-    return getRaceCachedSync(slug) ?? 'loading';
-  });
+  const hub = useHub();
+  const { refresh } = useHubContext();
 
+  // Look the race up in the hub by slug. Sync from the moment the
+  // hub lands — instant render on revisit (the hub's localStorage
+  // cache hydrates synchronously).
+  const race: SavedRace | null | 'loading' = (() => {
+    if (!slug) return 'loading';
+    if (!hub) return 'loading';
+    return hub.races.find(r => r.slug === slug) ?? null;
+  })();
+
+  // One-shot Strava actual-result sync on mount. If anything updates
+  // for THIS slug, refresh the hub so the page repaints with the
+  // freshly-imported finish data.
   useEffect(() => {
     if (!slug) return;
     let cancelled = false;
-    // Run seed migration on detail page too — users who land directly
-    // on /races/<slug> via a bookmark or shared link get the latest
-    // plan shape without having to visit / or /races first. Then
-    // background-sync from Strava and re-read once it lands.
     (async () => {
-      const initial = await getRace(slug);
-      if (cancelled) return;
-      setRace(initial);
       const sync = await autoSyncStrava();
       if (cancelled) return;
-      if (sync.updatedSlugs.includes(slug)) {
-        const refreshed = await getRace(slug);
-        if (!cancelled) setRace(refreshed);
-      }
+      if (sync.updatedSlugs.includes(slug)) await refresh();
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   if (race === 'loading') {
@@ -131,7 +137,7 @@ export default function RaceDetailPage() {
   return <RaceDetailView
     race={race}
     onDelete={async () => { await deleteRace(race.slug); router.push('/races'); }}
-    onUpdated={async () => { const fresh = await getRace(race.slug); if (fresh) setRace(fresh); }}
+    onUpdated={async () => { await refresh(); }}
   />;
 }
 
@@ -971,22 +977,19 @@ function ResultSection({ race }: { race: SavedRace }) {
   const days = daysUntil(race.meta.date);
   const isPast = days < 0;
   const [editing, setEditing] = useState(false);
-  const [version, setVersion] = useState(0);
-  const [result, setResult] = useState<ActualResult | null>(race.actualResult ?? null);
+  const hub = useHub();
+  const { refresh } = useHubContext();
   if (!isPast) return null;
 
-  function onSaved() { setEditing(false); setVersion(v => v + 1); }
+  // The hub is the canonical source — find this race fresh in it. If
+  // the hub hasn't loaded yet, fall back to the prop's value.
+  const fromHub = hub?.races.find(r => r.slug === race.slug);
+  const result: ActualResult | null = fromHub?.actualResult ?? race.actualResult ?? null;
 
-  // Reload the result whenever the form saves so the just-saved data
-  // shows immediately. Server is the source of truth.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const fresh = await getRace(race.slug);
-      if (!cancelled) setResult(fresh?.actualResult ?? null);
-    })();
-    return () => { cancelled = true; };
-  }, [race.slug, version]);
+  async function onSaved() {
+    setEditing(false);
+    await refresh();
+  }
 
   if (!result || editing) {
     return (
@@ -1003,7 +1006,7 @@ function ResultSection({ race }: { race: SavedRace }) {
           </div>
           {result && <button className="btn btn--ghost" onClick={() => setEditing(false)}>Cancel</button>}
         </div>
-        <ResultForm race={race} existing={result} onSaved={onSaved} key={version} />
+        <ResultForm race={race} existing={result} onSaved={onSaved} />
       </div>
     );
   }

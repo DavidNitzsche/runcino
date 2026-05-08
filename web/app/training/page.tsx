@@ -17,7 +17,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
-import { listRaces, listRacesCachedSync, type SavedRace } from '../../lib/storage';
+import type { SavedRace } from '../../lib/storage';
+import { HubProvider, useHub } from '../../lib/hub-provider';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
 import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
 import { daysUntil, formatShort, todayISO } from '../../lib/dates';
@@ -96,38 +97,26 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 // ── Page ────────────────────────────────────────────────────────────
+// Page is a thin HubProvider wrapper around the inner content.
+// Everything below useHub()s — no per-page localStorage cache anymore.
 export default function TrainingPage() {
-  // Synchronous initializers so revisits paint with content
-  // immediately — no "Loading…" flash.
+  return (
+    <HubProvider>
+      <TrainingPageInner />
+    </HubProvider>
+  );
+}
+
+function TrainingPageInner() {
   const [now, setNow] = useState<Date | null>(() => typeof window !== 'undefined' ? new Date() : null);
-  const [races, setRaces] = useState<SavedRace[] | null>(() => listRacesCachedSync());
-  // Stale-while-revalidate for coach data — render localStorage cache
-  // instantly on revisit, refresh in background.
-  const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = window.localStorage.getItem('runcino:coach-today-cache:v1');
-      if (!raw) return null;
-      const entry = JSON.parse(raw) as { payload: CoachTodayResponse; storedAt: number };
-      if (Date.now() - entry.storedAt > 6 * 60 * 60 * 1000) return null;
-      return entry.payload;
-    } catch { return null; }
-  });
+  const hub = useHub();
   const { activities } = useActivities();
 
   useEffect(() => {
-    let cancelled = false;
     setNow(new Date());
-    listRaces().then(rs => { if (!cancelled) setRaces(rs); });
-    import('../../lib/coach-today-client-cache').then(({ readCoachTodayWithRevalidate }) => {
-      readCoachTodayWithRevalidate<CoachTodayResponse>().fresh
-        .then(data => { if (!cancelled && data) setCoachToday(data); })
-        .catch(() => { /* non-fatal */ });
-    });
-    return () => { cancelled = true; };
   }, []);
 
-  if (now === null || races === null) {
+  if (now === null || hub === null) {
     return (
       <>
         <Caption left="Runcino · training" />
@@ -139,9 +128,15 @@ export default function TrainingPage() {
     );
   }
 
+  const races = hub.races;
   const upcoming = races.filter(r => daysUntil(r.meta.date) >= 0).sort((a, b) => daysUntil(a.meta.date) - daysUntil(b.meta.date));
   const goalRace = upcoming[0] ?? null;
   const runs = activities ? onlyRuns(activities) : null;
+
+  // Hub.coach is structurally the same as the legacy CoachTodayResponse
+  // — same shape /api/coach/today used to return. Cast it to the local
+  // narrower view so the existing DailyBriefing component is unchanged.
+  const coachToday = hub.coach as unknown as CoachTodayResponse;
 
   return (
     <>

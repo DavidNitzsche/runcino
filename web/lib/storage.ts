@@ -1,61 +1,34 @@
 /**
  * Client-side race API wrapper.
  *
- * Source of truth lives in Postgres on the server (lib/race-store.ts).
- * This module is a thin fetch wrapper consumed by the React pages.
+ * Source of truth lives in Postgres on the server (lib/race-store.ts),
+ * surfaced through the unified RunnerHub (/api/hub) on the read path.
+ * This module is a thin fetch wrapper used by mutations + a handful
+ * of legacy callers that need a one-off race read.
  *
- * Every function is async — the localStorage path is gone. Pages
- * already load races inside `useEffect`, so they `await` here just
- * like they did the old seedIfNeeded() call.
+ * Reads: prefer `useHub()?.races` over `listRaces()`. The hub already
+ * has them, so this round-trip is wasted. Kept for back-compat.
  *
- * In-memory client cache: the first call within a page-load fetches
- * /api/races; subsequent calls within ~5s reuse the response. Saves
- * the round trip when multiple components mount concurrently. The
- * cache is busted on every save / mutation so writes show up live.
+ * Writes: `saveRace`, `setActualResult`, `deleteRace` POST/PATCH/
+ * DELETE the canonical /api/races endpoints, then call
+ * `bumpHubCache()` so any subscribed `useHub()` refreshes.
  */
 
 'use client';
 
 import type { ActualResult, SavedRace } from './storage-types';
+import { bumpHubCache } from './hub-provider';
 export { slugifyRaceName } from './storage-types';
 export type { ActualResult, SavedRace } from './storage-types';
 
 const STALE_MS = 5_000;
-const LS_KEY = 'runcino:races-cache:v1';
-const LS_TTL_MS = 6 * 60 * 60 * 1000;  // 6h — pages render instantly on revisit
 
 let cached: { races: SavedRace[]; at: number } | null = null;
 let inflight: Promise<SavedRace[]> | null = null;
 
-interface LsEntry { races: SavedRace[]; storedAt: number }
-
-/** Synchronous read of the localStorage races cache. Used by page
- *  components for `useState(() => listRacesCachedSync())` so first
- *  paint can have data populated, no loading flash. Returns null
- *  on miss / stale / SSR. */
-export function listRacesCachedSync(): SavedRace[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const entry = JSON.parse(raw) as LsEntry;
-    if (Date.now() - entry.storedAt > LS_TTL_MS) return null;
-    return entry.races;
-  } catch {
-    return null;
-  }
-}
-
-function writeLs(races: SavedRace[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const entry: LsEntry = { races, storedAt: Date.now() };
-    window.localStorage.setItem(LS_KEY, JSON.stringify(entry));
-  } catch {
-    /* quota / disabled — non-fatal */
-  }
-}
-
+/** Legacy: fetch all races. Most callers should read from the hub
+ *  via `useHub()?.races` instead — this is kept for code paths that
+ *  run outside React (e.g. autoSyncStrava). 5s in-memory dedup. */
 export async function listRaces(force = false): Promise<SavedRace[]> {
   if (typeof window === 'undefined') return [];
   if (!force && cached && Date.now() - cached.at < STALE_MS) return cached.races;
@@ -67,7 +40,6 @@ export async function listRaces(force = false): Promise<SavedRace[]> {
       if (!res.ok) throw new Error(`/api/races ${res.status}`);
       const json = await res.json() as { races: SavedRace[] };
       cached = { races: json.races, at: Date.now() };
-      writeLs(json.races);
       return json.races;
     } catch (e) {
       console.error('listRaces failed:', e);
@@ -79,9 +51,10 @@ export async function listRaces(force = false): Promise<SavedRace[]> {
   return inflight;
 }
 
+/** Legacy: fetch one race by slug. Most callers should read from
+ *  `useHub()?.races.find(r => r.slug === slug)` instead. */
 export async function getRace(slug: string): Promise<SavedRace | null> {
   if (typeof window === 'undefined') return null;
-  // Prefer the list cache when fresh — saves a round trip.
   if (cached && Date.now() - cached.at < STALE_MS) {
     const hit = cached.races.find(r => r.slug === slug);
     if (hit) return hit;
@@ -98,14 +71,6 @@ export async function getRace(slug: string): Promise<SavedRace | null> {
   }
 }
 
-/** Synchronous read of a single race from the localStorage list
- *  cache. Used for sync-init on the race-detail page so the page
- *  can render content on first paint instead of "Loading…". */
-export function getRaceCachedSync(slug: string): SavedRace | null {
-  const list = listRacesCachedSync();
-  return list?.find(r => r.slug === slug) ?? null;
-}
-
 export async function saveRace(race: SavedRace): Promise<void> {
   if (typeof window === 'undefined') return;
   invalidateRacesCache();
@@ -115,6 +80,7 @@ export async function saveRace(race: SavedRace): Promise<void> {
     body: JSON.stringify(race),
   });
   if (!res.ok) throw new Error(`saveRace ${race.slug} → ${res.status}`);
+  bumpHubCache();
 }
 
 export async function setActualResult(slug: string, result: ActualResult | null): Promise<void> {
@@ -126,6 +92,7 @@ export async function setActualResult(slug: string, result: ActualResult | null)
     body: JSON.stringify({ actualResult: result }),
   });
   if (!res.ok) throw new Error(`setActualResult ${slug} → ${res.status}`);
+  bumpHubCache();
 }
 
 export async function deleteRace(slug: string): Promise<void> {
@@ -133,15 +100,14 @@ export async function deleteRace(slug: string): Promise<void> {
   invalidateRacesCache();
   const res = await fetch(`/api/races/${encodeURIComponent(slug)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`deleteRace ${slug} → ${res.status}`);
+  bumpHubCache();
 }
 
-/** Bust the client cache (useful after a server-side mutation that
- *  bypassed this module — e.g. a Strava sync that ran on the server).
- *  Wipes both the in-memory + localStorage cache so next listRaces
- *  call hits the network. */
+/** Bust the in-memory client cache. Called automatically by every
+ *  mutation here. The legacy localStorage races-cache layer was
+ *  retired when the dashboard / training / races pages migrated to
+ *  the hub — only the in-memory dedup remains. */
 export function invalidateRacesCache(): void {
   cached = null;
   inflight = null;
-  if (typeof window === 'undefined') return;
-  try { window.localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
 }

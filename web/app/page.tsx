@@ -11,10 +11,11 @@
  */
 
 import Link from 'next/link';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../components/nav';
 import { Modal } from '../components/modal';
-import { listRaces, listRacesCachedSync, type SavedRace } from '../lib/storage';
+import type { SavedRace } from '../lib/storage';
+import { HubProvider, useHub, useHubContext } from '../lib/hub-provider';
 import { autoSyncStrava } from '../lib/strava-auto';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../lib/strava-activities';
 import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effortBalance, yearOfRunningHeatmap, type TrainingPulse } from '../lib/strava-stats';
@@ -23,36 +24,40 @@ import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
 
 export default function OverviewPage() {
-  // Synchronous initializers so the page paints with content on
-  // revisits — no "Loading…" flash. `now` is trivially synchronous;
-  // races read from the localStorage cache layer (lib/storage.ts
-  // listRacesCachedSync). First-ever visit (no cache) still falls
-  // through to the loading state.
+  // The whole page is wrapped in HubProvider so every consumer below
+  // — Greeting, NextRaceCard, the coach cards, the recovery widget —
+  // sees ONE canonical hub payload. No per-page localStorage caches.
+  return (
+    <HubProvider>
+      <OverviewPageInner />
+    </HubProvider>
+  );
+}
+
+function OverviewPageInner() {
   const [now, setNow] = useState<Date | null>(() => typeof window !== 'undefined' ? new Date() : null);
-  const [races, setRaces] = useState<SavedRace[] | null>(() => listRacesCachedSync());
+  const hub = useHub();
+  const { refresh } = useHubContext();
   const { activities } = useActivities();
 
+  // One-shot Strava actual-result sync on mount. If anything updates,
+  // refresh the hub so the dashboard repaints with the freshly-imported
+  // finishes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Always update `now` after mount so SSR-hydration doesn't
-      // race a stale clock; harmless when init was already correct.
       setNow(new Date());
-      const initial = await listRaces();
-      if (cancelled) return;
-      setRaces(initial);
       const sync = await autoSyncStrava();
       if (cancelled) return;
-      if (sync.updatedSlugs.length > 0) {
-        const refreshed = await listRaces(true);
-        if (!cancelled) setRaces(refreshed);
-      }
+      if (sync.updatedSlugs.length > 0) await refresh();
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (now === null || races === null) return <LoadingShell />;
+  if (now === null || hub === null) return <LoadingShell />;
 
+  const races: SavedRace[] = hub.races;
   const upcoming = races
     .filter(r => daysUntil(r.meta.date) >= 0)
     .sort((a, b) => daysUntil(a.meta.date) - daysUntil(b.meta.date));
@@ -90,23 +95,21 @@ export default function OverviewPage() {
             <TodayTile now={now} next={next} daysToNext={daysToNext} runs={runs} />
           </div>
 
-          <CoachTodayProvider>
-            <CoachTodayCard />
+          <CoachTodayCard />
 
-            <PhaseGuidanceCard />
+          <PhaseGuidanceCard />
 
-            <Next30DaysCard />
+          <Next30DaysCard />
 
-            <VdotCard />
+          <VdotCard />
 
-            <HrZonesCard />
+          <HrZonesCard />
 
-            <RecoveryWidget />
+          <RecoveryWidget />
 
-            {runs && runs.length > 0 && (
-              <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
-            )}
-          </CoachTodayProvider>
+          {runs && runs.length > 0 && (
+            <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
+          )}
 
           <FunStatsSection runs={runs} />
 
@@ -478,13 +481,16 @@ interface CoachAmpWorkout {
   blocks: Array<{ section: string; items: Array<{ name: string; sets: string; notes?: string }> }>;
   benefit: string;
 }
-/* ── Shared /api/coach/today fetch ──────────────────────────
-   The coach endpoint returns a rich payload (today's prescription,
-   week shape, 30-day outlook, VDOT snapshot, readiness, daily
-   brief, alerts, full state). Five+ tiles on this page each used
-   to fetch it independently — wasteful (5x latency, 5x LLM cost)
-   and made the dashboard render piecemeal. This context dedupes
-   the fetch and fans the response out to every consumer. */
+/* ── Shared coach payload, sourced from the unified RunnerHub ─
+   This dashboard previously had its own CoachTodayProvider + a
+   localStorage cache that paralleled the rest of the app. Both
+   collapsed into the unified `HubProvider` (lib/hub-provider.tsx),
+   which carries the same coach payload plus races + profile so
+   pages don't each round-trip the server.
+
+   `useCoachToday()` is now a back-compat shim that projects the
+   hub's `.coach` slice into the legacy CoachTodayApiResponse shape,
+   keeping every existing consumer below unchanged. */
 interface CoachTodayApiResponse {
   ok: boolean;
   today?: CoachTodayPayload;
@@ -500,42 +506,26 @@ interface CoachTodayApiResponse {
   coach?: { readiness?: ReadinessPayload };
   error?: string;
 }
-const CoachTodayContext = createContext<CoachTodayApiResponse | null>(null);
-function CoachTodayProvider({ children }: { children: React.ReactNode }) {
-  // Stale-while-revalidate: render from localStorage cache instantly,
-  // re-fetch in background. Layered on top of the server-side
-  // coach_today_cache so the client never blocks on a network call
-  // when there's a recent local cache.
-  const [data, setData] = useState<CoachTodayApiResponse | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = window.localStorage.getItem('runcino:coach-today-cache:v1');
-      if (!raw) return null;
-      const entry = JSON.parse(raw) as { payload: CoachTodayApiResponse; storedAt: number };
-      // 6h TTL — fresher than that, render immediately.
-      if (Date.now() - entry.storedAt > 6 * 60 * 60 * 1000) return null;
-      return entry.payload;
-    } catch { return null; }
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { fresh } = await import('../lib/coach-today-client-cache')
-          .then(m => ({ fresh: m.readCoachTodayWithRevalidate<CoachTodayApiResponse>().fresh }));
-        const json = await fresh;
-        if (!cancelled && json) setData(json);
-      } catch (e) {
-        if (!cancelled) setData({ ok: false, error: e instanceof Error ? e.message : String(e) });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-  return <CoachTodayContext.Provider value={data}>{children}</CoachTodayContext.Provider>;
-}
 function useCoachToday(): CoachTodayApiResponse | null {
-  return useContext(CoachTodayContext);
+  const hub = useHub();
+  if (!hub) return null;
+  const c = hub.coach as unknown as {
+    today?: CoachTodayPayload;
+    state?: CoachTodayApiResponse['state'];
+    vdot?: VdotTilePayload | null;
+    vdotTestPrompt?: boolean;
+    dailyBrief?: DailyBriefPayload | null;
+    coach?: { readiness?: ReadinessPayload };
+  };
+  return {
+    ok: true,
+    today: c.today,
+    state: c.state,
+    vdot: c.vdot ?? null,
+    vdotTestPrompt: c.vdotTestPrompt,
+    dailyBrief: c.dailyBrief ?? null,
+    coach: { readiness: c.coach?.readiness },
+  };
 }
 
 interface CoachTodayPayload {

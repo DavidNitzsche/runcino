@@ -11,7 +11,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Caption, Nav } from '../../components/nav';
-import { listRaces, type SavedRace } from '../../lib/storage';
+import type { SavedRace } from '../../lib/storage';
+import { HubProvider, useHub, useHubContext } from '../../lib/hub-provider';
 import { autoSyncStrava } from '../../lib/strava-auto';
 
 function fmtDate(iso: string): string {
@@ -28,25 +29,31 @@ function daysUntil(iso: string): number {
 }
 
 export default function RacesIndexPage() {
-  const [races, setRaces] = useState<SavedRace[] | null>(null);
+  return (
+    <HubProvider>
+      <RacesIndexInner />
+    </HubProvider>
+  );
+}
 
-  // Read from localStorage on mount; the SSR pass shows the loading shell.
-  // Seeds Big Sur + Sombrero on first visit (idempotent), then pulls
-  // any Strava-sourced actualResult updates in the background.
+function RacesIndexInner() {
+  const hub = useHub();
+  const { refresh } = useHubContext();
+  const races: SavedRace[] | null = hub?.races ?? null;
+
+  // Strava actualResult sync runs once on mount. If anything updates,
+  // bump the hub so the page re-renders with the new finishes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const initial = await listRaces();
-      if (cancelled) return;
-      setRaces(initial);
       const sync = await autoSyncStrava();
       if (cancelled) return;
       if (sync.updatedSlugs.length > 0) {
-        const refreshed = await listRaces(true);
-        if (!cancelled) setRaces(refreshed);
+        await refresh();
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const upcoming = races?.filter(r => daysUntil(r.meta.date) >= 0) ?? [];
