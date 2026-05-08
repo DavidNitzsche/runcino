@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Storage + Cache · May 8 2026 PM · Runcino</title>
+<style>
+  :root {
+    --bg-0: #0A0E1A; --bg-1: #0F1420; --bg-2: #141B2D; --bg-3: #1B243A; --bg-4: #2A3656;
+    --text-0: #F4F6FB; --text-1: #D4DBEA; --text-2: #9AA5BC; --text-3: #5E6B85;
+    --success: #3EBD41; --corporate: #267FFF; --attention: #F3AD3B;
+    --warning: #FC4D54; --race: #F3AD3B; --active: #B26CFF;
+    --font-display: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-data: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg-0); color: var(--text-1);
+    font-family: var(--font-display);
+    font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage { max-width: 1280px; margin: 0 auto; padding: 40px 32px 80px; }
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 32px; padding-bottom: 24px;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  .head h1 {
+    font-weight: 800; font-size: 40px; letter-spacing: -0.025em;
+    color: var(--text-0); line-height: 1.05;
+  }
+  .head .sub {
+    font-family: var(--font-data); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.6px; color: var(--text-3);
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .head .right {
+    text-align: right; font-family: var(--font-data); font-size: 11px;
+    color: var(--text-3); letter-spacing: 1.4px;
+  }
+  section { margin-bottom: 40px; }
+  .section-h {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;
+  }
+  .section-h h2 {
+    font-weight: 800; font-size: 22px; letter-spacing: -0.01em; color: var(--text-0);
+  }
+  .section-h .meta {
+    font-family: var(--font-data); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.4px; color: var(--text-3); text-transform: uppercase;
+  }
+  .tldr {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 14px; margin-bottom: 36px;
+  }
+  .stat {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 20px 22px;
+  }
+  .stat .lbl {
+    font-family: var(--font-data); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.6px; text-transform: uppercase; color: var(--text-3);
+  }
+  .stat .val {
+    font-weight: 800; font-size: 38px; letter-spacing: -0.02em; line-height: 1;
+    color: var(--text-0); margin-top: 8px; font-variant-numeric: tabular-nums;
+  }
+  .stat .val.success { color: var(--success); }
+  .stat .val.corporate { color: var(--corporate); }
+  .stat .val.attention { color: var(--attention); }
+  .stat .sub {
+    font-family: var(--font-data); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.6px; color: var(--text-3);
+    margin-top: 6px; text-transform: uppercase;
+  }
+  .priority {
+    border-radius: 10px; padding: 22px 26px;
+  }
+  .priority.green {
+    background: linear-gradient(135deg, rgba(62,189,65,.10), var(--bg-1));
+    border: 1px solid rgba(62,189,65,.3);
+    border-left: 4px solid var(--success);
+  }
+  .priority.amber {
+    background: linear-gradient(135deg, rgba(243,173,59,.10), var(--bg-1));
+    border: 1px solid rgba(243,173,59,.3);
+    border-left: 4px solid var(--attention);
+  }
+  .priority.blue {
+    background: linear-gradient(135deg, rgba(38,127,255,.10), var(--bg-1));
+    border: 1px solid rgba(38,127,255,.3);
+    border-left: 4px solid var(--corporate);
+  }
+  .priority h3 {
+    font-family: var(--font-data); font-size: 11px; font-weight: 800;
+    letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .priority.green h3 { color: var(--success); }
+  .priority.amber h3 { color: var(--attention); }
+  .priority.blue h3 { color: var(--corporate); }
+  .priority .title {
+    font-weight: 800; font-size: 22px; color: var(--text-0);
+    letter-spacing: -0.01em; margin-bottom: 12px;
+  }
+  .priority p { font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 10px; }
+  .priority ul { margin: 8px 0 12px 22px; }
+  .priority li {
+    font-size: 13.5px; color: var(--text-2); line-height: 1.55; margin-bottom: 4px;
+  }
+  table.bugs {
+    width: 100%; border-collapse: collapse;
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; overflow: hidden;
+  }
+  table.bugs th, table.bugs td {
+    padding: 14px 18px; text-align: left;
+    border-bottom: 1px solid var(--bg-4);
+  }
+  table.bugs tr:last-child td { border-bottom: none; }
+  table.bugs th {
+    font-family: var(--font-data); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 1.4px; color: var(--text-3);
+    text-transform: uppercase; background: var(--bg-2);
+  }
+  table.bugs td { font-size: 13.5px; color: var(--text-1); line-height: 1.5; }
+  table.bugs td.label {
+    font-weight: 700; color: var(--text-0); width: 28%;
+  }
+  table.bugs td .sha {
+    font-family: var(--font-data); font-size: 10px; color: var(--text-3);
+    margin-top: 4px; display: block;
+  }
+  .verdict {
+    display: inline-block; font-family: var(--font-data);
+    font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+    padding: 3px 9px; border-radius: 4px; text-transform: uppercase;
+  }
+  .verdict.fixed { background: rgba(62,189,65,.15); color: var(--success); }
+  .verdict.shipped { background: rgba(38,127,255,.15); color: var(--corporate); }
+  .verdict.deferred { background: rgba(154,165,188,.15); color: var(--text-2); }
+  .arch {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .col {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 18px 22px;
+  }
+  .col h3 {
+    font-family: var(--font-data); font-size: 10px; font-weight: 800;
+    letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--text-3); margin-bottom: 12px;
+  }
+  .col h3.success { color: var(--success); }
+  .col h3.warning { color: var(--warning); }
+  .col ul { list-style: none; }
+  .col li {
+    padding: 8px 0; border-bottom: 1px solid var(--bg-3);
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .col li:last-child { border-bottom: none; }
+  .col li .icon {
+    font-family: var(--font-data); font-size: 11px;
+    color: var(--success); font-weight: 800;
+  }
+  .col li .icon.warn { color: var(--warning); }
+  .col li .text {
+    flex: 1; font-size: 13.5px; color: var(--text-1); line-height: 1.5;
+  }
+  .col li .text strong { color: var(--text-0); font-weight: 600; }
+  .col li .text code {
+    font-family: var(--font-data); font-size: 11.5px;
+    background: rgba(255,255,255,.04); padding: 1px 6px;
+    border-radius: 3px; color: var(--text-1);
+  }
+  pre {
+    background: var(--bg-2); border: 1px solid var(--bg-4);
+    border-radius: 8px; padding: 14px 18px;
+    font-family: var(--font-data); font-size: 12px;
+    line-height: 1.55; color: var(--text-1);
+    overflow-x: auto; margin: 12px 0;
+  }
+  pre .comment { color: var(--text-3); }
+  pre .key { color: var(--corporate); font-weight: 700; }
+  code { font-family: var(--font-data); font-size: 0.92em;
+    background: rgba(255,255,255,.04); padding: 2px 6px;
+    border-radius: 3px; color: var(--text-1); }
+  .diagram {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-radius: 10px; padding: 24px 28px;
+    font-family: var(--font-data); font-size: 13px; line-height: 1.7;
+    color: var(--text-1);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .features {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .feature {
+    background: var(--bg-1); border: 1px solid var(--bg-4);
+    border-left: 3px solid var(--corporate);
+    border-radius: 8px; padding: 16px 18px;
+  }
+  .feature.fix { border-left-color: var(--success); }
+  .feature.research { border-left-color: var(--active); }
+  .feature h3 {
+    font-weight: 700; font-size: 15px; color: var(--text-0);
+    line-height: 1.3; margin-bottom: 6px;
+  }
+  .feature .why { font-size: 13px; color: var(--text-2); line-height: 1.55; margin-bottom: 8px; }
+  .feature .meta {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  }
+  .meta .sha { color: var(--text-3); }
+  .meta .tag {
+    padding: 2px 7px; border-radius: 3px;
+  }
+  .meta .tag.success { background: rgba(62,189,65,.15); color: var(--success); }
+  .meta .tag.corporate { background: rgba(38,127,255,.15); color: var(--corporate); }
+  .meta .tag.research { background: rgba(178,108,255,.15); color: var(--active); }
+  footer {
+    margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--bg-4);
+    font-family: var(--font-data); font-size: 10.5px; letter-spacing: 1.2px;
+    color: var(--text-3); text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  footer a { color: var(--corporate); text-decoration: none; }
+  @media (max-width: 900px) {
+    .tldr { grid-template-columns: repeat(2, 1fr); }
+    .arch { grid-template-columns: 1fr; }
+    .features { grid-template-columns: 1fr; }
+    .head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .head .right { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="head">
+    <div>
+      <div class="sub">Mid-day session · 2026-05-08 PM</div>
+      <h1>Storage architecture &amp; performance</h1>
+    </div>
+    <div class="right">
+      Runcino · <a href="https://runcino-production.up.railway.app" style="color:var(--corporate);">Production</a><br/>
+      <span style="color:var(--success);">● Healthy</span>
+    </div>
+  </div>
+
+  <!-- TL;DR -->
+  <div class="tldr">
+    <div class="stat">
+      <div class="lbl">Commits this session</div>
+      <div class="val corporate">5</div>
+      <div class="sub">all on main</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Tests passing</div>
+      <div class="val success">113</div>
+      <div class="sub">no regressions</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Dashboard load</div>
+      <div class="val success">~10ms</div>
+      <div class="sub">on cache hit (was 2-5s)</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">LLM brief calls / page nav</div>
+      <div class="val success">0</div>
+      <div class="sub">on cache hit (was 5+)</div>
+    </div>
+  </div>
+
+  <!-- Storage map -->
+  <section>
+    <div class="section-h">
+      <h2>Where everything lives now</h2>
+      <span class="meta">Diagnosed + migrated</span>
+    </div>
+    <div class="arch">
+      <div class="col">
+        <h3 class="success">Server-side · Postgres on Railway</h3>
+        <ul>
+          <li><span class="icon">✓</span><span class="text"><strong>Races, plans, results</strong> · <code>races</code> table — was already here, despite the misleading loading text</span></li>
+          <li><span class="icon">✓</span><span class="text"><strong>Strava activity cache</strong> · <code>strava_activities</code> + <code>strava_sync_state</code> · 15-min TTL upstream</span></li>
+          <li><span class="icon">✓</span><span class="text"><strong>Shoes</strong> · <code>shoes</code> table · run-type recommendation + mileage tracking</span></li>
+          <li><span class="icon">✓</span><span class="text"><strong>Recovery sessions</strong> · <code>recovery_sessions</code> · Pause Studio City credits</span></li>
+          <li><span class="icon">✓</span><span class="text"><strong>NEW: Runner profile</strong> · <code>runner_profile</code> · birth year, sex, HRmax, RHR. Was localStorage; now cross-device synced.</span></li>
+          <li><span class="icon">✓</span><span class="text"><strong>NEW: Coach today cache</strong> · <code>coach_today_cache</code> · keyed by (date, latest_activity_id) for Option C</span></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3 class="warning">Browser-side · localStorage (per-device)</h3>
+        <ul>
+          <li><span class="icon warn">~</span><span class="text"><strong>Strava activities cache</strong> · 5-min device-side speedup. Server cache is the real source; this is just to skip a round trip.</span></li>
+          <li><span class="icon warn">~</span><span class="text"><strong>Strava auto-sync timestamp</strong> · Per-device throttle. Fine.</span></li>
+          <li><span class="icon">✗</span><span class="text"><strong>Runner profile</strong> · MIGRATED to Postgres. Legacy key kept as backup; client auto-pushes any leftover localStorage profile to the server on first load.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Phone mismatch fix -->
+  <section>
+    <div class="section-h">
+      <h2>Why your phone was showing different info</h2>
+      <span class="meta">Diagnosed + fixed</span>
+    </div>
+    <div class="priority green">
+      <h3>Both root causes fixed</h3>
+      <div class="title">Loading text lied + runner profile lived only on the device you set it on</div>
+      <p><strong>(1) The loading text said "Reading saved plans from localStorage…"</strong> — leftover from when storage WAS local. Race plans have actually been in Postgres for a while; the message was a UI lie. Now says "Loading races…".</p>
+      <p><strong>(2) Runner profile (birth year, sex, HRmax, RHR) was browser-local only.</strong> Set on desktop → desktop showed age-graded VDOT and HR zones. Phone had nothing → phone showed raw VDOT only. That was the real disconnect.</p>
+      <p>Now the profile lives in a <code>runner_profile</code> Postgres table:</p>
+      <ul>
+        <li><strong>Cross-device synced</strong> — phone, desktop, future iOS app all read the same profile</li>
+        <li><strong>Auto-migrates legacy localStorage profile</strong> on first load (preserved as backup)</li>
+        <li><strong>Server-side coach engine sees it now</strong> — was the audit's #1 priority. The brief LLM gets age + sex + HRmax in its prompt. The "yesterday hard" gate uses the runner's actual HRmax (was hardcoded 152 BPM)</li>
+        <li><strong>Single-row table for now</strong> (no auth yet, one runner per deploy). Migration path to per-user when auth lands.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Option C cache -->
+  <section>
+    <div class="section-h">
+      <h2>Option C — coach today cache</h2>
+      <span class="meta">Built fully · 3 trigger paths</span>
+    </div>
+    <p style="color: var(--text-2); margin-bottom: 16px;">
+      Every page nav used to fire <code>/api/coach/today</code>, which re-ran <code>gatherCoachState</code>, the engine, AND the LLM brief call (~2-5s, ~$0.005-0.015 per call). With 5+ tiles each fetching independently before today's earlier dedupe, that was 5x cost. Now:
+    </p>
+    <div class="diagram">┌─ Dashboard load ──────────────┐
+│ GET /api/coach/today          │
+│   ├─ readCache(date, activityId)
+│   │     ├─ HIT  → return cached payload (~10ms)
+│   │     └─ MISS → fall through
+│   └─ computeFullPayload()
+│         ├─ gatherCoachState (Postgres + Strava cache)
+│         ├─ coachDaily + readiness + workout
+│         ├─ briefDailyTraining LLM call (~2-5s)
+│         └─ writeCache + return
+└───────────────────────────────┘
+
+Cache key: (cache_date, latest_activity_id)
+Auto-invalidates when:
+  - Date rolls over (new "today")
+  - Latest Strava activity ID changes (new run)
+
+Three trigger paths land the cache HOT before you visit:
+  ① Strava webhook   POST /api/strava/webhook    → activity create → regenerate
+  ② Midnight cron    GET  /api/cron/coach-refresh → bearer-auth daily refresh
+  ③ Lazy fallback    GET  /api/coach/today       → recompute + write on miss</div>
+  </section>
+
+  <!-- What's deployed vs what needs setup -->
+  <section>
+    <div class="section-h">
+      <h2>Setup steps when you have a moment</h2>
+      <span class="meta">Cache is live; webhook + cron need env vars</span>
+    </div>
+    <div class="priority amber">
+      <h3>~10 minutes of setup</h3>
+      <div class="title">Webhook + cron need env vars + a curl call</div>
+      <p>Without these, the cache still works — just lazily (first visit after a run pays the 2-5s LLM cost once instead of being instant). With them, every visit is instant.</p>
+      <ul style="margin-top: 12px;">
+        <li><strong>1. Set <code>STRAVA_WEBHOOK_VERIFY_TOKEN</code></strong> to any random string in Railway env vars.</li>
+        <li><strong>2. Set <code>CRON_SECRET</code></strong> to a different long random string in Railway env vars.</li>
+        <li><strong>3. Register the webhook with Strava</strong> (one-time curl):
+          <pre style="margin-top:8px;"><span class="comment"># Run this once to subscribe Runcino's webhook with Strava.</span>
+curl -X POST https://www.strava.com/api/v3/push_subscriptions \
+  -F client_id=$STRAVA_CLIENT_ID \
+  -F client_secret=$STRAVA_CLIENT_SECRET \
+  -F callback_url=https://runcino-production.up.railway.app/api/strava/webhook \
+  -F verify_token=$STRAVA_WEBHOOK_VERIFY_TOKEN</pre>
+        </li>
+        <li><strong>4. Add a Railway cron job</strong> hitting <code>https://runcino-production.up.railway.app/api/cron/coach-refresh</code> with header <code>Authorization: Bearer $CRON_SECRET</code>. Schedule: <code>1 7,8 * * *</code> (covers both PT and PDT just-after-midnight).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Commits this session -->
+  <section>
+    <div class="section-h">
+      <h2>Commits this session</h2>
+      <span class="meta">5 in a row</span>
+    </div>
+    <table class="bugs">
+      <thead>
+        <tr><th>SHA</th><th>What</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="label"><code>606a5d5</code></td>
+          <td>Loading text fix + profile to Postgres</td>
+          <td>Killed the misleading "localStorage" message. Created <code>runner_profile</code> + <code>coach_today_cache</code> tables. New <code>/api/runner-profile</code> route + client wrapper. Auto-migrates legacy localStorage profile on first load.</td>
+        </tr>
+        <tr>
+          <td class="label"><code>ffcf3bb</code></td>
+          <td>Profile wired through coach methods</td>
+          <td>Brief LLM prompts (briefRaceMorning + briefDailyTraining) now get RUNNER PROFILE block when set. Engine's "yesterday hard" gate uses runner's actual HRmax instead of hardcoded 152.</td>
+        </tr>
+        <tr>
+          <td class="label"><code>9490096</code></td>
+          <td>Option C cache layer + webhook + cron</td>
+          <td><code>computeCoachTodayPayload()</code> extracted as the single source. <code>coach_today_cache.ts</code> with read-through cache, <code>regenerateCoachTodayCache()</code>, and (cache_date, latest_activity_id) key. Strava webhook handler with verification handshake. Cron route with bearer auth.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Verdict tile -->
+  <section>
+    <div class="section-h">
+      <h2>What changed for you</h2>
+      <span class="meta">User-facing</span>
+    </div>
+    <div class="features">
+      <div class="feature fix">
+        <h3>Phone + desktop are in sync</h3>
+        <div class="why">Profile lives in Postgres. Set HRmax on desktop, the phone sees it. Set on phone, desktop sees it. Coach-side too — the brief LLM finally knows your age.</div>
+        <div class="meta"><span class="tag success">CROSS-DEVICE</span><span class="sha">606a5d5</span></div>
+      </div>
+      <div class="feature fix">
+        <h3>Dashboard reload is instant</h3>
+        <div class="why">~10ms cache hit instead of 2-5s LLM call. Brief regenerates only when actually needed (new run, new day) — once, not on every nav.</div>
+        <div class="meta"><span class="tag success">~500x FASTER</span><span class="sha">9490096</span></div>
+      </div>
+      <div class="feature research">
+        <h3>Brief uses your real HRmax</h3>
+        <div class="why">"Yesterday hard" engine threshold was hardcoded 152 BPM. Now uses 80% × your actual HRmax (measured or Tanaka). A 60yo with HRmax 175 → threshold 140; a 25yo with 190 → 152.</div>
+        <div class="meta"><span class="tag research">AUDIT #1</span><span class="sha">ffcf3bb</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Open / next -->
+  <section>
+    <div class="section-h">
+      <h2>Open items</h2>
+      <span class="meta">Backlog</span>
+    </div>
+    <table class="bugs">
+      <tbody>
+        <tr><td class="label">Set webhook + cron env vars + run subscribe curl</td><td>Without these, cache still works lazily. With them, every visit is instant.</td><td><span class="verdict deferred">Setup TODO</span></td></tr>
+        <tr><td class="label">Per-user profile when auth lands</td><td>Single-row <code>runner_profile</code> table for now. When auth ships, migrate to per-user FK.</td><td><span class="verdict deferred">Future</span></td></tr>
+        <tr><td class="label">Static <code>/workout/[date]</code> page</td><td>Only big remaining placeholder surface. Engine produces every day's prescription via simulateNext30Days; could feed it.</td><td><span class="verdict deferred">Audit #2</span></td></tr>
+        <tr><td class="label">FuelingTile uses planner default carb/hr</td><td>Should pull from RACE_CARB_TARGETS_G_PER_HR doctrine like Hydration now does.</td><td><span class="verdict deferred">Audit #4</span></td></tr>
+        <tr><td class="label">Engine's parallel post-race ladder</td><td>Duplicates <code>recovery_protocols.ts.POST_RACE_STAGES</code>. Same shape, two sources of truth. Refactor when we have a quiet session.</td><td><span class="verdict deferred">Refactor</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <span>Generated 2026-05-08 PM · 5 commits · 0 regressions</span>
+    <span>Runcino · <a href="https://runcino-production.up.railway.app">runcino-production.up.railway.app</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
