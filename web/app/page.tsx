@@ -85,6 +85,8 @@ function OverviewPageInner() {
         <Nav active="overview" />
         <div className="body">
 
+          <ModeBanner daysToNext={daysToNext} hub={hub} />
+
           <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
@@ -139,6 +141,74 @@ function LoadingShell() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Mode banner — current training-mode pill at the top of the
+   dashboard. Maps the engine's phase + the next race's daysToNext
+   into a one-line "what mode are we in" header that color-shifts
+   with the season. Per Section 8a of the inventory: mode shapes
+   composition, not new pages. */
+function ModeBanner({ daysToNext, hub }: { daysToNext: number | null; hub: import('../lib/hub-types').RunnerHub | null }) {
+  const phase = hub?.coach.today?.phase ?? null;
+  const recentRaceDays = hub?.coach.state?.races?.recent?.[0]?.daysAgo ?? null;
+  const heavyBlock = hub?.coach.state?.flags?.heavyBlockSuspected ?? false;
+
+  // Mode resolution — first match wins.
+  const mode = (() => {
+    if (daysToNext != null && daysToNext === 0) return { label: 'Race day', accent: 'var(--color-warning)', detail: 'Trust the prep. Run the race in the first half-mile, not the last' };
+    if (daysToNext != null && daysToNext === 1) return { label: 'Race tomorrow', accent: 'var(--color-warning)', detail: 'Last shakeout, hydrate, fuel, sleep. The work is done' };
+    if (daysToNext != null && daysToNext <= 7) return { label: 'Race week', accent: 'var(--color-warning)', detail: 'Taper week — protect freshness, no new fitness' };
+    if (daysToNext != null && daysToNext <= 28) return { label: 'Race month', accent: 'var(--color-attention)', detail: 'Sharpening phase — race-specific work, accumulating taper' };
+    if (heavyBlock) return { label: 'Heavy-block recovery', accent: 'var(--color-corporate)', detail: 'Recovery is the work — let stacked races absorb' };
+    if (recentRaceDays != null && recentRaceDays <= 14) return { label: 'Post-race recovery', accent: 'var(--color-corporate)', detail: `${recentRaceDays} day${recentRaceDays === 1 ? '' : 's'} since the last race — easing back in` };
+    if (phase === 'PEAK') return { label: 'Peak block', accent: 'var(--color-attention)', detail: 'The hardest training of the cycle — ride the line' };
+    if (phase === 'BUILD') return { label: 'Build phase', accent: 'var(--color-success)', detail: 'Aerobic base + quality work — adding fitness' };
+    if (phase === 'BASE_MAINTENANCE' || phase === 'BASE') return { label: 'Base block', accent: 'var(--color-corporate)', detail: 'Maintaining the base — easy + frequent' };
+    if (phase === 'POST_RACE') return { label: 'Post-race recovery', accent: 'var(--color-corporate)', detail: 'Reverse taper — rebuild volume before quality' };
+    if (phase === 'REBUILD') return { label: 'Rebuild', accent: 'var(--color-attention)', detail: 'Returning from a break — gentle ramp back' };
+    return { label: 'Off-season', accent: 'var(--color-t2)', detail: 'No race in sight — recharge, cross-train, set the next goal' };
+  })();
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      gap: 16, flexWrap: 'wrap',
+      padding: '14px 18px',
+      borderRadius: 8,
+      marginBottom: 12,
+      background: `linear-gradient(90deg, ${mode.accent.replace('var(', 'rgba(').replace(')', ', 0.10)')} 0%, transparent 60%)`,
+      borderLeft: `3px solid ${mode.accent}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flex: 1, minWidth: 280 }}>
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, letterSpacing: '1.6px',
+          color: mode.accent, textTransform: 'uppercase',
+        }}>
+          MODE
+        </span>
+        <span style={{
+          fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
+          color: 'var(--color-t0)', letterSpacing: '-.005em',
+        }}>
+          {mode.label}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.4 }}>
+          {mode.detail}
+        </span>
+      </div>
+      {phase && (
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+          padding: '3px 7px', borderRadius: 3,
+          border: `1px solid ${mode.accent}`,
+          color: mode.accent,
+          textTransform: 'uppercase',
+        }}>
+          {phase}
+        </span>
+      )}
+    </div>
   );
 }
 

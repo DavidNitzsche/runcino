@@ -473,7 +473,7 @@ const iconBtnStyle: React.CSSProperties = {
    engine. Auto-saves on change so there's no Save button.
    Migrates any pre-existing localStorage profile on first load. */
 function RunnerProfileSection() {
-  const [profile, setProfile] = useState<RunnerProfile>({ birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null });
+  const [profile, setProfile] = useState<RunnerProfile>({ birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null, healthFlags: null });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -599,6 +599,31 @@ function RunnerProfileSection() {
             <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
               For Karvonen / HR-reserve zones. Optional.
             </div>
+          </div>
+        </div>
+        {/* Health flags — free text the coach should remember. Injuries,
+            conditions, recent illness, cycle notes, anything else. The
+            engine doesn't parse this yet but it's available context for
+            LLM-driven brief generation, and a place for the runner to
+            keep a personal medical-coaching log. */}
+        <div style={{ paddingTop: 8 }}>
+          <div style={{ fontSize: 13, color: 'var(--color-t2)', marginBottom: 8, fontWeight: 500 }}>
+            Health flags <span style={{ color: 'var(--color-t3)', fontWeight: 400 }}>(notes, optional)</span>
+          </div>
+          <textarea
+            value={profile.healthFlags ?? ''}
+            onChange={e => update({ healthFlags: e.target.value })}
+            placeholder="e.g. Right Achilles tightness Mar–Apr; cleared. Allergies May–Jun. Iron supplement starting Aug 2026."
+            rows={4}
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 6,
+              border: '1px solid var(--color-l4)', background: 'var(--color-l2)',
+              color: 'var(--color-t0)', fontFamily: 'var(--font-body, system-ui)', fontSize: 13,
+              lineHeight: 1.5, resize: 'vertical', minHeight: 80,
+            }}
+          />
+          <div style={{ fontSize: 10.5, color: 'var(--color-t3)', marginTop: 4 }}>
+            Injuries, conditions, recent illness, cycle notes, supplements — anything you want the coach to keep in mind. Up to ~1KB.
           </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-t3)', paddingTop: 4, borderTop: '1px solid var(--color-l4)', lineHeight: 1.5 }}>

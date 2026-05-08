@@ -163,6 +163,12 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE runner_profile
         ADD COLUMN IF NOT EXISTS birth_date DATE;
     `);
+    // Free-text health flags — current/recent injuries, conditions,
+    // cycle notes. ~1KB cap enforced server-side.
+    await client.query(`
+      ALTER TABLE runner_profile
+        ADD COLUMN IF NOT EXISTS health_flags TEXT;
+    `);
     // Cache for the dashboard's /api/coach/today payload. Keyed by
     // (cache_date, latest_activity_id) so reads are cheap and the
     // cache auto-invalidates when a new activity lands. Pre-warmed

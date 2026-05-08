@@ -22,10 +22,13 @@ export interface RunnerProfile {
   sex: RunnerSex;
   hrmaxBpm: number | null;
   rhrBpm: number | null;
+  /** Free-text injuries / conditions / cycle notes — anything the
+   *  coach should remember about the runner's current state. */
+  healthFlags: string | null;
 }
 
 export const DEFAULT_PROFILE: RunnerProfile = {
-  birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null,
+  birthDate: null, sex: 'unspecified', hrmaxBpm: null, rhrBpm: null, healthFlags: null,
 };
 
 let cached: { profile: RunnerProfile; at: number } | null = null;
@@ -38,6 +41,7 @@ interface ApiResponse {
     sex: RunnerSex | null;
     hrmaxBpm: number | null;
     rhrBpm: number | null;
+    healthFlags: string | null;
     updatedAt: string | null;
   } | null;
   error?: string;
@@ -56,6 +60,7 @@ function fromApi(api: ApiResponse['profile']): RunnerProfile {
     sex,
     hrmaxBpm: api.hrmaxBpm,
     rhrBpm: api.rhrBpm,
+    healthFlags: api.healthFlags ?? null,
   };
 }
 
@@ -86,6 +91,7 @@ function readLegacy(): RunnerProfile | null {
         ? parsed.hrmaxBpm : null,
       rhrBpm: typeof parsed.rhrBpm === 'number' && parsed.rhrBpm >= 30 && parsed.rhrBpm <= 100
         ? parsed.rhrBpm : null,
+      healthFlags: typeof parsed.healthFlags === 'string' ? parsed.healthFlags : null,
     };
   } catch {
     return null;

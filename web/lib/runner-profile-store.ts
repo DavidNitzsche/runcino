@@ -19,6 +19,11 @@ export interface RunnerProfile {
   sex: RunnerSex;
   hrmaxBpm: number | null;
   rhrBpm: number | null;
+  /** Free-text health flags — current/recent injuries, conditions,
+   *  cycle notes, anything the runner wants the coach to remember.
+   *  Engine doesn't currently parse it; visible context for LLM
+   *  brief generation. */
+  healthFlags: string | null;
   updatedAt: string | null;
 }
 
@@ -27,6 +32,7 @@ const DEFAULT: RunnerProfile = {
   sex: 'unspecified',
   hrmaxBpm: null,
   rhrBpm: null,
+  healthFlags: null,
   updatedAt: null,
 };
 
@@ -36,6 +42,7 @@ interface DbRow {
   sex: string | null;
   hrmax_bpm: number | null;
   rhr_bpm: number | null;
+  health_flags: string | null;
   updated_at: Date;
 }
 
@@ -59,13 +66,14 @@ function rowToProfile(row: DbRow): RunnerProfile {
     sex,
     hrmaxBpm: row.hrmax_bpm,
     rhrBpm: row.rhr_bpm,
+    healthFlags: row.health_flags,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   };
 }
 
 export async function getRunnerProfile(): Promise<RunnerProfile> {
   const rows = await query<DbRow>(
-    `SELECT birth_date, birth_year, sex, hrmax_bpm, rhr_bpm, updated_at
+    `SELECT birth_date, birth_year, sex, hrmax_bpm, rhr_bpm, health_flags, updated_at
      FROM runner_profile WHERE id = 1`,
   );
   return rows.length === 0 ? DEFAULT : rowToProfile(rows[0]);
@@ -93,18 +101,20 @@ export async function setRunnerProfile(profile: Partial<RunnerProfile>): Promise
     ? profile.hrmaxBpm : null;
   const rhrBpm = profile.rhrBpm != null && profile.rhrBpm >= 30 && profile.rhrBpm <= 100
     ? profile.rhrBpm : null;
+  const healthFlags = (profile.healthFlags ?? '').trim().slice(0, 1000) || null;
 
   await query(
-    `INSERT INTO runner_profile (id, birth_year, birth_date, sex, hrmax_bpm, rhr_bpm, updated_at)
-     VALUES (1, $1, $2, $3, $4, $5, NOW())
+    `INSERT INTO runner_profile (id, birth_year, birth_date, sex, hrmax_bpm, rhr_bpm, health_flags, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
      ON CONFLICT (id) DO UPDATE SET
        birth_year = EXCLUDED.birth_year,
        birth_date = EXCLUDED.birth_date,
        sex = EXCLUDED.sex,
        hrmax_bpm = EXCLUDED.hrmax_bpm,
        rhr_bpm = EXCLUDED.rhr_bpm,
+       health_flags = EXCLUDED.health_flags,
        updated_at = NOW();`,
-    [birthYearDerived, validBirthDate, sex, hrmaxBpm, rhrBpm],
+    [birthYearDerived, validBirthDate, sex, hrmaxBpm, rhrBpm, healthFlags],
   );
 
   return getRunnerProfile();

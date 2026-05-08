@@ -154,9 +154,149 @@ function TrainingPageInner() {
 
           {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
 
+          {runs && runs.length > 0 && <QualityDayGridTile runs={runs} />}
+
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Quality day grid — 12-week heatmap of when quality landed ────
+   Section 8b of the inventory. Each cell = one day. Columns = weeks
+   (oldest left, current right). Rows = days of week (Mon top, Sun
+   bottom). Cell color/intensity reflects what actually happened:
+   quality (red), long (blue), easy (green), rest (dark). Lets the
+   runner see their training rhythm at a glance — "I always skip
+   Wednesday tempos when work is busy" patterns become visible. */
+function QualityDayGridTile({ runs }: { runs: NormalizedActivity[] }) {
+  // Build 12 weeks × 7 days grid. Today is the rightmost column,
+  // bottom-aligned to the runner's own week (Mon-start).
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // Find this week's Monday
+  const dow = today.getDay(); // 0=Sun, 1=Mon, ...
+  const daysToMonday = dow === 0 ? -6 : 1 - dow;
+  const thisWeekMonday = new Date(today);
+  thisWeekMonday.setDate(thisWeekMonday.getDate() + daysToMonday);
+
+  const weeks: Array<{ start: Date; days: Array<{ date: string; activity: NormalizedActivity | null }> }> = [];
+  for (let w = 11; w >= 0; w--) {
+    const start = new Date(thisWeekMonday);
+    start.setDate(start.getDate() - w * 7);
+    const days: Array<{ date: string; activity: NormalizedActivity | null }> = [];
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start);
+      day.setDate(day.getDate() + d);
+      const dayISO = day.toISOString().slice(0, 10);
+      const match = runs.find(r => r.date === dayISO) ?? null;
+      days.push({ date: dayISO, activity: match });
+    }
+    weeks.push({ start, days });
+  }
+
+  function classify(a: NormalizedActivity | null, dayISO: string): { color: string; label: string } {
+    if (dayISO > today.toISOString().slice(0, 10)) {
+      return { color: 'var(--color-l2)', label: 'Future' };
+    }
+    if (!a) return { color: 'var(--color-l2)', label: 'Rest / no run' };
+    // Workout type 3 = workout (Strava), 1 = race
+    if (a.workoutType === 1) return { color: 'var(--color-warning)', label: 'Race' };
+    if (a.workoutType === 3) return { color: 'var(--color-attention)', label: 'Quality workout' };
+    if (/race|tempo|threshold|interval|repeat|fartlek/i.test(a.name)) return { color: 'var(--color-attention)', label: 'Quality (by name)' };
+    if (a.distanceMi >= 12) return { color: 'var(--color-corporate)', label: 'Long run' };
+    if (a.distanceMi >= 5) return { color: 'var(--color-success)', label: 'Easy run' };
+    return { color: 'rgba(62,189,65,0.5)', label: 'Recovery / short' };
+  }
+
+  const dowLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: '18px 22px' }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Quality day grid</div>
+          <div className="tile-lbl">12 weeks · pattern of what landed when</div>
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)' }}>
+          RESEARCH/00b
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 12, alignItems: 'flex-start' }}>
+        {/* Day-of-week label column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 22 }}>
+          {dowLabels.map((d, i) => (
+            <div key={i} style={{
+              fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)',
+              width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* The grid */}
+        <div style={{ display: 'flex', gap: 3, flex: 1 }}>
+          {weeks.map((wk, wi) => {
+            const isCurrent = wi === weeks.length - 1;
+            return (
+              <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, letterSpacing: '0.6px',
+                  color: isCurrent ? 'var(--color-warning)' : 'var(--color-t3)',
+                  textAlign: 'center', marginBottom: 3, height: 14,
+                  textTransform: 'uppercase',
+                }}>
+                  {wk.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </div>
+                {wk.days.map((d, di) => {
+                  const c = classify(d.activity, d.date);
+                  return (
+                    <div
+                      key={di}
+                      title={`${d.date} · ${c.label}${d.activity ? ` · ${d.activity.distanceMi.toFixed(1)} mi` : ''}`}
+                      style={{
+                        background: c.color,
+                        borderRadius: 3,
+                        height: 14,
+                        cursor: 'pointer',
+                        transition: 'transform 0.1s',
+                        opacity: d.date > today.toISOString().slice(0, 10) ? 0.3 : 1,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14, paddingTop: 10,
+        borderTop: '1px solid var(--color-l4)',
+        fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)',
+        letterSpacing: '1.3px', textTransform: 'uppercase',
+      }}>
+        <Legend color="var(--color-warning)" label="Race" />
+        <Legend color="var(--color-attention)" label="Quality" />
+        <Legend color="var(--color-corporate)" label="Long" />
+        <Legend color="var(--color-success)" label="Easy" />
+        <Legend color="rgba(62,189,65,0.5)" label="Recovery" />
+        <Legend color="var(--color-l2)" label="Rest" />
+      </div>
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 12, height: 8, background: color, borderRadius: 2 }} />
+      <span>{label}</span>
+    </div>
   );
 }
 
