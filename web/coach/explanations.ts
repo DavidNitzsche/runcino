@@ -54,6 +54,39 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
   const dist = distanceMi > 0 ? `${distanceMi.toFixed(distanceMi >= 10 ? 0 : 1)} mi` : '';
   const pace = paceBand ? fmtBand(paceBand) : '';
 
+  // ── Reconciliation override (Stage A) ──────────────────────────
+  // The user already ran today. The morning's prescription is now
+  // history — re-render the day's voice to acknowledge what
+  // actually happened.
+  const ranToday = state.recovery.today;
+  if (ranToday && ranToday.distMi > 0) {
+    const ranMi = ranToday.distMi.toFixed(ranToday.distMi >= 10 ? 0 : 1);
+    if (workoutType === 'rest') {
+      return [
+        `You ran ${ranMi} mi when I had today down as rest.`,
+        `Done is done — the run is in the legs now. Tomorrow stays off whatever happens; the recovery the body needed didn't go away just because you moved.`,
+        `If you felt fine running, that's useful information; if it felt like work, that's a signal to honor the next rest day fully.`,
+      ].join(' ');
+    }
+    if (workoutType === 'recovery' && ranToday.distMi > distanceMi * 1.4) {
+      return [
+        `You ran ${ranMi} mi today — more than the ${dist} I had on the plan as recovery.`,
+        `Recovery runs are short on purpose. The day's work is done either way; tomorrow's easy day stays easy, and don't tack on extra miles to make up for the overshoot.`,
+      ].join(' ');
+    }
+    if (workoutType === 'general_aerobic' && ranToday.distMi > distanceMi * 1.5) {
+      return [
+        `You ran ${ranMi} mi today vs the ${dist} I had on the plan.`,
+        `The aerobic stress went up, so tomorrow's easy stays easy and we don't compound. If this happens often, the weekly volume needs a real bump rather than ad-hoc add-ons.`,
+      ].join(' ');
+    }
+    // Plan + actual roughly aligned — short acknowledgement.
+    return [
+      `Done — ${ranMi} mi today (${label.toLowerCase()}).`,
+      `Recovery starts now: hydrate, get carbs in within the hour, eat real food at the next meal. Tomorrow's session is set; let the body absorb tonight.`,
+    ].join(' ');
+  }
+
   // ── State-driven overrides come first ───────────────────────────
   if (workoutType === 'rest' && heavyBlock) {
     const races = state.races.raceCount30d;
