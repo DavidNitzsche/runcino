@@ -508,11 +508,13 @@ function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null
   // Stage-4 — past easyEnd but recoveryWindowEndsISO still says
   // POST_RACE (rare; happens for stacked-race scenarios where the
   // overall window outlasts the active driver's stage gates). Run
-  // a normal-shaped easy week with no quality, slightly elevated
-  // volume vs stage-3.
+  // a normal-shaped easy week with no quality. Same Mon+Thu rest
+  // as stage-3 (per low-tier doctrine: 1-2 rest days/week). Without
+  // the second rest day this stage produced 6-7 consecutive easy
+  // days, which the runner correctly flagged as too monotone.
   const baseEasy = baseEasyMi(state, 'POST_RACE');
-  if (dow === recoveryDow) {
-    return rest(`${days} days post ${active.name}. Recovery window still open — protective rest day.`);
+  if (dow === recoveryDow || dow === midRestDow) {
+    return rest(`${days} days post ${active.name}. Recovery window still open — protective rest day, ${dow === recoveryDow ? 'post-long absorb' : 'midweek reset'}.`);
   }
   if (dow === longDow) {
     const longMi = round1(Math.min(baseEasy * 1.7, baseEasy + 4));
@@ -522,6 +524,19 @@ function postRaceWorkout(state: CoachState, dow: number): RunPrescription | null
       paceTargetSPerMi: null, hrZone: 2,
       description: `${longMi} mi easy long · still inside recovery window — no quality, build duration${focusSuffix}`,
       isQuality: false, isLong: true, appendStrides: false,
+    };
+  }
+  // Medium-long day on what would otherwise be the mediumLongDow
+  // (longDow + 5) — gives the week a second-longest day so the
+  // 5 running days vary in shape, not just length-of-easy.
+  if (dow === ((longDow + 5) % 7)) {
+    const mediumMi = round1(Math.min(baseEasy * 1.3, baseEasy + 2));
+    return {
+      type: 'general_aerobic', label: 'Medium-long easy',
+      distanceMi: mediumMi, durationMin: null,
+      paceTargetSPerMi: null, hrZone: 2,
+      description: `${mediumMi} mi easy · the second-longest day of the week · no quality yet${focusSuffix}`,
+      isQuality: false, isLong: false, appendStrides: false,
     };
   }
   const milesPrescribed = round1(baseEasy);
