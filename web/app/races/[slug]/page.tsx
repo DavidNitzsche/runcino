@@ -117,7 +117,7 @@ function RaceDetailPageInner() {
   }, [slug]);
 
   if (race === 'loading') {
-    return <div style={{ padding: 80, textAlign: 'center', color: 'var(--color-t2)' }}>Loading…</div>;
+    return <div style={{ minHeight: 480 }} aria-busy="true" />;
   }
   if (!race) {
     return (

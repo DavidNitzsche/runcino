@@ -65,7 +65,7 @@ export default function LogPage() {
         <Caption left="Runcino · log" />
         <div className="stage">
           <Nav active="log" />
-          <div className="body"><div className="hint" style={{ padding: 24 }}>Loading…</div></div>
+          <div className="body"><div style={{ minHeight: 320 }} aria-busy="true" /></div>
         </div>
       </>
     );

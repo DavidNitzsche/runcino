@@ -57,7 +57,7 @@ function WorkoutDetailInner({ date }: { date: string }) {
   const hub = useHub();
 
   if (!hub) {
-    return <Shell date={date}><div className="hint" style={{ padding: 24 }}>Loading…</div></Shell>;
+    return <Shell date={date}><div style={{ minHeight: 480 }} aria-busy="true" /></Shell>;
   }
 
   // Find a prescription for the target date. weekShape (current

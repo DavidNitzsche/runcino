@@ -71,7 +71,7 @@ function RacesIndexInner() {
               <h1>Races</h1>
               <div className="sub">
                 {races === null
-                  ? 'Loading…'
+                  ? <span style={{ visibility: 'hidden' }}>—</span>
                   : races.length === 0
                   ? <><b>No races yet.</b> Add a race to build a Watch-ready pacing plan.</>
                   : <><b>{upcoming.length} upcoming</b> · {past.length} completed.</>}
@@ -82,7 +82,7 @@ function RacesIndexInner() {
             </div>
           </div>
 
-          {races === null && <div className="hint" style={{ padding: 16 }}>Loading races…</div>}
+          {races === null && <div style={{ minHeight: 320 }} aria-busy="true" />}
 
           {races !== null && races.length === 0 && (
             <EmptyState />

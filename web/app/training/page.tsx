@@ -122,7 +122,7 @@ function TrainingPageInner() {
         <Caption left="Runcino · training" />
         <div className="stage">
           <Nav active="training" />
-          <div className="body"><div className="hint" style={{ padding: 24 }}>Loading…</div></div>
+          <div className="body"><div style={{ minHeight: 320 }} aria-busy="true" /></div>
         </div>
       </>
     );

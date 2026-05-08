@@ -25,17 +25,19 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { RunnerHub, RunnerHubResponse } from './hub-types';
 
-const LS_KEY = 'runcino:hub:v1';
-const TTL_MS = 6 * 60 * 60 * 1000;  // 6h — very generous; stale-while-revalidate keeps it fresh
+const LS_KEY = 'runcino:hub:v2';        // v2 — drops the over-aggressive cacheDate check; v1 entries get GC'd
+const TTL_MS = 24 * 60 * 60 * 1000;     // 24h — generous; the background revalidate keeps content fresh
 
 interface HubCacheEntry {
   hub: RunnerHub;
   storedAt: number;
 }
 
-/** Synchronous read of the localStorage hub cache. Returns null on
- *  miss / stale / SSR. Used by the provider's `useState` lazy
- *  initializer for sync-first-paint. */
+/** Synchronous read of the localStorage hub cache. Returns null only
+ *  on miss / SSR / TTL expiry. Yesterday's cache is still returned
+ *  because the background revalidate will replace it with today's
+ *  data within ~300ms — the goal is to AVOID a "Loading…" flash by
+ *  showing SOMETHING immediately, even if slightly stale. */
 export function readHubCachedSync(): RunnerHub | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -43,11 +45,6 @@ export function readHubCachedSync(): RunnerHub | null {
     if (!raw) return null;
     const entry = JSON.parse(raw) as HubCacheEntry;
     if (Date.now() - entry.storedAt > TTL_MS) return null;
-    // Also bail if the cache_date doesn't match today's LA-calendar
-    // date — means the day rolled over since this was cached and we
-    // want a fresh prescription for today.
-    const todayLA = todayLAISO();
-    if (entry.hub.meta?.cacheDate !== todayLA) return null;
     return entry.hub;
   } catch {
     return null;
@@ -70,18 +67,6 @@ function writeHubCache(hub: RunnerHub): void {
 export function bumpHubCache(): void {
   if (typeof window === 'undefined') return;
   try { window.localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
-}
-
-function todayLAISO(): string {
-  try {
-    const fmt = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Los_Angeles',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    });
-    return fmt.format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
 }
 
 interface HubContextValue {

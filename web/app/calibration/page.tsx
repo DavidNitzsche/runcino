@@ -44,7 +44,7 @@ function CalibrationInner() {
   if (!hub) {
     return (
       <Shell>
-        <div className="hint" style={{ padding: 24 }}>Loading…</div>
+        <div style={{ minHeight: 480 }} aria-busy="true" />
       </Shell>
     );
   }

@@ -130,7 +130,10 @@ function LoadingShell() {
       <div className="stage">
         <Nav active="overview" />
         <div className="body">
-          <div className="hint" style={{ padding: 24 }}>Loading…</div>
+          {/* Empty placeholder during SSR + cold hydration — keeps layout
+              stable and avoids the visible "Loading…" flash. The hub
+              fills in on client mount, usually within ~50ms. */}
+          <div style={{ minHeight: 320 }} aria-busy="true" />
         </div>
       </div>
     </>
