@@ -36,6 +36,7 @@ import {
 } from './coach-strength';
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 import { shouldPromptVdotTest } from './vdot';
+import { longRunTargetMi } from './long-run-cap';
 
 export type WorkoutType = RunWorkoutType;
 
@@ -357,20 +358,13 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
 }
 
 /** Long-run target — capped at 110% of longest run in last 30 days
- *  (single-session-spike rule, doc §13.1). PEAK targets a slight
- *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%. */
+ *  (single-session-spike rule, doc §13.1). Phase-specific multipliers
+ *  + floors live in lib/long-run-cap.ts so engine + dashboard share
+ *  ONE source of truth. */
 function longRunTarget(state: CoachState, phase: Phase): number {
   const cap = maxLongRunMi(state);
   const peakLast = state.volume.longestLast28Mi;
-  switch (phase) {
-    case 'TAPER':            return Math.min(cap, Math.max(8, peakLast * 0.65));
-    case 'PEAK':             return Math.min(cap, Math.max(14, peakLast * 1.05));
-    case 'BUILD':            return Math.min(cap, Math.max(10, peakLast * 1.05));
-    case 'BASE':             return Math.min(cap, Math.max(8, peakLast));
-    case 'BASE_MAINTENANCE': return Math.min(cap, Math.max(8, peakLast));
-    case 'POST_RACE':        return Math.min(cap, Math.max(6, peakLast * 0.4));
-    case 'REBUILD':          return Math.min(cap, Math.max(6, peakLast * 0.6));
-  }
+  return Math.min(cap, longRunTargetMi(phase, peakLast));
 }
 
 /* ── Hard constraints ───────────────────────────────────────── */

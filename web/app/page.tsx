@@ -22,6 +22,7 @@ import { rollupYear, weeklyMiles, currentWeekDays, funStats, trainingPulse, effo
 import { greeting, formatWeekRange, formatShort, daysUntil, todayISO, thisWeekRange } from '../lib/dates';
 import { loadRunnerProfile, ageFromBirthDate, resolveHrmax } from '../lib/runner-profile';
 import { gradeVdot, HRMAX_ZONES_5, TAPER_VOLUME_REDUCTION, TAPER_INTENSITY_PRESERVATION, TAPER_ERRORS, TAPER_BENEFIT, POST_RACE_STAGES, VDOT_FIELD_TESTS, type RunnerSex } from '../coach/doctrine';
+import { LONG_RUN_HARD_CAP_MULTIPLIER, TRAINING_PULSE_TO_ENGINE_PHASE, longRunTargetMi } from '../lib/long-run-cap';
 
 export default function OverviewPage() {
   // The whole page is wrapped in HubProvider so every consumer below
@@ -1935,28 +1936,16 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
               <span style={{ color: 'var(--color-t1)' }}>{pulse.longestRecentMi.toFixed(1)} MI · LAST 28 DAYS</span>
             </div>
           )}
-          {/* Next-week long-run cap. Mirrors the engine's longRunTarget
-              math (lib/coach-engine.ts:362-374) so the dashboard
-              doesn't disagree with the prescription. The 110%
-              ceiling is doctrine §13.1 (Daniels' single-session-spike
-              rule); per-phase multipliers come from the engine. */}
+          {/* Next-week long-run cap. Routes through the canonical
+              long-run cap function (lib/long-run-cap.ts) — the SAME
+              source the engine's longRunTarget() uses, so dashboard
+              and prescription cannot disagree. Hard ceiling is
+              doctrine §13.1 (Daniels' single-session-spike rule). */}
           {pulse.longestRecentMi > 0 && (() => {
             const peakLast = pulse.longestRecentMi;
-            // Hard ceiling: never >110% of peak last 28d. Single-
-            // session-spike rule, Research/01 §"Returning from layoff"
-            // + general Daniels +10% guidance.
-            const hardCap = peakLast * 1.10;
-            // Per-phase target — same constants as engine longRunTarget.
-            const phaseTarget: Record<string, number | null> = {
-              'TAPER':      Math.min(hardCap, Math.max(8,  peakLast * 0.65)),
-              'PEAK':       Math.min(hardCap, Math.max(14, peakLast * 1.05)),
-              'BUILDING':   Math.min(hardCap, Math.max(10, peakLast * 1.05)),
-              'BASE BLOCK': Math.min(hardCap, Math.max(8,  peakLast * 1.00)),
-              'POST-RACE':  Math.min(hardCap, Math.max(6,  peakLast * 0.40)),
-              'RACE MONTH': Math.min(hardCap, Math.max(10, peakLast * 1.05)),
-            };
-            const cap = phaseTarget[displayPhase] ?? phaseTarget['BASE BLOCK'];
-            if (cap == null) return null;
+            const hardCap = peakLast * LONG_RUN_HARD_CAP_MULTIPLIER;
+            const enginePhase = TRAINING_PULSE_TO_ENGINE_PHASE[displayPhase] ?? 'BASE_MAINTENANCE';
+            const cap = Math.min(hardCap, longRunTargetMi(enginePhase, peakLast));
             return (
               <div style={{ marginTop: 'auto', fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-corporate)', lineHeight: 1.4, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
                 NEXT-WEEK CAP<br />

@@ -29,7 +29,7 @@ import {
   RouteMap, ElevationProfile,
   SplitsTables, ChartsRow, SpacingAndDistance, Insights,
 } from '../../../components/CoursePreview';
-import { PRE_RACE_HYDRATION, FLUID_DURING_RACE } from '../../../coach/doctrine';
+import { PRE_RACE_HYDRATION, FLUID_DURING_RACE, SWEAT_RATE_PROTOCOL, EAH_RISK_FACTORS } from '../../../coach/doctrine';
 
 const FT_PER_M = 3.28084;
 
@@ -959,6 +959,78 @@ function HydrationTile({ race }: { race: SavedRace }) {
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.5 }}>
           Per-aid-station (every 10-15 min): 400 ml/hr → 100 ml/station; 600 → 150; 800 → 200. Body mass should drop 1-3% during long events; weight gain post-race indicates over-drinking (EAH risk). General upper limit: ~800 ml/hr.
+        </div>
+      </div>
+
+      {/* Sweat-rate calibration test — Research/19 §Sweat Rate Calculation.
+          Generic distance × temp bands aren't enough; sweat rates vary
+          10× across runners. This surfaces the protocol so the user
+          can produce their own per-condition numbers. */}
+      <div style={{
+        marginTop: 8, padding: '12px 14px', borderRadius: 8,
+        background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-attention)' }}>
+            CALIBRATE YOUR OWN SWEAT RATE
+          </div>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
+            RESEARCH/19 §SWEAT-RATE
+          </span>
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.4 }}>
+          {SWEAT_RATE_PROTOCOL.value.formula}
+        </div>
+        <ol style={{ paddingLeft: 18, margin: 0, fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+          {SWEAT_RATE_PROTOCOL.value.steps.map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
+        </ol>
+        <div style={{ fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.4, fontStyle: 'italic' }}>
+          {SWEAT_RATE_PROTOCOL.value.exampleCalc}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 4 }}>
+          {SWEAT_RATE_PROTOCOL.value.typicalRanges.map(r => (
+            <div key={r.category} style={{
+              padding: '6px 8px', borderRadius: 4, background: 'var(--color-l3)',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.6px', color: 'var(--color-t3)', textTransform: 'uppercase' }}>
+                {r.category.replace('_', ' ')}
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, color: 'var(--color-t1)', fontVariantNumeric: 'tabular-nums' }}>
+                {r.lPerHrHigh != null ? `${r.lPerHrLow}-${r.lPerHrHigh}` : `>${r.lPerHrLow}`}<small style={{ fontSize: 8, color: 'var(--color-t3)', marginLeft: 2 }}>L/hr</small>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* EAH (exercise-associated hyponatremia) risk profile — Research/19
+          §EAH. Overdrinking is the dominant cause; if any of these
+          factors apply to the runner, lean to the LOW end of the fluid
+          band rather than auto-following peak ml/hr. */}
+      <div style={{
+        marginTop: 8, padding: '12px 14px', borderRadius: 8,
+        background: 'rgba(252, 77, 84, 0.08)', border: '1px solid rgba(252, 77, 84, 0.32)',
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-warning)' }}>
+            EAH RISK FACTORS — DRINK LIGHTER IF ANY APPLY
+          </div>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--color-t3)' }}>
+            RESEARCH/19 §EAH
+          </span>
+        </div>
+        <ul style={{ paddingLeft: 18, margin: 0, fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+          {EAH_RISK_FACTORS.value.map((f, i) => (
+            <li key={i}>{f}</li>
+          ))}
+        </ul>
+        <div style={{ fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.4, fontStyle: 'italic' }}>
+          Overdrinking — not sodium loss — is the dominant cause. Body-mass <em>gain</em> during a race is a red flag.
         </div>
       </div>
     </div>
