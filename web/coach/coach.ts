@@ -161,6 +161,38 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
    *  want" on race morning. Both use the same Coach voice; the focus
    *  shifts with the time horizon. Defaults to 0 (race morning). */
   daysToRace?: number;
+  /** Snapshot of the runner's current training state. When provided,
+   *  the brief can comment on whether they're on track for the goal,
+   *  whether to keep pushing or hold the line, and how the build is
+   *  going. Pulled from CoachState in the API route — caller is
+   *  responsible for shaping it; the brief just consumes the
+   *  pre-formatted summary lines. */
+  trainingContext?: {
+    /** Current VDOT-implied race time at this race's distance, in
+     *  seconds. Null when no recent race is on file to anchor VDOT. */
+    vdotImpliedRaceTimeS: number | null;
+    /** VDOT itself, for the brief to reference. */
+    vdot: number | null;
+    /** Goal time in seconds (parsed from goalDisplay). Compared
+     *  against vdotImpliedRaceTimeS to decide "on track" / "ahead" /
+     *  "stretch goal". */
+    goalTimeS: number | null;
+    /** Recent 4w avg weekly mileage. */
+    weeklyAvg4w: number;
+    /** 8w avg — longer baseline for stability check. */
+    weeklyAvg8w: number;
+    /** 4w vs prior-4w delta (-0.2 = down 20%, 0.2 = up 20%). */
+    deltaPct4v4: number | null;
+    /** Longest single run in the last 28 days. Compare against race
+     *  distance to gauge long-run readiness. */
+    longestLast28Mi: number;
+    /** Easy mileage share over last 14 days (0–1). 0.8+ is the
+     *  polarized/Daniels target. <0.7 means too much tempo/threshold. */
+    easyShare14d: number;
+    /** Engine-derived flags. */
+    heavyBlockSuspected: boolean;
+    rebuildAfterBreak: boolean;
+  };
 }
 
 export interface RetrospectInput extends CoachBaseContext {
@@ -429,21 +461,39 @@ class CoachImpl implements Coach {
       // path uses, so a deploy without ANTHROPIC_API_KEY still surfaces
       // sensibly different copy 100 days out vs race morning.
       const fallbackDays = input.daysToRace ?? 0;
+      // One-liner training read for the fallback. Less nuanced than
+      // the LLM build, but still says something useful when training
+      // state is available.
+      const trainingLine = (() => {
+        const t = input.trainingContext;
+        if (!t) return '';
+        if (t.vdot != null && t.vdotImpliedRaceTimeS != null && t.goalTimeS != null) {
+          const deltaS = t.vdotImpliedRaceTimeS - t.goalTimeS;
+          if (Math.abs(deltaS) < 60) return ' Current fitness is right on the goal — keep building.';
+          if (deltaS < -180)         return ' Current fitness is well under the goal time — there\'s headroom to push.';
+          if (deltaS < -60)          return ' Current fitness has modest headroom on the goal.';
+          if (deltaS < 180)          return ' The goal is a stretch from here — the rest of the build needs to land.';
+          return ' The goal is ambitious from current fitness — needs serious build or a goal revisit.';
+        }
+        if (t.heavyBlockSuspected) return ' Recent block has been heavy — don\'t add load.';
+        if (t.rebuildAfterBreak)   return ' Coming back from a break — handle gently.';
+        return '';
+      })();
       const fallbackAnswer = (() => {
         if (fallbackDays > 21) {
           // Course brief — far out. No taper, no forecast in play.
-          return `${input.raceName} is ${fallbackDays} days out. The course summary: ${input.courseSummary} Build toward what this course rewards — terrain-specific work where it matters most, easy mileage everywhere else. Forecast and fueling specifics will sharpen up as the race gets closer.`;
+          return `${input.raceName} is ${fallbackDays} days out. ${input.courseSummary}${trainingLine} Build toward what this course rewards — terrain-specific work where it matters most, easy mileage everywhere else. Forecast and fueling specifics will sharpen up as the race gets closer.`;
         }
         if (fallbackDays > 7) {
           // Approach — strategic, training is being finalized.
-          return `${input.raceName} is ${fallbackDays} days out. ${input.courseSummary} You're finishing the build. Sharpen the work that matches this course; taper hasn't started yet. Last year's weather is a reasonable baseline — anything sharper comes when NOAA publishes a forecast around race week.`;
+          return `${input.raceName} is ${fallbackDays} days out. ${input.courseSummary}${trainingLine} You're finishing the build. Sharpen the work that matches this course; taper hasn't started yet. Last year's weather is a reasonable baseline — anything sharper comes when NOAA publishes a forecast around race week.`;
         }
         if (fallbackDays > 0) {
           // Race week — taper, weather forecast available.
-          return `Race week. ${fallbackDays} day${fallbackDays === 1 ? '' : 's'} out. Legs may feel weird; that's normal taper. ${weatherClause} Lock in sleep, carbs, and your kit. Don't go chasing fitness this week.`;
+          return `Race week. ${fallbackDays} day${fallbackDays === 1 ? '' : 's'} out. Legs may feel weird; that's normal taper.${trainingLine} ${weatherClause} Lock in sleep, carbs, and your kit. Don't go chasing fitness this week.`;
         }
         // Race morning — current behavior.
-        return `Morning. The training is done. ${weatherClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`;
+        return `Morning. The training is done.${trainingLine} ${weatherClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`;
       })();
 
       return {
@@ -525,14 +575,62 @@ class CoachImpl implements Coach {
       ].join(' '),
     };
 
+    // Format the training-state read so the brief can reflect "are
+    // you on track for the goal." VDOT vs goal is the load-bearing
+    // signal: if VDOT-implied race time is faster than goal, the
+    // runner has headroom and the brief should encourage; if slower,
+    // the goal is a stretch and the brief should anchor expectations.
+    const trainingRead = (() => {
+      const t = input.trainingContext;
+      if (!t) return '';
+      const lines: string[] = ['', 'CURRENT TRAINING STATE (use this to talk about whether they\'re on track):'];
+      // VDOT vs goal — the most important signal.
+      if (t.vdot != null && t.vdotImpliedRaceTimeS != null && t.goalTimeS != null) {
+        const deltaS = t.vdotImpliedRaceTimeS - t.goalTimeS;
+        const deltaMin = Math.abs(deltaS / 60);
+        const fmt = (s: number) => {
+          const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.round(s % 60);
+          return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+        };
+        let verdict = '';
+        if (Math.abs(deltaS) < 60)        verdict = 'right on the goal — current fitness lines up with target.';
+        else if (deltaS < -180)           verdict = `current fitness is ${deltaMin.toFixed(0)} min FASTER than goal — runner has real headroom; the goal is conservative.`;
+        else if (deltaS < -60)            verdict = `current fitness is ${deltaMin.toFixed(0)} min faster than goal — modest headroom.`;
+        else if (deltaS < 180)            verdict = `current fitness is ${deltaMin.toFixed(0)} min slower than goal — the goal is a stretch but reachable with the rest of the build.`;
+        else                              verdict = `current fitness is ${deltaMin.toFixed(0)} min slower than goal — the goal is ambitious; runner needs serious build OR the goal needs revisiting.`;
+        lines.push(`  VDOT ${t.vdot.toFixed(1)} → race-equivalent ${fmt(t.vdotImpliedRaceTimeS)} at this distance vs goal ${fmt(t.goalTimeS)}. ${verdict}`);
+      } else if (t.vdot != null) {
+        lines.push(`  VDOT ${t.vdot.toFixed(1)} (no goal time set, so no on-track verdict).`);
+      } else {
+        lines.push('  No recent race on file → no VDOT anchor. Don\'t make claims about whether they\'re on track for the goal.');
+      }
+      // Volume picture.
+      const volumeNote = t.deltaPct4v4 == null
+        ? `Recent volume: ${t.weeklyAvg4w} mi/week (4w avg). 8w baseline: ${t.weeklyAvg8w} mi.`
+        : t.deltaPct4v4 > 0.15
+        ? `Volume building: ${t.weeklyAvg4w} mi/wk recent vs ${t.weeklyAvg8w} mi 8w baseline (up ${(t.deltaPct4v4 * 100).toFixed(0)}%).`
+        : t.deltaPct4v4 < -0.15
+        ? `Volume rebuilding from a dip: ${t.weeklyAvg4w} mi/wk recent vs ${t.weeklyAvg8w} mi 8w baseline (down ${(Math.abs(t.deltaPct4v4) * 100).toFixed(0)}%).`
+        : `Volume steady: ${t.weeklyAvg4w} mi/wk holding around the ${t.weeklyAvg8w} mi 8w baseline.`;
+      lines.push(`  ${volumeNote}`);
+      lines.push(`  Longest run last 28d: ${t.longestLast28Mi.toFixed(1)} mi.`);
+      lines.push(`  Easy/quality balance: ${(t.easyShare14d * 100).toFixed(0)}% easy${t.easyShare14d < 0.7 ? ' (low — runner is grinding too much tempo)' : t.easyShare14d > 0.85 ? ' (very polarized)' : ''}.`);
+      if (t.heavyBlockSuspected) lines.push('  HEAVY BLOCK FLAG: recent stretch has been hard. Don\'t add load.');
+      if (t.rebuildAfterBreak) lines.push('  REBUILD FLAG: coming back from a break — handle gently.');
+      return lines.join('\n');
+    })();
+
     const userPrompt = [
       `Write a race brief for ${input.raceName} on ${input.raceDate}.`,
       `Goal: ${input.goalDisplay}.`,
       `Course: ${input.courseSummary}`,
       weatherLine,
       slowdownContext,
+      trainingRead,
       '',
       horizonInstructions[horizon],
+      '',
+      'When training context is provided, weave the on-track read into the brief naturally — not as a separate sentence labeled "Training," but as an honest call (e.g. "you\'ve got real headroom — keep building," or "the goal is a stretch from here," or "right where you need to be"). Don\'t parrot the numbers; use them.',
       '',
       'Voice rules apply across all horizons: plain language, no §-numbers in the body, no jargon-without-translation, no hedge words, no false urgency.',
     ].join('\n');

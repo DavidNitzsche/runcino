@@ -15,6 +15,8 @@ import { coach } from '../../../coach/coach';
 import { llmAvailable } from '../../../coach/llm';
 import { getCourseFacts } from '../../../lib/course-facts';
 import type { CoachDecision } from '../../../coach/types';
+import { gatherCoachState } from '../../../lib/coach-state';
+import { vdotSnapshot, vdotRow } from '../../../lib/vdot';
 
 type Body = {
   courseSlug: string;
@@ -133,6 +135,66 @@ export async function POST(req: Request) {
     return Math.round((t1 - t0) / (24 * 3600 * 1000));
   })();
 
+  // Pull the runner's training state so the brief can talk about
+  // whether they're on track for the goal, building well, etc. State
+  // walks Postgres (saved races, race plans) + Strava activities;
+  // failures are non-fatal — the brief still works without it, just
+  // without the on-track read. ~150ms typical.
+  const trainingContext = await (async () => {
+    try {
+      const state = await gatherCoachState();
+      const snap = vdotSnapshot(state);
+      // Project current VDOT onto this race's distance to get a
+      // race-equivalent time. Same VDOT lookup table the dashboard
+      // tile uses, just rotated to read out a different distance.
+      const vdotImpliedRaceTimeS = (() => {
+        if (!snap || totalMi <= 0) return null;
+        const row = vdotRow(snap.vdot);
+        if (!row) return null;
+        // Snap to the canonical VDOT-table distance the runner's race
+        // is closest to. ±5% tolerance matches the lookup-table rule.
+        const dists: Array<{ key: keyof typeof row; mi: number }> = [
+          { key: 'mileS',     mi: 1 },
+          { key: 'km5S',      mi: 3.107 },
+          { key: 'km10S',     mi: 6.214 },
+          { key: 'km15S',     mi: 9.321 },
+          { key: 'halfS',     mi: 13.109 },
+          { key: 'marathonS', mi: 26.219 },
+        ];
+        for (const d of dists) {
+          if (Math.abs(totalMi - d.mi) / d.mi < 0.05) {
+            const v = row[d.key];
+            return typeof v === 'number' ? v : null;
+          }
+        }
+        return null;
+      })();
+      const goalTimeS = (() => {
+        if (!body.goalDisplay) return null;
+        const m = body.goalDisplay.trim().match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+        if (!m) return null;
+        const h = m[3] ? Number(m[1]) : 0;
+        const min = m[3] ? Number(m[2]) : Number(m[1]);
+        const sec = m[3] ? Number(m[3]) : Number(m[2]);
+        return h * 3600 + min * 60 + sec || null;
+      })();
+      return {
+        vdot: snap?.vdot ?? null,
+        vdotImpliedRaceTimeS,
+        goalTimeS,
+        weeklyAvg4w: state.volume.weeklyAvg4w,
+        weeklyAvg8w: state.volume.weeklyAvg8w,
+        deltaPct4v4: state.volume.deltaPct4v4,
+        longestLast28Mi: state.volume.longestLast28Mi,
+        easyShare14d: state.intensity.easyShare14d,
+        heavyBlockSuspected: state.flags.heavyBlockSuspected,
+        rebuildAfterBreak: state.flags.rebuildAfterBreak,
+      };
+    } catch {
+      return undefined;  // brief still works without training context
+    }
+  })();
+
   let decision: CoachDecision<string>;
   try {
     decision = await coach.briefRaceMorning({
@@ -147,6 +209,7 @@ export async function POST(req: Request) {
       elevationFt,
       raceDistanceMi: totalMi > 0 ? totalMi : undefined,
       daysToRace: serverDaysToRace,
+      trainingContext,
     });
   } catch (e) {
     return new Response(
