@@ -198,6 +198,7 @@ function zoneForWorkout(type: RunWorkoutType): DanielsPace | null {
     case 'strides_appended':    return 'R';
     case 'shakeout':            return 'E';
     case 'race':                return null;  // pace IS race pace; no band
+    case 'vdot_test_5k':        return null;  // all-out effort, no band
     case 'rest':                return null;
   }
 }

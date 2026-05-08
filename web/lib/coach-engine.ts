@@ -27,7 +27,7 @@ import {
 } from './coach-principles';
 import {
   type RunWorkoutType, type RunPrescription,
-  defaultByDow, recovery, generalAerobic, easyWithStrides, mediumLong,
+  defaultByDow, recovery, generalAerobic, easyWithStrides, mediumLong, vdotTest5K,
   longSteady, longProgression, longMpBlock, thresholdContinuous,
   thresholdIntervals, subThreshold, vo2, marathonSpecific, shakeout, rest, race,
 } from './coach-workouts';
@@ -35,6 +35,7 @@ import {
   prescribeStrength, strengthWeekContext, type StrengthPrescription,
 } from './coach-strength';
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
+import { shouldPromptVdotTest } from './vdot';
 
 export type WorkoutType = RunWorkoutType;
 
@@ -180,6 +181,30 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     if (r) return r;
   }
 
+  // VDOT test override: when no recent race exists or the current
+  // VDOT signal is stale/expired, the Coach swaps the next quality
+  // day for a 5K time trial. Doctrine: VDOT_FIELD_TESTS +
+  // VDOT_TEST_TRIGGERS (Research/01 §"Field-test protocols").
+  //
+  // Guards:
+  //   - Skip during TAPER and POST_RACE — race prep + recovery take
+  //     priority and quality-day overrides would break those windows.
+  //   - Only swap on a "quality day" per defaultByDow — replacing an
+  //     easy run with a 5K TT would break the easy/hard distribution.
+  //   - Only fires when shouldPromptVdotTest reports a stale/missing
+  //     signal — not when the current VDOT is fresh.
+  if (phase !== 'TAPER' && phase !== 'POST_RACE' && shouldPromptVdotTest(state)) {
+    const def = defaultByDow(phase, dow);
+    const isQualityDay = def.primary === 'threshold'
+                      || def.primary === 'threshold_intervals'
+                      || def.primary === 'sub_threshold'
+                      || def.primary === 'vo2'
+                      || def.primary === 'marathon_specific';
+    if (isQualityDay) {
+      return vdotTest5K();
+    }
+  }
+
   // Plan-template path (Stage 4): pick the active template for this
   // runner + goal race, classify today's slot in its sample peak week.
   // The template gives the SHAPE of the week (which days are quality,
@@ -296,6 +321,7 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
     case 'strides_appended':   return easyWithStrides(baseEasy, state);
     case 'shakeout':           return shakeout();
     case 'race':               return state.races.nextA ? race(state.races.nextA.distanceMi, state.races.nextA.name) : rest('No race scheduled.');
+    case 'vdot_test_5k':       return vdotTest5K();
     case 'rest':               return rest('Scheduled rest day.');
   }
 }

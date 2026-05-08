@@ -525,6 +525,7 @@ function CoachTodayCard() {
     shakeout:            'var(--color-success)',
     rest:                'var(--color-t3)',
     race:                'var(--color-attention)',
+    vdot_test_5k:        'var(--color-warning)',
   };
   const dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
   const todayUtcDow = new Date(payload.weekShape.find(d => d.isToday)?.date + 'T12:00:00Z').getUTCDay();

@@ -28,6 +28,7 @@ export type RunWorkoutType =
   | 'vo2'
   | 'marathon_specific'
   | 'strides_appended'      // strides appended to an easy run, not their own day
+  | 'vdot_test_5k'          // 5K time trial — anchors VDOT when no recent race
   | 'rest'
   | 'shakeout'
   | 'race';
@@ -253,6 +254,24 @@ export function race(distanceMi: number, name: string): RunPrescription {
     paceTargetSPerMi: null, hrZone: null,
     description: `Race day · ${name} · trust the plan, execute the pacing strategy`,
     isQuality: true, isLong: distanceMi >= 13.1, appendStrides: false,
+  };
+}
+
+/** 5K time trial — Coach prescribes this when the runner has no
+ *  recent race or VDOT is stale/expired (Research/01 §"Field-test
+ *  protocols"). Replaces a quality day, not added on top.
+ *
+ *  Distance is fixed at 3.1 miles (5K). Total session including
+ *  warm-up + cool-down is ~5 mi. */
+export function vdotTest5K(): RunPrescription {
+  return {
+    type: 'vdot_test_5k', label: 'VDOT test · 5K time trial',
+    distanceMi: 5.1,                     // 1.5mi WU + 3.1mi TT + 0.5mi CD
+    durationMin: null,
+    paceTargetSPerMi: null,              // pace target is "all-out", not a band
+    hrZone: 5,
+    description: '1.5 mi easy WU · 3.1 mi (5K) all-out · 0.5 mi easy CD · run as a race effort, on a flat course or track if you can. We anchor every pace prescription on the result. Apply +1 VDOT for solo effort.',
+    isQuality: true, isLong: false, appendStrides: false,
   };
 }
 
