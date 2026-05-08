@@ -280,12 +280,11 @@ export default function LibraryPage() {
                 <Field label="Structure" value={w.structure} />
                 <Field label="Example · VDOT 44" value={w.exampleAtVdot44} mono />
                 <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
-                  <Link href={`/research/workouts`} style={{
+                  <span style={{
                     fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-corporate)',
-                    textDecoration: 'none',
                   }}>
-                    {w.citation} →
-                  </Link>
+                    {w.citation}
+                  </span>
                 </div>
               </div>
             ))}

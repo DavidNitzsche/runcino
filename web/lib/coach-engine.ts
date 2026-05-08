@@ -37,7 +37,7 @@ import {
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
 import { shouldPromptVdotTest } from './vdot';
 import { longRunTargetMi } from './long-run-cap';
-import { POST_RACE_BY_DISTANCE } from '../coach/doctrine';
+import { POST_RACE_BY_DISTANCE, REVERSE_TAPER_PROTOCOL, MARATHON_RECOVERY_4WK_REVERSE_TAPER } from '../coach/doctrine';
 import { postRaceDistanceBand } from './recovery-distance';
 
 export type WorkoutType = RunWorkoutType;
@@ -307,28 +307,45 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   const lightEnd = Math.round(parseDayRange(band.returnToLongRunsDay, 'high') * stageMul);
   const easyEnd  = Math.round(band.totalRecoveryDaysNoQualityHigh * stageMul);
 
+  // Reverse-taper week-by-week focus from REVERSE_TAPER_PROTOCOL
+  // (and the marathon-specific MARATHON_RECOVERY_4WK_REVERSE_TAPER
+  // when applicable). The week-post-race lookup gives us the doctrine
+  // focus line to append to the prescription's voice description so
+  // the runner sees the WHY of today's volume, not just the number.
+  const weeksPostRace = Math.floor(days / 7) + 1;
+  const reverseTaperWeek = REVERSE_TAPER_PROTOCOL.value.find(w => w.weekPostRace === Math.min(weeksPostRace, 6))
+    ?? REVERSE_TAPER_PROTOCOL.value[REVERSE_TAPER_PROTOCOL.value.length - 1];
+  const isMarathon = distMi >= 22;
+  const marathonWeek = isMarathon
+    ? MARATHON_RECOVERY_4WK_REVERSE_TAPER.value.find(w => w.weekPostRace === Math.min(weeksPostRace, 4))
+    : null;
+  const focusSuffix = marathonWeek
+    ? ` · Week ${weeksPostRace} marathon recovery: ${marathonWeek.notes}`
+    : ` · Week ${weeksPostRace} recovery focus: ${reverseTaperWeek.focus}`;
+
   if (days <= restEnd) {
     const racesDesc = state.races.recent.length > 1
       ? `${state.races.recent.length} races in ${state.races.recent[state.races.recent.length - 1].daysAgo} days (last: ${mostRecent.name})`
       : `${days === 0 ? 'Race day' : `${days} day${days === 1 ? '' : 's'}`} since ${mostRecent.name}`;
-    return rest(`${racesDesc}. Full rest today. ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
+    return rest(`${racesDesc}. Full rest today.${focusSuffix} ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
   }
   if (days <= lightEnd) {
     return {
       type: 'recovery', label: 'Recovery run',
       distanceMi: 2.5, durationMin: null,
       paceTargetSPerMi: null, hrZone: 1,
-      description: `2-3 mi very easy · circulation, not adaptation · or rest if legs aren\'t ready`,
+      description: `2-3 mi very easy · circulation, not adaptation · or rest if legs aren\'t ready${focusSuffix}`,
       isQuality: false, isLong: false, appendStrides: false,
     };
   }
   if (days <= easyEnd) {
     const baseEasy = baseEasyMi(state, 'POST_RACE');
+    const milesPrescribed = round1(Math.max(3, Math.min(baseEasy * 0.7, 6)));
     return {
       type: 'general_aerobic', label: 'General aerobic',
-      distanceMi: round1(Math.max(3, Math.min(baseEasy * 0.7, 6))), durationMin: null,
+      distanceMi: milesPrescribed, durationMin: null,
       paceTargetSPerMi: null, hrZone: 2,
-      description: `${round1(Math.max(3, Math.min(baseEasy * 0.7, 6)))} mi easy aerobic · stay conversational · gradual return`,
+      description: `${milesPrescribed} mi easy aerobic · stay conversational · gradual return${focusSuffix}`,
       isQuality: false, isLong: false, appendStrides: false,
     };
   }

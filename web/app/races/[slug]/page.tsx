@@ -237,6 +237,9 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
 
           <ResultSection race={enrichedRace} />
 
+          {/* Post-race retrospective — only when result is on file. */}
+          {isPastWithResult(race) && <RetrospectTile race={enrichedRace} />}
+
           {/* Goal-spread + similar-races context — pre-race planning. */}
           {!isPastWithResult(race) && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
@@ -815,6 +818,135 @@ function fmtTime(s: number): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+/* ── Retrospect tile ─────────────────────────────────────────
+   Two-paragraph LLM-generated reflection on what just happened.
+   Renders below the result section once a finish is on file.
+   First load: shows a "Generate retrospective" button. After the
+   call returns: persists the narrative in component state for the
+   session (re-clicks show the same text). The runner re-generates
+   manually if they want a fresh take. */
+function RetrospectTile({ race }: { race: SavedRace }) {
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [delta, setDelta] = useState<{ gapMultiplier?: number; carbToleranceDelta?: number; easyPaceFloorDelta?: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [brain, setBrain] = useState<'deterministic' | 'llm' | null>(null);
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/retrospect', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: race.slug }),
+      });
+      const json = await res.json() as {
+        ok: boolean;
+        error?: string;
+        answer?: { narrative: string; calibrationDelta?: typeof delta };
+        brain?: 'deterministic' | 'llm';
+      };
+      if (!json.ok || !json.answer) {
+        throw new Error(json.error ?? 'No retrospective returned');
+      }
+      setNarrative(json.answer.narrative);
+      setDelta(json.answer.calibrationDelta ?? null);
+      setBrain(json.brain ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="tile" style={{
+      marginTop: 14, padding: '20px 24px',
+      borderLeft: '3px solid var(--color-corporate)',
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub" style={{ color: 'var(--color-corporate)' }}>Coach retrospective</div>
+          <div className="tile-lbl">{narrative ? 'What we learned' : 'Generate a reflection on this race'}</div>
+        </div>
+        {brain && (
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+            padding: '3px 7px', borderRadius: 3,
+            background: brain === 'llm' ? 'rgba(79,143,247,0.15)' : 'rgba(255,255,255,0.06)',
+            color: brain === 'llm' ? 'var(--color-corporate)' : 'var(--color-t3)',
+          }}>{brain.toUpperCase()}</span>
+        )}
+      </div>
+
+      {!narrative && !loading && !error && (
+        <>
+          <div style={{ fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
+            A two-paragraph reflection in the Coach&apos;s voice — what actually happened, what to take forward. Combines this race&apos;s plan + actual splits + your current training context.
+          </div>
+          <button
+            type="button"
+            onClick={generate}
+            className="btn btn--primary"
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Generate retrospective
+          </button>
+        </>
+      )}
+
+      {loading && (
+        <div style={{ fontSize: 12, color: 'var(--color-t3)', fontStyle: 'italic' }}>
+          Coach is reviewing the race…
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: 'var(--color-warning)', lineHeight: 1.5 }}>
+          {error}
+          <button type="button" onClick={generate} className="btn btn--ghost" style={{ marginLeft: 12 }}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {narrative && (
+        <>
+          <div style={{
+            fontSize: 14, color: 'var(--color-t1)', lineHeight: 1.6, whiteSpace: 'pre-wrap',
+          }}>
+            {narrative}
+          </div>
+          {delta && Object.keys(delta).length > 0 && (
+            <div style={{
+              padding: '10px 12px', background: 'var(--color-l2)', borderRadius: 6,
+              borderLeft: '2px solid var(--color-attention)',
+              fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.5,
+            }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px', color: 'var(--color-attention)', marginBottom: 4 }}>
+                CALIBRATION DELTA · COACH RECOMMENDATION
+              </div>
+              {delta.gapMultiplier != null && <div>Gap multiplier: {delta.gapMultiplier > 0 ? '+' : ''}{delta.gapMultiplier.toFixed(2)} (expect more from yourself going forward)</div>}
+              {delta.carbToleranceDelta != null && <div>Carb tolerance: {delta.carbToleranceDelta > 0 ? '+' : ''}{delta.carbToleranceDelta} g/hr</div>}
+              {delta.easyPaceFloorDelta != null && <div>Easy pace floor: {delta.easyPaceFloorDelta > 0 ? '+' : ''}{delta.easyPaceFloorDelta} s/mi</div>}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={generate}
+            className="btn btn--ghost"
+            style={{ alignSelf: 'flex-start', fontSize: 11 }}
+          >
+            Regenerate
+          </button>
+        </>
+      )}
+    </div>
+  );
 }
 
 /* ── Goal targets — A/B/C pacing variants ─────────────────────

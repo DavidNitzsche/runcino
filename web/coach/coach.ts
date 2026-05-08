@@ -221,6 +221,9 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
 }
 
 export interface RetrospectInput extends CoachBaseContext {
+  /** Current training state — VDOT, recent volume, ACWR. Used to
+   *  contextualize the race's calibration deltas vs current fitness. */
+  state: CoachState;
   /** The plan as built (mile splits + phase pacing). */
   plan: unknown;
   /** What actually happened (Strava actuals + per-mile splits). */
@@ -350,8 +353,100 @@ class CoachImpl implements Coach {
   paceStrategy(): Promise<CoachDecision<PaceStrategyOutput>> { return this.notYet(1, 'paceStrategy'); }
   taperDepth(): Promise<CoachDecision<number>> { return this.notYet(1, 'taperDepth'); }
   fuelingFor(): Promise<CoachDecision<FuelingPlan>> { return this.notYet(1, 'fuelingFor'); }
-  retrospect(): Promise<CoachDecision<RetrospectiveOutput>> { return this.notYet(4, 'retrospect'); }
   adjustForReality(): Promise<CoachDecision<AdjustedPlan>> { return this.notYet(5, 'adjustForReality'); }
+
+  // ── Stage 4 · Post-race retrospective ──────────────────────────────
+  // Two-paragraph reflection after a race lands. Plan + actual go in;
+  // narrative + optional calibration delta come out. LLM brain when
+  // ANTHROPIC_API_KEY is set; deterministic fallback summarizes the
+  // numeric delta otherwise.
+  async retrospect(input: RetrospectInput): Promise<CoachDecision<RetrospectiveOutput>> {
+    // Extract a few headline numbers for both branches.
+    const plan = input.plan as { race?: { name?: string; distance_mi?: number; goal_seconds?: number } } | null;
+    const actual = input.actual as {
+      finishS?: number;
+      paceSPerMi?: number;
+      avgHr?: number | null;
+      miles?: Array<{ mile: number; paceSPerMi: number }>;
+    } | null;
+    const raceName = plan?.race?.name ?? 'the race';
+    const distMi = plan?.race?.distance_mi ?? null;
+    const goalS = plan?.race?.goal_seconds ?? null;
+    const finishS = actual?.finishS ?? null;
+    const paceSPerMi = actual?.paceSPerMi ?? null;
+    const deltaS = goalS != null && finishS != null ? finishS - goalS : null;
+    const deltaPct = goalS != null && finishS != null && goalS > 0
+      ? ((finishS - goalS) / goalS) * 100 : null;
+
+    // Per-mile fade analysis — first half vs second half average pace.
+    const miles = actual?.miles ?? [];
+    const fade = miles.length >= 4 ? (() => {
+      const half = Math.floor(miles.length / 2);
+      const firstHalf = miles.slice(0, half).reduce((a, m) => a + m.paceSPerMi, 0) / half;
+      const secondHalf = miles.slice(half).reduce((a, m) => a + m.paceSPerMi, 0) / (miles.length - half);
+      return secondHalf - firstHalf;  // positive = slowed; negative = sped up
+    })() : null;
+
+    if (!llmAvailable()) {
+      // Deterministic fallback — summarizes the numeric story without
+      // the voice polish.
+      const goalLine = deltaS != null && deltaPct != null
+        ? deltaS < 0
+          ? `Beat the goal by ${formatHm(Math.abs(deltaS))} (${Math.abs(deltaPct).toFixed(1)}% under).`
+          : deltaS > 0
+          ? `Came in ${formatHm(deltaS)} over goal (${deltaPct.toFixed(1)}% over).`
+          : 'Hit goal time on the dot.'
+        : finishS != null ? `Finished in ${formatHm(finishS)}.` : 'Finished the race.';
+      const fadeLine = fade != null
+        ? Math.abs(fade) < 5 ? 'Pace held remarkably even start to finish.'
+          : fade > 0 ? `Faded ${Math.round(fade)}s/mi in the back half — typical race effort, watch it on the next one.`
+          : `Negative-split by ${Math.round(Math.abs(fade))}s/mi — strong finishing legs.`
+        : '';
+      const narrative = [
+        `${raceName}: ${goalLine}${fadeLine ? ` ${fadeLine}` : ''}`,
+        'Calibration recommendation pending — re-anchor VDOT once results sync from Strava and let the next 2-3 weeks of training data validate the new fitness level before adjusting paces broadly.',
+      ].join('\n\n');
+      return {
+        answer: { narrative, calibrationDelta: undefined },
+        rationale: 'Deterministic retrospect — no LLM available. Numeric summary + standard recalibration cadence.',
+        citations: [
+          { doc: 'Research/00b-recovery-protocols.md', section: '§Post-Race', snippet: 'Re-anchor VDOT after a race; validate via 2-3 weeks of training before broad pace recalibration.' },
+        ],
+        brain: 'deterministic',
+      };
+    }
+
+    // LLM path — give the model the plan, the actual, and explicit
+    // numeric facts; ask for a two-paragraph reflection in the Coach
+    // voice + an optional calibrationDelta when there's a strong signal.
+    const facts = [
+      `Race: ${raceName}`,
+      distMi != null ? `Distance: ${distMi.toFixed(2)} mi` : null,
+      goalS != null ? `Goal time: ${formatHms(goalS)}` : null,
+      finishS != null ? `Finish time: ${formatHms(finishS)}` : null,
+      deltaS != null ? `Delta vs goal: ${deltaS >= 0 ? '+' : ''}${formatHm(Math.abs(deltaS))} (${deltaPct?.toFixed(1)}%)` : null,
+      paceSPerMi != null ? `Avg pace: ${formatPaceShort(paceSPerMi)}/mi` : null,
+      actual?.avgHr ? `Avg HR: ${actual.avgHr} bpm` : null,
+      fade != null ? `Pace fade (back half - front half): ${fade >= 0 ? '+' : ''}${Math.round(fade)}s/mi` : null,
+    ].filter(Boolean).join('\n');
+
+    return callCoachLLM<RetrospectiveOutput>({
+      scope: 'running',
+      userPrompt: [
+        `Two-paragraph race retrospective for the runner. Voice: direct, specific, no fluff.`,
+        ``,
+        `Numeric facts:`,
+        facts,
+        ``,
+        `Paragraph 1: what actually happened — the story of the race in 2-3 sentences. Reference the headline number (delta vs goal), the pacing arc (front-loaded / even / negative-split / faded), and one telling detail from the data above. Don't congratulate generically; observe specifically.`,
+        ``,
+        `Paragraph 2: what to take forward. If a calibration insight is strong (e.g. fade > 15 s/mi second half = train more long MP work; came in dramatically under = VDOT is stale and needs re-anchoring), name it. If it was a clean execution at expected fitness, say "the data is consistent — keep building."`,
+        ``,
+        `Optionally include a calibrationDelta object with one or more of: gapMultiplier (positive = expect more from yourself), carbToleranceDelta (g/hr adjustment), easyPaceFloorDelta (s/mi). Only set fields when the signal is unambiguous; one race rarely justifies multiple calibration moves.`,
+      ].join('\n'),
+      answerSchema: 'an object with a "narrative" string (two paragraphs joined by \\n\\n) and an optional "calibrationDelta" object with optional gapMultiplier, carbToleranceDelta, easyPaceFloorDelta numeric fields',
+    });
+  }
 
   // ── Stage 3 · Daily prescription ───────────────────────────────────
   // Wraps the existing coachDaily() engine. The engine's output is
@@ -993,8 +1088,31 @@ function isHardWorkoutType(type: string): boolean {
   );
 }
 
+// ── Time-format helpers used by retrospect ─────────────────────────
+function formatHms(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.round(s % 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function formatHm(s: number): string {
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h` : `${h}h${rem}m`;
+}
+
+function formatPaceShort(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
  *  Stage 2 implements `briefRaceMorning`; Stage 3 adds `prescribeWorkout`
- *  + `assessReadiness`; other methods still stub with a clear "Stage N"
- *  error. Each stage flips one or more from stub → real. */
+ *  + `assessReadiness`; Stage 4 adds `retrospect`. Other methods still
+ *  stub with a clear "Stage N" error. Each stage flips one or more from
+ *  stub → real. */
 export const coach: Coach = new CoachImpl();
