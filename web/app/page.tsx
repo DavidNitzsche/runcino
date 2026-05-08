@@ -420,7 +420,11 @@ function Greeting({
       <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: 2.2, textTransform: 'uppercase', color: 'var(--color-t2)', fontWeight: 700 }}>
         {greeting(now)}
       </div>
-      <div style={{ fontFamily: 'var(--font-display)', fontSize: 96, fontWeight: 700, letterSpacing: '-.01em', lineHeight: .85, textTransform: 'uppercase', color: 'var(--color-t0)' }}>
+      {/* DAVID title — sized down to 56px from the audit's 96px so
+          the visual hierarchy puts the next-race + race chip above
+          the runner's name. The runner already knows their name;
+          the dashboard's job is to surface what to DO. Audit #26. */}
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 56, fontWeight: 700, letterSpacing: '-.01em', lineHeight: 1, textTransform: 'uppercase', color: 'var(--color-t1)' }}>
         David
       </div>
       {hl && (
@@ -1270,9 +1274,25 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
     return dayLabels[(d + 6) % 7];
   };
 
+  // First non-rest day in the strip — when the strip is mostly empty
+  // (post-race, taper, etc), surface "Returns Day X: ..." so the
+  // dashboard isn't a silent grey row. Audit #20.
+  const firstActiveIdx = days.findIndex(d => d.type !== 'rest' && d.distanceMi > 0);
+  const returnsCallout = firstActiveIdx > 0 && firstActiveIdx < days.length
+    ? { idx: firstActiveIdx, day: days[firstActiveIdx] }
+    : null;
+  const subPieces = [
+    `${Math.round(totalMi)} mi`,
+    `${qualityCount} quality`,
+    `${longCount} long`,
+  ];
+  if (returnsCallout) {
+    subPieces.push(`returns Day ${returnsCallout.idx + 1}: ${returnsCallout.day.label.toLowerCase()}`);
+  }
+
   return (
     <>
-      <SectionHeader title="Next 30 days" sub={`${Math.round(totalMi)} mi · ${qualityCount} quality · ${longCount} long`} />
+      <SectionHeader title="Next 30 days" sub={subPieces.join(' · ')} />
 
       <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
         {/* 30-day strip — fixed-width grid, scrolls horizontally on

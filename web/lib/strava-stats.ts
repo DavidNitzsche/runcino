@@ -205,20 +205,24 @@ export function trainingPulse(
     ? Math.floor((Date.parse(todayISO) - Date.parse(lastRace.date)) / 86_400_000)
     : null;
 
-  // Last 28 days of activities for long-run analysis
+  // Last 28 days of activities for long-run analysis. Races are
+  // excluded — a 26.2 mi marathon is NOT a "long run" in the
+  // training-volume sense; including it overstates current capability.
+  // Audit #24.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 28);
   const cutoffISO = cutoff.toISOString().slice(0, 10);
-  const last28 = activities.filter(a => a.date >= cutoffISO);
-  const longestRecentMi = last28.length > 0 ? Math.round(Math.max(...last28.map(a => a.distanceMi)) * 10) / 10 : 0;
+  const last28NonRace = activities.filter(a => a.date >= cutoffISO && !isProbablyRace(a));
+  const longestRecentMi = last28NonRace.length > 0 ? Math.round(Math.max(...last28NonRace.map(a => a.distanceMi)) * 10) / 10 : 0;
 
-  // Long-run avg: take the longest run from each of the last 4 weeks
+  // Long-run avg: take the longest non-race run from each of the
+  // last 4 weeks. Races excluded for the same reason as longestRecentMi.
   const longestPerWeek = recent4.map(w => {
     const start = w.weekStart;
     const endDate = new Date(start); endDate.setDate(endDate.getDate() + 7);
     const end = endDate.toISOString().slice(0, 10);
-    const inWeek = activities.filter(a => a.date >= start && a.date < end);
+    const inWeek = activities.filter(a => a.date >= start && a.date < end && !isProbablyRace(a));
     return inWeek.length > 0 ? Math.max(...inWeek.map(a => a.distanceMi)) : 0;
   }).filter(mi => mi > 0);
   const longRunAvgMi = longestPerWeek.length > 0

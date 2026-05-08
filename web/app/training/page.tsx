@@ -802,10 +802,12 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
       {/* Bar chart */}
       <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 140, marginTop: 16, position: 'relative' }}>
         {weeks.map((w, i) => {
-          const projected = w.isFuture ? Math.min(last4Avg, 0) : 0;  // For now don't project forward bars; show empty space
-          const heightMi = w.miles > 0 ? w.miles : projected;
+          // Future-week bars now project the runner's last-4-week
+          // trailing average so the long-arc shape is actually visible
+          // instead of empty grey space. Audit #14.
+          const heightMi = w.isFuture && last4Avg > 0 ? last4Avg : w.miles;
           const heightPct = heightMi > 0 ? (heightMi / max) * 100 : 0;
-          const color = w.isFuture ? phaseAccent[w.phase] + '88' : phaseAccent[w.phase];
+          const color = phaseAccent[w.phase];
           return (
             <div key={i} style={{
               flex: 1, height: '100%',
@@ -815,15 +817,19 @@ function BuildCurveTile({ runs, now, goalRace }: { runs: NormalizedActivity[]; n
               borderRadius: 3,
               outline: w.isRaceWeek ? '2px solid var(--color-warning)' : 'none',
             }}>
-              {w.miles > 0 && (
+              {heightMi > 0 && (
                 <div style={{
                   width: '70%',
                   height: `${heightPct}%`,
-                  background: color,
+                  // Future weeks: dashed-border outline, semi-transparent
+                  // fill in the phase color so projection IS visible.
+                  background: w.isFuture ? `${color}33` : color,
+                  border: w.isFuture ? `2px dashed ${color}` : 'none',
                   borderRadius: 2,
-                  opacity: w.isFuture ? 0.4 : 1,
-                  borderTop: w.isFuture ? `2px dashed ${color}` : 'none',
-                }} title={`${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`} />
+                  boxSizing: 'border-box',
+                }} title={w.isFuture
+                  ? `${w.weekISO} · projected ~${heightMi.toFixed(0)} mi · ${w.phase}`
+                  : `${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`} />
               )}
             </div>
           );
