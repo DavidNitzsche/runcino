@@ -1481,6 +1481,84 @@ function WorkoutRpeCard() {
    The runner asked: "it would help me recover better and be okay
    with it if I know why/what is happening." This tile answers that
    directly with named tissues, real timelines, and concrete what-to-do. */
+type BodyIconKey = 'bolt' | 'muscle' | 'chain' | 'neural' | 'shield'
+                 | 'spiral' | 'network' | 'stairs' | 'lungs' | 'spring';
+
+function BodyIcon({ k, size = 22, color }: { k: BodyIconKey; size?: number; color: string }) {
+  const s = { display: 'block' as const, color };
+  if (k === 'bolt') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor" style={s}>
+      <path d="M12 2L5 11h5l-2 8 8-11h-5l1-6z"/>
+    </svg>
+  );
+  if (k === 'muscle') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={s}>
+      <path d="M1 7C3.5 4.5 5.5 9.5 8 7C10.5 4.5 12.5 9.5 15 7C17 4.5 18.5 7.5 19 7"/>
+      <path d="M1 13C3.5 10.5 5.5 15.5 8 13C10.5 10.5 12.5 15.5 15 13C17 10.5 18.5 13.5 19 13"/>
+    </svg>
+  );
+  if (k === 'chain') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={s}>
+      <rect x="1" y="7" width="7" height="6" rx="3"/>
+      <rect x="12" y="7" width="7" height="6" rx="3"/>
+      <line x1="8" y1="10" x2="12" y2="10"/>
+    </svg>
+  );
+  if (k === 'neural') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" strokeLinecap="round" strokeWidth="1.8" style={s}>
+      <circle cx="10" cy="10" r="2.5" fill="currentColor" stroke="none"/>
+      <line x1="10" y1="1"  x2="10" y2="7"    stroke="currentColor" fill="none"/>
+      <line x1="10" y1="13" x2="10" y2="19"   stroke="currentColor" fill="none"/>
+      <line x1="1"  y1="10" x2="7"  y2="10"   stroke="currentColor" fill="none"/>
+      <line x1="13" y1="10" x2="19" y2="10"   stroke="currentColor" fill="none"/>
+      <line x1="3.5" y1="3.5" x2="6.8" y2="6.8"   stroke="currentColor" fill="none"/>
+      <line x1="13.2" y1="13.2" x2="16.5" y2="16.5" stroke="currentColor" fill="none"/>
+    </svg>
+  );
+  if (k === 'shield') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" style={s}>
+      <path d="M10 1.5L3 4.5v5C3 14.5 6.5 17.5 10 19c3.5-1.5 7-4.5 7-9.5v-5L10 1.5z"/>
+      <path d="M7 10l2 2 4-4"/>
+    </svg>
+  );
+  if (k === 'spiral') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={s}>
+      <ellipse cx="10" cy="10" rx="7.5" ry="4.5"/>
+      <path d="M6.5 10C6.5 7.5 10 7.5 10 10C10 12.5 13.5 12.5 13.5 10"/>
+    </svg>
+  );
+  if (k === 'network') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" strokeLinecap="round" strokeWidth="1.8" style={s}>
+      <circle cx="10" cy="3.5" r="2" fill="currentColor" stroke="none"/>
+      <circle cx="4"  cy="16" r="2" fill="currentColor" stroke="none"/>
+      <circle cx="16" cy="16" r="2" fill="currentColor" stroke="none"/>
+      <line x1="10" y1="5.5" x2="7"  y2="14" stroke="currentColor" fill="none"/>
+      <line x1="10" y1="5.5" x2="13" y2="14" stroke="currentColor" fill="none"/>
+    </svg>
+  );
+  if (k === 'stairs') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <polyline points="2,18 2,13 6,13 6,9 10,9 10,6 14,6 14,3 18,3"/>
+    </svg>
+  );
+  if (k === 'lungs') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M10 3v7"/>
+      <path d="M10 10C10 10 6 10 5 12C4 14 4 17 7 17C9 17 10 16 10 14"/>
+      <path d="M10 10C10 10 14 10 15 12C16 14 16 17 13 17C11 17 10 16 10 14"/>
+      <polyline points="7,3 10,1 13,3"/>
+    </svg>
+  );
+  // spring (tendon)
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <line x1="10" y1="1" x2="10" y2="4"/>
+      <polyline points="10,4 6,6.5 14,9 6,11.5 14,14 10,16.5"/>
+      <line x1="10" y1="16.5" x2="10" y2="19"/>
+    </svg>
+  );
+}
+
 type TissueItem = {
   name: string;
   detail: string;
@@ -1488,6 +1566,7 @@ type TissueItem = {
   maxDays: number;
   status: 'done' | 'healing' | 'slow';
   note: string;
+  iconKey: BodyIconKey;
 };
 
 function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: number }) {
@@ -1506,27 +1585,27 @@ function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: numb
       {tissues.map((t, i) => {
         const pct = Math.min(1, daysAgo / t.maxDays);
         const c = statusColor[t.status];
+        const isSlow = t.status === 'slow';
         return (
           <div key={i} style={{
-            padding: '12px 14px', borderRadius: 8,
-            background: 'var(--color-l2)',
-            border: `1px solid ${t.status === 'slow' ? 'rgba(252,77,84,.22)' : 'var(--color-l4)'}`,
-            display: 'flex', flexDirection: 'column', gap: 7,
+            padding: '14px', borderRadius: 10,
+            background: isSlow ? 'rgba(252,77,84,.06)' : 'var(--color-l2)',
+            border: `1px solid ${isSlow ? 'rgba(252,77,84,.28)' : 'var(--color-l4)'}`,
+            display: 'flex', flexDirection: 'column', gap: 8,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{
-                fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800,
-                letterSpacing: '1.2px', color: c,
-                padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor',
-              }}>{statusLabel[t.status]}</span>
-              <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px' }}>{t.window}</span>
-            </div>
+            <BodyIcon k={t.iconKey} size={22} color={c} />
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{t.name}</div>
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{t.detail}</div>
             </div>
-            <div style={{ height: 3, borderRadius: 2, background: 'var(--color-l4)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct * 100}%`, background: c, borderRadius: 2 }} />
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: c }}>{statusLabel[t.status]}</span>
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px' }}>{t.window}</span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: 'var(--color-l4)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct * 100}%`, background: c, borderRadius: 3 }} />
+              </div>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{t.note}</div>
           </div>
@@ -1565,6 +1644,7 @@ function BodyContextCard() {
         maxDays: 3,
         status: days <= 3 ? 'healing' : 'done',
         note: days <= 3 ? 'Refilling — prioritise carbs' : 'Fully restored',
+        iconKey: 'bolt',
       },
       {
         name: 'Muscle fibers',
@@ -1573,6 +1653,7 @@ function BodyContextCard() {
         maxDays: 10,
         status: days <= 10 ? 'healing' : 'done',
         note: days <= 6 ? 'Microdamage actively healing' : days <= 10 ? 'Nearly resolved' : 'Healed',
+        iconKey: 'muscle',
       },
       {
         name: 'Connective tissue',
@@ -1581,6 +1662,7 @@ function BodyContextCard() {
         maxDays: 28,
         status: 'slow',
         note: 'Slowest to heal — #1 injury risk now',
+        iconKey: 'chain',
       },
       ...(isMarathon ? [{
         name: 'CNS + hormones',
@@ -1589,6 +1671,7 @@ function BodyContextCard() {
         maxDays: 28,
         status: 'healing' as const,
         note: 'Easy aerobic resets; hard work delays',
+        iconKey: 'neural' as BodyIconKey,
       }] : []),
       {
         name: 'Immune system',
@@ -1597,6 +1680,7 @@ function BodyContextCard() {
         maxDays: 21,
         status: days <= 14 ? 'healing' : 'done',
         note: 'Sleep + carbs are protective',
+        iconKey: 'shield',
       },
     ];
 
@@ -1652,7 +1736,7 @@ function BodyContextCard() {
   }
 
   // ── Build / Peak / Taper / Base: visual adaptation grid ──────
-  type AdaptItem = { name: string; detail: string; window: string; note: string; color: string };
+  type AdaptItem = { name: string; detail: string; window: string; note: string; color: string; iconKey: BodyIconKey };
   let intro = '';
   let introHeading = '';
   let adaptItems: AdaptItem[] = [];
@@ -1662,30 +1746,30 @@ function BodyContextCard() {
     introHeading = 'Build phase';
     intro = 'You\'re in the part of the cycle where fitness gains land. Threshold + intervals + race-pace exposure — the work that lifts your aerobic ceiling AND your lactate clearance.';
     adaptItems = [
-      { name: 'Mitochondria',       detail: 'Density + efficiency',   window: 'Ongoing',   note: 'Every easy mile feeds this',              color: 'var(--color-success)'   },
-      { name: 'Capillarization',    detail: 'Muscle fiber networks',  window: '2–4 weeks', note: 'New capillaries forming now',             color: 'var(--color-corporate)' },
-      { name: 'Lactate threshold',  detail: 'T-zone work',           window: '3–6 weeks', note: 'Shifts upward with consistent tempo',     color: 'var(--color-attention)' },
-      { name: 'VO₂max',             detail: 'Interval response',     window: '4–6 weeks', note: 'Responds to short fast reps',             color: 'var(--color-warning)'   },
-      { name: 'Tendon stiffness',   detail: 'Load tolerance',        window: 'Gradual',   note: 'Hard sessions feel easier over time',    color: 'var(--color-t2)'        },
+      { name: 'Mitochondria',      detail: 'Density + efficiency',  window: 'Ongoing',   note: 'Every easy mile feeds this',             color: 'var(--color-success)',   iconKey: 'spiral'  },
+      { name: 'Capillarization',   detail: 'Muscle fiber networks', window: '2–4 weeks', note: 'New capillaries forming now',            color: 'var(--color-corporate)', iconKey: 'network' },
+      { name: 'Lactate threshold', detail: 'T-zone work',          window: '3–6 weeks', note: 'Shifts upward with consistent tempo',    color: 'var(--color-attention)', iconKey: 'stairs'  },
+      { name: 'VO₂max',            detail: 'Interval response',    window: '4–6 weeks', note: 'Responds to short fast reps',            color: 'var(--color-warning)',   iconKey: 'lungs'   },
+      { name: 'Tendon stiffness',  detail: 'Load tolerance',       window: 'Gradual',   note: 'Hard sessions feel easier over time',   color: 'var(--color-t2)',        iconKey: 'spring'  },
     ];
     whyNote = 'The engine reads your real signals (RPE drift, ACWR, easy-share, volume momentum) and bumps or dampens prescriptions accordingly. Crushing your prescriptions = engine adds load. Signs of stress = engine pulls back.';
   } else if (phase === 'TAPER') {
     introHeading = 'Taper week';
     intro = 'You\'re not building fitness anymore — you\'re storing it. Volume drops 40-60% over 2 weeks; intensity stays. The body is repaying the bank.';
     adaptItems = [
-      { name: 'Glycogen stores',    detail: 'Race-day fuel',          window: 'Building',  note: 'Peak carb load heading to race day',     color: 'var(--color-success)'   },
-      { name: 'Mitochondria',       detail: 'Erosion: 4–6 weeks',    window: 'Holding',   note: 'Safely holding on reduced load',         color: 'var(--color-corporate)' },
-      { name: 'CNS',                detail: 'Neuromuscular',         window: 'Freshening',note: 'Legs feel snappier toward race day',     color: 'var(--color-attention)' },
-      { name: 'Immune system',      detail: 'URI risk',              window: 'Rebounding', note: 'Load drop lowers illness risk',          color: 'var(--color-success)'   },
-      { name: 'Hormonal balance',   detail: 'Cortisol · testosterone',window: 'Normalising',note: 'Cortisol drops, testosterone normalises', color: 'var(--color-corporate)' },
+      { name: 'Glycogen stores',   detail: 'Race-day fuel',         window: 'Building',    note: 'Peak carb load heading to race day',    color: 'var(--color-success)',   iconKey: 'bolt'    },
+      { name: 'Mitochondria',      detail: 'Erosion: 4–6 weeks',   window: 'Holding',     note: 'Safely holding on reduced load',        color: 'var(--color-corporate)', iconKey: 'spiral'  },
+      { name: 'CNS',               detail: 'Neuromuscular',        window: 'Freshening',  note: 'Legs feel snappier toward race day',    color: 'var(--color-attention)', iconKey: 'neural'  },
+      { name: 'Immune system',     detail: 'URI risk',             window: 'Rebounding',  note: 'Load drop lowers illness risk',         color: 'var(--color-success)',   iconKey: 'shield'  },
+      { name: 'Hormonal balance',  detail: 'Cortisol · testost.',  window: 'Normalising', note: 'Cortisol drops, testosterone normalises',color: 'var(--color-corporate)', iconKey: 'neural'  },
     ];
   } else {
     introHeading = 'Base maintenance';
     intro = 'Aerobic foundation work. Outside the build window, the focus is durability — easy mileage that grows mitochondrial density + capillarization without adding race-specific stress.';
     adaptItems = [
-      { name: 'Mitochondria',     detail: 'Density + efficiency', window: 'Ongoing',   note: 'Every easy mile feeds this',          color: 'var(--color-success)'   },
-      { name: 'Capillarization',  detail: 'Muscle fiber networks',window: '2–4 weeks', note: 'Steady aerobic builds new networks',  color: 'var(--color-corporate)' },
-      { name: 'Connective tissue',detail: 'Tendons · fascia',     window: 'Gradual',   note: 'Durability builds with easy mileage', color: 'var(--color-t2)'        },
+      { name: 'Mitochondria',      detail: 'Density + efficiency', window: 'Ongoing',   note: 'Every easy mile feeds this',             color: 'var(--color-success)',   iconKey: 'spiral'  },
+      { name: 'Capillarization',   detail: 'Muscle fiber networks',window: '2–4 weeks', note: 'Steady aerobic builds new networks',     color: 'var(--color-corporate)', iconKey: 'network' },
+      { name: 'Connective tissue', detail: 'Tendons · fascia',     window: 'Gradual',   note: 'Durability builds with easy mileage',   color: 'var(--color-t2)',        iconKey: 'chain'   },
     ];
   }
 
@@ -1710,16 +1794,17 @@ function BodyContextCard() {
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${adaptItems.length}, 1fr)`, gap: 8 }}>
               {adaptItems.map((a, i) => (
                 <div key={i} style={{
-                  padding: '12px 14px', borderRadius: 8,
+                  padding: '14px', borderRadius: 10,
                   background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-                  display: 'flex', flexDirection: 'column', gap: 6,
+                  display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color, padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor', alignSelf: 'flex-start' }}>
-                    {a.window.toUpperCase()}
-                  </div>
+                  <BodyIcon k={a.iconKey} size={22} color={a.color} />
                   <div>
                     <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
                     <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{a.detail}</div>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color, padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor', alignSelf: 'flex-start' }}>
+                    {a.window.toUpperCase()}
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{a.note}</div>
                 </div>
