@@ -1481,6 +1481,61 @@ function WorkoutRpeCard() {
    The runner asked: "it would help me recover better and be okay
    with it if I know why/what is happening." This tile answers that
    directly with named tissues, real timelines, and concrete what-to-do. */
+type TissueItem = {
+  name: string;
+  detail: string;
+  window: string;
+  maxDays: number;
+  status: 'done' | 'healing' | 'slow';
+  note: string;
+};
+
+function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: number }) {
+  const statusColor: Record<TissueItem['status'], string> = {
+    done:    'var(--color-success)',
+    healing: 'var(--color-corporate)',
+    slow:    'var(--color-warning)',
+  };
+  const statusLabel: Record<TissueItem['status'], string> = {
+    done:    'DONE',
+    healing: 'HEALING',
+    slow:    'SLOW',
+  };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tissues.length}, 1fr)`, gap: 8 }}>
+      {tissues.map((t, i) => {
+        const pct = Math.min(1, daysAgo / t.maxDays);
+        const c = statusColor[t.status];
+        return (
+          <div key={i} style={{
+            padding: '12px 14px', borderRadius: 8,
+            background: 'var(--color-l2)',
+            border: `1px solid ${t.status === 'slow' ? 'rgba(252,77,84,.22)' : 'var(--color-l4)'}`,
+            display: 'flex', flexDirection: 'column', gap: 7,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{
+                fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800,
+                letterSpacing: '1.2px', color: c,
+                padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor',
+              }}>{statusLabel[t.status]}</span>
+              <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px' }}>{t.window}</span>
+            </div>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{t.name}</div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{t.detail}</div>
+            </div>
+            <div style={{ height: 3, borderRadius: 2, background: 'var(--color-l4)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct * 100}%`, background: c, borderRadius: 2 }} />
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{t.note}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function BodyContextCard() {
   const hub = useHub();
   if (!hub) return null;
@@ -1495,112 +1550,195 @@ function BodyContextCard() {
     ? recent.reduce((a, b) => a.distanceMi >= b.distanceMi ? a : b)
     : null;
 
-  // Build the narrative based on the runner's actual context.
-  const blocks: Array<{ heading: string; body: string }> = [];
-
+  // ── Post-race: visual tissue recovery grid ───────────────────
   if (mostRecent && mostRecent.daysAgo <= 14) {
     const days = mostRecent.daysAgo;
     const dist = biggest?.distanceMi ?? mostRecent.distanceMi;
     const isMarathon = dist >= 22;
     const isHalf = dist >= 11 && dist < 22;
-    const isShort = dist < 11;
 
-    blocks.push({
-      heading: `Day ${days} since ${mostRecent.name}`,
-      body: `Your body is in active repair from ${dist >= 22 ? 'a marathon-distance effort' : isHalf ? 'a half-marathon effort' : `a ${dist.toFixed(1)}-mile race`}. The plan reflects what's actually healing, not a textbook timeline.`,
-    });
+    const tissues: TissueItem[] = [
+      {
+        name: 'Glycogen',
+        detail: 'Energy stores',
+        window: '24–72h',
+        maxDays: 3,
+        status: days <= 3 ? 'healing' : 'done',
+        note: days <= 3 ? 'Refilling — prioritise carbs' : 'Fully restored',
+      },
+      {
+        name: 'Muscle fibers',
+        detail: 'CK · LDH biomarkers',
+        window: '5–10 days',
+        maxDays: 10,
+        status: days <= 10 ? 'healing' : 'done',
+        note: days <= 6 ? 'Microdamage actively healing' : days <= 10 ? 'Nearly resolved' : 'Healed',
+      },
+      {
+        name: 'Connective tissue',
+        detail: 'Tendons · fascia',
+        window: '2–4 weeks',
+        maxDays: 28,
+        status: 'slow',
+        note: 'Slowest to heal — #1 injury risk now',
+      },
+      ...(isMarathon ? [{
+        name: 'CNS + hormones',
+        detail: 'Cortisol · neuromuscular',
+        window: '2–4 weeks',
+        maxDays: 28,
+        status: 'healing' as const,
+        note: 'Easy aerobic resets; hard work delays',
+      }] : []),
+      {
+        name: 'Immune system',
+        detail: 'Open window',
+        window: '1–3 weeks',
+        maxDays: 21,
+        status: days <= 14 ? 'healing' : 'done',
+        note: 'Sleep + carbs are protective',
+      },
+    ];
 
-    // Tissue-by-tissue status. Pull real timelines from doctrine.
-    const tissueLines: string[] = [];
-    if (days <= 3) tissueLines.push('• <strong>Glycogen</strong> (24-72h to refill with carbs): replenishing.');
-    else tissueLines.push('• <strong>Glycogen</strong>: refilled (was 24-72h).');
+    return (
+      <>
+        <SectionHeader title="Why your body is here" sub="What's healing, building, or holding — and why" />
+        <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 14 }}>
 
-    if (days <= 6) tissueLines.push('• <strong>Muscle fibers</strong> (5-10 days): CK + LDH biomarkers peaking 24-48h, returning to baseline now. Microdamage actively healing.');
-    else if (days <= 10) tissueLines.push('• <strong>Muscle fibers</strong>: nearly resolved (5-10 day window).');
-    else tissueLines.push('• <strong>Muscle fibers</strong>: healed.');
+          <div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
+              Day {days} since {mostRecent.name}
+            </div>
+            <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+              Active repair from {isMarathon ? 'a marathon-distance effort' : isHalf ? 'a half-marathon effort' : `a ${dist.toFixed(1)}-mile race`}. The plan reflects what's actually healing, not a textbook timeline.
+            </div>
+          </div>
 
-    if (days <= 14) tissueLines.push('• <strong>Connective tissue</strong> (2-4 weeks): tendons + fascia rebuilding. This is the slowest. Loading intensity now is the #1 path to a tendon strain.');
-    else if (days <= 28) tissueLines.push('• <strong>Connective tissue</strong>: still in the back half of its 2-4 week window. Easing back toward quality.');
+          <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16 }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 12 }}>
+              What's actually healing
+            </div>
+            <TissueGrid tissues={tissues} daysAgo={days} />
+          </div>
 
-    if (days <= 14 && isMarathon) tissueLines.push('• <strong>CNS + hormonal balance</strong> (2-4 weeks post-marathon): cortisol elevated, neuromuscular coordination slightly off. Easy aerobic helps reset; hard sessions delay it.');
-    if (days <= 14) tissueLines.push('• <strong>Immune system</strong> (1-3 weeks): suppressed post-race. Sleep + carbs are protective.');
+          {heavyBlock && (
+            <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-warning)', textTransform: 'uppercase', marginBottom: 8 }}>
+                Heavy-block flag is on
+              </div>
+              <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+                {recent.length} race{recent.length === 1 ? '' : 's'} in the last {recent[recent.length - 1].daysAgo} days. Stacked race load compounds: each one creates micro-damage that overlaps before the previous heals. The most common injury pattern at this load is a stress fracture — bone remodeling lags muscle healing by 3-6 weeks. The plan honors this with extra rest days and reduced-volume easy aerobic, NOT generic "take a week off."
+              </div>
+            </div>
+          )}
 
-    if (tissueLines.length > 0) {
-      blocks.push({
-        heading: 'What\'s actually healing',
-        body: tissueLines.join('\n'),
-      });
-    }
+          {phase === 'POST_RACE' && (
+            <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
+                Why the volume is low this week
+              </div>
+              <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
+                Easy aerobic + protective rest days isn't conservatism — it's the SHAPE of recovery. Restoring frequency before duration before intensity. Connective tissue and CNS adapt slowest; loading them too early is when injuries land. The engine watches your RPE drift, ACWR, and easy-share — when those signals say you're absorbing, it bumps volume. Right now they're saying "let it land."
+              </div>
+            </div>
+          )}
 
-    // Heavy-block context
-    if (heavyBlock) {
-      blocks.push({
-        heading: 'Heavy-block flag is on',
-        body: `${recent.length} race${recent.length === 1 ? '' : 's'} in the last ${recent[recent.length - 1].daysAgo} days. Stacked race load compounds: each one creates micro-damage that overlaps before the previous heals. The most common injury pattern at this load is a stress fracture — bone remodeling lags muscle healing by 3-6 weeks. The plan honors this with extra rest days and reduced-volume easy aerobic, NOT generic "take a week off."`,
-      });
-    }
-
-    // Why today's prescription
-    if (phase === 'POST_RACE') {
-      blocks.push({
-        heading: 'Why the volume is low this week',
-        body: `Easy aerobic + protective rest days isn't conservatism — it's the SHAPE of recovery. Restoring frequency before duration before intensity. Connective tissue and CNS adapt slowest; loading them too early is when injuries land. The engine watches your RPE drift, ACWR, and easy-share — when those signals say you're absorbing, it bumps volume. Right now they're saying "let it land."`,
-      });
-    }
-  } else if (phase === 'BUILD' || phase === 'PEAK') {
-    blocks.push({
-      heading: 'Build phase',
-      body: 'You\'re in the part of the cycle where fitness gains land. Threshold + intervals + race-pace exposure — the work that lifts your aerobic ceiling AND your lactate clearance.',
-    });
-    blocks.push({
-      heading: 'What\'s actually adapting',
-      body: '• <strong>Mitochondria</strong>: density and efficiency growing — every easy mile feeds this.\n• <strong>Capillarization</strong>: new capillary networks forming around muscle fibers (2-4 week timeline).\n• <strong>Lactate threshold</strong>: shifts upward with consistent T-zone work — adapts in 3-6 weeks.\n• <strong>VO₂max</strong>: responds to short fast intervals — adapts in 4-6 weeks.\n• <strong>Tendon stiffness</strong>: gradually increasing — what makes hard sessions feel easier over time.',
-    });
-    blocks.push({
-      heading: 'Why this week looks like this',
-      body: 'The engine reads your real signals (RPE drift, ACWR, easy-share, volume momentum) and bumps or dampens prescriptions accordingly. Crushing your prescriptions = engine adds load. Signs of stress = engine pulls back. Plan adapts to YOU.',
-    });
-  } else if (phase === 'TAPER') {
-    blocks.push({
-      heading: 'Taper week',
-      body: 'You\'re not building fitness anymore — you\'re storing it. Volume drops 40-60% over 2 weeks; intensity stays. The body is repaying the bank.',
-    });
-    blocks.push({
-      heading: 'What changes physiologically',
-      body: '• <strong>Glycogen stores</strong>: building up — peak race-day fuel.\n• <strong>Mitochondria</strong>: hold steady on reduced load (it\'s a 4-6 week erosion timeline).\n• <strong>CNS</strong>: freshening — the legs feel snappier toward race day.\n• <strong>Immune system</strong>: rebounds with the load drop. Lower URI risk.\n• <strong>Hormonal balance</strong>: cortisol drops, testosterone normalizes.',
-    });
-  } else {
-    blocks.push({
-      heading: 'Base maintenance',
-      body: 'Aerobic foundation work. Outside the build window, the focus is durability — easy mileage that grows mitochondrial density + capillarization without adding race-specific stress.',
-    });
+          <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic', fontFamily: 'var(--font-data)', letterSpacing: '0.4px' }}>
+            Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline. The engine reads your daily data and adjusts.
+          </div>
+        </div>
+      </>
+    );
   }
 
-  if (blocks.length === 0) return null;
+  // ── Build / Peak / Taper / Base: visual adaptation grid ──────
+  type AdaptItem = { name: string; detail: string; window: string; note: string; color: string };
+  let intro = '';
+  let introHeading = '';
+  let adaptItems: AdaptItem[] = [];
+  let whyNote = '';
+
+  if (phase === 'BUILD' || phase === 'PEAK') {
+    introHeading = 'Build phase';
+    intro = 'You\'re in the part of the cycle where fitness gains land. Threshold + intervals + race-pace exposure — the work that lifts your aerobic ceiling AND your lactate clearance.';
+    adaptItems = [
+      { name: 'Mitochondria',       detail: 'Density + efficiency',   window: 'Ongoing',   note: 'Every easy mile feeds this',              color: 'var(--color-success)'   },
+      { name: 'Capillarization',    detail: 'Muscle fiber networks',  window: '2–4 weeks', note: 'New capillaries forming now',             color: 'var(--color-corporate)' },
+      { name: 'Lactate threshold',  detail: 'T-zone work',           window: '3–6 weeks', note: 'Shifts upward with consistent tempo',     color: 'var(--color-attention)' },
+      { name: 'VO₂max',             detail: 'Interval response',     window: '4–6 weeks', note: 'Responds to short fast reps',             color: 'var(--color-warning)'   },
+      { name: 'Tendon stiffness',   detail: 'Load tolerance',        window: 'Gradual',   note: 'Hard sessions feel easier over time',    color: 'var(--color-t2)'        },
+    ];
+    whyNote = 'The engine reads your real signals (RPE drift, ACWR, easy-share, volume momentum) and bumps or dampens prescriptions accordingly. Crushing your prescriptions = engine adds load. Signs of stress = engine pulls back.';
+  } else if (phase === 'TAPER') {
+    introHeading = 'Taper week';
+    intro = 'You\'re not building fitness anymore — you\'re storing it. Volume drops 40-60% over 2 weeks; intensity stays. The body is repaying the bank.';
+    adaptItems = [
+      { name: 'Glycogen stores',    detail: 'Race-day fuel',          window: 'Building',  note: 'Peak carb load heading to race day',     color: 'var(--color-success)'   },
+      { name: 'Mitochondria',       detail: 'Erosion: 4–6 weeks',    window: 'Holding',   note: 'Safely holding on reduced load',         color: 'var(--color-corporate)' },
+      { name: 'CNS',                detail: 'Neuromuscular',         window: 'Freshening',note: 'Legs feel snappier toward race day',     color: 'var(--color-attention)' },
+      { name: 'Immune system',      detail: 'URI risk',              window: 'Rebounding', note: 'Load drop lowers illness risk',          color: 'var(--color-success)'   },
+      { name: 'Hormonal balance',   detail: 'Cortisol · testosterone',window: 'Normalising',note: 'Cortisol drops, testosterone normalises', color: 'var(--color-corporate)' },
+    ];
+  } else {
+    introHeading = 'Base maintenance';
+    intro = 'Aerobic foundation work. Outside the build window, the focus is durability — easy mileage that grows mitochondrial density + capillarization without adding race-specific stress.';
+    adaptItems = [
+      { name: 'Mitochondria',     detail: 'Density + efficiency', window: 'Ongoing',   note: 'Every easy mile feeds this',          color: 'var(--color-success)'   },
+      { name: 'Capillarization',  detail: 'Muscle fiber networks',window: '2–4 weeks', note: 'Steady aerobic builds new networks',  color: 'var(--color-corporate)' },
+      { name: 'Connective tissue',detail: 'Tendons · fascia',     window: 'Gradual',   note: 'Durability builds with easy mileage', color: 'var(--color-t2)'        },
+    ];
+  }
+
+  if (!intro) return null;
 
   return (
     <>
       <SectionHeader title="Why your body is here" sub="What's healing, building, or holding — and why" />
       <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 14 }}>
-        {blocks.map((b, i) => (
-          <div key={i} style={i > 0 ? { paddingTop: 14, borderTop: '1px solid var(--color-l4)' } : undefined}>
-            <div style={{
-              fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
-              color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8,
-            }}>
-              {b.heading}
-            </div>
-            <div style={{
-              fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6, whiteSpace: 'pre-line',
-            }} dangerouslySetInnerHTML={{ __html: b.body }} />
+        <div>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
+            {introHeading}
           </div>
-        ))}
-        <div style={{
-          fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5,
-          paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic',
-          fontFamily: 'var(--font-data)', letterSpacing: '0.4px',
-        }}>
-          Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline + §Recovery Scaled to Weekly Mileage. The engine reads your daily data and adjusts.
+          <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>{intro}</div>
+        </div>
+
+        {adaptItems.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16 }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 12 }}>
+              What's actually adapting
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${adaptItems.length}, 1fr)`, gap: 8 }}>
+              {adaptItems.map((a, i) => (
+                <div key={i} style={{
+                  padding: '12px 14px', borderRadius: 8,
+                  background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                }}>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color, padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor', alignSelf: 'flex-start' }}>
+                    {a.window.toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
+                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{a.detail}</div>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{a.note}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {whyNote && (
+          <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
+              Why this week looks like this
+            </div>
+            <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>{whyNote}</div>
+          </div>
+        )}
+
+        <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic', fontFamily: 'var(--font-data)', letterSpacing: '0.4px' }}>
+          Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline. The engine reads your daily data and adjusts.
         </div>
       </div>
     </>
