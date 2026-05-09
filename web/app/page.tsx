@@ -85,65 +85,43 @@ function OverviewPageInner() {
         <Nav active="overview" />
         <div className="body">
 
-          {/* GREETING — personal hello first. Slim. */}
-          <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
-
-          {/* MODE — slim band, second. Special modes (race-week,
-              post-race, heavy-block) render the bigger hero. */}
-          {isSpecialMode(hub, daysToNext)
-            ? <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
-            : <ModeBanner daysToNext={daysToNext} hub={hub} />}
-
-          {/* TODAY ROW — left: prescription + RPE log (60%); right:
-              next race + recent run + body context entry (40%).
-              Two-column means the runner sees prescription AND race
-              target AND last activity at-a-glance instead of
-              scrolling through full-width tiles. */}
-          <div className="dash-today-row">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <CoachTodayCard runs={runs} />
-              <WorkoutRpeCard />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <NextRaceCard next={next} daysToNext={daysToNext} />
+          {/* HERO — name + mode tagline left, 4 stat cards right */}
+          <div className="dash-hero">
+            <HeroName now={now} hub={hub} daysToNext={daysToNext} next={next} />
+            <div className="dash-hero-stats">
+              <MonthMilesCard runs={runs} />
+              <YtdMilesStatCard runs={runs} />
               <RecentRunCard lastRun={lastRun} />
+              <NextRaceCard next={next} daysToNext={daysToNext} />
             </div>
           </div>
 
-          {/* WHY YOUR BODY IS HERE — physiological narrative grounded
-              in TISSUE_RECOVERY_TIMELINES + MARATHON_BIOMARKER_TIMELINE.
-              The runner asked: "it would help me recover better and
-              be okay with it if I know why/what is happening." This
-              tile answers that — named tissues, real timelines,
-              concrete what-to-do. */}
-          <BodyContextCard />
-
-          {/* SCHEDULE — this week bar chart + next 30 days side by side.
-              The runner sees current-week context alongside the 30-day
-              plan in one visual row. */}
-          <div className="dash-schedule-row">
+          {/* MAIN ROW — this week | next 30 days | today's workout */}
+          <div className="dash-main-row">
             <ThisWeekTile runs={runs} now={now} />
-            <div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               <Next30DaysCard />
             </div>
+            <TodayWorkoutCard runs={runs} />
           </div>
 
-          {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
+          {/* ALERTS + RPE LOG */}
+          <CoachAlertsRow />
+          <WorkoutRpeCard />
 
-          {/* VDOT — full width, paces as graphic card row */}
+          {/* BODY CONTEXT — flat adaptation card grid */}
+          <BodyContextCard />
+
+          {/* PHASE GUIDANCE — taper / post-race / rebuild only */}
+          <PhaseGuidanceCard />
+
+          {/* VDOT — 6-card flat row */}
           <VdotCard />
 
-          {/* HR zones — full width, 5 cards matching body card style */}
+          {/* HR ZONES — 5-card flat row */}
           <HrZonesCard />
 
-          {/* STATS row — weekly + YTD. */}
-          <div className="dash-stats-row">
-            <WeeklyMilesCard runs={runs} />
-            <YearMilesCard runs={runs} />
-          </div>
-
-          {/* TRAINING PULSE — keeps for now but the tile gets a
-              clearer one-line intent on a future pass. */}
+          {/* TRAINING PULSE — 4 cards */}
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
@@ -179,11 +157,315 @@ function LoadingShell() {
  *  branch BEFORE rendering and avoid stacking both. */
 function isSpecialMode(hub: import('../lib/hub-types').RunnerHub | null, daysToNext: number | null): boolean {
   if (!hub) return false;
-  // Only race day / race week gets the full hero treatment.
-  // Post-race and heavy-block context already lives in CoachTodayCard
-  // and BodyContextCard — showing a separate hero block creates
-  // three layers of the same information.
   return daysToNext != null && daysToNext <= 7;
+}
+
+/* ── Hero name — large name + current mode tagline (left side of dash-hero) */
+function HeroName({ now, hub, daysToNext, next }: {
+  now: Date;
+  hub: import('../lib/hub-types').RunnerHub | null;
+  daysToNext: number | null;
+  next: SavedRace | null;
+}) {
+  const phase = hub?.coach.today?.phase ?? null;
+  const recentRaceDays = hub?.coach.state?.races?.recent?.[0]?.daysAgo ?? null;
+  const heavyBlock = hub?.coach.state?.flags?.heavyBlockSuspected ?? false;
+
+  type ModeEntry = { label: string; accent: string; wash: string };
+  const mode: ModeEntry = (() => {
+    if (daysToNext === 0) return { label: 'Race day', accent: 'var(--color-warning)', wash: 'rgba(244,63,94,.12)' };
+    if (daysToNext === 1) return { label: 'Race tomorrow', accent: 'var(--color-warning)', wash: 'rgba(244,63,94,.12)' };
+    if (daysToNext != null && daysToNext <= 7) return { label: `${daysToNext} days to race`, accent: 'var(--color-warning)', wash: 'rgba(244,63,94,.12)' };
+    if (daysToNext != null && daysToNext <= 28) return { label: `${daysToNext} days to race`, accent: 'var(--color-attention)', wash: 'rgba(255,87,34,.10)' };
+    if (heavyBlock) return { label: 'Heavy block recovery', accent: 'var(--color-corporate)', wash: 'rgba(79,143,247,.10)' };
+    if (recentRaceDays != null && recentRaceDays <= 14) return { label: `Day ${recentRaceDays} post-race`, accent: 'var(--color-corporate)', wash: 'rgba(79,143,247,.10)' };
+    if (phase === 'TAPER') return { label: 'Taper week', accent: 'var(--color-attention)', wash: 'rgba(255,87,34,.10)' };
+    if (phase === 'PEAK') return { label: 'Peak block', accent: 'var(--color-attention)', wash: 'rgba(255,87,34,.10)' };
+    if (phase === 'BUILD') return { label: 'Build phase', accent: 'var(--color-success)', wash: 'rgba(20,192,140,.10)' };
+    if (phase === 'BASE_MAINTENANCE' || phase === 'BASE') return { label: 'Base maintenance', accent: 'var(--color-corporate)', wash: 'rgba(79,143,247,.10)' };
+    if (phase === 'POST_RACE') return { label: 'Post-race recovery', accent: 'var(--color-corporate)', wash: 'rgba(79,143,247,.10)' };
+    if (phase === 'REBUILD') return { label: 'Rebuilding', accent: 'var(--color-attention)', wash: 'rgba(255,87,34,.10)' };
+    if (next) return { label: `${daysToNext != null ? `${daysToNext}d to ${next.meta.name}` : next.meta.name}`, accent: 'var(--color-t2)', wash: 'transparent' };
+    return { label: 'Off season', accent: 'var(--color-t2)', wash: 'transparent' };
+  })();
+
+  const greetingText = greeting(now);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+        letterSpacing: '2.5px', textTransform: 'uppercase', color: 'var(--color-t3)',
+      }}>
+        {greetingText}
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-display)', fontWeight: 800,
+        fontSize: 'clamp(42px, 5vw, 68px)',
+        letterSpacing: '-.03em', lineHeight: .92,
+        textTransform: 'uppercase', color: 'var(--color-t0)',
+      }}>
+        David<br />Nitzsche
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+        <div style={{ width: 28, height: 3, borderRadius: 2, background: mode.accent, flexShrink: 0 }} />
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.8px', textTransform: 'uppercase', color: mode.accent,
+        }}>
+          {mode.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Month miles hero stat card */
+function MonthMilesCard({ runs }: { runs: NormalizedActivity[] | null }) {
+  const now = new Date();
+  const monthName = now.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+  const year = now.getFullYear();
+  const monthStr = `${year}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthDate = new Date(year, now.getMonth() - 1, 1);
+  const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+  if (!runs) {
+    return (
+      <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
+        <div className="tile-sub">MILES · {monthName}</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t3)', lineHeight: 1 }}>—</div>
+      </div>
+    );
+  }
+
+  const thisMo = runs.filter(r => r.date.startsWith(monthStr)).reduce((s, r) => s + r.distanceMi, 0);
+  const prevMo = runs.filter(r => r.date.startsWith(prevMonthStr)).reduce((s, r) => s + r.distanceMi, 0);
+  const delta = prevMo > 0 ? ((thisMo - prevMo) / prevMo) : null;
+  const deltaText = delta != null ? `${delta >= 0 ? '+' : ''}${Math.round(delta * 100)}%` : null;
+  const deltaColor = delta == null ? 'var(--color-t3)' : delta >= 0.05 ? 'var(--color-success)' : delta <= -0.1 ? 'var(--color-warning)' : 'var(--color-t2)';
+
+  return (
+    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 140 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)' }}>
+          MILES · {monthName.slice(0, 3)}
+        </div>
+        {deltaText && (
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', padding: '2px 6px', borderRadius: 3, background: delta != null && delta >= 0 ? 'rgba(20,192,140,.18)' : 'rgba(244,63,94,.18)', color: deltaColor }}>
+            {deltaText}
+          </span>
+        )}
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, letterSpacing: '-.025em', lineHeight: 1, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
+        {thisMo.toFixed(0)}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 3 }}>mi</small>
+      </div>
+      {prevMo > 0 && (
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', fontWeight: 600, letterSpacing: '.4px', marginTop: 'auto' }}>
+          vs {prevMonthDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()} · {prevMo.toFixed(0)} mi
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── YTD miles hero stat card */
+function YtdMilesStatCard({ runs }: { runs: NormalizedActivity[] | null }) {
+  if (!runs) {
+    return (
+      <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
+        <div className="tile-sub">MILES · YTD</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, color: 'var(--color-t3)', lineHeight: 1 }}>—</div>
+      </div>
+    );
+  }
+  const r = rollupYear(runs);
+  const now = new Date();
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+  const onPacePerYear = r.totalMiles > 0 ? Math.round((r.totalMiles / dayOfYear) * 365) : 0;
+  const pctOfYear = Math.round((dayOfYear / 365) * 100);
+
+  return (
+    <Link href="/log" className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 140, textDecoration: 'none', color: 'inherit',
+      background: 'linear-gradient(135deg, rgba(144,19,254,.10) 0%, var(--color-l1) 100%)',
+      borderColor: 'rgba(144,19,254,.28)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'rgba(144,19,254,.8)' }}>
+          MILES · {now.getFullYear()} YTD
+        </div>
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1px', padding: '2px 6px', borderRadius: 3, background: 'rgba(144,19,254,.18)', color: 'rgba(180,80,255,1)' }}>
+          {pctOfYear}%
+        </span>
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 44, letterSpacing: '-.025em', lineHeight: 1, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>
+        {Math.round(r.totalMiles).toLocaleString()}<small style={{ fontSize: '.32em', opacity: .55, marginLeft: 3 }}>mi</small>
+      </div>
+      {onPacePerYear > 0 && (
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'rgba(180,80,255,.7)', fontWeight: 600, letterSpacing: '.4px', marginTop: 'auto' }}>
+          on pace · {onPacePerYear.toLocaleString()} / yr
+        </div>
+      )}
+    </Link>
+  );
+}
+
+/* ── Today workout card — the big center card */
+function TodayWorkoutCard({ runs }: { runs: NormalizedActivity[] | null }) {
+  const ctx = useCoachToday();
+  if (!ctx || !ctx.ok || !ctx.today) return null;
+  const payload = ctx.today;
+  const t = payload.today;
+
+  const typeColor: Record<string, string> = {
+    recovery:            'var(--color-t2)',
+    general_aerobic:     'var(--color-success)',
+    medium_long:         'var(--color-corporate)',
+    long_steady:         'var(--color-corporate)',
+    long_progression:    'var(--color-corporate)',
+    long_mp_block:       'var(--color-attention)',
+    threshold:           'var(--color-attention)',
+    threshold_intervals: 'var(--color-attention)',
+    sub_threshold:       'var(--color-attention)',
+    vo2:                 'var(--color-warning)',
+    marathon_specific:   'var(--color-attention)',
+    strides_appended:    'var(--color-success)',
+    shakeout:            'var(--color-success)',
+    rest:                'var(--color-t3)',
+    race:                'var(--color-warning)',
+    vdot_test_5k:        'var(--color-warning)',
+  };
+
+  const dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  const todayDowEntry = payload.weekShape.find(d => d.isToday);
+  const todayUtcDow = new Date((todayDowEntry?.date ?? new Date().toISOString().slice(0,10)) + 'T12:00:00Z').getUTCDay();
+  const todayLabel = dayLabels[(todayUtcDow + 6) % 7];
+  const color = typeColor[t.type] ?? 'var(--color-t2)';
+  const todayISOStr = new Date().toISOString().slice(0, 10);
+
+  const actualByDate = new Map<string, number>();
+  if (runs) {
+    for (const r of runs) {
+      const prev = actualByDate.get(r.date) ?? 0;
+      if (r.distanceMi > prev) actualByDate.set(r.date, r.distanceMi);
+    }
+  }
+
+  return (
+    <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color }}>
+          TODAY · {todayLabel}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {payload.isPlaceholder && (
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, letterSpacing: '1px', padding: '2px 6px', borderRadius: 3, background: 'var(--color-l3)', color: 'var(--color-t3)' }}>PLACEHOLDER</span>
+          )}
+        </div>
+      </div>
+
+      {/* Workout name — large */}
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, letterSpacing: '-.015em', lineHeight: 1.05, color, textTransform: 'uppercase' }}>
+        {t.label || t.type.replace(/_/g, ' ')}
+      </div>
+
+      {/* Data row */}
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {t.distanceMi > 0 && (
+          <div>
+            <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 20, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{t.distanceMi.toFixed(1)}</div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '1px', marginTop: 2 }}>MI</div>
+          </div>
+        )}
+        {t.hrZone != null && (
+          <div>
+            <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 20, color: 'var(--color-t0)', lineHeight: 1 }}>Z{t.hrZone}</div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '1px', marginTop: 2 }}>HR ZONE</div>
+          </div>
+        )}
+        {t.paceTargetSPerMi && (
+          <div>
+            <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 20, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtPaceBand(t.paceTargetSPerMi)}</div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '1px', marginTop: 2 }}>/MI</div>
+          </div>
+        )}
+      </div>
+
+      {/* Description */}
+      <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, flex: 1 }}>{t.description}</div>
+
+      {/* Week shape strip */}
+      <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {payload.weekShape.map(d => {
+            const dayDow = new Date(d.date + 'T12:00:00Z').getUTCDay();
+            const dowLabel = dayLabels[(dayDow + 6) % 7];
+            const c = typeColor[d.type] ?? 'var(--color-t3)';
+            const isPast = d.date < todayISOStr;
+            const actualMi = actualByDate.get(d.date);
+            const showActual = (isPast || d.isToday) && actualMi != null;
+            return (
+              <div key={d.date} style={{
+                padding: '8px 6px', borderRadius: 6,
+                background: d.isToday ? 'rgba(255,87,34,.08)' : 'var(--color-l2)',
+                border: `1px solid ${d.isToday ? 'rgba(255,87,34,.35)' : 'var(--color-l4)'}`,
+                display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center',
+                opacity: isPast && !actualMi ? 0.5 : 1,
+              }}>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, letterSpacing: '1px', color: d.isToday ? 'var(--color-attention)' : 'var(--color-t3)' }}>{dowLabel}</div>
+                {showActual && actualMi != null ? (
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, color: 'var(--color-success)', lineHeight: 1 }}>{actualMi.toFixed(1)}</div>
+                ) : (
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, color: c, textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.1 }}>
+                    {d.distanceMi > 0 ? d.distanceMi.toFixed(1) : d.type === 'rest' ? 'R' : '—'}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Strength if today has it */}
+      {payload.strength && (
+        <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 12 }}>
+          <StrengthTile strength={payload.strength} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Coach alerts row — readiness + alert chips below the main row */
+function CoachAlertsRow() {
+  const ctx = useCoachToday();
+  if (!ctx || !ctx.ok || !ctx.today) return null;
+  const payload = ctx.today;
+  const readiness = ctx.coach?.readiness?.answer ?? null;
+  const hasAlerts = payload.alerts.length > 0;
+  const hasReadiness = readiness && (readiness.level !== 'green' || readiness.signals.length > 0);
+  if (!hasAlerts && !hasReadiness) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+      {hasReadiness && readiness && <ReadinessBanner readiness={readiness} />}
+      {payload.alerts.map((a, i) => (
+        <div key={i} style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8,
+          fontSize: 13, lineHeight: 1.4,
+          background: a.severity === 'rest' ? 'rgba(252,77,84,.10)' : a.severity === 'warn' ? 'rgba(243,173,59,.08)' : 'var(--color-l2)',
+          border: `1px solid ${a.severity === 'rest' ? 'rgba(252,77,84,.3)' : a.severity === 'warn' ? 'rgba(243,173,59,.3)' : 'var(--color-l4)'}`,
+          color: 'var(--color-t1)',
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.4px',
+            color: a.severity === 'rest' ? 'var(--color-warning)' : a.severity === 'warn' ? 'var(--color-attention)' : 'var(--color-corporate)',
+            padding: '3px 8px', borderRadius: 4, border: '1px solid currentColor',
+          }}>{a.severity === 'rest' ? 'REST' : a.severity === 'warn' ? 'WARN' : 'INFO'}</span>
+          <span>{a.message}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* ── Mode banner — current training-mode pill at the top of the
@@ -1689,65 +1971,28 @@ function BodyContextCard() {
 
     return (
       <>
-        <SectionHeader title="Why your body is here" sub="What's healing, building, or holding — and why" />
-        <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 14 }}>
-
-          <div>
-            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
-              Day {days} since {mostRecent.name}
-            </div>
-            <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
-              Active repair from {isMarathon ? 'a marathon-distance effort' : isHalf ? 'a half-marathon effort' : `a ${dist.toFixed(1)}-mile race`}. The plan reflects what's actually healing, not a textbook timeline.
-            </div>
+        <SectionHeader title="What's healing" sub={`Day ${days} since ${mostRecent.name} · ${isMarathon ? 'marathon' : isHalf ? 'half marathon' : `${dist.toFixed(1)} mi race`}`} />
+        <TissueGrid tissues={tissues} daysAgo={days} />
+        {(heavyBlock || phase === 'POST_RACE') && (
+          <div style={{ marginTop: 10, padding: '12px 18px', borderRadius: 8, background: 'var(--color-l2)', borderLeft: `3px solid ${heavyBlock ? 'var(--color-warning)' : 'var(--color-corporate)'}`, fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, marginBottom: 14 }}>
+            {heavyBlock
+              ? `${recent.length} race${recent.length === 1 ? '' : 's'} stacked — micro-damage overlaps before the previous heals. Bone remodeling lags muscle healing by 3–6 weeks. Rest days are the plan.`
+              : 'Easy aerobic + protective rest restores frequency before duration before intensity. Connective tissue and CNS adapt slowest; loading too early is when injuries land.'}
           </div>
-
-          <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16 }}>
-            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 12 }}>
-              What's actually healing
-            </div>
-            <TissueGrid tissues={tissues} daysAgo={days} />
-          </div>
-
-          {heavyBlock && (
-            <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-warning)', textTransform: 'uppercase', marginBottom: 8 }}>
-                Heavy-block flag is on
-              </div>
-              <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
-                {recent.length} race{recent.length === 1 ? '' : 's'} in the last {recent[recent.length - 1].daysAgo} days. Stacked race load compounds: each one creates micro-damage that overlaps before the previous heals. The most common injury pattern at this load is a stress fracture — bone remodeling lags muscle healing by 3-6 weeks. The plan honors this with extra rest days and reduced-volume easy aerobic, NOT generic "take a week off."
-              </div>
-            </div>
-          )}
-
-          {phase === 'POST_RACE' && (
-            <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
-                Why the volume is low this week
-              </div>
-              <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>
-                Easy aerobic + protective rest days isn't conservatism — it's the SHAPE of recovery. Restoring frequency before duration before intensity. Connective tissue and CNS adapt slowest; loading them too early is when injuries land. The engine watches your RPE drift, ACWR, and easy-share — when those signals say you're absorbing, it bumps volume. Right now they're saying "let it land."
-              </div>
-            </div>
-          )}
-
-          <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic', fontFamily: 'var(--font-data)', letterSpacing: '0.4px' }}>
-            Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline. The engine reads your daily data and adjusts.
-          </div>
-        </div>
+        )}
       </>
     );
   }
 
   // ── Build / Peak / Taper / Base: visual adaptation grid ──────
   type AdaptItem = { name: string; detail: string; window: string; note: string; color: string; iconKey: BodyIconKey };
-  let intro = '';
   let introHeading = '';
+  let introSub = '';
   let adaptItems: AdaptItem[] = [];
-  let whyNote = '';
 
   if (phase === 'BUILD' || phase === 'PEAK') {
-    introHeading = 'Build phase';
-    intro = 'You\'re in the part of the cycle where fitness gains land. Threshold + intervals + race-pace exposure — the work that lifts your aerobic ceiling AND your lactate clearance.';
+    introHeading = 'What\'s adapting';
+    introSub = 'Build phase · fitness gains landing now';
     adaptItems = [
       { name: 'Mitochondria',      detail: 'Density + efficiency',  window: 'Ongoing',   note: 'Every easy mile feeds this',             color: 'var(--color-success)',   iconKey: 'spiral'  },
       { name: 'Capillarization',   detail: 'Muscle fiber networks', window: '2–4 weeks', note: 'New capillaries forming now',            color: 'var(--color-corporate)', iconKey: 'network' },
@@ -1755,20 +2000,19 @@ function BodyContextCard() {
       { name: 'VO₂max',            detail: 'Interval response',    window: '4–6 weeks', note: 'Responds to short fast reps',            color: 'var(--color-warning)',   iconKey: 'lungs'   },
       { name: 'Tendon stiffness',  detail: 'Load tolerance',       window: 'Gradual',   note: 'Hard sessions feel easier over time',   color: 'var(--color-t2)',        iconKey: 'spring'  },
     ];
-    whyNote = 'The engine reads your real signals (RPE drift, ACWR, easy-share, volume momentum) and bumps or dampens prescriptions accordingly. Crushing your prescriptions = engine adds load. Signs of stress = engine pulls back.';
   } else if (phase === 'TAPER') {
-    introHeading = 'Taper week';
-    intro = 'You\'re not building fitness anymore — you\'re storing it. Volume drops 40-60% over 2 weeks; intensity stays. The body is repaying the bank.';
+    introHeading = 'What\'s storing';
+    introSub = 'Taper week · banking fitness for race day';
     adaptItems = [
-      { name: 'Glycogen stores',   detail: 'Race-day fuel',         window: 'Building',    note: 'Peak carb load heading to race day',    color: 'var(--color-success)',   iconKey: 'bolt'    },
-      { name: 'Mitochondria',      detail: 'Erosion: 4–6 weeks',   window: 'Holding',     note: 'Safely holding on reduced load',        color: 'var(--color-corporate)', iconKey: 'spiral'  },
-      { name: 'CNS',               detail: 'Neuromuscular',        window: 'Freshening',  note: 'Legs feel snappier toward race day',    color: 'var(--color-attention)', iconKey: 'neural'  },
-      { name: 'Immune system',     detail: 'URI risk',             window: 'Rebounding',  note: 'Load drop lowers illness risk',         color: 'var(--color-success)',   iconKey: 'shield'  },
-      { name: 'Hormonal balance',  detail: 'Cortisol · testost.',  window: 'Normalising', note: 'Cortisol drops, testosterone normalises',color: 'var(--color-corporate)', iconKey: 'neural'  },
+      { name: 'Glycogen stores',   detail: 'Race-day fuel',         window: 'Building',    note: 'Peak carb load heading to race day',     color: 'var(--color-success)',   iconKey: 'bolt'    },
+      { name: 'Mitochondria',      detail: 'Erosion: 4–6 weeks',   window: 'Holding',     note: 'Safely holding on reduced load',         color: 'var(--color-corporate)', iconKey: 'spiral'  },
+      { name: 'CNS',               detail: 'Neuromuscular',        window: 'Freshening',  note: 'Legs feel snappier toward race day',     color: 'var(--color-attention)', iconKey: 'neural'  },
+      { name: 'Immune system',     detail: 'URI risk',             window: 'Rebounding',  note: 'Load drop lowers illness risk',          color: 'var(--color-success)',   iconKey: 'shield'  },
+      { name: 'Hormonal balance',  detail: 'Cortisol · testost.',  window: 'Normalising', note: 'Cortisol drops, testosterone normalises', color: 'var(--color-corporate)', iconKey: 'neural'  },
     ];
   } else {
-    introHeading = 'Base maintenance';
-    intro = 'Aerobic foundation work. Outside the build window, the focus is durability — easy mileage that grows mitochondrial density + capillarization without adding race-specific stress.';
+    introHeading = 'What\'s building';
+    introSub = 'Base block · durability and aerobic foundation';
     adaptItems = [
       { name: 'Mitochondria',      detail: 'Density + efficiency', window: 'Ongoing',   note: 'Every easy mile feeds this',             color: 'var(--color-success)',   iconKey: 'spiral'  },
       { name: 'Capillarization',   detail: 'Muscle fiber networks',window: '2–4 weeks', note: 'Steady aerobic builds new networks',     color: 'var(--color-corporate)', iconKey: 'network' },
@@ -1776,61 +2020,25 @@ function BodyContextCard() {
     ];
   }
 
-  if (!intro) return null;
+  if (!introHeading) return null;
 
   return (
     <>
-      <SectionHeader title="Why your body is here" sub="What's healing, building, or holding — and why" />
-      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
-            {introHeading}
-          </div>
-          <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>{intro}</div>
-        </div>
-
-        {adaptItems.length > 0 && (
-          <div style={{ borderTop: '1px solid var(--color-l4)', paddingTop: 16 }}>
-            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 12 }}>
-              What's actually adapting
+      <SectionHeader title={introHeading} sub={introSub} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {adaptItems.map((a, i) => (
+          <div key={i} className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 160 }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: a.color }}>
+              {a.window}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-              {adaptItems.map((a, i) => (
-                <div key={i} style={{
-                  padding: '14px', borderRadius: 10,
-                  background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                }}>
-                  <BodyIcon k={a.iconKey} size={26} color={a.color} />
-                  <div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
-                    <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{a.detail}</div>
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                      <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color }}>{a.window.toUpperCase()}</span>
-                    </div>
-                    <div style={{ height: 4, borderRadius: 2, background: a.color, opacity: 0.35 }} />
-                  </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{a.note}</div>
-                </div>
-              ))}
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px' }}>{a.detail}</div>
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ height: 3, borderRadius: 2, background: a.color, opacity: 0.4 }} />
+              <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{a.note}</div>
             </div>
           </div>
-        )}
-
-        {whyNote && (
-          <div style={{ paddingTop: 14, borderTop: '1px solid var(--color-l4)' }}>
-            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8 }}>
-              Why this week looks like this
-            </div>
-            <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6 }}>{whyNote}</div>
-          </div>
-        )}
-
-        <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic', fontFamily: 'var(--font-data)', letterSpacing: '0.4px' }}>
-          Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline. The engine reads your daily data and adjusts.
-        </div>
+        ))}
       </div>
     </>
   );
@@ -2050,49 +2258,43 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
     name: string;
     detail: string;
     color: string;
-    iconKey: BodyIconKey;
+    zNum: number;
   }> = [
-    { key: 'recovery',      name: 'Recovery',     detail: '50–60% HRmax', color: 'var(--color-t2)',        iconKey: 'shield'  },
-    { key: 'easy',          name: 'Easy',          detail: '60–70% HRmax', color: 'var(--color-success)',   iconKey: 'lungs'   },
-    { key: 'aerobic_tempo', name: 'Aerobic',       detail: '70–80% HRmax', color: 'var(--color-corporate)', iconKey: 'stairs'  },
-    { key: 'threshold',     name: 'Threshold',     detail: '80–90% HRmax', color: 'var(--color-attention)', iconKey: 'flame'   },
-    { key: 'vo2max',        name: 'VO₂max',        detail: '90–100% HRmax',color: 'var(--color-warning)',   iconKey: 'bolt'    },
+    { key: 'recovery',      name: 'Recovery',   detail: '50–60% HRmax', color: 'var(--color-t2)',        zNum: 1 },
+    { key: 'easy',          name: 'Easy',        detail: '60–70% HRmax', color: 'var(--color-success)',   zNum: 2 },
+    { key: 'aerobic_tempo', name: 'Aerobic',     detail: '70–80% HRmax', color: 'var(--color-corporate)', zNum: 3 },
+    { key: 'threshold',     name: 'Threshold',   detail: '80–90% HRmax', color: 'var(--color-attention)', zNum: 4 },
+    { key: 'vo2max',        name: 'VO₂max',      detail: '90–100% HRmax',color: 'var(--color-warning)',   zNum: 5 },
   ];
 
   return (
-    <div>
+    <>
       <SectionHeader title="HR zones" sub={`HRmax ${hrmax.bpm} BPM · ${hrmax.source === 'tanaka_estimate' ? 'Tanaka estimate' : 'measured'}`} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
-        {zones.map((z, i) => {
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {zones.map(z => {
           const def = HRMAX_ZONES_5.value[z.key];
           const lo = Math.round((def.pctLow / 100) * hrmax.bpm);
           const hi = Math.round((def.pctHigh / 100) * hrmax.bpm);
           return (
-            <div key={z.key} style={{
-              padding: '14px', borderRadius: 10,
-              background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
-              <BodyIcon k={z.iconKey} size={26} color={z.color} />
-              <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{z.name}</div>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{z.detail}</div>
+            <div key={z.key} className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 160 }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: z.color }}>
+                Z{z.zNum} · {z.name}
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: z.color }}>Z{i + 1}</span>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)' }}>BPM</span>
+                <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 26, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', lineHeight: 1 }}>
+                  {lo}–{hi}
                 </div>
-                <div style={{ height: 4, borderRadius: 2, background: z.color, opacity: 0.35 }} />
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px', marginTop: 2 }}>BPM</div>
               </div>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 14, fontWeight: 800, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px' }}>
-                {lo}–{hi}
+              <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ height: 3, borderRadius: 2, background: z.color, opacity: 0.4 }} />
+                <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.4 }}>{z.detail}</div>
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+    </>
   );
 }
 
