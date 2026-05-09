@@ -148,6 +148,13 @@ a { color: inherit; text-decoration: none; }
 .caption { display: none; }
 .body {
   width: 100%;
+  /* Cap at 1320px so tiles don't stretch absurdly on wide
+     monitors. The runner correctly flagged "everything is so wide on
+     the dashboard, nothing is glanceable" — letting cards fill a
+     1900px viewport made each one feel like a billboard. 1320 keeps
+     two side-by-side tiles at a sane reading width (~640px each). */
+  max-width: 1320px;
+  margin: 0 auto;
   padding: 24px clamp(20px, 4vw, 80px) 64px;
 }
 

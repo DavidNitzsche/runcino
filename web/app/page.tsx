@@ -85,67 +85,67 @@ function OverviewPageInner() {
         <Nav active="overview" />
         <div className="body">
 
-          {/* GREETING leads — personal hello with the runner's name.
-              Right at the top, before any technical banner.
-              Audit #2: "top banner is distracting, not personal,
-              no greeting". */}
+          {/* GREETING — personal hello first. Slim. */}
           <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
 
-          {/* MODE context — second. Mode banner / hero gives the
-              "what kind of week is this" framing right after the
-              personal hello. Special modes (race-week, post-race,
-              heavy-block) get the full hero; everyday training
-              gets the slim banner. */}
+          {/* MODE — slim band, second. Special modes (race-week,
+              post-race, heavy-block) render the bigger hero. */}
           {isSpecialMode(hub, daysToNext)
             ? <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
             : <ModeBanner daysToNext={daysToNext} hub={hub} />}
 
-          {/* TODAY'S PRESCRIPTION — the most actionable thing the
-              dashboard surfaces. Was buried below stat cards before
-              the audit. */}
-          <CoachTodayCard runs={runs} />
+          {/* TODAY ROW — left: prescription + RPE log (60%); right:
+              next race + recent run + body context entry (40%).
+              Two-column means the runner sees prescription AND race
+              target AND last activity at-a-glance instead of
+              scrolling through full-width tiles. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 14, marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <CoachTodayCard runs={runs} />
+              <WorkoutRpeCard />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <NextRaceCard next={next} daysToNext={daysToNext} />
+              <RecentRunCard lastRun={lastRun} />
+            </div>
+          </div>
 
-          {/* RPE LOG — log how today's session felt, right next to
-              the prescription so the feedback loop is tight. */}
-          <WorkoutRpeCard />
+          {/* WHY YOUR BODY IS HERE — physiological narrative grounded
+              in TISSUE_RECOVERY_TIMELINES + MARATHON_BIOMARKER_TIMELINE.
+              The runner asked: "it would help me recover better and
+              be okay with it if I know why/what is happening." This
+              tile answers that — named tissues, real timelines,
+              concrete what-to-do. */}
+          <BodyContextCard />
 
-          {/* THIS WEEK — daily-bar chart of how the week is shaping
-              up. The "rhythm of this week" view. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 10, marginBottom: 10 }}>
+          {/* THIS WEEK — full-width because the daily-bar chart needs
+              the horizontal real estate to show 7 days clearly. */}
+          <div style={{ marginBottom: 14 }}>
             <ThisWeekTile runs={runs} now={now} />
           </div>
 
-          {/* NEXT 30 DAYS forward outlook + race target. */}
+          {/* FORWARD OUTLOOK — Next 30 days + phase guidance side by side
+              when both render. Phase guidance only fires for special
+              phases; when it's null, Next 30 takes the full width. */}
           <Next30DaysCard />
 
-          {/* PHASE GUIDANCE — phase-specific actionable advice, only
-              when the engine is in a special phase (taper, post-race,
-              rebuild). Otherwise ModeHero already covers it. */}
           {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
 
-          {/* NEXT RACE summary card — what you're working toward.
-              Pulled out of the stat grid where it was buried. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginBottom: 10 }}>
-            <NextRaceCard next={next} daysToNext={daysToNext} />
-            <RecentRunCard lastRun={lastRun} />
+          {/* FITNESS REFERENCE row — VDOT + HR zones side by side.
+              Reference data; doesn't need full-width. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 14, marginBottom: 14 }}>
+            <VdotCard />
+            <HrZonesCard />
           </div>
 
-          {/* FITNESS ANCHORS — VDOT (single age-graded number) + HR
-              zones. Reference data, not actionable, lower in the page. */}
-          <VdotCard />
-
-          <HrZonesCard />
-
-          {/* STATS grid moved to the bottom — overview info, not
-              actionable. Audit #2: "actionable and current items
-              towards the top, overview, stats at the bottom". */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
+          {/* STATS row — weekly + YTD. Compact 2-up at the bottom. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
             <WeeklyMilesCard runs={runs} />
             <YearMilesCard runs={runs} />
           </div>
 
           {/* TRAINING PULSE — keeps for now but the tile gets a
-              clearer one-line intent. Audit #4: purpose unclear. */}
+              clearer one-line intent on a future pass. */}
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
@@ -1472,6 +1472,141 @@ function WorkoutRpeCard() {
    Hidden during BASE / BUILD / PEAK because the regular daily
    brief already covers those — this card is for the moments
    when the playbook is non-obvious. */
+/* ── BODY CONTEXT card ───────────────────────────────────────
+   Plain-language physiological narrative — what the body is
+   actually doing right now and WHY today's prescription is what it
+   is. Doctrine-grounded (TISSUE_RECOVERY_TIMELINES,
+   MARATHON_BIOMARKER_TIMELINE, MILEAGE_TIER_RECOVERY) so this isn't
+   filler text — it's the science the engine is acting on.
+   The runner asked: "it would help me recover better and be okay
+   with it if I know why/what is happening." This tile answers that
+   directly with named tissues, real timelines, and concrete what-to-do. */
+function BodyContextCard() {
+  const hub = useHub();
+  if (!hub) return null;
+
+  const state = hub.coach.state;
+  if (!state) return null;
+  const phase = hub.coach.today?.phase ?? null;
+  const heavyBlock = state.flags?.heavyBlockSuspected ?? false;
+  const recent = state.races?.recent ?? [];
+  const mostRecent = recent[0] ?? null;
+  const biggest = recent.length > 0
+    ? recent.reduce((a, b) => a.distanceMi >= b.distanceMi ? a : b)
+    : null;
+
+  // Build the narrative based on the runner's actual context.
+  const blocks: Array<{ heading: string; body: string }> = [];
+
+  if (mostRecent && mostRecent.daysAgo <= 14) {
+    const days = mostRecent.daysAgo;
+    const dist = biggest?.distanceMi ?? mostRecent.distanceMi;
+    const isMarathon = dist >= 22;
+    const isHalf = dist >= 11 && dist < 22;
+    const isShort = dist < 11;
+
+    blocks.push({
+      heading: `Day ${days} since ${mostRecent.name}`,
+      body: `Your body is in active repair from ${dist >= 22 ? 'a marathon-distance effort' : isHalf ? 'a half-marathon effort' : `a ${dist.toFixed(1)}-mile race`}. The plan reflects what's actually healing, not a textbook timeline.`,
+    });
+
+    // Tissue-by-tissue status. Pull real timelines from doctrine.
+    const tissueLines: string[] = [];
+    if (days <= 3) tissueLines.push('• <strong>Glycogen</strong> (24-72h to refill with carbs): replenishing.');
+    else tissueLines.push('• <strong>Glycogen</strong>: refilled (was 24-72h).');
+
+    if (days <= 6) tissueLines.push('• <strong>Muscle fibers</strong> (5-10 days): CK + LDH biomarkers peaking 24-48h, returning to baseline now. Microdamage actively healing.');
+    else if (days <= 10) tissueLines.push('• <strong>Muscle fibers</strong>: nearly resolved (5-10 day window).');
+    else tissueLines.push('• <strong>Muscle fibers</strong>: healed.');
+
+    if (days <= 14) tissueLines.push('• <strong>Connective tissue</strong> (2-4 weeks): tendons + fascia rebuilding. This is the slowest. Loading intensity now is the #1 path to a tendon strain.');
+    else if (days <= 28) tissueLines.push('• <strong>Connective tissue</strong>: still in the back half of its 2-4 week window. Easing back toward quality.');
+
+    if (days <= 14 && isMarathon) tissueLines.push('• <strong>CNS + hormonal balance</strong> (2-4 weeks post-marathon): cortisol elevated, neuromuscular coordination slightly off. Easy aerobic helps reset; hard sessions delay it.');
+    if (days <= 14) tissueLines.push('• <strong>Immune system</strong> (1-3 weeks): suppressed post-race. Sleep + carbs are protective.');
+
+    if (tissueLines.length > 0) {
+      blocks.push({
+        heading: 'What\'s actually healing',
+        body: tissueLines.join('\n'),
+      });
+    }
+
+    // Heavy-block context
+    if (heavyBlock) {
+      blocks.push({
+        heading: 'Heavy-block flag is on',
+        body: `${recent.length} race${recent.length === 1 ? '' : 's'} in the last ${recent[recent.length - 1].daysAgo} days. Stacked race load compounds: each one creates micro-damage that overlaps before the previous heals. The most common injury pattern at this load is a stress fracture — bone remodeling lags muscle healing by 3-6 weeks. The plan honors this with extra rest days and reduced-volume easy aerobic, NOT generic "take a week off."`,
+      });
+    }
+
+    // Why today's prescription
+    if (phase === 'POST_RACE') {
+      blocks.push({
+        heading: 'Why the volume is low this week',
+        body: `Easy aerobic + protective rest days isn't conservatism — it's the SHAPE of recovery. Restoring frequency before duration before intensity. Connective tissue and CNS adapt slowest; loading them too early is when injuries land. The engine watches your RPE drift, ACWR, and easy-share — when those signals say you're absorbing, it bumps volume. Right now they're saying "let it land."`,
+      });
+    }
+  } else if (phase === 'BUILD' || phase === 'PEAK') {
+    blocks.push({
+      heading: 'Build phase',
+      body: 'You\'re in the part of the cycle where fitness gains land. Threshold + intervals + race-pace exposure — the work that lifts your aerobic ceiling AND your lactate clearance.',
+    });
+    blocks.push({
+      heading: 'What\'s actually adapting',
+      body: '• <strong>Mitochondria</strong>: density and efficiency growing — every easy mile feeds this.\n• <strong>Capillarization</strong>: new capillary networks forming around muscle fibers (2-4 week timeline).\n• <strong>Lactate threshold</strong>: shifts upward with consistent T-zone work — adapts in 3-6 weeks.\n• <strong>VO₂max</strong>: responds to short fast intervals — adapts in 4-6 weeks.\n• <strong>Tendon stiffness</strong>: gradually increasing — what makes hard sessions feel easier over time.',
+    });
+    blocks.push({
+      heading: 'Why this week looks like this',
+      body: 'The engine reads your real signals (RPE drift, ACWR, easy-share, volume momentum) and bumps or dampens prescriptions accordingly. Crushing your prescriptions = engine adds load. Signs of stress = engine pulls back. Plan adapts to YOU.',
+    });
+  } else if (phase === 'TAPER') {
+    blocks.push({
+      heading: 'Taper week',
+      body: 'You\'re not building fitness anymore — you\'re storing it. Volume drops 40-60% over 2 weeks; intensity stays. The body is repaying the bank.',
+    });
+    blocks.push({
+      heading: 'What changes physiologically',
+      body: '• <strong>Glycogen stores</strong>: building up — peak race-day fuel.\n• <strong>Mitochondria</strong>: hold steady on reduced load (it\'s a 4-6 week erosion timeline).\n• <strong>CNS</strong>: freshening — the legs feel snappier toward race day.\n• <strong>Immune system</strong>: rebounds with the load drop. Lower URI risk.\n• <strong>Hormonal balance</strong>: cortisol drops, testosterone normalizes.',
+    });
+  } else {
+    blocks.push({
+      heading: 'Base maintenance',
+      body: 'Aerobic foundation work. Outside the build window, the focus is durability — easy mileage that grows mitochondrial density + capillarization without adding race-specific stress.',
+    });
+  }
+
+  if (blocks.length === 0) return null;
+
+  return (
+    <>
+      <SectionHeader title="Why your body is here" sub="What's healing, building, or holding — and why" />
+      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 14 }}>
+        {blocks.map((b, i) => (
+          <div key={i} style={i > 0 ? { paddingTop: 14, borderTop: '1px solid var(--color-l4)' } : undefined}>
+            <div style={{
+              fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px',
+              color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 8,
+            }}>
+              {b.heading}
+            </div>
+            <div style={{
+              fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6, whiteSpace: 'pre-line',
+            }} dangerouslySetInnerHTML={{ __html: b.body }} />
+          </div>
+        ))}
+        <div style={{
+          fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.5,
+          paddingTop: 10, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic',
+          fontFamily: 'var(--font-data)', letterSpacing: '0.4px',
+        }}>
+          Sources: Research/00b §Tissue Recovery Timelines + §Marathon Biomarker Timeline + §Recovery Scaled to Weekly Mileage. The engine reads your daily data and adjusts.
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PhaseGuidanceCard() {
   const ctx = useCoachToday();
   if (!ctx || !ctx.ok) return null;
