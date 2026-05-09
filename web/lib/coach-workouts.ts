@@ -175,42 +175,70 @@ export function longMpBlock(distanceMi: number, state: CoachState, mpBlockMi: nu
   };
 }
 
+function fmtPaceSPerMi(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}/mi`;
+}
+
+/** Goal-pace tag for quality workout descriptions. When the runner
+ *  has a goal time set on their A-race, surface "race pace ≈ X:XX/mi"
+ *  alongside the VDOT-derived pace band so the runner sees what
+ *  they're training toward, not just what they CAN do today.
+ *  Doctrine: VDOT for current fitness paces, goal pace for race-
+ *  specific adaptation target. */
+function goalPaceTag(state: CoachState): string {
+  const goal = goalPaceSPerMi(state);
+  if (goal == null) return '';
+  return ` · race pace ≈ ${fmtPaceSPerMi(goal)}`;
+}
+
 export function thresholdContinuous(distanceMi: number, state: CoachState): RunPrescription {
   return {
     type: 'threshold', label: 'Threshold tempo',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('threshold', state), hrZone: 4,
-    description: `2 mi WU · ${r1(distanceMi - 3)} mi at threshold (~half marathon pace) · 1 mi CD`,
+    description: `2 mi WU · ${r1(distanceMi - 3)} mi at threshold (~half marathon pace) · 1 mi CD${goalPaceTag(state)}`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
 
-export function thresholdIntervals(state: CoachState): RunPrescription {
+/** Cruise intervals — Daniels' "T intervals". Reps grow over the
+ *  build phase: 3 × 1mi early → 5 × 1mi at peak. */
+export function thresholdIntervals(state: CoachState, reps: number = 4): RunPrescription {
+  const distanceMi = 3 + reps;  // 2mi WU + reps × 1mi + 1mi CD
   return {
     type: 'threshold_intervals', label: 'Cruise intervals',
-    distanceMi: 7, durationMin: null,
+    distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('threshold', state), hrZone: 4,
-    description: `2 mi WU · 4 × 1 mi at threshold pace with 60-90s jog recovery · 1 mi CD (Daniels staple)`,
+    description: `2 mi WU · ${reps} × 1 mi at threshold pace with 60-90s jog recovery · 1 mi CD${goalPaceTag(state)}`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
 
-export function subThreshold(state: CoachState): RunPrescription {
+/** Sub-threshold (Norwegian doubles influence). Reps scale: 3 × 1mi
+ *  early build → 6 × 1mi peak. */
+export function subThreshold(state: CoachState, reps: number = 5): RunPrescription {
+  const distanceMi = 3 + reps;
   return {
     type: 'sub_threshold', label: 'Sub-threshold',
-    distanceMi: 8, durationMin: null,
+    distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('sub_threshold', state), hrZone: 3,
-    description: `2 mi WU · 5 × 1 mi at sub-threshold (just below LT2) with 60s jog recovery · 1 mi CD (Norwegian-singles)`,
+    description: `2 mi WU · ${reps} × 1 mi at sub-threshold (just below LT2) with 60s jog recovery · 1 mi CD${goalPaceTag(state)}`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
 
-export function vo2(state: CoachState): RunPrescription {
+/** VO₂max intervals. Reps + distance scale: 4 × 800m early → 6 × 1200m
+ *  peak. Pfitz prescription pattern. */
+export function vo2(state: CoachState, reps: number = 5, repMeters: number = 1000): RunPrescription {
+  const totalRepMi = (reps * repMeters) / 1609;
+  const distanceMi = 3 + totalRepMi;  // 2mi WU + reps + 1mi CD
   return {
     type: 'vo2', label: 'VO₂ max intervals',
-    distanceMi: 7, durationMin: null,
+    distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('vo2', state), hrZone: 5,
-    description: `2 mi WU · 5 × 1000m at 5K pace · jog 400m recovery · 1 mi CD`,
+    description: `2 mi WU · ${reps} × ${repMeters}m at 5K pace · jog 400m recovery · 1 mi CD`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
@@ -222,7 +250,7 @@ export function marathonSpecific(state: CoachState): RunPrescription {
     distanceMi: 12, durationMin: null,
     paceTargetSPerMi: goal ? { lowS: goal - 10, highS: goal + 5 } : null,
     hrZone: 4,
-    description: `2 mi WU · 15 min MP / 4 × (90s 10K pace + 90s easy) / 15 min MP · 1 mi CD · combo workout teaches recovering AT marathon pace`,
+    description: `2 mi WU · 15 min MP / 4 × (90s 10K pace + 90s easy) / 15 min MP · 1 mi CD · combo workout teaches recovering AT marathon pace${goalPaceTag(state)}`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }

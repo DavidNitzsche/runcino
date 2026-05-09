@@ -23,7 +23,7 @@ import type { CoachState } from './coach-state';
 import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
-  HARD_EFFORT_HR_DEFAULT_BPM,
+  HARD_EFFORT_HR_DEFAULT_BPM, phaseProgress, lerpByProgress,
 } from './coach-principles';
 import {
   type RunWorkoutType, type RunPrescription,
@@ -82,6 +82,15 @@ export interface CoachToday {
     isQuality: boolean;
     isLong: boolean;
     isToday: boolean;
+    /** Phase that was active on this day per the engine simulation.
+     *  Lets /workout/[date] show a date-correct header (e.g. "BUILD ·
+     *  56 days to AFC") instead of always echoing today's modeDetail
+     *  which is misleading when viewing a future workout. */
+    phase: Phase;
+    /** Human-readable mode descriptor for this specific day. Mirrors
+     *  the format of coach.today.modeDetail but computed from the
+     *  day's projected phase + days-to-race. */
+    modeDetail: string;
     /** Race scheduled on this day, if any. Renders as a flag in the
      *  strip so the runner sees the destination relative to today. */
     raceName: string | null;
@@ -577,6 +586,19 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
   const baseEasy = baseEasyMi(state, phase);
   const longTarget = longRunTarget(state, phase);
 
+  // Phase progress drives within-phase ramping for quality workouts.
+  // Pfitz/Daniels plans don't prescribe peak-week intensity from
+  // BUILD week 1 — they ramp threshold distance, interval reps, etc.
+  // over the phase. We compute progress 0..1 from the runner's
+  // days-to-A-race and use it to lerp workout parameters between
+  // early-phase low and late-phase high values.
+  const subPhase: RaceSubPhase | null = (phase === 'BASE' || phase === 'BUILD' || phase === 'PEAK' || phase === 'TAPER')
+    ? phase
+    : null;
+  const daysToA = state.races.nextA?.daysAway ?? null;
+  const distMi = state.races.nextA?.distanceMi ?? 13.1;
+  const progress = subPhase ? phaseProgress(daysToA, distMi, subPhase) : 0;
+
   switch (type) {
     case 'recovery':           return recovery(Math.min(5, Math.max(3, baseEasy * 0.6)));
     case 'general_aerobic':    return generalAerobic(baseEasy, state);
@@ -584,10 +606,28 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
     case 'long_steady':        return longSteady(longTarget, state);
     case 'long_progression':   return longProgression(longTarget, state);
     case 'long_mp_block':      return longMpBlock(longTarget, state, Math.min(14, Math.max(6, longTarget * 0.55)));
-    case 'threshold':          return thresholdContinuous(8, state);
-    case 'threshold_intervals': return thresholdIntervals(state);
-    case 'sub_threshold':      return subThreshold(state);
-    case 'vo2':                return vo2(state);
+    case 'threshold': {
+      // Threshold-tempo distance ramps 5 → 8 mi over the phase.
+      // Total = WU 2 + tempo + CD 1; tempo = 2 → 5 over progress.
+      const totalMi = lerpByProgress(5, 8, progress);
+      return thresholdContinuous(totalMi, state);
+    }
+    case 'threshold_intervals': {
+      // Reps ramp 3 → 5 over the phase.
+      const reps = Math.round(lerpByProgress(3, 5, progress));
+      return thresholdIntervals(state, reps);
+    }
+    case 'sub_threshold': {
+      // Reps ramp 3 → 6 over the phase.
+      const reps = Math.round(lerpByProgress(3, 6, progress));
+      return subThreshold(state, reps);
+    }
+    case 'vo2': {
+      // Reps ramp 4 → 6, distance per rep 800m → 1200m over the phase.
+      const reps = Math.round(lerpByProgress(4, 6, progress));
+      const repM = Math.round(lerpByProgress(800, 1200, progress) / 100) * 100;
+      return vo2(state, reps, repM);
+    }
     case 'marathon_specific':  return marathonSpecific(state);
     case 'strides_appended':   return easyWithStrides(baseEasy, state);
     case 'shakeout':           return shakeout();
@@ -861,6 +901,8 @@ function simulateNext30Days(state: CoachState, phase: Phase): CoachToday['next30
     const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
 
     const raceMeta = raceByDate.get(iso) ?? null;
+    const dayMode = decideMode(dayState);
+    const effectivePhase = offset > 0 ? decidePhase(dayState, dayMode) : phase;
     out.push({
       date: iso,
       type: run.type,
@@ -872,6 +914,8 @@ function simulateNext30Days(state: CoachState, phase: Phase): CoachToday['next30
       isQuality: run.isQuality,
       isLong: run.isLong,
       isToday,
+      phase: effectivePhase,
+      modeDetail: describeMode(dayState, effectivePhase),
       raceName: raceMeta?.name ?? null,
       racePriority: raceMeta?.priority ?? null,
     });
@@ -920,8 +964,11 @@ function simulateBuildCurveWeeks(state: CoachState): CoachToday['buildCurve'] {
     let qualityCount = 0;
     let hasMpBlock = false;
     let isRaceWeek = false;
-    let midWeekDaysToRace = 0;
-    let midWeekPhase: Phase = 'BASE_MAINTENANCE';
+    // Track every day's phase so we can pick the dominant one
+    // (mode of the 7 days). The previous logic sampled only Thursday
+    // which mis-labeled weeks where a phase boundary fell mid-week.
+    const dayPhases: Phase[] = [];
+    let representativeDaysToRace = 0;
 
     for (let d = 0; d < 7; d++) {
       const dayDate = new Date(weekStart);
@@ -942,20 +989,39 @@ function simulateBuildCurveWeeks(state: CoachState): CoachToday['buildCurve'] {
       if (run.isLong && run.distanceMi > longRunMi) longRunMi = run.distanceMi;
       if (run.isQuality) qualityCount += 1;
       if (run.type === 'long_mp_block' || run.type === 'marathon_specific') hasMpBlock = true;
-      // Capture phase + days-to-race from the week's middle day (Thu)
-      // so the row representation isn't biased by a single day's
-      // POST_RACE flip mid-week.
-      if (d === 3) {
-        midWeekDaysToRace = nextA.daysAway - offsetFromToday;
-        midWeekPhase = dayPhase;
-      }
+      dayPhases.push(dayPhase);
+      // Use the LAST day of the week (closest to race) as the days-
+      // to-race anchor. This matches the runner's mental model: "next
+      // Sunday I'll be N days from race" makes more sense than the
+      // mid-week sample.
+      representativeDaysToRace = nextA.daysAway - offsetFromToday;
     }
+
+    // Dominant phase = most-frequent across the week's days.
+    // Tiebreak: pick the LATER phase (closer to race) so a week
+    // that bridges BASE→BUILD labels as BUILD (the more advanced
+    // commitment), not BASE.
+    const phaseOrder: Phase[] = ['POST_RACE', 'REBUILD', 'BASE_MAINTENANCE', 'BASE', 'BUILD', 'PEAK', 'TAPER'];
+    const dominantPhase: Phase = (() => {
+      if (dayPhases.length === 0) return 'BASE_MAINTENANCE';
+      const counts = new Map<Phase, number>();
+      for (const p of dayPhases) counts.set(p, (counts.get(p) ?? 0) + 1);
+      let best: Phase = dayPhases[0];
+      let bestCount = 0;
+      for (const [p, c] of counts.entries()) {
+        if (c > bestCount || (c === bestCount && phaseOrder.indexOf(p) > phaseOrder.indexOf(best))) {
+          best = p;
+          bestCount = c;
+        }
+      }
+      return best;
+    })();
 
     out.push({
       weekStartISO,
       weekIndex: w,
-      daysToRace: midWeekDaysToRace,
-      phase: midWeekPhase,
+      daysToRace: representativeDaysToRace,
+      phase: dominantPhase,
       totalMi: round1(totalMi),
       longRunMi: round1(longRunMi),
       qualityCount,

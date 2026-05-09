@@ -73,6 +73,8 @@ function makeDay(date: string, type: string, distanceMi: number, isQuality = fal
     distanceMi,
     paceTargetSPerMi: null, hrZone: null, description: '',
     isQuality, isLong, isToday: false,
+    phase: 'BASE_MAINTENANCE',
+    modeDetail: '',
     raceName: null, racePriority: null,
   };
 }

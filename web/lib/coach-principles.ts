@@ -68,6 +68,62 @@ export function raceSubPhase(daysAway: number, distanceMi: number): RaceSubPhase
   return 'BASE';
 }
 
+/** Progress through the current race sub-phase, 0..1.
+ *  - 0 = just entered this phase
+ *  - 1 = at the very end of this phase, about to transition out
+ *
+ *  Used by quality workout factories to scale distance/reps/duration
+ *  across the phase. Pfitz's LT-phase week 1 is "5mi @ T"; week 6 is
+ *  "8mi @ T". Without phase progress the engine prescribes peak-week
+ *  intensity from day 1 — which is the "no progressive ramp" gap the
+ *  runner correctly flagged.
+ *
+ *  Returns 0 when daysAway is null (no race scheduled) so non-race
+ *  callers get the LOW end of the lerp (conservative default).
+ *
+ *  Doctrine: §Build/Peak/Taper Phase Cadence (Research/00b) +
+ *  Pfitz template structure (Research/22) — both prescribe within-
+ *  phase progression. */
+export function phaseProgress(daysAway: number | null, distanceMi: number, phase: RaceSubPhase): number {
+  if (daysAway == null) return 0;
+  const window = buildWindowDays(distanceMi);
+  const peakEnd  = window * SUBPHASE_FRACTIONS.TAPER;
+  const buildEnd = peakEnd + window * SUBPHASE_FRACTIONS.PEAK;
+  const baseEnd  = buildEnd + window * SUBPHASE_FRACTIONS.BUILD;
+
+  // For each phase, compute (start, end) in days-from-race terms,
+  // then locate daysAway within that span. Note: days-from-race
+  // counts DOWN as the runner gets closer, so phase START has a
+  // larger daysAway and phase END has a smaller daysAway.
+  const phaseStartEnd: Record<RaceSubPhase, [start: number, end: number]> = {
+    BASE:  [Number.MAX_SAFE_INTEGER, baseEnd],
+    BUILD: [baseEnd, buildEnd],
+    PEAK:  [buildEnd, peakEnd],
+    TAPER: [peakEnd, 0],
+  };
+  const [start, end] = phaseStartEnd[phase];
+  if (start <= end) return 0;  // degenerate (shouldn't happen)
+
+  // For BASE: start is "any time before baseEnd days" — we
+  // approximate by clamping at baseEnd + window (one full window
+  // before BASE ends) so a runner 2× the window out gets progress=0
+  // and a runner just before BUILD start gets progress=1.
+  if (phase === 'BASE') {
+    const baseStart = baseEnd + window;  // one window before BASE ends
+    const ratio = (baseStart - daysAway) / (baseStart - end);
+    return Math.max(0, Math.min(1, ratio));
+  }
+
+  const ratio = (start - daysAway) / (start - end);
+  return Math.max(0, Math.min(1, ratio));
+}
+
+/** Linear interpolation between low and high bounds based on phase
+ *  progress. Convenience for workout factories that scale by phase. */
+export function lerpByProgress(low: number, high: number, progress: number): number {
+  return low + (high - low) * Math.max(0, Math.min(1, progress));
+}
+
 /* ── 3. Intensity distribution by sub-phase (§3.1) ───────────────
    Targets for the 14-day rolling easy-share metric. The doc says
    pyramidal in build, polarized in peak — translated to "easy share":

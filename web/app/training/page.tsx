@@ -174,6 +174,11 @@ function TrainingPageInner() {
               expand the day-by-day. Answers "where am I going?" */}
           <NextFourWeeksSection now={now} hub={hub} goalRace={goalRace} />
 
+          {/* Phase narrative — explains what the engine is doing in
+              each phase block from now → race. Renders only when an
+              A-race is scheduled. */}
+          {goalRace && <PhaseNarrativeTile goalRace={goalRace} buildCurve={hub.coach.today?.buildCurve ?? []} />}
+
           {/* Long-arc visual context — repositioned below the
               concrete plan above. Answers "the big picture." */}
           {runs && runs.length > 0 && <BuildCurveTile runs={runs} now={now} goalRace={goalRace} buildCurve={hub.coach.today?.buildCurve ?? []} />}
@@ -184,6 +189,146 @@ function TrainingPageInner() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── PHASE NARRATIVE tile ───────────────────────────────────
+   Explains what the engine is doing in each phase block from now
+   through the runner's A-race. Reads buildCurve (engine-projected
+   per-week phase + key workouts) and groups consecutive same-phase
+   weeks into a single block with a plain-language description.
+   Answers "what's happening between now and race day?" — the runner
+   can SEE the structure of the build, not just trust it.
+   Doctrine: phase definitions from coach-principles.ts + Pfitz/
+   Daniels phase characterizations. */
+function PhaseNarrativeTile({ goalRace, buildCurve }: {
+  goalRace: SavedRace;
+  buildCurve: Array<{ weekStartISO: string; weekIndex: number; daysToRace: number; phase: string; totalMi: number; longRunMi: number; qualityCount: number; hasMpBlock: boolean; isRaceWeek: boolean }>;
+}) {
+  if (buildCurve.length === 0) return null;
+
+  // Group consecutive same-phase weeks into blocks.
+  type Block = { phase: string; startISO: string; endISO: string; weeks: number; daysToRaceStart: number; daysToRaceEnd: number; peakMi: number; peakLongRun: number };
+  const blocks: Block[] = [];
+  for (const wk of buildCurve) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.phase === wk.phase) {
+      last.endISO = wk.weekStartISO;
+      last.weeks += 1;
+      last.daysToRaceEnd = wk.daysToRace;
+      last.peakMi = Math.max(last.peakMi, wk.totalMi);
+      last.peakLongRun = Math.max(last.peakLongRun, wk.longRunMi);
+    } else {
+      blocks.push({
+        phase: wk.phase,
+        startISO: wk.weekStartISO,
+        endISO: wk.weekStartISO,
+        weeks: 1,
+        daysToRaceStart: wk.daysToRace,
+        daysToRaceEnd: wk.daysToRace,
+        peakMi: wk.totalMi,
+        peakLongRun: wk.longRunMi,
+      });
+    }
+  }
+
+  const phaseExplanation: Record<string, { label: string; subtitle: string; what: string }> = {
+    POST_RACE: {
+      label: 'Recovery',
+      subtitle: 'The body absorbs',
+      what: 'Walks, recovery jogs, easy aerobic. No quality. Doctrine: connective tissue rebuilds 2-4 weeks; CNS + immune 1-3 weeks.',
+    },
+    REBUILD: {
+      label: 'Rebuild',
+      subtitle: 'Returning to volume',
+      what: 'Easy aerobic only. Frequency before duration before intensity. Strides reintroduce neuromuscular sharpness without aerobic cost.',
+    },
+    BASE_MAINTENANCE: {
+      label: 'Base maintenance',
+      subtitle: 'Hold the floor before the build',
+      what: 'Aerobic only with one quality threshold or fartlek per week. Outside the build window — no race-specific work yet.',
+    },
+    BASE: {
+      label: 'Base',
+      subtitle: 'Aerobic foundation, threshold reintroduction',
+      what: 'Easy mileage anchors the week. Threshold tempo midweek, intervals start short. Long runs build duration. The phase that earns the right to peak.',
+    },
+    BUILD: {
+      label: 'Build',
+      subtitle: 'LT focus + race-pace exposure',
+      what: 'Threshold and intervals stretch. Long runs introduce HMP / MP segments. Two quality days a week. This is where fitness gains land.',
+    },
+    PEAK: {
+      label: 'Peak',
+      subtitle: 'Race-specific sharpening',
+      what: 'Marathon-specific or HMP combos. Long runs at race-effort sections. Highest mileage of the cycle. Dial the engine in.',
+    },
+    TAPER: {
+      label: 'Taper',
+      subtitle: 'Volume cut, intensity preserved',
+      what: 'Volume drops 40-60%. One quality session early in the week. Sharp legs, fresh head. No new fitness — just protect what you built.',
+    },
+  };
+
+  return (
+    <div className="tile" style={{ marginTop: 10, padding: '20px 24px' }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Path to {goalRace.meta.name}</div>
+          <div className="tile-lbl">{buildCurve[0]?.daysToRace ?? 0} days out · {blocks.length} phase{blocks.length === 1 ? '' : 's'} ahead</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+        {blocks.map((b, i) => {
+          const exp = phaseExplanation[b.phase] ?? { label: b.phase, subtitle: '', what: '' };
+          const phaseColor: Record<string, string> = {
+            POST_RACE: 'var(--color-corporate)',
+            REBUILD:   'var(--color-t3)',
+            BASE_MAINTENANCE: 'var(--color-t3)',
+            BASE:      'var(--color-t2)',
+            BUILD:     'var(--color-success)',
+            PEAK:      'var(--color-attention)',
+            TAPER:     'var(--color-warning)',
+          };
+          const accent = phaseColor[b.phase] ?? 'var(--color-t2)';
+          return (
+            <div key={i} style={{
+              padding: '14px 16px',
+              borderLeft: `3px solid ${accent}`,
+              background: 'var(--color-l2)',
+              borderRadius: 4,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <div style={{
+                    fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px',
+                    color: accent, fontWeight: 800, textTransform: 'uppercase',
+                  }}>
+                    {exp.label} · {b.weeks} {b.weeks === 1 ? 'week' : 'weeks'}
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
+                    color: 'var(--color-t0)', marginTop: 2, letterSpacing: '-.005em',
+                  }}>
+                    {exp.subtitle}
+                  </div>
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)',
+                  letterSpacing: '0.6px', textAlign: 'right',
+                }}>
+                  {b.daysToRaceStart}–{b.daysToRaceEnd}d out · peak {b.peakMi.toFixed(0)} mi · long {b.peakLongRun.toFixed(0)} mi
+                </div>
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-t2)', marginTop: 8, lineHeight: 1.55 }}>
+                {exp.what}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

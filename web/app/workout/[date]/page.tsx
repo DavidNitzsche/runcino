@@ -134,11 +134,18 @@ function WorkoutDetailInner({ date }: { date: string }) {
     );
   }
 
-  // Phase + week-position context. coach.today.phase is the engine's
-  // training phase ('TAPER' / 'BUILD' / etc); coach.today.modeDetail
-  // is the human-readable line ("12 days to Big Sur — peak block").
-  const phase = hub.coach.today?.phase ?? null;
-  const modeDetail = hub.coach.today?.modeDetail ?? '';
+  // Phase + week-position context. For TODAY, use coach.today.phase /
+  // modeDetail directly. For ANY OTHER DAY, look up the engine's
+  // per-day projection in next30Days — it now carries phase +
+  // modeDetail per day. Without this the header echoed today's
+  // "Recovery week — 5 days since Sombrero Half Marathon" even when
+  // viewing a workout 20 days from now (in a different phase).
+  const phase = prescription.isToday
+    ? (hub.coach.today?.phase ?? null)
+    : (fromNext30?.phase ?? hub.coach.today?.phase ?? null);
+  const modeDetail = prescription.isToday
+    ? (hub.coach.today?.modeDetail ?? '')
+    : (fromNext30?.modeDetail ?? '');
 
   // Past RPE for THIS workout date, if logged. The RpeInput defaults
   // to "today" but the page is calendar-driven — let the runner log
