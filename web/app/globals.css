@@ -396,6 +396,18 @@ a { color: inherit; text-decoration: none; }
   .dash-today-row { grid-template-columns: 1fr; }
 }
 
+/* Schedule row: this week (bar chart) | next 30 days (calendar strip) */
+.dash-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+@media (max-width: 700px) {
+  .dash-schedule-row { grid-template-columns: 1fr; }
+}
+
 /* Fitness row: VDOT | HR zones — side by side, stacks below 800px */
 .dash-fitness-row {
   display: grid;
