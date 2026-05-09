@@ -1015,7 +1015,7 @@ function CoachTodayCard({ runs }: { runs: NormalizedActivity[] | null }) {
                   background: d.isToday ? 'rgba(243,173,59,.06)' : 'var(--color-l2)',
                   border: `1px solid ${d.isToday ? 'rgba(243,173,59,.4)' : 'var(--color-l4)'}`,
                   display: 'flex', flexDirection: 'column', gap: 6,
-                  minHeight: 100,
+                  minHeight: 76,
                   opacity: isPast && !actualMi ? 0.55 : 1,
                 }}>
                   {/* Top: day-of-week */}
@@ -1846,7 +1846,7 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
               <div key={z} style={{
                 padding: 12, borderRadius: 8,
                 background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-                display: 'flex', flexDirection: 'column', gap: 6, minHeight: 130,
+                display: 'flex', flexDirection: 'column', gap: 6,
               }}>
                 <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, letterSpacing: '1.2px', color: c }}>
                   {zoneLabels[z].toUpperCase()}
@@ -1862,9 +1862,6 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>
                   {def.purpose}
-                </div>
-                <div style={{ fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.35, marginTop: 'auto', fontStyle: 'italic' }}>
-                  {def.talkTest}
                 </div>
               </div>
             );
@@ -2061,7 +2058,6 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
                 background: 'var(--color-l2)',
                 border: '1px solid var(--color-l4)',
                 display: 'flex', flexDirection: 'column', gap: 6,
-                minHeight: 120,
               }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   <span style={{
@@ -2079,9 +2075,6 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
                   color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px',
                 }}>
                   {fmtPaceBand(band)}<span style={{ fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, marginLeft: 3 }}>/MI</span>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4, marginTop: 'auto' }}>
-                  {z.blurb}
                 </div>
               </div>
             );
