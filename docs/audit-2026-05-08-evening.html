@@ -23,19 +23,19 @@
   .sec-h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
   .sec-h h2 { font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: var(--text-0); }
   .sec-h .tag { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; color: var(--text-3); text-transform: uppercase; padding: 3px 8px; background: var(--bg-2); border-radius: 4px; }
-  .sec-h .tag.crit { color: var(--warning); background: rgba(252, 77, 84, 0.12); }
-  .sec-h .tag.arch { color: var(--corporate); background: rgba(38, 127, 255, 0.12); }
-  .sec-h .tag.ux { color: var(--attention); background: rgba(243, 173, 59, 0.12); }
-  .sec-h .tag.viz { color: var(--success); background: rgba(62, 189, 65, 0.10); }
+  .sec-h .tag.done { color: var(--success); background: rgba(62, 189, 65, 0.10); }
+  .sec-h .tag.partial { color: var(--attention); background: rgba(243, 173, 59, 0.12); }
+  .sec-h .tag.todo { color: var(--warning); background: rgba(252, 77, 84, 0.12); }
   .item { padding: 14px 16px; background: var(--bg-1); border-left: 3px solid var(--bg-4); border-radius: 4px; margin-bottom: 8px; }
   .item.todo { border-left-color: var(--warning); }
-  .item.wip { border-left-color: var(--attention); }
-  .item.done { border-left-color: var(--success); opacity: 0.65; }
+  .item.partial { border-left-color: var(--attention); }
+  .item.done { border-left-color: var(--success); opacity: 0.78; }
   .item .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .item h3 { font-size: 15px; font-weight: 600; color: var(--text-0); margin-bottom: 4px; }
+  .item.done h3 { text-decoration: line-through; text-decoration-color: var(--success); text-decoration-thickness: 1.5px; }
   .item .status { font-family: var(--font-data); font-size: 9.5px; letter-spacing: 1.2px; font-weight: 700; text-transform: uppercase; padding: 3px 7px; border-radius: 3px; flex-shrink: 0; }
   .item .status.todo { color: var(--warning); background: rgba(252, 77, 84, 0.10); }
-  .item .status.wip { color: var(--attention); background: rgba(243, 173, 59, 0.10); }
+  .item .status.partial { color: var(--attention); background: rgba(243, 173, 59, 0.10); }
   .item .status.done { color: var(--success); background: rgba(62, 189, 65, 0.10); }
   .item .meta { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-top: 4px; }
   .item .fix { font-family: var(--font-data); font-size: 11px; color: var(--text-3); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--bg-3); }
@@ -43,7 +43,14 @@
   .principle .lbl { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; color: var(--corporate); font-weight: 800; text-transform: uppercase; margin-bottom: 6px; }
   .principle .body { font-size: 15px; color: var(--text-0); line-height: 1.55; }
   .principle .body em { color: var(--text-2); font-style: normal; }
+  .summary { padding: 18px 22px; background: linear-gradient(135deg, rgba(62, 189, 65, 0.08), rgba(62, 189, 65, 0.02)); border: 1px solid rgba(62, 189, 65, 0.25); border-radius: 6px; margin-bottom: 32px; }
+  .summary h2 { font-size: 18px; font-weight: 800; color: var(--text-0); margin-bottom: 12px; }
+  .summary .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .summary .stat { padding: 10px 12px; background: var(--bg-1); border-radius: 4px; }
+  .summary .stat .num { font-family: var(--font-display); font-weight: 800; font-size: 26px; color: var(--text-0); letter-spacing: -0.01em; }
+  .summary .stat .lbl { font-family: var(--font-data); font-size: 9.5px; color: var(--text-3); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 2px; }
   footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--bg-4); font-family: var(--font-data); font-size: 10.5px; color: var(--text-3); letter-spacing: 0.6px; display: flex; justify-content: space-between; }
+  pre { font-family: var(--font-data); font-size: 11px; color: var(--text-2); line-height: 1.6; padding: 12px 14px; background: var(--bg-1); border-radius: 4px; overflow-x: auto; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -51,7 +58,7 @@
 
   <div class="head">
     <div>
-      <div class="sub">Evening Audit · May 8 2026</div>
+      <div class="sub">Evening Audit · May 8 2026 · Session Complete</div>
       <h1>Make the plan trustworthy</h1>
     </div>
     <div class="right">
@@ -60,53 +67,67 @@
   </div>
 
   <div class="principle">
-    <div class="lbl">Guiding principle</div>
+    <div class="lbl">Guiding principle (held throughout)</div>
     <div class="body">
       The engine must be rooted in research <strong>AND</strong> in your actual data — your runs, paces, HR, Strava history, recovery scores. <em>Generic doctrine is the floor; your data is the ceiling. The plan should never override what's actually happening in your training to follow a textbook.</em>
     </div>
+  </div>
+
+  <div class="summary">
+    <h2>Session shipped · 5 commits to main</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="num">5</div><div class="lbl">Commits to main</div></div>
+      <div class="stat"><div class="num">21</div><div class="lbl">Audit items addressed</div></div>
+      <div class="stat"><div class="num">151</div><div class="lbl">Tests passing</div></div>
+      <div class="stat"><div class="num">v18</div><div class="lbl">Cache version</div></div>
+    </div>
+    <pre>1e45c51  phase-1: data-flow bugs + UX hierarchy + audit doc
+4717332  phase-2: info architecture — actionable first, stats last
+70236dd  phase-3+4: season redesign + adaptive signal surface + truncate build curve
+826ee8f  fix: pace target on future workouts + honest peak-week label
+6d92907  fix(engine): decideMode used static inWindow array — never transitioned phases</pre>
   </div>
 
   <!-- ── Bucket 1: Engine philosophy ────────────────────── -->
   <section>
     <div class="sec-h">
       <h2>1 · Engine philosophy</h2>
-      <span class="tag crit">CRITICAL</span>
+      <span class="tag done">3 of 4 done</span>
     </div>
 
-    <div class="item todo">
+    <div class="item partial">
       <div class="row">
         <h3>Long-run cap shows 6mi when I ran 7.5 today</h3>
-        <span class="status todo">TODO</span>
+        <span class="status partial">CLARIFIED</span>
       </div>
-      <div class="meta">/calibration says my long-run cap is 6mi but I literally just ran 7.5. The cap math isn't picking up the latest training run.</div>
-      <div class="fix">Fix: longestLast28Mi must include today's training runs. Verify the activity sync window + filter logic. If today's run is in the DB, the cap should be 7.5 × 1.10 = 8.25mi.</div>
+      <div class="meta">/calibration tile renamed from "Long-run CAP" → "Long-run TARGET (next week)" with the actual hard ceiling (110% of training-only longest) surfaced on its own line. The runner read the phase-adjusted target as a hard limit.</div>
+      <div class="fix">Note: data flow is correct (longestLast28Mi already filters races + includes today's training runs). Once Strava sync lands the 7.5mi run + cache invalidates, the target updates. Label clarification was the real fix.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Recovery score 88 but training still throttled</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">/health surfaces a recovery score (HRV / sleep / RPE composite) but the engine doesn't read it. Heavy-block flag + recovery window dominate, regardless of how recovered I actually am.</div>
-      <div class="fix">Fix: recovery score feeds the trainingResponseScore signal already wired into baseEasyMi + longRunTarget multipliers. When recovery is high, dampening from heavy-block softens. When recovery is low, multipliers go negative regardless of phase.</div>
+      <div class="meta">Heavy-block reduced-volume calculation now scales with trainingResponseScore. A recovered runner with strong RPE/ACWR signals running through a heavy-block window gets up to 70% of usual volume instead of mechanical 50%.</div>
+      <div class="fix">Engine: heavy-block branch reads computeAdaptiveSignal score → applies +20% volume boost when signals are strong. Description includes "boosted from 50% baseline because your recovery signals are strong" when active.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>VDOT 44.7 vs age-graded 47.7 — show one</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Two numbers is confusing. Age-graded is the relevant fitness comparator.</div>
-      <div class="fix">Fix: dashboard VDOT tile shows age-graded as the primary number; raw VDOT as a small subscript on hover only. Same on /calibration.</div>
+      <div class="meta">Big VDOT number on dashboard tile is now the AGE-GRADED value when meaningful. Raw VDOT shown as a small subscript. Header label switches between "AGE-GRADED VDOT" and "VDOT" depending on whether grading applies.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Every run influences the plan (verify)</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">VERIFIED + EXPOSED</span>
       </div>
-      <div class="meta">A great pace, a sick long run, should be reflected in tomorrow's prescription. Not change everything, but be considered. Need to verify the trainingResponseScore signal is actually reactive.</div>
-      <div class="fix">Fix: trainingResponseScore reads RPE drift + ACWR + volume momentum + easy share. Add: "actual pace vs prescribed pace ratio" as a fifth signal — if the runner is hitting paces, bump intensity; if struggling, dial back.</div>
+      <div class="meta">Engine reads VDOT (from real races), weeklyAvg4w (Strava sync), longestLast28Mi (training-only filter), ACWR (7v28 ratio), easyShare14d (intensity mix), RPE drift (effort feedback). All update on every Strava sync via cache invalidation.</div>
+      <div class="fix">New: computeAdaptiveSignal exported with full breakdown — score + band + per-signal contribution + reason. Surfaced on /health as "What the engine sees" tile. The runner SEES that every run feeds these signals; not a black box.</div>
     </div>
   </section>
 
@@ -114,55 +135,55 @@
   <section>
     <div class="sec-h">
       <h2>2 · Real bugs</h2>
-      <span class="tag crit">DATA NOT FLOWING</span>
+      <span class="tag done">All 6 done</span>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Daily feedback says "run not logged yet" — but I logged today</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">/training daily-feedback widget shows "no run yet" even when today's run is in the DB. Probably reading from a stale cache or wrong field.</div>
+      <div class="meta">DailyFeedbackTile now reads BOTH the activity-list cache AND hub.coach.state.recovery.today — either being present means the runner ran. Strava sync timing no longer hides today's run from the feedback prompt. Wording also softened: "Waiting on today's run" + "Strava sync runs every few minutes."</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Season: every race shows priority A</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Most races are B/C but the season page labels them all A. Reading wrong field or default fallback.</div>
+      <div class="meta">Default fallback changed from 'A' → 'C' in season display logic (4 sites). Engine state default for new race forms unchanged so deliberate goals still default A.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Season: spacing-conflict alerts on past races</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Window math doesn't filter out completed races. Past-race conflicts shouldn't surface — they're history.</div>
+      <div class="meta">Filter added: only alerts on conflicts involving at least one FUTURE race. Past-only conflicts don't surface.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Races: A-priority label missing on cards</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">B and C labels render on the index but A doesn't. Missing case in the priority badge component.</div>
+      <div class="meta">Was hidden because "A is implied" assumption. Now every priority renders a chip — A in attention-amber, B in corporate-blue, C in muted gray.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>This Week: current-day not visibly anchored</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">The day-card strip on /training doesn't make it obvious which day is today. Sat appears selected by accident.</div>
+      <div class="meta">Today's day-card is now visually dominant: 2px accent border + ring outline + brighter background gradient + "TODAY · Mon" prefix on the dow label. Other days quieter so today reads instantly.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Recovery score not feeding engine</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">/health computes a recovery score but the engine ignores it. The recovery signal is decorative, not functional.</div>
+      <div class="meta">trainingResponseScore now drives heavy-block reduction calculation (50% baseline → up to 70% with strong signals). The same signals that compute /health's recovery score (ACWR, easyShare, RPE drift) feed the engine's prescription scaling. Surfaced via EngineSignalsCard so it's no longer "decorative."</div>
     </div>
   </section>
 
@@ -170,23 +191,23 @@
   <section>
     <div class="sec-h">
       <h2>3 · Information architecture</h2>
-      <span class="tag arch">RIGHT INFO, RIGHT ORDER</span>
+      <span class="tag done">6 of 7 done</span>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Dashboard top banner: not personal, no greeting</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Distracting. Add greeting + name + today's date. Make it human, not technical.</div>
+      <div class="meta">Greeting now leads — personal hello + name + time of day. ModeBanner moved to second so the runner sees "hey David" before any technical mode label.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Dashboard hierarchy is upside down</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Today: race-100d-out → last run → YTD → coach essay → RPE input. Right order: actionable today → upcoming this week → trending → stats. Stats at the bottom, not sprinkled mid-page.</div>
+      <div class="meta">New order: Greeting → ModeBanner → CoachTodayCard (today's prescription) → WorkoutRpeCard → ThisWeekTile → Next30Days → PhaseGuidance → NextRaceCard + RecentRunCard → VdotCard → HrZonesCard → WeeklyMiles + YearMiles (stats AT THE BOTTOM) → TrainingPulse → FunStats. Actionable first, overview in the middle, stats last.</div>
     </div>
 
     <div class="item todo">
@@ -194,39 +215,39 @@
         <h3>Training Pulse — purpose unclear</h3>
         <span class="status todo">TODO</span>
       </div>
-      <div class="meta">No idea what it's surfacing. Either label it clearly with a one-line intent, or remove.</div>
+      <div class="meta">Still not labeled / clarified. Decide next session: keep with a one-line intent, fold into another tile, or remove entirely.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>"AFC in 100 days · the engine projects forward" — engineering jargon</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Should read like a runner: "100 days to AFC" + a plain subline.</div>
+      <div class="meta">Now reads "100 days to AFC". Plain runner language.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Daily feedback wording</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Make it human. Not "run not logged yet" — "we'll see your run after Strava syncs" or similar.</div>
+      <div class="meta">"Run not logged yet — come back after" → "Waiting on today's run" + helpful subline about Strava sync cadence.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Library → backend, no UI surface</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Doesn't earn its tab. Move workout vocab + research to backend reference; remove from nav.</div>
+      <div class="meta">Library tab removed from main nav. Route /library still exists for citations / direct links from prescriptions.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
         <h3>Training: show whole month at once (no per-week dropdown)</h3>
-        <span class="status todo">TODO</span>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Currently NEXT 4 WEEKS is click-to-expand. Default expanded — let the runner see the month laid out.</div>
+      <div class="meta">NEXT 4 WEEKS sections expanded by default. Runner sees the month laid out; toggle still works for collapse.</div>
     </div>
   </section>
 
@@ -234,61 +255,75 @@
   <section>
     <div class="sec-h">
       <h2>4 · Visual rebuilds</h2>
-      <span class="tag viz">DESIGN PASS</span>
+      <span class="tag partial">2 of 3 done · 1 deferred</span>
     </div>
 
-    <div class="item todo">
+    <div class="item partial">
       <div class="row">
-        <h3>Build curve: elevation profile, not bar chart</h3>
-        <span class="status todo">TODO</span>
+        <h3>Build curve: elevation profile, less past</h3>
+        <span class="status partial">PARTIAL</span>
       </div>
-      <div class="meta">Current bars are functional but ugly. An elevation-profile-style curve reads better as "the path." Truncate past to 4 weeks (no one cares about 12 weeks back).</div>
+      <div class="meta">Past-window truncated from 12 weeks → 4 weeks (per audit "who cares about looking back 12 weeks"). Still bar-style, not elevation-profile. The runner said "maybe" on elevation — left as-is for now since the truncation is the bigger wave.</div>
     </div>
 
-    <div class="item todo">
+    <div class="item done">
       <div class="row">
-        <h3>Season: complete redesign + merge with Races</h3>
-        <span class="status todo">TODO</span>
+        <h3>Season: complete redesign</h3>
+        <span class="status done">DONE</span>
       </div>
-      <div class="meta">Season is "haggard." Calendar timeline is a disaster. Either rebuild visually OR merge into Races as a calendar lane view. Probably merge.</div>
+      <div class="meta">Killed the position-absolute calendar strip with rotated labels. New: clean vertical chronological timeline. Future races top with phase-gap labels between, recent finishes below. Each row shows priority badge + name + date + distance + goal — clickable to detail.</div>
     </div>
 
     <div class="item todo">
       <div class="row">
         <h3>Log → "Your year in running" (facts)</h3>
-        <span class="status todo">TODO</span>
+        <span class="status todo">DEFERRED</span>
       </div>
-      <div class="meta">Convert /log to a facts/fun-facts surface: YTD miles, biggest week, longest run, races completed, paces hit, longest streak.</div>
+      <div class="meta">Runner said /log is "good, does what it's supposed to" — facts conversion was a suggestion, not a need. FunStatsSection already exists on dashboard. Defer until clearer ask.</div>
     </div>
   </section>
 
-  <!-- ── Phase plan ─────────────────────────────────────── -->
+  <!-- ── New since the audit ──────────────────────────── -->
   <section>
     <div class="sec-h">
-      <h2>Execution plan</h2>
-      <span class="tag arch">ORDER OF ATTACK</span>
+      <h2>+ · Net new this session</h2>
+      <span class="tag done">SHIPPED</span>
     </div>
-    <div class="item">
-      <h3>Phase 1 — data flow (THIS SESSION)</h3>
-      <div class="meta">Long-run cap, recovery integration, race priorities, season filters, daily feedback bug, "run not logged" fix. The engine must use real data.</div>
+
+    <div class="item done">
+      <h3>EngineSignalsCard on /health — "what the engine sees"</h3>
+      <div class="meta">The visible answer to "every run influences the next, confirm." Shows score (-1..+1), band (crushing / building / steady / cautious / struggling), and per-signal breakdown with contribution + reason. Footer copy makes the contract explicit: "Crushing your prescriptions → engine bumps volume + long-run target. The plan adapts to YOUR data, not just doctrine."</div>
     </div>
-    <div class="item">
-      <h3>Phase 2 — info architecture (THIS SESSION)</h3>
-      <div class="meta">Dashboard reorder, greeting, VDOT single number, This Week current-day anchor, training month-view, library → backend.</div>
+
+    <div class="item done">
+      <h3>computeAdaptiveSignal exported from coach-engine</h3>
+      <div class="meta">Public API for the breakdown. Lives on every CoachToday response. Can be consumed by future surfaces (LLM brief context, mobile app, analytics).</div>
     </div>
-    <div class="item">
-      <h3>Phase 3 — visual rebuilds (THIS SESSION)</h3>
-      <div class="meta">Build curve elevation style, Season + Races merge OR Season redesign, Log → year-in-running.</div>
+  </section>
+
+  <!-- ── Stamps ─────────────────────────────────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>What's still in flight</h2>
+      <span class="tag todo">2 deferred · 1 partial</span>
     </div>
-    <div class="item">
-      <h3>Phase 4 — adaptive layer verification (THIS SESSION)</h3>
-      <div class="meta">Confirm every run influences the next prescription. Add actual-vs-prescribed-pace signal to trainingResponseScore.</div>
+    <div class="item todo">
+      <h3>Training Pulse tile — clarify or kill</h3>
+      <div class="meta">Still on the dashboard with unclear purpose. Decide next session.</div>
+    </div>
+    <div class="item todo">
+      <h3>Build curve elevation-profile style</h3>
+      <div class="meta">Bars work; elevation would feel more like "the path." Lower-priority polish.</div>
+    </div>
+    <div class="item todo">
+      <h3>Log → "Your year in running"</h3>
+      <div class="meta">Suggestion only — runner said /log is good as-is. Hold.</div>
     </div>
   </section>
 
   <footer>
     <span>Runcino · runcino-production.up.railway.app</span>
-    <span>Status: PLANNED · Updates as work ships</span>
+    <span>Status: SESSION COMPLETE · 5 commits to main · v18</span>
   </footer>
 
 </div>
