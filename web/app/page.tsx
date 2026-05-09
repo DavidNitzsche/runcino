@@ -1833,7 +1833,7 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
   };
 
   return (
-    <>
+    <div>
       <SectionHeader title="HR zones" sub={`%HRmax · 5-zone · HRmax ${hrmax.bpm} BPM ${hrmax.source === 'tanaka_estimate' ? '· Tanaka estimate' : '· measured'}`} />
       <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 10 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
@@ -1876,7 +1876,7 @@ function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'ta
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1896,7 +1896,7 @@ function VdotCard() {
  *  in Research/01 + VDOT_FIELD_TESTS doctrine. */
 function NoVdotPanel() {
   return (
-    <>
+    <div>
       <SectionHeader title="VDOT fitness" sub="DANIELS · NEEDS A FRESH RACE TO ANCHOR" />
       <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1938,7 +1938,7 @@ function NoVdotPanel() {
           ))}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1983,7 +1983,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
   const freshChip = freshChipColors[vdot.freshness];
 
   return (
-    <>
+    <div>
       <SectionHeader title="VDOT fitness" sub="DANIELS · ANCHORED ON YOUR LAST RACE" />
 
       <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
@@ -2088,7 +2088,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
           })}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
