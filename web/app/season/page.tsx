@@ -64,14 +64,22 @@ function SeasonPageInner() {
   const segments = buildSegments(inWindow, todayISO);
 
   // Conflict detection: pairs of races too close per MULTI_RACE_CADENCE.
-  const conflicts = detectConflicts(inWindow);
+  // Only alerts on conflicts involving at least one FUTURE race —
+  // surfacing a tight gap between two past races is not actionable
+  // (the runner already lived through it). Pairs that span past→future
+  // still alert because the past race's recovery affects the upcoming one.
+  const conflicts = detectConflicts(inWindow).filter(c => {
+    const aIsFuture = c.a.meta.date >= todayISO;
+    const bIsFuture = c.b.meta.date >= todayISO;
+    return aIsFuture || bIsFuture;
+  });
 
   // Annual stats — race counts in the trailing 12 months.
   const trailing12 = hub.races.filter(r => {
     const t = Date.parse(r.meta.date + 'T12:00:00Z');
     return t >= todayMs - 365 * 86_400_000 && t <= todayMs + 365 * 86_400_000;
   });
-  const aCount = trailing12.filter(r => (r.meta.priority ?? 'A') === 'A').length;
+  const aCount = trailing12.filter(r => (r.meta.priority ?? 'C') === 'A').length;
   const bCount = trailing12.filter(r => r.meta.priority === 'B').length;
   const cCount = trailing12.filter(r => r.meta.priority === 'C').length;
   const marathonCount = trailing12.filter(r => r.meta.distanceMi >= 22).length;
@@ -293,7 +301,7 @@ function Timeline({ races, todayISO, segments }: { races: SavedRace[]; todayISO:
         {races.map(r => {
           const rMs = Date.parse(r.meta.date + 'T12:00:00Z');
           const left = ((rMs - startMs) / 86_400_000) / totalDays * 100;
-          const priority = r.meta.priority ?? 'A';
+          const priority = r.meta.priority ?? 'C';
           const color = priority === 'A' ? 'var(--color-warning)'
                       : priority === 'B' ? 'var(--color-attention)'
                       : 'var(--color-corporate)';
@@ -430,7 +438,7 @@ function UpcomingListCard({ upcoming, todayISO }: { upcoming: SavedRace[]; today
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {upcoming.map(r => {
           const days = Math.round((Date.parse(r.meta.date) - Date.parse(todayISO)) / 86_400_000);
-          const priority = r.meta.priority ?? 'A';
+          const priority = r.meta.priority ?? 'C';
           const color = priority === 'A' ? 'var(--color-warning)' : priority === 'B' ? 'var(--color-attention)' : 'var(--color-corporate)';
           return (
             <Link key={r.slug} href={`/races/${r.slug}`} style={{
@@ -461,7 +469,7 @@ function RecentListCard({ past, todayISO }: { past: SavedRace[]; todayISO: strin
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {past.slice().reverse().slice(0, 8).map(r => {
           const days = Math.abs(Math.round((Date.parse(r.meta.date) - Date.parse(todayISO)) / 86_400_000));
-          const priority = r.meta.priority ?? 'A';
+          const priority = r.meta.priority ?? 'C';
           const color = priority === 'A' ? 'var(--color-warning)' : priority === 'B' ? 'var(--color-attention)' : 'var(--color-corporate)';
           return (
             <Link key={r.slug} href={`/races/${r.slug}`} style={{

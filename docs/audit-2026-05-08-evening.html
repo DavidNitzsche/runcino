@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evening Audit · May 8 2026 · Runcino</title>
+<style>
+  :root {
+    --bg-0: #0A0E1A; --bg-1: #0F1420; --bg-2: #141B2D; --bg-3: #1B243A; --bg-4: #2A3656;
+    --text-0: #F4F6FB; --text-1: #D4DBEA; --text-2: #9AA5BC; --text-3: #5E6B85;
+    --success: #3EBD41; --corporate: #267FFF; --attention: #F3AD3B; --warning: #FC4D54;
+    --font-display: 'Inter', system-ui, sans-serif;
+    --font-data: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg-0); color: var(--text-1); font-family: var(--font-display); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .stage { max-width: 1100px; margin: 0 auto; padding: 40px 32px 80px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--bg-4); }
+  .head h1 { font-weight: 800; font-size: 36px; letter-spacing: -0.025em; color: var(--text-0); }
+  .head .sub { font-family: var(--font-data); font-size: 11px; font-weight: 700; letter-spacing: 1.6px; color: var(--text-3); text-transform: uppercase; margin-bottom: 6px; }
+  .head .right { text-align: right; font-family: var(--font-data); font-size: 11px; color: var(--text-3); letter-spacing: 1.4px; }
+  section { margin-bottom: 40px; }
+  .sec-h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .sec-h h2 { font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: var(--text-0); }
+  .sec-h .tag { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.4px; color: var(--text-3); text-transform: uppercase; padding: 3px 8px; background: var(--bg-2); border-radius: 4px; }
+  .sec-h .tag.crit { color: var(--warning); background: rgba(252, 77, 84, 0.12); }
+  .sec-h .tag.arch { color: var(--corporate); background: rgba(38, 127, 255, 0.12); }
+  .sec-h .tag.ux { color: var(--attention); background: rgba(243, 173, 59, 0.12); }
+  .sec-h .tag.viz { color: var(--success); background: rgba(62, 189, 65, 0.10); }
+  .item { padding: 14px 16px; background: var(--bg-1); border-left: 3px solid var(--bg-4); border-radius: 4px; margin-bottom: 8px; }
+  .item.todo { border-left-color: var(--warning); }
+  .item.wip { border-left-color: var(--attention); }
+  .item.done { border-left-color: var(--success); opacity: 0.65; }
+  .item .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .item h3 { font-size: 15px; font-weight: 600; color: var(--text-0); margin-bottom: 4px; }
+  .item .status { font-family: var(--font-data); font-size: 9.5px; letter-spacing: 1.2px; font-weight: 700; text-transform: uppercase; padding: 3px 7px; border-radius: 3px; flex-shrink: 0; }
+  .item .status.todo { color: var(--warning); background: rgba(252, 77, 84, 0.10); }
+  .item .status.wip { color: var(--attention); background: rgba(243, 173, 59, 0.10); }
+  .item .status.done { color: var(--success); background: rgba(62, 189, 65, 0.10); }
+  .item .meta { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-top: 4px; }
+  .item .fix { font-family: var(--font-data); font-size: 11px; color: var(--text-3); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--bg-3); }
+  .principle { padding: 18px 22px; background: linear-gradient(135deg, rgba(38, 127, 255, 0.10), rgba(38, 127, 255, 0.04)); border: 1px solid rgba(38, 127, 255, 0.30); border-radius: 6px; margin-bottom: 32px; }
+  .principle .lbl { font-family: var(--font-data); font-size: 10px; letter-spacing: 1.6px; color: var(--corporate); font-weight: 800; text-transform: uppercase; margin-bottom: 6px; }
+  .principle .body { font-size: 15px; color: var(--text-0); line-height: 1.55; }
+  .principle .body em { color: var(--text-2); font-style: normal; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--bg-4); font-family: var(--font-data); font-size: 10.5px; color: var(--text-3); letter-spacing: 0.6px; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="head">
+    <div>
+      <div class="sub">Evening Audit · May 8 2026</div>
+      <h1>Make the plan trustworthy</h1>
+    </div>
+    <div class="right">
+      Runcino · <a href="https://runcino-production.up.railway.app" style="color:var(--corporate);text-decoration:none;">Production</a>
+    </div>
+  </div>
+
+  <div class="principle">
+    <div class="lbl">Guiding principle</div>
+    <div class="body">
+      The engine must be rooted in research <strong>AND</strong> in your actual data — your runs, paces, HR, Strava history, recovery scores. <em>Generic doctrine is the floor; your data is the ceiling. The plan should never override what's actually happening in your training to follow a textbook.</em>
+    </div>
+  </div>
+
+  <!-- ── Bucket 1: Engine philosophy ────────────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>1 · Engine philosophy</h2>
+      <span class="tag crit">CRITICAL</span>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Long-run cap shows 6mi when I ran 7.5 today</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">/calibration says my long-run cap is 6mi but I literally just ran 7.5. The cap math isn't picking up the latest training run.</div>
+      <div class="fix">Fix: longestLast28Mi must include today's training runs. Verify the activity sync window + filter logic. If today's run is in the DB, the cap should be 7.5 × 1.10 = 8.25mi.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Recovery score 88 but training still throttled</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">/health surfaces a recovery score (HRV / sleep / RPE composite) but the engine doesn't read it. Heavy-block flag + recovery window dominate, regardless of how recovered I actually am.</div>
+      <div class="fix">Fix: recovery score feeds the trainingResponseScore signal already wired into baseEasyMi + longRunTarget multipliers. When recovery is high, dampening from heavy-block softens. When recovery is low, multipliers go negative regardless of phase.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>VDOT 44.7 vs age-graded 47.7 — show one</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Two numbers is confusing. Age-graded is the relevant fitness comparator.</div>
+      <div class="fix">Fix: dashboard VDOT tile shows age-graded as the primary number; raw VDOT as a small subscript on hover only. Same on /calibration.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Every run influences the plan (verify)</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">A great pace, a sick long run, should be reflected in tomorrow's prescription. Not change everything, but be considered. Need to verify the trainingResponseScore signal is actually reactive.</div>
+      <div class="fix">Fix: trainingResponseScore reads RPE drift + ACWR + volume momentum + easy share. Add: "actual pace vs prescribed pace ratio" as a fifth signal — if the runner is hitting paces, bump intensity; if struggling, dial back.</div>
+    </div>
+  </section>
+
+  <!-- ── Bucket 2: Real bugs ────────────────────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>2 · Real bugs</h2>
+      <span class="tag crit">DATA NOT FLOWING</span>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Daily feedback says "run not logged yet" — but I logged today</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">/training daily-feedback widget shows "no run yet" even when today's run is in the DB. Probably reading from a stale cache or wrong field.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Season: every race shows priority A</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Most races are B/C but the season page labels them all A. Reading wrong field or default fallback.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Season: spacing-conflict alerts on past races</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Window math doesn't filter out completed races. Past-race conflicts shouldn't surface — they're history.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Races: A-priority label missing on cards</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">B and C labels render on the index but A doesn't. Missing case in the priority badge component.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>This Week: current-day not visibly anchored</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">The day-card strip on /training doesn't make it obvious which day is today. Sat appears selected by accident.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Recovery score not feeding engine</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">/health computes a recovery score but the engine ignores it. The recovery signal is decorative, not functional.</div>
+    </div>
+  </section>
+
+  <!-- ── Bucket 3: Information architecture ─────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>3 · Information architecture</h2>
+      <span class="tag arch">RIGHT INFO, RIGHT ORDER</span>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Dashboard top banner: not personal, no greeting</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Distracting. Add greeting + name + today's date. Make it human, not technical.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Dashboard hierarchy is upside down</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Today: race-100d-out → last run → YTD → coach essay → RPE input. Right order: actionable today → upcoming this week → trending → stats. Stats at the bottom, not sprinkled mid-page.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Training Pulse — purpose unclear</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">No idea what it's surfacing. Either label it clearly with a one-line intent, or remove.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>"AFC in 100 days · the engine projects forward" — engineering jargon</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Should read like a runner: "100 days to AFC" + a plain subline.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Daily feedback wording</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Make it human. Not "run not logged yet" — "we'll see your run after Strava syncs" or similar.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Library → backend, no UI surface</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Doesn't earn its tab. Move workout vocab + research to backend reference; remove from nav.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Training: show whole month at once (no per-week dropdown)</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Currently NEXT 4 WEEKS is click-to-expand. Default expanded — let the runner see the month laid out.</div>
+    </div>
+  </section>
+
+  <!-- ── Bucket 4: Visual rebuilds ──────────────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>4 · Visual rebuilds</h2>
+      <span class="tag viz">DESIGN PASS</span>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Build curve: elevation profile, not bar chart</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Current bars are functional but ugly. An elevation-profile-style curve reads better as "the path." Truncate past to 4 weeks (no one cares about 12 weeks back).</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Season: complete redesign + merge with Races</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Season is "haggard." Calendar timeline is a disaster. Either rebuild visually OR merge into Races as a calendar lane view. Probably merge.</div>
+    </div>
+
+    <div class="item todo">
+      <div class="row">
+        <h3>Log → "Your year in running" (facts)</h3>
+        <span class="status todo">TODO</span>
+      </div>
+      <div class="meta">Convert /log to a facts/fun-facts surface: YTD miles, biggest week, longest run, races completed, paces hit, longest streak.</div>
+    </div>
+  </section>
+
+  <!-- ── Phase plan ─────────────────────────────────────── -->
+  <section>
+    <div class="sec-h">
+      <h2>Execution plan</h2>
+      <span class="tag arch">ORDER OF ATTACK</span>
+    </div>
+    <div class="item">
+      <h3>Phase 1 — data flow (THIS SESSION)</h3>
+      <div class="meta">Long-run cap, recovery integration, race priorities, season filters, daily feedback bug, "run not logged" fix. The engine must use real data.</div>
+    </div>
+    <div class="item">
+      <h3>Phase 2 — info architecture (THIS SESSION)</h3>
+      <div class="meta">Dashboard reorder, greeting, VDOT single number, This Week current-day anchor, training month-view, library → backend.</div>
+    </div>
+    <div class="item">
+      <h3>Phase 3 — visual rebuilds (THIS SESSION)</h3>
+      <div class="meta">Build curve elevation style, Season + Races merge OR Season redesign, Log → year-in-running.</div>
+    </div>
+    <div class="item">
+      <h3>Phase 4 — adaptive layer verification (THIS SESSION)</h3>
+      <div class="meta">Confirm every run influences the next prescription. Add actual-vs-prescribed-pace signal to trainingResponseScore.</div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Runcino · runcino-production.up.railway.app</span>
+    <span>Status: PLANNED · Updates as work ships</span>
+  </footer>
+
+</div>
+</body>
+</html>

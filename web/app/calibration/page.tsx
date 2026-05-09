@@ -174,18 +174,23 @@ function CalibrationInner() {
           </div>
         </SettingTile>
 
-        {/* Long-run cap */}
+        {/* Long-run target — phase-adjusted recommendation, NOT the
+            hard ceiling. Renamed from "cap" because the runner read
+            it as a hard limit ("only 6mi when I ran 7.5 today!"); the
+            target is what the engine WILL prescribe given current phase
+            (recovery weeks pull this low). The hard ceiling is the
+            spike rule below — that's the actual upper bound. */}
         {phase && longestRecent > 0 && (
           <SettingTile
-            title="Long-run cap (next week)"
+            title="Long-run target (next week)"
             value={longRunTargetMi(phase as EnginePhase, longestRecent).toFixed(1)}
             unit="mi"
-            source={`${LONG_RUN_PHASE_SPEC[phase as EnginePhase]?.multiplier} × peak ${longestRecent.toFixed(1)} mi (28-day max), floor ${LONG_RUN_PHASE_SPEC[phase as EnginePhase]?.floorMi} mi`}
+            source={`Recommendation for ${phase} phase: ${LONG_RUN_PHASE_SPEC[phase as EnginePhase]?.multiplier} × your 28-day longest training run (${longestRecent.toFixed(1)} mi). Floor ${LONG_RUN_PHASE_SPEC[phase as EnginePhase]?.floorMi} mi.`}
             citation="Research/01 §13.1 single-session-spike"
             stale={false}
           >
             <div style={{ fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.5 }}>
-              Hard ceiling: never &gt;{((LONG_RUN_HARD_CAP_MULTIPLIER - 1) * 100).toFixed(0)}% of recent peak ({(longestRecent * LONG_RUN_HARD_CAP_MULTIPLIER).toFixed(1)} mi) regardless of phase.
+              <strong style={{ color: 'var(--color-t1)' }}>Hard ceiling: {(longestRecent * LONG_RUN_HARD_CAP_MULTIPLIER).toFixed(1)} mi</strong> — the actual upper bound (110% of training-only longest). The target above is the phase-adjusted recommendation. Recovery weeks pull it well below the ceiling on purpose.
             </div>
           </SettingTile>
         )}

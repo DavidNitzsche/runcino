@@ -179,8 +179,20 @@ function RaceCard({ race, highlight = false }: { race: SavedRace; highlight?: bo
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
         <span className="tile-sub">{fmtDate(race.meta.date)}</span>
         <div style={{ display: 'flex', gap: 4 }}>
-          {race.meta.priority && race.meta.priority !== 'A' && (
-            <span className="chip" style={{ fontSize: 9, color: race.meta.priority === 'B' ? 'var(--color-corporate)' : 'var(--color-t2)', borderColor: race.meta.priority === 'B' ? 'rgba(0,143,236,.4)' : 'var(--color-l4)' }}>{race.meta.priority}</span>
+          {/* Priority chip — show on EVERY race so A/B/C tier reads at
+              a glance. Was previously hidden for 'A' (assumption: A is
+              implied), but the runner needs to see "A" explicitly to
+              know which races are anchored as goals. */}
+          {race.meta.priority && (
+            <span className="chip" style={{
+              fontSize: 9,
+              color: race.meta.priority === 'A' ? 'var(--color-attention)'
+                   : race.meta.priority === 'B' ? 'var(--color-corporate)'
+                   : 'var(--color-t2)',
+              borderColor: race.meta.priority === 'A' ? 'rgba(243, 173, 59, .5)'
+                         : race.meta.priority === 'B' ? 'rgba(0,143,236,.4)'
+                         : 'var(--color-l4)',
+            }}>{race.meta.priority}</span>
           )}
           {isUpcoming && <span className="chip chip--attention">{days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `${days}D`}</span>}
           {!isUpcoming && result?.isPR && <span className="chip chip--attention">PR</span>}

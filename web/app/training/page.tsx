@@ -532,9 +532,18 @@ function DayCard({ day, actual, isToday, isPast }: {
       style={{
         display: 'flex', flexDirection: 'column', gap: 6,
         padding: '12px 10px',
-        background: isToday ? `linear-gradient(135deg, var(--color-l2) 0%, ${accent}15 100%)` : 'var(--color-l2)',
+        // Today visually dominates: brighter background, ring outline,
+        // accent border. Other days are quieter so the runner instantly
+        // sees which card is "now". Previous gradient was too subtle —
+        // looked accidentally selected on Sat (the long-run day) because
+        // its accent color matched the background tint.
+        background: isToday
+          ? `linear-gradient(135deg, var(--color-l3) 0%, ${accent}28 100%)`
+          : 'var(--color-l2)',
         borderRadius: 8,
-        borderLeft: `3px solid ${isToday ? accent : 'var(--color-l4)'}`,
+        border: isToday ? `2px solid ${accent}` : '2px solid transparent',
+        borderLeft: isToday ? `4px solid ${accent}` : `3px solid var(--color-l4)`,
+        boxShadow: isToday ? `0 0 0 1px ${accent}40` : 'none',
         opacity: isPast && !actual ? 0.5 : 1,
         textDecoration: 'none',
         minHeight: 140,
@@ -544,8 +553,12 @@ function DayCard({ day, actual, isToday, isPast }: {
     >
       {/* Day-of-week + date number */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px', color: isToday ? accent : 'var(--color-t3)' }}>
-          {dow}
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: isToday ? 10 : 9,
+          fontWeight: isToday ? 800 : 700, letterSpacing: '1.2px',
+          color: isToday ? accent : 'var(--color-t3)',
+        }}>
+          {isToday ? `TODAY · ${dow}` : dow}
         </span>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: isToday ? 'var(--color-t0)' : 'var(--color-t2)' }}>
           {dayNum}
@@ -771,7 +784,10 @@ function WeekCard({ week, theme, totalMi, qualityCount, longRunMi, milesDelta, i
   isFirst: boolean;
   todayISO: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // Default expanded — runner asked to see the whole month at a
+  // glance, not click each week to drill in. Toggle still works for
+  // the runner who wants to collapse a card temporarily.
+  const [open, setOpen] = useState(true);
   const startLabel = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   return (
@@ -1186,8 +1202,21 @@ function DailyFeedbackTile({ now, runs }: { now: Date; runs: NormalizedActivity[
   const todayISOStr = now.toISOString().slice(0, 10);
   const todayPres = hub.coach.today?.today ?? null;
   const presIsRest = todayPres?.type === 'rest';
-  const todayRun = runs?.find(r => r.date === todayISOStr) ?? null;
-  const ranToday = todayRun != null && todayRun.distanceMi > 0;
+
+  // Look for today's run in TWO sources because Strava activity-list
+  // cache (useActivities) and engine state (hub.coach.state.recovery)
+  // sync independently. Either being present means the runner ran.
+  // Without this, a fresh run that landed in the engine's state but
+  // not yet in the activity-list cache showed "not logged yet" even
+  // though the engine knew about it.
+  const todayFromActivities = runs?.find(r => r.date === todayISOStr) ?? null;
+  const todayFromState = hub.coach.state?.recovery?.today ?? null;
+  const ranToday = (todayFromActivities != null && todayFromActivities.distanceMi > 0)
+                || (todayFromState != null && todayFromState.distMi > 0);
+  // Prefer activity-list version (richer data); fall back to state.
+  const todayRunDistMi = todayFromActivities?.distanceMi ?? todayFromState?.distMi ?? 0;
+  const todayRunPaceSPerMi = todayFromActivities ? null : todayFromState?.paceSPerMi ?? null;
+  const todayRunAvgHr = todayFromActivities?.avgHr ?? todayFromState?.avgHr ?? null;
   const existing = hub.recentRpe.find(e => e.workoutDate === todayISOStr) ?? null;
 
   // Headline copy — context-driven so the prompt matches what the
@@ -1196,20 +1225,24 @@ function DailyFeedbackTile({ now, runs }: { now: Date; runs: NormalizedActivity[
     if (presIsRest && ranToday) return 'You ran on a rest day — how did it feel?';
     if (presIsRest && !ranToday) return 'Resting today — anything to flag?';
     if (ranToday) return 'How did today\'s session feel?';
-    return 'Run not logged yet — come back after';
+    return 'Waiting on today\'s run';
   })();
 
   const sublede = (() => {
     if (presIsRest && ranToday) {
-      return `You logged ${todayRun!.distanceMi.toFixed(1)} mi when the plan was rest. The coach reads this — if it felt easy, that\'s useful information; if it felt like work, that\'s a signal to honor tomorrow\'s rest fully.`;
+      return `You logged ${todayRunDistMi.toFixed(1)} mi when the plan was rest. The coach reads this — if it felt easy, that's useful information; if it felt like work, that's a signal to honor tomorrow's rest fully.`;
     }
     if (presIsRest && !ranToday) {
       return 'Optional. If you cross-trained, slept poorly, or have anything else worth noting (weather, niggle, life stress), drop it in the notes — the coach reads it for tomorrow\'s context.';
     }
     if (ranToday) {
-      return `${todayRun!.distanceMi.toFixed(1)} mi · ${formatPaceFromActivity(todayRun!)}/mi · ${todayRun!.avgHr ? `${todayRun.avgHr} bpm avg HR` : 'no HR data'}. Tap a number — RPE 1 (barely working) → 10 (max effort).`;
+      const paceStr = todayFromActivities
+        ? formatPaceFromActivity(todayFromActivities)
+        : (todayRunPaceSPerMi ? formatPaceMin(todayRunPaceSPerMi) : '—');
+      const hrStr = todayRunAvgHr ? `${todayRunAvgHr} bpm avg HR` : 'no HR data';
+      return `${todayRunDistMi.toFixed(1)} mi · ${paceStr}/mi · ${hrStr}. Tap a number — RPE 1 (barely working) → 10 (max effort).`;
     }
-    return 'Once you log a run on Strava, this card will give you a one-tap effort feedback slot.';
+    return 'Strava sync runs every few minutes. Once today\'s run lands, this card opens up for a one-tap effort score.';
   })();
 
   // Border color reflects the situation:

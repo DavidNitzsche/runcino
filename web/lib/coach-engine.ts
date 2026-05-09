@@ -279,16 +279,25 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
       return rest(`Heavy-block recovery — protective rest day (tier ${tierData.label}: ${restDays} rest/wk).`);
     }
 
-    // Reduced-volume easy aerobic. Cap at 50% of weekly average
-    // spread across the running days. Floor 2.5 mi.
+    // Reduced-volume easy aerobic. Base reduction = 50% of weekly avg.
+    // The training-response signal modulates UP (when the runner is
+    // absorbing well — recovery score high, RPE drift negative, ACWR
+    // sustainable) by up to +20%, so a recovered runner with great
+    // signals running through a heavy-block window gets 60-70% of
+    // their usual volume instead of being mechanically capped at 50%.
+    // Without this, a runner with recovery score 88 still got the
+    // full 50% restriction regardless of how recovered they were.
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
-    const reducedWeekly = wkAvg * 0.5;
+    const responseBoost = Math.max(0, trainingResponseScore(state)) * 0.20;
+    const reductionFactor = 0.5 + responseBoost;  // 0.5..0.7
+    const reducedWeekly = wkAvg * reductionFactor;
     const runningDays = 7 - restDays;
     const dailyEasy = Math.max(2.5, round1(reducedWeekly / runningDays));
     const ga = generalAerobic(dailyEasy, state);
+    const reductionPct = Math.round(reductionFactor * 100);
     return {
       ...ga,
-      description: `${dailyEasy} mi easy aerobic · heavy-block recovery, holding ~50% of usual ${Math.round(wkAvg)} mi/wk volume to maintain frequency without compounding load`,
+      description: `${dailyEasy} mi easy aerobic · heavy-block recovery at ${reductionPct}% of usual ${Math.round(wkAvg)} mi/wk volume${responseBoost > 0.05 ? ` (boosted from 50% baseline because your recovery signals are strong)` : ''}`,
     };
   }
 
