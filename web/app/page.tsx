@@ -2199,103 +2199,63 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
   const freshChip = freshChipColors[vdot.freshness];
 
   return (
-    <div>
+    <>
       <SectionHeader title="VDOT fitness" sub="DANIELS · ANCHORED ON YOUR LAST RACE" />
 
-      <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
-        {/* Top: age-graded VDOT (primary fitness number) + tier badge
-            + source race + freshness chip. When age-graded is
-            meaningfully different from raw VDOT, the age-graded is
-            the headline number — that's the "what would you run if
-            corrected to open category" comparator. Raw VDOT shown
-            as a subscript so the math is still visible.
-            Audit: "show what it should be based on my age". */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'center' }}>
-          <div>
-            <div className="tile-sub" style={{ marginBottom: 4 }}>
-              {showAgeGraded ? 'AGE-GRADED VDOT' : 'VDOT'} · <span style={{ color: tierColor[vdot.tier] }}>{vdot.tierLabel.toUpperCase()}</span>
-            </div>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 64,
-              letterSpacing: '-.03em', lineHeight: 1, color: 'var(--color-corporate)',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {showAgeGraded && grading.ageGraded != null ? grading.ageGraded.toFixed(1) : vdot.vdot.toFixed(1)}
-            </div>
-            {showAgeGraded && (
-              <div style={{
-                fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)',
-                letterSpacing: '0.6px', marginTop: 4,
-              }}>
-                Raw VDOT · {vdot.vdot.toFixed(1)}
-              </div>
-            )}
+      <div className="dash-vdot-row">
+        {/* Card 1: VDOT summary — big number + source race */}
+        <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 180 }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: tierColor[vdot.tier] }}>
+            {showAgeGraded ? 'Age-graded VDOT' : 'VDOT'} · {vdot.tierLabel}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <span className="tile-sub">Last tested · {ageLabel}</span>
-              <span style={{
-                fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
-                padding: '2px 7px', borderRadius: 3,
-                background: freshChip.bg, color: freshChip.fg,
-              }}>{freshChip.label}</span>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 56,
+            letterSpacing: '-.03em', lineHeight: 1, color: 'var(--color-corporate)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {showAgeGraded && grading.ageGraded != null ? grading.ageGraded.toFixed(1) : vdot.vdot.toFixed(1)}
+          </div>
+          {showAgeGraded && (
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', letterSpacing: '0.6px' }}>
+              Raw · {vdot.vdot.toFixed(1)}
             </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-t0)', lineHeight: 1.2 }}>
+          )}
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--color-t0)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {vdot.source.name}
             </div>
-            <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums', fontWeight: 700, letterSpacing: '0.5px' }}>
-              {vdot.source.distanceMi.toFixed(2)} MI · {fmtHMS(vdot.source.timeS)} · {fmtMinSec(vdot.source.paceSPerMi)}/MI
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '0.5px' }}>
+              {vdot.source.distanceMi.toFixed(2)} MI · {fmtHMS(vdot.source.timeS)} · {ageLabel}
             </div>
-            {(vdot.freshness === 'stale' || vdot.freshness === 'expired') && (
-              <div style={{ fontSize: 11.5, color: 'var(--color-t3)', lineHeight: 1.5, marginTop: 4, fontStyle: 'italic' }}>
-                {vdot.freshnessNote} Coach can plan a 5K time trial — see today&apos;s prescription.
-              </div>
-            )}
-            {showAgeGraded && grading.ageGraded != null && (
-              <div style={{
-                fontSize: 11.5, color: 'var(--color-t3)', lineHeight: 1.5, marginTop: 4,
-                paddingTop: 6, borderTop: '1px solid var(--color-l4)',
-                fontStyle: 'italic',
-              }}>
-                {grading.rationale}
-              </div>
-            )}
+            <span style={{
+              alignSelf: 'flex-start',
+              fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, letterSpacing: '1.2px',
+              padding: '2px 6px', borderRadius: 3,
+              background: freshChip.bg, color: freshChip.fg,
+            }}>{freshChip.label}</span>
           </div>
         </div>
 
-        {/* Bottom: 5 pace zones — pace is the hero, zone letter is the ID */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8,
-          borderTop: '1px solid var(--color-l4)', paddingTop: 16,
-        }}>
-          {ZONE_DEFS.map(z => {
-            const band = vdot.paces[z.key];
-            return (
-              <div key={z.key} style={{
-                padding: '14px 16px', borderRadius: 10,
-                background: 'var(--color-l2)', border: `1px solid var(--color-l4)`,
-                display: 'flex', flexDirection: 'column', gap: 10,
-              }}>
-                {/* Zone letter badge */}
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 22, fontWeight: 900, color: z.color, letterSpacing: '-0.02em', lineHeight: 1 }}>{z.key}</span>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: 'var(--color-t1)' }}>{z.label}</span>
-                </div>
-                {/* Pace range — the hero */}
-                <div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 18, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', lineHeight: 1 }}>
-                    {fmtPaceBand(band)}
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px', marginTop: 3 }}>/MI</div>
-                </div>
-                {/* Sub-label */}
-                <div style={{ fontSize: 10, color: 'var(--color-t3)', lineHeight: 1.4 }}>{z.sub}</div>
+        {/* Cards 2–6: E/M/T/I/R pace zones — pace is the hero */}
+        {ZONE_DEFS.map(z => {
+          const band = vdot.paces[z.key];
+          return (
+            <div key={z.key} className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 180 }}>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: z.color }}>
+                {z.key} · {z.label}
               </div>
-            );
-          })}
-        </div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 22, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', lineHeight: 1 }}>
+                  {fmtPaceBand(band)}
+                </div>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px', marginTop: 2 }}>/MI</div>
+              </div>
+              <div style={{ marginTop: 'auto', fontSize: 10.5, color: 'var(--color-t3)', lineHeight: 1.4 }}>{z.sub}</div>
+            </div>
+          );
+        })}
       </div>
-    </div>
+    </>
   );
 }
 

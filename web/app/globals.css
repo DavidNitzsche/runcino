@@ -408,13 +408,19 @@ a { color: inherit; text-decoration: none; }
   .dash-schedule-row { grid-template-columns: 1fr; }
 }
 
-/* Fitness row: VDOT | HR zones — side by side, stacks below 800px */
-.dash-fitness-row {
+/* VDOT row: summary card (wider) + 5 pace zone cards */
+.dash-vdot-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: 1.4fr repeat(5, 1fr);
+  gap: 10px;
+  align-items: stretch;
   margin-bottom: 14px;
+}
+@media (max-width: 1080px) {
+  .dash-vdot-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 640px) {
+  .dash-vdot-row { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* Stats row */
