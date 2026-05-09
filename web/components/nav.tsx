@@ -7,16 +7,16 @@ import Link from 'next/link';
 
 type NavKey = 'overview' | 'training' | 'library' | 'races' | 'season' | 'calibration' | 'health' | 'log' | 'profile';
 
-// Library removed from public nav — workout vocab + research is
-// reference data that doesn't earn a top-level tab. Audit feedback:
-// "not needed, this can just be backend information." Route still
-// exists at /library for direct linking from prescriptions /
-// citations; just no nav entry.
+// Library + Season removed from public nav.
+// - Library: workout vocab + research reference, doesn't earn a tab
+// - Season: merged into /races as a "Season at a glance" section so
+//   the season insights live alongside the race list itself. Audit
+//   feedback: "I wonder if we can merge this page with Races tab?"
+// Both routes still exist for direct linking; just no nav entry.
 const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
   { key: 'overview',    href: '/',             label: 'Overview' },
   { key: 'training',    href: '/training',     label: 'Training' },
   { key: 'races',       href: '/races',        label: 'Races' },
-  { key: 'season',      href: '/season',       label: 'Season' },
   { key: 'calibration', href: '/calibration',  label: 'Calibration' },
   { key: 'health',      href: '/health',       label: 'Health' },
   { key: 'log',         href: '/log',          label: 'Log' },

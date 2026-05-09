@@ -110,6 +110,13 @@ export default function LogPage() {
 
           {noStrava && <ConnectStravaBanner />}
 
+          {/* YEAR IN RUNNING — facts hero. Surfaces the summary the
+              runner asked for: "your year in running" style. Total
+              miles, longest run, race count, biggest week, days run.
+              Shown at the top because that's the punchline of the
+              whole page; PR shelf and feed are detail below. */}
+          {runs.length > 0 && <YearInRunningHero runs={runs} roll={roll} />}
+
           {/* Naïve PR shelf — ignores Strava best_efforts (which would
               require N detail fetches) in favor of "best whole run near
               that distance." Good enough as a top-level summary. */}
@@ -138,6 +145,80 @@ export default function LogPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Year in Running hero ───────────────────────────────────
+   Stat-card hero summarizing the runner's year. Total miles, biggest
+   single run, biggest week, race count, days run. Bigger numbers,
+   smaller labels. Glanceable. Audit feedback: "good, does what it's
+   supposed to. This might be a better section for facts/fun facts." */
+function YearInRunningHero({ runs, roll }: { runs: NormalizedActivity[]; roll: ReturnType<typeof rollupYear> }) {
+  // Biggest single week (Mon-Sun).
+  const weekMiles = new Map<string, number>();
+  for (const r of runs) {
+    const d = new Date(r.date + 'T12:00:00Z');
+    const dow = d.getUTCDay();
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+    const key = monday.toISOString().slice(0, 10);
+    weekMiles.set(key, (weekMiles.get(key) ?? 0) + r.distanceMi);
+  }
+  let biggestWeek = 0;
+  for (const v of weekMiles.values()) biggestWeek = Math.max(biggestWeek, v);
+
+  // Longest run name + date.
+  const longest = runs.slice().sort((a, b) => b.distanceMi - a.distanceMi)[0] ?? null;
+
+  // Total moving time formatted as Hh Mm.
+  const hours = Math.floor(roll.totalMovingS / 3600);
+  const mins = Math.floor((roll.totalMovingS % 3600) / 60);
+  const movingTimeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+  // Average pace formatted.
+  const paceStr = roll.avgPaceSPerMi
+    ? `${Math.floor(roll.avgPaceSPerMi / 60)}:${String(Math.round(roll.avgPaceSPerMi % 60)).padStart(2, '0')}/mi`
+    : '—';
+
+  const stats: Array<{ label: string; value: string; sub: string }> = [
+    { label: 'Total miles',  value: roll.totalMiles.toFixed(0),         sub: `${roll.totalRuns} runs` },
+    { label: 'Time on feet', value: movingTimeStr,                       sub: `avg ${paceStr}` },
+    { label: 'Longest run',  value: `${roll.longestRunMi.toFixed(1)} mi`, sub: longest ? new Date(longest.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '' },
+    { label: 'Biggest week', value: `${biggestWeek.toFixed(0)} mi`,       sub: `${weekMiles.size} weeks active` },
+    { label: 'Days run',     value: String(roll.daysRun),                 sub: `${Math.round((roll.daysRun / Math.max(1, weekMiles.size * 7)) * 100)}% of days` },
+    { label: 'Climbed',      value: `${(roll.totalElevFt / 1000).toFixed(1)}k`, sub: 'feet' },
+    { label: 'Races',        value: String(roll.raceCount),               sub: roll.raceCount > 0 ? `${roll.raceMiles.toFixed(0)} race miles` : 'this year' },
+  ];
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700, letterSpacing: '1.6px',
+        color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 10,
+      }}>
+        Your year in running
+      </div>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8,
+      }}>
+        {stats.map((s, i) => (
+          <div key={i} style={{
+            padding: '14px 16px', background: 'var(--color-l2)', borderRadius: 6,
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px', color: 'var(--color-t3)', textTransform: 'uppercase' }}>
+              {s.label}
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--color-t0)', letterSpacing: '-.01em', lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>
+              {s.value}
+            </div>
+            <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', letterSpacing: '0.4px' }}>
+              {s.sub}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

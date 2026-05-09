@@ -198,7 +198,13 @@ export function thresholdContinuous(distanceMi: number, state: CoachState): RunP
     type: 'threshold', label: 'Threshold tempo',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('threshold', state), hrZone: 4,
-    description: `2 mi WU · ${r1(distanceMi - 3)} mi at threshold (~half marathon pace) · 1 mi CD${goalPaceTag(state)}`,
+    // Description doesn't reference "half marathon pace" anymore —
+    // for VDOT < 50, T-pace = 15K pace (between 10K and HM), so the
+    // "~HM pace" descriptor confused the runner when the target band
+    // sat 20-30 sec faster than their goal HM pace. Now we let the
+    // pace target band below speak for itself + reference comfort
+    // ("comfortably hard, sustainable for an hour").
+    description: `2 mi WU · ${r1(distanceMi - 3)} mi at threshold pace (comfortably hard — sustainable ~60 min if push) · 1 mi CD${goalPaceTag(state)}`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }

@@ -21,7 +21,7 @@ import type { SavedRace } from '../../lib/storage';
 import { HubProvider, useHub } from '../../lib/hub-provider';
 import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
 import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
-import { daysUntil, formatShort, todayISO } from '../../lib/dates';
+import { daysUntil, formatShort, todayISO as todayLAISO } from '../../lib/dates';
 import { RpeInput } from '../../components/RpeInput';
 
 // ── Types from /api/coach/today ─────────────────────────────────────
@@ -398,7 +398,12 @@ function ThisWeekSection({ now, runs, hub }: {
   runs: NormalizedActivity[] | null;
   hub: import('../../lib/hub-types').RunnerHub;
 }) {
-  const todayISO = now.toISOString().slice(0, 10);
+  // Use LA-calendar today, not UTC. The previous .toISOString() call
+  // returned UTC date which rolls past LA midnight several hours
+  // before the runner's local clock changes — so a Friday-evening
+  // visit from LA time saw Saturday highlighted as TODAY.
+  void now;  // kept for component-prop compat; not used directly anymore
+  const todayISO = todayLAISO();
   const weekShape = hub.coach.today?.weekShape ?? [];
   if (weekShape.length !== 7) return null;
 
@@ -650,7 +655,9 @@ function NextFourWeeksSection({ now, hub, goalRace }: {
   const next30 = hub.coach.today?.next30Days ?? [];
   if (next30.length === 0) return null;
 
-  const todayISO = today.toISOString().slice(0, 10);
+  // LA-calendar today (NOT UTC). The previous toISOString() returned
+  // UTC date which mis-anchored the strip past LA midnight.
+  const todayISO = todayLAISO();
   const dow = today.getDay();
   const daysToMonday = dow === 0 ? 1 : (8 - dow);
   const nextMonday = new Date(today);
@@ -1075,50 +1082,10 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
         </div>
       </div>
 
-      {/* Bar chart */}
-      <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 140, marginTop: 16, position: 'relative' }}>
-        {weeks.map((w, i) => {
-          // Future weeks now use the engine projection (real per-day
-          // simulation rolled to weekly totals). Falls back to last-4-
-          // week trailing avg only if the engine projection didn't
-          // cover this week (rare — happens beyond the 14-week cap).
-          const heightMi = !w.isFuture
-            ? w.miles
-            : (w.isProjected ? w.miles : (last4Avg > 0 ? last4Avg : 0));
-          const heightPct = heightMi > 0 ? (heightMi / max) * 100 : 0;
-          const color = phaseAccent[w.phase];
-          const tooltip = w.isFuture
-            ? (w.isProjected
-                ? `${w.weekISO} · ${heightMi.toFixed(1)} mi projected · ${w.phase}${w.longRunMi ? ` · long ${w.longRunMi.toFixed(1)} mi` : ''}${w.qualityCount ? ` · ${w.qualityCount} quality` : ''}`
-                : `${w.weekISO} · ~${heightMi.toFixed(0)} mi (last-4-wk fallback) · ${w.phase}`)
-            : `${w.weekISO} · ${w.miles.toFixed(1)} mi · ${w.phase}`;
-          return (
-            <div key={i} style={{
-              flex: 1, height: '100%',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end',
-              position: 'relative',
-              background: phaseColor[w.phase],
-              borderRadius: 3,
-              outline: w.isRaceWeek ? '2px solid var(--color-warning)' : 'none',
-            }}>
-              {heightMi > 0 && (
-                <div style={{
-                  width: '70%',
-                  height: `${heightPct}%`,
-                  // Future weeks: dashed-border outline if engine-projected,
-                  // dotted if fallback. Solid for past actual.
-                  background: w.isFuture ? `${color}55` : color,
-                  border: w.isFuture
-                    ? (w.isProjected ? `2px dashed ${color}` : `1px dotted ${color}`)
-                    : 'none',
-                  borderRadius: 2,
-                  boxSizing: 'border-box',
-                }} title={tooltip} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {/* Elevation profile — area-curve view replaces the bar chart.
+          Reads more like "the path" than discrete weekly bars. The
+          runner asked for elevation-profile style. */}
+      <ElevationCurve weeks={weeks} last4Avg={last4Avg} phaseAccent={phaseAccent} max={max} />
 
       {/* Week-start labels (every 4 weeks) */}
       <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
@@ -1175,6 +1142,135 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
   );
 }
 
+/* ── Elevation curve ────────────────────────────────────────
+   SVG area-curve replacement for the bar chart. Past = solid blue
+   gradient + line. Future = striped + green gradient + dashed line.
+   "Today" = vertical warning marker between past and future. Race
+   week = orange marker. Phase-tinted background bands provide soft
+   visual context without the noise of discrete bars. */
+function ElevationCurve({ weeks, last4Avg, phaseAccent, max }: {
+  weeks: Array<{ start: Date; weekISO: string; miles: number; longRunMi: number | null; qualityCount: number | null; isFuture: boolean; isRaceWeek: boolean; phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'POST'; isProjected: boolean }>;
+  last4Avg: number;
+  phaseAccent: Record<string, string>;
+  max: number;
+}) {
+  const W = 100;
+  const H = 100;
+  const n = weeks.length;
+  if (n === 0) return null;
+  void phaseAccent; void max;
+
+  const heights = weeks.map(w =>
+    !w.isFuture ? w.miles
+    : w.isProjected ? w.miles
+    : (last4Avg > 0 ? last4Avg : 0)
+  );
+  const maxH = Math.max(...heights, 1);
+
+  const xFor = (i: number) => (i / Math.max(1, n - 1)) * W;
+  const yFor = (mi: number) => H - (mi / maxH) * (H - 8) - 4;
+
+  const points = weeks.map((w, i) => ({ x: xFor(i), y: yFor(heights[i]), miles: heights[i], future: w.isFuture, raceWeek: w.isRaceWeek }));
+  const pastPts = points.filter(p => !p.future);
+  const futurePts = points.filter(p => p.future);
+
+  const buildAreaPath = (pts: typeof points) => {
+    if (pts.length < 2) return '';
+    const top = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+    const last = pts[pts.length - 1];
+    const first = pts[0];
+    return `${top} L ${last.x.toFixed(2)} ${H} L ${first.x.toFixed(2)} ${H} Z`;
+  };
+  const buildLinePath = (pts: typeof points) => {
+    if (pts.length < 2) return '';
+    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+  };
+
+  const firstFutureIdx = weeks.findIndex(w => w.isFuture);
+  const dividerX = firstFutureIdx === -1 ? W : xFor(firstFutureIdx);
+  const raceWeekIdx = weeks.findIndex(w => w.isRaceWeek);
+
+  return (
+    <div style={{ marginTop: 16, position: 'relative' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: 180, display: 'block' }}>
+        <defs>
+          <linearGradient id="bcPastG" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-corporate)" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="var(--color-corporate)" stopOpacity="0.04" />
+          </linearGradient>
+          <linearGradient id="bcFutureG" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-success)" stopOpacity="0.50" />
+            <stop offset="100%" stopColor="var(--color-success)" stopOpacity="0.03" />
+          </linearGradient>
+          <pattern id="bcStripes" patternUnits="userSpaceOnUse" width="2" height="2" patternTransform="rotate(45)">
+            <rect width="0.6" height="2" fill="rgba(255,255,255,0.06)" />
+          </pattern>
+        </defs>
+
+        {/* Phase background bands */}
+        {weeks.map((w, i) => {
+          const phaseTint: Record<string, string> = {
+            BASE:  'rgba(120,120,120,0.04)',
+            BUILD: 'rgba(62,189,65,0.05)',
+            PEAK:  'rgba(243,173,59,0.06)',
+            TAPER: 'rgba(252,77,84,0.07)',
+            POST:  'rgba(120,120,120,0.02)',
+          };
+          const x0 = i === 0 ? 0 : (xFor(i) + xFor(i - 1)) / 2;
+          const x1 = i === n - 1 ? W : (xFor(i) + xFor(i + 1)) / 2;
+          return <rect key={i} x={x0} y="0" width={x1 - x0} height={H} fill={phaseTint[w.phase] ?? 'transparent'} />;
+        })}
+
+        {/* Past area + line */}
+        {pastPts.length >= 2 && (
+          <>
+            <path d={buildAreaPath(pastPts)} fill="url(#bcPastG)" />
+            <path d={buildLinePath(pastPts)} stroke="var(--color-corporate)" strokeWidth="1.2" fill="none" vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+
+        {/* Future area + striped overlay + dashed line */}
+        {futurePts.length >= 2 && (
+          <>
+            <path d={buildAreaPath(futurePts)} fill="url(#bcFutureG)" />
+            <path d={buildAreaPath(futurePts)} fill="url(#bcStripes)" />
+            <path d={buildLinePath(futurePts)} stroke="var(--color-success)" strokeWidth="1.2" fill="none" strokeDasharray="2 1.2" vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+
+        {/* Today divider */}
+        <line x1={dividerX} y1="0" x2={dividerX} y2={H} stroke="var(--color-warning)" strokeWidth="0.6" strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
+        <circle cx={dividerX} cy="3" r="1.6" fill="var(--color-warning)" />
+
+        {/* Race week marker */}
+        {raceWeekIdx !== -1 && (
+          <>
+            <line x1={xFor(raceWeekIdx)} y1="0" x2={xFor(raceWeekIdx)} y2={H} stroke="var(--color-attention)" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+            <rect x={xFor(raceWeekIdx) - 1.5} y="0" width="3" height="3" fill="var(--color-attention)" />
+          </>
+        )}
+
+        {/* Per-week dots */}
+        {weeks.map((w, i) => heights[i] > 0 && (
+          <circle key={i} cx={xFor(i)} cy={yFor(heights[i])} r="0.9"
+            fill={w.isFuture ? 'var(--color-success)' : 'var(--color-corporate)'} />
+        ))}
+      </svg>
+
+      {/* Y-axis labels */}
+      <div style={{ position: 'absolute', top: 0, left: 4, fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)', letterSpacing: '0.6px' }}>
+        {Math.round(maxH)} mi
+      </div>
+      <div style={{ position: 'absolute', bottom: 24, left: 4, fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)', letterSpacing: '0.6px' }}>
+        0
+      </div>
+      <div style={{ position: 'absolute', top: 0, right: 4, fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-warning)', letterSpacing: '0.6px', fontWeight: 700 }}>
+        TODAY
+      </div>
+    </div>
+  );
+}
+
 function PhaseLegend({ bg, accent, label }: { bg: string; accent: string; label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1201,7 +1297,11 @@ function DailyFeedbackTile({ now, runs }: { now: Date; runs: NormalizedActivity[
   const hub = useHub();
   if (!hub) return null;
 
-  const todayISOStr = now.toISOString().slice(0, 10);
+  // LA-calendar today (NOT UTC). The toISOString() approach rolled
+  // forward past LA midnight, mis-classifying the runner's evening
+  // as the next day's RPE slot.
+  void now;
+  const todayISOStr = todayLAISO();
   const todayPres = hub.coach.today?.today ?? null;
   const presIsRest = todayPres?.type === 'rest';
 
@@ -1439,7 +1539,7 @@ function DailyBriefing({
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const mdy = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const year = now.getFullYear();
-  const todayIso = todayISO();
+  const todayIso = todayLAISO();
 
   // ── Loading state ─────────────────────────────────────────────────
   if (!data) {

@@ -2207,7 +2207,7 @@ function TrainingPulseTile({ pulse, runs }: { pulse: TrainingPulse; runs: import
 
   return (
     <>
-      <SectionHeader title="Training pulse" sub={phaseDescriptor} />
+      <SectionHeader title="Training pulse" sub={`Where you are vs where you should be · ${phaseDescriptor.toLowerCase()}`} />
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
         {/* Phase + 8-week mileage trend with per-bar labels */}
         <div className="tile" style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 220 }}>

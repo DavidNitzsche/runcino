@@ -88,6 +88,13 @@ function RacesIndexInner() {
             <EmptyState />
           )}
 
+          {/* SEASON AT A GLANCE — merges the /season tab's primary
+              insights (priority distribution, conflict warnings,
+              annual race load) into the races page. /season is now
+              hidden from nav. The runner asked: "I wonder if we can
+              merge this page with Races tab?" */}
+          {races !== null && races.length > 0 && <SeasonAtAGlance races={races} />}
+
           {upcoming.length > 0 && (
             <Section title="Upcoming">
               {/* First upcoming race takes the full-width hero with rich
@@ -110,6 +117,110 @@ function RacesIndexInner() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ── Season at a glance ──────────────────────────────────
+   Compact season-overview block surfaced at the top of /races.
+   Shows priority distribution + race load + conflict warnings —
+   the actionable signals that used to live on /season. The /season
+   tab is now hidden from nav since this card surfaces what matters.
+   Purposeful information, not overload — three stats + (when
+   relevant) a callout. */
+function SeasonAtAGlance({ races }: { races: SavedRace[] }) {
+  const todayMs = Date.now();
+  const trailing12 = races.filter(r => {
+    const t = Date.parse(r.meta.date + 'T12:00:00Z');
+    return t >= todayMs - 365 * 86_400_000 && t <= todayMs + 365 * 86_400_000;
+  });
+  const aCount = trailing12.filter(r => (r.meta.priority ?? 'C') === 'A').length;
+  const bCount = trailing12.filter(r => r.meta.priority === 'B').length;
+  const cCount = trailing12.filter(r => r.meta.priority === 'C').length;
+  const A_RACE_MAX = 2;
+
+  // Conflict detection — only future-touching pairs.
+  const sortedFuture = races.filter(r => Date.parse(r.meta.date) >= todayMs).sort((a, b) => Date.parse(a.meta.date) - Date.parse(b.meta.date));
+  const conflicts: Array<{ a: SavedRace; b: SavedRace; gapDays: number; severity: 'risk' | 'warn'; message: string }> = [];
+  for (let i = 0; i < sortedFuture.length - 1; i++) {
+    const a = sortedFuture[i];
+    const b = sortedFuture[i + 1];
+    const gap = Math.round((Date.parse(b.meta.date) - Date.parse(a.meta.date)) / 86_400_000);
+    const aIsMar = a.meta.distanceMi >= 22;
+    const bIsMar = b.meta.distanceMi >= 22;
+    const aIsHalf = a.meta.distanceMi >= 11 && a.meta.distanceMi < 22;
+    const bIsHalf = b.meta.distanceMi >= 11 && b.meta.distanceMi < 22;
+    if (aIsMar && bIsMar && gap < 56) conflicts.push({ a, b, gapDays: gap, severity: 'risk', message: `Two marathons ${gap} days apart — recovery doesn't close` });
+    else if (aIsHalf && bIsHalf && gap < 28) conflicts.push({ a, b, gapDays: gap, severity: 'warn', message: `Two halves ${gap} days apart — typical spacing 4-6 weeks` });
+    else if (aIsMar && gap < 28) conflicts.push({ a, b, gapDays: gap, severity: 'risk', message: `Race ${gap} days after a marathon — full recovery hasn't completed` });
+  }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Priority overload callout — the single most important
+          actionable insight. Only fires when there are too many A's. */}
+      {aCount > A_RACE_MAX && (
+        <div className="tile" style={{
+          marginBottom: 14, padding: '14px 18px',
+          borderLeft: '3px solid var(--color-warning)',
+          background: 'rgba(252, 77, 84, 0.06)',
+        }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.6px', color: 'var(--color-warning)', textTransform: 'uppercase' }}>
+            PRIORITY OVERLOAD · {aCount} A-races flagged (max {A_RACE_MAX}/year)
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.55, marginTop: 6 }}>
+            Every race marked A means none of them get a real build cycle. Re-prioritize so the engine knows where to peak.
+          </div>
+        </div>
+      )}
+
+      {/* Conflict warnings — race spacing problems */}
+      {conflicts.length > 0 && (
+        <div className="tile" style={{
+          marginBottom: 14, padding: '14px 18px',
+          borderLeft: '3px solid var(--color-attention)',
+          background: 'rgba(243, 173, 59, 0.05)',
+        }}>
+          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.6px', color: 'var(--color-attention)', textTransform: 'uppercase' }}>
+            Spacing notes ({conflicts.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {conflicts.slice(0, 3).map((c, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: 'var(--color-t1)', lineHeight: 1.45 }}>
+                <strong>{c.a.meta.name}</strong> → <strong>{c.b.meta.name}</strong>: {c.message}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stat strip — A/B/C counts. Compact, glanceable. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+        <SeasonStat label="A-races" value={aCount} sub={`max ${A_RACE_MAX}/yr`} accent="var(--color-attention)" />
+        <SeasonStat label="B-races" value={bCount} sub="4-6 typical" accent="var(--color-corporate)" />
+        <SeasonStat label="C-races" value={cCount} sub="workouts" accent="var(--color-t2)" />
+      </div>
+    </div>
+  );
+}
+
+function SeasonStat({ label, value, sub, accent }: { label: string; value: number; sub: string; accent: string }) {
+  return (
+    <div style={{
+      padding: '12px 14px',
+      background: 'var(--color-l2)',
+      borderRadius: 6,
+      borderLeft: `3px solid ${accent}`,
+    }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.2px', color: 'var(--color-t3)', textTransform: 'uppercase', fontWeight: 700 }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 28, color: 'var(--color-t0)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </div>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>
+        {sub}
+      </div>
+    </div>
   );
 }
 
