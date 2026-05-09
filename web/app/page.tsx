@@ -104,8 +104,10 @@ function OverviewPageInner() {
               <CoachTodayCard runs={runs} />
               <WorkoutRpeCard />
             </div>
-            <NextRaceCard next={next} daysToNext={daysToNext} />
-            <RecentRunCard lastRun={lastRun} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <NextRaceCard next={next} daysToNext={daysToNext} />
+              <RecentRunCard lastRun={lastRun} />
+            </div>
           </div>
 
           {/* WHY YOUR BODY IS HERE — physiological narrative grounded
@@ -1578,7 +1580,7 @@ function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: numb
     slow:    'SLOW',
   };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tissues.length}, 1fr)`, gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
       {tissues.map((t, i) => {
         const pct = Math.min(1, daysAgo / t.maxDays);
         const c = statusColor[t.status];
@@ -1590,9 +1592,7 @@ function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: numb
             border: `1px solid ${isSlow ? 'rgba(252,77,84,.28)' : 'var(--color-l4)'}`,
             display: 'flex', flexDirection: 'column', gap: 8,
           }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: `color-mix(in srgb, ${c} 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <BodyIcon k={t.iconKey} size={22} color={c} />
-            </div>
+            <BodyIcon k={t.iconKey} size={26} color={c} />
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{t.name}</div>
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{t.detail}</div>
@@ -1790,22 +1790,23 @@ function BodyContextCard() {
             <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.4px', color: 'var(--color-attention)', textTransform: 'uppercase', marginBottom: 12 }}>
               What's actually adapting
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${adaptItems.length}, 1fr)`, gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
               {adaptItems.map((a, i) => (
                 <div key={i} style={{
                   padding: '14px', borderRadius: 10,
                   background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: `color-mix(in srgb, ${a.color} 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <BodyIcon k={a.iconKey} size={22} color={a.color} />
-                  </div>
+                  <BodyIcon k={a.iconKey} size={26} color={a.color} />
                   <div>
                     <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
                     <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{a.detail}</div>
                   </div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color, padding: '2px 6px', borderRadius: 3, border: '1px solid currentColor', alignSelf: 'flex-start' }}>
-                    {a.window.toUpperCase()}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: a.color }}>{a.window.toUpperCase()}</span>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 2, background: a.color, opacity: 0.35 }} />
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--color-t2)', lineHeight: 1.4 }}>{a.note}</div>
                 </div>
