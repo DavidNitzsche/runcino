@@ -24,6 +24,7 @@ import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
   HARD_EFFORT_HR_DEFAULT_BPM, phaseProgress, lerpByProgress,
+  buildWindowDays,
 } from './coach-principles';
 import {
   type RunWorkoutType, type RunPrescription,
@@ -184,7 +185,22 @@ export function coachDaily(state: CoachState): CoachToday {
 
 /* ── Mode ───────────────────────────────────────────────────── */
 function decideMode(state: CoachState): 'race' | 'base' {
-  return state.races.nextA && state.races.inWindow.some(r => r.priority === 'A') ? 'race' : 'base';
+  // Race mode = nextA exists AND its days-away falls inside the
+  // distance-aware build window (84d for half, 112d for marathon, etc.).
+  // Computing from nextA.daysAway directly — NOT from state.races.inWindow
+  // — because advanceState doesn't refresh inWindow as the simulation
+  // walks forward in time. With the static inWindow check, a future
+  // simulation day that should have crossed into BUILD (because the
+  // race is now closer than the build window) was still labeled BASE
+  // since inWindow reflected gather-time, not the advanced clock.
+  // Caught by the runner: "Hold the floor before the build · 11 weeks"
+  // when only ~2 weeks should be BASE_MAINTENANCE before crossing into
+  // the build window.
+  if (!state.races.nextA) return 'base';
+  if (state.races.nextA.priority !== 'A') return 'base';
+  if (state.races.nextA.daysAway <= 0) return 'base';
+  const window = buildWindowDays(state.races.nextA.distanceMi);
+  return state.races.nextA.daysAway <= window ? 'race' : 'base';
 }
 
 /* ── Phase ──────────────────────────────────────────────────── */
