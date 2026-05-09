@@ -131,11 +131,11 @@ function OverviewPageInner() {
 
           {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
 
-          {/* FITNESS REFERENCE row — VDOT + HR zones side by side. */}
-          <div className="dash-fitness-row">
-            <VdotCard />
-            <HrZonesCard />
-          </div>
+          {/* VDOT — full width, paces as graphic card row */}
+          <VdotCard />
+
+          {/* HR zones — full width, 5 cards matching body card style */}
+          <HrZonesCard />
 
           {/* STATS row — weekly + YTD. */}
           <div className="dash-stats-row">
@@ -1225,12 +1225,13 @@ const ZONE_DEFS: Array<{
   sub: string;
   color: string;
   blurb: string;
+  iconKey: BodyIconKey;
 }> = [
-  { key: 'E', label: 'Easy',       sub: 'Aerobic / recovery', color: 'var(--color-success)',    blurb: 'Most of your weekly mileage. Conversational.' },
-  { key: 'M', label: 'Marathon',   sub: 'Goal-race pace',      color: 'var(--color-corporate)',  blurb: 'MP work on long-run finishers + race rehearsals.' },
-  { key: 'T', label: 'Threshold',  sub: 'Lactate threshold',   color: 'var(--color-attention)',  blurb: 'Comfortably hard · ~hour-race effort. Tempos + cruise intervals.' },
-  { key: 'I', label: 'Intervals',  sub: 'VO2max · ~5K pace',   color: 'var(--color-warning)',    blurb: '3–5 min reps with equal jog. Stresses oxygen ceiling.' },
-  { key: 'R', label: 'Reps',       sub: 'Mile pace · neuromuscular', color: 'var(--color-active)', blurb: '200–400m fast with full recovery. Speed + economy.' },
+  { key: 'E', label: 'Easy',      sub: 'Aerobic / recovery',   color: 'var(--color-success)',   blurb: 'Most of your weekly mileage. Conversational.', iconKey: 'spiral'  },
+  { key: 'M', label: 'Marathon',  sub: 'Goal-race pace',        color: 'var(--color-corporate)', blurb: 'MP work on long-run finishers + race rehearsals.', iconKey: 'flag'    },
+  { key: 'T', label: 'Threshold', sub: 'Lactate threshold',     color: 'var(--color-attention)', blurb: 'Comfortably hard · ~hour-race effort.', iconKey: 'flame'   },
+  { key: 'I', label: 'Intervals', sub: 'VO₂max · ~5K pace',     color: 'var(--color-warning)',   blurb: '3–5 min reps with equal jog.', iconKey: 'bolt'    },
+  { key: 'R', label: 'Reps',      sub: 'Mile pace · speed',     color: 'var(--color-active)',    blurb: '200–400m fast with full recovery.', iconKey: 'spring'  },
 ];
 
 /* ── Readiness banner ──────────────────────────────────────
@@ -1481,7 +1482,8 @@ function WorkoutRpeCard() {
    with it if I know why/what is happening." This tile answers that
    directly with named tissues, real timelines, and concrete what-to-do. */
 type BodyIconKey = 'bolt' | 'muscle' | 'chain' | 'neural' | 'shield'
-                 | 'spiral' | 'network' | 'stairs' | 'lungs' | 'spring';
+                 | 'spiral' | 'network' | 'stairs' | 'lungs' | 'spring'
+                 | 'heart' | 'flame' | 'flag' | 'gauge';
 
 function BodyIcon({ k, size = 22, color }: { k: BodyIconKey; size?: number; color: string }) {
   const s = { display: 'block' as const, color };
@@ -1546,6 +1548,29 @@ function BodyIcon({ k, size = 22, color }: { k: BodyIconKey; size?: number; colo
       <path d="M10 10C10 10 6 10 5 12C4 14 4 17 7 17C9 17 10 16 10 14"/>
       <path d="M10 10C10 10 14 10 15 12C16 14 16 17 13 17C11 17 10 16 10 14"/>
       <polyline points="7,3 10,1 13,3"/>
+    </svg>
+  );
+  if (k === 'heart') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M10 17C10 17 2.5 12 2.5 7A4 4 0 0 1 10 5.5 4 4 0 0 1 17.5 7C17.5 12 10 17 10 17z"/>
+    </svg>
+  );
+  if (k === 'flame') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <path d="M10 2c0 0 4 5 4 9a4 4 0 0 1-8 0c0-2 1-4 1-4s-3 3-3 5.5A6 6 0 0 0 10 18a6 6 0 0 0 6-5.5C16 8 10 2 10 2z"/>
+    </svg>
+  );
+  if (k === 'flag') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={s}>
+      <line x1="4" y1="1.5" x2="4" y2="18.5"/>
+      <path d="M4 2L16 5L4 8"/>
+    </svg>
+  );
+  if (k === 'gauge') return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={s}>
+      <path d="M3 14A8 8 0 0 1 17 14"/>
+      <line x1="10" y1="14" x2="7.5" y2="8"/>
+      <circle cx="10" cy="14" r="1.5" fill="currentColor" stroke="none"/>
     </svg>
   );
   // spring (tendon)
@@ -2041,62 +2066,52 @@ function HrZonesCard() {
 }
 
 function HrZonesTile({ hrmax }: { hrmax: { bpm: number; source: 'measured' | 'tanaka_estimate' } }) {
-  const zoneOrder: Array<keyof typeof HRMAX_ZONES_5.value> = ['recovery', 'easy', 'aerobic_tempo', 'threshold', 'vo2max'];
-  const zoneColors: Record<keyof typeof HRMAX_ZONES_5.value, string> = {
-    recovery:      'var(--color-t3)',
-    easy:          'var(--color-success)',
-    aerobic_tempo: 'var(--color-corporate)',
-    threshold:     'var(--color-attention)',
-    vo2max:        'var(--color-warning)',
-  };
-  const zoneLabels: Record<keyof typeof HRMAX_ZONES_5.value, string> = {
-    recovery:      'Z1 · Recovery',
-    easy:          'Z2 · Easy',
-    aerobic_tempo: 'Z3 · Aerobic-tempo',
-    threshold:     'Z4 · Threshold',
-    vo2max:        'Z5 · VO2max',
-  };
+  const zones: Array<{
+    key: keyof typeof HRMAX_ZONES_5.value;
+    name: string;
+    detail: string;
+    color: string;
+    iconKey: BodyIconKey;
+  }> = [
+    { key: 'recovery',      name: 'Recovery',     detail: '50–60% HRmax', color: 'var(--color-t2)',        iconKey: 'shield'  },
+    { key: 'easy',          name: 'Easy',          detail: '60–70% HRmax', color: 'var(--color-success)',   iconKey: 'lungs'   },
+    { key: 'aerobic_tempo', name: 'Aerobic',       detail: '70–80% HRmax', color: 'var(--color-corporate)', iconKey: 'stairs'  },
+    { key: 'threshold',     name: 'Threshold',     detail: '80–90% HRmax', color: 'var(--color-attention)', iconKey: 'flame'   },
+    { key: 'vo2max',        name: 'VO₂max',        detail: '90–100% HRmax',color: 'var(--color-warning)',   iconKey: 'bolt'    },
+  ];
 
   return (
     <div>
-      <SectionHeader title="HR zones" sub={`%HRmax · 5-zone · HRmax ${hrmax.bpm} BPM ${hrmax.source === 'tanaka_estimate' ? '· Tanaka estimate' : '· measured'}`} />
-      <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 10 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-          {zoneOrder.map(z => {
-            const def = HRMAX_ZONES_5.value[z];
-            const lo = Math.round((def.pctLow / 100) * hrmax.bpm);
-            const hi = Math.round((def.pctHigh / 100) * hrmax.bpm);
-            const c = zoneColors[z];
-            return (
-              <div key={z} style={{
-                padding: 12, borderRadius: 8,
-                background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-                display: 'flex', flexDirection: 'column', gap: 6,
-              }}>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, letterSpacing: '1.2px', color: c }}>
-                  {zoneLabels[z].toUpperCase()}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-data)', fontSize: 16, fontWeight: 800,
-                  color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px',
-                }}>
-                  {lo}–{hi} <span style={{ fontSize: 10, color: 'var(--color-t3)', fontWeight: 700 }}>BPM</span>
-                </div>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', color: 'var(--color-t3)' }}>
-                  {def.pctLow}–{def.pctHigh}% HRmax
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--color-t2)', lineHeight: 1.4 }}>
-                  {def.purpose}
-                </div>
+      <SectionHeader title="HR zones" sub={`HRmax ${hrmax.bpm} BPM · ${hrmax.source === 'tanaka_estimate' ? 'Tanaka estimate' : 'measured'}`} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+        {zones.map((z, i) => {
+          const def = HRMAX_ZONES_5.value[z.key];
+          const lo = Math.round((def.pctLow / 100) * hrmax.bpm);
+          const hi = Math.round((def.pctHigh / 100) * hrmax.bpm);
+          return (
+            <div key={z.key} style={{
+              padding: '14px', borderRadius: 10,
+              background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <BodyIcon k={z.iconKey} size={26} color={z.color} />
+              <div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{z.name}</div>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{z.detail}</div>
               </div>
-            );
-          })}
-        </div>
-        {hrmax.source === 'tanaka_estimate' && (
-          <div style={{ fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.5, paddingTop: 6, borderTop: '1px solid var(--color-l4)' }}>
-            HRmax estimated from age via Tanaka (208 − 0.7×age, ±10 BPM SE). Replace with a measured value (lab or field test) on the profile page for a tighter zone fit.
-          </div>
-        )}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: z.color }}>Z{i + 1}</span>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)' }}>BPM</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: z.color, opacity: 0.35 }} />
+              </div>
+              <div style={{ fontFamily: 'var(--font-data)', fontSize: 14, fontWeight: 800, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px' }}>
+                {lo}–{hi}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2269,37 +2284,33 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
           </div>
         </div>
 
-        {/* Bottom: 5 pace zones with full labels */}
+        {/* Bottom: 5 pace zones — body-card style */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8,
           borderTop: '1px solid var(--color-l4)', paddingTop: 16,
         }}>
           {ZONE_DEFS.map(z => {
             const band = vdot.paces[z.key];
             return (
               <div key={z.key} style={{
-                padding: '12px',
-                borderRadius: 8,
-                background: 'var(--color-l2)',
-                border: '1px solid var(--color-l4)',
-                display: 'flex', flexDirection: 'column', gap: 6,
+                padding: '14px', borderRadius: 10,
+                background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
+                display: 'flex', flexDirection: 'column', gap: 8,
               }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{
-                    fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 800,
-                    letterSpacing: '1.4px', color: z.color,
-                  }}>{z.key}</span>
-                  <span style={{
-                    fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 16,
-                    color: 'var(--color-t0)', textTransform: 'uppercase', letterSpacing: '-.005em',
-                  }}>{z.label}</span>
+                <BodyIcon k={z.iconKey} size={26} color={z.color} />
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{z.label}</div>
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{z.sub}</div>
                 </div>
-                <div className="tile-sub" style={{ fontSize: 9 }}>{z.sub}</div>
-                <div style={{
-                  fontFamily: 'var(--font-data)', fontSize: 14, fontWeight: 800,
-                  color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px',
-                }}>
-                  {fmtPaceBand(band)}<span style={{ fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, marginLeft: 3 }}>/MI</span>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: z.color }}>{z.key}</span>
+                    <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)' }}>/MI</span>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: z.color, opacity: 0.35 }} />
+                </div>
+                <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 800, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px' }}>
+                  {fmtPaceBand(band)}
                 </div>
               </div>
             );
