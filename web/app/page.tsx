@@ -118,16 +118,15 @@ function OverviewPageInner() {
               concrete what-to-do. */}
           <BodyContextCard />
 
-          {/* THIS WEEK — full-width because the daily-bar chart needs
-              the horizontal real estate to show 7 days clearly. */}
-          <div style={{ marginBottom: 14 }}>
+          {/* SCHEDULE — this week bar chart + next 30 days side by side.
+              The runner sees current-week context alongside the 30-day
+              plan in one visual row. */}
+          <div className="dash-schedule-row">
             <ThisWeekTile runs={runs} now={now} />
+            <div>
+              <Next30DaysCard />
+            </div>
           </div>
-
-          {/* FORWARD OUTLOOK — Next 30 days + phase guidance side by side
-              when both render. Phase guidance only fires for special
-              phases; when it's null, Next 30 takes the full width. */}
-          <Next30DaysCard />
 
           {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
 
@@ -180,11 +179,11 @@ function LoadingShell() {
  *  branch BEFORE rendering and avoid stacking both. */
 function isSpecialMode(hub: import('../lib/hub-types').RunnerHub | null, daysToNext: number | null): boolean {
   if (!hub) return false;
-  if (daysToNext != null && daysToNext <= 7) return true;       // race day / week
-  const recentRace = hub.coach.state?.races?.recent?.[0] ?? null;
-  if (recentRace && recentRace.daysAgo <= 21) return true;       // post-race
-  if (hub.coach.state?.flags?.heavyBlockSuspected) return true;  // heavy block
-  return false;
+  // Only race day / race week gets the full hero treatment.
+  // Post-race and heavy-block context already lives in CoachTodayCard
+  // and BodyContextCard — showing a separate hero block creates
+  // three layers of the same information.
+  return daysToNext != null && daysToNext <= 7;
 }
 
 /* ── Mode banner — current training-mode pill at the top of the
@@ -411,61 +410,41 @@ function ModeHero({ daysToNext, next, hub }: {
 }
 
 function Greeting({
-  now, next, daysToNext, lastCompleted,
+  now, next, daysToNext,
 }: {
   now: Date; next: SavedRace | null; daysToNext: number | null; lastCompleted: SavedRace | null;
 }) {
-  const hl = (() => {
-    if (daysToNext !== null && daysToNext === 0) return { text: 'Race day', style: 'race' as const };
-    if (daysToNext !== null && daysToNext === 1) return { text: 'Race tomorrow', style: 'race' as const };
-    if (daysToNext !== null && daysToNext <= 7) return { text: 'Race week', style: 'race' as const };
-    if (daysToNext !== null && daysToNext <= 28) return { text: 'Race month', style: 'attention' as const };
+  const chipLabel = (() => {
+    if (daysToNext === 0) return { text: 'Race day', accent: 'var(--color-warning)' };
+    if (daysToNext === 1) return { text: 'Race tomorrow', accent: 'var(--color-warning)' };
+    if (daysToNext != null && daysToNext <= 7) return { text: 'Race week', accent: 'var(--color-warning)' };
+    if (daysToNext != null && daysToNext <= 28) return { text: 'Race month', accent: 'var(--color-attention)' };
     return null;
   })();
 
-  // Greeting subtitle no longer duplicates the goal race when there
-  // IS one — the NextRaceCard below this Greeting already shows the
-  // name, days, goal pace. Audit #10. We keep the subtitle for the
-  // "race day / tomorrow" countdown, post-race ("no upcoming race"),
-  // and no-race-ever empty state.
-  const sub = (() => {
-    if (next && daysToNext === 0) return `${next.meta.name} · today`;
-    if (next && daysToNext === 1) return `${next.meta.name} · tomorrow`;
-    if (next && daysToNext !== null && daysToNext > 1) return null;
-    if (lastCompleted) {
-      const back = Math.abs(daysUntil(lastCompleted.meta.date));
-      return <><b style={{ color: 'var(--color-t1)' }}>{lastCompleted.meta.name}</b> {back === 1 ? 'yesterday' : `${back} days ago`} · no upcoming race</>;
-    }
-    return 'No races yet — add one to start building plans.';
-  })();
-
   return (
-    <div style={{ marginBottom: 26, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start', padding: '0 4px' }}>
-      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: 2.2, textTransform: 'uppercase', color: 'var(--color-t2)', fontWeight: 700 }}>
+    <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, padding: '0 2px', flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700 }}>
         {greeting(now)}
-      </div>
-      {/* DAVID title — sized down to 56px from the audit's 96px so
-          the visual hierarchy puts the next-race + race chip above
-          the runner's name. The runner already knows their name;
-          the dashboard's job is to surface what to DO. Audit #26. */}
-      <div style={{ fontFamily: 'var(--font-display)', fontSize: 56, fontWeight: 700, letterSpacing: '-.01em', lineHeight: 1, textTransform: 'uppercase', color: 'var(--color-t1)' }}>
+      </span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, letterSpacing: '-.01em', textTransform: 'uppercase', color: 'var(--color-t0)', lineHeight: 1 }}>
         David
-      </div>
-      {hl && (
-        <div style={{
-          display: 'inline-block',
-          background: hl.style === 'race' ? 'var(--color-attention)' : 'var(--color-corporate)',
-          color: 'var(--color-l0)',
-          fontFamily: 'var(--font-display)',
-          fontWeight: 700,
-          fontSize: 22,
-          letterSpacing: '.01em',
-          textTransform: 'uppercase',
-          padding: '5px 12px 6px',
-          lineHeight: 1,
-        }}>{hl.text}</div>
+      </span>
+      {chipLabel && (
+        <span style={{
+          fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 800, letterSpacing: '1.4px',
+          textTransform: 'uppercase', color: chipLabel.accent,
+          padding: '3px 8px', borderRadius: 3,
+          border: `1px solid ${chipLabel.accent}`,
+        }}>
+          {chipLabel.text}
+        </span>
       )}
-      {sub && <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-t2)', fontWeight: 500 }}>{sub}</div>}
+      {next && daysToNext != null && daysToNext > 7 && (
+        <span style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', fontWeight: 600 }}>
+          · {daysToNext}d to {next.meta.name}
+        </span>
+      )}
     </div>
   );
 }
@@ -1320,12 +1299,11 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
       <SectionHeader title="Next 30 days" sub={subPieces.join(' · ')} />
 
       <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 10 }}>
-        {/* 30-day strip — fixed-width grid, scrolls horizontally on
-            narrow viewports. Cells 32px wide give a compact bird's-eye
-            view; type encoded by background, races by colored top bar. */}
+        {/* 30-day strip — cells scale to fill container width. */}
+        <div style={{ overflowX: 'auto' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(30, 1fr)', gap: 4,
-          minWidth: 30 * 32,
+          minWidth: 480,
         }}>
           {days.map((d, idx) => {
             const c = typeColor[d.type] ?? 'var(--color-l3)';
@@ -1372,6 +1350,7 @@ function Next30DaysTile({ days }: { days: NonNullable<CoachTodayPayload['next30D
             );
           })}
         </div>
+        </div>{/* end overflow wrapper */}
 
         {/* Race callouts */}
         {races.length > 0 && (
@@ -2284,7 +2263,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
           </div>
         </div>
 
-        {/* Bottom: 5 pace zones — body-card style */}
+        {/* Bottom: 5 pace zones — pace is the hero, zone letter is the ID */}
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8,
           borderTop: '1px solid var(--color-l4)', paddingTop: 16,
@@ -2293,25 +2272,24 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
             const band = vdot.paces[z.key];
             return (
               <div key={z.key} style={{
-                padding: '14px', borderRadius: 10,
-                background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
-                display: 'flex', flexDirection: 'column', gap: 8,
+                padding: '14px 16px', borderRadius: 10,
+                background: 'var(--color-l2)', border: `1px solid var(--color-l4)`,
+                display: 'flex', flexDirection: 'column', gap: 10,
               }}>
-                <BodyIcon k={z.iconKey} size={26} color={z.color} />
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{z.label}</div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{z.sub}</div>
+                {/* Zone letter badge */}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-data)', fontSize: 22, fontWeight: 900, color: z.color, letterSpacing: '-0.02em', lineHeight: 1 }}>{z.key}</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: 'var(--color-t1)' }}>{z.label}</span>
                 </div>
+                {/* Pace range — the hero */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 800, letterSpacing: '1.2px', color: z.color }}>{z.key}</span>
-                    <span style={{ fontFamily: 'var(--font-data)', fontSize: 8, fontWeight: 700, color: 'var(--color-t3)' }}>/MI</span>
+                  <div style={{ fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 18, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', lineHeight: 1 }}>
+                    {fmtPaceBand(band)}
                   </div>
-                  <div style={{ height: 4, borderRadius: 2, background: z.color, opacity: 0.35 }} />
+                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.8px', marginTop: 3 }}>/MI</div>
                 </div>
-                <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 800, color: z.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.5px' }}>
-                  {fmtPaceBand(band)}
-                </div>
+                {/* Sub-label */}
+                <div style={{ fontSize: 10, color: 'var(--color-t3)', lineHeight: 1.4 }}>{z.sub}</div>
               </div>
             );
           })}
