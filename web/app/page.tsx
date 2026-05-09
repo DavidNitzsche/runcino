@@ -99,15 +99,13 @@ function OverviewPageInner() {
               Two-column means the runner sees prescription AND race
               target AND last activity at-a-glance instead of
               scrolling through full-width tiles. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 14, marginBottom: 14 }}>
+          <div className="dash-today-row">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <CoachTodayCard runs={runs} />
               <WorkoutRpeCard />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <NextRaceCard next={next} daysToNext={daysToNext} />
-              <RecentRunCard lastRun={lastRun} />
-            </div>
+            <NextRaceCard next={next} daysToNext={daysToNext} />
+            <RecentRunCard lastRun={lastRun} />
           </div>
 
           {/* WHY YOUR BODY IS HERE — physiological narrative grounded
@@ -131,15 +129,14 @@ function OverviewPageInner() {
 
           {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
 
-          {/* FITNESS REFERENCE row — VDOT + HR zones side by side.
-              Reference data; doesn't need full-width. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 14, marginBottom: 14 }}>
+          {/* FITNESS REFERENCE row — VDOT + HR zones side by side. */}
+          <div className="dash-fitness-row">
             <VdotCard />
             <HrZonesCard />
           </div>
 
-          {/* STATS row — weekly + YTD. Compact 2-up at the bottom. */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
+          {/* STATS row — weekly + YTD. */}
+          <div className="dash-stats-row">
             <WeeklyMilesCard runs={runs} />
             <YearMilesCard runs={runs} />
           </div>
@@ -1593,7 +1590,9 @@ function TissueGrid({ tissues, daysAgo }: { tissues: TissueItem[]; daysAgo: numb
             border: `1px solid ${isSlow ? 'rgba(252,77,84,.28)' : 'var(--color-l4)'}`,
             display: 'flex', flexDirection: 'column', gap: 8,
           }}>
-            <BodyIcon k={t.iconKey} size={22} color={c} />
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: `color-mix(in srgb, ${c} 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <BodyIcon k={t.iconKey} size={22} color={c} />
+            </div>
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{t.name}</div>
               <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{t.detail}</div>
@@ -1798,7 +1797,9 @@ function BodyContextCard() {
                   background: 'var(--color-l2)', border: '1px solid var(--color-l4)',
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  <BodyIcon k={a.iconKey} size={22} color={a.color} />
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: `color-mix(in srgb, ${a.color} 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <BodyIcon k={a.iconKey} size={22} color={a.color} />
+                  </div>
                   <div>
                     <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--color-t0)', lineHeight: 1.2 }}>{a.name}</div>
                     <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--color-t3)', letterSpacing: '0.5px', marginTop: 2 }}>{a.detail}</div>
@@ -2269,7 +2270,7 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
 
         {/* Bottom: 5 pace zones with full labels */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8,
+          display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8,
           borderTop: '1px solid var(--color-l4)', paddingTop: 16,
         }}>
           {ZONE_DEFS.map(z => {
