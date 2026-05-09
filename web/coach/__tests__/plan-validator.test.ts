@@ -32,7 +32,7 @@ function baseState(overrides: Partial<{
 }> = {}): CoachState {
   return {
     now: '2026-05-08',
-    races: { nextA: null, nextAny: null, inWindow: [], recent: [], racesForVdot: [], raceCount30d: 0 },
+    races: { nextA: null, nextAny: null, inWindow: [], recent: [], racesForVdot: [], peakBaseline: [], raceCount30d: 0 },
     volume: {
       last7Mi: 25,
       last28Mi: 120,

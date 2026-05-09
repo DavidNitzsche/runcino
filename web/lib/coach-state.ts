@@ -47,6 +47,14 @@ export interface CoachState {
      *  walks this and picks the strongest by derived VDOT. Doctrine:
      *  VDOT_FRESHNESS_WINDOW (Research/01). */
     racesForVdot: PastRace[];
+    /** ALL-TIME peak baseline. Every race + canonical best-effort
+     *  from the runner's full activity history, no time window.
+     *  The VDOT picker uses this as a fitness FLOOR — a runner with
+     *  a Disney 1:32 half in their history shouldn't be paced as a
+     *  VDOT 44 runner just because their last race was a sentimental
+     *  off-effort. Picker applies a small time-decay to older signals
+     *  (continuous training holds fitness; long gaps degrade it). */
+    peakBaseline: PastRace[];
     /** Number of races (any priority) finished in the last 30 days. Heavy-block signal. */
     raceCount30d: number;
   };
@@ -367,6 +375,55 @@ export async function gatherCoachState(): Promise<CoachState> {
   }
   const racesForVdot = [...vdotSaved, ...vdotStrava, ...vdotBestEfforts].sort((a, b) => b.date.localeCompare(a.date));
 
+  // Demonstrated peak baseline — pulls EVERY race + canonical
+  // best-effort from the full activity history (no 56-day cutoff).
+  // The runner asked: "I have MONTHS of strong running history. We
+  // need to use that to start on the right base level." A Disney
+  // half in 1:32 from 6 months ago demonstrates capacity that a
+  // sentimental sub-effort half from last week can't override.
+  // The picker (vdot.ts) compares recent VDOT vs decayed-peak VDOT
+  // and uses the higher signal.
+  const peakBaseline: PastRace[] = [];
+  // All saved races with results
+  for (const r of savedRaces) {
+    if (!r.actualResult || r.actualResult.finishS == null) continue;
+    if (r.meta.date > todayISO) continue;
+    peakBaseline.push({
+      slug: r.slug, activityId: r.actualResult.stravaActivityId ?? null,
+      name: r.meta.name, date: r.meta.date, distanceMi: r.meta.distanceMi,
+      finishS: r.actualResult.finishS,
+      daysAgo: daysBetween(r.meta.date, todayISO),
+    });
+  }
+  // All Strava-flagged races (any age)
+  const peakSavedIds = new Set(peakBaseline.map(r => r.activityId).filter((id): id is number => id != null));
+  for (const a of activities) {
+    if (a.date > todayISO) continue;
+    if (peakSavedIds.has(a.id)) continue;
+    if (!isProbablyRace(a)) continue;
+    peakBaseline.push({
+      slug: null, activityId: a.id,
+      name: a.name, date: a.date, distanceMi: a.distanceMi,
+      finishS: a.movingTimeS,
+      daysAgo: daysBetween(a.date, todayISO),
+    });
+  }
+  // All canonical best efforts (any age) for non-race activities
+  for (const a of activities) {
+    if (a.date > todayISO) continue;
+    if (a.canonicalFinishS == null || a.canonicalDistanceMi == null) continue;
+    if (a.canonicalDistanceMi < 0.95) continue;
+    if (peakSavedIds.has(a.id) || isProbablyRace(a)) continue;
+    peakBaseline.push({
+      slug: null, activityId: a.id,
+      name: `${a.canonicalLabel ?? 'best'} effort · ${a.name}`,
+      date: a.date,
+      distanceMi: a.canonicalDistanceMi,
+      finishS: a.canonicalFinishS,
+      daysAgo: daysBetween(a.date, todayISO),
+    });
+  }
+
   const cutoff30 = isoDateOffset(today, -30);
   const raceCount30d = activities.filter(a => a.date >= cutoff30 && a.date <= todayISO && isProbablyRace(a)).length
     + savedRaces.filter(r => r.meta.date >= cutoff30 && r.meta.date <= todayISO && r.actualResult).length;
@@ -524,7 +581,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   return {
     now: todayISO,
     races: {
-      nextA, nextAny, inWindow, recent, racesForVdot, raceCount30d,
+      nextA, nextAny, inWindow, recent, racesForVdot, peakBaseline, raceCount30d,
     },
     runner: runnerProfile,
     volume: {

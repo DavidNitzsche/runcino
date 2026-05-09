@@ -212,33 +212,75 @@ interface RecentRace {
   name: string;
 }
 
-/** Pick the strongest race for VDOT inference. Heuristics:
- *  - state.races.racesForVdot is filtered to the last 56 days (the
- *    Daniels 8-week freshness window — VDOT_FRESHNESS_WINDOW).
- *  - Standard distance (within 5% of canonical Mile/5K/10K/15K/HM/M)
- *  - Highest derived VDOT wins. (Strongest race, not most recent —
- *    a 6-week-old PR represents better fitness than a heat-affected
- *    race last weekend.)
- *  Falls back to state.races.recent (28-day window) if a caller
- *  hasn't populated racesForVdot — preserves backward compatibility
- *  with older fixtures and tests.
- *  Returns null when no usable race is available. */
+/** Pick the best fitness signal for VDOT inference. Combines:
+ *
+ *  1. RECENT signals — racesForVdot covers the last 56 days
+ *     (Daniels' freshness window). Includes both race results and
+ *     canonical best-efforts inside training activities.
+ *
+ *  2. PEAK baseline — peakBaseline covers the runner's FULL history.
+ *     Time-decayed so a year-old PR doesn't override a recent fade.
+ *     Decay rate: 0.5 VDOT per quarter (slow — continuous training
+ *     holds fitness for months; large gaps degrade it).
+ *
+ *  Returns the higher VDOT signal. Specifically:
+ *  - If recent VDOT >= decayed peak: use recent (current fitness)
+ *  - Else: use peak (runner has demonstrated higher capacity than
+ *    recent compromised efforts show)
+ *
+ *  This addresses the runner's concern: "I ran a 1:32 half (Disney).
+ *  I have MONTHS of strong running history. Use that to start on the
+ *  right base level." A sentimental sub-effort half last week
+ *  shouldn't override demonstrated peak fitness.
+ *
+ *  Returns null when neither pool has a usable signal. */
 function pickStrongestRecentRace(state: CoachState): RecentRace | null {
-  let best: { race: RecentRace; vdot: number } | null = null;
-  const pool = state.races.racesForVdot ?? state.races.recent;
-  for (const r of pool) {
-    if (r.finishS == null) continue;                  // no time logged
-    if (!distanceKeyForMi(r.distanceMi)) continue;    // non-canonical
+  // Recent best — last 56 days
+  const recentPool = state.races.racesForVdot ?? state.races.recent;
+  let recentBest: { race: RecentRace; vdot: number } | null = null;
+  for (const r of recentPool) {
+    if (r.finishS == null) continue;
+    if (!distanceKeyForMi(r.distanceMi)) continue;
     const vdot = vdotFromRace(r.distanceMi, r.finishS);
     if (vdot == null) continue;
-    if (best == null || vdot > best.vdot) {
-      best = {
+    if (recentBest == null || vdot > recentBest.vdot) {
+      recentBest = {
         race: { date: r.date, distanceMi: r.distanceMi, timeS: r.finishS, name: r.name },
         vdot,
       };
     }
   }
-  return best ? best.race : null;
+
+  // Peak baseline — full history, time-decayed
+  const peakPool = state.races.peakBaseline ?? [];
+  let peakBest: { race: RecentRace; rawVdot: number; decayedVdot: number; daysAgo: number } | null = null;
+  for (const r of peakPool) {
+    if (r.finishS == null) continue;
+    if (!distanceKeyForMi(r.distanceMi)) continue;
+    const rawVdot = vdotFromRace(r.distanceMi, r.finishS);
+    if (rawVdot == null) continue;
+    // Decay: 0.5 VDOT per quarter (90 days). A 6-month-old peak loses
+    // 1.0 VDOT; a year-old peak loses 2.0. Slow because continuous
+    // training holds aerobic fitness for months without re-anchor.
+    const decay = (r.daysAgo / 90) * 0.5;
+    const decayedVdot = rawVdot - decay;
+    if (peakBest == null || decayedVdot > peakBest.decayedVdot) {
+      peakBest = {
+        race: { date: r.date, distanceMi: r.distanceMi, timeS: r.finishS, name: r.name },
+        rawVdot,
+        decayedVdot,
+        daysAgo: r.daysAgo,
+      };
+    }
+  }
+
+  // Decision: higher of (recent VDOT) vs (decayed peak VDOT).
+  // When the peak wins, use the peak race even though it's older —
+  // it represents demonstrated capacity the engine should anchor on.
+  if (peakBest && (!recentBest || peakBest.decayedVdot > recentBest.vdot)) {
+    return peakBest.race;
+  }
+  return recentBest ? recentBest.race : null;
 }
 
 // ── Public API ────────────────────────────────────────────────────
