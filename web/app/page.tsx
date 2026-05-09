@@ -85,49 +85,67 @@ function OverviewPageInner() {
         <Nav active="overview" />
         <div className="body">
 
-          {/* ModeBanner and ModeHero are mutually exclusive — hero
-              only renders for special modes (race-day, race-week,
-              post-race, heavy-block); banner shows for everyday
-              training. Showing both at once duplicates the same idea
-              twice — fixed per audit #18. */}
+          {/* GREETING leads — personal hello with the runner's name.
+              Right at the top, before any technical banner.
+              Audit #2: "top banner is distracting, not personal,
+              no greeting". */}
+          <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
+
+          {/* MODE context — second. Mode banner / hero gives the
+              "what kind of week is this" framing right after the
+              personal hello. Special modes (race-week, post-race,
+              heavy-block) get the full hero; everyday training
+              gets the slim banner. */}
           {isSpecialMode(hub, daysToNext)
             ? <ModeHero daysToNext={daysToNext} next={next} hub={hub} />
             : <ModeBanner daysToNext={daysToNext} hub={hub} />}
 
-          <Greeting now={now} next={next} daysToNext={daysToNext} lastCompleted={lastCompleted} />
+          {/* TODAY'S PRESCRIPTION — the most actionable thing the
+              dashboard surfaces. Was buried below stat cards before
+              the audit. */}
+          <CoachTodayCard runs={runs} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
-            <NextRaceCard next={next} daysToNext={daysToNext} />
-            <RecentRunCard lastRun={lastRun} />
-            <WeeklyMilesCard runs={runs} />
-            <YearMilesCard runs={runs} />
-          </div>
+          {/* RPE LOG — log how today's session felt, right next to
+              the prescription so the feedback loop is tight. */}
+          <WorkoutRpeCard />
 
-          {/* TodayTile dropped — RecentRunCard above already shows the
-              same data. Audit #9, #25. ThisWeekTile retained — it's
-              an at-a-glance daily-bar chart, not a run summary. */}
+          {/* THIS WEEK — daily-bar chart of how the week is shaping
+              up. The "rhythm of this week" view. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 10, marginBottom: 10 }}>
             <ThisWeekTile runs={runs} now={now} />
           </div>
 
-          <CoachTodayCard runs={runs} />
-
-          <WorkoutRpeCard />
-
-          {/* PhaseGuidanceCard — only fires for non-special modes
-              (otherwise ModeHero is already saying the same thing).
-              Audit #8. */}
-          {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
-
+          {/* NEXT 30 DAYS forward outlook + race target. */}
           <Next30DaysCard />
 
+          {/* PHASE GUIDANCE — phase-specific actionable advice, only
+              when the engine is in a special phase (taper, post-race,
+              rebuild). Otherwise ModeHero already covers it. */}
+          {!isSpecialMode(hub, daysToNext) && <PhaseGuidanceCard />}
+
+          {/* NEXT RACE summary card — what you're working toward.
+              Pulled out of the stat grid where it was buried. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginBottom: 10 }}>
+            <NextRaceCard next={next} daysToNext={daysToNext} />
+            <RecentRunCard lastRun={lastRun} />
+          </div>
+
+          {/* FITNESS ANCHORS — VDOT (single age-graded number) + HR
+              zones. Reference data, not actionable, lower in the page. */}
           <VdotCard />
 
           <HrZonesCard />
 
-          {/* RecoveryWidget (yoga membership tracker) removed — it's
-              off-topic for a running coach app. Audit #12. */}
+          {/* STATS grid moved to the bottom — overview info, not
+              actionable. Audit #2: "actionable and current items
+              towards the top, overview, stats at the bottom". */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginBottom: 10 }}>
+            <WeeklyMilesCard runs={runs} />
+            <YearMilesCard runs={runs} />
+          </div>
 
+          {/* TRAINING PULSE — keeps for now but the tile gets a
+              clearer one-line intent. Audit #4: purpose unclear. */}
           {runs && runs.length > 0 && (
             <TrainingPulseTile pulse={trainingPulse(runs, next?.meta.date ?? null, next?.meta.name ?? null)} runs={runs} />
           )}
@@ -1834,17 +1852,33 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
       <SectionHeader title="VDOT fitness" sub="DANIELS · ANCHORED ON YOUR LAST RACE" />
 
       <div className="tile" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 10 }}>
-        {/* Top: big VDOT number + tier badge + source race + freshness chip */}
+        {/* Top: age-graded VDOT (primary fitness number) + tier badge
+            + source race + freshness chip. When age-graded is
+            meaningfully different from raw VDOT, the age-graded is
+            the headline number — that's the "what would you run if
+            corrected to open category" comparator. Raw VDOT shown
+            as a subscript so the math is still visible.
+            Audit: "show what it should be based on my age". */}
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'center' }}>
           <div>
-            <div className="tile-sub" style={{ marginBottom: 4 }}>VDOT · <span style={{ color: tierColor[vdot.tier] }}>{vdot.tierLabel.toUpperCase()}</span></div>
+            <div className="tile-sub" style={{ marginBottom: 4 }}>
+              {showAgeGraded ? 'AGE-GRADED VDOT' : 'VDOT'} · <span style={{ color: tierColor[vdot.tier] }}>{vdot.tierLabel.toUpperCase()}</span>
+            </div>
             <div style={{
               fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 64,
               letterSpacing: '-.03em', lineHeight: 1, color: 'var(--color-corporate)',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {vdot.vdot.toFixed(1)}
+              {showAgeGraded && grading.ageGraded != null ? grading.ageGraded.toFixed(1) : vdot.vdot.toFixed(1)}
             </div>
+            {showAgeGraded && (
+              <div style={{
+                fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)',
+                letterSpacing: '0.6px', marginTop: 4,
+              }}>
+                Raw VDOT · {vdot.vdot.toFixed(1)}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -1868,12 +1902,11 @@ function VdotTile({ vdot }: { vdot: VdotTilePayload }) {
             )}
             {showAgeGraded && grading.ageGraded != null && (
               <div style={{
-                fontSize: 11.5, color: 'var(--color-t2)', lineHeight: 1.5, marginTop: 4,
+                fontSize: 11.5, color: 'var(--color-t3)', lineHeight: 1.5, marginTop: 4,
                 paddingTop: 6, borderTop: '1px solid var(--color-l4)',
+                fontStyle: 'italic',
               }}>
-                <span style={{ fontFamily: 'var(--font-data)', fontWeight: 700, fontSize: 10, letterSpacing: '1.2px', color: 'var(--color-t3)' }}>AGE-GRADED · </span>
-                <span style={{ fontFamily: 'var(--font-data)', fontWeight: 800, color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>VDOT {grading.ageGraded.toFixed(1)}</span>
-                <span style={{ color: 'var(--color-t3)' }}> {grading.rationale}</span>
+                {grading.rationale}
               </div>
             )}
           </div>

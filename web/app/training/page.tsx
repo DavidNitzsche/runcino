@@ -737,8 +737,8 @@ function NextFourWeeksSection({ now, hub, goalRace }: {
           <div className="tile-sub">Next 4 weeks</div>
           <div className="tile-lbl">
             {goalRace
-              ? `${goalRace.meta.name} in ${Math.round((Date.parse(goalRace.meta.date) - today.getTime()) / 86_400_000)} days · the engine projects forward`
-              : 'No goal race · projecting from current training state'}
+              ? `${Math.round((Date.parse(goalRace.meta.date) - today.getTime()) / 86_400_000)} days to ${goalRace.meta.name}`
+              : 'No goal race scheduled'}
           </div>
         </div>
       </div>

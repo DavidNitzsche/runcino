@@ -7,10 +7,14 @@ import Link from 'next/link';
 
 type NavKey = 'overview' | 'training' | 'library' | 'races' | 'season' | 'calibration' | 'health' | 'log' | 'profile';
 
+// Library removed from public nav — workout vocab + research is
+// reference data that doesn't earn a top-level tab. Audit feedback:
+// "not needed, this can just be backend information." Route still
+// exists at /library for direct linking from prescriptions /
+// citations; just no nav entry.
 const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
   { key: 'overview',    href: '/',             label: 'Overview' },
   { key: 'training',    href: '/training',     label: 'Training' },
-  { key: 'library',     href: '/library',      label: 'Library' },
   { key: 'races',       href: '/races',        label: 'Races' },
   { key: 'season',      href: '/season',       label: 'Season' },
   { key: 'calibration', href: '/calibration',  label: 'Calibration' },
