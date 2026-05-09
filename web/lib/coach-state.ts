@@ -331,7 +331,41 @@ export async function gatherCoachState(): Promise<CoachState> {
       finishS: a.movingTimeS,
       daysAgo: daysBetween(a.date, todayISO),
     }));
-  const racesForVdot = [...vdotSaved, ...vdotStrava].sort((a, b) => b.date.localeCompare(a.date));
+  // Strava best_efforts are sub-distance bests INSIDE any activity —
+  // a 5:27 mile inside a long run, a 22:30 5K split inside a tempo
+  // workout. These are real fitness signals that don't require a
+  // dedicated race effort. Adding them to racesForVdot lets the
+  // engine pick a higher-fitness signal than a sentimental race
+  // would provide.
+  // Audit: runner did Sombrero 7d after Big Sur as a "sentimental"
+  // half — it's an effort-compromised signal. With best efforts in
+  // the pool, the engine can pick a faster training-derived effort
+  // when one exists in the 56-day window.
+  const vdotBestEfforts: PastRace[] = [];
+  for (const a of activities) {
+    if (a.date < cutoff56 || a.date > todayISO) continue;
+    // canonicalFinishS = Strava's best_efforts time at the canonical
+    // race distance INSIDE this activity. If a tempo run hit a 5K
+    // split fast enough to PR, this captures it.
+    if (a.canonicalFinishS == null || a.canonicalDistanceMi == null) continue;
+    // Skip very short efforts (<1mi) — VDOT formulas unstable below
+    // the mile.
+    if (a.canonicalDistanceMi < 0.95) continue;
+    // Skip if this activity is already in the race-flagged pool
+    // (we don't want to double-count Sombrero as both a race AND a
+    // best-effort signal).
+    if (vdotSavedActIds.has(a.id)) continue;
+    if (isProbablyRace(a)) continue;
+    vdotBestEfforts.push({
+      slug: null, activityId: a.id,
+      name: `${a.canonicalLabel ?? 'best'} effort · ${a.name}`,
+      date: a.date,
+      distanceMi: a.canonicalDistanceMi,
+      finishS: a.canonicalFinishS,
+      daysAgo: daysBetween(a.date, todayISO),
+    });
+  }
+  const racesForVdot = [...vdotSaved, ...vdotStrava, ...vdotBestEfforts].sort((a, b) => b.date.localeCompare(a.date));
 
   const cutoff30 = isoDateOffset(today, -30);
   const raceCount30d = activities.filter(a => a.date >= cutoff30 && a.date <= todayISO && isProbablyRace(a)).length
