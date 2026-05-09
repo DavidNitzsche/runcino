@@ -98,6 +98,12 @@ export interface CoachToday {
     racePriority: 'A' | 'B' | 'C' | null;
   }>;
   alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
+  /** Adaptive signal — what the engine is reading from your real data
+   *  to scale prescriptions. Surfaces "every run influences the next"
+   *  visibly: RPE drift, ACWR, volume momentum, easy share, heavy
+   *  block status. UI on /health renders this so the runner SEES
+   *  what the engine is doing instead of trusting a black box. */
+  adaptiveSignal: AdaptiveSignal;
   /** Plan integrity issues — rules from coach/doctrine/plan_integrity.ts
    *  asserted by coach/plan-validator.ts after the engine produces its
    *  output. Empty array = clean plan. Any errors here mean the
@@ -158,6 +164,7 @@ export function coachDaily(state: CoachState): CoachToday {
   const next30 = simulateNext30Days(state, phase);
   const buildCurve = simulateBuildCurveWeeks(state);
   const rationale = composeRationale(state, phase, run, strength);
+  const adaptiveSignal = computeAdaptiveSignal(state);
 
   // Plan-integrity validator. Runs declarative rules from
   // coach/doctrine/plan_integrity.ts against the engine's generated
@@ -176,6 +183,7 @@ export function coachDaily(state: CoachState): CoachToday {
     weekShape: week,
     next30Days: next30,
     alerts,
+    adaptiveSignal,
     planIssues,
     buildCurve,
     generatedAt: new Date().toISOString(),
@@ -679,42 +687,119 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
  *
  *  Returns 0 (neutral) on no/insufficient data so first-time runners
  *  don't get amplified prescriptions before a baseline exists. */
-function trainingResponseScore(state: CoachState): number {
+/** Public breakdown of the adaptive signal — surfaced via the API so
+ *  the UI can show "what the engine sees" instead of treating the
+ *  multiplier as a black box. The runner correctly asked: every run
+ *  influences the next? Yes — and now it's visible.
+ *
+ *  score: -1 (struggling) → +1 (crushing it). Drives multipliers in
+ *  baseEasyMi (±12%), longRunTarget (±10%), heavy-block reduction
+ *  (50% → up to 70%).
+ *
+ *  signals: each component's contribution + human-readable reason.
+ *  Empty contribution = signal is null/insufficient. */
+export interface AdaptiveSignal {
+  score: number;
+  band: 'crushing' | 'building' | 'steady' | 'cautious' | 'struggling';
+  signals: Array<{ name: string; contribution: number; reason: string }>;
+}
+
+export function computeAdaptiveSignal(state: CoachState): AdaptiveSignal {
   // Hard blockers — never amp up during recovery or rebuild.
-  if (state.flags.heavyBlockSuspected) return -0.5;
-  if (state.flags.rebuildAfterBreak) return -0.3;
-
-  let score = 0;
-  // RPE drift: negative drift = workouts feeling easier than they used
-  // to. The classic sign of fitness moving forward. Threshold ±0.5
-  // RPE points (Borg CR-10 scale).
-  if (state.rpe.drift != null) {
-    if (state.rpe.drift < -0.5) score += 0.25;
-    else if (state.rpe.drift > 0.5) score -= 0.25;
+  if (state.flags.heavyBlockSuspected) {
+    return {
+      score: -0.5,
+      band: 'cautious',
+      signals: [{ name: 'Heavy block', contribution: -0.5, reason: 'Recent stretch had stacked race load — engine holds intensity until it ages out.' }],
+    };
   }
-  if (state.rpe.recentHeavy) score -= 0.25;
+  if (state.flags.rebuildAfterBreak) {
+    return {
+      score: -0.3,
+      band: 'cautious',
+      signals: [{ name: 'Rebuild', contribution: -0.3, reason: 'Coming back from a break — gentle ramp before the engine asks for more.' }],
+    };
+  }
 
-  // ACWR sustainable band [0.8, 1.2]. Above 1.3 = injury-risk zone;
-  // below 0.7 = detraining.
+  const signals: AdaptiveSignal['signals'] = [];
+  let score = 0;
+
+  // RPE drift
+  if (state.rpe.drift != null) {
+    if (state.rpe.drift < -0.5) {
+      signals.push({ name: 'RPE drift', contribution: 0.25, reason: `Workouts trending ${Math.abs(state.rpe.drift).toFixed(1)} RPE points easier than prior week — fitness moving forward.` });
+      score += 0.25;
+    } else if (state.rpe.drift > 0.5) {
+      signals.push({ name: 'RPE drift', contribution: -0.25, reason: `Workouts trending +${state.rpe.drift.toFixed(1)} RPE points harder — accumulating fatigue.` });
+      score -= 0.25;
+    } else {
+      signals.push({ name: 'RPE drift', contribution: 0, reason: 'Effort feels stable vs prior week.' });
+    }
+  } else {
+    signals.push({ name: 'RPE drift', contribution: 0, reason: 'Not enough RPE entries yet — log effort after runs to feed this signal.' });
+  }
+
+  if (state.rpe.recentHeavy) {
+    signals.push({ name: 'Recent heavy session', contribution: -0.25, reason: 'Last 3 days had at least one RPE 8+ — body is asking for absorption.' });
+    score -= 0.25;
+  }
+
+  // ACWR
   const ratio = acwr(state);
   if (ratio != null) {
-    if (ratio >= 0.8 && ratio <= 1.2) score += 0.25;
-    else if (ratio > 1.3) score -= 0.25;
+    if (ratio >= 0.8 && ratio <= 1.2) {
+      signals.push({ name: 'Load (ACWR)', contribution: 0.25, reason: `Acute:chronic ratio ${ratio.toFixed(2)} — sustainable build zone.` });
+      score += 0.25;
+    } else if (ratio > 1.3) {
+      signals.push({ name: 'Load (ACWR)', contribution: -0.25, reason: `Acute:chronic ratio ${ratio.toFixed(2)} — over the 1.3 ceiling, injury risk elevated.` });
+      score -= 0.25;
+    } else {
+      signals.push({ name: 'Load (ACWR)', contribution: 0, reason: `Acute:chronic ratio ${ratio.toFixed(2)} — outside ideal band but not concerning.` });
+    }
+  } else {
+    signals.push({ name: 'Load (ACWR)', contribution: 0, reason: 'Not enough recent volume to compute the ratio.' });
   }
 
-  // Volume momentum: weeklyAvg4w climbing relative to weeklyAvg8w.
-  // +5% trailing means the runner is in a real build trend.
+  // Volume momentum
   if (state.volume.deltaPct4v4 != null) {
-    if (state.volume.deltaPct4v4 > 0.05) score += 0.25;
-    else if (state.volume.deltaPct4v4 < -0.10) score -= 0.25;
+    if (state.volume.deltaPct4v4 > 0.05) {
+      signals.push({ name: 'Volume trend', contribution: 0.25, reason: `Last 4 weeks +${(state.volume.deltaPct4v4 * 100).toFixed(0)}% vs prior 4 weeks — actually building.` });
+      score += 0.25;
+    } else if (state.volume.deltaPct4v4 < -0.10) {
+      signals.push({ name: 'Volume trend', contribution: -0.25, reason: `Last 4 weeks ${(state.volume.deltaPct4v4 * 100).toFixed(0)}% vs prior 4 weeks — volume sliding.` });
+      score -= 0.25;
+    } else {
+      signals.push({ name: 'Volume trend', contribution: 0, reason: `${(state.volume.deltaPct4v4 * 100).toFixed(0)}% vs prior 4 weeks — steady.` });
+    }
+  } else {
+    signals.push({ name: 'Volume trend', contribution: 0, reason: 'Not enough history yet.' });
   }
 
-  // Easy-share at or above target = polarized training intact, not
-  // grinding the middle. Doctrine target ~0.80.
-  if (state.intensity.easyShare14d >= 0.78) score += 0.25;
-  else if (state.intensity.easyShare14d < 0.65) score -= 0.25;
+  // Easy share
+  if (state.intensity.easyShare14d >= 0.78) {
+    signals.push({ name: 'Easy/hard mix', contribution: 0.25, reason: `${Math.round(state.intensity.easyShare14d * 100)}% easy in last 14d — polarized training intact.` });
+    score += 0.25;
+  } else if (state.intensity.easyShare14d < 0.65) {
+    signals.push({ name: 'Easy/hard mix', contribution: -0.25, reason: `${Math.round(state.intensity.easyShare14d * 100)}% easy — too much middle-intensity.` });
+    score -= 0.25;
+  } else {
+    signals.push({ name: 'Easy/hard mix', contribution: 0, reason: `${Math.round(state.intensity.easyShare14d * 100)}% easy — close to the polarized target but not over.` });
+  }
 
-  return Math.max(-1, Math.min(1, score));
+  const clamped = Math.max(-1, Math.min(1, score));
+  const band: AdaptiveSignal['band'] = clamped >= 0.5 ? 'crushing'
+    : clamped >= 0.20 ? 'building'
+    : clamped > -0.20 ? 'steady'
+    : clamped > -0.50 ? 'cautious'
+    : 'struggling';
+  return { score: clamped, band, signals };
+}
+
+/** Internal multiplier used by baseEasyMi + longRunTarget. Reads
+ *  computeAdaptiveSignal under the hood — kept as a function call
+ *  instead of inline so the signal logic stays in one place. */
+function trainingResponseScore(state: CoachState): number {
+  return computeAdaptiveSignal(state).score;
 }
 
 /** Daily easy mileage scaled to recent volume + phase. Floors at 3,

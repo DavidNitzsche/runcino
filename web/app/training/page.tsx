@@ -959,7 +959,9 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
   const daysToRace = Math.round((raceDate.getTime() - today.getTime()) / 86_400_000);
   if (daysToRace < 0) return null;  // race already happened
 
-  // 12 weeks past + N forward (from engine buildCurve)
+  // 4 weeks back + N forward (from engine buildCurve). Audit: "who
+  // cares about looking back 12 weeks? Not really a concern if it's
+  // in the past." Recent context kept (4 weeks); deep past truncated.
   type WeekRow = {
     start: Date;
     weekISO: string;
@@ -980,9 +982,9 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
   // splice real engine output into the future strip.
   const projectedByMonday = new Map(buildCurve.map(b => [b.weekStartISO, b]));
 
-  // 12 weeks back + (engine projection length, capped 12 weeks fwd)
-  const forwardWeeks = Math.min(12, Math.max(8, buildCurve.length));
-  for (let w = -12; w <= forwardWeeks; w++) {
+  // 4 weeks back + engine projection forward (capped at 14 weeks)
+  const forwardWeeks = Math.min(14, Math.max(4, buildCurve.length));
+  for (let w = -4; w <= forwardWeeks; w++) {
     const start = new Date(thisMonday);
     start.setDate(start.getDate() + w * 7);
     const weekEnd = new Date(start); weekEnd.setDate(weekEnd.getDate() + 7);
@@ -1069,7 +1071,7 @@ function BuildCurveTile({ runs, now, goalRace, buildCurve }: {
       <div className="tile-h">
         <div>
           <div className="tile-sub">Build curve</div>
-          <div className="tile-lbl">{daysToRace} days to {goalRace.meta.name} · 12 weeks back, 8 forward</div>
+          <div className="tile-lbl">{daysToRace} days to {goalRace.meta.name} · 4 weeks back, projected forward to race</div>
         </div>
       </div>
 

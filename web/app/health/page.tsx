@@ -59,6 +59,18 @@ function HealthInner() {
             </div>
           </div>
 
+          {/* Engine signals — what the coach is actually reading from
+              your real data to scale the plan. Surfaces the adaptive
+              response score so "every run influences the next" is
+              visible, not abstract. Renders only when the engine
+              has produced a signal. */}
+          {hub?.coach.today?.adaptiveSignal && (
+            <>
+              <SectionHeader title="What the engine sees" sub="Real signals from your runs · drives prescription scaling" />
+              <EngineSignalsCard signal={hub.coach.today.adaptiveSignal} />
+            </>
+          )}
+
           {/* Recovery score — composite 0-100 from all the inputs we have */}
           <SectionHeader title="Recovery score" sub="Composite from training load + perceived effort + race recovery state" />
           <RecoveryScoreCard
@@ -149,6 +161,115 @@ function HealthInner() {
      <45: Cut hard · 3-5 easy days
 
    Floor at 30 — sub-30 catastrophic numbers don't help anybody. */
+/* ── Engine signals card ────────────────────────────────────
+   Surfaces the adaptive response signal so the runner sees what
+   the engine is reading from their real data. Each signal contributes
+   to a -1..+1 score that scales prescriptions: crushing it (+0.5+)
+   gets up to +12% volume + +10% long run; struggling (-0.5-) gets
+   pulled back. Visible because the runner asked: "every run
+   influences the next? confirm." */
+function EngineSignalsCard({ signal }: { signal: { score: number; band: string; signals: Array<{ name: string; contribution: number; reason: string }> } }) {
+  const bandColor: Record<string, string> = {
+    crushing:    'var(--color-success)',
+    building:    'var(--color-corporate)',
+    steady:      'var(--color-t1)',
+    cautious:    'var(--color-attention)',
+    struggling:  'var(--color-warning)',
+  };
+  const accent = bandColor[signal.band] ?? 'var(--color-t1)';
+  const scorePct = Math.round((signal.score + 1) * 50);
+  const indicatorPos = Math.max(2, Math.min(98, scorePct));
+
+  return (
+    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 18 }}>
+      {/* Score header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 800, letterSpacing: '1.6px',
+            color: accent, textTransform: 'uppercase',
+          }}>
+            {signal.band}
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 32,
+            letterSpacing: '-.02em', lineHeight: 1, color: 'var(--color-t0)', marginTop: 4,
+          }}>
+            {signal.score >= 0 ? '+' : ''}{signal.score.toFixed(2)}
+          </div>
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 11, color: 'var(--color-t3)',
+          textAlign: 'right', maxWidth: 280, lineHeight: 1.5,
+        }}>
+          {signal.score >= 0.5 ? 'Engine bumping volume + long run target' :
+           signal.score >= 0.20 ? 'Mild upward bias on volume' :
+           signal.score > -0.20 ? 'Holding doctrine baseline' :
+           signal.score > -0.50 ? 'Light damping — pull back from peak' :
+           'Heavy damping — protect base'}
+        </div>
+      </div>
+
+      {/* Visual scale -1..+1 */}
+      <div style={{ position: 'relative', height: 8, background: 'var(--color-l3)', borderRadius: 4 }}>
+        <div style={{
+          position: 'absolute', top: -3, left: `calc(${indicatorPos}% - 7px)`, width: 14, height: 14,
+          borderRadius: 7, background: accent, border: '2px solid var(--color-l0)',
+          boxShadow: '0 0 0 1px var(--color-l4)',
+        }} />
+        <div style={{ position: 'absolute', top: 0, left: '50%', width: 1, height: 8, background: 'var(--color-l4)' }} />
+      </div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', marginTop: -8,
+        fontFamily: 'var(--font-data)', fontSize: 9, color: 'var(--color-t3)', letterSpacing: '0.6px',
+      }}>
+        <span>STRUGGLING</span>
+        <span>STEADY</span>
+        <span>CRUSHING</span>
+      </div>
+
+      {/* Per-signal breakdown */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 8,
+        paddingTop: 12, borderTop: '1px solid var(--color-l4)',
+      }}>
+        {signal.signals.map((s, i) => {
+          const contribColor = s.contribution > 0 ? 'var(--color-success)'
+                             : s.contribution < 0 ? 'var(--color-warning)'
+                             : 'var(--color-t3)';
+          return (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <span style={{
+                fontFamily: 'var(--font-data)', fontSize: 10.5, fontWeight: 700,
+                color: contribColor, minWidth: 36, fontVariantNumeric: 'tabular-nums',
+              }}>
+                {s.contribution >= 0 ? '+' : ''}{s.contribution.toFixed(2)}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, color: 'var(--color-t0)',
+                }}>
+                  {s.name}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-t2)', lineHeight: 1.45, marginTop: 2 }}>
+                  {s.reason}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        fontSize: 11, color: 'var(--color-t3)', lineHeight: 1.5,
+        paddingTop: 8, borderTop: '1px solid var(--color-l4)', fontStyle: 'italic',
+      }}>
+        Every run feeds these signals. Crushing your prescriptions → engine bumps volume + long-run target. Signs of stress → engine pulls back. The plan adapts to YOUR data, not just doctrine.
+      </div>
+    </div>
+  );
+}
+
 function RecoveryScoreCard({ acwr, easyShare, rpeAvg7d, rpeDrift, rpeRecentHeavy, inRecoveryWindow, daysSinceLastRun }: {
   acwr: number | null;
   easyShare: number | null;

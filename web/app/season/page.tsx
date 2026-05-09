@@ -245,120 +245,148 @@ function Timeline({ races, todayISO, segments }: { races: SavedRace[]; todayISO:
       </div>
     );
   }
-  // Compute timeline span: 30 days before earliest visible race → 30 days after latest.
-  const earliest = Math.min(...races.map(r => Date.parse(r.meta.date)));
-  const latest = Math.max(...races.map(r => Date.parse(r.meta.date)));
-  const startMs = earliest - 30 * 86_400_000;
-  const endMs = latest + 60 * 86_400_000;
-  const totalDays = Math.max(1, (endMs - startMs) / 86_400_000);
-  const todayPctRaw = ((Date.parse(todayISO + 'T12:00:00Z') - startMs) / 86_400_000) / totalDays * 100;
-  const todayPct = Math.max(0, Math.min(100, todayPctRaw));
+
+  // Replaced the position-absolute calendar strip with a clean
+  // chronological vertical timeline. The previous strip had rotated
+  // labels stacked diagonally, race markers overlapping at dense
+  // months, "today" line floating mid-bar — the runner correctly
+  // flagged it as "haggard, ugly, nothing looks right."
+  // Now: race rows separated by phase-block segments so the season
+  // reads top-to-bottom as a story, not a cramped horizontal bar.
+
+  // segments param retained for back-compat with caller signature
+  // — future iteration brings phase chips back per row.
+  void segments;
+  const todayMs = Date.parse(todayISO + 'T12:00:00Z');
+  const racesPast = races.filter(r => Date.parse(r.meta.date) < todayMs).sort((a, b) => Date.parse(b.meta.date) - Date.parse(a.meta.date)); // most recent first
+  const racesFuture = races.filter(r => Date.parse(r.meta.date) >= todayMs).sort((a, b) => Date.parse(a.meta.date) - Date.parse(b.meta.date));
 
   return (
     <div className="tile" style={{ padding: '20px 22px' }}>
       <div className="tile-h">
         <div>
-          <div className="tile-sub">Calendar timeline</div>
-          <div className="tile-lbl">{races.length} race{races.length === 1 ? '' : 's'} · {Math.round(totalDays)} days span</div>
+          <div className="tile-sub">Season timeline</div>
+          <div className="tile-lbl">{racesPast.length} past · {racesFuture.length} ahead</div>
         </div>
       </div>
-      {/* Container height + space below for rotated race labels.
-          overflow:visible so labels can extend below the strip
-          without being clipped. Audit #15. */}
-      <div style={{ position: 'relative', height: 80, marginTop: 16, marginBottom: 100, background: 'var(--color-l2)', borderRadius: 8, overflow: 'visible' }}>
-        {/* Phase segments */}
-        {segments.map((s, i) => {
-          if (!s.startISO || !s.endISO) return null;
-          const sMs = Date.parse(s.startISO + 'T12:00:00Z');
-          const eMs = Date.parse(s.endISO + 'T12:00:00Z');
-          const left = ((sMs - startMs) / 86_400_000) / totalDays * 100;
-          const width = ((eMs - sMs) / 86_400_000) / totalDays * 100;
-          if (width <= 0) return null;
-          const segColor = s.kind === 'BUILD' ? 'rgba(62,189,65,.18)'
-                         : s.kind === 'TAPER' ? 'rgba(243,173,59,.30)'
-                         : s.kind === 'POST_RACE' ? 'rgba(252,77,84,.16)'
-                         : s.kind === 'GAP' ? 'rgba(255,255,255,.04)'
-                         : 'rgba(120,120,120,.10)';
+
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {/* Future races (chronological) */}
+        {racesFuture.map((r, i) => {
+          const daysAway = Math.round((Date.parse(r.meta.date) - todayMs) / 86_400_000);
+          const prevRace = i === 0 ? null : racesFuture[i - 1];
+          const gapDays = prevRace
+            ? Math.round((Date.parse(r.meta.date) - Date.parse(prevRace.meta.date)) / 86_400_000)
+            : daysAway;
+          // For the first race ahead, gapDays = days from today.
+          // For subsequent races, gap from the prior race.
+          const gapLabel = i === 0
+            ? `${daysAway} days from today`
+            : `${gapDays} days after ${prevRace!.meta.name}`;
           return (
-            <div key={i} title={`${s.kind} · ${s.startISO} → ${s.endISO}${s.raceContext ? ` (for ${s.raceContext})` : ''}`} style={{
-              position: 'absolute', left: `${left}%`, width: `${width}%`,
-              top: 0, bottom: 0, background: segColor,
-            }} />
+            <div key={r.slug}>
+              <PhaseGap label={gapLabel} kind={i === 0 ? 'NOW' : 'GAP'} />
+              <RaceRow race={r} todayISO={todayISO} />
+            </div>
           );
         })}
-        {/* Today line */}
-        <div style={{
-          position: 'absolute', left: `${todayPct}%`, top: 0, bottom: 0,
-          width: 2, background: 'var(--color-warning)', boxShadow: '0 0 6px rgba(252,77,84,.6)',
-        }}>
-          <div style={{
-            position: 'absolute', top: -16, left: -18,
-            fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1.4px',
-            color: 'var(--color-warning)',
-          }}>TODAY</div>
-        </div>
-        {/* Race markers */}
-        {races.map(r => {
-          const rMs = Date.parse(r.meta.date + 'T12:00:00Z');
-          const left = ((rMs - startMs) / 86_400_000) / totalDays * 100;
-          const priority = r.meta.priority ?? 'C';
-          const color = priority === 'A' ? 'var(--color-warning)'
-                      : priority === 'B' ? 'var(--color-attention)'
-                      : 'var(--color-corporate)';
-          const isPast = r.meta.date < todayISO;
-          return (
-            <Link key={r.slug} href={`/races/${r.slug}`} title={`${r.meta.name} · ${r.meta.date}`} style={{
-              position: 'absolute', left: `${left}%`,
-              top: 8, bottom: 8, width: 12,
-              transform: 'translateX(-50%)',
-              background: color,
-              borderRadius: 3,
-              opacity: isPast ? 0.5 : 1,
-              border: '2px solid var(--color-l1)',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
+
+        {/* Past races (most recent first) */}
+        {racesPast.length > 0 && (
+          <>
+            <div style={{
+              padding: '14px 0 6px',
+              fontFamily: 'var(--font-data)', fontSize: 10, fontWeight: 700,
+              letterSpacing: '1.4px', color: 'var(--color-t3)', textTransform: 'uppercase',
+              borderTop: '1px solid var(--color-l4)',
+              marginTop: 18,
             }}>
-              <div style={{
-                position: 'absolute', top: -22, left: 0,
-                transform: 'translateX(-50%)',
-                fontFamily: 'var(--font-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1px',
-                color, whiteSpace: 'nowrap',
-              }}>
-                {priority}
-              </div>
-              {/* Race name label — rotated -55° below the bar so
-                  labels stack diagonally without overlapping at
-                  realistic season densities. Audit #15. */}
-              <div style={{
-                position: 'absolute', bottom: -10, left: 4,
-                transform: 'rotate(-55deg)',
-                transformOrigin: '0 0',
-                fontFamily: 'var(--font-display)', fontSize: 10.5, fontWeight: 700,
-                color: 'var(--color-t1)', whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-              }}>
-                {r.meta.name}
-              </div>
-            </Link>
-          );
-        })}
+              Recent finishes
+            </div>
+            {racesPast.slice(0, 6).map(r => (
+              <RaceRow key={r.slug} race={r} todayISO={todayISO} />
+            ))}
+          </>
+        )}
       </div>
-      <div style={{ marginTop: 28, display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 10.5, color: 'var(--color-t3)', fontFamily: 'var(--font-data)', letterSpacing: '1.3px', textTransform: 'uppercase' }}>
-        <LegendSwatch color="rgba(62,189,65,.4)" label="Build" />
-        <LegendSwatch color="rgba(243,173,59,.6)" label="Taper" />
-        <LegendSwatch color="rgba(252,77,84,.4)" label="Post-race" />
-        <LegendSwatch color="rgba(255,255,255,.1)" label="Gap" />
+
+    </div>
+  );
+}
+
+function PhaseGap({ label, kind }: { label: string; kind: 'NOW' | 'GAP' }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '8px 0',
+    }}>
+      <div style={{
+        width: 4, height: 28, borderRadius: 2,
+        background: kind === 'NOW' ? 'var(--color-warning)' : 'var(--color-l4)',
+      }} />
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 11, color: 'var(--color-t2)',
+        letterSpacing: '0.6px',
+      }}>
+        {kind === 'NOW' && <span style={{ color: 'var(--color-warning)', fontWeight: 700, marginRight: 6 }}>TODAY</span>}
+        {label}
       </div>
     </div>
   );
 }
 
-function LegendSwatch({ color, label }: { color: string; label: string }) {
+function RaceRow({ race, todayISO }: { race: SavedRace; todayISO: string }) {
+  const isPast = race.meta.date < todayISO;
+  const priority = race.meta.priority ?? 'C';
+  const priColor = priority === 'A' ? 'var(--color-attention)'
+                : priority === 'B' ? 'var(--color-corporate)'
+                : 'var(--color-t2)';
+  const dateMs = Date.parse(race.meta.date + 'T12:00:00Z');
+  const dateLbl = new Date(dateMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-      <div style={{ width: 14, height: 8, background: color, borderRadius: 2 }} />
-      <span>{label}</span>
-    </div>
+    <Link href={`/races/${race.slug}`} style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      padding: '14px 16px',
+      background: 'var(--color-l2)',
+      borderLeft: `3px solid ${priColor}`,
+      borderRadius: 6,
+      textDecoration: 'none',
+      opacity: isPast ? 0.55 : 1,
+      transition: 'background 0.12s',
+    }}>
+      <div style={{
+        width: 36, padding: '4px 0', textAlign: 'center',
+        background: 'var(--color-l1)',
+        borderRadius: 4, border: `1px solid ${priColor}`,
+        fontFamily: 'var(--font-data)', fontWeight: 800, fontSize: 14,
+        color: priColor, letterSpacing: '0.5px',
+      }}>
+        {priority}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700,
+          color: 'var(--color-t0)', letterSpacing: '-.005em',
+        }}>
+          {race.meta.name}
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-data)', fontSize: 11, color: 'var(--color-t3)',
+          letterSpacing: '0.5px', marginTop: 2,
+        }}>
+          {dateLbl} · {race.meta.distanceMi.toFixed(1)} mi
+          {race.meta.goalDisplay ? ` · goal ${race.meta.goalDisplay}` : ''}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-data)', fontSize: 9.5, color: 'var(--color-t3)',
+        letterSpacing: '1.2px', textTransform: 'uppercase',
+        flexShrink: 0,
+      }}>
+        →
+      </div>
+    </Link>
   );
 }
 
