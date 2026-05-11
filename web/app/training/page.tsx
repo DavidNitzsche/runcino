@@ -1,672 +1,1991 @@
 'use client';
 
 /**
- * /training — daily briefing.
+ * /training · Phase-2 port of the May 2026 mockup.
  *
- * Newsroom skeleton with Poster typography injected: masthead, big
- * Oswald date hero, phase line with orange dot, big Oswald workout
- * title, two-column lead (voice body + stats sidebar), this-week grid
- * with solid-orange today, next-up list, and the last-12-weeks chart
- * underneath.
+ * Source mockup: designs/training-2026-05-09.html
  *
- * Today's prescription comes from /api/coach/today (deterministic
- * Coach: prescribeWorkout + voiceLead). The week-strip combines past
- * Strava actuals with future planned distance from coach.today.weekShape.
+ * Architecture mirrors /overview/page.tsx:
+ *   - Single useEffect that loads data via /api/training (server-side
+ *     Coach bundle).
+ *   - Skeleton + error fallback via <EmptyState>.
+ *   - Every coaching judgment threads through `data.coach.*` (Coach
+ *     methods) or a clearly-marked stub in data.ts.
+ *
+ * Sections (mapped 1:1 to the mockup):
+ *   1. TopBar + Greet band (5 KPI tiles)
+ *   2. TODAY hero (amber, span-7)  · GOAL TRACKING (span-5)
+ *   3. THIS WEEK strip (span-12)
+ *   4. NEXT 4 WEEKS (span-8)       · PLAN ADAPTED (coach, span-4)
+ *   5. PATH TO AFC build curve + summary strip + phase breakdown
  */
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Caption, Nav } from '../../components/nav';
-import { listRaces, type SavedRace } from '../../lib/storage';
-import { useActivities, onlyRuns, type NormalizedActivity } from '../../lib/strava-activities';
-import { currentWeekDays, weeklyMiles } from '../../lib/strava-stats';
-import { daysUntil, formatShort, todayISO } from '../../lib/dates';
+import {
+  Topbar,
+  Stage,
+  Row,
+  Card,
+  CardHeader,
+  CardLabel,
+  CardPin,
+  CardFoot,
+  Greet,
+  GreetId,
+  GreetState,
+  GreetTile,
+  EmptyState,
+  Skeleton,
+} from '@/app/components';
+import { useActivities } from '@/lib/strava-activities';
+import { loadTrainingData, type TrainingData } from './data';
 
-// ── Types from /api/coach/today ─────────────────────────────────────
-type Citation = { doc: string; section: string; snippet?: string };
-type CoachDecision<T> = { answer: T; rationale: string; explanation?: string; citations: Citation[]; brain: 'deterministic' | 'llm' };
-type WorkoutPrescription = {
-  type: string;
-  label: string;
-  distanceMi: number;
-  paceTargetSPerMi?: { lower: number; upper: number } | null;
-  hrZone?: number | null;
-  phaseLabel: string;
-  voiceLead: string;
-  isQuality: boolean;
-  isLong: boolean;
-};
-type ReadinessAssessment = {
-  level: 'green' | 'yellow' | 'red';
-  message: string;
-  acwr: number | null;
-  easyShare: number | null;
-};
-type WeekShapeDay = {
-  date: string;
-  type: string;
-  label: string;
-  distanceMi: number;
-  description: string;
-  paceTargetSPerMi: { lowS: number; highS: number } | null;
-  hrZone: number | null;
-  isQuality: boolean;
-  isLong: boolean;
-  isToday: boolean;
-  hasStrength: boolean;
-};
-type CoachTodayResponse = {
-  ok: boolean;
-  error?: string;
-  coach?: {
-    workout: CoachDecision<WorkoutPrescription>;
-    readiness: CoachDecision<ReadinessAssessment>;
-  };
-  today?: {
-    weekShape: WeekShapeDay[];
-    alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
-    mode: 'race' | 'base';
-    phase: string;
-    modeDetail: string;
-  };
-};
-
-// ── Glyph + label tables ────────────────────────────────────────────
-const TYPE_LABEL: Record<string, string> = {
-  rest: 'Rest',
-  recovery: 'Recovery',
-  easy: 'Easy',
-  general_aerobic: 'Easy',
-  medium_long: 'Medium-long',
-  long_steady: 'Long',
-  long_progression: 'Long · prog',
-  long_mp_block: 'Long · MP',
-  long_fast_finish: 'Long · FF',
-  threshold_intervals: 'Threshold',
-  tempo_continuous: 'Tempo',
-  sub_threshold: 'Sub-threshold',
-  vo2: 'VO2',
-  marathon_specific: 'MP-specific',
-  marathon_specific_combo: 'MP-specific',
-  marathon_specific_long: 'MP-specific',
-  strides: 'Strides',
-  hill_sprints: 'Hills',
-  race: 'Race',
-  shakeout: 'Shakeout',
-};
-
-// ── Page ────────────────────────────────────────────────────────────
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
-  const [races, setRaces] = useState<SavedRace[] | null>(null);
-  const [coachToday, setCoachToday] = useState<CoachTodayResponse | null>(null);
+  const [data, setData] = useState<TrainingData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { activities } = useActivities();
 
   useEffect(() => {
-    let cancelled = false;
     setNow(new Date());
-    listRaces().then(rs => { if (!cancelled) setRaces(rs); });
-    fetch('/api/coach/today')
-      .then(r => r.json())
-      .then((data: CoachTodayResponse) => { if (!cancelled) setCoachToday(data); })
-      .catch(() => { /* non-fatal — briefing shows the unavailable state */ });
-    return () => { cancelled = true; };
   }, []);
 
-  if (now === null || races === null) {
+  useEffect(() => {
+    if (!now) return;
+    let cancelled = false;
+    setLoadError(null);
+    loadTrainingData(activities)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [now, activities]);
+
+  const clock = now ? formatTopbarClock(now) : null;
+
+  return (
+    <Stage>
+      <Topbar
+        activeTab="training"
+        clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
+      />
+
+      <TrainingGreet data={data} />
+
+      {loadError && (
+        <Row>
+          <Card span={12}>
+            <EmptyState
+              variant="error"
+              title="Couldn't load Training"
+              body={loadError}
+            />
+          </Card>
+        </Row>
+      )}
+
+      {data ? (
+        <TrainingBody data={data} />
+      ) : (
+        !loadError && <TrainingSkeleton />
+      )}
+    </Stage>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Greet band
+// ─────────────────────────────────────────────────────────────────────
+
+function TrainingGreet({ data }: { data: TrainingData | null }) {
+  if (!data) {
     return (
-      <>
-        <Caption left="Runcino · training" />
-        <div className="stage">
-          <Nav active="training" />
-          <div className="body"><div className="hint" style={{ padding: 24 }}>Loading…</div></div>
-        </div>
-      </>
+      <Greet>
+        <GreetId
+          eyebrow={<Skeleton width={260} height={11} />}
+          title={<Skeleton width={160} height={48} />}
+        />
+        <GreetState>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <GreetTile key={i} eyebrow="—" value={<Skeleton width={56} height={20} />} />
+          ))}
+        </GreetState>
+      </Greet>
     );
   }
 
-  const upcoming = races.filter(r => daysUntil(r.meta.date) >= 0).sort((a, b) => daysUntil(a.meta.date) - daysUntil(b.meta.date));
-  const goalRace = upcoming[0] ?? null;
-  const runs = activities ? onlyRuns(activities) : null;
+  const { coach, races } = data;
+  const phase = (coach.workout.answer.phaseLabel || 'BASE').toUpperCase();
+  const week = coach.weekDeltas.answer;
+  const today = coach.workout.answer;
+  const r = coach.readiness.answer;
+  const daysToA = races.daysToNextA;
+  const aRaceName = races.nextA?.meta.name ?? null;
+
+  // Header eyebrow: "RECOVERY · 98 DAYS TO AFC · VDOT 49.2 ADV"
+  // VDOT surfaces here because it's the runner's current fitness baseline and
+  // anchors every pace zone the page references.
+  const eyebrowParts: string[] = [phase];
+  if (aRaceName && daysToA != null) {
+    eyebrowParts.push(`${daysToA} DAYS TO ${aRaceName.toUpperCase()}`);
+  }
+  const vdotValue = data.goalTracking.vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0];
+  if (vdotValue) {
+    eyebrowParts.push(`VDOT ${vdotValue}`);
+  }
+
+  // Readiness tile.
+  const readinessLevel = r.level;
+  const readinessVariant =
+    readinessLevel === 'green' ? 'good' : readinessLevel === 'yellow' ? 'amber' : 'default';
+  const readinessVal =
+    readinessLevel === 'green' ? '88' : readinessLevel === 'yellow' ? '62' : '40';
+
+  // Week tile.
+  const weekDeltaLabel =
+    week.netDeltaMi > 0.5
+      ? `+${week.netDeltaMi.toFixed(1)} OVER`
+      : week.netDeltaMi < -0.5
+      ? `${week.netDeltaMi.toFixed(1)} UNDER`
+      : 'ON PLAN';
+
+  // Today tile.
+  const todayDist = today.distanceMi.toFixed(1);
+  const todayLabel = (today.label || 'EASY').toUpperCase();
+
+  // Build-block tile — peak target from trajectory.
+  const peakMi = coach.trajectory.answer.summary.peakWeekMi;
 
   return (
+    <Greet>
+      <GreetId
+        eyebrow={eyebrowParts.join(' · ')}
+        title="TRAINING"
+      />
+      <GreetState>
+        <GreetTile
+          variant="coach"
+          eyebrow="PHASE"
+          value={phase}
+          delta={coach.workout.answer.isQuality ? 'QUALITY DAY' : 'EASY · ABSORB'}
+        />
+        <GreetTile
+          variant="race"
+          eyebrow="A-RACE COUNTDOWN"
+          value={daysToA != null ? String(daysToA) : '—'}
+          unit={daysToA != null ? 'D' : undefined}
+          delta={aRaceName ? aRaceName.toUpperCase() : 'NONE SET'}
+          deltaColor="var(--race)"
+        />
+        <GreetTile
+          eyebrow="THIS WEEK"
+          value={week.loggedWeekMi.toFixed(1)}
+          unit="MI"
+          delta={`${weekDeltaLabel} · ${countLoggedRuns(week.days)}/${week.days.filter((d) => d.plannedMi > 0).length} LOGGED`}
+        />
+        <GreetTile
+          variant={readinessVariant}
+          eyebrow="READINESS"
+          value={readinessVal}
+          unit="/100"
+          delta={readinessLevel === 'green' ? '▲ BUILDING' : readinessLevel === 'yellow' ? '— HOLD' : '▼ REST DAY'}
+          deltaColor={readinessLevel === 'green' ? 'var(--good)' : undefined}
+        />
+        <GreetTile
+          variant="amber"
+          eyebrow="TODAY"
+          value={todayDist}
+          unit="MI"
+          delta={`${todayLabel} · PEAK ${peakMi}`}
+        />
+      </GreetState>
+    </Greet>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Body
+// ─────────────────────────────────────────────────────────────────────
+
+function TrainingBody({ data }: { data: TrainingData }) {
+  return (
     <>
-      <Caption left="Runcino · training" right={`TRAINING · ${now.toISOString().slice(0, 10)}`} />
-      <div className="stage">
-        <Nav active="training" />
-        <div className="body">
+      {/* ROW 1 — TODAY hero (7) + GOAL TRACKING (5) */}
+      <Row>
+        <TodayCard data={data} />
+        <GoalTrackingCard data={data} />
+      </Row>
 
-          <DailyBriefing
-            now={now}
-            data={coachToday}
-            goalRace={goalRace}
-            runs={runs}
-          />
+      {/* ROW 2 — THIS WEEK strip full-width */}
+      <Row>
+        <ThisWeekCard data={data} />
+      </Row>
 
-          {runs && runs.length > 0 && <RecentWeeksTile runs={runs} />}
+      {/* ROW 3 — NEXT 4 WEEKS (8) + PLAN ADAPTED (4) */}
+      <Row>
+        <NextFourWeeksCard data={data} />
+        <PlanAdaptedCard data={data} />
+      </Row>
 
-        </div>
-      </div>
+      {/* ROW 4 — PATH TO AFC build curve */}
+      <Row>
+        <BuildCurveCard data={data} />
+      </Row>
     </>
   );
 }
 
-// ── Daily Briefing ──────────────────────────────────────────────────
-// Variant C: newsroom skeleton + Poster typography.
-function DailyBriefing({
-  now,
-  data,
-  goalRace,
-  runs,
-}: {
-  now: Date;
-  data: CoachTodayResponse | null;
-  goalRace: SavedRace | null;
-  runs: NormalizedActivity[] | null;
-}) {
-  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
-  const mdy = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const year = now.getFullYear();
-  const todayIso = todayISO();
+// ─────────────────────────────────────────────────────────────────────
+// TODAY hero (amber-washed expanded card)
+// ─────────────────────────────────────────────────────────────────────
 
-  // ── Loading state ─────────────────────────────────────────────────
-  if (!data) {
-    return (
-      <BriefingShell weekday={weekday} mdy={mdy} year={year}>
-        <div className="hint" style={{ paddingTop: 28 }}>Coach is checking in…</div>
-      </BriefingShell>
-    );
-  }
-
-  // ── Coach unavailable (no DB / no Strava / no goal race) ──────────
-  if (!data.ok || !data.coach) {
-    return (
-      <BriefingShell weekday={weekday} mdy={mdy} year={year}>
-        <div style={{
-          paddingTop: 28, fontSize: 14, color: 'var(--color-t1)',
-          lineHeight: 1.65, maxWidth: 720,
-        }}>
-          {data.error ?? "Need a connected Strava account and a saved goal race to generate today's prescription."}
-        </div>
-        <div style={{ paddingTop: 18, display: 'flex', gap: 10 }}>
-          <Link href="/races" className="btn">All races</Link>
-          {!goalRace && <Link href="/races/new" className="btn btn--primary">+ Add race</Link>}
-        </div>
-      </BriefingShell>
-    );
-  }
-
+function TodayCard({ data }: { data: TrainingData }) {
   const w = data.coach.workout.answer;
-  const weekShape = data.today?.weekShape ?? [];
-  const daysOut = goalRace ? daysUntil(goalRace.meta.date) : null;
+  const structure = data.workoutStructure;
+  const ready = data.readyToRun;
+  const conditions = data.conditions;
 
-  // ── Build the 7-day strip: actuals (past) + planned (today/future) ─
-  const weekStrip = buildWeekStrip(runs, weekShape, todayIso);
-  const stripActualMi = Math.round(weekStrip.reduce((s, d) => s + (d.actualMi ?? 0), 0) * 10) / 10;
-  const stripActualRuns = weekStrip.reduce((s, d) => s + (d.actualMi && d.actualMi > 0 ? 1 : 0), 0);
+  // Rest day branch — workout metrics (distance, duration, pace, HR cap, structure)
+  // don't apply when there's no run. Recovery signals + coach note still do.
+  const isRest = w.type === 'rest';
 
-  // ── Next up: next 4 days from weekShape after today ───────────────
-  const ahead = weekShape
-    .filter(d => d.date > todayIso)
-    .slice(0, 4);
+  const dist = w.distanceMi.toFixed(1);
+  const paceDisplay =
+    w.paceTargetSPerMi != null
+      ? fmtPaceRange(w.paceTargetSPerMi)
+      : '—';
+  const hrCapBpm = conditions.hrCap;
+  const hrZoneLabel = w.hrZone ? `Z${w.hrZone}` : 'Z1';
+  const duration = estimateDurationMin(w);
+  // Eyebrow: "TODAY · SAT MAY 9 · LIGHT RECOVERY"
+  const todayLabel = formatFullDateLabel(data.today);
+  const phaseLabel = (w.phaseLabel || 'TRAINING').toUpperCase();
+  const eyebrow = `TODAY · ${todayLabel} · ${phaseLabel}`;
+  // The Coach's voiceLead doubles as the "why this is light" body.
+  const why = w.voiceLead;
 
   return (
-    <BriefingShell weekday={weekday} mdy={mdy} year={year}>
-      {/* Phase + days-to-goal */}
-      <div style={{
-        fontFamily: 'var(--font-data)', fontSize: 11.5,
-        color: 'var(--color-t2)', letterSpacing: '0.18em',
-        textTransform: 'uppercase', fontWeight: 700, marginBottom: 28,
-      }}>
-        <span style={{ color: 'var(--color-race)' }}>● {w.phaseLabel}</span>
-        {goalRace && daysOut != null && daysOut > 0 && (
-          <>
-            <span style={{ margin: '0 10px', color: 'var(--color-t3)' }}>·</span>
-            <Link
-              href={`/races/${goalRace.slug}`}
-              style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted var(--color-l4)' }}
-            >
-              {daysOut} day{daysOut === 1 ? '' : 's'} to {goalRace.meta.name}
-            </Link>
-          </>
-        )}
-        {goalRace && daysOut === 0 && (
-          <>
-            <span style={{ margin: '0 10px', color: 'var(--color-t3)' }}>·</span>
-            <span>Race day · {goalRace.meta.name}</span>
-          </>
-        )}
-      </div>
+    <Card wash="amber" span={7} padding="26px 28px">
+      <CardHeader>
+        <div
+          style={{
+            fontFamily: 'var(--f-data)',
+            fontSize: 11,
+            letterSpacing: '.12em',
+            textTransform: 'uppercase',
+            color: 'var(--att)',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: 'var(--att)',
+              boxShadow: '0 0 0 3px rgba(243,173,56,.22)',
+            }}
+          />
+          {eyebrow}
+        </div>
+        <CardPin variant="amber">{isRest ? 'RECOVERY' : w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+      </CardHeader>
 
-      {/* Workout title — Oswald caps */}
-      <div style={{
-        fontFamily: 'Oswald, sans-serif', fontWeight: 700,
-        fontSize: 56, lineHeight: 0.95, letterSpacing: '-0.02em',
-        textTransform: 'uppercase',
-        color: 'var(--color-t0)', marginBottom: 28,
-      }}>
+      <div
+        className="t-display"
+        style={{
+          textTransform: 'uppercase',
+          marginTop: 12,
+          whiteSpace: 'nowrap',
+          fontSize: 56,
+        }}
+      >
         {w.label}
       </div>
 
-      {/* Two-column lead — body + stats sidebar */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 56,
-        paddingBottom: 32, borderBottom: '1px solid var(--color-l4)',
-      }}>
-        <div style={{
-          fontSize: 15, color: 'var(--color-t1)',
-          lineHeight: 1.7, fontFamily: 'var(--font-body)',
-        }}>
-          {w.voiceLead}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {(w.distanceMi > 0 || w.paceTargetSPerMi || w.hrZone != null) && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {w.distanceMi > 0 && (
-                <Stat label="Distance" value={`${w.distanceMi.toFixed(w.distanceMi >= 10 ? 0 : 1)} mi`} />
-              )}
-              {w.paceTargetSPerMi && (
-                <Stat label="Pace" value={`${fmtPace(w.paceTargetSPerMi.lower)}–${fmtPace(w.paceTargetSPerMi.upper)}/mi`} />
-              )}
-              {w.hrZone != null && <Stat label="HR zone" value={`${w.hrZone}`} />}
-            </div>
-          )}
-
-          {goalRace && daysOut != null && daysOut > 0 && (
-            <div style={{ padding: '14px 0', borderTop: '1px solid var(--color-l4)' }}>
-              <div style={{
-                fontFamily: 'var(--font-data)', fontSize: 9.5,
-                color: 'var(--color-t3)', letterSpacing: '0.18em',
-                textTransform: 'uppercase', fontWeight: 700, marginBottom: 6,
-              }}>Goal race</div>
-              <Link
-                href={`/races/${goalRace.slug}`}
-                style={{ fontSize: 15, color: 'var(--color-t0)', fontWeight: 600, marginBottom: 4, textDecoration: 'none', display: 'block' }}
-              >
-                {goalRace.meta.name}
-              </Link>
-              <div style={{
-                fontFamily: 'var(--font-data)', fontSize: 12,
-                color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums',
-              }}>
-                {formatShort(goalRace.meta.date)} · {daysOut} day{daysOut === 1 ? '' : 's'}
-              </div>
-            </div>
-          )}
-        </div>
+      <div
+        className="t-body"
+        style={{
+          color: 'var(--t1)',
+          marginTop: 8,
+          maxWidth: 540,
+        }}
+      >
+        <b style={{ color: 'var(--t0)', fontWeight: 600 }}>Why this matters: </b>
+        {why}
       </div>
 
-      {/* This week — each cell carries the day's full prescription:
-          short type label + distance + pace (when prescribed). Today
-          gets the solid-orange treatment. */}
-      {weekStrip.length === 7 && (
-        <div style={{ paddingTop: 24, marginBottom: 24 }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-            marginBottom: 14,
-          }}>
-            <div style={{
-              fontFamily: 'var(--font-data)', fontSize: 10.5,
-              color: 'var(--color-t3)', letterSpacing: '0.22em',
-              textTransform: 'uppercase', fontWeight: 700,
-            }}>This week</div>
-            {stripActualMi > 0 && (
-              <div style={{
-                fontFamily: 'var(--font-data)', fontSize: 11,
-                color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums',
-                letterSpacing: '0.06em',
-              }}>
-                {stripActualRuns} run{stripActualRuns === 1 ? '' : 's'} · {stripActualMi} mi so far
-              </div>
-            )}
+      {/* KPI strip + STRUCTURE only render for actual workouts · skip on rest days */}
+      {!isRest && (
+        <>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 18,
+              paddingTop: 18,
+              marginTop: 18,
+              borderTop: '1px solid var(--l4)',
+            }}
+          >
+            <KpiCell
+              label="DISTANCE"
+              value={dist}
+              unit="MI"
+              sub={`FLOOR ${(w.distanceMi * 0.66).toFixed(1)} · CAP ${(w.distanceMi * 2).toFixed(1)}`}
+            />
+            <KpiCell
+              label="DURATION"
+              value={String(duration)}
+              unit="MIN"
+              sub="EST · CONVERSATIONAL"
+            />
+            <KpiCell
+              label="PACE TARGET"
+              value={paceDisplay}
+              unit=""
+              valueFontSize={26}
+              sub={`/MI · ${w.isLong ? 'LONG E' : 'DANIELS E'}`}
+            />
+            <KpiCell
+              label={`HR CAP · ${hrZoneLabel}`}
+              value={String(hrCapBpm)}
+              unit="BPM"
+              sub={`${Math.round((hrCapBpm / 187) * 100)}% HRMAX`}
+            />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: 'var(--color-l4)', border: '1px solid var(--color-l4)' }}>
-            {weekStrip.map(d => <WeekCell key={d.date} day={d} />)}
-          </div>
-        </div>
-      )}
 
-      {/* Next up — each row stacks day · workout summary on top with a
-          one-line description below. The description is the
-          prescription's own write-up (already plain-English, e.g.
-          "2-3 mi very easy · circulation, not adaptation"). */}
-      {ahead.length > 0 && (
-        <div>
-          <div style={{
-            fontFamily: 'var(--font-data)', fontSize: 10.5,
-            color: 'var(--color-t3)', letterSpacing: '0.22em',
-            textTransform: 'uppercase', fontWeight: 700, marginBottom: 14,
-          }}>Next up</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {ahead.map((a, i) => (
-              <NextUpRow key={a.date} day={a} isLast={i === ahead.length - 1} />
+          <div
+            style={{
+              marginTop: 14,
+              paddingTop: 14,
+              borderTop: '1px solid var(--l4)',
+            }}
+          >
+            <div className="mono-sm" style={{ marginBottom: 8, color: 'var(--t3)' }}>
+              STRUCTURE
+            </div>
+            {structure.map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'auto 1fr auto auto',
+                  gap: 14,
+                  alignItems: 'baseline',
+                  padding: '7px 0',
+                  fontSize: 13,
+                  borderBottom: i < structure.length - 1 ? '1px solid var(--l3)' : 'none',
+                }}
+              >
+                <span style={{ fontFamily: 'var(--f-data)', fontSize: 10.5, color: 'var(--t3)', fontWeight: 700 }}>
+                  {s.timeOffset}
+                </span>
+                <span style={{ color: 'var(--t1)' }}>
+                  {s.isMain ? <b style={{ color: 'var(--t0)' }}>{s.name}</b> : s.name}
+                </span>
+                <span style={{ fontFamily: 'var(--f-data)', fontSize: 11.5, color: 'var(--t1)', fontWeight: 600 }}>
+                  {s.distance}
+                </span>
+                <span style={{ fontFamily: 'var(--f-data)', fontSize: 11.5, color: 'var(--att)', fontWeight: 600 }}>
+                  {s.pace}
+                </span>
+              </div>
             ))}
           </div>
+        </>
+      )}
+
+      {/* Rest-day recovery menu · what TO do when there's no run scheduled */}
+      {isRest && (
+        <div
+          style={{
+            marginTop: 14,
+            paddingTop: 18,
+            borderTop: '1px solid var(--l4)',
+          }}
+        >
+          <div className="mono-sm" style={{ marginBottom: 10, color: 'var(--t3)' }}>
+            ACTIVE RECOVERY · OPTIONAL
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <RecoveryTile label="WALK" detail="20–30 MIN · EASY" />
+            <RecoveryTile label="STRETCH" detail="10 MIN · FULL BODY" />
+            <RecoveryTile label="FOAM ROLL" detail="HIPS · CALVES · IT" />
+            <RecoveryTile label="SLEEP" detail="+1 HOUR TONIGHT" />
+          </div>
         </div>
       )}
-    </BriefingShell>
+
+      {/* READY TO RUN */}
+      <div
+        style={{
+          marginTop: 14,
+          paddingTop: 14,
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginBottom: 10,
+          }}
+        >
+          <CardLabel>READY TO RUN</CardLabel>
+          <div
+            className="t-eyebrow"
+            style={{ color: ready.headlineColor }}
+          >
+            {ready.headline}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <SignalTile label="SLEEP" value={ready.sleep.value} delta={ready.sleep.delta} valueColor={ready.sleep.color} />
+          <SignalTile label="HRV" value={ready.hrv.value} unit={ready.hrv.unit} delta={ready.hrv.delta} valueColor={ready.hrv.color} deltaColor={ready.hrv.color} />
+          <SignalTile label="RHR" value={ready.rhr.value} unit={ready.rhr.unit} delta={ready.rhr.delta} deltaColor={ready.rhr.color} />
+          <SignalTile label="SORENESS" value={ready.soreness.value} delta={ready.soreness.detail} />
+        </div>
+      </div>
+
+      {/* CONDITIONS + COACH NOTE inset */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'auto 1fr',
+          gap: 14,
+          marginTop: 14,
+          padding: '12px 14px',
+          background: 'rgba(243,173,56,.06)',
+          border: '1px solid rgba(243,173,56,.20)',
+          borderRadius: 8,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 2,
+            whiteSpace: 'nowrap',
+            borderRight: '1px solid var(--l4)',
+            paddingRight: 14,
+          }}
+        >
+          <div className="t-eyebrow">CONDITIONS</div>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 20,
+              fontWeight: 600,
+              letterSpacing: '-.02em',
+              lineHeight: 1,
+              marginTop: 4,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {conditions.tempF}
+            <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 4 }}>°F</small>
+          </div>
+          <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 3 }}>
+            {conditions.detail}
+          </div>
+        </div>
+        <div>
+          <div className="t-eyebrow" style={{ color: 'var(--att)' }}>COACH NOTE</div>
+          <div className="t-body" style={{ color: 'var(--t1)', marginTop: 3 }}>
+            {conditions.coachNote}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 18 }}>
+        {isRest ? (
+          <>
+            <button className="btn-flat btn-primary">▶ PREVIEW TOMORROW</button>
+            <button className="btn-flat btn-secondary">LOG RECOVERY</button>
+          </>
+        ) : (
+          <>
+            <button className="btn-flat btn-primary">▶ OPEN WORKOUT</button>
+            <button className="btn-flat btn-secondary">SKIP TODAY</button>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
-// ── Briefing shell — masthead + big date hero ───────────────────────
-function BriefingShell({
-  weekday, mdy, year, children,
-}: { weekday: string; mdy: string; year: number; children: React.ReactNode }) {
+function RecoveryTile({ label, detail }: { label: string; detail: string }) {
   return (
-    <div style={{
-      background: 'var(--color-l1)',
-      borderRadius: 4,
-      padding: '36px 44px',
-      border: '1px solid var(--color-l4)',
-      marginBottom: 10,
-    }}>
-      {/* Masthead */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        paddingBottom: 14,
-        borderBottom: '2px solid var(--color-t0)',
-        marginBottom: 28,
-      }}>
-        <div style={{
-          fontFamily: 'var(--font-data)', fontSize: 10,
-          color: 'var(--color-t1)', letterSpacing: '0.24em',
-          textTransform: 'uppercase', fontWeight: 700,
-        }}>
-          Training · Daily Briefing
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-data)', fontSize: 10,
-          color: 'var(--color-t2)', letterSpacing: '0.16em',
-          textTransform: 'uppercase', fontWeight: 600,
-        }}>
-          {mdy} · {year}
-        </div>
-      </div>
-
-      {/* Date hero */}
-      <div style={{
-        fontFamily: 'Oswald, sans-serif', fontWeight: 700,
-        fontSize: 88, lineHeight: 0.9, letterSpacing: '-0.025em',
-        textTransform: 'uppercase',
-        color: 'var(--color-t0)', marginBottom: 6,
-      }}>
-        {weekday}
-      </div>
-
-      {children}
+    <div style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6, border: '1px solid var(--l4)' }}>
+      <div className="t-eyebrow" style={{ color: 'var(--t1)' }}>{label}</div>
+      <div className="t-eyebrow" style={{ color: 'var(--t3)', marginTop: 4, letterSpacing: '.08em', textTransform: 'none', fontSize: 10 }}>{detail}</div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function SignalTile({
+  label,
+  value,
+  unit,
+  delta,
+  valueColor,
+  deltaColor,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  delta: string;
+  valueColor?: string;
+  deltaColor?: string;
+}) {
+  return (
+    <div style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6 }}>
+      <div className="t-eyebrow">{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 22,
+          fontWeight: 600,
+          letterSpacing: '-.02em',
+          lineHeight: 1,
+          marginTop: 5,
+          color: valueColor,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+        {unit && <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 4 }}>{unit}</small>}
+      </div>
+      <div className="t-eyebrow" style={{ color: deltaColor ?? 'var(--t2)', marginTop: 3 }}>
+        {delta}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// GOAL TRACKING card (right column of row 1)
+// ─────────────────────────────────────────────────────────────────────
+
+function GoalTrackingCard({ data }: { data: TrainingData }) {
+  const g = data.goalTracking;
+  const proofs = data.coach.proofSessions.answer.sessions;
+  const buildLen = data.coach.proofSessions.answer.buildLengthWk;
+
+  return (
+    <Card span={5} padding="24px 26px">
+      <CardHeader>
+        <CardLabel>GOAL TRACKING · {g.aRaceName}</CardLabel>
+        <CardPin variant={g.pinVariant}>{g.pinLabel}</CardPin>
+      </CardHeader>
+
+      <div
+        className="t-section"
+        style={{
+          marginTop: 4,
+          textTransform: 'uppercase',
+        }}
+      >
+        Pace toward
+        <br />
+        <span style={{ color: 'var(--race)' }}>{g.goalTime}</span>{' '}
+        <span style={{ fontSize: '.55em', fontWeight: 500, color: 'var(--t2)' }}>
+          · {g.goalPace}
+        </span>
+      </div>
+
+      {/* VDOT badge · fitness baseline that anchors every pace zone */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: '10px 14px',
+          background: 'linear-gradient(135deg, rgba(0,143,236,.10), rgba(144,19,254,.10))',
+          border: '1px solid rgba(0,143,236,.24)',
+          borderRadius: 8,
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div>
+          <div className="t-eyebrow" style={{ color: 'var(--corp)' }}>VDOT · CURRENT FITNESS</div>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: '-.02em',
+              lineHeight: 1,
+              marginTop: 4,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {g.vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0]}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="t-eyebrow" style={{ color: 'var(--t2)' }}>TIER · TREND</div>
+          <div
+            style={{
+              fontFamily: 'var(--f-data)',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '.06em',
+              color: 'var(--good)',
+              marginTop: 4,
+            }}
+          >
+            ADV{g.vdotLine.includes('▲') ? ` · ${g.vdotLine.split('·').slice(-1)[0].trim()}` : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* WHERE YOU ARE vs WHERE YOU NEED */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: 10,
+          marginTop: 18,
+          paddingTop: 18,
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <FitnessCell label="FITNESS NOW" value={g.fitnessNow} valueColor="var(--good)" sub={g.vdotLine} />
+        <FitnessCell label={g.aRaceName.startsWith('AFC') ? 'AFC GOAL' : 'GOAL'} value={g.goalTime} valueColor="var(--race)" sub={`${g.goalPace} · ${g.daysToA} DAYS`} />
+        <FitnessCell
+          label="HEADROOM"
+          value={`${g.headroomSPerMi >= 0 ? '+' : ''}${Math.round(g.headroomSPerMi)}`}
+          unit="S/MI"
+          valueColor={g.headroomSPerMi >= 0 ? 'var(--good)' : 'var(--warn)'}
+          sub={g.headroomSPerMi >= 10 ? 'CONFIDENCE HIGH' : g.headroomSPerMi >= 0 ? 'CONFIDENCE MED' : 'BEHIND'}
+          subColor={g.headroomSPerMi >= 0 ? 'var(--good)' : 'var(--warn)'}
+          align="right"
+        />
+      </div>
+
+      {/* PROOF SESSIONS AHEAD */}
+      <div
+        style={{
+          marginTop: 18,
+          paddingTop: 18,
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginBottom: 10,
+          }}
+        >
+          <CardLabel>PROOF SESSIONS AHEAD</CardLabel>
+          <div className="t-eyebrow" style={{ color: 'var(--good)' }}>
+            {proofs.length} KEY · {buildLen} WK BUILD
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {proofs.map((p, i) => {
+            const isRace = p.priority === 'race';
+            return (
+              <div
+                key={i}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '60px 1fr auto',
+                  gap: 10,
+                  alignItems: 'center',
+                  padding: '8px 10px',
+                  background: isRace ? 'rgba(255,87,34,.06)' : 'var(--l2)',
+                  borderRadius: 6,
+                  borderLeft: `3px solid ${isRace ? 'var(--race)' : 'var(--milestone)'}`,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'var(--f-data)',
+                    fontSize: 9,
+                    letterSpacing: '.5px',
+                    color: isRace ? 'var(--race)' : 'var(--t3)',
+                    fontWeight: 700,
+                  }}
+                >
+                  {formatProofDate(p.dateISO)}
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--f-display)',
+                      fontSize: 15,
+                      fontWeight: 600,
+                      letterSpacing: '-.01em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {p.label}
+                  </div>
+                  <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 2 }}>
+                    {p.structure} · {p.phaseTag}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--f-data)',
+                    fontSize: 11,
+                    color: isRace ? 'var(--race)' : 'var(--milestone)',
+                    fontWeight: 700,
+                    letterSpacing: '.5px',
+                  }}
+                >
+                  {p.targetPaceDisplay}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* LATEST PROOF */}
+      {g.latestProof && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: '10px 12px',
+            background: 'rgba(62,189,65,.06)',
+            border: '1px solid rgba(62,189,65,.20)',
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div className="t-eyebrow" style={{ color: 'var(--good)' }}>
+              ▲ LATEST PROOF · {formatShortDate(g.latestProof.dateISO)}
+            </div>
+            <div className="t-eyebrow" style={{ color: g.latestProof.onTarget ? 'var(--good)' : 'var(--warn)' }}>
+              {g.latestProof.onTarget ? '✓ ON TARGET' : '▼ MISSED'}
+            </div>
+          </div>
+          <div className="t-body" style={{ color: 'var(--t1)', marginTop: 4 }}>
+            {g.latestProof.title} · {g.latestProof.summary}
+          </div>
+        </div>
+      )}
+
+      {/* PR · GOAL · STRETCH tiles */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 6,
+          paddingTop: 14,
+          marginTop: 'auto',
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <GoalTile tone="good" label={g.tiles.pr.label} time={g.tiles.pr.time} meta={g.tiles.pr.meta} />
+        <GoalTile tone="race" label={g.tiles.goal.label} time={g.tiles.goal.time} meta={g.tiles.goal.meta} highlighted />
+        <GoalTile tone="good" label={g.tiles.stretch.label} time={g.tiles.stretch.time} meta={g.tiles.stretch.meta} />
+      </div>
+    </Card>
+  );
+}
+
+function FitnessCell({
+  label,
+  value,
+  unit,
+  valueColor,
+  sub,
+  subColor,
+  align = 'left',
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  valueColor?: string;
+  sub: string;
+  subColor?: string;
+  align?: 'left' | 'right';
+}) {
+  return (
+    <div style={{ textAlign: align }}>
+      <div className="t-eyebrow">{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 30,
+          fontWeight: 600,
+          letterSpacing: '-.02em',
+          lineHeight: 1,
+          marginTop: 6,
+          color: valueColor,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+        {unit && <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 4 }}>{unit}</small>}
+      </div>
+      <div className="t-eyebrow" style={{ color: subColor ?? 'var(--t2)', marginTop: 4 }}>
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+function GoalTile({
+  tone,
+  label,
+  time,
+  meta,
+  highlighted,
+}: {
+  tone: 'good' | 'race';
+  label: string;
+  time: string;
+  meta: string;
+  highlighted?: boolean;
+}) {
+  const color = tone === 'race' ? 'var(--race)' : 'var(--good)';
+  const bg = highlighted
+    ? 'rgba(255,87,34,.12)'
+    : tone === 'good'
+    ? 'rgba(62,189,65,.10)'
+    : 'var(--l2)';
+  const border = highlighted ? '1px solid rgba(255,87,34,.32)' : 'none';
+  return (
+    <div style={{ textAlign: 'center', padding: '10px 4px', background: bg, border, borderRadius: 6 }}>
+      <div className="mono-sm" style={{ color, fontSize: 9 }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontWeight: 600,
+          fontSize: 18,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          letterSpacing: '-.005em',
+          color,
+          marginTop: 3,
+        }}
+      >
+        {time}
+      </div>
+      <div className="mono-sm" style={{ color: 'var(--t2)', fontSize: 8.5 }}>
+        {meta}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// THIS WEEK strip
+// ─────────────────────────────────────────────────────────────────────
+
+function ThisWeekCard({ data }: { data: TrainingData }) {
+  const w = data.coach.weekDeltas.answer;
+  const loggedRuns = countLoggedRuns(w.days);
+  const plannedRuns = w.days.filter((d) => d.plannedMi > 0).length || 1;
+  const scale = Math.max(w.projectedWeekMi, w.plannedWeekMi, 1);
+  const loggedPct = (w.loggedWeekMi / scale) * 100;
+  const planPct = (w.plannedWeekMi / scale) * 100;
+  const todayISO = data.today;
+  const phaseLabel = (data.coach.workout.answer.phaseLabel || 'TRAINING').toUpperCase();
+
+  return (
+    <Card span={12} padding="18px 22px">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'auto 1fr auto',
+          gap: 24,
+          alignItems: 'center',
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, whiteSpace: 'nowrap' }}>
+          <CardLabel>THIS WEEK</CardLabel>
+          <div
+            style={{
+              fontFamily: 'var(--f-data)',
+              fontSize: 11,
+              letterSpacing: '.12em',
+              color: 'var(--t1)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+            }}
+          >
+            {phaseLabel}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span
+              style={{
+                fontFamily: 'var(--f-display)',
+                fontSize: 28,
+                fontWeight: 700,
+                lineHeight: 1,
+                letterSpacing: '-.02em',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {w.loggedWeekMi.toFixed(1)}
+              <span
+                style={{
+                  fontFamily: 'var(--f-data)',
+                  fontSize: '.4em',
+                  opacity: 0.5,
+                  fontWeight: 700,
+                  marginLeft: 7,
+                  letterSpacing: '1px',
+                }}
+              >
+                MI LOGGED
+              </span>
+            </span>
+            <span style={{ fontFamily: 'var(--f-data)', fontSize: 10, color: 'var(--t3)', fontWeight: 500, letterSpacing: '.12em' }}>
+              / {w.plannedWeekMi.toFixed(0)} PLAN
+            </span>
+            <span
+              style={{
+                fontFamily: 'var(--f-data)',
+                fontSize: 10,
+                color: 'var(--corp)',
+                fontWeight: 700,
+                letterSpacing: '.8px',
+                marginLeft: 'auto',
+              }}
+            >
+              {w.rationale.toUpperCase()}
+            </span>
+          </div>
+          <div
+            style={{
+              position: 'relative',
+              height: 8,
+              background: 'var(--l3)',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: `${loggedPct}%`,
+                background: 'linear-gradient(90deg, var(--corp), var(--coach))',
+                borderRadius: '4px 0 0 4px',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: `${loggedPct}%`,
+                top: 0,
+                bottom: 0,
+                right: 0,
+                background: 'repeating-linear-gradient(90deg, rgba(0,143,236,.35) 0 4px, transparent 4px 7px)',
+                borderRadius: '0 4px 4px 0',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: `${planPct}%`,
+                top: -3,
+                bottom: -3,
+                width: 2,
+                background: 'var(--t1)',
+                boxShadow: '0 0 4px var(--t0)',
+              }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, whiteSpace: 'nowrap' }}>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 22,
+              fontWeight: 700,
+              lineHeight: 1,
+              letterSpacing: '-.02em',
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--good)',
+            }}
+          >
+            {loggedRuns}
+            <span style={{ fontFamily: 'var(--f-data)', fontSize: '.5em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>
+              / {plannedRuns}
+            </span>
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--f-data)',
+              fontSize: 9.5,
+              letterSpacing: '.12em',
+              color: 'var(--good)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+            }}
+          >
+            ✓ LOGGED
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+        {w.days.map((d) => (
+          <DayCell key={d.dateISO} day={d} todayISO={todayISO} prescription={data.coach.workout.answer} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function DayCell({
+  day,
+  todayISO,
+  prescription,
+}: {
+  day: TrainingData['coach']['weekDeltas']['answer']['days'][number];
+  todayISO: string;
+  prescription: TrainingData['coach']['workout']['answer'];
+}) {
+  const isToday = day.dateISO === todayISO;
+  const isPast = day.dateISO < todayISO;
+  const isFuture = day.dateISO > todayISO;
+  // Only treat as "done" if the day is past AND has actualMi. Future days
+  // may carry stub actuals from a mocked Coach method — ignore them.
+  const isDone = !isFuture && day.actualMi != null && day.actualMi > 0;
+  const isRest = day.plannedMi === 0 && (isFuture || day.actualMi == null);
+
+  let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
+  if (isRest) tag = 'rest';
+  else if (isToday && prescription.type.startsWith('recovery')) tag = 'recovery';
+  else if (day.dayLabel === 'SUN') tag = 'long';
+  else if (prescription.isQuality && isToday) tag = 'quality';
+  else if (day.dayLabel === 'THU' && day.plannedMi < 1) tag = 'strength';
+
+  const cls = [
+    'day',
+    `t-${tag}`,
+    isToday ? 'today' : '',
+    isDone ? 'done' : '',
+    !isDone && isPast ? 'done' : '',
+    !isDone && !isPast && !isToday ? 'future' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const typeName = isRest
+    ? 'Rest'
+    : isToday
+    ? capitalize(prescription.type.replace(/_/g, ' '))
+    : day.dayLabel === 'SUN'
+    ? 'Easy long'
+    : tag === 'strength'
+    ? 'Strength'
+    : 'Easy';
+
+  // Future days show planned miles only · past/today can show actual if logged
+  const miles = isFuture ? day.plannedMi : (day.actualMi ?? day.plannedMi);
+  const showMiles = miles > 0 && tag !== 'strength';
+
+  return (
+    <div className={cls}>
+      <div className="day-strip">
+        <span className="day-dow" style={isToday ? { color: 'var(--att)' } : undefined}>
+          {isToday ? `TODAY · ${day.dayLabel}` : day.dayLabel}
+        </span>
+        <span className="day-date">{shortMonthDay(day.dateISO)}</span>
+      </div>
+      <div className="day-body">
+        <div className="day-type">{typeName}</div>
+        {showMiles && (
+          <div className="day-mi">
+            {miles.toFixed(1)}
+            <small>mi</small>
+          </div>
+        )}
+        {tag === 'strength' && (
+          <div className="day-mi">
+            30
+            <small>min</small>
+          </div>
+        )}
+        {!isRest && isToday && prescription.paceTargetSPerMi && (
+          <div className="day-pace">{fmtPaceRange(prescription.paceTargetSPerMi)}</div>
+        )}
+      </div>
+      <div className={`day-foot ${isDone ? 'done' : isToday ? 'active' : isRest ? 'rest' : 'future'}`}>
+        <span>
+          {isDone
+            ? '✓ DONE'
+            : isToday
+            ? '● ACTIVE'
+            : isRest
+            ? '—'
+            : day.dayLabel === 'SUN'
+            ? 'LONG RUN'
+            : '—'}
+        </span>
+        <span>
+          {isDone && day.pinLabel ? (
+            <span
+              className="delta up"
+              style={{
+                background: 'rgba(0,143,236,.14)',
+                color: 'var(--corp)',
+                padding: '2px 6px',
+                borderRadius: 3,
+                fontSize: 8.5,
+              }}
+            >
+              {day.pinLabel}
+            </span>
+          ) : isToday ? (
+            'OPEN →'
+          ) : (
+            ''
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NEXT 4 WEEKS
+// ─────────────────────────────────────────────────────────────────────
+
+function NextFourWeeksCard({ data }: { data: TrainingData }) {
+  const n = data.nextFourWeeks;
+  return (
+    <Card span={8} padding="20px 22px">
+      <CardHeader>
+        <div>
+          <CardLabel>{n.rangeLabel}</CardLabel>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 22,
+              fontWeight: 600,
+              lineHeight: 1.05,
+              textTransform: 'uppercase',
+              letterSpacing: '-.005em',
+              marginTop: 4,
+            }}
+          >
+            {n.title}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {n.pins.map((p, i) => (
+            <CardPin key={i} variant={p.variant}>{p.label}</CardPin>
+          ))}
+        </div>
+      </CardHeader>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 12 }}>
+        {n.blocks.map((b, i) => (
+          <BlockCell key={i} block={b} />
+        ))}
+      </div>
+
+      {/* Block summary strip */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 14,
+          paddingTop: 14,
+          marginTop: 14,
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <SummaryCell label="BLOCK TOTAL" value={String(n.summary.totalMi)} unit="MI" sub="28 DAYS · 4 WEEKS" />
+        <SummaryCell
+          label="AVG / WEEK"
+          value={String(n.summary.avgWeekMi)}
+          unit="MI"
+          sub={n.summary.avgVsRecovery}
+          subColor="var(--good)"
+        />
+        <SummaryCell
+          label="QUALITY DAYS"
+          value={String(n.summary.qualityDays)}
+          unit=""
+          sub={n.summary.qualityDetail}
+          valueColor="var(--milestone)"
+        />
+        <SummaryCell
+          label="LONGEST RUN"
+          value={String(n.summary.longestRunMi)}
+          unit="MI"
+          sub={n.summary.longestRunWhen}
+          valueColor="var(--corp)"
+        />
+      </div>
+    </Card>
+  );
+}
+
+function BlockCell({ block }: { block: TrainingData['nextFourWeeks']['blocks'][number] }) {
+  const TONE_COLORS: Record<typeof block.tone, string> = {
+    recovery: 'var(--good)',
+    base: 'var(--corp)',
+    build: 'var(--good)',
+    peak: 'var(--att)',
+    taper: 'var(--warn)',
+    race: 'var(--race)',
+  };
+  const railColor = TONE_COLORS[block.tone];
+  return (
+    <div
+      style={{
+        padding: '14px 16px',
+        background: 'var(--l2)',
+        borderRadius: 10,
+        borderLeft: `3px solid ${railColor}`,
+      }}
+    >
+      <div className="mono-sm" style={{ color: railColor }}>
+        {block.rangeLabel}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontWeight: 600,
+          fontSize: 16,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          letterSpacing: '-.005em',
+          marginTop: 4,
+        }}
+      >
+        {block.title}
+      </div>
+      <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
+        <BlockStat label="MI" value={String(block.miles)} color={block.tone === 'recovery' ? 'var(--good)' : undefined} />
+        <BlockStat label="QUAL" value={String(block.quality)} color={block.quality > 0 ? 'var(--milestone)' : undefined} />
+        <BlockStat label="LONG" value={String(block.longMi)} color="var(--corp)" />
+      </div>
+      <div className="mono-sm" style={{ marginTop: 10, color: 'var(--t2)', fontSize: 9.5 }}>
+        {block.rationale}
+      </div>
+    </div>
+  );
+}
+
+function BlockStat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div>
-      <div style={{
-        fontFamily: 'var(--font-data)', fontSize: 9.5,
-        color: 'var(--color-t3)', letterSpacing: '0.18em',
-        textTransform: 'uppercase', fontWeight: 700, marginBottom: 4,
-      }}>{label}</div>
-      <div style={{
-        fontFamily: 'var(--font-data)', fontSize: 18,
-        fontWeight: 700, color: 'var(--color-t0)',
-        fontVariantNumeric: 'tabular-nums',
-      }}>{value}</div>
+      <div className="mono-sm" style={{ fontSize: 8.5, color: 'var(--t3)' }}>{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 22,
+          fontWeight: 700,
+          lineHeight: 1,
+          color,
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
-function fmtPace(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${m}:${String(sec).padStart(2, '0')}`;
+function SummaryCell({
+  label,
+  value,
+  unit,
+  sub,
+  valueColor,
+  subColor,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  sub: string;
+  valueColor?: string;
+  subColor?: string;
+}) {
+  return (
+    <div>
+      <div className="t-eyebrow">{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 30,
+          fontWeight: 600,
+          letterSpacing: '-.02em',
+          lineHeight: 1,
+          marginTop: 6,
+          fontVariantNumeric: 'tabular-nums',
+          color: valueColor,
+        }}
+      >
+        {value}
+        {unit && <span style={{ fontFamily: 'var(--f-data)', fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 7 }}>{unit}</span>}
+      </div>
+      <div className="t-eyebrow" style={{ color: subColor ?? 'var(--t2)', marginTop: 4 }}>
+        {sub}
+      </div>
+    </div>
+  );
 }
 
-// ── Last 12 weeks chart ─────────────────────────────────────────────
-function RecentWeeksTile({ runs }: { runs: NormalizedActivity[] }) {
-  const weeks = weeklyMiles(runs, 12);
-  const max = Math.max(...weeks.map(w => w.miles), 1);
+// ─────────────────────────────────────────────────────────────────────
+// PLAN ADAPTED (Coach Read · same wash + decision-delta pattern as Overview)
+// ─────────────────────────────────────────────────────────────────────
+
+function PlanAdaptedCard({ data }: { data: TrainingData }) {
+  const pa = data.planAdapted;
   return (
-    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 10 }}>
-      <div className="tile-h">
-        <div>
-          <div className="tile-sub">Last 12 weeks</div>
-          <div className="tile-lbl">Mileage by week · current week last</div>
-        </div>
+    <Card wash="coach" span={4} padding="20px 22px">
+      <CardHeader>
+        <CardLabel color="var(--coach)">▲ COACH ADAPTED · LAST 7 DAYS</CardLabel>
+        {pa.pinLabel && <CardPin variant="coach">{pa.pinLabel}</CardPin>}
+      </CardHeader>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 22,
+          fontWeight: 600,
+          lineHeight: 1.15,
+          marginTop: 6,
+        }}
+      >
+        {pa.title}
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
-        {weeks.map((w, i) => {
-          const isThis = i === weeks.length - 1;
-          const h = w.miles > 0 ? Math.max(6, (w.miles / max) * 80) : 0;
-          return (
-            <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              <div style={{ fontFamily: 'var(--font-data)', fontSize: 9, color: w.miles > 0 ? 'var(--color-t2)' : 'var(--color-t3)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                {w.miles > 0 ? Math.round(w.miles) : '—'}
-              </div>
-              <div title={`Week of ${w.weekStart}: ${w.miles} mi · ${w.runs} runs`} style={{
-                width: '100%',
-                height: h ? `${h}px` : '4px',
-                background: h ? (isThis ? 'var(--color-attention)' : 'var(--color-corporate)') : 'var(--color-l3)',
-                borderRadius: 2,
-              }} />
+      <div style={{ fontSize: 15, color: 'var(--t1)', lineHeight: 1.6, letterSpacing: '-.012em', marginTop: 6 }}>
+        {pa.body}
+      </div>
+
+      {pa.deltas.map((d, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto 1fr',
+            gap: 8,
+            alignItems: 'center',
+            padding: '10px 12px',
+            background: 'var(--l2)',
+            borderRadius: 8,
+            marginTop: 10,
+          }}
+        >
+          <div>
+            <div className="mono-sm" style={{ fontSize: 8.5, color: 'var(--t3)' }}>{d.label}</div>
+            <div
+              style={{
+                fontFamily: 'var(--f-display)',
+                fontWeight: 600,
+                fontSize: 18,
+                color: 'var(--t3)',
+                textDecoration: 'line-through',
+                marginTop: 3,
+              }}
+            >
+              {d.was}
+              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
             </div>
+          </div>
+          <span style={{ color: 'var(--coach)', fontWeight: 700 }}>→</span>
+          <div style={{ textAlign: 'right' }}>
+            <div className="mono-sm" style={{ fontSize: 8.5, color: 'var(--t3)' }}>NOW</div>
+            <div
+              style={{
+                fontFamily: 'var(--f-display)',
+                fontWeight: 600,
+                fontSize: 18,
+                color: 'var(--coach)',
+                marginTop: 3,
+              }}
+            >
+              {d.now}
+              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <CardFoot left={pa.footLeft} right={<span style={{ color: 'var(--coach)' }}>SEE PLAN →</span>} />
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PATH TO AFC build curve
+// ─────────────────────────────────────────────────────────────────────
+
+function BuildCurveCard({ data }: { data: TrainingData }) {
+  const t = data.coach.trajectory.answer;
+  const points = t.points;
+  // todayIdx by stub convention (4 past + present).
+  const todayIdx = 4;
+  const peakIdx = points.findIndex((p) => p.isPeak);
+  const raceIdx = points.findIndex((p) => p.isRaceWeek);
+
+  const PX0 = 38, PY0 = 14, PX1 = 1062, PY1 = 232;
+  const PW = PX1 - PX0, PH = PY1 - PY0;
+  const maxMi = Math.max(...points.map((p) => p.plannedMi));
+  const yMax = Math.ceil(maxMi / 10) * 10 || 50;
+  const projY = (mi: number) => PY1 - (mi / yMax) * PH;
+
+  const colStep = PW / points.length;
+  const barW = colStep * 0.72;
+
+  const barColor = (phase: string) => {
+    if (phase === 'past') return 'var(--corp)';
+    if (phase === 'base') return 'var(--corp)';
+    if (phase === 'build') return 'var(--good)';
+    if (phase === 'peak') return 'var(--att)';
+    if (phase === 'taper') return 'var(--warn)';
+    return 'var(--t2)';
+  };
+
+  // Phase breakdown counts (durations) — derived from points.
+  const phaseCount = (phase: TrainingData['coach']['trajectory']['answer']['points'][number]['phase']) =>
+    points.filter((p) => p.phase === phase).length;
+
+  return (
+    <Card span={12} padding="22px 26px">
+      <CardHeader>
+        <div>
+          <CardLabel>PATH TO {t.raceName.toUpperCase()} · {t.totalWeeks} WEEKS</CardLabel>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontWeight: 600,
+              fontSize: 22,
+              lineHeight: 1.05,
+              marginTop: 4,
+            }}
+          >
+            {t.rationale}
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 14,
+            fontFamily: 'var(--f-data)',
+            fontSize: 10,
+            letterSpacing: '1.4px',
+            textTransform: 'uppercase',
+            fontWeight: 700,
+          }}
+        >
+          <span style={{ color: 'var(--good)' }}>▲ +12% VOL</span>
+          <span style={{ color: 'var(--corp)' }}>PROJECTED</span>
+        </div>
+      </CardHeader>
+
+      {/* Phase legend */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 18,
+          marginTop: 14,
+          fontFamily: 'var(--f-data)',
+          fontSize: 10,
+          letterSpacing: '1px',
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          color: 'var(--t3)',
+          alignItems: 'center',
+        }}
+      >
+        <PhaseLegendChip color="rgba(0,143,236,.4)" label="PAST · 4W" />
+        <PhaseLegendChip color="rgba(62,189,65,.4)" label="BUILD" />
+        <PhaseLegendChip color="rgba(243,173,56,.4)" label="PEAK" />
+        <PhaseLegendChip color="rgba(252,77,100,.4)" label="TAPER" />
+        <span style={{ marginLeft: 'auto', color: 'var(--good)' }}>
+          <span style={{ verticalAlign: 'middle' }}>◇</span> PEAK TARGET · {t.summary.peakWeekMi} MI
+        </span>
+      </div>
+
+      <svg viewBox="0 0 1080 280" style={{ width: '100%', height: 'auto', display: 'block', marginTop: 8 }}>
+        {/* Y axis ticks */}
+        <g fontFamily="JetBrains Mono" fontSize={10} fontWeight={700} fill="rgba(244,246,248,.38)" letterSpacing={0.4}>
+          {[0, 10, 20, 30, 40, 50].filter((v) => v <= yMax).map((v) => {
+            const y = projY(v);
+            return (
+              <g key={v}>
+                <line x1={PX0 + 4} y1={y} x2={PX1} y2={y} stroke="rgba(244,246,248,.04)" strokeWidth={1} strokeDasharray="2 5" />
+                <text x={PX0 - 4} y={y + 4} textAnchor="end">{v}</text>
+              </g>
+            );
+          })}
+        </g>
+
+        {/* PEAK TARGET reference line */}
+        <line x1={PX0} y1={projY(t.summary.peakWeekMi)} x2={PX1} y2={projY(t.summary.peakWeekMi)} stroke="rgba(62,189,65,.22)" strokeWidth={1} strokeDasharray="3 5" />
+
+        {/* Bars · one per week */}
+        {points.map((p, i) => {
+          const isToday = i === todayIdx;
+          const isPeak = p.isPeak;
+          const isRace = p.isRaceWeek;
+          const isFuture = i > todayIdx;
+          const x = PX0 + i * colStep + (colStep - barW) / 2;
+          const yTop = projY(p.plannedMi);
+          const h = PY1 - yTop;
+          const fill = isRace ? 'var(--race)' : barColor(p.phase);
+          const fillOp = isRace ? 1 : isFuture ? 0.55 : 1;
+          return (
+            <rect
+              key={i}
+              x={x}
+              y={yTop}
+              width={barW}
+              height={h}
+              rx={2}
+              fill={fill}
+              fillOpacity={fillOp}
+              stroke={isToday ? 'var(--att)' : isPeak ? 'var(--good)' : 'none'}
+              strokeWidth={isToday || isPeak ? 2 : 0}
+            />
           );
         })}
+
+        {/* Today / Peak / Race callouts pinned to the top row with connectors */}
+        {/* Callouts at fontSize=8 · Training's trajectory card is span-12 (full width),
+            so the SVG scale factor is ~1.34x and 8px renders as ~11px on screen */}
+        <g fontFamily="JetBrains Mono" fontSize={8} fontWeight={700} letterSpacing={0.6}>
+          {(() => {
+            const xCenter = (i: number) => PX0 + i * colStep + colStep / 2;
+            const LABEL_Y = PY0 + 4;
+            const renderCallout = (i: number, text: string, color: string, anchor: 'start' | 'middle' | 'end' = 'middle') => {
+              const cx = xCenter(i);
+              const barTop = projY(points[i].plannedMi);
+              return (
+                <g key={`${i}-${text}`}>
+                  <line x1={cx} y1={LABEL_Y + 4} x2={cx} y2={barTop - 4} stroke={color} strokeOpacity={0.35} strokeWidth={1} strokeDasharray="2 3" />
+                  <text x={cx} y={LABEL_Y} textAnchor={anchor} fill={color}>{text}</text>
+                </g>
+              );
+            };
+            return (
+              <>
+                {renderCallout(todayIdx, '● TODAY', 'var(--att)')}
+                {peakIdx > -1 && renderCallout(peakIdx, `◇ PEAK · ${points[peakIdx].plannedMi} MI`, 'var(--good)')}
+                {raceIdx > -1 && renderCallout(raceIdx, '▣ RACE', 'var(--race)', 'end')}
+              </>
+            );
+          })()}
+        </g>
+
+        {/* Baseline */}
+        <line x1={PX0} y1={PY1} x2={PX1} y2={PY1} stroke="rgba(244,246,248,.18)" strokeWidth={1} />
+
+        {/* Week labels under each bar · fontSize=7 since the chart is full-width (span-12) */}
+        <g fontFamily="JetBrains Mono" fontSize={7} fontWeight={700} fill="rgba(244,246,248,.42)" letterSpacing={0.4}>
+          {points.map((p, i) => {
+            const cx = PX0 + i * colStep + colStep / 2;
+            const isToday = i === todayIdx;
+            const isPeak = p.isPeak;
+            const isRace = p.isRaceWeek;
+            const isMarked = isToday || isPeak || isRace;
+            const label = p.label === 'PEAK' || p.label === 'RACE' ? p.label : p.label.replace(/^WK\s+/, 'W');
+            const color = isToday ? 'var(--att)' : isPeak ? 'var(--good)' : isRace ? 'var(--race)' : 'rgba(244,246,248,.42)';
+            return (
+              <text key={i} x={cx} y={PY1 + 16} textAnchor="middle" fill={color} fontWeight={isMarked ? 700 : 600} opacity={isMarked ? 1 : 0.7}>
+                {label}
+              </text>
+            );
+          })}
+        </g>
+      </svg>
+
+      {/* Build-block summary strip · 6 stats */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(6, 1fr)',
+          gap: 14,
+          paddingTop: 18,
+          marginTop: 14,
+          borderTop: '1px solid var(--l4)',
+        }}
+      >
+        <SummaryCell label="TOTAL BUILD" value={String(t.summary.totalBuildMi)} unit="MI" sub={`${t.totalWeeks} WEEKS · ${t.daysToRace} DAYS`} />
+        <SummaryCell
+          label="PEAK WEEK"
+          value={String(t.summary.peakWeekMi)}
+          unit="MI"
+          sub={peakWeekDateLabel(points, peakIdx)}
+          valueColor="var(--good)"
+        />
+        <SummaryCell
+          label="LONG-RUN MAX"
+          value={String(t.summary.longRunMaxMi)}
+          unit="MI"
+          sub="FROM 7 NOW · +100%"
+          valueColor="var(--corp)"
+        />
+        <SummaryCell
+          label="QUALITY DAYS"
+          value={String(t.summary.qualityDays)}
+          unit=""
+          sub="T · I · HMP SESSIONS"
+          valueColor="var(--milestone)"
+        />
+        <SummaryCell
+          label="RACE-PACE MI"
+          value={String(t.summary.racePaceMi)}
+          unit="MI"
+          sub={`${Math.round((t.summary.racePaceMi / t.summary.totalBuildMi) * 100)}% OF BUILD · GOOD`}
+          valueColor="var(--race)"
+        />
+        <SummaryCell
+          label="CUTBACKS"
+          value={String(t.summary.cutbacks)}
+          unit=""
+          sub="WK 4 · 8 · 12"
+        />
       </div>
-    </div>
+
+      {/* Phase breakdown strip */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 2.5fr 1.6fr 1.1fr auto',
+          gap: 4,
+          marginTop: 14,
+          alignItems: 'stretch',
+        }}
+      >
+        <PhaseStripCell tone="base" label={`BASE · ${phaseCount('base')}W`} sub={phaseRangeLabel(points, 'base')} />
+        <PhaseStripCell tone="build" label={`BUILD · ${phaseCount('build')}W`} sub={phaseRangeLabel(points, 'build')} />
+        <PhaseStripCell tone="peak" label={`PEAK · ${phaseCount('peak')}W`} sub={phaseRangeLabel(points, 'peak')} />
+        <PhaseStripCell tone="taper" label={`TAPER · ${phaseCount('taper')}W`} sub={phaseRangeLabel(points, 'taper')} />
+        <div
+          style={{
+            padding: '10px 14px',
+            background: 'var(--race)',
+            borderRadius: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: 'var(--f-data)',
+              fontSize: 9,
+              letterSpacing: '.12em',
+              color: 'rgba(255,255,255,.78)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+            }}
+          >
+            ▣ RACE
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: '-.01em',
+              color: '#fff',
+              marginTop: 2,
+            }}
+          >
+            {formatShortDate(t.raceDateISO)}
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
-// ── Week strip cell + Next-up row ───────────────────────────────────
-
-function WeekCell({ day }: { day: StripDay }) {
-  const isToday = day.isToday;
-  const isPast = !day.isFuture && !isToday;
-  const isRest = day.plannedType === 'rest';
-
-  // Resolved values:
-  //   - past + actual ran   → show actual
-  //   - today + actual ran  → show actual (the run that just happened
-  //                           takes precedence over the prescription)
-  //   - else                → show planned
-  // distanceMi can be 0 (rest day) — that's a real value, not "missing".
-  const ranActual = day.actualMi != null && day.actualMi > 0;
-  const distance: number | null =
-    (isPast || isToday) && ranActual
-      ? day.actualMi
-      : day.plannedMi;
-
-  // When today's actual run shows up, label it "Done" so the cell
-  // visibly reconciles with the run rather than continuing to render
-  // the prescribed type ("Rest").
-  const showLabel = isToday && ranActual
-    ? 'Done'
-    : day.plannedLabel ?? null;
-
-  // Color logic — today = white on orange; rest = dim; everything else
-  // gets the standard t0/t2 palette.
-  const dayColor = isToday ? '#fff' : 'var(--color-t3)';
-  const labelColor = isToday ? 'rgba(255,255,255,0.9)' : isRest ? 'var(--color-t3)' : 'var(--color-t1)';
-  const distColor = isToday ? '#fff' : (distance != null && distance > 0) ? 'var(--color-t0)' : 'var(--color-t3)';
-  const paceColor = isToday ? 'rgba(255,255,255,0.85)' : 'var(--color-t3)';
-
+function PhaseLegendChip({ color, label }: { color: string; label: string }) {
   return (
-    <div style={{
-      padding: '12px 8px', textAlign: 'center',
-      background: isToday ? 'var(--color-race)' : 'var(--color-l1)',
-      opacity: day.isFuture && !isToday && isRest ? 0.7 : 1,
-      display: 'flex', flexDirection: 'column', gap: 6, minHeight: 96,
-    }}>
-      <div style={{
-        fontFamily: 'var(--font-data)', fontSize: 10,
-        letterSpacing: '0.16em', fontWeight: 700, color: dayColor,
-      }}>{day.dow}</div>
-
-      {showLabel && (
-        <div style={{
-          fontFamily: 'var(--font-data)', fontSize: 10,
-          color: labelColor, letterSpacing: '0.06em',
-          textTransform: 'uppercase', fontWeight: 600,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{showLabel}</div>
-      )}
-
-      <div style={{
-        fontFamily: 'var(--font-data)', fontSize: 18,
-        fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-        color: distColor, lineHeight: 1.1,
-      }}>
-        {distance != null && distance > 0
-          ? (distance >= 10 ? Math.round(distance) : distance.toFixed(1))
-          : '·'}
-      </div>
-
-      {day.plannedPaceLabel && (
-        <div style={{
-          fontFamily: 'var(--font-data)', fontSize: 10,
-          color: paceColor, fontVariantNumeric: 'tabular-nums',
-        }}>{day.plannedPaceLabel}</div>
-      )}
-    </div>
+    <span>
+      <span
+        style={{
+          display: 'inline-block',
+          width: 10,
+          height: 10,
+          background: color,
+          borderRadius: 2,
+          verticalAlign: 'middle',
+          marginRight: 6,
+        }}
+      />
+      {label}
+    </span>
   );
 }
 
-function NextUpRow({ day, isLast }: { day: WeekShapeDay; isLast: boolean }) {
-  const dist = day.distanceMi > 0
-    ? (day.distanceMi >= 10 ? Math.round(day.distanceMi) : day.distanceMi.toFixed(1))
-    : null;
-  const pace = day.paceTargetSPerMi
-    ? `${fmtPace(day.paceTargetSPerMi.lowS)}–${fmtPace(day.paceTargetSPerMi.highS)}`
-    : null;
-
-  return (
-    <div style={{
-      padding: '14px 0',
-      borderBottom: isLast ? 'none' : '1px solid var(--color-l4)',
-      display: 'flex', flexDirection: 'column', gap: 6,
-    }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'baseline', gap: 12,
-      }}>
-        <div style={{ display: 'flex', gap: 14, alignItems: 'baseline', minWidth: 0, flex: 1 }}>
-          <span style={{
-            fontFamily: 'var(--font-data)', fontSize: 10.5,
-            color: 'var(--color-t3)', letterSpacing: '0.16em',
-            fontWeight: 700, textTransform: 'uppercase', width: 36, flexShrink: 0,
-          }}>{dowShort(day.date)}</span>
-          <span style={{
-            fontSize: 14, color: 'var(--color-t0)', fontWeight: 600,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{day.label}</span>
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-data)', fontSize: 12,
-          color: 'var(--color-t2)', fontVariantNumeric: 'tabular-nums',
-          textAlign: 'right', flexShrink: 0,
-        }}>
-          {dist != null && <span>{dist} mi</span>}
-          {dist != null && pace != null && <span style={{ color: 'var(--color-t3)' }}> · </span>}
-          {pace != null && <span>{pace}/mi</span>}
-          {dist == null && pace == null && <span>—</span>}
-        </div>
-      </div>
-      {day.description && (
-        <div style={{
-          fontSize: 12.5, color: 'var(--color-t2)',
-          lineHeight: 1.55, paddingLeft: 50,
-        }}>
-          {day.description}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────
-interface StripDay {
-  date: string;
-  dow: string;            // M / T / W / T / F / S / S
-  isToday: boolean;
-  isFuture: boolean;
-  actualMi: number | null;  // from Strava
-  plannedMi: number | null; // from coach weekShape
-  plannedType: string | null;
-  plannedLabel: string | null;
-  plannedPaceLabel: string | null;
-}
-
-function buildWeekStrip(
-  runs: NormalizedActivity[] | null,
-  weekShape: WeekShapeDay[],
-  todayIso: string,
-): StripDay[] {
-  // Pull the 7-day Mon→Sun frame from Strava actuals (handles
-  // timezone + week-start logic). If no runs are loaded yet, fall back
-  // to weekShape's date sequence.
-  const frame = runs ? currentWeekDays(runs) : weekShape.map(d => ({
-    date: d.date,
-    miles: 0,
-    runs: 0,
-    isToday: d.isToday,
-    isFuture: d.date > todayIso,
-  }));
-
-  const planByDate = new Map<string, WeekShapeDay>();
-  for (const d of weekShape) planByDate.set(d.date, d);
-
-  const dows = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  return frame.map((f, i) => {
-    const planned = planByDate.get(f.date) ?? null;
-    return {
-      date: f.date,
-      dow: dows[i] ?? '',
-      isToday: f.isToday,
-      isFuture: f.isFuture,
-      actualMi: f.miles > 0 ? f.miles : null,
-      plannedMi: planned ? planned.distanceMi : null,
-      plannedType: planned?.type ?? null,
-      plannedLabel: planned ? shortStripLabel(planned) : null,
-      plannedPaceLabel: planned?.paceTargetSPerMi
-        ? `${fmtPace(planned.paceTargetSPerMi.lowS)}–${fmtPace(planned.paceTargetSPerMi.highS)}`
-        : null,
-    };
-  });
-}
-
-/** Compact workout label for the 7-cell week strip. The full prescription
- *  label ("6 × 1 mile threshold") is too wide for ~120px columns; this
- *  trims to a 1-2 word category. */
-function shortStripLabel(d: WeekShapeDay): string {
-  const COMPACT: Record<string, string> = {
-    rest: 'Rest',
-    recovery: 'Recovery',
-    general_aerobic: 'Easy',
-    easy: 'Easy',
-    medium_long: 'Medium-long',
-    long_steady: 'Long',
-    long_progression: 'Long · prog',
-    long_mp_block: 'Long · MP',
-    long_fast_finish: 'Long · FF',
-    threshold: 'Threshold',
-    threshold_intervals: 'Threshold',
-    tempo_continuous: 'Tempo',
-    sub_threshold: 'Sub-thr',
-    vo2: 'VO2',
-    marathon_specific: 'MP',
-    marathon_specific_combo: 'MP',
-    marathon_specific_long: 'MP',
-    strides: 'Strides',
-    hill_sprints: 'Hills',
-    race: 'Race',
-    shakeout: 'Shakeout',
-    strides_appended: 'Easy + str',
+function PhaseStripCell({
+  tone,
+  label,
+  sub,
+}: {
+  tone: 'base' | 'build' | 'peak' | 'taper';
+  label: string;
+  sub: string;
+}) {
+  const TONE_COLOR: Record<typeof tone, string> = {
+    base: 'var(--corp)',
+    build: 'var(--good)',
+    peak: 'var(--milestone)',
+    taper: 'var(--race)',
   };
-  return COMPACT[d.type] ?? d.label;
+  const TONE_BG: Record<typeof tone, string> = {
+    base: 'rgba(0,143,236,.10)',
+    build: 'rgba(62,189,65,.10)',
+    peak: 'rgba(243,173,56,.10)',
+    taper: 'rgba(255,87,34,.10)',
+  };
+  const color = TONE_COLOR[tone];
+  return (
+    <div style={{ padding: '10px 12px', background: TONE_BG[tone], borderRadius: 6, borderLeft: `3px solid ${color}` }}>
+      <div className="t-eyebrow" style={{ color }}>{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-data)',
+          fontSize: 10,
+          color: 'var(--t2)',
+          fontWeight: 600,
+          marginTop: 3,
+          letterSpacing: '.4px',
+        }}
+      >
+        {sub}
+      </div>
+    </div>
+  );
 }
 
-function dowShort(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  if (Number.isNaN(d.getTime())) return iso.slice(5);
-  return d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+// ─────────────────────────────────────────────────────────────────────
+// Skeleton fallback
+// ─────────────────────────────────────────────────────────────────────
+
+function TrainingSkeleton() {
+  return (
+    <>
+      <Row>
+        <Card span={7} padding="26px 28px" style={{ minHeight: 420 }}>
+          <Skeleton height={14} width="40%" />
+          <Skeleton height={56} width="55%" />
+          <Skeleton height={14} width="90%" />
+          <Skeleton height={14} width="85%" />
+          <Skeleton height={80} />
+        </Card>
+        <Card span={5} padding="24px 26px" style={{ minHeight: 420 }}>
+          <Skeleton height={14} width="50%" />
+          <Skeleton height={36} width="80%" />
+          <Skeleton height={120} />
+        </Card>
+      </Row>
+      <Row>
+        <Card span={12} padding="18px 22px">
+          <Skeleton height={36} width="40%" />
+          <Skeleton height={120} />
+        </Card>
+      </Row>
+      <Row>
+        <Card span={8} padding="20px 22px">
+          <Skeleton height={36} width="60%" />
+          <Skeleton height={140} />
+        </Card>
+        <Card span={4} padding="20px 22px">
+          <Skeleton height={14} width="60%" />
+          <Skeleton height={48} width="80%" />
+          <Skeleton height={14} width="90%" />
+        </Card>
+      </Row>
+      <Row>
+        <Card span={12} padding="22px 26px">
+          <Skeleton height={36} width="40%" />
+          <Skeleton height={200} />
+        </Card>
+      </Row>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Display helpers
+// ─────────────────────────────────────────────────────────────────────
+
+function KpiCell({
+  label,
+  value,
+  unit,
+  sub,
+  valueFontSize = 32,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  sub: string;
+  valueFontSize?: number;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div
+        className="mono-sm"
+        style={{
+          color: 'var(--t3)',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontWeight: 700,
+          fontSize: valueFontSize,
+          letterSpacing: '-.02em',
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+        {unit && <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 7 }}>{unit}</small>}
+      </div>
+      <div className="mono-sm" style={{ color: 'var(--t2)' }}>
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+function fmtPaceRange(range: { lower: number; upper: number }): string {
+  return `${fmtPaceLoose(range.lower)}–${fmtPaceLoose(range.upper)}`;
+}
+
+function fmtPaceLoose(sPerMi: number): string {
+  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  const mm = Math.floor(sPerMi / 60);
+  const ss = Math.round(sPerMi - mm * 60);
+  return `${mm}:${ss.toString().padStart(2, '0')}`;
+}
+
+function estimateDurationMin(w: { distanceMi: number; paceTargetSPerMi?: { lower: number; upper: number } | null }): number {
+  if (!w.paceTargetSPerMi || w.distanceMi <= 0) return 28;
+  const pace = (w.paceTargetSPerMi.lower + w.paceTargetSPerMi.upper) / 2;
+  return Math.round((pace * w.distanceMi) / 60);
+}
+
+function formatTopbarClock(d: Date): React.ReactNode {
+  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()];
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const date = `${months[d.getMonth()]} ${d.getDate()}`;
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const am = h < 12;
+  const dispH = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  const time = `${dispH}:${m.toString().padStart(2, '0')} ${am ? 'AM' : 'PM'}`;
+  return (
+    <>
+      {dow} · {date} · <b>{time}</b>
+    </>
+  );
+}
+
+function formatFullDateLabel(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const d = new Date(iso + 'T12:00:00');
+  return `${dow[d.getDay()]} ${months[Number(m[2]) - 1]} ${Number(m[3])}`;
+}
+
+function formatShortDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}`;
+}
+
+function formatProofDate(iso: string): React.ReactNode {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const d = new Date(iso + 'T12:00:00');
+  return (
+    <>
+      {dow[d.getDay()]}
+      <br />
+      {months[Number(m[2]) - 1]} {Number(m[3])}
+    </>
+  );
+}
+
+function peakWeekDateLabel(
+  points: TrainingData['coach']['trajectory']['answer']['points'],
+  peakIdx: number,
+): string {
+  if (peakIdx < 0) return '—';
+  const peak = points[peakIdx];
+  const start = peak.weekStartISO.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!start) return peak.label;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const m = months[Number(start[2]) - 1];
+  const d1 = Number(start[3]);
+  const d = new Date(peak.weekStartISO + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 6);
+  const d2 = d.getUTCDate();
+  const m2 = months[d.getUTCMonth()];
+  const range = m === m2 ? `${m} ${d1}–${d2}` : `${m} ${d1}–${m2} ${d2}`;
+  return `${range} · ${peak.label.toUpperCase()}`;
+}
+
+function phaseRangeLabel(
+  points: TrainingData['coach']['trajectory']['answer']['points'],
+  phase: TrainingData['coach']['trajectory']['answer']['points'][number]['phase'],
+): string {
+  const inPhase = points.filter((p) => p.phase === phase);
+  if (inPhase.length === 0) return '—';
+  const first = inPhase[0];
+  const last = inPhase[inPhase.length - 1];
+  const totalMi = inPhase.reduce((s, p) => s + p.plannedMi, 0);
+  return `${formatShortDate(first.weekStartISO)} → ${formatShortDate(last.weekStartISO)} · ${Math.round(totalMi)} MI`;
+}
+
+function shortMonthDay(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}`;
+}
+
+function countLoggedRuns(days: Array<{ actualMi: number | null }>): number {
+  return days.filter((d) => d.actualMi != null && d.actualMi > 0).length;
+}
+
+function capitalize(s: string): string {
+  if (!s) return '';
+  return s[0].toUpperCase() + s.slice(1);
 }

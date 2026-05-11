@@ -1087,7 +1087,9 @@ function TrajectoryCard({ data }: { data: OverviewData }) {
         {/* Today / Peak / Race callouts · pinned to a consistent top row with a
             thin connector line from label down to the marked bar. Labels no
             longer collide with bars of differing heights. */}
-        <g fontFamily="JetBrains Mono" fontSize={12} fontWeight={700} letterSpacing={1}>
+        {/* Callouts at fontSize=11 · Overview's trajectory card is span-8, so the
+            SVG scale factor is ~0.88x and 11px renders as ~10px on screen */}
+        <g fontFamily="JetBrains Mono" fontSize={11} fontWeight={700} letterSpacing={0.8}>
           {(() => {
             const colStep = PW / points.length;
             const xCenter = (i: number) => PX0 + i * colStep + colStep / 2;
