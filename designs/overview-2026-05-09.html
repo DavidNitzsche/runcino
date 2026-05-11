@@ -1,0 +1,1573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1500">
+<title>Runcino · Overview · v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F; --l5:#34405266;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32); --t4:rgba(244,246,248,.18);
+    --corp:#008FEC; --warn:#FC4D64; --good:#3EBD41; --att:#F3AD38; --xp:#9013FE; --race:#FF5722; --coach:#27B4E0; --milestone:#F0DF47; --aqua:#27E087; --pink:#CD317C;
+    --race-grad-light:#FF8A3D; --race-grad:#FF5722; --race-grad-deep:#E03E00;
+    --f-display:'Oswald',sans-serif; --f-body:'Jost',sans-serif; --f-data:'JetBrains Mono',monospace;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; }
+
+  /* ── TYPE SCALE — six steps, no in-between ──────────────────────── */
+  /* HERO    · race finish times, biggest singular hero numbers */
+  .t-hero    { font-family:var(--f-display); font-size:140px; font-weight:700; letter-spacing:-.04em; line-height:.9; font-variant-numeric:tabular-nums; }
+  /* DISPLAY · race names, page titles, biggest body-adjacent headlines */
+  .t-display { font-family:var(--f-display); font-size:72px;  font-weight:700; letter-spacing:-.03em; line-height:.95; }
+  /* SECTION · workout names, section titles, mid-card hero text */
+  .t-section { font-family:var(--f-display); font-size:36px;  font-weight:600; letter-spacing:-.02em; line-height:1; }
+  /* STAT    · stat hero numbers (mileage, pace, distance, %, days) */
+  .t-stat    { font-family:var(--f-display); font-size:48px;  font-weight:700; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  /* BODY    · body copy, descriptions */
+  .t-body    { font-family:var(--f-body);    font-size:15px;  font-weight:400; letter-spacing:-.012em; line-height:1.6; }
+  /* EYEBROW · labels, metadata strips. ALWAYS uppercase, ALWAYS muted, ALWAYS above a heading. No exceptions. */
+  .t-eyebrow { font-family:var(--f-data);    font-size:11px;  font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); }
+
+  .stage { max-width:1500px; margin:0 auto; padding:24px 26px 60px; }
+
+  /* ── Top bar ──────────────────────────── */
+  .topbar { display:flex; align-items:center; gap:18px; padding:13px 18px; background:var(--l1); border:1px solid var(--l4); border-radius:10px; margin-bottom:14px; }
+  .topbar .brand { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--xp),var(--corp)); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:18px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:3px; border-radius:100px; background:var(--l0); border:1px solid var(--l4); }
+  .tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); letter-spacing:-.005em; cursor:pointer; }
+  .tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .clock { margin-left:auto; font-family:var(--f-data); font-size:12px; letter-spacing:1.4px; color:var(--t1); font-weight:700; }
+  .clock b { color:var(--att); }
+  .topbar-status { display:flex; gap:14px; align-items:center; font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; color:var(--t2); font-weight:700; }
+  .led { width:7px; height:7px; border-radius:50%; }
+  .led.green { background:var(--good); box-shadow:0 0 5px rgba(62,189,65,.7); }
+  .led.amber { background:var(--att); box-shadow:0 0 5px rgba(243,173,56,.7); }
+  .led.blue  { background:var(--corp); box-shadow:0 0 5px rgba(0,143,236,.6); }
+
+  /* ── Greeting strip ──────────────────────────── */
+  .greet { display:flex; align-items:stretch; gap:14px; padding:14px 4px 18px; }
+  .greet-id { display:flex; flex-direction:column; justify-content:center; padding:10px 22px 10px 0; border-right:1px solid var(--l4); min-width:fit-content; }
+  .greet-id .hi { font-family:var(--f-data); font-size:10px; letter-spacing:2.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .greet-id h1 { font-family:var(--f-display); font-weight:600; font-size:36px; letter-spacing:-.02em; line-height:1; text-transform:uppercase; margin-top:4px; }
+  .greet-state { flex:1; display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .greet-tile { padding:12px 14px 12px 16px; background:var(--l2); border-radius:8px; border:1px solid var(--l4); border-left-width:3px; display:flex; flex-direction:column; justify-content:center; min-height:64px; }
+  .greet-tile.amber { border-color:var(--l4); border-left-color:var(--att); background:linear-gradient(180deg,rgba(243,173,56,.06),var(--l2) 60%); }
+  .greet-tile.race  { border-color:var(--l4); border-left-color:var(--race); background:linear-gradient(180deg,rgba(255,87,34,.06),var(--l2) 60%); }
+  .greet-tile.coach { border-color:var(--l4); border-left-color:var(--coach); background:linear-gradient(180deg,rgba(39,180,224,.06),var(--l2) 60%); }
+  .greet-tile.good  { border-color:var(--l4); border-left-color:var(--good); background:linear-gradient(180deg,rgba(62,189,65,.06),var(--l2) 60%); }
+  .greet-tile .l { font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .greet-tile .v { font-family:var(--f-display); font-size:22px; font-weight:700; letter-spacing:-.005em; line-height:1; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .greet-tile .v small { font-family:var(--f-data); font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; letter-spacing:1px; }
+  .greet-tile .d { font-family:var(--f-data); font-size:9px; letter-spacing:.5px; color:var(--t2); font-weight:600; margin-top:3px; }
+  .pill { padding:6px 12px; border-radius:6px; font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; border:1px solid; }
+  .pill.amber { color:var(--att); border-color:rgba(243,173,56,.4); background:rgba(243,173,56,.08); }
+  .pill.green { color:var(--good); border-color:rgba(62,189,65,.4); background:rgba(62,189,65,.08); }
+  .pill.blue { color:var(--corp); border-color:rgba(0,143,236,.4); background:rgba(0,143,236,.08); }
+  .pill.race { color:var(--race); border-color:rgba(255,87,34,.45); background:rgba(255,87,34,.10); }
+
+  /* ── Grid system ──────────────────────────── */
+  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:10px; }
+  .row { display:grid; gap:10px; margin-bottom:10px; }
+  .span-3 { grid-column:span 3; } .span-4 { grid-column:span 4; } .span-5 { grid-column:span 5; }
+  .span-6 { grid-column:span 6; } .span-7 { grid-column:span 7; } .span-8 { grid-column:span 8; }
+  .span-9 { grid-column:span 9; } .span-12 { grid-column:span 12; }
+
+  /* ── Card base ──────────────────────────── */
+  .card { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+  .card-h { display:flex; justify-content:space-between; align-items:flex-start; }
+  .card-l { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); font-weight:500; }
+  .card-pin { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; padding:3px 7px; border-radius:4px; font-weight:700; }
+  .card-pin.green { background:rgba(62,189,65,.16); color:var(--good); }
+  .card-pin.amber { background:rgba(243,173,56,.18); color:var(--att); }
+  .card-pin.warn  { background:rgba(252,77,100,.16); color:var(--warn); }
+  .card-pin.blue  { background:rgba(0,143,236,.16); color:var(--corp); }
+  .card-pin.purple { background:rgba(144,19,254,.18); color:var(--xp); }
+  .card-pin.race { background:rgba(255,87,34,.18); color:var(--race); }
+  .card-num { font-family:var(--f-display); font-weight:700; line-height:.95; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+  .card-num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:7px; }
+  .card-foot { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; padding-top:8px; border-top:1px solid var(--l4); margin-top:auto; display:flex; justify-content:space-between; }
+  .delta { display:inline-flex; align-items:center; gap:3px; font-family:var(--f-data); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; letter-spacing:.6px; }
+  .delta.up { background:rgba(62,189,65,.16); color:var(--good); }
+  .delta.dn { background:rgba(252,77,100,.18); color:var(--warn); }
+  .delta.flat { background:var(--l3); color:var(--t2); }
+
+  /* ── HERO row: TODAY card ──────────────────────────── */
+  .hero-today { padding:26px 28px; min-height:340px; background:linear-gradient(135deg, rgba(243,173,56,.10) 0%, var(--l1) 60%); border-color:rgba(243,173,56,.24); display:flex; flex-direction:column; }
+  .hero-today::after { content:""; position:absolute; right:-100px; top:-100px; width:340px; height:340px; border-radius:50%; background:radial-gradient(circle, rgba(243,173,56,.10), transparent 65%); pointer-events:none; }
+  .hero-today .eyebrow { font-family:var(--f-data); font-size:11px; letter-spacing:2.4px; text-transform:uppercase; color:var(--att); font-weight:700; display:flex; align-items:center; gap:8px; }
+  .hero-today .eyebrow::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--att); box-shadow:0 0 0 3px rgba(243,173,56,.22); }
+  .hero-today h2 { font-family:var(--f-display); font-weight:700; font-size:72px; letter-spacing:-.03em; line-height:.95; text-transform:uppercase; margin-top:12px; white-space:nowrap; }
+  .hero-today .why { font-size:15px; color:var(--t1); line-height:1.6; letter-spacing:-.012em; margin-top:8px; max-width:560px; font-weight:400; }
+  .hero-today .why b { color:var(--t0); font-weight:600; }
+  .hero-today-kpis { display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:auto auto auto; row-gap:6px; column-gap:18px; padding-top:18px; margin-top:18px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hero-today-k { display:grid; grid-template-rows:subgrid; grid-row:span 3; row-gap:6px; }
+  .hero-today-k .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; align-self:end; }
+  .hero-today-k .v { font-family:var(--f-display); font-weight:700; font-size:32px; letter-spacing:-.015em; line-height:1; font-variant-numeric:tabular-nums; align-self:center; white-space:nowrap; }
+  .hero-today-k .v small { font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; }
+  .hero-today-k .d { font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t2); font-weight:700; align-self:start; }
+  .hero-today-structure { margin-top:14px; padding-top:14px; border-top:1px solid var(--l4); display:flex; flex-direction:column; gap:6px; }
+  .hts-row { display:grid; grid-template-columns:auto 1fr auto auto; gap:14px; align-items:baseline; padding:7px 0; font-size:13px; }
+  .hts-row .t { font-family:var(--f-data); font-size:10.5px; color:var(--t3); font-weight:700; }
+  .hts-row .name { color:var(--t1); font-weight:500; }
+  .hts-row .name b { color:var(--t0); font-weight:700; }
+  .hts-row .pace { font-family:var(--f-data); color:var(--corp); font-weight:700; font-size:13px; }
+  .hts-row .dist { font-family:var(--f-data); color:var(--t1); font-size:12px; font-weight:600; }
+  .hero-today-cta { display:flex; gap:8px; margin-top:auto; padding-top:18px; }
+  /* Reset native button browser styling — Safari + Chrome add a
+     subtle blue gradient + inset shadow to <button> elements which
+     made the primary CTA look glossy and out-of-place. Flat all
+     the way through. */
+  .btn { padding:11px 20px; border-radius:8px; font-family:var(--f-data); font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; cursor:pointer; appearance:none; -webkit-appearance:none; border:1px solid transparent; outline:none; box-shadow:none; transition:background .12s, border-color .12s; }
+  .btn:hover { filter:brightness(1.1); }
+  .btn-primary { background:var(--corp); color:var(--t0); border-color:var(--corp); }
+  .btn-secondary { background:transparent; color:var(--t1); border-color:var(--l4); }
+  .btn-secondary:hover { border-color:var(--l5); background:var(--l2); }
+
+  /* ── HERO: Readiness ring ──────────────────────────── */
+  .hero-ready { padding:24px 26px; min-height:340px; }
+  .ring-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; padding:12px 0 4px; }
+  .ring { width:220px; height:220px; flex-shrink:0; filter:drop-shadow(0 0 24px rgba(62,189,65,.15)); }
+  .ring-v { display:flex; flex-direction:column; gap:4px; align-items:center; text-align:center; }
+  .ring-band { font-family:var(--f-display); font-size:32px; font-weight:700; letter-spacing:-.01em; line-height:1; text-transform:uppercase; color:var(--good); }
+  .ring-score { font-family:var(--f-data); font-size:11px; font-weight:700; color:var(--t2); letter-spacing:1.4px; text-transform:uppercase; }
+  .ring-desc { font-size:12.5px; color:var(--t2); margin-top:4px; line-height:1.5; }
+  .signal-list { display:flex; flex-direction:column; gap:5px; padding-top:14px; margin-top:14px; border-top:1px solid var(--l4); }
+  .signal-row { display:grid; grid-template-columns:1fr auto 60px; gap:10px; align-items:center; font-size:12px; }
+  .signal-row .name { color:var(--t1); font-weight:600; }
+  .signal-row .v { font-family:var(--f-data); font-size:10.5px; font-weight:700; }
+  .signal-row .v.up { color:var(--good); }
+  .signal-row .v.dn { color:var(--warn); }
+  .signal-row .v.flat { color:var(--t2); }
+  .signal-bar { width:60px; height:5px; border-radius:3px; background:var(--l3); overflow:hidden; }
+  .signal-bar i { display:block; height:100%; border-radius:3px; }
+  .signal-bar i.up { background:var(--good); }
+  .signal-bar i.dn { background:var(--warn); }
+  .signal-bar i.flat { background:var(--t3); }
+
+  /* ── HERO: Race countdown ──────────────────────────── */
+  /* Race surface — subtle race-orange tint on dark. Used when race is far out (14+ days). */
+  /* For race-week / race-day, swap to .hero-race--imminent (full canonical race gradient) — see rule at end of stylesheet. */
+  .hero-race { padding:24px 26px; min-height:340px; background:linear-gradient(135deg, rgba(255,87,34,.10) 0%, var(--l1) 60%); border-color:rgba(255,87,34,.28); }
+  .hero-race::after { content:""; position:absolute; right:-80px; bottom:-80px; width:280px; height:280px; border-radius:50%; background:radial-gradient(circle, rgba(255,87,34,.12), transparent 65%); pointer-events:none; }
+  .hr-eye { font-family:var(--f-data); font-size:11px; letter-spacing:2.4px; text-transform:uppercase; color:var(--race); font-weight:700; }
+  .hr-cd { font-family:var(--f-display); font-weight:700; font-size:104px; letter-spacing:-.025em; line-height:.92; color:var(--race); margin-top:8px; }
+  .hr-cd small { font-size:.18em; opacity:.55; font-weight:700; margin-left:10px; }
+  .hr-name { font-family:var(--f-display); font-weight:600; font-size:24px; letter-spacing:-.005em; text-transform:uppercase; margin-top:4px; }
+  .hr-meta { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.3px; color:var(--t2); margin-top:6px; font-weight:700; }
+  .hr-progress { margin-top:18px; padding-top:14px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hr-prog-l { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-bottom:6px; }
+  .hr-prog-bar { height:8px; border-radius:4px; background:var(--l3); position:relative; overflow:hidden; }
+  .hr-prog-bar i { display:block; height:100%; background:linear-gradient(90deg, var(--corp), var(--good), var(--race)); border-radius:4px; }
+  .hr-prog-bar .now { position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--t0); box-shadow:0 0 0 2px rgba(244,246,248,.2); }
+  .hr-status { display:flex; justify-content:space-between; align-items:baseline; margin-top:14px; padding-top:14px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hr-status .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .hr-status .v { font-family:var(--f-display); font-size:18px; font-weight:600; }
+  .hr-status .pace { color:var(--good); }
+  /* Race-week / race-day treatment (≤14 days out): apply .imminent for full canonical gradient surface */
+  .hero-race.imminent { background:linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 50%, var(--race-grad-deep) 100%); border:0; color:#fff; }
+  .hero-race.imminent::after { background:radial-gradient(circle, rgba(255,255,255,.10), transparent 65%); }
+  .hero-race.imminent .hr-eye { color:rgba(255,255,255,.85); }
+  .hero-race.imminent .hr-cd { color:#fff; }
+  .hero-race.imminent .hr-name,
+  .hero-race.imminent .hr-status .v,
+  .hero-race.imminent .hr-status .pace { color:#fff; }
+  .hero-race.imminent .hr-meta { color:rgba(255,255,255,.78); }
+  .hero-race.imminent .hr-progress,
+  .hero-race.imminent .hr-status { border-top-color:rgba(255,255,255,.18); }
+  .hero-race.imminent .hr-prog-l,
+  .hero-race.imminent .hr-status .l { color:rgba(255,255,255,.65); }
+  .hero-race.imminent .hr-prog-bar { background:rgba(0,0,0,.22); }
+  .hero-race.imminent .hr-prog-bar i { background:rgba(255,255,255,.85); }
+  .hero-race.imminent .hr-prog-bar .now { background:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.25); }
+
+  /* ── Week strip ──────────────────────────── */
+  .week-strip { padding:18px 22px; }
+  .week-h { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+  .week-h .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; color:var(--t2); text-transform:uppercase; font-weight:700; }
+  .week-h .v { font-family:var(--f-display); font-size:32px; font-weight:700; letter-spacing:-.015em; font-variant-numeric:tabular-nums; line-height:1; margin-top:4px; }
+  .week-h .v small { font-family:var(--f-data); font-size:.34em; color:var(--t3); margin-left:8px; font-weight:700; letter-spacing:1.4px; vertical-align:middle; }
+  .week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+
+  /* Day card — clean rebuild:
+     · 4px colored type-tag on the left edge identifies the day's role
+     · DOW + DATE corner pair (one line, mono, light)
+     · Workout type as the visual anchor (Oswald, condensed, prominent)
+     · Distance + pace pair below type
+     · Footer status full-width
+     The whole card reads top → bottom: tag, date, what, how-far, status.
+     Done days fade to green; rest days fade out; today glows amber. */
+  .day { padding:0; border-radius:8px; background:var(--l2); border:1px solid var(--l4); min-height:138px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  /* Type tag on left edge — vertical strip color codes the day's role */
+  .day::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--l4); }
+  .day.t-rest::before     { background:rgba(244,246,248,.08); }
+  .day.t-recovery::before { background:var(--good); }
+  .day.t-easy::before     { background:var(--corp); }
+  .day.t-long::before     { background:var(--corp); }
+  .day.t-quality::before  { background:var(--milestone); }
+  .day.t-strength::before { background:var(--xp); }
+
+  .day.today { border:2px solid var(--att); background:linear-gradient(135deg, rgba(243,173,56,.14), var(--l2)); box-shadow:0 0 16px rgba(243,173,56,.18); }
+  .day.today::before { background:var(--att); width:4px; box-shadow:0 0 8px var(--att); }
+  .day.done.t-rest { opacity:.65; }
+  .day.done:not(.t-rest) { background:linear-gradient(180deg, rgba(62,189,65,.04), var(--l2)); }
+  .day.future { opacity:.92; }
+
+  /* Top header — DOW (small left) · DATE (small right) — ONE line, no fight */
+  .day-strip { display:flex; justify-content:space-between; align-items:baseline; padding:9px 11px 6px; }
+  .day-dow { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .day-date { font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700; letter-spacing:.6px; font-variant-numeric:tabular-nums; }
+  .day.today .day-dow  { color:var(--att); }
+  .day.today .day-date { color:var(--t0); }
+
+  /* Body — workout type is the hero */
+  .day-body { padding:0 11px; flex:1; display:flex; flex-direction:column; gap:4px; }
+  .day-type { font-family:var(--f-display); font-size:18px; font-weight:600; line-height:1; text-transform:uppercase; color:var(--t0); letter-spacing:-.005em; }
+  .day.today .day-type { font-size:20px; color:var(--t0); }
+  .day.t-rest .day-type { font-size:20px; color:var(--t2); font-weight:500; }
+  .day.done.t-rest .day-type { color:var(--t3); }
+  .day-mi { font-family:var(--f-data); font-size:13px; font-weight:700; color:var(--t1); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .day-mi small { font-size:.65em; opacity:.5; font-weight:700; margin-left:4px; }
+  .day-pace { font-family:var(--f-data); font-size:10px; color:var(--t3); font-weight:600; letter-spacing:.4px; }
+
+  /* Footer status bar */
+  .day-foot { padding:8px 11px; font-family:var(--f-data); font-size:9.5px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; margin-top:auto; border-top:1px solid var(--l4); }
+  .day-foot.done   { background:rgba(62,189,65,.10); color:var(--good); border-top-color:rgba(62,189,65,.20); }
+  .day-foot.active { background:rgba(243,173,56,.14); color:var(--att); border-top-color:rgba(243,173,56,.30); }
+  .day-foot.future { background:rgba(0,143,236,.06); color:var(--corp); border-top-color:rgba(0,143,236,.18); }
+  .day-foot.rest   { background:transparent; color:var(--t3); }
+  .day-foot .delta { font-family:var(--f-data); font-weight:700; }
+  .day-foot .delta.up { color:var(--corp); }
+
+  /* ── Plan adapted ──────────────────────────── */
+  .plan-card { padding:20px 22px; background:linear-gradient(135deg, rgba(39,180,224,.10) 0%, var(--l1) 70%); border-color:rgba(39,180,224,.28); }
+  .plan-card .h { font-family:var(--f-display); font-size:24px; font-weight:600; line-height:1.1; text-transform:uppercase; margin-top:6px; }
+  .plan-card .h em { color:var(--coach); font-style:normal; }
+  .plan-card .sub { font-size:15px; color:var(--t1); line-height:1.6; letter-spacing:-.012em; margin-top:6px; font-weight:400; }
+  .plan-diff { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; padding:10px 12px; background:var(--l2); border-radius:8px; margin-top:10px; }
+  .plan-diff-cell .l { font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .plan-diff-cell .v { font-family:var(--f-display); font-size:18px; font-weight:700; line-height:1; margin-top:3px; }
+  .plan-diff-cell .v.was { color:var(--t3); text-decoration:line-through; }
+  .plan-diff-cell .v.now { color:var(--coach); }
+  .plan-diff-arrow { font-family:var(--f-data); font-size:14px; color:var(--coach); font-weight:700; }
+  .card-pin.coach { background:rgba(39,180,224,.18); color:var(--coach); }
+
+  /* ── Build trajectory ──────────────────────────── */
+  .trajectory-card { padding:20px 22px; }
+  .trajectory-h { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  .trajectory-h .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; color:var(--t2); text-transform:uppercase; font-weight:700; }
+  .trajectory-h .v { font-family:var(--f-display); font-size:22px; font-weight:600; line-height:1; }
+  .trajectory-svg { width:100%; height:130px; display:block; }
+  .trajectory-phases { display:flex; gap:4px; margin-top:6px; }
+  .trajectory-phase { flex:1; padding:8px 10px; border-radius:6px; background:var(--l2); border:1px solid var(--l4); border-left-width:3px; min-width:0; }
+  .trajectory-phase .l { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .trajectory-phase .h { font-family:var(--f-display); font-size:11px; font-weight:600; text-transform:uppercase; margin-top:3px; }
+  .trajectory-phase.now { background:linear-gradient(180deg, rgba(244,246,248,.05), var(--l2) 60%); border-left-color:var(--t0); }
+  .trajectory-phase.next { border-left-color:var(--corp); }
+  .trajectory-phase.peak { border-left-color:var(--good); }
+  .trajectory-phase.taper { border-left-color:var(--warn); }
+  .trajectory-phase.race { border-left-color:var(--race); }
+
+  /* ── Body systems radar ──────────────────────────── */
+  .body-card { padding:20px 22px; }
+  .body-list { display:flex; flex-direction:column; gap:7px; margin-top:8px; }
+  .body-row { display:grid; grid-template-columns:14px 1fr 70px 30px; gap:10px; align-items:center; font-size:12px; }
+  .body-icon { width:14px; height:14px; border-radius:50%; }
+  .body-icon.done { background:var(--good); }
+  .body-icon.wip { background:var(--coach); }
+  .body-name { color:var(--t1); font-weight:600; }
+  .body-prog { height:5px; border-radius:3px; background:var(--l3); overflow:hidden; }
+  .body-prog i { display:block; height:100%; border-radius:3px; }
+  .body-pct { font-family:var(--f-data); font-size:10px; color:var(--t2); font-weight:700; text-align:right; }
+
+  /* ── Sparkline cards ──────────────────────────── */
+  .spark-card { padding:16px 18px; min-height:148px; }
+  .spark-card .num { font-family:var(--f-display); font-weight:700; font-size:42px; letter-spacing:-.015em; line-height:.95; font-variant-numeric:tabular-nums; }
+  .spark-card .num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:7px; }
+  .spark-svg { width:100%; height:36px; display:block; }
+  .spark-card .sub { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.2px; color:var(--t3); text-transform:uppercase; font-weight:700; }
+
+  /* ── Pace zones ──────────────────────────── */
+  .zones-card { padding:18px 20px; }
+  .zones-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:10px; }
+  .zone { padding:10px 8px; border-radius:7px; }
+  .zone.E { background:rgba(62,189,65,.10); border:1px solid rgba(62,189,65,.25); }
+  .zone.M { background:rgba(0,143,236,.10); border:1px solid rgba(0,143,236,.30); }
+  .zone.T { background:rgba(240,223,71,.10); border:1px solid rgba(240,223,71,.32); }
+  .zone.I { background:rgba(252,77,100,.12); border:1px solid rgba(252,77,100,.30); }
+  .zone.R { background:rgba(144,19,254,.14); border:1px solid rgba(144,19,254,.32); }
+  .zone .z { font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; font-weight:700; }
+  .zone.E .z { color:var(--good); } .zone.M .z { color:var(--corp); } .zone.T .z { color:var(--milestone); } .zone.I .z { color:var(--warn); } .zone.R .z { color:var(--xp); }
+  .zone .lab { font-family:var(--f-data); font-size:8.5px; color:var(--t3); letter-spacing:.8px; margin-top:2px; font-weight:600; text-transform:uppercase; }
+  .zone .v { font-family:var(--f-display); font-size:17px; font-weight:700; margin-top:5px; line-height:1; font-variant-numeric:tabular-nums; }
+
+  /* ── VDOT ──────────────────────────── */
+  .vdot-card { padding:20px 22px; background:linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%); border:0; min-height:148px; }
+  .vdot-card .lbl { color:rgba(255,255,255,.78); font-family:var(--f-data); font-size:10px; letter-spacing:1.8px; text-transform:uppercase; font-weight:700; }
+  .vdot-card .num { font-family:var(--f-display); font-weight:700; font-size:72px; line-height:.95; letter-spacing:-.03em; }
+  .vdot-card .src { font-family:var(--f-data); font-size:10px; color:rgba(255,255,255,.78); letter-spacing:.4px; font-weight:600; margin-top:auto; }
+  .vdot-card .delta-w { background:rgba(255,255,255,.16); color:#fff; }
+
+  /* ── Stat chips (small) ──────────────────────────── */
+  .chip-card { padding:14px 16px; min-height:108px; }
+  .chip-card .lbl { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; color:var(--t3); text-transform:uppercase; font-weight:700; }
+  .chip-card .num { font-family:var(--f-display); font-size:30px; font-weight:700; letter-spacing:-.005em; line-height:1; margin-top:4px; }
+  .chip-card .num small { font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; }
+  .chip-card .row { display:flex; align-items:center; gap:6px; margin-top:auto; padding-top:8px; border-top:1px solid var(--l4); }
+  .chip-card .sparkmini { flex:1; height:18px; }
+
+  /* ── Footnote ──────────────────────────── */
+  .footnote { margin-top:14px; padding:12px 16px; background:var(--l1); border:1px dashed var(--l4); border-radius:8px; font-family:var(--f-data); font-size:10.5px; letter-spacing:.6px; color:var(--t2); display:flex; gap:14px; flex-wrap:wrap; }
+  .footnote span b { color:var(--t0); }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="tabs">
+      <a class="tab active" href="overview-2026-05-09.html">Overview</a>
+      <a class="tab" href="training-2026-05-09.html">Training</a>
+      <a class="tab" href="races-2026-05-09.html">Races</a>
+      <a class="tab" href="health-2026-05-09.html">Health</a>
+      <a class="tab" href="log-2026-05-09.html">Log</a>
+      <a class="tab" href="profile-2026-05-09.html">Profile</a>
+    </div>
+    <div class="clock">FRI · MAY 9 · <b>4:42 PM</b></div>
+  </div>
+
+  <!-- Greeting · compressed identity + state band (5 high-value tiles) -->
+  <div class="greet">
+    <div class="greet-id">
+      <div class="hi">GOOD AFTERNOON</div>
+      <h1>DAVID</h1>
+    </div>
+    <div class="greet-state">
+      <div class="greet-tile coach">
+        <div class="l">PHASE</div>
+        <div class="v">RECOVERY<small>2/2</small></div>
+        <div class="d">DAY 6 POST-SOMBRERO</div>
+      </div>
+      <div class="greet-tile race">
+        <div class="l">A-RACE COUNTDOWN</div>
+        <div class="v" style="color:var(--race);">98<small>D</small></div>
+        <div class="d">AFC HALF · AUG 16</div>
+      </div>
+      <div class="greet-tile">
+        <div class="l">THIS WEEK</div>
+        <div class="v">14.1<small>MI</small></div>
+        <div class="d">+5.4 OVER · 3/5 LOGGED</div>
+      </div>
+      <div class="greet-tile good">
+        <div class="l">READINESS</div>
+        <div class="v" style="color:var(--good);">88<small>/100</small></div>
+        <div class="d">▲ BUILDING +0.30 · COACH +12%</div>
+      </div>
+      <div class="greet-tile amber">
+        <div class="l">TODAY</div>
+        <div class="v" style="color:var(--att);">3.0<small>MI</small></div>
+        <div class="d">RECOVERY JOG · 8:55–9:25</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 1 · TODAY (6) · READINESS (3) · RACE (3) -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <!-- TODAY -->
+    <div class="card hero-today span-6">
+      <div class="card-h">
+        <div class="eyebrow">TODAY · SAT MAY 9 · LIGHT RECOVERY</div>
+        <span class="card-pin amber">SCHEDULED</span>
+      </div>
+      <h2>Recovery jog</h2>
+      <div class="why"><b>Why this is light:</b> connective tissue (tendons, fascia) rebuilds for 2–4 weeks. You're at day 6. Easy aerobic moves blood without restarting damage. Heart rate cap Z1; stop if anything pulls.</div>
+
+      <div class="hero-today-kpis">
+        <div class="hero-today-k">
+          <div class="l">DISTANCE</div>
+          <div class="v">3.0<small>MI</small></div>
+          <div class="d">FLOOR 2.0 · CAP 6.0</div>
+        </div>
+        <div class="hero-today-k">
+          <div class="l">DURATION</div>
+          <div class="v">28<small>MIN</small></div>
+          <div class="d">EST · CONVERSATIONAL</div>
+        </div>
+        <div class="hero-today-k">
+          <div class="l">PACE TARGET</div>
+          <div class="v" style="font-size:26px;letter-spacing:-.02em;">8:55–9:25</div>
+          <div class="d">/MI · DANIELS E</div>
+        </div>
+        <div class="hero-today-k">
+          <div class="l">HR CAP · Z1</div>
+          <div class="v">141<small>BPM</small></div>
+          <div class="d">73% HRMAX · 187</div>
+        </div>
+      </div>
+
+      <div class="hero-today-structure">
+        <div class="hts-row">
+          <span class="t">0:00</span>
+          <span class="name">Warm-up · easy aerobic</span>
+          <span class="dist">0.5 mi</span>
+          <span class="pace">9:30/mi</span>
+        </div>
+        <div class="hts-row">
+          <span class="t">0:05</span>
+          <span class="name"><b>Main · steady recovery</b></span>
+          <span class="dist">2.0 mi</span>
+          <span class="pace">9:00/mi</span>
+        </div>
+        <div class="hts-row">
+          <span class="t">0:23</span>
+          <span class="name">Cool-down · drop pace</span>
+          <span class="dist">0.5 mi</span>
+          <span class="pace">9:25/mi</span>
+        </div>
+      </div>
+
+      <div class="hero-today-cta">
+        <button class="btn btn-primary">▶ OPEN WORKOUT</button>
+        <button class="btn btn-secondary">SKIP TODAY</button>
+      </div>
+    </div>
+
+    <!-- READINESS RING -->
+    <div class="card hero-ready span-3">
+      <div class="card-h">
+        <div class="card-l">READINESS · COMPOSITE</div>
+        <span class="card-pin green">READY</span>
+      </div>
+
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 130 130">
+          <defs>
+            <linearGradient id="r1" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#3EBD41"/>
+              <stop offset="60%" stop-color="#27E087"/>
+              <stop offset="100%" stop-color="#7CD97F"/>
+            </linearGradient>
+          </defs>
+          <circle cx="65" cy="65" r="54" fill="none" stroke="rgba(244,246,248,.06)" stroke-width="10"/>
+          <circle cx="65" cy="65" r="54" fill="none" stroke="url(#r1)" stroke-width="10" stroke-dasharray="339" stroke-dashoffset="41" transform="rotate(-90 65 65)" stroke-linecap="round"/>
+          <text x="65" y="62" text-anchor="middle" dominant-baseline="middle" font-family="Oswald" font-weight="700" font-size="54" letter-spacing="-1" fill="#F4F6F8">88</text>
+          <text x="65" y="90" text-anchor="middle" dominant-baseline="middle" font-family="JetBrains Mono" font-weight="700" font-size="8.5" fill="#27E087" letter-spacing="2.4">/ 100</text>
+        </svg>
+        <div class="ring-v">
+          <div class="ring-band">BUILDING</div>
+          <div class="ring-score">SCORE +0.30 · COACH +12% VOLUME</div>
+        </div>
+      </div>
+
+      <div class="signal-list">
+        <div class="signal-row"><span class="name">Effort trend</span><span class="v up">+0.25</span><div class="signal-bar"><i class="up" style="width:80%;"></i></div></div>
+        <div class="signal-row"><span class="name">Load balance · 1.05</span><span class="v up">+0.25</span><div class="signal-bar"><i class="up" style="width:75%;"></i></div></div>
+        <div class="signal-row"><span class="name">Mileage trend</span><span class="v flat">0.00</span><div class="signal-bar"><i class="flat" style="width:50%;"></i></div></div>
+        <div class="signal-row"><span class="name">Easy pace · 92%</span><span class="v up">+0.25</span><div class="signal-bar"><i class="up" style="width:82%;"></i></div></div>
+        <div class="signal-row"><span class="name">Recent strain</span><span class="v dn">−0.25</span><div class="signal-bar"><i class="dn" style="width:65%;"></i></div></div>
+      </div>
+
+      <!-- Vitals quick row + recommendation footer -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding-top:14px; margin-top:auto; border-top:1px solid var(--l4);">
+        <div style="text-align:center;">
+          <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Sleep</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:3px;color:var(--good);">7:42</div>
+        </div>
+        <div style="text-align:center; border-left:1px solid var(--l4); border-right:1px solid var(--l4);">
+          <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Last hard</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:3px;">+46<span style="font-size:.55em;opacity:.5;">h</span></div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Next hard</div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:3px;color:var(--t1);">~9d</div>
+        </div>
+      </div>
+
+      <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-align:center;text-transform:uppercase;padding-top:8px;line-height:1.5;">
+        ▲ Quality returns when recovery window closes
+      </div>
+    </div>
+
+    <!-- RACE COUNTDOWN -->
+    <div class="card hero-race span-3">
+      <div class="card-h">
+        <div class="hr-eye">GOAL · A-RACE</div>
+        <span class="card-pin" style="background:rgba(255,255,255,.22);color:#fff;">AUG 16</span>
+      </div>
+
+      <!-- A-race hero · white-on-gradient -->
+      <div style="position:relative; z-index:1;">
+        <h2 style="font-family:var(--f-display); font-weight:700; font-size:36px; letter-spacing:-.01em; line-height:.95; text-transform:uppercase; color:#fff; margin-top:6px;">
+          Americas<br>Finest City
+        </h2>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-top:10px;">
+          <div style="font-family:var(--f-display); font-weight:700; font-size:48px; letter-spacing:-.015em; line-height:1; color:#fff; font-variant-numeric:tabular-nums;">98</div>
+          <div style="font-family:var(--f-data); font-size:11px; letter-spacing:1.6px; color:rgba(255,255,255,.85); font-weight:700; text-transform:uppercase;">days out</div>
+        </div>
+        <div style="font-family:var(--f-data); font-size:10.5px; letter-spacing:1.3px; color:rgba(255,255,255,.78); font-weight:700; text-transform:uppercase; margin-top:8px;">
+          HALF MARATHON · GOAL 1:35:00
+        </div>
+      </div>
+
+      <!-- UP NEXT · imminent B-race · dark inset on the gradient surface -->
+      <div style="position:relative;z-index:1;margin-top:16px;padding:12px 14px;background:rgba(0,0,0,.30);border:1px solid rgba(255,255,255,.18);border-left:3px solid #fff;border-radius:8px;backdrop-filter:blur(2px);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div style="font-family:var(--f-data);font-size:9px;letter-spacing:1.6px;color:rgba(255,255,255,.85);font-weight:700;text-transform:uppercase;">▶ UP NEXT · B-RACE · SOONER</div>
+          <div style="font-family:var(--f-data);font-size:9px;letter-spacing:.6px;color:rgba(255,255,255,.65);font-weight:600;">JUN 22</div>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:8px;">
+          <div style="font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;line-height:1;text-transform:uppercase;color:#fff;">Mission Bay 10K</div>
+          <div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0;">
+            <span style="font-family:var(--f-display);font-weight:700;font-size:30px;letter-spacing:-.015em;line-height:1;color:#fff;font-variant-numeric:tabular-nums;">44</span>
+            <span style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:rgba(255,255,255,.85);font-weight:700;">D</span>
+          </div>
+        </div>
+        <div style="font-family:var(--f-data);font-size:9px;letter-spacing:.6px;color:rgba(255,255,255,.70);font-weight:600;margin-top:4px;text-transform:uppercase;">Tune-up · goal 42:00 · sharpens AFC</div>
+      </div>
+
+      <div class="hr-progress">
+        <div class="hr-prog-l" style="font-size:8.5px; letter-spacing:1px;">
+          <span>BASE</span><span>BUILD</span><span>PEAK</span><span>TAPER</span>
+        </div>
+        <div class="hr-prog-bar">
+          <i style="width:14%;"></i>
+          <div class="now" style="left:14%;"></div>
+        </div>
+        <div style="font-family:var(--f-data);font-size:9px;letter-spacing:1px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-top:6px;">14D TO BUILD WINDOW</div>
+      </div>
+
+      <div class="hr-status">
+        <div>
+          <div class="l">CURRENT</div>
+          <div class="v pace">7:00<span style="font-size:.5em;color:rgba(255,255,255,.55);">/MI</span></div>
+        </div>
+        <div style="text-align:right;">
+          <div class="l">GOAL</div>
+          <div class="v">7:15<span style="font-size:.5em;color:rgba(255,255,255,.55);">/MI</span></div>
+        </div>
+      </div>
+      <div style="font-family:var(--f-data);font-size:10px;letter-spacing:1.2px;color:#fff;font-weight:700;text-align:center;text-transform:uppercase;padding:6px 0 10px;">▲ ON TRACK · 15s/mi HEADROOM</div>
+
+      <!-- Goal time scenarios — dark inset on the gradient surface -->
+      <div style="padding:12px 14px; background:rgba(0,0,0,.30); border:1px solid rgba(255,255,255,.18); border-radius:8px; margin-top:auto; position:relative; z-index:1; backdrop-filter:blur(2px);">
+        <div style="font-family:var(--f-data);font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,.65);font-weight:700;text-transform:uppercase;margin-bottom:8px;">AFC FINISH TIME PROJECTIONS</div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:6px; align-items:end;">
+          <div style="text-align:center; padding:6px 4px; background:rgba(255,255,255,.06); border-radius:5px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1px;color:rgba(255,255,255,.65);font-weight:700;">FLOOR</div>
+            <div style="font-family:var(--f-display);font-size:15px;font-weight:700;line-height:1;margin-top:3px;color:rgba(255,255,255,.78);">1:38</div>
+          </div>
+          <div style="text-align:center; padding:8px 4px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.40); border-radius:5px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1px;color:#fff;font-weight:700;">GOAL</div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:3px;color:#fff;">1:35</div>
+          </div>
+          <div style="text-align:center; padding:6px 4px; background:rgba(255,255,255,.06); border-radius:5px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;letter-spacing:1px;color:rgba(255,255,255,.65);font-weight:700;">STRETCH</div>
+            <div style="font-family:var(--f-display);font-size:15px;font-weight:700;line-height:1;margin-top:3px;color:rgba(255,255,255,.85);">1:32</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 2 · WEEK STRIP (12)                  -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+    <div class="card week-strip span-12">
+      <!-- Clean header — title left, single volume progress band right -->
+      <div class="week-h" style="display:grid; grid-template-columns:auto 1fr auto; gap:24px; align-items:center; margin-bottom:14px;">
+        <div style="display:flex; flex-direction:column; gap:4px; white-space:nowrap;">
+          <div class="l">THIS WEEK</div>
+          <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; color:var(--t1); font-weight:700; text-transform:uppercase;">RECOVERY 1/2 · DAY 6</div>
+        </div>
+
+        <!-- Volume: logged · planned · projected — bar scales to 22.1 mi (projected total) -->
+        <div style="display:flex; flex-direction:column; gap:6px; min-width:0;">
+          <div style="display:flex; align-items:baseline; gap:10px;">
+            <span style="font-family:var(--f-display); font-size:28px; font-weight:700; line-height:1; letter-spacing:-.015em; font-variant-numeric:tabular-nums;">14.1<span style="font-family:var(--f-data); font-size:.4em; opacity:.5; font-weight:700; margin-left:4px; letter-spacing:1px;">MI LOGGED</span></span>
+            <span style="font-family:var(--f-data); font-size:10px; color:var(--t3); font-weight:700; letter-spacing:1px;">/ 14 PLAN</span>
+            <span style="font-family:var(--f-data); font-size:10px; color:var(--corp); font-weight:700; letter-spacing:.8px; margin-left:auto;">PROJECTING 22.1 · +8.1 OVER</span>
+          </div>
+          <!-- Bar scale: 0-22.1mi maps to 0-100%. Plan tick at 14mi = 63.3%. Logged fill 14.1mi = 63.8%. Future planned (today 3 + sun 5 = 8mi) extends from 14.1 to 22.1 = 36.2% width. -->
+          <div style="position:relative; height:8px; background:var(--l3); border-radius:4px; overflow:hidden;">
+            <!-- LOGGED actual fill (0 → 14.1mi = 63.8%) -->
+            <div style="position:absolute; left:0; top:0; bottom:0; width:63.8%; background:linear-gradient(90deg, var(--corp), var(--coach)); border-radius:4px 0 0 4px;"></div>
+            <!-- FUTURE planned remaining (14.1 → 22.1mi = 36.2% width starting at 63.8%) — dashed corp-blue -->
+            <div style="position:absolute; left:63.8%; top:0; bottom:0; right:0; background:repeating-linear-gradient(90deg, rgba(0,143,236,.35) 0 4px, transparent 4px 7px); border-radius:0 4px 4px 0;"></div>
+            <!-- PLAN target tick at 14mi = 63.3% -->
+            <div style="position:absolute; left:63.3%; top:-3px; bottom:-3px; width:2px; background:var(--t1); box-shadow:0 0 4px var(--t0);"></div>
+          </div>
+        </div>
+
+        <!-- Right: logged sessions ratio -->
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px; white-space:nowrap;">
+          <div style="font-family:var(--f-display); font-size:22px; font-weight:700; line-height:1; letter-spacing:-.01em; font-variant-numeric:tabular-nums; color:var(--good);">3<span style="font-family:var(--f-data); font-size:.5em; opacity:.5; font-weight:700; margin-left:3px;">/ 5</span></div>
+          <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.2px; color:var(--good); font-weight:700; text-transform:uppercase;">✓ LOGGED</div>
+        </div>
+      </div>
+      <div class="week-grid">
+        <div class="day t-rest done">
+          <div class="day-strip"><span class="day-dow">MON</span><span class="day-date">MAY 4</span></div>
+          <div class="day-body"><div class="day-type">Rest</div></div>
+          <div class="day-foot rest"><span>—</span><span style="color:var(--good);">✓ DONE</span></div>
+        </div>
+        <div class="day t-rest done">
+          <div class="day-strip"><span class="day-dow">TUE</span><span class="day-date">MAY 5</span></div>
+          <div class="day-body"><div class="day-type">Rest</div></div>
+          <div class="day-foot rest"><span>—</span><span style="color:var(--good);">✓ DONE</span></div>
+        </div>
+        <div class="day t-easy done">
+          <div class="day-strip"><span class="day-dow">WED</span><span class="day-date">MAY 6</span></div>
+          <div class="day-body"><div class="day-type">Easy</div><div class="day-mi">6.7<small>mi</small></div><div class="day-pace">8:50/mi · 142 hr</div></div>
+          <div class="day-foot done"><span>✓ DONE</span><span class="delta up" style="background:rgba(0,143,236,.14);color:var(--corp);padding:2px 6px;border-radius:3px;font-size:8.5px;">+4.7 vs plan</span></div>
+        </div>
+        <div class="day t-strength done">
+          <div class="day-strip"><span class="day-dow">THU</span><span class="day-date">MAY 7</span></div>
+          <div class="day-body"><div class="day-type">Strength</div><div class="day-mi">30<small>min</small></div><div class="day-pace">Mobility + core</div></div>
+          <div class="day-foot done" style="background:rgba(144,19,254,.10);color:var(--xp);border-top-color:rgba(144,19,254,.20);"><span>✓ DONE</span><span style="opacity:.7;">STRAVA</span></div>
+        </div>
+        <div class="day t-easy done">
+          <div class="day-strip"><span class="day-dow">FRI</span><span class="day-date">MAY 8</span></div>
+          <div class="day-body"><div class="day-type">Easy</div><div class="day-mi">7.4<small>mi</small></div><div class="day-pace">8:50/mi · 144 hr</div></div>
+          <div class="day-foot done"><span>✓ DONE</span><span class="delta up" style="background:rgba(0,143,236,.14);color:var(--corp);padding:2px 6px;border-radius:3px;font-size:8.5px;">+5.4 vs plan</span></div>
+        </div>
+        <div class="day t-recovery today">
+          <div class="day-strip"><span class="day-dow" style="color:var(--att);">TODAY · SAT</span><span class="day-date">MAY 9</span></div>
+          <div class="day-body"><div class="day-type">Recovery</div><div class="day-mi">3.0<small>mi</small></div><div class="day-pace">8:55–9:25</div></div>
+          <div class="day-foot active"><span>● ACTIVE</span><span>OPEN →</span></div>
+        </div>
+        <div class="day t-long future">
+          <div class="day-strip"><span class="day-dow">SUN</span><span class="day-date">MAY 10</span></div>
+          <div class="day-body"><div class="day-type">Easy long</div><div class="day-mi">5.0<small>mi</small></div><div class="day-pace">8:55–9:25</div></div>
+          <div class="day-foot future"><span>LONG RUN</span><span>+1d</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 3 · TRAJECTORY (8) · PLAN ADAPTED (4)-->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <div class="card trajectory-card span-8" style="padding:22px 26px;">
+      <div class="trajectory-h">
+        <div>
+          <div class="l">PATH TO AFC · 14 WEEKS</div>
+          <div class="v">98 days · 5 phases · peaks at 44 mi/wk</div>
+        </div>
+        <div style="display:flex;gap:14px;font-family:var(--f-data);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;">
+          <span style="color:var(--good);">▲ +12% VOL</span>
+          <span style="color:var(--corp);">PROJECTED</span>
+        </div>
+      </div>
+
+      <!-- top label band — labels ABOVE the chart so they never collide
+           with the curve. Y-axis grid lines below give peak callout
+           proper anchoring. -->
+      <div style="position:relative; height:28px; margin-top:14px;">
+        <div style="position:absolute; left:6%; transform:translateX(-50%); display:flex; align-items:center; gap:6px; padding:5px 10px; background:rgba(243,173,56,.18); border:1px solid var(--att); border-radius:5px; font-family:var(--f-data); font-size:11px; letter-spacing:1.6px; color:var(--att); font-weight:700;">● TODAY</div>
+        <div style="position:absolute; left:68%; transform:translateX(-50%); display:flex; align-items:center; gap:7px; padding:5px 10px; background:rgba(62,189,65,.10); border:1px dashed var(--good); border-radius:5px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; color:#7CD97F; font-weight:700; white-space:nowrap;"><span style="color:var(--good);">◇</span> PEAK TARGET · 44 MI</div>
+        <div style="position:absolute; right:0; transform:translateX(0); padding:5px 10px; background:rgba(255,87,34,.16); border:1px solid var(--race); border-radius:5px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; color:var(--race); font-weight:700;">▣ RACE · AUG 16</div>
+      </div>
+
+      <svg class="trajectory-svg" viewBox="0 0 1000 200" preserveAspectRatio="none" style="height:180px; overflow:visible; width:100%;">
+        <defs>
+          <linearGradient id="tg-past" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#008FEC" stop-opacity=".7"/>
+            <stop offset="100%" stop-color="#008FEC" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="tg-fut" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#3EBD41" stop-opacity=".60"/>
+            <stop offset="60%" stop-color="#3EBD41" stop-opacity=".10"/>
+            <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="tg-base" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#008FEC" stop-opacity=".05"/><stop offset="100%" stop-color="#008FEC" stop-opacity="0"/></linearGradient>
+          <linearGradient id="tg-build" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3EBD41" stop-opacity=".06"/><stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/></linearGradient>
+          <linearGradient id="tg-peak" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#F3AD38" stop-opacity=".08"/><stop offset="100%" stop-color="#F3AD38" stop-opacity="0"/></linearGradient>
+          <linearGradient id="tg-taper" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FC4D64" stop-opacity=".07"/><stop offset="100%" stop-color="#FC4D64" stop-opacity="0"/></linearGradient>
+          <filter id="tg-glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+
+        <!-- peak guide line, faint horizontal -->
+        <line x1="0" y1="36" x2="1000" y2="36" stroke="rgba(243,173,56,.14)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+
+        <!-- soft phase backgrounds -->
+        <rect x="60"  y="0" width="140" height="200" fill="url(#tg-base)"/>
+        <rect x="200" y="0" width="320" height="200" fill="url(#tg-build)"/>
+        <rect x="520" y="0" width="220" height="200" fill="url(#tg-peak)"/>
+        <rect x="740" y="0" width="220" height="200" fill="url(#tg-taper)"/>
+
+        <!-- PAST: blue gradient + crisp line -->
+        <path d="M 0 168 C 15 165, 35 162, 60 164 L 60 200 L 0 200 Z" fill="url(#tg-past)"/>
+        <path d="M 0 168 C 15 165, 35 162, 60 164" fill="none" stroke="#008FEC" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+
+        <!-- FUTURE: green gradient area, smooth bezier across full plan -->
+        <path d="M 60 164
+                 C 100 156, 140 144, 200 128
+                 C 260 112, 320 96, 380 80
+                 C 440 64, 500 52, 560 44
+                 C 620 36, 660 36, 680 36
+                 C 700 36, 730 44, 760 56
+                 C 800 72, 840 100, 880 124
+                 C 920 144, 950 160, 960 164
+                 L 960 200 L 60 200 Z"
+              fill="url(#tg-fut)"/>
+
+        <!-- FUTURE: dashed projection line -->
+        <path d="M 60 164
+                 C 100 156, 140 144, 200 128
+                 C 260 112, 320 96, 380 80
+                 C 440 64, 500 52, 560 44
+                 C 620 36, 660 36, 680 36
+                 C 700 36, 730 44, 760 56
+                 C 800 72, 840 100, 880 124
+                 C 920 144, 950 160, 960 164"
+              fill="none" stroke="#3EBD41" stroke-width="2.5" stroke-dasharray="6 4" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+
+        <!-- vertical markers — TODAY (solid amber) · PEAK (dashed green target) · RACE (orange #FF5722) -->
+        <line x1="60"  y1="8"   x2="60"  y2="200" stroke="#F3AD38" stroke-width="1.5" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+        <line x1="680" y1="8"   x2="680" y2="200" stroke="rgba(62,189,65,.45)" stroke-width="1" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>
+        <line x1="960" y1="0"   x2="960" y2="200" stroke="#FF5722" stroke-width="2" vector-effect="non-scaling-stroke"/>
+
+        <!-- TODAY: solid amber filled dot with halo (you-are-here) -->
+        <circle cx="60"  cy="164" r="14" fill="#F3AD38" opacity=".22" filter="url(#tg-glow)"/>
+        <circle cx="60"  cy="164" r="5"  fill="#F3AD38" stroke="#10131A" stroke-width="2" vector-effect="non-scaling-stroke"/>
+
+        <!-- PEAK: hollow green diamond — distinct shape signals "target," not current position -->
+        <g transform="translate(680 36)">
+          <rect x="-6.5" y="-6.5" width="13" height="13" transform="rotate(45)" fill="rgba(10,12,16,.95)" stroke="#3EBD41" stroke-width="2" vector-effect="non-scaling-stroke"/>
+          <circle cx="0" cy="0" r="2" fill="#3EBD41"/>
+        </g>
+
+        <!-- RACE: solid orange filled dot with halo (destination) -->
+        <circle cx="960" cy="164" r="12" fill="#FF5722" opacity=".30" filter="url(#tg-glow)"/>
+        <circle cx="960" cy="164" r="5"  fill="#FF5722" stroke="#10131A" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      </svg>
+
+      <!-- bottom date strip -->
+      <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-top:4px; padding:0 2px;">
+        <span>APR 12</span>
+        <span>MAY 9</span>
+        <span>JUN 1</span>
+        <span>JUL 1</span>
+        <span style="color:var(--good);">◇ AUG 1 · PEAK</span>
+        <span style="color:var(--race);">▣ AUG 16 · RACE</span>
+      </div>
+
+      <div class="trajectory-phases" style="margin-top:14px;">
+        <div class="trajectory-phase now"><div class="l">NOW · 14D</div><div class="h">Hold floor</div></div>
+        <div class="trajectory-phase next"><div class="l">3 WK</div><div class="h">Base · LT</div></div>
+        <div class="trajectory-phase next"><div class="l">5 WK</div><div class="h">Build</div></div>
+        <div class="trajectory-phase peak"><div class="l">3 WK</div><div class="h">Peak 44</div></div>
+        <div class="trajectory-phase taper"><div class="l">2 WK</div><div class="h">Taper</div></div>
+      </div>
+    </div>
+
+    <div class="card plan-card span-4">
+      <div class="card-h">
+        <div class="card-l" style="color:var(--coach);">▲ PLAN ADAPTED · LAST 7 DAYS</div>
+        <span class="card-pin coach">+12%</span>
+      </div>
+      <div class="h">Coach added <em>volume</em><br>and lifted the long-run cap.</div>
+      <div class="sub">Last 3 runs felt easier than expected (effort −0.4 vs target) with manageable load. Coach saw you absorbing well and unlocked +12% baseline + a longer long run.</div>
+
+      <div class="plan-diff">
+        <div class="plan-diff-cell">
+          <div class="l">VOLUME / WK</div>
+          <div class="v was">14<small style="font-size:.5em;">mi</small></div>
+        </div>
+        <div class="plan-diff-arrow">→</div>
+        <div class="plan-diff-cell" style="text-align:right;">
+          <div class="l">NEXT WK</div>
+          <div class="v now">17<small style="font-size:.5em;">mi</small></div>
+        </div>
+      </div>
+
+      <div class="plan-diff">
+        <div class="plan-diff-cell">
+          <div class="l">LONG RUN CAP</div>
+          <div class="v was">7.4<small style="font-size:.5em;">mi</small></div>
+        </div>
+        <div class="plan-diff-arrow">→</div>
+        <div class="plan-diff-cell" style="text-align:right;">
+          <div class="l">NOW</div>
+          <div class="v now">8.2<small style="font-size:.5em;">mi</small></div>
+        </div>
+      </div>
+
+      <div class="card-foot">
+        <span>WED 6.7 · FRI 7.4 · BOTH OVER PLAN</span>
+        <span style="color:var(--coach);">SEE PLAN →</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 4 · BIOMETRIC SPARKS (4 × 3)         -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <div class="card spark-card span-3">
+      <div class="card-h">
+        <div class="card-l">HRV · 7D AVG</div>
+        <span class="card-pin green">↑ BASELINE</span>
+      </div>
+      <div class="num">68<small>ms</small></div>
+      <svg class="spark-svg" viewBox="0 0 100 36" preserveAspectRatio="none">
+        <defs><linearGradient id="hg" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3EBD41" stop-opacity=".5"/><stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/></linearGradient></defs>
+        <path d="M 0 28 L 14 26 L 28 22 L 42 24 L 56 18 L 70 16 L 84 12 L 100 10 L 100 36 L 0 36 Z" fill="url(#hg)"/>
+        <polyline points="0,28 14,26 28,22 42,24 56,18 70,16 84,12 100,10" fill="none" stroke="#3EBD41" stroke-width="1.4"/>
+      </svg>
+      <div class="card-foot">
+        <span>BASE 64ms</span>
+        <span class="delta up">+6%</span>
+      </div>
+    </div>
+
+    <div class="card spark-card span-3">
+      <div class="card-h">
+        <div class="card-l">RESTING HR</div>
+        <span class="card-pin green">STABLE</span>
+      </div>
+      <div class="num">42<small>bpm</small></div>
+      <svg class="spark-svg" viewBox="0 0 100 36" preserveAspectRatio="none">
+        <polyline points="0,18 14,18 28,17 42,18 56,16 70,17 84,16 100,15" fill="none" stroke="#008FEC" stroke-width="1.4"/>
+      </svg>
+      <div class="card-foot">
+        <span>BASE 43bpm · 7D</span>
+        <span class="delta up">−1bpm</span>
+      </div>
+    </div>
+
+    <div class="card spark-card span-3">
+      <div class="card-h">
+        <div class="card-l">SLEEP · LAST NIGHT</div>
+        <span class="card-pin green">DEEP</span>
+      </div>
+      <div class="num">7:42<small>hrs</small></div>
+      <div style="display:flex; gap:2px; height:18px; align-items:flex-end; margin-top:6px;">
+        <div style="flex:1; background:rgba(38,127,255,.3); height:60%; border-radius:1px;"></div>
+        <div style="flex:1; background:rgba(38,127,255,.6); height:90%; border-radius:1px;"></div>
+        <div style="flex:1; background:#9013FE; height:100%; border-radius:1px;"></div>
+        <div style="flex:1; background:rgba(38,127,255,.5); height:70%; border-radius:1px;"></div>
+        <div style="flex:1; background:rgba(38,127,255,.7); height:85%; border-radius:1px;"></div>
+        <div style="flex:1; background:#9013FE; height:95%; border-radius:1px;"></div>
+        <div style="flex:1; background:rgba(38,127,255,.4); height:50%; border-radius:1px;"></div>
+      </div>
+      <div class="card-foot">
+        <span>DEEP 1:54 · REM 1:46</span>
+        <span class="delta up">+0:18</span>
+      </div>
+    </div>
+
+    <div class="card spark-card span-3">
+      <div class="card-h">
+        <div class="card-l">EFFORT · LAST 7D vs PRIOR 7D</div>
+        <span class="card-pin green">↓ EASIER</span>
+      </div>
+      <div class="num" style="color:var(--good);">4.2</div>
+      <svg class="spark-svg" viewBox="0 0 100 36" preserveAspectRatio="none">
+        <defs><linearGradient id="rg" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3EBD41" stop-opacity=".4"/><stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/></linearGradient></defs>
+        <path d="M 0 12 L 14 14 L 28 16 L 42 16 L 56 18 L 70 22 L 84 26 L 100 28 L 100 36 L 0 36 Z" fill="url(#rg)"/>
+        <polyline points="0,12 14,14 28,16 42,16 56,18 70,22 84,26 100,28" fill="none" stroke="#3EBD41" stroke-width="1.4"/>
+      </svg>
+      <div class="card-foot">
+        <span>WAS 4.6 · DRIFT</span>
+        <span class="delta up">−0.4</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 5 · BODY SYS (4) · PACE ZONES (5) · VDOT (3) -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <div class="card body-card span-4">
+      <div class="card-h">
+        <div class="card-l">YOUR BODY · DAY 6 POST-HALF</div>
+        <span class="card-pin coach">REBUILDING</span>
+      </div>
+      <div style="font-family:var(--f-display);font-size:14px;font-weight:600;text-transform:uppercase;color:var(--t1);">5 systems · 5 timelines</div>
+
+      <div class="body-list" style="gap:11px;">
+        <div class="body-row" style="grid-template-columns:14px 1fr 70px 56px;">
+          <div class="body-icon done"></div>
+          <div>
+            <div class="body-name">Glycogen <span style="color:var(--t3);font-weight:500;font-size:11px;">· 24-72h</span></div>
+            <div style="font-family:var(--f-data);font-size:9.5px;color:var(--good);font-weight:700;letter-spacing:.4px;margin-top:2px;">✓ HEALED MAY 5</div>
+          </div>
+          <div class="body-prog"><i style="background:var(--good); width:100%;"></i></div>
+          <div class="body-pct" style="color:var(--good);">100%</div>
+        </div>
+        <div class="body-row" style="grid-template-columns:14px 1fr 70px 56px;">
+          <div class="body-icon done"></div>
+          <div>
+            <div class="body-name">Muscle fibers <span style="color:var(--t3);font-weight:500;font-size:11px;">· 5-10d</span></div>
+            <div style="font-family:var(--f-data);font-size:9.5px;color:var(--good);font-weight:700;letter-spacing:.4px;margin-top:2px;">→ HEALED ~MAY 13 · 4d</div>
+          </div>
+          <div class="body-prog"><i style="background:var(--good); width:90%;"></i></div>
+          <div class="body-pct" style="color:var(--good);">90%</div>
+        </div>
+        <div class="body-row" style="grid-template-columns:14px 1fr 70px 56px;">
+          <div class="body-icon wip"></div>
+          <div>
+            <div class="body-name">Connective <span style="color:var(--t3);font-weight:500;font-size:11px;">· 2-4wk</span></div>
+            <div style="font-family:var(--f-data);font-size:9.5px;color:var(--coach);font-weight:700;letter-spacing:.4px;margin-top:2px;">→ HEALED MAY 17–31 · 8-22d</div>
+          </div>
+          <div class="body-prog"><i style="background:var(--coach); width:42%;"></i></div>
+          <div class="body-pct" style="color:var(--coach);">42%</div>
+        </div>
+        <div class="body-row" style="grid-template-columns:14px 1fr 70px 56px;">
+          <div class="body-icon wip"></div>
+          <div>
+            <div class="body-name">CNS / hormonal <span style="color:var(--t3);font-weight:500;font-size:11px;">· 2-4wk</span></div>
+            <div style="font-family:var(--f-data);font-size:9.5px;color:var(--coach);font-weight:700;letter-spacing:.4px;margin-top:2px;">→ HEALED MAY 17–31 · 8-22d</div>
+          </div>
+          <div class="body-prog"><i style="background:var(--coach); width:55%;"></i></div>
+          <div class="body-pct" style="color:var(--coach);">55%</div>
+        </div>
+        <div class="body-row" style="grid-template-columns:14px 1fr 70px 56px;">
+          <div class="body-icon wip"></div>
+          <div>
+            <div class="body-name">Immune <span style="color:var(--t3);font-weight:500;font-size:11px;">· 1-3wk</span></div>
+            <div style="font-family:var(--f-data);font-size:9.5px;color:var(--coach);font-weight:700;letter-spacing:.4px;margin-top:2px;">→ HEALED MAY 10–24 · 1-15d</div>
+          </div>
+          <div class="body-prog"><i style="background:var(--coach); width:75%;"></i></div>
+          <div class="body-pct" style="color:var(--coach);">75%</div>
+        </div>
+      </div>
+
+      <!-- Quality returns callout -->
+      <div style="padding:10px 12px; background:rgba(39,180,224,.08); border:1px solid rgba(39,180,224,.25); border-radius:6px; margin-top:auto;">
+        <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--coach);font-weight:700;text-transform:uppercase;">Quality work returns</div>
+        <div style="font-family:var(--f-display);font-size:18px;font-weight:600;text-transform:uppercase;line-height:1.1;margin-top:3px;">~ MAY 24 · 15 days</div>
+        <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t3);font-weight:600;letter-spacing:.4px;margin-top:3px;">when slowest system (connective) hits 100%</div>
+      </div>
+
+      <div class="card-foot">
+        <span style="color:var(--warn);">▲ HARD STRETCH</span>
+        <span>SEE HEALTH →</span>
+      </div>
+    </div>
+
+    <div class="card zones-card span-5">
+      <div class="card-h">
+        <div class="card-l">PACE ZONES · VDOT 49.2 · DANIELS</div>
+        <span class="card-pin blue">DISNEY HALF</span>
+      </div>
+      <div style="font-family:var(--f-display);font-size:14px;font-weight:600;text-transform:uppercase;color:var(--t1);">Anchored on demonstrated peak</div>
+
+      <div class="zones-grid">
+        <div class="zone E"><div class="z">E</div><div class="lab">Easy</div><div class="v">8:55<small style="font-size:.55em;opacity:.5;font-weight:700;">–9:25</small></div></div>
+        <div class="zone M"><div class="z">M</div><div class="lab">Marathon</div><div class="v">7:18</div></div>
+        <div class="zone T"><div class="z">T</div><div class="lab">Threshold</div><div class="v">7:00</div></div>
+        <div class="zone I"><div class="z">I</div><div class="lab">Interval</div><div class="v">6:30</div></div>
+        <div class="zone R"><div class="z">R</div><div class="lab">Rep</div><div class="v">5:55</div></div>
+      </div>
+
+      <!-- 14-day distribution · per-zone bars -->
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--l4);">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--t3);font-weight:700;text-transform:uppercase;">Distribution · 14 days</div>
+          <div style="font-family:var(--f-data);font-size:10.5px;letter-spacing:1.4px;color:var(--good);font-weight:700;">92% EASY / 8% HARD ✓</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:grid;grid-template-columns:88px 1fr 96px;gap:12px;align-items:center;">
+            <div style="font-family:var(--f-data);font-size:11px;color:var(--good);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">EASY</div>
+            <div style="height:10px;background:var(--l3);border-radius:5px;overflow:hidden;"><div style="width:92%;height:100%;background:linear-gradient(90deg,var(--good),rgba(62,189,65,.6));border-radius:5px;"></div></div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;text-align:right;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">14:12<span style="opacity:.5;font-size:.55em;font-weight:700;margin-left:4px;">HR</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:88px 1fr 96px;gap:12px;align-items:center;opacity:.42;">
+            <div style="font-family:var(--f-data);font-size:11px;color:var(--corp);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">MARATHON</div>
+            <div style="height:10px;background:var(--l3);border-radius:5px;"></div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;text-align:right;color:var(--t3);">—</div>
+          </div>
+          <div style="display:grid;grid-template-columns:88px 1fr 96px;gap:12px;align-items:center;">
+            <div style="font-family:var(--f-data);font-size:11px;color:var(--milestone);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">THRESHOLD</div>
+            <div style="height:10px;background:var(--l3);border-radius:5px;overflow:hidden;"><div style="width:5%;height:100%;background:linear-gradient(90deg,var(--milestone),rgba(240,223,71,.6));border-radius:5px;min-width:16px;"></div></div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;text-align:right;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">0:42<span style="opacity:.5;font-size:.55em;font-weight:700;margin-left:4px;">HR</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:88px 1fr 96px;gap:12px;align-items:center;">
+            <div style="font-family:var(--f-data);font-size:11px;color:var(--warn);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">INTERVAL</div>
+            <div style="height:10px;background:var(--l3);border-radius:5px;overflow:hidden;"><div style="width:3%;height:100%;background:linear-gradient(90deg,var(--warn),rgba(252,77,100,.6));border-radius:5px;min-width:12px;"></div></div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;text-align:right;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">0:28<span style="opacity:.5;font-size:.55em;font-weight:700;margin-left:4px;">HR</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:88px 1fr 96px;gap:12px;align-items:center;opacity:.42;">
+            <div style="font-family:var(--f-data);font-size:11px;color:var(--xp);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">REP</div>
+            <div style="height:10px;background:var(--l3);border-radius:5px;"></div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;text-align:right;color:var(--t3);">—</div>
+          </div>
+        </div>
+
+        <div style="font-family:var(--f-data);font-size:10px;color:var(--t2);margin-top:14px;letter-spacing:.4px;font-weight:600;line-height:1.5;">Running <b style="color:var(--good);">92% easy</b> · aiming ≥80% · <b style="color:var(--good);">+12% headroom</b> ✓</div>
+      </div>
+
+      <!-- Race pace context -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; padding-top:12px; margin-top:auto; border-top:1px solid var(--l4); font-family:var(--f-data); font-size:10px; letter-spacing:.6px; color:var(--t2); font-weight:600;">
+        <div>CURRENT FITNESS · <b style="color:var(--good);">7:00/MI</b><br><span style="color:var(--t3);font-size:9px;">FROM DISNEY 1:32 HALF</span></div>
+        <div style="text-align:right;">AFC GOAL · <b style="color:var(--race);">7:15/MI</b><br><span style="color:var(--t3);font-size:9px;">15s/MI HEADROOM</span></div>
+      </div>
+    </div>
+
+    <div class="card vdot-card span-3">
+      <div class="card-h">
+        <div class="lbl">VDOT · AGE-GRADED</div>
+        <span class="card-pin delta-w">FRESH</span>
+      </div>
+      <!-- Hero number — full width -->
+      <div style="margin-top:10px;">
+        <div class="num">49.2</div>
+        <div style="font-family:var(--f-data);font-size:10px;color:rgba(255,255,255,.78);font-weight:700;letter-spacing:.6px;margin-top:8px;">RAW 50.0 · DECAY −0.8 · 6 MO TREND</div>
+        <svg style="width:100%;height:36px;display:block;margin-top:8px;" viewBox="0 0 100 36" preserveAspectRatio="none">
+          <defs><linearGradient id="vdtg" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#fff" stop-opacity=".40"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+          <path d="M 0 28 L 16 26 L 32 23 L 48 20 L 64 17 L 80 13 L 100 10 L 100 36 L 0 36 Z" fill="url(#vdtg)"/>
+          <polyline points="0,28 16,26 32,23 48,20 64,17 80,13 100,10" fill="none" stroke="#fff" stroke-width="1.5" opacity=".88" vector-effect="non-scaling-stroke"/>
+          <circle cx="100" cy="10" r="2.5" fill="#fff"/>
+        </svg>
+      </div>
+
+      <!-- Tier band -->
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.18);">
+        <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:rgba(255,255,255,.65); font-weight:700; text-transform:uppercase; margin-bottom:6px;">
+          <span>NOVICE</span><span>INTERMED</span><span style="color:#fff;">ADV ◀ YOU</span><span>ELITE</span>
+        </div>
+        <div style="position:relative; height:5px; background:rgba(255,255,255,.16); border-radius:3px; overflow:hidden;">
+          <div style="position:absolute; left:50%; top:0; bottom:0; width:34%; background:rgba(255,255,255,.85); border-radius:3px;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:8px; color:rgba(255,255,255,.55); font-weight:700; margin-top:4px;">
+          <span>30</span><span>40</span><span>50</span><span>60</span><span>70</span>
+        </div>
+      </div>
+
+      <!-- Predicted race times -->
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.18);">
+        <div style="font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:rgba(255,255,255,.7); font-weight:700; text-transform:uppercase; margin-bottom:6px;">EQUIVALENT RACE TIMES</div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:4px;">
+          <div style="text-align:center; padding:6px 2px; background:rgba(255,255,255,.10); border-radius:4px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;color:rgba(255,255,255,.6);font-weight:700;letter-spacing:1px;">5K</div>
+            <div style="font-family:var(--f-display);font-size:13px;font-weight:700;line-height:1;margin-top:2px;color:#fff;">19:32</div>
+          </div>
+          <div style="text-align:center; padding:6px 2px; background:rgba(255,255,255,.10); border-radius:4px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;color:rgba(255,255,255,.6);font-weight:700;letter-spacing:1px;">10K</div>
+            <div style="font-family:var(--f-display);font-size:13px;font-weight:700;line-height:1;margin-top:2px;color:#fff;">40:55</div>
+          </div>
+          <div style="text-align:center; padding:6px 2px; background:rgba(255,255,255,.18); border-radius:4px; outline:1px solid rgba(255,255,255,.4);">
+            <div style="font-family:var(--f-data);font-size:8.5px;color:#fff;font-weight:700;letter-spacing:1px;">HM</div>
+            <div style="font-family:var(--f-display);font-size:13px;font-weight:700;line-height:1;margin-top:2px;color:#fff;">1:31</div>
+          </div>
+          <div style="text-align:center; padding:6px 2px; background:rgba(255,255,255,.10); border-radius:4px;">
+            <div style="font-family:var(--f-data);font-size:8.5px;color:rgba(255,255,255,.6);font-weight:700;letter-spacing:1px;">M</div>
+            <div style="font-family:var(--f-display);font-size:13px;font-weight:700;line-height:1;margin-top:2px;color:#fff;">3:11</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="src" style="margin-top:auto; padding-top:10px;">DISNEY HALF · 1:32:00 · 6 MO AGO</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 6 · LOAD (3) · MILEAGE (3) · STREAK (3) · NEXT-NEXT (3) -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <!-- Recent-vs-typical load · larger gauge + 4-week trend -->
+    <div class="card chip-card span-3" style="display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="lbl">RECENT vs TYPICAL LOAD</div>
+        <span class="card-pin green">SWEET SPOT</span>
+      </div>
+
+      <!-- Big gauge + headline number — arc r=40 from (50,50). Boundaries at y=18 → x=50±√(1600-1024)=50±24 → (26,18) & (74,18) -->
+      <div style="display:flex;align-items:center;gap:18px;margin-top:8px;">
+        <svg viewBox="0 0 100 60" style="width:140px;height:84px;flex-shrink:0;">
+          <path d="M 10 50 A 40 40 0 0 1 26 18" fill="none" stroke="#646464" stroke-width="9" stroke-linecap="butt"/>
+          <path d="M 26 18 A 40 40 0 0 1 74 18" fill="none" stroke="#3EBD41" stroke-width="9" stroke-linecap="butt"/>
+          <path d="M 74 18 A 40 40 0 0 1 90 50" fill="none" stroke="#FC4D64" stroke-width="9" stroke-linecap="butt"/>
+          <line x1="50" y1="50" x2="56" y2="18" stroke="#F4F6F8" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="3.5" fill="#F4F6F8"/>
+        </svg>
+        <div style="min-width:0;">
+          <div class="num" style="color:var(--good);font-size:48px;line-height:1;font-variant-numeric:tabular-nums;">1.05</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;margin-top:6px;">0.8–1.2 SAFE</div>
+        </div>
+      </div>
+
+      <!-- 4-week trend sparkline showing how the ratio has moved -->
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--l4);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+          <div style="font-family:var(--f-data);font-size:9px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">4-week trend</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:.8px;color:var(--good);font-weight:700;">▲ HOLDING SWEET SPOT</div>
+        </div>
+        <svg viewBox="0 0 200 38" style="width:100%;height:38px;display:block;" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="acwr-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3EBD41" stop-opacity=".45"/><stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/></linearGradient>
+          </defs>
+          <!-- safe band: 0.8 (y=22) to 1.2 (y=8) -->
+          <rect x="0" y="8" width="200" height="14" fill="rgba(62,189,65,.08)"/>
+          <line x1="0" y1="15" x2="200" y2="15" stroke="rgba(62,189,65,.20)" stroke-width="1" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>
+          <!-- trend line: 0.92, 0.98, 1.02, 1.05 across 4 weeks -->
+          <path d="M 10 18 L 70 14 L 130 11 L 190 9 L 190 38 L 10 38 Z" fill="url(#acwr-fill)"/>
+          <polyline points="10,18 70,14 130,11 190,9" fill="none" stroke="var(--good)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          <circle cx="190" cy="9" r="3.5" fill="var(--good)" stroke="#10131A" stroke-width="1.5"/>
+        </svg>
+        <div style="display:flex;justify-content:space-between;font-family:var(--f-data);font-size:8.5px;letter-spacing:.8px;color:var(--t3);font-weight:700;margin-top:4px;">
+          <span>0.92</span><span>0.98</span><span>1.02</span><span style="color:var(--good);">1.05</span>
+        </div>
+      </div>
+
+      <div class="card-foot" style="margin-top:auto;">
+        <span>LAST 7D vs LAST 28D</span>
+        <span class="delta up">SUSTAINABLE</span>
+      </div>
+    </div>
+
+    <!-- WEEKLY MILES · 4 past + this week + 3 ahead -->
+    <div class="card chip-card span-3" style="display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="lbl">WEEKLY MILES · 4 PAST + 4 AHEAD</div>
+        <span class="card-pin green">↑12% vs 8W AVG</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px;">
+        <div class="num" style="margin:0;color:var(--att);">22<small>MI</small></div>
+        <div style="font-family:var(--f-data);font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.6px;">THIS WK · PROJECTED</div>
+      </div>
+
+      <!-- Bars: 4 past (blue) · NOW (amber) · 3 future (dashed green). Heights scaled to 42mi peak. -->
+      <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;margin-top:14px;height:84px;align-items:end;">
+        <!-- Past 4 -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">28</span>
+          <div style="width:100%;background:linear-gradient(180deg,rgba(0,143,236,.55),rgba(0,143,236,.25));height:67%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t1);">42</span>
+          <div style="width:100%;background:linear-gradient(180deg,var(--corp),rgba(0,143,236,.4));height:100%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">38</span>
+          <div style="width:100%;background:linear-gradient(180deg,rgba(0,143,236,.6),rgba(0,143,236,.3));height:90%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--race);">26</span>
+          <div style="width:100%;background:linear-gradient(180deg,var(--race),rgba(255,87,34,.4));height:62%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <!-- NOW · this week · projected 22mi -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;outline:2px solid var(--att);outline-offset:2px;border-radius:2px;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--att);">22<span style="opacity:.6;font-weight:600;">▶</span></span>
+          <div style="width:100%;background:linear-gradient(180deg,var(--att),rgba(243,173,56,.4));height:52%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <!-- Future 3 -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">17</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:40%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">24</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:57%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">28</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:67%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+      </div>
+      <!-- Date labels -->
+      <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;margin-top:6px;font-family:var(--f-data);font-size:8px;color:var(--t3);font-weight:700;letter-spacing:.3px;text-align:center;">
+        <span>4/6</span><span>4/13</span><span>4/20</span><span style="color:var(--race);">4/27</span><span style="color:var(--att);">5/4</span><span>5/11</span><span>5/18</span><span>5/25</span>
+      </div>
+
+      <div class="card-foot" style="margin-top:auto;">
+        <span>PEAK · APR 13–19 · 42 MI</span>
+        <span class="delta up">RECOVERING</span>
+      </div>
+    </div>
+
+    <!-- Long-run progression — last 6 sundays + next 4 -->
+    <div class="card chip-card span-3" style="display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="lbl">LONG RUN · 6 PAST + 4 AHEAD</div>
+        <span class="card-pin blue">PEAK 14 MI</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px;">
+        <div class="num" style="margin:0;color:var(--att);">5<small>MI</small></div>
+        <div style="font-family:var(--f-data);font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.6px;">SUN MAY 10 · NEXT</div>
+      </div>
+
+      <!-- Bigger bars w/ mile labels above + dates below -->
+      <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-top:14px;height:84px;align-items:end;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">10</span>
+          <div style="width:100%;background:linear-gradient(180deg,rgba(0,143,236,.55),rgba(0,143,236,.25));height:71%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">12</span>
+          <div style="width:100%;background:linear-gradient(180deg,rgba(0,143,236,.6),rgba(0,143,236,.3));height:86%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--race);">26</span>
+          <div style="width:100%;background:linear-gradient(180deg,var(--race),rgba(255,87,34,.4));height:100%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">2</span>
+          <div style="width:100%;background:rgba(244,246,248,.10);height:14%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--t3);">2</span>
+          <div style="width:100%;background:rgba(244,246,248,.10);height:14%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;outline:2px solid var(--att);outline-offset:2px;border-radius:2px;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--att);">5<span style="opacity:.6;font-weight:600;">▶</span></span>
+          <div style="width:100%;background:linear-gradient(180deg,var(--att),rgba(243,173,56,.5));height:36%;border-radius:2px 2px 0 0;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">7</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:50%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">9</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:64%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">11</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:79%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;">
+          <span style="font-family:var(--f-data);font-size:9px;font-weight:700;color:var(--good);">14</span>
+          <div style="width:100%;background:rgba(62,189,65,.30);height:100%;border:1px dashed rgba(62,189,65,.5);border-radius:2px 2px 0 0;box-sizing:border-box;"></div>
+        </div>
+      </div>
+      <!-- Date labels strip -->
+      <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-top:6px;font-family:var(--f-data);font-size:8px;color:var(--t3);font-weight:700;letter-spacing:.3px;text-align:center;">
+        <span>3/22</span><span>3/29</span><span style="color:var(--race);">4/26</span><span>5/3</span><span>5/3</span><span style="color:var(--att);">5/10</span><span>5/17</span><span>5/24</span><span>5/31</span><span>6/7</span>
+      </div>
+
+      <div class="card-foot" style="margin-top:auto;">
+        <span>RECOVERING → BUILDING</span>
+        <span class="delta up">+2 MI/WK</span>
+      </div>
+    </div>
+
+    <!-- Next race after AFC — tight card matching the others' density -->
+    <div class="card chip-card span-3" style="display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="lbl">UP NEXT · B-RACE</div>
+        <span class="card-pin race">44D</span>
+      </div>
+
+      <div style="font-family:var(--f-display);font-size:26px;font-weight:700;text-transform:uppercase;letter-spacing:-.01em;line-height:1;margin-top:4px;">Mission Bay 10K</div>
+      <div style="font-family:var(--f-data);font-size:10px;color:var(--t3);letter-spacing:1px;font-weight:700;margin-top:5px;text-transform:uppercase;">SUN JUN 22 · SAN DIEGO · 6.2 MI</div>
+
+      <!-- Goal + current fitness prediction — works for any race regardless of prior history -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--l4);">
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Goal</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;color:var(--race);font-variant-numeric:tabular-nums;">42:00</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:5px;">6:46/MI</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Fitness predicts</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;color:var(--t1);font-variant-numeric:tabular-nums;">41:32</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--good);font-weight:700;letter-spacing:.4px;margin-top:5px;">+28s HEADROOM</div>
+        </div>
+      </div>
+
+      <div class="card-foot" style="margin-top:auto;">
+        <span>TUNE-UP FOR AFC</span>
+        <span class="delta up">▲ ON TRACK</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ROW 7 · YEAR HEAT (8) · YTD (4)          -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+
+    <div class="card span-8" style="padding:18px 22px;">
+      <div class="card-h">
+        <div class="card-l">YEAR IN RUNNING · 2026</div>
+        <div style="display:flex;gap:18px;font-family:var(--f-data);font-size:11px;letter-spacing:1.4px;font-weight:700;text-transform:uppercase;">
+          <span><b style="color:var(--t0);font-size:13px;">87</b> RUNS</span>
+          <span><b style="color:var(--t0);font-size:13px;">62</b> DAYS</span>
+          <span><b style="color:var(--t0);font-size:13px;">78</b> HR</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(52,1fr);gap:2px;margin-top:8px;">
+        <!-- Weeks 1-6 · Jan-mid Feb · base building -->
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.10);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.18);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.25);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.32);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.40);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.48);border-radius:2px;"></div>
+        <!-- Week 7 · 5K PR FEB 14 · race week -->
+        <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+        <!-- Weeks 8-11 · ramp -->
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.62);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.50);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+        <!-- Week 12 · 10K PR MAR 22 · race week -->
+        <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+        <!-- Weeks 13-16 · build to Big Sur -->
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.68);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.75);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.82);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.88);border-radius:2px;"></div>
+        <!-- Week 17 · BIG SUR APR 27 · marathon PR · race week -->
+        <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+        <!-- Week 18 · SOMBRERO MAY 3 · race week -->
+        <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+        <!-- Week 19 · TODAY (May 4-10 · recovery) -->
+        <div style="aspect-ratio:1;background:rgba(62,189,65,.32);border-radius:2px;outline:2px solid var(--att);outline-offset:1px;"></div>
+        <!-- Weeks 20-24 · future planned recovery + base -->
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <!-- Week 25 · MISSION BAY 10K JUN 22 · upcoming B-race -->
+        <div style="aspect-ratio:1;background:rgba(255,87,34,.18);border:1px dashed var(--race);border-radius:2px;box-sizing:border-box;"></div>
+        <!-- Weeks 26-32 · build to AFC -->
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <!-- Week 33 · AFC HALF AUG 16 · upcoming A-race -->
+        <div style="aspect-ratio:1;background:rgba(255,87,34,.18);border:1px dashed var(--race);border-radius:2px;box-sizing:border-box;"></div>
+        <!-- Weeks 34-52 · post-AFC + Q4 -->
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:var(--f-data);font-size:9px;letter-spacing:1.2px;color:var(--t3);font-weight:700;margin-top:8px;">
+        <span>JAN</span><span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span><span>AUG</span><span>SEP</span><span>OCT</span><span>NOV</span><span>DEC</span>
+      </div>
+
+      <!-- Monthly mileage bars — 12 months with values + month labels -->
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--l4);">
+        <div style="margin-bottom:12px;">
+          <div class="card-l">MONTHLY VOLUME · 2026</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(12,1fr); gap:5px; align-items:end; height:88px;">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+            <span style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);">52</span>
+            <div style="width:100%; background:linear-gradient(180deg,rgba(62,189,65,.6),rgba(62,189,65,.3)); height:36%; border-radius:3px 3px 0 0; min-height:8px;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+            <span style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);">98</span>
+            <div style="width:100%; background:linear-gradient(180deg,rgba(62,189,65,.7),rgba(62,189,65,.35)); height:68%; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+            <span style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);">120</span>
+            <div style="width:100%; background:linear-gradient(180deg,rgba(62,189,65,.85),rgba(62,189,65,.4)); height:84%; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; position:relative;">
+            <span style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);">142</span>
+            <div style="width:100%; background:linear-gradient(180deg,rgba(62,189,65,.95),rgba(62,189,65,.5)); height:100%; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+            <span style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--corp);">14<span style="opacity:.5;font-size:.85em;">▶</span></span>
+            <div style="width:100%; background:linear-gradient(180deg,rgba(0,143,236,.7),rgba(0,143,236,.35)); height:14%; border-radius:3px 3px 0 0; min-height:6px; outline:1px dashed rgba(0,143,236,.5); outline-offset:1px;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; opacity:.35;">
+            <span style="font-family:var(--f-data);font-size:9px;color:var(--t3);">—</span>
+            <div style="width:100%; background:var(--l3); height:4%; min-height:4px; border-radius:3px 3px 0 0;"></div>
+          </div>
+        </div>
+        <!-- Month labels strip BELOW the bars -->
+        <div style="display:grid; grid-template-columns:repeat(12,1fr); gap:5px; margin-top:6px; padding-top:8px; border-top:1px solid var(--l4);">
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t2); font-weight:700; text-transform:uppercase;">JAN</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t2); font-weight:700; text-transform:uppercase;">FEB</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t2); font-weight:700; text-transform:uppercase;">MAR</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t2); font-weight:700; text-transform:uppercase;">APR</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--corp); font-weight:700; text-transform:uppercase;">MAY</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">JUN</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">JUL</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">AUG</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">SEP</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">OCT</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">NOV</div>
+          <div style="text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase;">DEC</div>
+        </div>
+      </div>
+
+      <!-- Year highlights · bests strip — bigger numbers, more breathing room -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px; padding-top:18px; border-top:1px solid var(--l4);">
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--t3);font-weight:700;text-transform:uppercase;">Biggest week</div>
+          <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:6px;">42<span style="font-size:.4em;opacity:.5;font-weight:700;margin-left:7px;">mi</span></div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t2);font-weight:600;letter-spacing:.5px;margin-top:5px;">APR 13–19 · PRE-BIG SUR</div>
+        </div>
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--t3);font-weight:700;text-transform:uppercase;">Longest run</div>
+          <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:6px;color:var(--good);">26.2<span style="font-size:.4em;opacity:.5;font-weight:700;margin-left:7px;">mi</span></div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t2);font-weight:600;letter-spacing:.5px;margin-top:5px;">APR 27 · BIG SUR</div>
+        </div>
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--t3);font-weight:700;text-transform:uppercase;">Races run</div>
+          <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:6px;">5</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t2);font-weight:600;letter-spacing:.5px;margin-top:5px;">1×M · 3×HM · 1×10K</div>
+        </div>
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--t3);font-weight:700;text-transform:uppercase;">Hilliest run</div>
+          <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:6px;">4.2<span style="font-size:.4em;opacity:.5;font-weight:700;margin-left:7px;">k ft</span></div>
+          <div style="font-family:var(--f-data);font-size:9.5px;color:var(--t2);font-weight:600;letter-spacing:.5px;margin-top:5px;">APR 27 · BIG SUR</div>
+        </div>
+      </div>
+
+      <!-- PR shelf — this year's bests, uniform clean tiles -->
+      <div style="margin-top:18px; padding-top:18px; border-top:1px solid var(--l4);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;">
+          <div class="card-l">PERSONAL BESTS · 2026</div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.4px;color:var(--good);font-weight:700;">4 NEW PRs THIS YEAR</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+          <div style="padding:14px 16px;background:var(--l2);border:1px solid var(--l4);border-radius:8px;">
+            <div style="font-family:var(--f-data);font-size:10px;letter-spacing:1.4px;color:var(--t2);font-weight:700;text-transform:uppercase;">5K</div>
+            <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums;">19:48</div>
+            <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:6px;white-space:nowrap;">FEB 14 · <span style="color:var(--good);">−24s</span></div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border:1px solid var(--l4);border-radius:8px;">
+            <div style="font-family:var(--f-data);font-size:10px;letter-spacing:1.4px;color:var(--t2);font-weight:700;text-transform:uppercase;">10K</div>
+            <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums;">41:32</div>
+            <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:6px;white-space:nowrap;">MAR 22 · <span style="color:var(--good);">−36s</span></div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border:1px solid var(--l4);border-radius:8px;">
+            <div style="font-family:var(--f-data);font-size:10px;letter-spacing:1.4px;color:var(--t2);font-weight:700;text-transform:uppercase;">HALF</div>
+            <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums;">1:32:00</div>
+            <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:6px;white-space:nowrap;">DISNEY · <span style="color:var(--good);">−2:18</span></div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border:1px solid var(--l4);border-radius:8px;">
+            <div style="font-family:var(--f-data);font-size:10px;letter-spacing:1.4px;color:var(--t2);font-weight:700;text-transform:uppercase;">MARATHON</div>
+            <div style="font-family:var(--f-display);font-size:36px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums;">3:18:42</div>
+            <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:6px;white-space:nowrap;">BIG SUR APR · <span style="color:var(--good);">−5:29</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card span-4" style="padding:24px 26px;display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l">YTD · 2026</div>
+        <span class="card-pin blue">DAY 129/365</span>
+      </div>
+
+      <!-- Hero: ring shows YEAR ELAPSED · giant number is real miles -->
+      <div style="display:flex;align-items:center;gap:22px;margin-top:18px;">
+        <svg viewBox="0 0 100 100" style="width:128px;height:128px;flex-shrink:0;">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#212D3F" stroke-width="9"/>
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#008FEC" stroke-width="9" stroke-dasharray="251" stroke-dashoffset="162" transform="rotate(-90 50 50)" stroke-linecap="round"/>
+          <text x="50" y="50" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="24" fill="#F4F6F8">35<tspan font-size="12">%</tspan></text>
+          <text x="50" y="64" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="6.5" fill="#008FEC" letter-spacing="1.2">YR</text>
+        </svg>
+        <div style="min-width:0;">
+          <div style="font-family:var(--f-display);font-weight:700;font-size:72px;letter-spacing:-.02em;line-height:.92;font-variant-numeric:tabular-nums;">503<span style="font-size:.32em;opacity:.5;font-weight:700;margin-left:10px;">mi</span></div>
+          <div style="font-family:var(--f-data);font-size:11px;color:var(--t3);font-weight:700;letter-spacing:.6px;margin-top:8px;">DAY 129 · 35% INTO 2026</div>
+        </div>
+      </div>
+      <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:6px;padding:6px 12px;border-radius:5px;background:rgba(62,189,65,.14);font-family:var(--f-data);font-size:11px;color:var(--good);font-weight:700;letter-spacing:.6px;margin-top:14px;">▲ +22 MI vs 2025 SAME DAY</div>
+
+      <!-- vs LAST YEAR + projection — bigger numbers -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px;padding-top:18px;border-top:1px solid var(--l4);">
+        <div style="padding:14px 14px;background:var(--l2);border-radius:8px;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">vs 2025 SAME DAY</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
+            <div style="font-family:var(--f-display);font-size:34px;font-weight:700;line-height:1;letter-spacing:-.01em;">481</div>
+            <div style="font-family:var(--f-data);font-size:12px;color:var(--good);font-weight:700;letter-spacing:.5px;">+22 ▲</div>
+          </div>
+        </div>
+        <div style="padding:14px 14px;background:var(--l2);border-radius:8px;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">PROJECTED EOY</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
+            <div style="font-family:var(--f-display);font-size:34px;font-weight:700;line-height:1;letter-spacing:-.01em;">1,650</div>
+            <div style="font-family:var(--f-data);font-size:12px;color:var(--good);font-weight:700;letter-spacing:.5px;">+42 ▲</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Year stats grid — 2x2 fun stats -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin-top:18px;padding-top:18px;border-top:1px solid var(--l4);margin-top:auto;">
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Time on feet</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;">78<span style="font-size:.4em;opacity:.5;margin-left:7px;">hr</span></div>
+          <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:4px;">≈ 3.2 DAYS RUNNING</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Elevation gain</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;">8.4<span style="font-size:.4em;opacity:.5;margin-left:7px;">k ft</span></div>
+          <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:4px;">≈ 4× HALF DOME</div>
+        </div>
+        <div>
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Avg pace</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;font-variant-numeric:tabular-nums;">8:21<span style="font-size:.4em;opacity:.5;margin-left:7px;">/mi</span></div>
+          <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:4px;">FROM <span style="color:var(--good);">−12s vs 2025</span></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:var(--f-data);font-size:9.5px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">Calories</div>
+          <div style="font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.01em;margin-top:6px;font-variant-numeric:tabular-nums;">62.8<span style="font-size:.4em;opacity:.5;margin-left:7px;">k</span></div>
+          <div style="font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:600;letter-spacing:.4px;margin-top:4px;">≈ 220 BURRITOS</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+</body>
+</html>
