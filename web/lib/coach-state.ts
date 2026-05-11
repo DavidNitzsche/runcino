@@ -159,7 +159,10 @@ export async function gatherCoachState(): Promise<CoachState> {
   const todayISO = todayLAISO();
 
   const [savedRaces, { activities }] = await Promise.all([
-    listRacesDB(),
+    // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
+    // or when the races table is empty. The Coach state still computes from
+    // whatever data is available — empty races just means no A/B race surfaces.
+    listRacesDB().catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
     getCachedActivities().catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
   ]);
 

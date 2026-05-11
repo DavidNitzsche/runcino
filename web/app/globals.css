@@ -132,7 +132,8 @@
   --milestone:#F0DF47;
   --aqua:#27E087;
   --pink:#CD317C;
-  /* --warn, --xp, --race already declared above; keep canonical values aligned
+  --xp:#9013FE;
+  /* --warn, --race already declared above; keep canonical values aligned
      to the May 9 palette */
 
   --f-display:'Oswald', 'Inter', sans-serif;
@@ -1680,3 +1681,164 @@ h1, h2, h3, h4 {
   transition:background .12s, color .12s;
 }
 .rc-filedrop-clear:hover { background:var(--l3); color:var(--t0); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Overview · Week strip — 7 day cells (Mon-Sun)
+   Ported from designs/overview-2026-05-09.html. Each cell has:
+   · 3px left accent strip (color-coded by workout type: easy/quality/rest/etc)
+   · Strip header (DOW left, DATE right) — flex space-between, ONE line
+   · Body (type label hero + miles + pace)
+   · Footer status bar (full-width, color tinted by status)
+   ─────────────────────────────────────────────────────────────────────── */
+
+.day {
+  padding:0;
+  border-radius:8px;
+  background:var(--l2);
+  border:1px solid var(--l4);
+  min-height:138px;
+  display:flex;
+  flex-direction:column;
+  position:relative;
+  overflow:hidden;
+}
+.day::before {
+  content:"";
+  position:absolute; left:0; top:0; bottom:0;
+  width:3px;
+  background:var(--l4);
+}
+.day.t-rest::before     { background:rgba(244,246,248,.08); }
+.day.t-recovery::before { background:var(--good); }
+.day.t-easy::before     { background:var(--corp); }
+.day.t-long::before     { background:var(--corp); }
+.day.t-quality::before  { background:var(--milestone); }
+.day.t-strength::before { background:var(--xp); }
+
+.day.today {
+  border:2px solid var(--att);
+  background:linear-gradient(135deg, rgba(243,173,56,.14), var(--l2));
+  box-shadow:0 0 16px rgba(243,173,56,.18);
+}
+.day.today::before { background:var(--att); width:4px; box-shadow:0 0 8px var(--att); }
+.day.done.t-rest { opacity:.65; }
+.day.done:not(.t-rest) { background:linear-gradient(180deg, rgba(62,189,65,.04), var(--l2)); }
+.day.future { opacity:.92; }
+
+.day-strip {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:9px 11px 6px;
+}
+.day-dow {
+  font-family:var(--f-data);
+  font-size:9px;
+  letter-spacing:1.5px;
+  color:var(--t3);
+  font-weight:700;
+  text-transform:uppercase;
+}
+.day-date {
+  font-family:var(--f-data);
+  font-size:11px;
+  color:var(--t2);
+  font-weight:700;
+  letter-spacing:.6px;
+  font-variant-numeric:tabular-nums;
+}
+.day.today .day-dow  { color:var(--att); }
+.day.today .day-date { color:var(--t0); }
+
+.day-body {
+  padding:0 11px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.day-type {
+  font-family:var(--f-display);
+  font-size:18px;
+  font-weight:600;
+  line-height:1;
+  text-transform:uppercase;
+  color:var(--t0);
+  letter-spacing:-.005em;
+}
+.day.today .day-type    { font-size:20px; color:var(--t0); }
+.day.t-rest .day-type   { font-size:20px; color:var(--t2); font-weight:500; }
+.day.done.t-rest .day-type { color:var(--t3); }
+.day-mi {
+  font-family:var(--f-data);
+  font-size:13px;
+  font-weight:700;
+  color:var(--t1);
+  margin-top:4px;
+  font-variant-numeric:tabular-nums;
+}
+.day-mi small { font-size:.65em; opacity:.5; font-weight:700; margin-left:4px; }
+.day-pace {
+  font-family:var(--f-data);
+  font-size:10px;
+  color:var(--t3);
+  font-weight:600;
+  letter-spacing:.4px;
+}
+
+.day-foot {
+  padding:8px 11px;
+  font-family:var(--f-data);
+  font-size:9.5px;
+  font-weight:700;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:6px;
+  margin-top:auto;
+  border-top:1px solid var(--l4);
+}
+.day-foot.done   { background:rgba(62,189,65,.10);  color:var(--good); border-top-color:rgba(62,189,65,.20); }
+.day-foot.active { background:rgba(243,173,56,.14); color:var(--att);  border-top-color:rgba(243,173,56,.30); }
+.day-foot.future { background:rgba(0,143,236,.06);  color:var(--corp); border-top-color:rgba(0,143,236,.18); }
+.day-foot.rest   { background:transparent;          color:var(--t3); }
+.day-foot .delta { font-family:var(--f-data); font-weight:700; }
+.day-foot .delta.up { color:var(--corp); }
+
+/* ── Pace zones · zone-letter tile (Daniels E/M/T/I/R) ──────────────────
+   Used by the Pace Zones card on /overview. The Coach emits a list of
+   five zones (E,M,T,I,R) and each tile is `.zone .<LETTER>` with three
+   nested children: `.z` (the letter glyph), `.lab` (the verbose label),
+   `.v` (the pace value). The page already applies inline styles for
+   font/size; this rule supplies the color, background, and border that
+   communicate which zone a tile represents. */
+.zone { padding:10px 8px; border-radius:7px; }
+.zone.E { background:rgba(62,189,65,.10);  border:1px solid rgba(62,189,65,.25); }
+.zone.M { background:rgba(0,143,236,.10);  border:1px solid rgba(0,143,236,.30); }
+.zone.T { background:rgba(240,223,71,.10); border:1px solid rgba(240,223,71,.32); }
+.zone.I { background:rgba(252,77,100,.12); border:1px solid rgba(252,77,100,.30); }
+.zone.R { background:rgba(144,19,254,.14); border:1px solid rgba(144,19,254,.32); }
+.zone.E .z { color:var(--good); }
+.zone.M .z { color:var(--corp); }
+.zone.T .z { color:var(--milestone); }
+.zone.I .z { color:var(--warn); }
+.zone.R .z { color:var(--xp); }
+
+/* ── Race countdown · imminent treatment ────────────────────────────────
+   Applied to the Race Countdown Card when the A-race is within 14 days.
+   In the mockup this is `.hero-race.imminent`; here we replicate the
+   surface as a sole-class override on top of the Card's `wash="race"`
+   subtle tint — `.imminent-race` paints the full canonical race
+   gradient surface, used for race-week / race-day. Color resets on
+   nested text are essential because the parent surface is fully
+   saturated and dark-on-dark text inverts to white. */
+.imminent-race {
+  background:linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 50%, var(--race-grad-deep) 100%) !important;
+  border:0 !important;
+  color:#fff;
+}
+.imminent-race::after { background:radial-gradient(circle, rgba(255,255,255,.10), transparent 65%); }
+.imminent-race .card-l { color:rgba(255,255,255,.85) !important; }
+
