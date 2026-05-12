@@ -788,12 +788,14 @@ function SeasonTimelineCard({ data }: { data: RacesData }) {
         </div>
       </CardHeader>
 
-      {/* Timeline track with race dots above + month labels below */}
+      {/* Timeline track with race dots above + month labels below.
+          Bottom padding leaves space for two rows of labels when close
+          race pairs get staggered to avoid horizontal overlap. */}
       <div
         style={{
           position: 'relative',
           marginTop: 28,
-          padding: '48px 0 110px',
+          padding: '48px 0 170px',
         }}
       >
         {/* TODAY marker above the track */}
@@ -850,10 +852,27 @@ function SeasonTimelineCard({ data }: { data: RacesData }) {
           }}
         />
 
-        {/* Race markers · stagger labels above/below if dots are close. */}
-        {s.markers.map((m, i) => (
-          <SeasonMarkerDot key={m.slug} marker={m} stagger={i % 2} />
-        ))}
+        {/* Race markers · only stagger a label DOWN when its dot is
+            within ~4% of the timeline (roughly half a month) of the
+            previous one's, so far-apart markers stay on the close row
+            and close pairs split between two rows. */}
+        {(() => {
+          const sorted = [...s.markers].sort((a, b) => a.pct - b.pct);
+          const COLLISION_PCT = 4;
+          const tier = new Map<string, number>();
+          let lastPct: number | null = null;
+          let lastTier = 0;
+          for (const m of sorted) {
+            const close = lastPct != null && (m.pct - lastPct) < COLLISION_PCT;
+            const t = close ? (lastTier === 0 ? 1 : 0) : 0;
+            tier.set(m.slug, t);
+            lastPct = m.pct;
+            lastTier = t;
+          }
+          return s.markers.map((m) => (
+            <SeasonMarkerDot key={m.slug} marker={m} stagger={tier.get(m.slug) ?? 0} />
+          ));
+        })()}
       </div>
 
       {/* Months strip */}
@@ -941,7 +960,7 @@ function shortRaceName(name: string): string {
   return stripped.length > 14 ? stripped.slice(0, 13) + '…' : stripped;
 }
 
-function SeasonMarkerDot({ marker }: { marker: SeasonMarker; stagger?: number }) {
+function SeasonMarkerDot({ marker, stagger = 0 }: { marker: SeasonMarker; stagger?: number }) {
   const sizeMap: Record<SeasonMarker['tone'], number> = {
     pr: 14,
     past: 10,
@@ -965,10 +984,13 @@ function SeasonMarkerDot({ marker }: { marker: SeasonMarker; stagger?: number })
   const isPR = marker.tone === 'pr';
 
   const dotTop = 60 - Math.floor(size / 2) + 2;
-  // All labels pinned to one row at the same height — no more staggered chaos.
-  // Block has fixed width (90px) so long names don't push their column wider
-  // than short ones, keeping the visual grid uniform.
-  const LABEL_TOP = 82;
+  // Labels live below the timeline track. When a marker is flagged as
+  // colliding with the previous one (stagger=1), drop the label to a
+  // second row so the two name/date stacks don't overlap horizontally.
+  // Block has fixed width (90px) so long names don't push their column
+  // wider than short ones.
+  const ROW_GAP = 56;
+  const LABEL_TOP = 82 + (stagger ? ROW_GAP : 0);
   const BLOCK_W = 90;
 
   return (

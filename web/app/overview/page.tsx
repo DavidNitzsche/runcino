@@ -15,6 +15,7 @@
  * derived from the `OverviewData` object loaded once on mount.
  */
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   Topbar,
@@ -365,7 +366,7 @@ function TodayCard({ data }: { data: OverviewData }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 18 }}>
-        <button className="btn-flat btn-primary">▶ OPEN WORKOUT</button>
+        <Link href={`/workout/${data.today}`} className="btn-flat btn-primary" style={{ textDecoration: 'none' }}>▶ OPEN WORKOUT</Link>
         <button className="btn-flat btn-secondary">SKIP TODAY</button>
       </div>
     </Card>
