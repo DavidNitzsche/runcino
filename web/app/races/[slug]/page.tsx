@@ -25,6 +25,7 @@ import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
 import { EmptyState, Skeleton } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ModalOverlay, Modal, ModalHeader, ModalBody, ModalFooter } from '../../components/Modal';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -1788,161 +1789,131 @@ function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: (
   }
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 100, padding: 24,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        className="tile"
-        style={{ width: '100%', maxWidth: 640, maxHeight: '88vh', overflow: 'auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 18, background: 'var(--color-l1)' }}
-      >
-        <div className="tile-h">
-          <div>
-            <div className="tile-sub">Edit race</div>
-            <div className="tile-lbl">{race.meta.name}</div>
+    <ModalOverlay onClose={busy != null ? undefined : onClose}>
+      <Modal>
+        <ModalHeader
+          eyebrow="EDIT"
+          title={race.meta.name}
+          onClose={busy != null ? undefined : onClose}
+        />
+        <ModalBody>
+          <div className="field">
+            <label className="field-label">Race name</label>
+            <input className="rc-input" value={name} onChange={e => setName(e.target.value)} />
           </div>
-          <button className="btn btn--ghost" onClick={onClose} disabled={busy != null}>Close</button>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
-          <div>
-            <label className="runcino-label">Race name</label>
-            <input className="runcino-input" value={name} onChange={e => setName(e.target.value)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="field">
+              <label className="field-label">Date</label>
+              <input className="rc-input num" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label">Goal time</label>
+              <input className="rc-input num" placeholder="h:mm:ss" value={goal} onChange={e => setGoal(e.target.value)} />
+              <div className="field-help">Coach derives pace zones from this — applies on Save &amp; Rebuild.</div>
+            </div>
           </div>
-          <div>
-            <label className="runcino-label">Date</label>
-            <input className="runcino-input font-data" type="date" value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-        </div>
 
-        {/* Race priority — drives how Coach treats this race in the
-            cycle. A = primary target (full taper, full plan). B =
-            secondary (light taper, treated as hard tempo). C = drop-in
-            (no taper, slotted as a workout). Defaults to A. */}
-        <div>
-          <label className="runcino-label">Race priority</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {([
-              { id: 'A', label: 'A · Primary', desc: 'Full taper · plan anchors here' },
-              { id: 'B', label: 'B · Secondary', desc: 'Light 3-day taper · hard tempo' },
-              { id: 'C', label: 'C · Drop-in', desc: 'No taper · slotted as a workout' },
-            ] as const).map(p => {
-              const active = priority === p.id;
-              const accent = p.id === 'A' ? 'var(--color-attention)' : p.id === 'B' ? 'var(--color-corporate)' : 'var(--color-t2)';
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPriority(p.id)}
-                  style={{
-                    padding: '12px 14px',
-                    textAlign: 'left',
-                    border: `1px solid ${active ? accent : 'var(--color-l4)'}`,
-                    background: active ? `color-mix(in srgb, ${accent} 8%, var(--color-l2))` : 'var(--color-l2)',
-                    borderRadius: 10,
-                    cursor: 'pointer',
-                    color: 'var(--color-t0)',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '-.005em', color: active ? accent : 'var(--color-t0)' }}>{p.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 4, lineHeight: 1.45 }}>{p.desc}</div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <label className="runcino-label">Distance</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-            {EDITABLE_DISTANCES.map(d => {
-              const active = distanceId === d.id;
-              return (
+          <div className="field">
+            <label className="field-label">Distance</label>
+            <div className="chip-group">
+              {EDITABLE_DISTANCES.map(d => (
                 <button
                   key={d.id}
                   type="button"
                   onClick={() => setDistanceId(d.id)}
-                  style={{
-                    padding: '12px 8px',
-                    textAlign: 'center',
-                    border: `1px solid ${active ? 'var(--color-attention)' : 'var(--color-l4)'}`,
-                    background: active ? 'rgba(243,173,59,.10)' : 'var(--color-l2)',
-                    borderRadius: 10,
-                    cursor: 'pointer',
-                    color: 'var(--color-t0)',
-                    fontFamily: 'inherit',
-                  }}
+                  className={`chip-pick${distanceId === d.id ? ' active amber' : ''}`}
                 >
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '-.005em' }}>{d.label}</div>
-                  <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--color-t3)', fontWeight: 700, letterSpacing: '1.2px', marginTop: 4 }}>
-                    {d.mi > 0 ? `${d.mi.toFixed(d.id === '5k' || d.id === '10k' ? 1 : 2)} MI` : 'CUSTOM'}
-                  </div>
+                  {d.label}
+                  {d.mi > 0 && (
+                    <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 10 }}>
+                      {d.mi.toFixed(d.id === '5k' || d.id === '10k' ? 1 : 2)} MI
+                    </span>
+                  )}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14 }}>
-          <div>
-            <label className="runcino-label">Goal time</label>
-            <input className="runcino-input font-data" placeholder="h:mm:ss" value={goal} onChange={e => setGoal(e.target.value)} style={{ fontSize: 18 }} />
+          <div className="field">
+            <label className="field-label">Priority</label>
+            <div className="chip-group">
+              {([
+                { id: 'A', label: 'A · GOAL RACE', tone: 'race' as const, desc: 'Full taper · plan anchors here.' },
+                { id: 'B', label: 'B · TUNE-UP',  tone: 'coach' as const, desc: 'Light 3-day taper · hard tempo.' },
+                { id: 'C', label: 'C · SOCIAL',   tone: 'good' as const,  desc: 'No taper · slotted as a workout.' },
+              ] as const).map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPriority(p.id)}
+                  className={`chip-pick${priority === p.id ? ` active ${p.tone}` : ''}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="field-help">
+              A-race triggers a full periodized build. B is a tune-up inside another build. C is just for fun.
+            </div>
           </div>
-          <div>
-            <label className="runcino-label">Pacing strategy <span style={{ color: 'var(--color-t3)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }}>(applies on rebuild)</span></label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+
+          <div className="field">
+            <label className="field-label">Pacing strategy <span style={{ color: 'var(--t3)', textTransform: 'none', letterSpacing: 0, fontSize: 10, fontWeight: 500 }}>(applies on rebuild)</span></label>
+            <div className="chip-group">
               {([
                 { id: 'even_effort',    name: 'Even effort' },
                 { id: 'even_split',     name: 'Even split' },
-                { id: 'negative_split', name: 'Negative' },
+                { id: 'negative_split', name: 'Negative split' },
               ] as const).map(s => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => setStrategy(s.id)}
-                  style={{
-                    padding: '10px',
-                    border: `1px solid ${strategy === s.id ? 'var(--color-attention)' : 'var(--color-l4)'}`,
-                    background: strategy === s.id ? 'rgba(243,173,59,.08)' : 'var(--color-l2)',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    color: 'var(--color-t0)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
+                  className={`chip-pick${strategy === s.id ? ' active' : ''}`}
                 >{s.name}</button>
               ))}
             </div>
           </div>
-        </div>
 
-        <div className="hint" style={{ background: 'var(--color-l2)', padding: 12, borderRadius: 8, fontSize: 12.5, color: 'var(--color-t2)', lineHeight: 1.55 }}>
-          <b style={{ color: 'var(--color-t1)' }}>Save</b> updates name / date / distance / goal time on the existing plan. <b style={{ color: 'var(--color-t1)' }}>Save & Rebuild</b> additionally re-runs the pacing pipeline with your new goal + strategy + the new pace-floor clamp (no segment more than 60s/mi faster than goal). Race results stay either way.
-        </div>
-
-        {error && (
-          <div style={{ color: 'var(--color-warning)', fontSize: 12, padding: 10, background: 'rgba(252,77,84,.08)', border: '1px solid rgba(252,77,84,.3)', borderRadius: 8 }}>
-            {error}
+          {error && (
+            <div style={{
+              color: 'var(--warn)', fontSize: 12, padding: 10,
+              background: 'rgba(252,77,84,.08)',
+              border: '1px solid rgba(252,77,84,.3)',
+              borderRadius: 8,
+              marginTop: 6,
+            }}>
+              {error}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter split>
+          <div className="foot-meta">
+            ▲ <b>Save</b> updates meta · <b>Save &amp; Rebuild</b> re-runs the pacing pipeline.
           </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <button className="btn btn--ghost" onClick={onClose} disabled={busy != null}>Cancel</button>
-          <button className="btn" onClick={() => save(false)} disabled={busy != null}>
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn btn--primary" onClick={() => save(true)} disabled={busy != null}>
-            {busy === 'rebuild' ? 'Rebuilding plan…' : '↻ Save & Rebuild plan'}
-          </button>
-        </div>
-      </div>
-    </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              disabled={busy != null}
+            >Cancel</button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => save(false)}
+              disabled={busy != null}
+            >{busy === 'save' ? 'Saving…' : 'Save'}</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => save(true)}
+              disabled={busy != null}
+            >{busy === 'rebuild' ? 'Rebuilding…' : '↻ Save & Rebuild'}</button>
+          </div>
+        </ModalFooter>
+      </Modal>
+    </ModalOverlay>
   );
 }
