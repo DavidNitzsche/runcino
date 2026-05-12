@@ -8,7 +8,7 @@ import Link from 'next/link';
 type NavKey = 'overview' | 'training' | 'races' | 'health' | 'log' | 'profile';
 
 const TABS: Array<{ key: NavKey; href: string; label: string; pill?: string }> = [
-  { key: 'overview', href: '/',          label: 'Overview' },
+  { key: 'overview', href: '/overview',  label: 'Overview' },
   { key: 'training', href: '/training',  label: 'Training' },
   { key: 'races',    href: '/races',     label: 'Races' },
   { key: 'health',   href: '/health',    label: 'Health' },
