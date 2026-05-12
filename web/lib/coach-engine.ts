@@ -26,6 +26,7 @@ import {
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
   HEAVY_BLOCK_REST_DAYS, HARD_EFFORT_HR_DEFAULT_BPM,
 } from './coach-principles';
+const MS_PER_DAY = 86_400_000;
 import {
   type RunWorkoutType, type RunPrescription,
   defaultByDow, recovery, generalAerobic, easyWithStrides, mediumLong,
@@ -118,23 +119,34 @@ export function coachDaily(state: CoachState): CoachToday {
 
 /* ── Mode ───────────────────────────────────────────────────── */
 function decideMode(state: CoachState): 'race' | 'base' {
-  return state.races.nextA && state.races.inWindow.some(r => r.priority === 'A') ? 'race' : 'base';
+  // Race mode whenever there's a future A-priority race on the calendar.
+  // The legacy gate also required the race to be inside `inWindow` (a
+  // distance-aware build window — 84 days for HM, 112 for marathon),
+  // which made a goal race outside that window invisible to the engine
+  // and dropped the runner into base mode. Combined with a stuck
+  // `heavyBlockSuspected` flag in `advanceState`, that produced an
+  // all-REST plan past the recovery window. The phase logic
+  // (raceSubPhase) already maps far-out daysAway to the 'BASE' phase,
+  // so we don't need a secondary gate here — having an A-race is
+  // sufficient signal that we're in race mode.
+  return state.races.nextA ? 'race' : 'base';
 }
 
 /* ── Phase ──────────────────────────────────────────────────── */
 function decidePhase(state: CoachState, mode: 'race' | 'base'): Phase {
+  // POST_RACE overrides BOTH modes — recovery from a recent race takes
+  // priority over race-week prep for the next race. A marathon
+  // contributes 26 days of recovery window, a half 14, a 10K 7. So a
+  // marathon 21 days ago keeps the runner in POST_RACE even though the
+  // next-A race is 96 days out. Without this, a runner with a marathon
+  // 9 days ago AND a goal race on the calendar would get full BASE
+  // training the day after the marathon — clearly wrong.
+  if (state.recoveryWindowEndsISO && state.now <= state.recoveryWindowEndsISO) {
+    return 'POST_RACE';
+  }
   // Race mode → sub-phase by days-to-A.
   if (mode === 'race' && state.races.nextA) {
     return raceSubPhase(state.races.nextA.daysAway, state.races.nextA.distanceMi) as RaceSubPhase;
-  }
-  // Base mode — POST_RACE while ANY recent race's distance-aware
-  // recovery window is still open. A marathon contributes 26 days,
-  // a half 14, a 10K 7. So a marathon 21 days ago still qualifies
-  // as POST_RACE even though the previous "14 day" rule would have
-  // closed it. Stacking races (marathon + half within 14 days) keeps
-  // the phase active until the LATEST window closes.
-  if (state.recoveryWindowEndsISO && state.now <= state.recoveryWindowEndsISO) {
-    return 'POST_RACE';
   }
   if (state.flags.rebuildAfterBreak) return 'REBUILD';
   return 'BASE_MAINTENANCE';
@@ -585,7 +597,13 @@ function enforceWeekStreakCap(days: CoachToday['weekShape'], weeklyAvg4w: number
  *  state.now bumps forward, every recent race's daysAgo grows by N,
  *  and the next-A race's daysAway shrinks by N. Lets postRaceWorkout
  *  (graduated by daysAgo) and TAPER overrides (by daysAway) produce
- *  the right answer for a future day without mutating real state. */
+ *  the right answer for a future day without mutating real state.
+ *
+ *  Also decays `flags.heavyBlockSuspected` once the simulated day is
+ *  past the recovery window + HEAVY_BLOCK_REST_DAYS buffer. Without
+ *  this decay, a stuck heavy-block flag combined with BASE_MAINTENANCE
+ *  causes the engine to prescribe REST for every future day forever
+ *  (pickRun line "BASE_MAINTENANCE && heavyBlockSuspected → rest"). */
 function advanceState(state: CoachState, daysOffset: number): CoachState {
   if (daysOffset === 0) return state;
   const advancedNow = (() => {
@@ -593,6 +611,17 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
     d.setUTCDate(d.getUTCDate() + daysOffset);
     return d.toISOString().slice(0, 10);
   })();
+  // Decay heavy-block flag once we're past the recovery window plus
+  // the heavy-block reduced-volume window (doc §13.3). Beyond that the
+  // flag has no remaining grounding — both the marathon-in-14d and the
+  // races-in-21d criteria have aged out.
+  let heavyBlockSuspected = state.flags.heavyBlockSuspected;
+  if (heavyBlockSuspected && state.recoveryWindowEndsISO) {
+    const windowEnd = Date.parse(state.recoveryWindowEndsISO + 'T12:00:00Z');
+    const advancedTs = Date.parse(advancedNow + 'T12:00:00Z');
+    const daysPastWindow = Math.round((advancedTs - windowEnd) / MS_PER_DAY);
+    if (daysPastWindow > HEAVY_BLOCK_REST_DAYS) heavyBlockSuspected = false;
+  }
   return {
     ...state,
     now: advancedNow,
@@ -602,7 +631,9 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
       nextA: state.races.nextA
         ? { ...state.races.nextA, daysAway: state.races.nextA.daysAway - daysOffset }
         : null,
+      inWindow: state.races.inWindow.map(r => ({ ...r, daysAway: r.daysAway - daysOffset })),
     },
+    flags: { ...state.flags, heavyBlockSuspected },
   };
 }
 
