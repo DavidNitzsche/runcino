@@ -307,6 +307,22 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // K2-2: Cratered-volume gate. When last7Mi has dropped to <70% of
+  // weeklyAvg4w (skipped runs / illness / heat / travel) and we're
+  // not also rebuilding from a long break, the engine treats the
+  // runner as recovering from disruption. Suppress quality; the easy
+  // and long slots are already scaled down via isCrateredVolume() in
+  // baseEasyMi / longRunTarget. Don't try to make up the missed
+  // mileage — Research/00a §"Volume progression rules": "5-15% per
+  // cycle" + 10% rule (Research/05 §1.4 "Return-to-Volume Guidelines").
+  // ─────────────────────────────────────────────────────────────
+  if (isCrateredVolume(state)) {
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+
   // Aerobic foundation gate — Research/00a §"Aerobic Base Development"
   // and §"Volume Guidelines by Experience and Distance": a runner
   // averaging <20 mpw who has no quality history yet ("Beginner" tier
@@ -499,6 +515,24 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
     // Spread over 4 days/week (rebuild frequency, with 3 rest days).
     return Math.max(1.5, wkAvg / 4 * 0.9);
   }
+  // ─────────────────────────────────────────────────────────────
+  // Crater / disruption guard — Research/00a §"Volume progression
+  // rules": "5-15% per training cycle for trained athletes" + the
+  // "10% rule" (Research/05 §1.4 "Return-to-Volume Guidelines":
+  // "weekly mileage +≤10%/week" as a safety margin). When last7Mi has
+  // cratered to <70% of weeklyAvg4w (skipped runs, illness, heat,
+  // life event) AND we're not also in the rebuild path, the next
+  // week ramps from last7Mi × 1.10 — NOT from weeklyAvg4w. Don't try
+  // to "make up" the missed mileage; the body is recovering from
+  // disruption.
+  // ─────────────────────────────────────────────────────────────
+  if (isCrateredVolume(state)) {
+    // 1.10× last7Mi → next week target. Divide over ~5 active days
+    // (one rest day, one long, plus 3-4 easy). Floor at 2mi (still a
+    // real easy run, just short).
+    const targetWeek = state.volume.last7Mi * 1.10;
+    return Math.max(2, Math.min(targetWeek / 5, 8));
+  }
   const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
   // Higher-volume phases stack 2 quality + 1 long onto the easy days,
   // so the easy slot has to be tighter or the week blows past the
@@ -522,6 +556,26 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
   return Math.max(3, Math.min(dailyShare, 12));
 }
 
+/** Crater detector — last7Mi has dropped well below the 4-week baseline
+ *  and the 4-week baseline is real (>10mi, so we're not flagging a
+ *  runner who always logs 5 mpw). The threshold matches the "missed 2-3
+ *  planned runs out of 6" signal: last7Mi <70% of weeklyAvg4w. This is
+ *  the "skipped runs / illness / heat / travel" disruption signal that
+ *  adaptive planning must read. We exempt the legitimate REBUILD path
+ *  (low baseline + flag) since that's already handled with its own ramp.
+ *
+ *  @research Research/00a-distance-running-training.md §"Volume
+ *            progression rules" (10% rule) + Research/05-injury-return-
+ *            protocols.md §1.4 "Return-to-Volume Guidelines".
+ */
+function isCrateredVolume(state: CoachState): boolean {
+  // Already handled by the dedicated REBUILD branch.
+  if (state.volume.weeklyAvg4w < 8) return false;
+  // Need a meaningful baseline to detect a "crater" against.
+  if (state.volume.weeklyAvg4w < 10) return false;
+  return state.volume.last7Mi < state.volume.weeklyAvg4w * 0.7;
+}
+
 /** Long-run target — capped at 110% of longest run in last 30 days
  *  (single-session-spike rule, doc §13.1). PEAK targets a slight
  *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%.
@@ -535,6 +589,17 @@ function longRunTarget(state: CoachState, phase: Phase): number {
   if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
     return Math.max(2, wkAvg * 0.30);
+  }
+  // Crater-aware long-run cap. Research/00a §"Volume progression rules":
+  // long run ≤25-30% of weekly volume. After a crater (last7Mi <70% of
+  // weeklyAvg4w), planning from the cratered week — not the pre-crater
+  // average — keeps the long under the 30% of the realistic recovery
+  // budget. Match the cratered-easy ramp (~1.10 × last7Mi target week)
+  // and cap the long at ~30% of it.
+  if (isCrateredVolume(state)) {
+    const targetWeek = state.volume.last7Mi * 1.10;
+    return Math.max(3, Math.min(maxLongRunMi(state), targetWeek * 0.30,
+      state.volume.longestLast28Mi * 1.10));
   }
   // Low-volume aerobic-foundation runner (weeklyAvg4w < 20 mpw, no
   // quality history yet). Research/00a §"Practical base-building":

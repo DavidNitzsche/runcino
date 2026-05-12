@@ -219,13 +219,11 @@ describe('K3 — three skipped runs in a row', () => {
     );
   });
 
-  // GAP — engine plans from weeklyAvg4w, not last7Mi, so after a 3-run
-  // gap the simulated week pushes ~37mi when actual baseline is ~16mi.
-  // Fix lives in coach-engine.baseEasyMi (read last7Mi when drastically
-  // below weeklyAvg4w as a disruption signal). Coordinating with Wave C2
-  // who is currently editing coach-engine.ts — deferring the fix; flagged
-  // in the final report.
-  it.skip('upcoming 7 days are NOT a catch-up week — weekly miles ≤ 1.15× weeklyAvg4w', () => {
+  // FIXED (Wave K2-2) — coach-engine.baseEasyMi + longRunTarget now
+  // detect a crater (last7Mi < 70% × weeklyAvg4w with weeklyAvg4w ≥10)
+  // and plan from last7Mi × 1.10 — the 10% rule per Research/00a
+  // §"Volume progression rules" — not from the pre-crater average.
+  it('upcoming 7 days are NOT a catch-up week — weekly miles ≤ 1.15× weeklyAvg4w', () => {
     const days = simulateRange(STATE_THREE_SKIPPED_RUNS, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     const cap = STATE_THREE_SKIPPED_RUNS.volume.weeklyAvg4w * 1.15;
@@ -366,11 +364,10 @@ describe('K6 — heatwave / disruption', () => {
     expect(adj.answer.changed).toBe(true);
   });
 
-  // GAP — same root cause as K3: engine plans from weeklyAvg4w. A
-  // heat-disrupted runner with last7Mi at 60% of weeklyAvg4w gets a
-  // ~115% catch-up week. Fix is the same disruption-aware ramp in
-  // coach-engine.baseEasyMi (read last7Mi when far below weeklyAvg4w).
-  it.skip('upcoming-week mileage does not snap back to weeklyAvg4w — engine accepts the lower baseline', () => {
+  // FIXED (Wave K2-2) — same crater-aware ramp covers the heatwave
+  // disruption pattern. last7Mi at 60% of weeklyAvg4w triggers the
+  // crater guard; the engine plans from last7Mi × 1.10.
+  it('upcoming-week mileage does not snap back to weeklyAvg4w — engine accepts the lower baseline', () => {
     const days = simulateRange(STATE_HEATWAVE_DISRUPTION, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     expect(wkMi).toBeLessThanOrEqual(STATE_HEATWAVE_DISRUPTION.volume.weeklyAvg4w * 1.15);
