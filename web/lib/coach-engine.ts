@@ -224,6 +224,30 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return rest('Rest day — week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
   }
 
+  // Aerobic foundation gate — Research/00a §"Aerobic Base Development"
+  // and §"Volume Guidelines by Experience and Distance": a runner
+  // averaging <20 mpw who has no quality history yet ("Beginner" tier
+  // for HM/Marathon, "Recreational competitive" floor for 5K/10K)
+  // builds the aerobic engine FIRST. Daniels §"Practical base-building
+  // rules": "Most base running is easy (75-90% in Z1)" and "One Z2
+  // stimulus minimum" only AFTER continuous easy is re-established.
+  // Returning runners / beginners get easy + strides only until
+  // weekly volume crosses ~20 mpw. Templates encode peak-week shapes
+  // (already-built runners), so for a low-volume runner the template
+  // path prescribes threshold/VO2 inappropriately — gate it out here.
+  // TAPER/POST_RACE/race-day already returned above.
+  const lowVolumeNoQualityHistory =
+    state.volume.weeklyAvg4w < 20 &&
+    state.intensity.hardMi14d <= state.volume.last28Mi * 0.05;
+  if (lowVolumeNoQualityHistory && phase !== 'PEAK' && phase !== 'TAPER') {
+    // Saturday → long_steady (capped by longRunTarget). Sunday/Mon →
+    // recovery (active recovery day). Other days → easy general
+    // aerobic. No threshold, no VO2, no MP-blocks.
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (dow === 0 || dow === 1) return buildPrescriptionFor('recovery', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+
   // Plan-template path (Stage 4): pick the active template for this
   // runner + goal race, classify today's slot in its sample peak week.
   // The template gives the SHAPE of the week (which days are quality,
@@ -391,6 +415,16 @@ function longRunTarget(state: CoachState, phase: Phase): number {
   if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
     return Math.max(2, wkAvg * 0.30);
+  }
+  // Low-volume aerobic-foundation runner (weeklyAvg4w < 20 mpw, no
+  // quality history yet). Research/00a §"Practical base-building":
+  // "Long run grows up to 25-30% of weekly volume". An 8mi long run
+  // on 8 mpw is 100% of weekly — clearly wrong. Cap to ~30% of recent
+  // weekly volume here too, ignoring the generic 8mi floor.
+  if (state.volume.weeklyAvg4w < 20 &&
+      state.intensity.hardMi14d <= state.volume.last28Mi * 0.05) {
+    const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
+    return Math.max(3, Math.min(maxLongRunMi(state), wkAvg * 0.30));
   }
   const cap = maxLongRunMi(state);
   const peakLast = state.volume.longestLast28Mi;

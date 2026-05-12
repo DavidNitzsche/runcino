@@ -27,6 +27,8 @@ import type {
   WorkoutPrescription,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 
 interface OverviewApiOk {
   ok: true;
@@ -39,6 +41,10 @@ interface OverviewApiOk {
   weekDeltas: CoachDecision<WeekDeltasReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   raceFitnessB: CoachDecision<RaceFitnessPrediction> | null;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. Six signals: strava / checkin / vdotAnchor / profile /
+   *  raceCal / healthkit. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface OverviewApiErr {
@@ -82,6 +88,8 @@ export async function GET(): Promise<Response> {
       ? await callRacePrediction(today, state, nextB)
       : null;
 
+    const freshness = await gatherFreshness({ state });
+
     const body: OverviewApiOk = {
       ok: true,
       today,
@@ -93,6 +101,7 @@ export async function GET(): Promise<Response> {
       weekDeltas,
       raceFitnessA,
       raceFitnessB,
+      freshness,
     };
     return Response.json(body);
   } catch (e) {
