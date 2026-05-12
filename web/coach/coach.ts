@@ -919,9 +919,15 @@ class CoachImpl implements Coach {
     const planned = [0, 0, 6.7, 0.5, 7.4, 3.0, 5.0]; // mockup-derived
     const actual: Array<number | null> = [0, 0, 11.4, 0.5, 12.8, null, null];
 
+    const todayISO = input.today;
     const days: DayDelta[] = dayNames.map((label, i) => {
       const d = new Date(monday); d.setUTCDate(d.getUTCDate() + i);
-      const a = actual[i];
+      const dateISO = d.toISOString().slice(0, 10);
+      // Future days never have actuals — null out the stub array's
+      // values for any day past today (the mockup's hard-coded
+      // numbers leak into future days when the calendar moves).
+      const isFuture = dateISO > todayISO;
+      const a = isFuture ? null : actual[i];
       const p = planned[i];
       const delta = a == null ? null : a - p;
       let pin: string | null = null;
@@ -932,7 +938,7 @@ class CoachImpl implements Coach {
         else { pin = `${delta.toFixed(1)} vs plan`; severity = 'warn'; }
       }
       return {
-        dateISO: d.toISOString().slice(0, 10),
+        dateISO,
         dayLabel: label,
         plannedMi: p,
         actualMi: a,

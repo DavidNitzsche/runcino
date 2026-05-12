@@ -161,24 +161,11 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
       <GreetId eyebrow={greetEyebrow} title={profile.name.toUpperCase()} />
       <GreetState>
         <GreetTile
-          variant="coach"
-          eyebrow="PHASE"
-          value={phase.toUpperCase()}
-          delta={phaseDelta}
-        />
-        <GreetTile
-          variant="race"
-          eyebrow="A-RACE COUNTDOWN"
-          value={daysTo != null ? String(daysTo) : '—'}
-          unit={daysTo != null ? 'D' : undefined}
-          delta={aRaceDate ? `${aRaceName.toUpperCase()} · ${formatDateLabel(aRaceDate, true)}` : 'NONE SET'}
-          deltaColor="var(--race)"
-        />
-        <GreetTile
-          eyebrow="THIS WEEK"
-          value={week.loggedWeekMi.toFixed(1)}
+          variant="amber"
+          eyebrow="TODAY"
+          value={todayDist}
           unit="MI"
-          delta={`${weekDeltaLabel} · ${countLoggedRuns(week.days)}/${week.days.filter((d) => d.plannedMi > 0).length} LOGGED`}
+          delta={todayPace.toUpperCase()}
         />
         <GreetTile
           variant={readinessVariant}
@@ -189,11 +176,24 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
           deltaColor={readinessLevel === 'green' ? 'var(--good)' : undefined}
         />
         <GreetTile
-          variant="amber"
-          eyebrow="TODAY"
-          value={todayDist}
+          eyebrow="THIS WEEK"
+          value={week.loggedWeekMi.toFixed(1)}
           unit="MI"
-          delta={todayPace.toUpperCase()}
+          delta={`${weekDeltaLabel} · ${countLoggedRuns(week.days)}/${week.days.filter((d) => d.plannedMi > 0).length} LOGGED`}
+        />
+        <GreetTile
+          variant="coach"
+          eyebrow="PHASE"
+          value={phase.toUpperCase()}
+          delta={phaseDelta}
+        />
+        <GreetTile
+          variant="race"
+          eyebrow="A-RACE"
+          value={daysTo != null ? String(daysTo) : '—'}
+          unit={daysTo != null ? 'D' : undefined}
+          delta={aRaceDate ? `${aRaceName.toUpperCase()} · ${formatDateLabel(aRaceDate, true)}` : 'NONE SET'}
+          deltaColor="var(--race)"
         />
       </GreetState>
     </Greet>
@@ -935,7 +935,10 @@ function DayCell({
 }) {
   const isToday = day.dateISO === todayISO;
   const isPast = day.dateISO < todayISO;
-  const isDone = day.actualMi != null && day.actualMi > 0;
+  // DONE only counts when the day is today or behind us. Without this
+  // gate, a stub or stale value on a future day's actualMi was rendering
+  // a green DONE pill for a workout that hasn't happened yet.
+  const isDone = (isPast || isToday) && day.actualMi != null && day.actualMi > 0;
   const isRest = day.plannedMi === 0 && day.actualMi == null;
 
   // Tag color class.
@@ -965,7 +968,9 @@ function DayCell({
     ? 'Easy long'
     : 'Easy';
 
-  const miles = day.actualMi ?? day.plannedMi;
+  // Future days always show plannedMi (what they'll run), never actualMi
+  // (which by definition shouldn't exist yet).
+  const miles = (isPast || isToday) ? (day.actualMi ?? day.plannedMi) : day.plannedMi;
   const showMiles = miles > 0;
 
   return (
