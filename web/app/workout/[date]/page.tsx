@@ -20,7 +20,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
     <>
       <Caption left="Runcino · workout" right={`WORKOUT · ${date}`} />
       <div className="stage">
-        <Topbar activeTab="training" back={{ href: '/training', label: 'BACK TO TRAINING' }} clock={<TopbarClock />} />
+        <Topbar activeTab="training" clock={<TopbarClock />} />
         <div className="body">
 
           {/* Breadcrumb */}

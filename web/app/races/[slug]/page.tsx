@@ -112,7 +112,7 @@ export default function RaceDetailPage() {
       <>
         <Caption left="Runcino · races" right="LOADING…" />
         <div className="stage">
-          <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
+          <Topbar activeTab="races" clock={<TopbarClock />} />
           <div className="body">
             <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
               <div className="card" style={{ gridColumn: 'span 12' }}>
@@ -131,7 +131,7 @@ export default function RaceDetailPage() {
       <>
         <Caption left="Runcino · races" right="NOT FOUND" />
         <div className="stage">
-          <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
+          <Topbar activeTab="races" clock={<TopbarClock />} />
           <div className="body">
             <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
               <div className="card" style={{ gridColumn: 'span 12' }}>
@@ -211,9 +211,14 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     <>
       <Caption left={`Runcino · ${race.meta.name}`} right={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`} />
       <div className="stage">
-        <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
+        <Topbar activeTab="races" clock={<TopbarClock />} />
         <div className="body">
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <Link href="/races" style={{
+              fontFamily: 'var(--f-data)', fontSize: 11, letterSpacing: '.12em',
+              textTransform: 'uppercase', color: 'var(--t2)', fontWeight: 700,
+              textDecoration: 'none',
+            }}>← ALL RACES</Link>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn btn--ghost" onClick={() => setConfirmingDelete(true)}>Delete</button>

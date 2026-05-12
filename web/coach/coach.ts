@@ -1471,12 +1471,10 @@ class CoachImpl implements Coach {
       : null;
     const slowdownLine = slowdown ? formatSlowdownForBrief(slowdown) : null;
 
-    if (!llmAvailable()) {
-      // Deterministic fallback — keeps the page working without an
-      // ANTHROPIC_API_KEY. Voice stays close but obviously generic.
-      // The slowdown is informational (vs cool baseline), not a
-      // mandate to slow down — the runner's goal usually already
-      // accounts for typical race-day conditions for that course.
+    // Inner helper — the deterministic brief. Used when the LLM is
+    // unavailable (no key) OR when it's available but throws (529
+    // overloaded, network blip, etc). Same voice, just generic.
+    const buildDeterministic = (): CoachDecision<string> => {
       const tempStr = input.weather?.tempF != null
         ? `${Math.round(input.weather.tempF)}°F${input.weather.dewpointF != null ? ` / ${Math.round(input.weather.dewpointF)}°F dewpoint` : ''}`
         : null;
@@ -1518,6 +1516,10 @@ class CoachImpl implements Coach {
         ],
         brain: 'deterministic',
       };
+    };
+
+    if (!llmAvailable()) {
+      return buildDeterministic();
     }
 
     const weatherLine = input.weather
@@ -1559,12 +1561,21 @@ class CoachImpl implements Coach {
       'The brief is what the runner reads over coffee. One short paragraph. Voice rules apply (plain language, no §-numbers in the rationale, no jargon-without-translation). Acknowledge real conditions with the computed slowdown number when one is provided, give pace-band guidance for the opening miles, mention fuel timing, and end with a single line of focus.',
     ].join('\n');
 
-    return callCoachLLM<string>({
-      scope: 'running',
-      userPrompt,
-      answerSchema: 'a single paragraph (3–6 sentences) of race-morning brief in the Coach voice',
-      maxTokens: 600,
-    });
+    try {
+      return await callCoachLLM<string>({
+        scope: 'running',
+        userPrompt,
+        answerSchema: 'a single paragraph (3–6 sentences) of race-morning brief in the Coach voice',
+        maxTokens: 600,
+      });
+    } catch (e) {
+      // LLM hiccup (529 overloaded, network blip, key revoked, etc).
+      // Fall through to the deterministic brief so the page still works.
+      // Logged so the operator can spot a pattern, but the runner just
+      // sees the generic voice — not a raw error.
+      console.warn('[coach.briefRaceMorning] LLM failed, falling back to deterministic:', e instanceof Error ? e.message : e);
+      return buildDeterministic();
+    }
   }
 }
 

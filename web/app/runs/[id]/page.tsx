@@ -261,7 +261,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <Caption left="Runcino · runs" />
       <div className="stage">
-        <Topbar activeTab="log" back={{ href: '/log', label: 'BACK TO LOG' }} clock={<TopbarClock />} />
+        <Topbar activeTab="log" clock={<TopbarClock />} />
         <div className="body">
           {children}
         </div>

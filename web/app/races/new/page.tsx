@@ -381,7 +381,7 @@ export default function NewRacePage() {
     <>
       <Caption left="Runcino · races · new" right="ADD RACE" />
       <div className="stage">
-        <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
+        <Topbar activeTab="races" clock={<TopbarClock />} />
         <div className="body">
 
           {/* ── Header ── */}
