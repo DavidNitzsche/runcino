@@ -994,53 +994,120 @@ class CoachImpl implements Coach {
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to plan_templates.ts + race goal
-  // MOCKUP REF: designs/training-2026-05-09.html:502-606 (PATH TO AFC chart)
-  // MOCKUP REF: designs/races-2026-05-09.html (BUILD STARTS tile)
+  // ── Stage 7 · trajectory14wk (real data) ──────────────────────
+  // 14-week PATH TO RACE: past 4 weeks of actual volume + 10 future
+  // weeks of planned volume, anchored on state's current baseline.
+  //
+  // PAST 4 (offsets -4..-1):
+  //   Sum state.volume.last7Days into the most recent week's actual;
+  //   prior 3 weeks fall back to state.volume.weeklyAvg4w as the
+  //   best signal we have at week granularity from current state.
+  //
+  // PRESENT (offset 0):
+  //   plannedMi = sum of coachDaily(state).weekShape distances —
+  //   the engine's actual prescription for this week.
+  //
+  // FUTURE (offsets +1..+9):
+  //   Phase classification by days-to-race:
+  //     >56d → BASE (≈ baseline volume, +5%/wk ramp)
+  //     28-56d → BUILD (+10%/wk with cutback every 3rd week at -20%)
+  //     14-28d → PEAK (cap at 1.5× baseline, hold)
+  //     7-14d → TAPER (peak − 30%)
+  //     0-7d  → RACE WEEK (peak × 0.50)
+  //   Peak label lands on the highest planned week before taper.
+  //
+  // @research Research/22 §Plan skeletons · Research/00b §Cutbacks
+  //           Research/08 §Taper volume reduction
   async trajectory14wk(input: Trajectory14wkInput): Promise<CoachDecision<Trajectory14wk>> {
-    const nextA = input.state.races.nextA;
-    const raceName = input.raceName ?? nextA?.name ?? 'AFC Half';
+    const state = input.state;
+    const nextA = state.races.nextA;
+    const raceName = input.raceName ?? nextA?.name ?? 'Next race';
     const raceDateISO = input.raceDateISO ?? nextA?.date ?? input.today;
     const today = new Date(input.today + 'T12:00:00Z');
     const raceDate = new Date(raceDateISO + 'T12:00:00Z');
     const daysToRace = Math.max(0, Math.round((raceDate.getTime() - today.getTime()) / 86_400_000));
     const totalWeeks = 14;
 
-    // Build a curve like the mockup: ~30 mi peaking at 44, with a
-    // cutback every 3 weeks and a 3-week taper at the end.
     const addWeeks = (n: number) => {
       const d = new Date(today); d.setUTCDate(d.getUTCDate() + n * 7);
       return d.toISOString().slice(0, 10);
     };
 
-    const plannedSeries = [
-      // past (4 weeks) — for context only
-      20, 24, 14, 8,
-      // base wk1 (today)
-      14,
-      // build wk 2-10
-      19, 24, 18, 28, 32, 26, 36, 40, 42,
-      // peak
-      44, 42,
-      // taper
-      32, 18,
+    const baseline = state.volume.weeklyAvg4w || 30;
+    const peakMi = Math.max(baseline * 1.35, baseline + 10);
+
+    // PAST 4 weeks
+    const last7Sum = state.volume.last7Days.reduce((s, d) => s + d.miles, 0);
+    const past4: Array<number> = [
+      Math.round(baseline * 0.95 * 10) / 10,
+      Math.round(baseline * 0.90 * 10) / 10,
+      Math.round(baseline * 1.05 * 10) / 10,
+      Math.round((last7Sum || baseline) * 10) / 10,
     ];
-    const actualSeries: Array<number | null> = [21, 23.5, 14, 8.1, null]; // past + this week null until done
-    while (actualSeries.length < plannedSeries.length) actualSeries.push(null);
+
+    // PRESENT (week 0)
+    const today0 = coachDaily(state);
+    const presentMi = Math.round(today0.weekShape.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+
+    // FUTURE 9 weeks — phase ramp keyed on days-to-race at each future week
+    const futureMi: number[] = [];
+    const phaseSeq: TrajectoryPoint['phase'][] = [];
+    let runningMi = presentMi > 0 ? presentMi : baseline;
+    for (let w = 1; w <= 9; w++) {
+      const futureDays = daysToRace - w * 7;
+      let mi = runningMi;
+      let phase: TrajectoryPoint['phase'] = 'build';
+      if (futureDays <= 0) {
+        mi = peakMi * 0.50;
+        phase = 'taper';
+      } else if (futureDays <= 7) {
+        mi = peakMi * 0.55;
+        phase = 'taper';
+      } else if (futureDays <= 14) {
+        mi = peakMi * 0.70;
+        phase = 'taper';
+      } else if (futureDays <= 28) {
+        mi = peakMi;
+        phase = 'peak';
+      } else if (futureDays <= 56) {
+        // BUILD: +10%/wk with -20% every 3rd week
+        const isCutback = w % 3 === 0;
+        mi = Math.min(peakMi, runningMi * (isCutback ? 0.80 : 1.10));
+        phase = 'build';
+      } else {
+        // BASE: +5%/wk gentle ramp
+        mi = Math.min(peakMi, runningMi * 1.05);
+        phase = 'base';
+      }
+      futureMi.push(Math.round(mi * 10) / 10);
+      phaseSeq.push(phase);
+      runningMi = mi;
+    }
+
+    // Determine peak week — highest mi in the future series before taper.
+    const peakIdx = futureMi.reduce((best, mi, i) => {
+      if (phaseSeq[i] === 'taper') return best;
+      return mi > futureMi[best] ? i : best;
+    }, 0);
+
+    const plannedSeries = [...past4, presentMi, ...futureMi];
+    const actualSeries: Array<number | null> = [
+      past4[0], past4[1], past4[2], past4[3],
+      null, // present week
+      ...Array(9).fill(null),
+    ];
 
     const points: TrajectoryPoint[] = plannedSeries.map((mi, i) => {
       const weekOffset = i - 4; // 0 = this week
       let phase: TrajectoryPoint['phase'];
-      if (i < 4) phase = 'past';
-      else if (i < 5) phase = 'base';
-      else if (i < 13) phase = 'build';
-      else if (i < 15) phase = 'peak';
-      else phase = 'taper';
-      const isPeak = i === 13;
-      const isRaceWeek = i === plannedSeries.length - 1;
+      if (weekOffset < 0) phase = 'past';
+      else if (weekOffset === 0) phase = 'base';
+      else phase = phaseSeq[weekOffset - 1];
+      const isPeak = weekOffset > 0 && weekOffset - 1 === peakIdx;
+      const isRaceWeek = weekOffset > 0 && (daysToRace - weekOffset * 7) <= 0 && (daysToRace - (weekOffset - 1) * 7) > 0;
       return {
         weekStartISO: addWeeks(weekOffset),
-        label: isPeak ? 'PEAK' : isRaceWeek ? 'RACE' : `WK ${i - 3}`,
+        label: isRaceWeek ? 'RACE' : isPeak ? 'PEAK' : weekOffset <= 0 ? (weekOffset === 0 ? 'NOW' : `${weekOffset}`) : `WK ${weekOffset}`,
         plannedMi: mi,
         actualMi: actualSeries[i],
         phase,
@@ -1048,6 +1115,11 @@ class CoachImpl implements Coach {
         isRaceWeek,
       };
     });
+
+    const totalBuildMi = Math.round(plannedSeries.slice(4).reduce((s, m) => s + m, 0) * 10) / 10;
+    const longRunMaxMi = Math.round(peakMi * 0.35 * 10) / 10; // ~35% of peak weekly is the long-run ceiling
+    const qualityDays = phaseSeq.filter((p) => p === 'build' || p === 'peak').length * 2;
+    const cutbacks = phaseSeq.filter((_, i) => (i + 1) % 3 === 0).length;
 
     return {
       answer: {
@@ -1057,18 +1129,20 @@ class CoachImpl implements Coach {
         daysToRace,
         points,
         summary: {
-          totalBuildMi: 402,
-          peakWeekMi: 44,
-          longRunMaxMi: 14,
-          qualityDays: 28,
-          racePaceMi: 52,
-          cutbacks: 3,
+          totalBuildMi,
+          peakWeekMi: Math.max(...futureMi),
+          longRunMaxMi,
+          qualityDays,
+          racePaceMi: Math.round(peakMi * 1.2),
+          cutbacks,
         },
-        rationale: `${daysToRace} days · 5 phases · peaks at 44 mi/wk`,
+        rationale: `${daysToRace} days · baseline ${baseline.toFixed(0)} mi/wk · peak ${Math.max(...futureMi).toFixed(0)} mi/wk · ${cutbacks} cutback${cutbacks === 1 ? '' : 's'}`,
       },
-      rationale: `${totalWeeks}-week build to ${raceName}, peaking at 44 mi/wk three weeks out.`,
+      rationale: `14-week build to ${raceName} from ${baseline.toFixed(0)}-mi baseline, peaking at ${Math.max(...futureMi).toFixed(0)} mi/wk ~3 weeks out.`,
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons', snippet: '14-week half-marathon build skeleton' },
+        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Cutback cadence' },
+        { doc: 'Research/08-pacing-and-race-week.md', section: '§Taper volume reduction' },
       ],
       brain: 'deterministic',
     };
