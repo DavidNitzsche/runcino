@@ -969,9 +969,19 @@ function DayCell({
     ? 'Easy long'
     : 'Easy';
 
-  // Future days always show plannedMi (what they'll run), never actualMi
-  // (which by definition shouldn't exist yet).
-  const miles = (isPast || isToday) ? (day.actualMi ?? day.plannedMi) : day.plannedMi;
+  // Future days always show plannedMi (what they'll run). Past days show
+  // actualMi when logged. TODAY is special — `actualMi` may be 0 (no run
+  // logged yet today, NOT a rest day), and `0 ?? planned` returns 0 not
+  // planned because nullish-coalesce only catches null. Treat 0 on today
+  // as "not yet logged" so the prescribed work stays prominent.
+  let miles: number;
+  if (isToday) {
+    miles = (day.actualMi != null && day.actualMi > 0) ? day.actualMi : day.plannedMi;
+  } else if (isPast) {
+    miles = day.actualMi ?? day.plannedMi;
+  } else {
+    miles = day.plannedMi;
+  }
   const showMiles = miles > 0;
 
   return (
@@ -983,9 +993,9 @@ function DayCell({
         <span className="day-date">{shortMonthDay(day.dateISO)}</span>
       </div>
       <div className="day-body">
-        <div className="day-type">{typeName}</div>
+        <div className="day-type" style={isToday ? { fontSize: 18, fontWeight: 700 } : undefined}>{typeName}</div>
         {showMiles && (
-          <div className="day-mi">
+          <div className="day-mi" style={isToday ? { fontSize: 22, fontWeight: 700 } : undefined}>
             {miles.toFixed(1)}
             <small>mi</small>
           </div>

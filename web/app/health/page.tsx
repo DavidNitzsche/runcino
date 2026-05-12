@@ -649,8 +649,7 @@ function SliderRow({
 
 function ReadinessCompositeCard({ data }: { data: HealthData }) {
   const r = data.readiness;
-  const agree = data.subjectiveAgreement;
-  const ringRadius = 60;
+  const ringRadius = 78;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const dashOffset = ringCircumference * (1 - r.score / 100);
   const ringColor =
@@ -667,13 +666,13 @@ function ReadinessCompositeCard({ data }: { data: HealthData }) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '130px 1fr',
-          gap: 18,
+          gridTemplateColumns: '180px 1fr',
+          gap: 22,
           alignItems: 'center',
           marginTop: 6,
         }}
       >
-        <svg viewBox="0 0 160 160" style={{ width: 130, height: 130 }}>
+        <svg viewBox="0 0 200 200" style={{ width: 180, height: 180 }}>
           <defs>
             <linearGradient id="readiness-ring" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="#3EBD41" />
@@ -681,42 +680,42 @@ function ReadinessCompositeCard({ data }: { data: HealthData }) {
               <stop offset="100%" stopColor="#7CD97F" />
             </linearGradient>
           </defs>
-          <circle cx="80" cy="80" r={ringRadius} fill="none" stroke="rgba(244,246,248,.06)" strokeWidth="10" />
+          <circle cx="100" cy="100" r={ringRadius} fill="none" stroke="rgba(244,246,248,.06)" strokeWidth="13" />
           <circle
-            cx="80"
-            cy="80"
+            cx="100"
+            cy="100"
             r={ringRadius}
             fill="none"
             stroke="url(#readiness-ring)"
-            strokeWidth="10"
+            strokeWidth="13"
             strokeDasharray={ringCircumference}
             strokeDashoffset={dashOffset}
-            transform="rotate(-90 80 80)"
+            transform="rotate(-90 100 100)"
             strokeLinecap="round"
           />
           <text
-            x="80"
-            y="76"
+            x="100"
+            y="94"
             textAnchor="middle"
             dominantBaseline="middle"
             fontFamily="Oswald"
             fontWeight="700"
-            fontSize="52"
-            letterSpacing="-1"
+            fontSize="76"
+            letterSpacing="-2"
             fill="#F4F6F8"
           >
             {r.score}
           </text>
           <text
-            x="80"
-            y="104"
+            x="100"
+            y="134"
             textAnchor="middle"
             dominantBaseline="middle"
             fontFamily="JetBrains Mono"
             fontWeight="700"
-            fontSize="9"
+            fontSize="11"
             fill={ringColor}
-            letterSpacing="1.6"
+            letterSpacing="1.8"
           >
             / 100
           </text>
@@ -776,22 +775,6 @@ function ReadinessCompositeCard({ data }: { data: HealthData }) {
               );
             })}
           </div>
-        </div>
-      </div>
-
-      {/* Tie-breaker line — Saw 2016 rule made visible. */}
-      <div
-        style={{
-          marginTop: 12,
-          padding: '8px 10px',
-          background: 'rgba(0,143,236,.06)',
-          border: '1px solid rgba(0,143,236,.18)',
-          borderRadius: 6,
-        }}
-      >
-        <div className="t-eyebrow" style={{ color: 'var(--corp)' }}>TIE BREAKER</div>
-        <div className="t-body" style={{ fontSize: 11.5, color: 'var(--t1)', marginTop: 4 }}>
-          {agree.tieBreakerNote}
         </div>
       </div>
 

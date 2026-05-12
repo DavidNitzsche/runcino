@@ -155,7 +155,7 @@
 .mono-sm   { font-family:var(--f-data);    font-size:10px;  font-weight:700; letter-spacing:.6px; }
 
 /* ── STAGE (top-level page container) ─────────────────────────────────── */
-.rc-stage { max-width:1500px; margin:0 auto; padding:24px 26px 60px; }
+.rc-stage { width:100%; padding:24px 26px 60px; }
 
 /* ── TOP BAR ──────────────────────────────────────────────────────────── */
 .topbar {
