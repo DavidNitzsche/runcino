@@ -27,6 +27,9 @@
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
 import { coach } from '../../../coach/coach';
 import { query } from '../../../lib/db';
+import { getProfile } from '../../../lib/profile-store';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 import type {
   CoachDecision,
   BodySystemsReport,

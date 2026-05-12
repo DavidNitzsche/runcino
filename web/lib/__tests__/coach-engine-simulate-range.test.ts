@@ -79,6 +79,7 @@ function makePostRaceState(opts: { inWindow: boolean }): CoachState {
       rebuildAfterBreak: false,
       healthKitAvailable: false,
     },
+    checkin: null,
     // Marathon Apr 27 + 26 days = May 23.
     recoveryWindowEndsISO: '2026-05-23',
   };
