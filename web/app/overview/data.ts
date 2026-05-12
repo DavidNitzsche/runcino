@@ -39,6 +39,10 @@ import {
 import { vdotSnapshot, vdotRow, type VdotSnapshot as VdotLibSnapshot } from '@/lib/vdot';
 import { listRaces, type SavedRace } from '@/lib/storage';
 import { daysUntil } from '@/lib/dates';
+import type { FreshnessMap } from '@/lib/freshness-types';
+import { loadAliveCoachData, type AliveCoachData } from './_alive-coach';
+import type { NarrativeLine } from '@/coach/coach-narrative';
+import type { PathToRaceResult, NextPushesReport } from '@/coach/coach';
 
 // ─────────────────────────────────────────────────────────────────────
 // Public type
@@ -110,6 +114,16 @@ export interface OverviewData {
   longRunStrip: LongRunStrip | null;
   /** Year-in-running heatmap + monthly volume + PRs + facts. */
   year: YearSnapshot;
+  /** Wave J — single sentence the coach says at the top of /overview.
+   *  Null when no priority signal fires (steady state). */
+  narrative: NarrativeLine | null;
+  /** Wave G — Coach-is-watching strip + PathToRace + NextPush payloads.
+   *  Always present; surfaces render empty-state copy when data is
+   *  thin. */
+  aliveCoach: AliveCoachData;
+  /** Wave L — per-signal freshness map driving chip variants on the
+   *  watching strip and elsewhere. */
+  freshness: FreshnessMap;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -368,11 +382,16 @@ interface OverviewApiPayload {
   raceFitnessB: CoachDecision<RaceFitnessPrediction> | null;
   recentAdjustments?: CoachDecision<RecentAdjustmentsReport> | null;
   adjustedToday?: CoachDecision<AdjustedPlan> | null;
+  freshness?: FreshnessMap;
+  pathToRace?: CoachDecision<PathToRaceResult> | null;
+  nextPushes?: CoachDecision<NextPushesReport>;
+  narrative?: NarrativeLine | null;
   error?: string;
 }
 
 export async function loadOverviewData(
   activities: NormalizedActivity[] | null,
+  stravaFetchedAtMs: number | null = null,
 ): Promise<OverviewData> {
   const [savedRaces, api] = await Promise.all([
     listRaces().catch(() => [] as SavedRace[]),
@@ -438,6 +457,39 @@ export async function loadOverviewData(
       }
     : null;
 
+  // Wave J · narrative line — computed server-side; client just renders.
+  const narrative = api.narrative ?? null;
+
+  // Wave G · alive-coach payload. PathToRace + NextPushes + Readiness
+  // were computed server-side and bundled into the API response so the
+  // coach engine never enters the client bundle. The chip builder here
+  // is pure: it composes those decisions + freshness signals into the
+  // WatchingChip[] the strip renders.
+  const aliveCoach = api.pathToRace !== undefined && api.nextPushes
+    ? loadAliveCoachData({
+        state: coachState,
+        today,
+        stravaFetchedAtMs,
+        checkin: coachState.checkin,
+        pathToRace: api.pathToRace,
+        nextPushes: api.nextPushes,
+        readiness: api.readiness,
+      })
+    : ({
+        watching: [],
+        pathToRace: null,
+        nextPushes: {
+          answer: { pushes: [], rationale: 'awaiting api' },
+          rationale: 'awaiting api',
+          citations: [],
+          brain: 'deterministic',
+        },
+      } as AliveCoachData);
+
+  // Wave L · freshness map. The API route returns it; fall back to a
+  // synthesized empty map for safety, but the route always provides it.
+  const freshness: FreshnessMap = api.freshness ?? emptyFreshnessMap();
+
   return {
     today,
     profile,
@@ -464,6 +516,32 @@ export async function loadOverviewData(
     weeklyMilesStrip,
     longRunStrip,
     year,
+    narrative,
+    aliveCoach,
+    freshness,
+  };
+}
+
+/** Minimal "all unavailable" freshness map for the edge case where the
+ *  API route omits it. Production code path always provides one. */
+function emptyFreshnessMap(): FreshnessMap {
+  const unavailable = (source: FreshnessMap[keyof FreshnessMap]['source']) => ({
+    source,
+    label: 'AWAITING DATA',
+    isAvailable: false,
+    isStale: false,
+    staleness: 'unavailable' as const,
+    lastRefreshISO: null,
+    daysSince: null,
+    reason: 'No signal yet',
+  });
+  return {
+    strava: unavailable('strava'),
+    checkin: unavailable('checkin'),
+    vdotAnchor: unavailable('vdot-anchor'),
+    profile: unavailable('profile'),
+    raceCal: unavailable('race-cal'),
+    healthkit: unavailable('healthkit'),
   };
 }
 

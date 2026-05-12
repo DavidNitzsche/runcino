@@ -35,12 +35,17 @@ import {
 } from '@/app/components';
 import { useActivities } from '@/lib/strava-activities';
 import { loadOverviewData, type OverviewData } from './data';
+import { CoachNarrativeLine } from './CoachNarrativeLine';
+import { CoachWatchingStrip } from './CoachWatchingStrip';
+import { PathToRaceCard } from './PathToRaceCard';
+import { NextPushCard } from './NextPushCard';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [data, setData] = useState<OverviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { activities } = useActivities();
+  const { activities, fetchedAt } = useActivities();
+  const stravaFetchedAtMs = fetchedAt ? Date.parse(fetchedAt) : null;
 
   useEffect(() => {
     setNow(new Date());
@@ -50,7 +55,7 @@ export default function OverviewPage() {
     if (!now) return;
     let cancelled = false;
     setLoadError(null);
-    loadOverviewData(activities)
+    loadOverviewData(activities, stravaFetchedAtMs)
       .then((d) => {
         if (!cancelled) setData(d);
       })
@@ -62,7 +67,7 @@ export default function OverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [now, activities]);
+  }, [now, activities, stravaFetchedAtMs]);
 
   const clock = now ? formatTopbarClock(now) : null;
 
@@ -73,11 +78,24 @@ export default function OverviewPage() {
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
 
+      {/* Wave J · narrative line. Renders nothing when no priority
+          signal fires — the slot collapses, no placeholder reserved. */}
+      {data?.narrative && <CoachNarrativeLine line={data.narrative} />}
+
       {/* Greet always renders immediately; the rest fades in when data
           resolves. The greet itself only needs `today` + name + a few
           state tiles, so a skeleton inside the GreetTile values keeps
           the layout stable. */}
       <OverviewGreet data={data} />
+
+      {/* Wave G · "Coach is watching" strip. Sits just under the Greet
+          band so the runner can read every signal the engine is
+          scanning at a glance. */}
+      {data && (
+        <div style={{ margin: '0 0 16px 0' }}>
+          <CoachWatchingStrip chips={data.aliveCoach.watching} />
+        </div>
+      )}
 
       {loadError && (
         <Row>
@@ -213,6 +231,18 @@ function OverviewBody({ data }: { data: OverviewData }) {
         <TodayCard data={data} />
         <ReadinessCard data={data} />
         <RaceCountdownCard data={data} />
+      </Row>
+
+      {/* ROW 1a · Wave G · PATH TO RACE (12) — hero, anchors the build.
+          Renders empty-state CTA when no A-race / no goal time set. */}
+      <Row>
+        <PathToRaceCard decision={data.aliveCoach.pathToRace} />
+      </Row>
+
+      {/* ROW 1b · Wave G · NEXT PUSH (12) — 1–3 prioritized pushes.
+          Renders "Plan steady" when nothing fires. */}
+      <Row>
+        <NextPushCard decision={data.aliveCoach.nextPushes} />
       </Row>
 
       {/* ROW 2 · COACH THIS WEEK (3) · WEEK STRIP (9) */}
