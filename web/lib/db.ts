@@ -173,6 +173,31 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS daily_checkin_user_date_idx ON daily_checkin (user_id, date DESC);
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS profile (
+        user_id     TEXT PRIMARY KEY DEFAULT 'me',
+        full_name   TEXT,
+        sex         TEXT,
+        age         INTEGER,
+        city        TEXT,
+        runner_id   TEXT,
+        since_year  INTEGER,
+        hrmax       INTEGER,
+        rhr         INTEGER,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_prefs (
+        user_id        TEXT PRIMARY KEY DEFAULT 'me',
+        long_run_day   TEXT,
+        quality_days   TEXT,
+        rest_day       TEXT,
+        rest_cadence   TEXT,
+        units          TEXT,
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
   } finally {
     client.release();
   }

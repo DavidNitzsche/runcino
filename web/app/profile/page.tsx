@@ -229,7 +229,9 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
 
 function IdentityHeroCard({ data }: { data: ProfileData }) {
   const id = data.identity;
-  const nameParts = id.fullName.split(/\s+/);
+  const nameForDisplay = id.fullName ?? 'Anonymous runner';
+  const nameParts = nameForDisplay.split(/\s+/);
+  const initialsForDisplay = id.initials ?? '—';
   return (
     <Card
       span={7}
@@ -240,7 +242,9 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
     >
       <CardHeader>
         <CardLabel>{id.idLabel}</CardLabel>
-        <CardPin variant="blue">{id.yearsRunningPin}</CardPin>
+        {id.yearsRunningPin && (
+          <CardPin variant="blue">{id.yearsRunningPin}</CardPin>
+        )}
       </CardHeader>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 18 }}>
         <div
@@ -248,18 +252,20 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
             width: 96,
             height: 96,
             borderRadius: 24,
-            background: 'linear-gradient(135deg, var(--corp), var(--xp))',
+            background: id.initials
+              ? 'linear-gradient(135deg, var(--corp), var(--xp))'
+              : 'var(--l3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontFamily: 'var(--f-display)',
             fontWeight: 700,
             fontSize: 42,
-            color: '#fff',
+            color: id.initials ? '#fff' : 'var(--t2)',
             flexShrink: 0,
           }}
         >
-          {id.initials}
+          {initialsForDisplay}
         </div>
         <div>
           <div
@@ -270,11 +276,14 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
               letterSpacing: '-.015em',
               lineHeight: 0.95,
               textTransform: 'uppercase',
+              color: id.fullName ? 'var(--t0)' : 'var(--t2)',
             }}
           >
-            {nameParts.map((n, i) => (
-              <span key={i} style={{ display: 'block' }}>{n}</span>
-            ))}
+            {id.fullName
+              ? nameParts.map((n, i) => (
+                  <span key={i} style={{ display: 'block' }}>{n}</span>
+                ))
+              : <span>NO PROFILE YET</span>}
           </div>
           <div
             className="mono-sm"
@@ -282,11 +291,11 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
               marginTop: 10,
               fontSize: 11.5,
               letterSpacing: '.6px',
-              color: 'var(--t1)',
+              color: id.bioLine ? 'var(--t1)' : 'var(--t3)',
               fontWeight: 600,
             }}
           >
-            {id.bioLine}
+            {id.bioLine ?? 'NO DATA YET'}
           </div>
         </div>
       </div>
@@ -503,16 +512,37 @@ function PersonalGoalsCard({ data, onRefresh }: { data: ProfileData; onRefresh: 
         Set what you actually want and the Coach builds the plan around it. Each goal explains how it changes your training.
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 10,
-          marginTop: 18,
-        }}
-      >
-        {data.goals.map((g) => <GoalTile key={g.id} goal={g} />)}
-      </div>
+      {data.goals.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          {data.goals.map((g) => <GoalTile key={g.id} goal={g} />)}
+        </div>
+      )}
+
+      {data.goals.length === 0 && (
+        <div
+          className="mono-sm"
+          style={{
+            marginTop: 18,
+            padding: '20px 22px',
+            border: '1px dashed var(--l4)',
+            borderRadius: 8,
+            fontSize: 11,
+            letterSpacing: '1.2px',
+            color: 'var(--t3)',
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
+          NO GOALS LOGGED YET — TAP + ADD GOAL TO START
+        </div>
+      )}
 
       <div
         style={{
@@ -722,63 +752,74 @@ function GoalTile({ goal }: { goal: Goal }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function VdotCard({ data }: { data: ProfileData }) {
+  const hasVdot = data.vdot.value != null;
   return (
     <Card
       span={3}
       padding="18px 20px"
       style={{
-        background: 'linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%)',
-        border: 0,
+        background: hasVdot
+          ? 'linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%)'
+          : 'var(--l1)',
+        border: hasVdot ? 0 : undefined,
         minHeight: 200,
       }}
     >
       <CardHeader>
-        <CardLabel color="rgba(255,255,255,.78)">VDOT · AGE-GRADED</CardLabel>
+        <CardLabel color={hasVdot ? 'rgba(255,255,255,.78)' : undefined}>
+          VDOT · AGE-GRADED
+        </CardLabel>
         <span
           className="card-pin"
-          style={{ background: 'rgba(255,255,255,.16)', color: '#fff' }}
+          style={
+            hasVdot
+              ? { background: 'rgba(255,255,255,.16)', color: '#fff' }
+              : undefined
+          }
         >
-          FRESH
+          {hasVdot ? 'FRESH' : 'NO DATA'}
         </span>
       </CardHeader>
       <div
         style={{
           fontFamily: 'var(--f-display)',
           fontWeight: 700,
-          fontSize: 96,
+          fontSize: hasVdot ? 96 : 24,
           letterSpacing: '-.03em',
           lineHeight: 0.9,
-          color: '#fff',
+          color: hasVdot ? '#fff' : 'var(--t2)',
           fontVariantNumeric: 'tabular-nums',
           marginTop: 8,
         }}
       >
-        {data.vdot.value}
+        {data.vdot.value ?? 'NO DATA YET'}
       </div>
       <div
         style={{
           fontFamily: 'var(--f-data)',
           fontSize: 9.5,
-          color: 'rgba(255,255,255,.78)',
+          color: hasVdot ? 'rgba(255,255,255,.78)' : 'var(--t3)',
           fontWeight: 700,
           letterSpacing: '.5px',
         }}
       >
-        {data.vdot.detail}
+        {data.vdot.detail ?? 'Log a race to unlock VDOT'}
       </div>
       <div
         style={{
           marginTop: 'auto',
           paddingTop: 10,
-          borderTop: '1px solid rgba(255,255,255,.18)',
+          borderTop: hasVdot
+            ? '1px solid rgba(255,255,255,.18)'
+            : '1px solid var(--l4)',
           fontFamily: 'var(--f-data)',
           fontSize: 9.5,
-          color: 'rgba(255,255,255,.85)',
+          color: hasVdot ? 'rgba(255,255,255,.85)' : 'var(--t3)',
           fontWeight: 700,
           letterSpacing: '1.2px',
         }}
       >
-        {data.vdot.source}
+        {data.vdot.source ?? '—'}
       </div>
     </Card>
   );
@@ -790,11 +831,16 @@ function VdotCard({ data }: { data: ProfileData }) {
 
 function HrCard({ data }: { data: ProfileData }) {
   const hr = data.hrBlock;
+  const measured = hr.hrMaxMeasured;
+  const estimate = hr.hrMaxEstimate;
+  const displayHrMax = measured ?? estimate;
+  const hrPinTone = measured != null ? 'green' : estimate != null ? 'muted' : 'muted';
+  const hrPinText = measured != null ? 'MEASURED' : estimate != null ? 'ESTIMATE' : 'NO DATA';
   return (
     <Card span={3}>
       <CardHeader>
         <CardLabel>HEART RATE · 5-ZONE</CardLabel>
-        <CardPin variant="green">MEASURED</CardPin>
+        <CardPin variant={hrPinTone}>{hrPinText}</CardPin>
       </CardHeader>
       <div
         style={{
@@ -806,20 +852,23 @@ function HrCard({ data }: { data: ProfileData }) {
       >
         <div>
           <div className="mono-sm" style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)' }}>
-            HRMAX
+            HRMAX{estimate != null && measured == null ? ' · EST' : ''}
           </div>
           <div
             style={{
               fontFamily: 'var(--f-display)',
               fontWeight: 700,
-              fontSize: 30,
+              fontSize: displayHrMax != null ? 30 : 14,
               letterSpacing: '-.015em',
               lineHeight: 0.95,
               fontVariantNumeric: 'tabular-nums',
+              color: displayHrMax != null ? 'var(--t0)' : 'var(--t3)',
             }}
           >
-            {hr.hrMax}
-            <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
+            {displayHrMax ?? 'NO DATA YET'}
+            {displayHrMax != null && (
+              <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
+            )}
           </div>
         </div>
         <div>
@@ -830,29 +879,49 @@ function HrCard({ data }: { data: ProfileData }) {
             style={{
               fontFamily: 'var(--f-display)',
               fontWeight: 700,
-              fontSize: 30,
+              fontSize: hr.rhr != null ? 30 : 14,
               letterSpacing: '-.015em',
               lineHeight: 0.95,
               fontVariantNumeric: 'tabular-nums',
+              color: hr.rhr != null ? 'var(--t0)' : 'var(--t3)',
             }}
           >
-            {hr.rhr}
-            <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
+            {hr.rhr ?? 'NO DATA YET'}
+            {hr.rhr != null && (
+              <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
+            )}
           </div>
         </div>
       </div>
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
-          marginTop: 'auto',
-          paddingTop: 10,
-          borderTop: '1px solid var(--l4)',
-        }}
-      >
-        {hr.zones.map((z) => <HrZoneRow key={z.letter} zone={z} />)}
-      </div>
+      {hr.zones.length > 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+            marginTop: 'auto',
+            paddingTop: 10,
+            borderTop: '1px solid var(--l4)',
+          }}
+        >
+          {hr.zones.map((z) => <HrZoneRow key={z.letter} zone={z} />)}
+        </div>
+      ) : (
+        <div
+          className="mono-sm"
+          style={{
+            marginTop: 'auto',
+            paddingTop: 10,
+            borderTop: '1px solid var(--l4)',
+            fontSize: 10,
+            letterSpacing: '1.2px',
+            color: 'var(--t3)',
+            fontWeight: 700,
+          }}
+        >
+          5-ZONE BANDS · NO DATA YET
+        </div>
+      )}
     </Card>
   );
 }
@@ -903,24 +972,30 @@ function HrZoneRow({ zone }: { zone: HrZone }) {
 
 function TierCard({ data }: { data: ProfileData }) {
   const t = data.tier;
+  const hasCurrent = t.currentMi != null;
   return (
     <Card span={3}>
       <CardHeader>
         <CardLabel>MILEAGE TIER · CURRENT</CardLabel>
-        <CardPin variant="coach">CLIMBING</CardPin>
+        <CardPin variant={hasCurrent ? 'coach' : 'muted'}>
+          {hasCurrent ? 'CLIMBING' : 'NO DATA'}
+        </CardPin>
       </CardHeader>
       <div
         style={{
           fontFamily: 'var(--f-display)',
           fontWeight: 700,
-          fontSize: 36,
+          fontSize: hasCurrent ? 36 : 18,
           letterSpacing: '-.015em',
           lineHeight: 0.95,
           fontVariantNumeric: 'tabular-nums',
+          color: hasCurrent ? 'var(--t0)' : 'var(--t3)',
         }}
       >
-        {t.currentMi}
-        <small style={{ fontSize: '.3em', opacity: 0.5, fontWeight: 700, marginLeft: 4 }}>mi/wk</small>
+        {t.currentMi ?? 'NO DATA YET'}
+        {hasCurrent && (
+          <small style={{ fontSize: '.3em', opacity: 0.5, fontWeight: 700, marginLeft: 4 }}>mi/wk</small>
+        )}
       </div>
       <div
         className="mono-sm"
@@ -928,8 +1003,11 @@ function TierCard({ data }: { data: ProfileData }) {
       >
         {t.bandLabel}
       </div>
-      <TierBand position={t.position} />
-      <CardFoot left={t.peakLabel} right={<span className={`delta ${t.trendLabel.startsWith('▲') ? 'up' : 'dn'}`}>{t.trendLabel}</span>} />
+      {hasCurrent && <TierBand position={t.position} />}
+      <CardFoot
+        left={t.peakLabel}
+        right={t.trendLabel ? <span className={`delta ${t.trendLabel.startsWith('▲') ? 'up' : 'dn'}`}>{t.trendLabel}</span> : null}
+      />
     </Card>
   );
 }
@@ -1000,11 +1078,27 @@ function PrefsCard({ data }: { data: ProfileData }) {
     <Card span={3}>
       <CardHeader>
         <CardLabel>TRAINING PREFERENCES</CardLabel>
-        <CardPin variant="muted">EDIT →</CardPin>
+        <CardPin variant={data.prefsAreDefaults ? 'muted' : 'muted'}>
+          {data.prefsAreDefaults ? 'DEFAULTS' : 'EDIT →'}
+        </CardPin>
       </CardHeader>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
         {data.prefs.map((p) => <PrefRow key={p.label} pref={p} />)}
       </div>
+      {data.prefsAreDefaults && (
+        <div
+          className="mono-sm"
+          style={{
+            marginTop: 10,
+            fontSize: 10,
+            letterSpacing: '1.2px',
+            color: 'var(--t3)',
+            fontWeight: 700,
+          }}
+        >
+          USING DEFAULTS — SET YOURS
+        </div>
+      )}
     </Card>
   );
 }
@@ -1027,9 +1121,10 @@ function PrefRow({ pref }: { pref: Pref }) {
           lineHeight: 1.05,
           textTransform: 'uppercase',
           letterSpacing: '-.005em',
+          color: pref.value ? 'var(--t0)' : 'var(--t3)',
         }}
       >
-        {pref.value}
+        {pref.value ?? 'NO DATA YET'}
       </div>
     </div>
   );
@@ -1123,25 +1218,49 @@ function ConnectionRow({ conn }: { conn: Connection }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function ShoeRotationCard({ data }: { data: ProfileData }) {
+  const hasShoes = data.shoes.length > 0;
   return (
     <Card span={8}>
       <CardHeader>
         <CardLabel>SHOE ROTATION · {data.shoes.length} ACTIVE</CardLabel>
-        {data.shoeWarnLabel ? (
+        {!hasShoes ? (
+          <CardPin variant="muted">NO DATA</CardPin>
+        ) : data.shoeWarnLabel ? (
           <CardPin variant="warn">{data.shoeWarnLabel}</CardPin>
         ) : (
           <CardPin variant="green">ALL HEALTHY</CardPin>
         )}
       </CardHeader>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-        {data.shoes.map((s) => <ShoeRotationRow key={s.id} shoe={s} />)}
-      </div>
+      {hasShoes ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+          {data.shoes.map((s) => <ShoeRotationRow key={s.id} shoe={s} />)}
+        </div>
+      ) : (
+        <div
+          className="mono-sm"
+          style={{
+            marginTop: 10,
+            padding: '20px 22px',
+            border: '1px dashed var(--l4)',
+            borderRadius: 8,
+            fontSize: 11,
+            letterSpacing: '1.2px',
+            color: 'var(--t3)',
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
+          NO SHOES LOGGED — ADD YOUR FIRST
+        </div>
+      )}
       <CardFoot
         left="+ ADD SHOE · MANAGE RETIRED"
         right={
-          <span style={{ color: 'var(--good)' }}>
-            {data.shoes.length} IN ROTATION · TARGET 3-5
-          </span>
+          hasShoes ? (
+            <span style={{ color: 'var(--good)' }}>
+              {data.shoes.length} IN ROTATION · TARGET 3-5
+            </span>
+          ) : null
         }
       />
     </Card>
@@ -1391,52 +1510,66 @@ function EnginePaceZonesTile({ engine }: { engine: EngineBlock }) {
         {tile.lead}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-        {engine.paceZones.map((z) => (
-          <div
-            key={z.label}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '80px 1fr',
-              gap: 10,
-              alignItems: 'baseline',
-            }}
-          >
-            <span
+        {engine.paceZones.length > 0 ? (
+          engine.paceZones.map((z) => (
+            <div
+              key={z.label}
               style={{
-                fontFamily: 'var(--f-data)',
-                fontSize: 11,
-                color: z.accent,
-                fontWeight: 700,
-                letterSpacing: '1.2px',
+                display: 'grid',
+                gridTemplateColumns: '80px 1fr',
+                gap: 10,
+                alignItems: 'baseline',
               }}
             >
-              {z.label}
-            </span>
-            <span
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontSize: 16,
-                fontWeight: 600,
-                letterSpacing: '-.01em',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {z.value}
-              <small
+              <span
                 style={{
                   fontFamily: 'var(--f-data)',
-                  fontSize: '.55em',
-                  opacity: 0.55,
+                  fontSize: 11,
+                  color: z.accent,
                   fontWeight: 700,
-                  marginLeft: 5,
-                  letterSpacing: '.5px',
+                  letterSpacing: '1.2px',
                 }}
               >
-                /MI
-              </small>
-            </span>
+                {z.label}
+              </span>
+              <span
+                style={{
+                  fontFamily: 'var(--f-display)',
+                  fontSize: 16,
+                  fontWeight: 600,
+                  letterSpacing: '-.01em',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {z.value}
+                <small
+                  style={{
+                    fontFamily: 'var(--f-data)',
+                    fontSize: '.55em',
+                    opacity: 0.55,
+                    fontWeight: 700,
+                    marginLeft: 5,
+                    letterSpacing: '.5px',
+                  }}
+                >
+                  /MI
+                </small>
+              </span>
+            </div>
+          ))
+        ) : (
+          <div
+            className="mono-sm"
+            style={{
+              fontSize: 10,
+              letterSpacing: '1.2px',
+              color: 'var(--t3)',
+              fontWeight: 700,
+            }}
+          >
+            PACE TABLE · NO DATA YET
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

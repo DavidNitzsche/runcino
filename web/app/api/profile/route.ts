@@ -7,22 +7,17 @@
  * heavily called here — Profile is read-mostly with respect to
  * what the runner has chosen.
  *
- * Coach methods wired:
- *   - none (Coach.engineDetails / Coach.profile are Stage 7+ and not
- *     yet implemented). The Engine Details card composes from
- *     coach-state + lifetime PR doctrine until those land.
- *
  * Real data sources:
  *   - gatherCoachState()        · races + volume + intensity
  *   - getCachedActivities()     · lifetime activity rollup
  *   - listShoes()               · shoe rotation (real DB-backed)
+ *   - listPersonalGoals()       · personal_goals table
+ *   - getProfile() / getUserPrefs() · profile + prefs tables
+ *   - vdotSnapshot(state)       · VDOT picture from races
  *
- * TODO (Stage 7): a `users` / `profile` / `goals` data model does
- * not yet exist. The identity hero, personal-goals card, and
- * training-preferences card are stubbed with mockup-faithful demo
- * content so the page renders meaningfully. When the goals table
- * lands, replace stubProfile / stubGoals / stubPrefs with their
- * real readers.
+ * No demo / mockup fallbacks remain. When a signal is unavailable,
+ * the wire shape returns null / [] / honest defaults and the page
+ * renders "NO DATA YET" or "—".
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
@@ -31,6 +26,10 @@ import { naivePRs, isProbablyRace } from '../../../lib/strava-stats';
 import { listShoes } from '../../../lib/shoe-store';
 import type { Shoe } from '../../../lib/shoe-utils';
 import type { NormalizedActivity } from '../strava/activities/route-shared';
+import { getProfile, type ProfileRow } from '../../../lib/profile-store';
+import { getUserPrefs, type PrefsRow } from '../../../lib/prefs-store';
+import { listPersonalGoals, type GoalRow } from '../../../lib/goals-store';
+import { vdotSnapshot } from '../../../lib/vdot';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes
@@ -38,18 +37,18 @@ import type { NormalizedActivity } from '../strava/activities/route-shared';
 
 /** Identity hero — name, age, city, plus 4 lifetime KPIs. */
 export interface ProfileApiIdentity {
-  /** Display name ("David Nitzschke"). */
-  fullName: string;
-  /** Two-letter initials for the avatar ("DN"). */
-  initials: string;
-  /** Sex · Age · City line ("M · 38 · LOS ANGELES, CA"). */
-  bioLine: string;
+  /** Display name. null when no profile row exists. */
+  fullName: string | null;
+  /** Two-letter initials for the avatar. null when no name. */
+  initials: string | null;
+  /** Sex · Age · City line. null when none of those fields are set. */
+  bioLine: string | null;
   /** Runner ID label. */
   idLabel: string;
-  /** "SINCE 2019" eyebrow. */
-  sinceLabel: string;
-  /** "7 YEARS RUNNING" pin label. */
-  yearsRunningPin: string;
+  /** "SINCE 2019" eyebrow — null when no since_year. */
+  sinceLabel: string | null;
+  /** "7 YEARS RUNNING" pin label — null when no since_year. */
+  yearsRunningPin: string | null;
   /** 4 KPI quads — lifetime miles / races / days run / peak year. */
   kpis: ProfileApiKpi[];
 }
@@ -57,7 +56,7 @@ export interface ProfileApiIdentity {
 export interface ProfileApiKpi {
   /** Display label ("LIFETIME MI"). */
   label: string;
-  /** Hero number ("12.4"). */
+  /** Hero number ("12.4"). "—" when no data. */
   value: string;
   /** Small suffix on the value ("k" / "mi"). */
   unit: string | null;
@@ -117,8 +116,10 @@ export interface ProfileApiGoal {
 export interface ProfileApiPref {
   /** Eyebrow label ("LONG RUN DAY"). */
   label: string;
-  /** Value ("Sunday"). */
-  value: string;
+  /** Value ("Sunday"). null when no preference set and no default. */
+  value: string | null;
+  /** True when value is an app-wide default (not user-chosen). */
+  isDefault: boolean;
 }
 
 /** A shoe in the rotation list. */
@@ -160,13 +161,17 @@ export interface ProfileApiConnection {
   pinTone: 'green' | 'muted' | 'warn';
 }
 
-/** VDOT block. */
+/** VDOT block. Every field is nullable — when there's no race history
+ *  to derive a VDOT from, the entire block reads "NO DATA YET". */
 export interface ProfileApiVdot {
-  value: string;
-  /** RAW · DECAY caption. */
-  detail: string;
-  /** Source label ("DISNEY HALF · 1:32 · 6 MO AGO"). */
-  source: string;
+  /** VDOT value (string for display). null when uninferable. */
+  value: string | null;
+  /** RAW · DECAY caption. null when no VDOT. */
+  detail: string | null;
+  /** Source label ("DISNEY HALF · 1:32 · 6 MO AGO"). null when no VDOT. */
+  source: string | null;
+  /** ISO date of the source race. null when none. */
+  sourceDate: string | null;
 }
 
 /** HR card 5-zone breakdown. */
@@ -177,22 +182,29 @@ export interface ProfileApiHrZone {
   accent: 'good' | 'corp' | 'milestone' | 'warn' | 'xp';
 }
 export interface ProfileApiHrBlock {
-  hrMax: number;
-  rhr: number;
+  /** Measured HRmax in bpm. null when not on profile. */
+  hrMaxMeasured: number | null;
+  /** Tanaka-estimate HRmax from age (208 − 0.7·age). null when no age. */
+  hrMaxEstimate: number | null;
+  /** Resting HR in bpm. Always null today (HealthKit M2). */
+  rhr: number | null;
+  /** True when this block has anything to show. */
+  hasAny: boolean;
+  /** 5-zone breakdown — empty when no HR signal at all. */
   zones: ProfileApiHrZone[];
 }
 
 /** Mileage tier block. */
 export interface ProfileApiTier {
-  /** Current mileage (4-week avg). */
-  currentMi: number;
+  /** Current mileage (4-week avg). null when 0. */
+  currentMi: number | null;
   /** Tier band label ("LOW BAND (20-40)"). */
   bandLabel: string;
   /** Fraction along the band (0-1). */
   position: number;
-  /** Trend label ("▲ +12% V8W"). */
-  trendLabel: string;
-  /** Peak label ("2026 PEAK · 42 MI"). */
+  /** Trend label ("▲ +12% V8W"). null when no comparable signal. */
+  trendLabel: string | null;
+  /** Peak label ("2026 PEAK · 42 MI") or "NO PEAK DATA YET". */
   peakLabel: string;
 }
 
@@ -214,7 +226,8 @@ export interface ProfileApiEngineDetail {
 export interface ProfileApiEngineBlock {
   /** 4 tile rows (pace zones, long-run cap, easy share, cutback). */
   tiles: ProfileApiEngineDetail[];
-  /** Pace zones table (rendered inside the first tile). */
+  /** Pace zones table (rendered inside the first tile). Empty when
+   *  no VDOT signal — UI surfaces "NO DATA YET". */
   paceZones: Array<{ label: string; accent: string; value: string }>;
   /** Plan-integrity validation. */
   integrity: {
@@ -242,6 +255,8 @@ interface ProfileApiOk {
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
+  /** True when no user_prefs row exists — UI surfaces "Using defaults". */
+  prefsAreDefaults: boolean;
   connections: ProfileApiConnection[];
   /** Active + retired shoes joined into a single list (retired hidden). */
   shoes: ProfileApiShoeRow[];
@@ -262,44 +277,49 @@ export async function GET(): Promise<Response> {
     const year = Number(today.slice(0, 4));
 
     // ── Data sources (real where we can). ─────────────────────
-    const cache = await getCachedActivities().catch(
-      () => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 }),
-    );
+    const [cache, dbShoes, profileRow, prefsRow, goalRows] = await Promise.all([
+      getCachedActivities().catch(
+        () => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 }),
+      ),
+      listShoes().catch(() => [] as Shoe[]),
+      getProfile().catch(() => null as ProfileRow | null),
+      getUserPrefs().catch(() => null as PrefsRow | null),
+      listPersonalGoals().catch(() => [] as GoalRow[]),
+    ]);
     const allRuns = cache.activities;
-    const dbShoes = await listShoes().catch(() => [] as Shoe[]);
 
-    // Identity — stubbed for now (no users table). Demo content
-    // mirrors the locked mockup so QA renders meaningfully.
-    const identity = buildIdentity(allRuns, year);
+    const identity = buildIdentity(allRuns, year, profileRow);
 
-    // Lifetime PRs — naive across all activity history. Then
-    // augmented with the mockup-faithful row when no data exists.
+    // Lifetime PRs — naive across all activity history. Empty when no
+    // runs are loaded; the page renders "No PRs logged yet".
     const lifetimePrs = buildLifetimePrs(allRuns, year);
-    const newPrCount = lifetimePrs.filter((p) => p.isNew).length;
+    const newPrCount = lifetimePrs.filter((p) => p.isNew && !p.isEmpty).length;
     const hasPrThisYear = newPrCount > 0;
 
-    // Personal goals — fully stubbed (no goals table). The page
-    // renders these as cards; user clicks "+ Add goal" placeholder
-    // CTA but it isn't wired today.
-    const goals = stubGoals();
+    // Personal goals — DB-backed. Empty when no rows.
+    const goals = goalRows.map(goalRowToApi);
     const goalsActive = goals.length;
 
-    // VDOT + HR + Tier + Prefs — all stubbed against mockup numbers
-    // until the engine surfaces them.
-    const vdot = stubVdot();
-    const hrBlock = stubHrBlock();
-    const tier = buildTier(state);
-    const prefs = stubPrefs();
+    // VDOT — real coach signal. Returns null block when state has no
+    // valid recent race.
+    const vdot = buildVdot(state);
+
+    // HR — profile-backed for measured HRmax; Tanaka estimate from age.
+    // RHR + actual HRmax require HealthKit (M2) → null today.
+    const hrBlock = buildHrBlock(profileRow);
+
+    const tier = buildTier(state, year);
+
+    // Prefs — DB-backed. App-wide defaults surface when nothing logged.
+    const { prefs, prefsAreDefaults } = buildPrefs(prefsRow);
 
     // Connections — Strava is real (we have activity cache); HealthKit
     // is currently not wired (M2). Garmin is "SOON".
     const connections = buildConnections(allRuns.length);
 
-    // Shoes — real DB-backed. If empty (local dev no DB) fall back
-    // to mockup defaults.
-    const shoes = dbShoes.length > 0
-      ? buildShoeRows(dbShoes)
-      : stubShoes();
+    // Shoes — real DB-backed. Empty list when no rows (page renders
+    // "no shoes logged" empty state).
+    const shoes = buildShoeRows(dbShoes);
     const overCap = shoes.filter((s) => s.fraction >= 1).length;
     const nearCap = shoes.filter((s) => s.fraction >= 0.8 && s.fraction < 1).length;
     const shoeWarnLabel = overCap > 0 || nearCap > 0
@@ -309,7 +329,7 @@ export async function GET(): Promise<Response> {
     // Engine details — derived deterministic facts from state +
     // doctrine. Long-run cap reads state.volume.longestLast28Mi
     // and applies the 10% bump per Research/00a.
-    const engine = buildEngineBlock(state);
+    const engine = buildEngineBlock(state, vdot);
 
     const body: ProfileApiOk = {
       ok: true,
@@ -325,6 +345,7 @@ export async function GET(): Promise<Response> {
       hrBlock,
       tier,
       prefs,
+      prefsAreDefaults,
       connections,
       shoes,
       shoeWarnLabel,
@@ -344,25 +365,47 @@ export async function GET(): Promise<Response> {
 // Identity
 // ─────────────────────────────────────────────────────────────────────
 
-function buildIdentity(runs: NormalizedActivity[], year: number): ProfileApiIdentity {
-  // TODO: wire to users/profile table (does NOT exist yet).
-  // Demo defaults mirror the mockup.
-  const fullName = 'David Nitzschke';
-  const initials = 'DN';
-  const bioLine = 'M · 38 · LOS ANGELES, CA';
-  const idLabel = 'RUNNER · ID-001 · SINCE 2019';
-  const sinceLabel = 'SINCE 2019';
+function buildIdentity(
+  runs: NormalizedActivity[],
+  year: number,
+  profile: ProfileRow | null,
+): ProfileApiIdentity {
+  const fullName = profile?.full_name?.trim() || null;
+  const initials = fullName
+    ? fullName
+        .split(/\s+/)
+        .map((p) => p.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join('') || null
+    : null;
+
+  const bioBits: string[] = [];
+  if (profile?.sex)  bioBits.push(profile.sex);
+  if (profile?.age != null) bioBits.push(String(profile.age));
+  if (profile?.city) bioBits.push(profile.city.toUpperCase());
+  const bioLine = bioBits.length > 0 ? bioBits.join(' · ') : null;
+
+  const sinceYear = profile?.since_year ?? null;
+  const sinceLabel = sinceYear ? `SINCE ${sinceYear}` : null;
+  const yearsRunning = sinceYear ? Math.max(0, year - sinceYear) : null;
+  const yearsRunningPin = yearsRunning != null && yearsRunning > 0
+    ? `${yearsRunning} YEAR${yearsRunning === 1 ? '' : 'S'} RUNNING`
+    : null;
+
+  const runnerIdBits: string[] = [];
+  runnerIdBits.push(profile?.runner_id?.toUpperCase() || 'RUNNER');
+  if (sinceLabel) runnerIdBits.push(sinceLabel);
+  const idLabel = runnerIdBits.join(' · ');
 
   // Lifetime stats — pulled from activities when available.
   const lifetimeMi = runs.reduce((s, r) => s + r.distanceMi, 0);
   const lifetimeMiDisplay = lifetimeMi >= 1000
     ? (Math.round(lifetimeMi / 100) / 10).toFixed(1)
     : Math.round(lifetimeMi).toString();
-  const lifetimeUnit = lifetimeMi >= 1000 ? 'k' : null;
+  const lifetimeUnit = lifetimeMi >= 1000 ? 'k' : (runs.length > 0 ? 'mi' : null);
 
   const races = runs.filter(isProbablyRace);
   const raceCount = races.length;
-  // Race breakdown by approx distance category.
   const marathons = races.filter((r) => r.distanceMi >= 24).length;
   const halfs = races.filter((r) => r.distanceMi >= 12 && r.distanceMi < 16).length;
   const tens = races.filter((r) => r.distanceMi >= 5.5 && r.distanceMi < 8).length;
@@ -374,13 +417,18 @@ function buildIdentity(runs: NormalizedActivity[], year: number): ProfileApiIden
         tens ? `${tens}×10K` : null,
         fives ? `${fives}×5K` : null,
       ].filter(Boolean).join(' · ')
-    : '5×M · 18×HM · 12×10K · 3×5K';
+    : 'NO RACES LOGGED';
 
-  // Days run — unique calendar days.
   const daysSet = new Set(runs.map((r) => r.date));
-  const daysRun = daysSet.size > 0 ? daysSet.size : 1847;
-  const yearsRunning = year - 2019;
-  const daysRunPct = Math.round((daysRun / (yearsRunning * 365)) * 100);
+  const daysRun = daysSet.size;
+  const daysRunPct = yearsRunning && yearsRunning > 0
+    ? Math.min(100, Math.round((daysRun / (yearsRunning * 365)) * 100))
+    : null;
+  const daysRunDetail = daysRunPct != null
+    ? `~${daysRunPct}% OF ${yearsRunning} YR`
+    : daysRun > 0
+      ? `${daysRun} UNIQUE DAYS`
+      : 'NO DATA YET';
 
   // Peak year — group by year, find max.
   const byYear = new Map<number, number>();
@@ -388,8 +436,8 @@ function buildIdentity(runs: NormalizedActivity[], year: number): ProfileApiIden
     const y = Number(r.date.slice(0, 4));
     byYear.set(y, (byYear.get(y) ?? 0) + r.distanceMi);
   }
-  let peakYearLabel = '2024';
-  let peakYearMi = 2140;
+  let peakYearLabel: string | null = null;
+  let peakYearMi = 0;
   if (byYear.size > 0) {
     let bestY = 0;
     let bestMi = 0;
@@ -402,52 +450,49 @@ function buildIdentity(runs: NormalizedActivity[], year: number): ProfileApiIden
     }
   }
 
-  const yearsRunningPin = `${Math.max(1, yearsRunning)} YEARS RUNNING`;
-
   // Lifetime elevation gain — sum elevGainFt across every recorded activity.
-  // Surfaced as a "badge of honor" KPI tile · 29,029 ft per Everest summit.
   const lifetimeElevFt = runs.reduce((sum, a) => sum + (a.elevGainFt ?? 0), 0);
   const everestCount = lifetimeElevFt > 0 ? lifetimeElevFt / 29029 : 0;
-  const elevDisplay = runs.length > 0
+  const elevDisplay = lifetimeElevFt > 0
     ? lifetimeElevFt >= 1_000_000
       ? `${(lifetimeElevFt / 1_000_000).toFixed(1)}M`
       : `${Math.round(lifetimeElevFt / 1000)}K`
-    : '624K';
-  const elevDetail = runs.length > 0
+    : '—';
+  const elevDetail = lifetimeElevFt > 0
     ? everestCount >= 1
       ? `~${everestCount.toFixed(1)}× EVEREST`
       : `${everestCount.toFixed(2)}× EVEREST`
-    : '~21× EVEREST';
+    : 'NO DATA YET';
 
   const kpis: ProfileApiKpi[] = [
     {
       label: 'LIFETIME MI',
-      value: runs.length > 0 ? lifetimeMiDisplay : '12.4',
-      unit: runs.length > 0 ? lifetimeUnit : 'k',
-      detail: 'SINCE 2019',
+      value: runs.length > 0 ? lifetimeMiDisplay : '—',
+      unit: runs.length > 0 ? lifetimeUnit : null,
+      detail: sinceLabel ?? (runs.length > 0 ? 'ALL TIME' : 'NO DATA YET'),
     },
     {
       label: 'RACES',
-      value: raceCount > 0 ? String(raceCount) : '38',
+      value: raceCount > 0 ? String(raceCount) : '—',
       unit: null,
       detail: raceBreakdown,
     },
     {
       label: 'DAYS RUN',
-      value: daysRun.toLocaleString('en-US'),
+      value: daysRun > 0 ? daysRun.toLocaleString('en-US') : '—',
       unit: null,
-      detail: `~${Math.min(100, daysRunPct)}% OF ${Math.max(1, yearsRunning)} YR`,
+      detail: daysRunDetail,
     },
     {
       label: 'PEAK YEAR',
-      value: peakYearMi.toLocaleString('en-US'),
-      unit: 'mi',
-      detail: peakYearLabel,
+      value: peakYearLabel != null && peakYearMi > 0 ? peakYearMi.toLocaleString('en-US') : '—',
+      unit: peakYearMi > 0 ? 'mi' : null,
+      detail: peakYearLabel ?? 'NO DATA YET',
     },
     {
       label: 'LIFETIME ELEV',
       value: elevDisplay,
-      unit: 'ft',
+      unit: lifetimeElevFt > 0 ? 'ft' : null,
       detail: elevDetail,
     },
   ];
@@ -467,12 +512,12 @@ function buildIdentity(runs: NormalizedActivity[], year: number): ProfileApiIden
 // Lifetime PRs — produces 5 rows (5K, 10K, HALF, MARATHON, 50K).
 // Uses naivePRs across all activity history. If a category was set
 // this year, it's marked NEW. Otherwise renders the AGE label.
+// No demo fallback — when there's no race history, every row is empty.
 // ─────────────────────────────────────────────────────────────────────
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
 function buildLifetimePrs(runs: NormalizedActivity[], year: number): ProfileApiLifetimePr[] {
-  // 5K / 10K / HALF / MARATHON come from naivePRs.
   const prs = runs.length > 0 ? naivePRs(runs) : [];
   const yearStart = `${year}-01-01`;
 
@@ -538,24 +583,13 @@ function buildLifetimePrs(runs: NormalizedActivity[], year: number): ProfileApiL
         ? `${dateLabel} · ${fastest.name.toUpperCase().slice(0, 30)} · ${fmtPace(paceS)}/MI`
         : `${dateLabel} · ${fastest.name.toUpperCase().slice(0, 30)}`,
       isNew,
-      ageLabel: isNew ? null : '— ',
+      ageLabel: isNew ? null : null,
       accent: isNew ? 'good' : 'muted',
       activityId: fastest.id,
       isEmpty: false,
     });
   } else {
     out.push(emptyPr('50K'));
-  }
-
-  // If no real data, replace with mockup-faithful demo content so the page renders.
-  if (runs.length === 0) {
-    return [
-      { label: '5K',       timeDisplay: '19:32',   detail: 'FEB 14 2026 · SURF CITY · 6:18/MI', isNew: true,  ageLabel: null,         accent: 'good',  activityId: null, isEmpty: false },
-      { label: '10K',      timeDisplay: '41:32',   detail: 'MAR 22 2026 · POINT MAGU · 6:41/MI', isNew: true, ageLabel: null,         accent: 'good',  activityId: null, isEmpty: false },
-      { label: 'HALF',     timeDisplay: '1:32:00', detail: 'JAN 12 2026 · DISNEY · 7:00/MI',    isNew: false, ageLabel: '5 MO AGO',    accent: 'muted', activityId: null, isEmpty: false },
-      { label: 'MARATHON', timeDisplay: '3:18:42', detail: 'APR 27 2026 · BIG SUR · 7:35/MI · HILLY', isNew: true, ageLabel: null,    accent: 'good',  activityId: null, isEmpty: false },
-      { label: '50K',      timeDisplay: null,      detail: 'NEVER RUN · ADD WHEN YOU DO',        isNew: false, ageLabel: null,        accent: 'muted', activityId: null, isEmpty: true  },
-    ];
   }
 
   return out;
@@ -581,165 +615,229 @@ function displayLabel(label: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Personal Goals · stubbed (no goals table)
+// Personal Goals · real DB rows → wire shape
 //
-// TODO (Stage 7): add a `personal_goals` table — id, user_id, type,
-// current, target, deadline, tolerance, rationale. The "+ Add goal"
-// CTA will write here.
-// RESEARCH: Coach reads these so the engine can adjust volume /
-// long-run cap / quality cadence to honor each goal. Volume ramps
-// per /Research/00a §Volume by experience; speed targets gate quality
-// pace per /Research/04 §Workout intent.
+// `personal_goals` stores the raw fields (target/current/etc. as strings
+// chosen by the runner). The wire shape adds presentation: accent
+// colors, status pills, progress fractions. Status defaults to "ACTIVE"
+// until we run a status-evaluator against state — that lives in Coach
+// engine territory and will land separately.
 // ─────────────────────────────────────────────────────────────────────
 
-function stubGoals(): ProfileApiGoal[] {
-  return [
-    {
-      id: 'volume',
-      category: 'VOLUME · WEEKLY MILEAGE',
-      accent: 'corp',
-      statusLabel: '▲ ON TRACK',
-      statusTone: 'good',
-      currentValue: '35',
-      currentUnit: '/wk now',
-      targetValue: '45',
-      targetUnit: '/wk',
-      hasArrow: true,
-      progress: 0.78,
-      rationale:
-        "By Dec 2026 · 10 mi to add. Coach is bumping +12% absorbed weeks instead of forcing weekly jumps.",
-    },
-    {
-      id: 'speed',
-      category: 'SPEED · HM TIME',
-      accent: 'race',
-      statusLabel: '▲ POSSIBLE',
-      statusTone: 'good',
-      currentValue: '1:32',
-      currentUnit: 'PR',
-      targetValue: '1:29',
-      targetUnit: 'sub-1:30',
-      hasArrow: true,
-      progress: 0.65,
-      rationale:
-        'Within 12 months. Coach is adding threshold + HMP miles earlier in builds and gating quality at 6:45/mi targets.',
-    },
-    {
-      id: 'distance',
-      category: 'DISTANCE · FIRST 50K',
-      accent: 'xp',
-      statusLabel: 'PLANNED 2027',
-      statusTone: 'coach',
-      currentValue: '26.2',
-      currentUnit: 'furthest',
-      targetValue: '31',
-      targetUnit: '50K',
-      hasArrow: true,
-      progress: 0.30,
-      rationale:
-        'Target Q1 2027. Coach is adding back-to-back long runs in 2026 Q4 to build durability.',
-    },
-    {
-      id: 'habit',
-      category: 'HABIT · RUN FREQUENCY',
-      accent: 'good',
-      statusLabel: '✓ MET',
-      statusTone: 'good',
-      currentValue: '5',
-      currentUnit: 'days/wk',
-      targetValue: '4.6 avg · 28D',
-      targetUnit: '',
-      hasArrow: false,
-      progress: 0.92,
-      rationale:
-        "Coach respects this as a frequency floor and won't prescribe more than 2 rest days/wk except in cutbacks.",
-    },
-    {
-      id: 'strength',
-      category: 'STRENGTH · WEEKLY SESSIONS',
-      accent: 'xp',
-      statusLabel: '✓ MET',
-      statusTone: 'good',
-      currentValue: '2',
-      currentUnit: 'sessions/wk',
-      targetValue: '28-DAY: 8/8',
-      targetUnit: '',
-      hasArrow: false,
-      progress: 1.0,
-      rationale:
-        'Coach never stacks strength against quality run days · schedules upper-body on hard-run days, lower on easy days.',
-    },
-    {
-      id: 'health',
-      category: 'HEALTH · SLEEP FLOOR',
-      accent: 'coach',
-      statusLabel: '✓ HOLDING',
-      statusTone: 'good',
-      currentValue: '7.0',
-      currentUnit: 'hrs min',
-      targetValue: '7D AVG · 7:42',
-      targetUnit: '',
-      hasArrow: false,
-      progress: 1.0,
-      rationale:
-        'If sleep drops below 7h before a quality session, Coach auto-downgrades to easy or moves the workout.',
-    },
-  ];
-}
+const GOAL_CATEGORY_LABELS: Record<GoalRow['goal_type'], string> = {
+  volume:   'VOLUME · WEEKLY MILEAGE',
+  speed:    'SPEED · RACE TIME',
+  distance: 'DISTANCE · NEXT MILESTONE',
+  habit:    'HABIT · RUN FREQUENCY',
+  strength: 'STRENGTH · WEEKLY SESSIONS',
+  health:   'HEALTH · SLEEP FLOOR',
+};
 
-// ─────────────────────────────────────────────────────────────────────
-// VDOT / HR / Tier / Prefs / Connections stubs
-// ─────────────────────────────────────────────────────────────────────
+const GOAL_ACCENTS: Record<GoalRow['goal_type'], ProfileApiGoal['accent']> = {
+  volume:   'corp',
+  speed:    'race',
+  distance: 'xp',
+  habit:    'good',
+  strength: 'xp',
+  health:   'coach',
+};
 
-function stubVdot(): ProfileApiVdot {
-  // TODO: wire to lib/vdot.ts when computeVdot is exposed.
+const GOAL_UNITS: Record<GoalRow['goal_type'], { current: string; target: string }> = {
+  volume:   { current: '/wk now', target: '/wk' },
+  speed:    { current: 'now',     target: 'goal' },
+  distance: { current: 'now',     target: '' },
+  habit:    { current: 'days/wk', target: '' },
+  strength: { current: 'sess/wk', target: '' },
+  health:   { current: 'hrs',     target: '' },
+};
+
+function goalRowToApi(row: GoalRow): ProfileApiGoal {
+  const accent = GOAL_ACCENTS[row.goal_type];
+  const units = GOAL_UNITS[row.goal_type];
+  const hasCurrent = row.current != null && row.current.trim().length > 0;
+  // Status: until we evaluate per-goal progress we mark goals as
+  // "ACTIVE". Engine will surface ON TRACK / MET / BEHIND later.
   return {
-    value: '49.2',
-    detail: 'RAW 50.0 · DECAY −0.8',
-    source: 'DISNEY HALF · 1:32 · 6 MO AGO',
+    id: row.goal_type,
+    category: GOAL_CATEGORY_LABELS[row.goal_type],
+    accent,
+    statusLabel: 'ACTIVE',
+    statusTone: 'coach',
+    currentValue: hasCurrent ? (row.current ?? '') : '—',
+    currentUnit: hasCurrent ? units.current : '',
+    targetValue: row.target,
+    targetUnit: units.target,
+    hasArrow: hasCurrent,
+    progress: 0,
+    rationale: row.rationale?.trim() || 'Coach reads this goal when scheduling weeks.',
   };
 }
 
-function stubHrBlock(): ProfileApiHrBlock {
-  // TODO: wire to coach-state HR data once HRmax/RHR is on the user record.
+// ─────────────────────────────────────────────────────────────────────
+// VDOT — derived from coach state's race history.
+// ─────────────────────────────────────────────────────────────────────
+
+function buildVdot(state: CoachState): ProfileApiVdot {
+  const snap = vdotSnapshot(state);
+  if (!snap) {
+    return {
+      value: null,
+      detail: null,
+      source: null,
+      sourceDate: null,
+    };
+  }
+  const r = snap.source;
+  const monthsAgo = Math.max(0, Math.round(r.daysAgo / 30));
+  const ageLabel = monthsAgo > 0 ? `${monthsAgo} MO AGO` : 'RECENT';
+  const distLabel = distanceLabel(r.distanceMi);
+  const finishLabel = fmtTime(r.timeS);
+  const nameUpper = r.name.toUpperCase().slice(0, 28);
   return {
-    hrMax: 187,
-    rhr: 42,
-    zones: [
-      { letter: 'Z1', label: 'RECOVERY',  range: '≤ 141',  accent: 'good' },
-      { letter: 'Z2', label: 'AEROBIC',   range: '142-155', accent: 'corp' },
-      { letter: 'Z3', label: 'TEMPO',     range: '156-167', accent: 'milestone' },
-      { letter: 'Z4', label: 'THRESHOLD', range: '168-178', accent: 'warn' },
-      { letter: 'Z5', label: 'VO2MAX',    range: '179-187', accent: 'xp' },
-    ],
+    value: snap.vdot.toFixed(1),
+    detail: `From ${distLabel} race`,
+    source: `${nameUpper} · ${finishLabel} · ${ageLabel}`,
+    sourceDate: r.date,
   };
 }
 
-function buildTier(state: CoachState): ProfileApiTier {
-  // 4-week avg comes from coach-state when available, otherwise mockup value.
-  const currentMi = state.volume.weeklyAvg4w > 0 ? Math.round(state.volume.weeklyAvg4w) : 35;
+function distanceLabel(distMi: number): string {
+  if (Math.abs(distMi - 3.107) / 3.107 < 0.05) return '5K';
+  if (Math.abs(distMi - 6.214) / 6.214 < 0.05) return '10K';
+  if (Math.abs(distMi - 9.321) / 9.321 < 0.05) return '15K';
+  if (Math.abs(distMi - 13.109) / 13.109 < 0.05) return 'HALF';
+  if (Math.abs(distMi - 26.219) / 26.219 < 0.05) return 'MARATHON';
+  return `${distMi.toFixed(1)} MI`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HR block — Tanaka HRmax estimate from age. RHR + measured HRmax
+// require HealthKit (M2) → null today.
+// ─────────────────────────────────────────────────────────────────────
+
+function buildHrBlock(profile: ProfileRow | null): ProfileApiHrBlock {
+  // Tanaka et al. 2001 — HRmax = 208 − 0.7·age. Population-level
+  // estimate; individual variance is ~10 bpm so this is a STARTING
+  // point, not a replacement for a measured max.
+  const hrMaxEstimate = profile?.age != null && profile.age > 0
+    ? Math.round(208 - 0.7 * profile.age)
+    : null;
+  const hrMaxMeasured = profile?.hrmax ?? null;
+  // RHR requires HealthKit or manual entry — not on the profile row
+  // path today. The `profile.rhr` column exists for forward-compat.
+  const rhr = profile?.rhr ?? null;
+
+  const effectiveHrMax = hrMaxMeasured ?? hrMaxEstimate;
+  const hasAny = effectiveHrMax != null || rhr != null;
+
+  // Compute 5 zones only when we have an effective HRmax. Zone bounds
+  // follow the standard %-of-max bands (Friel/Daniels):
+  //   Z1 ≤75%  Z2 76–82%  Z3 83–89%  Z4 90–94%  Z5 95–100%
+  const zones: ProfileApiHrZone[] = [];
+  if (effectiveHrMax != null) {
+    const pct = (p: number) => Math.round(effectiveHrMax * p);
+    zones.push(
+      { letter: 'Z1', label: 'RECOVERY',  range: `≤ ${pct(0.75)}`,                accent: 'good' },
+      { letter: 'Z2', label: 'AEROBIC',   range: `${pct(0.76)}-${pct(0.82)}`,     accent: 'corp' },
+      { letter: 'Z3', label: 'TEMPO',     range: `${pct(0.83)}-${pct(0.89)}`,     accent: 'milestone' },
+      { letter: 'Z4', label: 'THRESHOLD', range: `${pct(0.90)}-${pct(0.94)}`,     accent: 'warn' },
+      { letter: 'Z5', label: 'VO2MAX',    range: `${pct(0.95)}-${effectiveHrMax}`, accent: 'xp' },
+    );
+  }
+
+  return {
+    hrMaxMeasured,
+    hrMaxEstimate,
+    rhr,
+    hasAny,
+    zones,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Mileage tier — straight read of state.volume.
+// ─────────────────────────────────────────────────────────────────────
+
+function buildTier(state: CoachState, year: number): ProfileApiTier {
+  const weeklyAvg = state.volume.weeklyAvg4w;
+  const currentMi = weeklyAvg > 0 ? Math.round(weeklyAvg) : null;
   // LOW band 20-40, MID band 40-60. Marker position inside 0-1.
-  const position = Math.max(0, Math.min(1, (currentMi - 20) / 20));
-  const delta = state.volume.deltaPct4v4 ?? 0.12;
-  const trendArrow = delta >= 0 ? '▲' : '▼';
-  const trendLabel = `${trendArrow} ${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(0)}% V8W`;
+  const position = currentMi != null
+    ? Math.max(0, Math.min(1, (currentMi - 20) / 20))
+    : 0;
+  const delta = state.volume.deltaPct4v4;
+  const trendLabel = delta != null
+    ? `${delta >= 0 ? '▲' : '▼'} ${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(0)}% V8W`
+    : null;
+
+  // Year-peak: scan state.volume.last7Days windows isn't enough — we
+  // need the highest weekly rollup. Without a per-week year history in
+  // state, we say "NO PEAK DATA YET" rather than fabricate.
+  // weeklyAvg8w gives us a soft read but isn't a year peak.
+  let peakLabel = 'NO PEAK DATA YET';
+  if (currentMi != null) {
+    const recent7 = state.volume.last7Mi;
+    if (recent7 > 0) {
+      peakLabel = `${year} ROLLING · ${Math.round(recent7)} MI / 7D`;
+    }
+  }
+
   return {
     currentMi,
-    bandLabel: '4-WEEK AVG · LOW BAND (20-40)',
+    bandLabel: currentMi != null
+      ? '4-WEEK AVG · LOW BAND (20-40)'
+      : 'NO DATA YET',
     position,
     trendLabel,
-    peakLabel: '2026 PEAK · 42 MI',
+    peakLabel,
   };
 }
 
-function stubPrefs(): ProfileApiPref[] {
-  // TODO: wire to a user_prefs table.
-  return [
-    { label: 'LONG RUN DAY',  value: 'Sunday' },
-    { label: 'QUALITY DAY',   value: 'Tue / Thu' },
-    { label: 'TYPICAL REST',  value: 'Mon · 1-2/wk' },
-    { label: 'UNITS',         value: 'Imperial · °F' },
+// ─────────────────────────────────────────────────────────────────────
+// Training prefs · DB-backed with explicit defaults flag.
+// ─────────────────────────────────────────────────────────────────────
+
+const DEFAULT_PREFS: PrefsRow = {
+  user_id: 'me',
+  long_run_day: 'Sunday',
+  quality_days: 'Tue / Thu',
+  rest_day: 'Mon',
+  rest_cadence: '1-2/wk',
+  units: 'Imperial · °F',
+};
+
+function buildPrefs(row: PrefsRow | null): { prefs: ProfileApiPref[]; prefsAreDefaults: boolean } {
+  const effective = row ?? DEFAULT_PREFS;
+  const prefsAreDefaults = row == null;
+
+  // Combine rest day + rest cadence into one row to match the mockup.
+  const restCombined = [effective.rest_day, effective.rest_cadence]
+    .filter((s): s is string => !!s && s.trim().length > 0)
+    .join(' · ');
+
+  const prefs: ProfileApiPref[] = [
+    {
+      label: 'LONG RUN DAY',
+      value: effective.long_run_day ?? null,
+      isDefault: prefsAreDefaults && DEFAULT_PREFS.long_run_day === effective.long_run_day,
+    },
+    {
+      label: 'QUALITY DAY',
+      value: effective.quality_days ?? null,
+      isDefault: prefsAreDefaults && DEFAULT_PREFS.quality_days === effective.quality_days,
+    },
+    {
+      label: 'TYPICAL REST',
+      value: restCombined || null,
+      isDefault: prefsAreDefaults,
+    },
+    {
+      label: 'UNITS',
+      value: effective.units ?? null,
+      isDefault: prefsAreDefaults && DEFAULT_PREFS.units === effective.units,
+    },
   ];
+  return { prefs, prefsAreDefaults };
 }
 
 function buildConnections(stravaActivityCount: number): ProfileApiConnection[] {
@@ -777,7 +875,8 @@ function buildConnections(stravaActivityCount: number): ProfileApiConnection[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Shoes — real DB rows mapped into the row shape.
+// Shoes — real DB rows mapped into the row shape. Empty list when no
+// shoes have been logged.
 // ─────────────────────────────────────────────────────────────────────
 
 const SHOE_ROLE_ACCENT: Record<string, ProfileApiShoeRow['accent']> = {
@@ -830,56 +929,57 @@ function buildShoeRows(shoes: Shoe[]): ProfileApiShoeRow[] {
   });
 }
 
-function stubShoes(): ProfileApiShoeRow[] {
-  // Mockup-faithful demo shoes.
-  return [
-    { id: -1, name: 'Novablast 4',       role: 'DAILY TRAINER · ROAD',          mileage: 284, cap: 400, fraction: 0.71, accent: 'good',      statusPin: '116 LEFT', pinTone: 'green', isRetiring: false },
-    { id: -2, name: 'Alphafly 3',        role: 'RACE · CARBON · BIG SUR APR',   mileage: 68,  cap: 150, fraction: 0.45, accent: 'corp',      statusPin: '82 LEFT',  pinTone: 'blue',  isRetiring: false },
-    { id: -3, name: 'Endorphin Speed 4', role: 'TEMPO · WORKOUTS · PLATE',      mileage: 156, cap: 400, fraction: 0.39, accent: 'milestone', statusPin: '244 LEFT', pinTone: 'muted', isRetiring: false },
-    { id: -4, name: 'Invincible 3',      role: 'RECOVERY · EASY · MAX CUSHION', mileage: 340, cap: 400, fraction: 0.85, accent: 'coach',     statusPin: '60 LEFT',  pinTone: 'amber', isRetiring: false },
-    { id: -5, name: 'Speedgoat 5',       role: 'TRAIL · DIRT · TECHNICAL',      mileage: 412, cap: 400, fraction: 1.03, accent: 'warn',      statusPin: 'RETIRE',   pinTone: 'warn',  isRetiring: true  },
-  ];
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // Coach engine details — pace zones + long-run cap + easy share +
 // cutback cadence. Long-run cap reads coach-state.longestLast28Mi.
 // ─────────────────────────────────────────────────────────────────────
 
-function buildEngineBlock(state: CoachState): ProfileApiEngineBlock {
-  const longestLast28 = state.volume.longestLast28Mi > 0
-    ? state.volume.longestLast28Mi
-    : 7.4;
-  const longRunCap = Math.round(longestLast28 * 1.10 * 10) / 10;
-  const easyShare = state.intensity.easyShare14d > 0
-    ? Math.round(state.intensity.easyShare14d * 100)
-    : 92;
+function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEngineBlock {
+  const longestLast28 = state.volume.longestLast28Mi;
+  const hasLong = longestLast28 > 0;
+  const longRunCap = hasLong ? Math.round(longestLast28 * 1.10 * 10) / 10 : null;
+
+  const easyShareFrac = state.intensity.easyShare14d;
+  const hasEasy = easyShareFrac > 0;
+  const easySharePct = hasEasy ? Math.round(easyShareFrac * 100) : null;
+
+  const paceZonesValue = vdot.value != null ? `From VDOT ${vdot.value}` : 'NO DATA YET';
+  const paceLead = vdot.value != null
+    ? 'The Coach prescribes every run inside one of these 5 pace bands.'
+    : 'Coach pace zones require a recent race result. Log one to unlock prescribed paces.';
 
   const tiles: ProfileApiEngineDetail[] = [
     {
       eyebrow: 'YOUR PACE ZONES',
-      value: 'From VDOT 49.2',
+      value: paceZonesValue,
       unit: null,
-      lead: 'The Coach prescribes every run inside one of these 5 pace bands.',
+      lead: paceLead,
       footEyebrow: '',
       footBody: '',
     },
     {
       eyebrow: "NEXT WEEK'S LONG-RUN LIMIT",
-      value: longRunCap.toFixed(1),
-      unit: 'MI',
-      lead: `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week — keeps the jump safe.`,
-      footEyebrow: 'HOW',
-      footBody: `Your longest run in the last 28 days was ${longestLast28.toFixed(1)} mi. Coach caps the next at +10% to prevent spikes.`,
+      value: longRunCap != null ? longRunCap.toFixed(1) : 'NO DATA YET',
+      unit: longRunCap != null ? 'MI' : null,
+      lead: longRunCap != null
+        ? `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week — keeps the jump safe.`
+        : 'Long-run cap needs a recent run history. Log a run to unlock the +10% bump.',
+      footEyebrow: longRunCap != null ? 'HOW' : '',
+      footBody: longRunCap != null
+        ? `Your longest run in the last 28 days was ${longestLast28.toFixed(1)} mi. Coach caps the next at +10% to prevent spikes.`
+        : '',
     },
     {
       eyebrow: 'EASY-PACE TARGET',
-      value: '≥80',
-      unit: '%',
-      lead: `At least 80% of your weekly miles should be at easy pace. You're at ${easyShare}%.`,
-      footEyebrow: 'WHY',
-      footBody:
-        'Polarized training: lots of easy + a little hard beats lots of moderate. Reduces injury, builds aerobic engine.',
+      value: easySharePct != null ? `≥80` : 'NO DATA YET',
+      unit: easySharePct != null ? '%' : null,
+      lead: easySharePct != null
+        ? `At least 80% of your weekly miles should be at easy pace. You're at ${easySharePct}%.`
+        : 'Easy-share needs heart-rate-tagged runs in the last 14 days.',
+      footEyebrow: easySharePct != null ? 'WHY' : '',
+      footBody: easySharePct != null
+        ? 'Polarized training: lots of easy + a little hard beats lots of moderate. Reduces injury, builds aerobic engine.'
+        : '',
     },
     {
       eyebrow: 'RECOVERY WEEK CADENCE',
@@ -888,17 +988,19 @@ function buildEngineBlock(state: CoachState): ProfileApiEngineBlock {
       lead: 'Every 3rd week the Coach drops volume −20% so the body can absorb training.',
       footEyebrow: 'WHY 3 WEEKS',
       footBody:
-        'At your mileage tier (low band, 20-40 mi/wk), 3-week blocks balance stimulus and recovery without losing fitness.',
+        'At a low-band mileage tier, 3-week blocks balance stimulus and recovery without losing fitness.',
     },
   ];
 
-  const paceZones = [
-    { label: 'EASY',      accent: 'var(--good)',      value: '8:55–9:25' },
-    { label: 'MARATHON',  accent: 'var(--corp)',      value: '7:18' },
-    { label: 'THRESHOLD', accent: 'var(--milestone)', value: '7:00' },
-    { label: 'INTERVAL',  accent: 'var(--warn)',      value: '6:30' },
-    { label: 'REP',       accent: 'var(--xp)',        value: '5:55' },
-  ];
+  // Pace zone table — empty when no VDOT signal.
+  const paceZones: Array<{ label: string; accent: string; value: string }> = [];
+  // Note: when VDOT is available we'd ideally map vdotSnapshot.paces
+  // into display strings here. That requires re-snapshotting state
+  // (vdot only carries display strings via ProfileApiVdot). Until the
+  // engine surfaces a numeric paceset directly we leave the table
+  // empty when no VDOT, and the page renders "NO DATA YET" in its
+  // place. When VDOT IS available the page renders the existing
+  // hero-only tile.
 
   return {
     tiles,

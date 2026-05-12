@@ -59,6 +59,7 @@ export interface ProfileData {
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
+  prefsAreDefaults: boolean;
   connections: ProfileApiConnection[];
   shoes: ProfileApiShoeRow[];
   shoeWarnLabel: string | null;
@@ -79,6 +80,7 @@ interface ProfileApiOk {
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
+  prefsAreDefaults: boolean;
   connections: ProfileApiConnection[];
   shoes: ProfileApiShoeRow[];
   shoeWarnLabel: string | null;
@@ -112,6 +114,7 @@ export async function loadProfileData(): Promise<ProfileData> {
     hrBlock: api.hrBlock,
     tier: api.tier,
     prefs: api.prefs,
+    prefsAreDefaults: api.prefsAreDefaults,
     connections: api.connections,
     shoes: api.shoes,
     shoeWarnLabel: api.shoeWarnLabel,
