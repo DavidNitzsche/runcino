@@ -24,6 +24,8 @@ import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
 import { getCachedActivities } from '../../../lib/strava-cache';
 import { rollupYear, naivePRs, weeklyMiles, isProbablyRace } from '../../../lib/strava-stats';
 import type { NormalizedActivity } from '../strava/activities/route-shared';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes — every Log card has a deterministic data contract that
@@ -155,6 +157,9 @@ interface LogApiOk {
   /** Longest run YTD — display label + miles + name. */
   longestRunMi: number;
   longestRunName: string | null;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface LogApiErr {
@@ -232,6 +237,8 @@ export async function GET(): Promise<Response> {
       null,
     );
 
+    const freshness = await gatherFreshness({ state });
+
     const body: LogApiOk = {
       ok: true,
       today,
@@ -246,6 +253,7 @@ export async function GET(): Promise<Response> {
       peakMonthMi: Math.round(peakMonth?.milesThisYear ?? 0),
       longestRunMi: Math.round((longest?.distanceMi ?? 0) * 10) / 10,
       longestRunName: longest?.name ?? null,
+      freshness,
     };
     return Response.json(body);
   } catch (e) {

@@ -1427,42 +1427,79 @@ function CoachEngineCard({ data }: { data: ProfileData }) {
         {e.tiles.slice(1).map((t, i) => <EngineDetailTile key={i} detail={t} />)}
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          padding: '14px 18px',
-          background: 'rgba(62,189,65,.06)',
-          border: '1px solid rgba(62,189,65,.20)',
-          borderRadius: 8,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            className="mono-sm"
-            style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--good)', fontWeight: 700 }}
-          >
-            {e.integrity.headline}
+      {e.integrity ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: '14px 18px',
+            background: 'rgba(62,189,65,.06)',
+            border: '1px solid rgba(62,189,65,.20)',
+            borderRadius: 8,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div
+              className="mono-sm"
+              style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--good)', fontWeight: 700 }}
+            >
+              {e.integrity.headline}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 13,
+                color: 'var(--t1)',
+                marginTop: 4,
+                lineHeight: 1.5,
+              }}
+            >
+              {e.integrity.body}
+            </div>
           </div>
-          <div
-            style={{
-              fontFamily: 'var(--f-body)',
-              fontSize: 13,
-              color: 'var(--t1)',
-              marginTop: 4,
-              lineHeight: 1.5,
-            }}
-          >
-            {e.integrity.body}
-          </div>
+          <CardPin variant="green">
+            {e.integrity.passed}/{e.integrity.total} RULES OK
+          </CardPin>
         </div>
-        <CardPin variant="green">
-          {e.integrity.passed}/{e.integrity.total} RULES OK
-        </CardPin>
-      </div>
+      ) : (
+        <div
+          style={{
+            marginTop: 14,
+            padding: '14px 18px',
+            background: 'var(--l2)',
+            border: '1px solid var(--bd)',
+            borderRadius: 8,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div
+              className="mono-sm"
+              style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700 }}
+            >
+              PLAN INTEGRITY · NO DATA YET
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 13,
+                color: 'var(--t2)',
+                marginTop: 4,
+                lineHeight: 1.5,
+              }}
+            >
+              Engine doesn&apos;t expose a validation surface yet — plan-integrity reads will land with Wave K coach validation.
+            </div>
+          </div>
+          <CardPin variant="muted">PENDING</CardPin>
+        </div>
+      )}
     </Card>
   );
 }

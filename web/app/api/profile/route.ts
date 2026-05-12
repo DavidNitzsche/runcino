@@ -30,6 +30,8 @@ import { getProfile, type ProfileRow } from '../../../lib/profile-store';
 import { getUserPrefs, type PrefsRow } from '../../../lib/prefs-store';
 import { listPersonalGoals, type GoalRow } from '../../../lib/goals-store';
 import { vdotSnapshot } from '../../../lib/vdot';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes
@@ -229,13 +231,14 @@ export interface ProfileApiEngineBlock {
   /** Pace zones table (rendered inside the first tile). Empty when
    *  no VDOT signal — UI surfaces "NO DATA YET". */
   paceZones: Array<{ label: string; accent: string; value: string }>;
-  /** Plan-integrity validation. */
+  /** Plan-integrity validation. Null when the engine doesn't yet
+   *  expose a real validation surface — UI renders NO DATA YET. */
   integrity: {
     passed: number;
     total: number;
     headline: string;
     body: string;
-  };
+  } | null;
 }
 
 interface ProfileApiOk {
@@ -263,6 +266,9 @@ interface ProfileApiOk {
   /** "1 RETIRE · 1 NEAR CAP" pin or null. */
   shoeWarnLabel: string | null;
   engine: ProfileApiEngineBlock;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface ProfileApiErr {
@@ -331,6 +337,8 @@ export async function GET(): Promise<Response> {
     // and applies the 10% bump per Research/00a.
     const engine = buildEngineBlock(state, vdot);
 
+    const freshness = await gatherFreshness({ state });
+
     const body: ProfileApiOk = {
       ok: true,
       today,
@@ -350,6 +358,7 @@ export async function GET(): Promise<Response> {
       shoes,
       shoeWarnLabel,
       engine,
+      freshness,
     };
     return Response.json(body);
   } catch (e) {
@@ -1002,15 +1011,18 @@ function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEn
   // place. When VDOT IS available the page renders the existing
   // hero-only tile.
 
+  // Plan integrity — Wave H caught the prior hardcoded "12 of 12" pass
+  // count, which never came from the engine. Until coach.engineDetails()
+  // (or coach.weekValidation()) exposes a real validation surface, this
+  // returns null and the UI renders NO DATA YET. Synthesizing pass/total
+  // here would risk shipping a green checkmark when the engine has
+  // silently regressed.
+  // TODO (Wave K — coach validation): wire to coach.engineDetails(state)
+  // or count simulateWeek() outputs passing coach.weekValidation.
   return {
     tiles,
     paceZones,
-    integrity: {
-      passed: 12,
-      total: 12,
-      headline: '▲ PLAN INTEGRITY VALIDATED',
-      body: 'All 12 doctrine rules pass against current plan. No regressions detected.',
-    },
+    integrity: null,
   };
 }
 
