@@ -27,10 +27,13 @@ import type {
   WorkoutPrescription,
   RecentAdjustmentsReport,
   AdjustedPlan,
+  PathToRaceResult,
+  NextPushesReport,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
+import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
 
 interface OverviewApiOk {
   ok: true;
@@ -52,6 +55,12 @@ interface OverviewApiOk {
   /** AdjustForReality applied to today's prescription. Drives the
    *  COACH ADJUSTED pin + "why" line on the TodayCard. */
   adjustedToday: CoachDecision<AdjustedPlan>;
+  /** Wave G · PATH TO RACE — null when no A-race with goal time. */
+  pathToRace: CoachDecision<PathToRaceResult> | null;
+  /** Wave G · NEXT PUSH — always present, may have 0 pushes. */
+  nextPushes: CoachDecision<NextPushesReport>;
+  /** Wave J · one-sentence narrative line. Null when no signal fires. */
+  narrative: NarrativeLine | null;
 }
 
 interface OverviewApiErr {
@@ -121,6 +130,35 @@ export async function GET(): Promise<Response> {
 
     const freshness = await gatherFreshness({ state });
 
+    // Wave G · alive-coach surfaces. Run server-side so the coach
+    // module never enters the client bundle.
+    const stateNextA = state.races.nextA;
+    const pathToRace = (stateNextA && stateNextA.goalFinishS)
+      ? await coach.pathToRace({
+          today,
+          state,
+          raceName: stateNextA.name,
+          raceDateISO: stateNextA.date,
+          raceDistanceMi: stateNextA.distanceMi,
+          goalTimeS: stateNextA.goalFinishS,
+        })
+      : null;
+    const nextPushes = await coach.nextPushes({ today, state });
+
+    // Wave J · narrative line. Pull adjustment context from
+    // adjustedToday so the "Coach adjusted today" priority can fire.
+    const adjAns = adjustedToday.answer;
+    const narrative = await narrativeLine(state, today, {
+      adjustment: adjAns.changed
+        ? {
+            changed: true,
+            adjustedFor: adjAns.adjustedFor,
+            newLabel: adjAns.workout.label,
+            direction: 'softening',
+          }
+        : undefined,
+    });
+
     const body: OverviewApiOk = {
       ok: true,
       today,
@@ -135,6 +173,9 @@ export async function GET(): Promise<Response> {
       freshness,
       recentAdjustments,
       adjustedToday,
+      pathToRace,
+      nextPushes,
+      narrative,
     };
     return Response.json(body);
   } catch (e) {

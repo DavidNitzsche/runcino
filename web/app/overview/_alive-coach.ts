@@ -28,10 +28,10 @@
  * plan-adapted card — Wave F owns those.
  */
 
-import { coach } from '@/coach/coach';
 import type {
   PathToRaceResult,
   NextPushesReport,
+  ReadinessAssessment,
 } from '@/coach/coach';
 import type { CoachDecision } from '@/coach/types';
 import type { CoachState } from '@/lib/coach-state';
@@ -93,32 +93,23 @@ export interface LoadAliveCoachInput {
    *  feature isn't wired yet for this user (strip surfaces an honest
    *  NOT WIRED chip). */
   checkin: CheckinAggregate | null;
+  /** Pre-computed PathToRace decision (server-side). null when no
+   *  A-race or no goal time. */
+  pathToRace: CoachDecision<PathToRaceResult> | null;
+  /** Pre-computed NextPushes report (server-side). */
+  nextPushes: CoachDecision<NextPushesReport>;
+  /** Pre-computed readiness assessment (server-side) — drives the
+   *  READINESS chip variant. */
+  readiness: CoachDecision<ReadinessAssessment>;
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // Loader
 // ─────────────────────────────────────────────────────────────────────
 
-export async function loadAliveCoachData(input: LoadAliveCoachInput): Promise<AliveCoachData> {
-  const { state, today, stravaFetchedAtMs, checkin } = input;
-
-  // ── PATH TO RACE ──────────────────────────────────────────────────
-  // Only fires when next A race has a parsed goal time. Otherwise the
-  // card renders its CTA empty state.
+export function loadAliveCoachData(input: LoadAliveCoachInput): AliveCoachData {
+  const { state, today, stravaFetchedAtMs, checkin, pathToRace, nextPushes, readiness } = input;
   const nextA = state.races.nextA;
-  const pathToRace: AliveCoachData['pathToRace'] = (nextA && nextA.goalFinishS)
-    ? await coach.pathToRace({
-        today,
-        state,
-        raceName: nextA.name,
-        raceDateISO: nextA.date,
-        raceDistanceMi: nextA.distanceMi,
-        goalTimeS: nextA.goalFinishS,
-      })
-    : null;
-
-  // ── NEXT PUSHES ──────────────────────────────────────────────────
-  const nextPushes = await coach.nextPushes({ today, state });
 
   // ── WATCHING STRIP ───────────────────────────────────────────────
   const watching: WatchingChip[] = [];
@@ -193,9 +184,8 @@ export async function loadAliveCoachData(input: LoadAliveCoachInput): Promise<Al
     variant: streak >= 7 ? 'green' : streak > 0 ? 'amber' : 'muted',
   });
 
-  // 4. Readiness — from coach.assessReadiness output. We call the coach
-  //    so the chip reads the same as the readiness card on the page.
-  const readiness = await coach.assessReadiness({ today, state });
+  // 4. Readiness — pre-computed server-side; chip reads the same as
+  //    the readiness card on the page.
   const r = readiness.answer;
   watching.push({
     id: 'readiness',

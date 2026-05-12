@@ -29,10 +29,13 @@ import type {
   ReadinessAssessment,
   RecentAdjustmentsReport,
   AdjustedPlan,
+  PathToRaceResult,
+  NextPushesReport,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
+import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
 
 // ─────────────────────────────────────────────────────────────────────
 // HR zones rollup — re-homed from /health per Research/00a §TID
@@ -85,6 +88,12 @@ interface TrainingApiOk {
   freshness: FreshnessMap;
   recentAdjustments: CoachDecision<RecentAdjustmentsReport>;
   adjustedToday: CoachDecision<AdjustedPlan>;
+  /** Wave G · PATH TO RACE decision — null when no A-race with goal. */
+  pathToRace: CoachDecision<PathToRaceResult> | null;
+  /** Wave G · NEXT PUSH report. */
+  nextPushes: CoachDecision<NextPushesReport>;
+  /** Wave J · narrative line. Null when no priority signal fires. */
+  narrative: NarrativeLine | null;
 }
 
 interface TrainingApiErr {
@@ -146,6 +155,33 @@ export async function GET(): Promise<Response> {
 
     const freshness = await gatherFreshness({ state });
 
+    // Wave G · alive-coach surfaces (server-side). Same engine the
+    // /api/overview route calls — pageviews on /training reuse them.
+    const stateNextA = state.races.nextA;
+    const pathToRace = (stateNextA && stateNextA.goalFinishS)
+      ? await coach.pathToRace({
+          today,
+          state,
+          raceName: stateNextA.name,
+          raceDateISO: stateNextA.date,
+          raceDistanceMi: stateNextA.distanceMi,
+          goalTimeS: stateNextA.goalFinishS,
+        })
+      : null;
+    const nextPushes = await coach.nextPushes({ today, state });
+
+    const adjAns = adjustedToday.answer;
+    const narrative = await narrativeLine(state, today, {
+      adjustment: adjAns.changed
+        ? {
+            changed: true,
+            adjustedFor: adjAns.adjustedFor,
+            newLabel: adjAns.workout.label,
+            direction: 'softening',
+          }
+        : undefined,
+    });
+
     const body: TrainingApiOk = {
       ok: true,
       today,
@@ -160,6 +196,9 @@ export async function GET(): Promise<Response> {
       freshness,
       recentAdjustments,
       adjustedToday,
+      pathToRace,
+      nextPushes,
+      narrative,
     };
     return Response.json(body);
   } catch (e) {
