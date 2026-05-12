@@ -218,31 +218,40 @@ function TrainingGreet({ data }: { data: TrainingData | null }) {
 function PlanIntegrityBanner({ issues }: { issues: NonNullable<TrainingData['coach']['workout']['answer']['coachToday']['planIssues']> }) {
   const errors = issues.filter((i) => i.severity === 'error');
   const warns = issues.filter((i) => i.severity === 'warn');
+  // Errors get a louder coach voice ("hold up") · warns are a gentler
+  // note ("heads up"). Both still cite the research.
   const isError = errors.length > 0;
-  const accent = isError ? 'var(--warn)' : 'var(--att)';
-  const bg = isError ? 'rgba(252,77,84,.06)' : 'rgba(243,173,56,.06)';
-  const border = isError ? 'rgba(252,77,84,.30)' : 'rgba(243,173,56,.30)';
+  const headline = isError ? 'Hold up — something\'s off with this week\'s plan' : 'Heads up';
   return (
-    <Card span={12} padding="14px 18px" style={{ background: bg, borderColor: border, borderLeft: `3px solid ${accent}` }}>
+    <Card span={12} padding="16px 20px" style={{
+      background: 'linear-gradient(135deg, rgba(39,180,224,.08) 0%, var(--l1) 65%)',
+      borderColor: 'rgba(39,180,224,.32)',
+      borderLeft: '3px solid var(--coach)',
+    }}>
       <div style={{
         fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: '1.6px',
-        color: accent, fontWeight: 800, textTransform: 'uppercase',
+        color: 'var(--coach)', fontWeight: 800, textTransform: 'uppercase',
       }}>
-        PLAN INTEGRITY · {errors.length} {errors.length === 1 ? 'ERROR' : 'ERRORS'}
-        {warns.length > 0 ? ` · ${warns.length} WARN` : ''}
+        ▸ COACH NOTE
       </div>
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{
+        fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 700,
+        letterSpacing: '-.01em', lineHeight: 1.2, color: 'var(--t0)',
+        marginTop: 6,
+      }}>
+        {headline}
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {[...errors, ...warns].slice(0, 5).map((iss, i) => (
-          <div key={i}>
-            <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5, fontWeight: 500 }}>
-              {iss.message}
-            </div>
-            <div style={{
-              fontFamily: 'var(--f-data)', fontSize: 9.5, color: 'var(--t3)',
-              letterSpacing: '0.6px', marginTop: 3,
+          <div key={i} className="t-body" style={{ color: 'var(--t1)', fontSize: 13, lineHeight: 1.55 }}>
+            {iss.message}
+            <span style={{
+              display: 'block', marginTop: 3,
+              fontFamily: 'var(--f-data)', fontSize: 9.5,
+              color: 'var(--t3)', letterSpacing: '0.6px',
             }}>
-              {iss.location} · {iss.citation}
-            </div>
+              {iss.citation}
+            </span>
           </div>
         ))}
       </div>

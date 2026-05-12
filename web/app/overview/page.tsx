@@ -215,10 +215,10 @@ function OverviewBody({ data }: { data: OverviewData }) {
         <RaceCountdownCard data={data} />
       </Row>
 
-      {/* ROW 2 · WEEK STRIP (9) · COACH THIS WEEK (3) */}
+      {/* ROW 2 · COACH THIS WEEK (3) · WEEK STRIP (9) */}
       <Row>
-        <WeekStripCard data={data} />
         <CoachThisWeekCard data={data} />
+        <WeekStripCard data={data} />
       </Row>
 
       {/* ROW 3 · TRAJECTORY (8) · PLAN ADAPTED (4) */}
