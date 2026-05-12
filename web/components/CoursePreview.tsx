@@ -547,20 +547,48 @@ export function ElevationProfile({
   const values = useMemo(() => trkpts.map(p => +ft(p[2]).toFixed(2)), [trkpts]);
   const totalMi = mi(cumDistM[cumDistM.length - 1] ?? 0);
 
-  // Build the segment color resolver once per render — Chart.js calls
-  // this back for every segment between p0 and p1. Phase boundaries
-  // get a small lerp window (0.1 mi each side) so the area-fill fades
-  // softly between phase tints instead of switching abruptly.
-  const segmentColor = useMemo(() => {
-    if (tinting === 'phase' && phases && phaseColors) {
-      return (segIdx: number, alpha = 1): string => {
-        const midM = (cumDistM[segIdx] + cumDistM[segIdx + 1]) / 2;
-        const c = phaseColorAtBlended(midM / M_PER_MI, phases, phaseColors, 0.4);
+  // Phase tinting via a CANVAS GRADIENT covering the whole chart, not
+  // per-segment fills. Per-segment fills create visible vertical seams
+  // at every segment boundary because adjacent parallelograms with
+  // different colors don't anti-alias against each other on a dark bg.
+  // A single linear gradient with stops at phase boundaries renders
+  // truly continuous — no seams at all.
+  //
+  // Build it as a scriptable Chart.js option: receives the chart ctx
+  // at draw time so we can read the chartArea pixel bounds and use
+  // ctx.createLinearGradient. Returns null on first render before
+  // the chart has measured itself.
+  const buildGradient = useMemo(() => {
+    if (tinting !== 'phase' || !phases || !phaseColors || phases.length === 0) return null;
+    const totalMile = totalMi;
+    const fadeMi = 0.4;
+    return (alpha: number) => (scriptCtx: {
+      chart: { ctx: CanvasRenderingContext2D; chartArea?: { left: number; right: number } };
+    }) => {
+      const { chart } = scriptCtx;
+      if (!chart.chartArea) return withAlpha(phaseColors[0] ?? lineColor, alpha);
+      const { left, right } = chart.chartArea;
+      const width = right - left;
+      if (width <= 0) return withAlpha(phaseColors[0] ?? lineColor, alpha);
+      const grad = chart.ctx.createLinearGradient(left, 0, right, 0);
+      const toFrac = (m: number) => Math.max(0, Math.min(1, m / totalMile));
+      const colorAt = (m: number) => {
+        const c = phaseColorAtBlended(m, phases, phaseColors, fadeMi);
         return alpha < 1 ? withAlpha(c, alpha) : c;
       };
-    }
-    return null;
-  }, [tinting, phases, phaseColors, cumDistM]);
+      // Sample evenly across the chart — 60 stops is enough to render
+      // the smoothstep curve at the boundaries cleanly without bloating
+      // the gradient. Each fade window gets ~12 stops which the smoothstep
+      // function spreads into a perceptual S-curve.
+      const steps = 60;
+      for (let i = 0; i <= steps; i++) {
+        const frac = i / steps;
+        const mile = frac * totalMile;
+        grad.addColorStop(frac, colorAt(mile));
+      }
+      return grad;
+    };
+  }, [tinting, phases, phaseColors, totalMi, lineColor]);
 
   // Peak overlay dataset — one non-null point at peakIdx.
   const peakOverlay = useMemo(() => {
@@ -594,16 +622,10 @@ export function ElevationProfile({
               {
                 label: 'Elevation (ft)',
                 data: values,
-                borderColor: lineColor,
-                backgroundColor: withAlpha(lineColor, 0.18),
+                borderColor: buildGradient ? buildGradient(1) : lineColor,
+                backgroundColor: buildGradient ? buildGradient(0.35) : withAlpha(lineColor, 0.18),
                 fill: 'origin', tension: 0.25,
                 pointRadius: 0, pointHoverRadius: 5, borderWidth: 2,
-                ...(segmentColor ? {
-                  segment: {
-                    borderColor: (ctx: { p0DataIndex: number }) => segmentColor(ctx.p0DataIndex),
-                    backgroundColor: (ctx: { p0DataIndex: number }) => segmentColor(ctx.p0DataIndex, 0.35),
-                  },
-                } : {}),
               },
               // Optional peak overlay — single visible point, no line.
               ...(peakOverlay ? [{
