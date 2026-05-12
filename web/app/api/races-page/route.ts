@@ -83,13 +83,10 @@ export async function GET(): Promise<Response> {
     const state = await gatherCoachState();
     const today = state.now.slice(0, 10);
 
-    // Local-dev fallback: if Postgres returns no races, surface a curated
-    // demo calendar that matches the locked May 9 mockup. This keeps the
-    // page visually meaningful during QA without forcing the user to seed
-    // a database. Production deploys will always have real data because
-    // the race-creation flow writes through listRacesDB.
+    // No races yet → empty array. The /races page handles the empty case
+    // with a "NO RACES YET — ADD ONE" CTA; we never synthesize fake races.
     const rawRaces = await listRacesDB().catch(() => []);
-    const allRaces = rawRaces.length > 0 ? rawRaces : demoRaceCalendar(today);
+    const allRaces = rawRaces;
     const upcoming = allRaces.filter((r) => r.meta.date >= today);
     const nextA = upcoming.find((r) => (r.meta.priority ?? 'A') === 'A') ?? null;
 
@@ -191,77 +188,3 @@ function daysUntilISO(todayISO: string, targetISO: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-/**
- * Local-dev demo race calendar. Returns a curated set of upcoming + past
- * races shaped exactly like Postgres-backed SavedRace rows so every
- * downstream consumer (Coach, UI cards, predictions) works identically.
- *
- * Mirrors the locked May 9 mockup content:
- *   · A-race  : Americas Finest City Half · 2026-08-16 · goal 1:35:00
- *   · B-race  : Mission Bay 10K (tune-up) · 2026-06-22 · goal 0:42:00
- *   · C       : Disney Princess Half · 2027-02-20 · goal 1:38:00 (next-season scout)
- *   · Recent  : Big Sur Marathon · 2026-04-27 · 3:36:55 PR
- *   · Recent  : Sombrero Half · 2026-03-22 · 1:32:00 PR
- *   · Older   : Surf City 10K · 2026-02-07 · 41:32
- *   · Older   : Disney 5K · 2026-01-12 · 19:48 PR
- *
- * Production deploys never hit this — listRacesDB returns real rows. This
- * only fires in local dev when no races have been seeded.
- */
-
-function demoRaceCalendar(today: string): SavedRace[] {
-  const minimalPlan = {
-    summary: { courseSlug: '', distanceM: 0, goalFinishS: 0 },
-    phases: [],
-    miles: [],
-  } as unknown as SavedRace['plan'];
-
-  const r = (
-    slug: string,
-    name: string,
-    date: string,
-    distanceMi: number,
-    goalDisplay: string,
-    priority: 'A' | 'B' | 'C',
-    actualResult?: SavedRace['actualResult'],
-  ): SavedRace => ({
-    slug,
-    plan: minimalPlan,
-    gpxText: '',
-    savedAt: '2026-01-01T00:00:00Z',
-    meta: { name, date, distanceMi, goalDisplay, courseSlug: slug, priority },
-    actualResult: actualResult ?? null,
-  });
-
-  return [
-    // Upcoming
-    r('afc-half-2026',         'Americas Finest City Half', '2026-08-16', 13.1, '1:35:00', 'A'),
-    r('mission-bay-10k-2026',  'Mission Bay 10K',           '2026-06-22',  6.2, '0:42:00', 'B'),
-    r('disney-princess-2027',  'Disney Princess Half',      '2027-02-20', 13.1, '1:38:00', 'C'),
-    // Past with results
-    r('big-sur-marathon-2026', 'Big Sur Marathon',          '2026-04-27', 26.2, '3:45:00', 'A', {
-      finishS: 13015, finishDisplay: '3:36:55',
-      paceSPerMi: 497, paceDisplay: '8:17',
-      isPR: true, recordedAt: '2026-04-27T18:00:00Z', source: 'strava',
-      avgHr: 156, totalGainFt: 4189,
-    }),
-    r('sombrero-half-2026',    'Sombrero Half Marathon',    '2026-03-22', 13.1, '1:32:00', 'A', {
-      finishS: 5520, finishDisplay: '1:32:00',
-      paceSPerMi: 421, paceDisplay: '7:01',
-      isPR: true, recordedAt: '2026-03-22T17:00:00Z', source: 'strava',
-      avgHr: 168,
-    }),
-    r('surf-city-10k-2026',    'Surf City 10K',             '2026-02-07',  6.2, '0:42:00', 'B', {
-      finishS: 2492, finishDisplay: '41:32',
-      paceSPerMi: 401, paceDisplay: '6:41',
-      isPR: false, recordedAt: '2026-02-07T16:00:00Z', source: 'strava',
-      avgHr: 172,
-    }),
-    r('disney-5k-2026',        'Disney 5K',                 '2026-01-12',  3.1, '0:20:00', 'C', {
-      finishS: 1188, finishDisplay: '19:48',
-      paceSPerMi: 383, paceDisplay: '6:23',
-      isPR: true, recordedAt: '2026-01-12T15:30:00Z', source: 'strava',
-      avgHr: 175,
-    }),
-  ];
-}
