@@ -505,22 +505,10 @@ function LatestRecapCard({ data }: { data: RacesData }) {
           <CardLabel>LATEST RESULT</CardLabel>
           <CardPin variant="muted">—</CardPin>
         </CardHeader>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontWeight: 700,
-            fontSize: 26,
-            textTransform: 'uppercase',
-            marginTop: 8,
-            color: 'var(--t2)',
-          }}
-        >
-          No race results yet
-        </div>
-        <div className="t-body" style={{ color: 'var(--t1)', marginTop: 6 }}>
-          When you finish your first race, the recap surfaces here with
-          the Coach Read, splits, conditions, and HR breakdown.
-        </div>
+        <EmptyState
+          title="No race results yet"
+          body="When you finish your first race, the recap surfaces here with the Coach Read, splits, conditions, and HR breakdown."
+        />
       </Card>
     );
   }
@@ -1276,9 +1264,10 @@ function ResultsListCard({ data }: { data: RacesData }) {
           <CardLabel>{year} RESULTS</CardLabel>
           <CardPin variant="muted">NONE</CardPin>
         </CardHeader>
-        <div className="t-body" style={{ color: 'var(--t1)', marginTop: 10 }}>
-          No race results recorded this year yet.
-        </div>
+        <EmptyState
+          title={`No ${year} results`}
+          body="Once you finish a race this year, the results land here with pace, HR, and PR detection."
+        />
       </Card>
     );
   }

@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Caption } from '../../../components/nav';
 import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
+import { EmptyState, Skeleton } from '../../components/EmptyState';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -105,7 +106,23 @@ export default function RaceDetailPage() {
   }, [slug]);
 
   if (race === 'loading') {
-    return <div style={{ padding: 80, textAlign: 'center', color: 'var(--color-t2)' }}>Loading…</div>;
+    return (
+      <>
+        <Caption left="Runcino · races" right="LOADING…" />
+        <div className="stage">
+          <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
+          <div className="body">
+            <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+              <div className="card" style={{ gridColumn: 'span 12' }}>
+                <Skeleton width={120} height={11} style={{ marginBottom: 14 }} />
+                <Skeleton width={360} height={48} style={{ marginBottom: 18 }} />
+                <Skeleton height={280} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
   }
   if (!race) {
     return (
@@ -113,10 +130,21 @@ export default function RaceDetailPage() {
         <Caption left="Runcino · races" right="NOT FOUND" />
         <div className="stage">
           <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
-          <div className="body" style={{ padding: 80, textAlign: 'center' }}>
-            <h1 style={{ fontSize: 56 }}>404</h1>
-            <p style={{ color: 'var(--color-t2)', marginTop: 12 }}>No saved race for slug <code>{slug}</code>.</p>
-            <Link href="/races" className="btn btn--primary" style={{ marginTop: 24 }}>← Back to races</Link>
+          <div className="body">
+            <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+              <div className="card" style={{ gridColumn: 'span 12' }}>
+                <EmptyState
+                  variant="error"
+                  title="Race not found"
+                  body={<>No saved race for slug <code style={{ background: 'var(--l3)', padding: '1px 6px', borderRadius: 4 }}>{slug}</code>. It may have been deleted, or the link is wrong.</>}
+                  cta={
+                    <Link href="/races" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                      ← BACK TO RACES
+                    </Link>
+                  }
+                />
+              </div>
+            </div>
           </div>
         </div>
       </>

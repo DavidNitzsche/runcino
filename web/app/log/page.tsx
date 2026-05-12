@@ -650,20 +650,15 @@ function RecentRunsCard({ data }: { data: LogData }) {
         </div>
 
         {runs.length === 0 ? (
-          <div
-            style={{
-              padding: '32px 10px',
-              fontFamily: 'var(--f-data)',
-              fontSize: 12,
-              color: 'var(--t3)',
-              fontWeight: 600,
-              letterSpacing: '.8px',
-              textTransform: 'uppercase',
-              textAlign: 'center',
-            }}
-          >
-            No runs yet · connect Strava to populate
-          </div>
+          <EmptyState
+            title="No runs yet"
+            body="Once Strava syncs your first run, every workout lands here with splits, HR, and pace breakdowns."
+            cta={
+              <Link href="/profile#strava" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                ▸ CONNECT STRAVA
+              </Link>
+            }
+          />
         ) : (
           runs.map((r) => <RunFeedRow key={r.id} run={r} />)
         )}
