@@ -1311,15 +1311,36 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
 
 function SparkHRVCard({ data }: { data: OverviewData }) {
   const b = data.biometrics.hrv;
-  return <SimpleSparkCard label="HRV · 7D AVG" {...b} />;
+  // HRV: higher is better. invert option false (above = good).
+  return <SimpleSparkCard label="HRV · 7D AVG" {...b} aboveColor="#3EBD41" />;
 }
 function SparkRHRCard({ data }: { data: OverviewData }) {
   const b = data.biometrics.rhr;
-  return <SimpleSparkCard label="RESTING HR" {...b} />;
+  // RHR: lower is better. Invert visualisation so dips read as "good".
+  return <SimpleSparkCard label="RESTING HR" {...b} aboveColor="var(--warn)" belowColor="#008FEC" invert />;
 }
 function SparkEffortCard({ data }: { data: OverviewData }) {
   const b = data.biometrics.effort;
-  return <SimpleSparkCard label="EFFORT · LAST 7D vs PRIOR 7D" {...b} valueColor="var(--good)" />;
+  // Effort/RPE: lower is better (easier). Invert so falling RPE reads as "good".
+  return <SimpleSparkCard label="EFFORT · LAST 7D vs PRIOR 7D" {...b} valueColor="var(--good)" aboveColor="var(--warn)" belowColor="#3EBD41" invert />;
+}
+
+/** Parse SVG polyline points-string ("x,y x,y x,y") into a numeric series.
+ *  Source y is SVG-inverted (low y = high value), so we flip to make the
+ *  bar heights read directly. */
+function parseSparkPointsAsSeries(points: string): number[] {
+  if (!points) return [];
+  const pts = points.trim().split(/\s+/);
+  const ys: number[] = [];
+  for (const p of pts) {
+    const [, ys2] = p.split(',');
+    const y = Number(ys2);
+    if (Number.isFinite(y)) ys.push(y);
+  }
+  if (ys.length === 0) return [];
+  // Invert: SVG y=0 is top. Pick a fixed ceiling well above observed values.
+  const ceiling = 36;
+  return ys.map((y) => ceiling - y);
 }
 
 function SimpleSparkCard({
@@ -1331,13 +1352,29 @@ function SimpleSparkCard({
   footLeft,
   footRight,
   sparkPoints,
-  strokeColor,
   valueColor,
+  aboveColor,
+  belowColor,
+  invert,
 }: {
   label: string;
-} & OverviewData['biometrics']['hrv'] & { valueColor?: string }) {
+} & OverviewData['biometrics']['hrv'] & {
+  valueColor?: string;
+  /** Bar color for points above baseline (or all points if no baseline). */
+  aboveColor: string;
+  /** Bar color for points at-or-below baseline. */
+  belowColor?: string;
+  /** If true, parsed series is inverted (used for RHR/effort where lower is better). */
+  invert?: boolean;
+}) {
+  // Convert points-string to bar series. If invert, "good" trends go DOWN; we
+  // flip the series so the visual baseline + above/below colors still encode
+  // good = green, bad = warn.
+  let series = parseSparkPointsAsSeries(sparkPoints);
+  if (invert) series = series.map((v) => -v);
+  const baseline = series.length ? series.reduce((a, b) => a + b, 0) / series.length : undefined;
   return (
-    <Card span={3} padding="16px 18px" style={{ minHeight: 148 }}>
+    <Card span={3} padding="16px 18px" style={{ minHeight: 148, display: 'flex', flexDirection: 'column' }}>
       <CardHeader>
         <CardLabel>{label}</CardLabel>
         <CardPin variant={pinVariant}>{pinLabel}</CardPin>
@@ -1356,9 +1393,14 @@ function SimpleSparkCard({
         {value}
         {unit && <small style={{ fontSize: '.32em', opacity: .5, fontWeight: 700, marginLeft: 7 }}>{unit}</small>}
       </div>
-      <svg viewBox="0 0 100 36" preserveAspectRatio="none" style={{ width: '100%', height: 36, display: 'block' }}>
-        <polyline points={sparkPoints} fill="none" stroke={strokeColor} strokeWidth={1.4} />
-      </svg>
+      <div style={{ height: 36, marginTop: 6, display: 'flex' }}>
+        <BarSeries
+          series={series}
+          baseline={baseline}
+          aboveColor={aboveColor}
+          belowColor={belowColor ?? 'rgba(244,246,248,.22)'}
+        />
+      </div>
       <CardFoot left={footLeft} right={<span className="delta up">{footRight}</span>} />
     </Card>
   );
@@ -1722,19 +1764,14 @@ function LoadGaugeCard({ data }: { data: OverviewData }) {
             {l.trendLabel}
           </div>
         </div>
-        <svg viewBox="0 0 200 38" style={{ width: '100%', height: 38, display: 'block' }} preserveAspectRatio="none">
-          <rect x={0} y={8} width={200} height={14} fill="rgba(62,189,65,.08)" />
-          <polyline
-            points={l.trend.map((v, i) => `${10 + i * 60},${30 - (v - 0.5) * 30}`).join(' ')}
-            fill="none"
-            stroke="var(--good)"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
+        <div style={{ width: '100%', height: 38, display: 'flex' }}>
+          <BarSeries
+            series={l.trend}
+            baseline={1}
+            aboveColor="#3EBD41"
+            belowColor="rgba(62,189,65,.45)"
           />
-          <circle cx={190} cy={30 - (l.trend[l.trend.length - 1] - 0.5) * 30} r={3.5} fill="var(--good)" stroke="#10131A" strokeWidth={1.5} />
-        </svg>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-data)', fontSize: 8.5, letterSpacing: '.8px', color: 'var(--t3)', fontWeight: 700, marginTop: 4 }}>
           {l.trend.map((v, i) => (
             <span key={i} style={{ color: i === l.trend.length - 1 ? 'var(--good)' : undefined }}>{v.toFixed(2)}</span>
@@ -2297,3 +2334,115 @@ function capitalize(s: string): string {
 }
 
 type PaceZone = import('./data').PaceZone;
+
+// ─────────────────────────────────────────────────────────────────────
+// BarSeries — canonical bar sparkline (copied inline from health/page.tsx).
+// DO NOT MODIFY — this is the locked reference component.
+// ─────────────────────────────────────────────────────────────────────
+
+function BarSeries({
+  series,
+  baseline,
+  aboveColor,
+  belowColor,
+  xLabels,
+  xLabelIndices,
+}: {
+  series: number[];
+  baseline?: number;
+  aboveColor: string;
+  belowColor: string;
+  xLabels?: string[];
+  xLabelIndices?: number[];
+}) {
+  if (series.length === 0) return <div style={{ flex: 1, minHeight: 60 }} />;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = Math.max(1, max - min);
+  const yMin = baseline !== undefined ? Math.min(min, baseline) - (range * 0.15) : min - (range * 0.1);
+  const yMax = Math.max(max, baseline ?? max) + (range * 0.1);
+  const yRange = Math.max(1, yMax - yMin);
+  const baselinePct = baseline !== undefined ? ((baseline - yMin) / yRange) * 100 : null;
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 60 }}>
+      <div
+        style={{
+          flex: 1,
+          position: 'relative',
+          display: 'grid',
+          gridTemplateColumns: `repeat(${series.length}, 1fr)`,
+          gap: Math.max(1, Math.floor(40 / series.length)),
+          alignItems: 'end',
+          minHeight: 60,
+        }}
+      >
+        {baselinePct !== null && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: `${baselinePct}%`,
+              height: 0,
+              borderTop: `1px dashed ${aboveColor}`,
+              opacity: 0.35,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {series.map((v, i) => {
+          const hPct = ((v - yMin) / yRange) * 100;
+          const above = baseline !== undefined ? v > baseline : true;
+          const isLatest = i === series.length - 1;
+          return (
+            <div
+              key={i}
+              style={{
+                height: `${hPct}%`,
+                background: above ? aboveColor : belowColor,
+                opacity: isLatest ? 1 : above ? 0.78 : 0.55,
+                minHeight: 4,
+                borderRadius: '2px 2px 0 0',
+                outline: isLatest ? `1.5px solid ${aboveColor}` : undefined,
+                outlineOffset: isLatest ? -1 : undefined,
+              }}
+            />
+          );
+        })}
+      </div>
+      {xLabels && xLabelIndices && (
+        <div
+          style={{
+            position: 'relative',
+            height: 14,
+            marginTop: 6,
+            fontFamily: 'var(--f-data)',
+            fontSize: 9,
+            fontWeight: 700,
+            color: 'var(--t3)',
+            letterSpacing: '.4px',
+          }}
+        >
+          {xLabels.map((lbl, i) => {
+            const idx = xLabelIndices[i];
+            const pct = (idx / Math.max(1, series.length - 1)) * 100;
+            const isLast = i === xLabels.length - 1;
+            return (
+              <span
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: `${pct}%`,
+                  transform: isLast ? 'translateX(-100%)' : i === 0 ? 'translateX(0)' : 'translateX(-50%)',
+                  color: isLast ? aboveColor : undefined,
+                }}
+              >
+                {lbl}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -38,7 +38,7 @@ import {
   Skeleton,
 } from '@/app/components';
 import { useActivities } from '@/lib/strava-activities';
-import { loadTrainingData, type TrainingData } from './data';
+import { loadTrainingData, formatZoneTime, type TrainingData } from './data';
 
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -226,6 +226,12 @@ function TrainingBody({ data }: { data: TrainingData }) {
       {/* ROW 2 — THIS WEEK strip full-width */}
       <Row>
         <ThisWeekCard data={data} />
+      </Row>
+
+      {/* ROW 2.5 — HR ZONES · 14-day rollup (re-homed from /health per
+          /Research/00a §TID — training-design metric, not readiness) */}
+      <Row>
+        <HrZonesCard data={data} />
       </Row>
 
       {/* ROW 3 — NEXT 4 WEEKS (8) + PLAN ADAPTED (4) */}
@@ -1169,6 +1175,182 @@ function DayCell({
           )}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HR ZONES · 14-DAY ROLLUP — re-homed from /health.
+// Audit: /Research/00a §TID — training-design metric, not a readiness one.
+// ─────────────────────────────────────────────────────────────────────
+
+function HrZonesCard({ data }: { data: TrainingData }) {
+  const hz = data.hrZones;
+  const easyPct = Math.round(hz.easyShare * 100);
+  const total = hz.z1Min + hz.z2Min + hz.z3Min + hz.z4Min + hz.z5Min;
+  const safeTotal = total > 0 ? total : 1;
+  const todayISO = data.today;
+
+  return (
+    <Card span={12} padding="18px 22px">
+      <CardHeader>
+        <CardLabel>HR ZONES · LAST 14 DAYS</CardLabel>
+        <CardPin variant="green">{easyPct}% EASY</CardPin>
+      </CardHeader>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontWeight: 600,
+          fontSize: 22,
+          lineHeight: 1.05,
+          textTransform: 'uppercase',
+          letterSpacing: '-.005em',
+          marginTop: 6,
+        }}
+      >
+        {easyPct >= 80 ? 'Polarized intact' : 'Drift toward grey-zone'}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          height: 14,
+          borderRadius: 5,
+          overflow: 'hidden',
+          gap: 1,
+          background: 'var(--l3)',
+          marginTop: 12,
+        }}
+      >
+        <div style={{ flex: hz.z1Min / safeTotal, background: 'var(--good)' }} />
+        <div style={{ flex: hz.z2Min / safeTotal, background: 'var(--corp)' }} />
+        <div style={{ flex: hz.z3Min / safeTotal, background: 'var(--corp)' }} />
+        <div style={{ flex: hz.z4Min / safeTotal, background: 'var(--milestone)' }} />
+        <div style={{ flex: hz.z5Min / safeTotal, background: 'var(--warn)' }} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, marginTop: 14 }}>
+        <ZoneTile label="Z1" minutes={hz.z1Min} color="var(--good)"      bg="rgba(62,189,65,.10)"  tone="EASY" />
+        <ZoneTile label="Z2" minutes={hz.z2Min} color="var(--good)"      bg="rgba(62,189,65,.10)"  tone="AERO" />
+        <ZoneTile label="Z3" minutes={hz.z3Min} color="var(--corp)"      bg="rgba(0,143,236,.08)"  tone="TEMPO" />
+        <ZoneTile label="Z4" minutes={hz.z4Min} color="var(--milestone)" bg="rgba(240,223,71,.10)" tone="THRESH" />
+        <ZoneTile label="Z5" minutes={hz.z5Min} color="var(--warn)"      bg="rgba(252,77,100,.10)" tone="VO2" />
+      </div>
+
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--l4)' }}>
+        <div className="t-eyebrow" style={{ marginBottom: 8 }}>DAILY MIX · 14 DAYS</div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(14,1fr)',
+            gap: 2,
+            height: 42,
+            alignItems: 'end',
+          }}
+        >
+          {hz.days.map((d, idx) => {
+            const isFuture = d.dateISO > todayISO;
+            const isToday = d.dateISO === todayISO;
+            const totalMin = d.z1Min + d.z4Min + d.z5Min;
+            const heightPct = d.rest ? 8 : Math.max(20, Math.min(85, totalMin));
+            return (
+              <div
+                key={idx}
+                style={{ display: 'flex', flexDirection: 'column-reverse', height: '100%', gap: 1 }}
+              >
+                {d.rest && !isFuture ? (
+                  <div
+                    style={{
+                      background: 'rgba(244,246,248,.08)',
+                      height: '8%',
+                      borderRadius: '1px 1px 0 0',
+                      outline: isToday ? '2px solid var(--att)' : undefined,
+                      outlineOffset: isToday ? '1px' : undefined,
+                    }}
+                  />
+                ) : isFuture ? (
+                  <div
+                    style={{
+                      background: 'rgba(62,189,65,.30)',
+                      height: `${heightPct}%`,
+                      border: '1px dashed rgba(62,189,65,.5)',
+                      borderRadius: '1px 1px 0 0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        background: 'var(--good)',
+                        height: `${heightPct}%`,
+                        borderRadius: '1px 1px 0 0',
+                        outline: isToday ? '2px solid var(--att)' : undefined,
+                        outlineOffset: isToday ? '1px' : undefined,
+                      }}
+                    />
+                    {d.z4Min > 0 && (
+                      <div style={{ background: 'var(--milestone)', height: `${Math.min(20, d.z4Min)}%` }} />
+                    )}
+                    {d.z5Min > 0 && (
+                      <div style={{ background: 'var(--warn)', height: `${Math.min(15, d.z5Min)}%` }} />
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <CardFoot
+        left="cite · /Research/00a §Training Intensity Distribution"
+        right={
+          easyPct >= 80
+            ? <span className="delta up">+{easyPct - 80}% MARGIN · 80/20</span>
+            : <span className="delta dn">−{80 - easyPct}% UNDER</span>
+        }
+      />
+    </Card>
+  );
+}
+
+function ZoneTile({
+  label,
+  minutes,
+  color,
+  bg,
+  tone,
+}: {
+  label: string;
+  minutes: number;
+  color: string;
+  bg: string;
+  tone: string;
+}) {
+  const noData = minutes <= 0;
+  const formatted = noData ? null : formatZoneTime(minutes);
+  return (
+    <div style={{ textAlign: 'center', padding: '10px 6px', background: bg, borderRadius: 6 }}>
+      <div className="mono-sm" style={{ color }}>{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontWeight: 600,
+          fontSize: 22,
+          marginTop: 4,
+          color: noData ? 'var(--t3)' : 'var(--t0)',
+          lineHeight: 1.05,
+        }}
+      >
+        {noData ? '—' : (
+          <>
+            {formatted!.value}
+            <small style={{ fontSize: '.5em' }}>{formatted!.unit}</small>
+          </>
+        )}
+      </div>
+      <div className="mono-sm" style={{ color: 'var(--t3)', fontSize: 8 }}>{tone}</div>
     </div>
   );
 }

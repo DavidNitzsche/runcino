@@ -375,6 +375,8 @@
   padding:3px 7px;
   border-radius:4px;
   font-weight:700;
+  white-space:nowrap;
+  flex-shrink:0;
   display:inline-flex; align-items:center; gap:4px;
 }
 .card-pin.green  { background:rgba(62,189,65,.16);  color:var(--good); }
@@ -511,7 +513,7 @@
   background:transparent;
   color:var(--t0);
   text-decoration:none;
-  display:inline-flex; align-items:center; gap:6px;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
   line-height:1;
 }
 .btn-flat:hover { filter:brightness(1.1); }

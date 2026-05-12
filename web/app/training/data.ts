@@ -26,6 +26,9 @@ import type { NormalizedActivity } from '@/lib/strava-activities';
 import { onlyRuns } from '@/lib/strava-activities';
 import { listRaces, type SavedRace } from '@/lib/storage';
 import { daysUntil } from '@/lib/dates';
+import type { TrainingApiHrZoneTime } from '../api/training/route';
+
+export type { TrainingApiHrZoneTime as HrZoneTime, TrainingApiZoneDay as HrZoneDay } from '../api/training/route';
 
 // ─────────────────────────────────────────────────────────────────────
 // Public type
@@ -72,6 +75,9 @@ export interface TrainingData {
   nextFourWeeks: NextFourWeeksSnapshot;
   /** Plan-adapted (Coach Read) — same shape used on Overview. */
   planAdapted: PlanAdaptedReport;
+  /** 14-day HR-zones rollup. Re-homed from Health per audit
+   *  /Research/00a §TID — training-design metric, not a readiness one. */
+  hrZones: TrainingApiHrZoneTime;
   /** Strava activities for any client-side rollup. May be null. */
   activities: NormalizedActivity[] | null;
   runs: NormalizedActivity[] | null;
@@ -223,6 +229,7 @@ interface TrainingApiOk {
   trajectory: CoachDecision<Trajectory14wk>;
   proofSessions: CoachDecision<ProofSessionsReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
+  hrZones: TrainingApiHrZoneTime;
 }
 
 interface TrainingApiErr {
@@ -295,6 +302,7 @@ export async function loadTrainingData(
     goalTracking,
     nextFourWeeks,
     planAdapted,
+    hrZones: api.hrZones,
     activities,
     runs,
   };
@@ -585,6 +593,22 @@ function fmtClock(secs: number): string {
   const mm = Math.floor(secs / 60);
   const ss = Math.round(secs - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}`;
+}
+
+/** Format minutes as "Xh" or "Xm" depending on size. Used by HR Zones card. */
+export function formatZoneTime(minutes: number): { value: string; unit: string } {
+  if (minutes >= 60) {
+    const hrs = Math.round((minutes / 60) * 10) / 10;
+    return { value: Number.isInteger(hrs) ? String(hrs) : hrs.toFixed(1), unit: 'h' };
+  }
+  return { value: String(Math.round(minutes)), unit: 'm' };
+}
+
+/** Compact "MAY 11" date label. */
+export function formatShortDate(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`;
 }
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];

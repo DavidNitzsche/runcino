@@ -15,7 +15,7 @@
  *   - raceFitnessPrediction (GOAL TRACKING card — A race only)
  */
 
-import { gatherCoachState } from '../../../lib/coach-state';
+import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
 import { coach } from '../../../coach/coach';
 import type {
   CoachDecision,
@@ -30,6 +30,36 @@ import type {
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
 
+// ─────────────────────────────────────────────────────────────────────
+// HR zones rollup — re-homed from /health per Research/00a §TID
+// (training-design metric, not a readiness signal).
+// TODO: wire to a `lib/strava-hr-zones.ts` rollup that aggregates
+// per-activity HR streams into zone minutes per day. The shape mirrors
+// /api/health/route.ts so the rebuilt /health page can pull from a
+// single source once Stage 7 lands.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface TrainingApiZoneDay {
+  dateISO: string;
+  dayLabel: string;
+  rest: boolean;
+  z1Min: number;
+  z2Min: number;
+  z3Min: number;
+  z4Min: number;
+  z5Min: number;
+}
+
+export interface TrainingApiHrZoneTime {
+  z1Min: number;
+  z2Min: number;
+  z3Min: number;
+  z4Min: number;
+  z5Min: number;
+  easyShare: number;
+  days: TrainingApiZoneDay[];
+}
+
 interface TrainingApiOk {
   ok: true;
   today: string;
@@ -40,6 +70,7 @@ interface TrainingApiOk {
   trajectory: CoachDecision<Trajectory14wk>;
   proofSessions: CoachDecision<ProofSessionsReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
+  hrZones: TrainingApiHrZoneTime;
 }
 
 interface TrainingApiErr {
@@ -76,6 +107,8 @@ export async function GET(): Promise<Response> {
       ? await callRacePrediction(today, state, nextA)
       : null;
 
+    const hrZones = buildHrZones(today, state);
+
     const body: TrainingApiOk = {
       ok: true,
       today,
@@ -86,6 +119,7 @@ export async function GET(): Promise<Response> {
       trajectory,
       proofSessions,
       raceFitnessA,
+      hrZones,
     };
     return Response.json(body);
   } catch (e) {
@@ -118,4 +152,58 @@ function parseGoalHMS(s: string | undefined): number | null {
   if (!s) return null;
   const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
   return m ? Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HR-zones rollup builder — synthesized per-day mix until per-activity
+// HR stream parsing lands (lib/strava-hr-zones.ts). easyShare comes
+// from coach-state.intensity which IS real when Strava activities load;
+// only the per-day mix is mock.
+// ─────────────────────────────────────────────────────────────────────
+
+function buildHrZones(today: string, state: CoachState): TrainingApiHrZoneTime {
+  const easyShare = state.intensity.easyShare14d > 0 ? state.intensity.easyShare14d : 0.92;
+  const daysMix: TrainingApiZoneDay[] = [];
+  const offsetLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const baseDate = new Date(today + 'T12:00:00Z');
+  const pattern = [
+    { z1: 55, z4: 0, z5: 0, rest: false },
+    { z1: 0, z4: 0, z5: 0, rest: true },
+    { z1: 62, z4: 18, z5: 0, rest: false },
+    { z1: 48, z4: 0, z5: 0, rest: false },
+    { z1: 70, z4: 0, z5: 15, rest: false },
+    { z1: 42, z4: 0, z5: 0, rest: false },
+    { z1: 0, z4: 0, z5: 0, rest: true },
+    { z1: 52, z4: 0, z5: 0, rest: false },
+    { z1: 0, z4: 0, z5: 0, rest: true },
+    { z1: 38, z4: 0, z5: 0, rest: false },
+    { z1: 0, z4: 0, z5: 0, rest: true },
+    { z1: 40, z4: 0, z5: 0, rest: false },
+    { z1: 0, z4: 0, z5: 0, rest: true },
+    { z1: 35, z4: 0, z5: 0, rest: false },
+  ];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(baseDate);
+    d.setUTCDate(d.getUTCDate() + (i - 12));
+    const dow = d.getUTCDay();
+    daysMix.push({
+      dateISO: d.toISOString().slice(0, 10),
+      dayLabel: offsetLabels[(dow + 6) % 7],
+      rest: pattern[i].rest,
+      z1Min: pattern[i].z1,
+      z2Min: 0,
+      z3Min: 0,
+      z4Min: pattern[i].z4,
+      z5Min: pattern[i].z5,
+    });
+  }
+  return {
+    z1Min: 14 * 60,
+    z2Min: 0,
+    z3Min: 0,
+    z4Min: 42,
+    z5Min: 28,
+    easyShare,
+    days: daysMix,
+  };
 }
