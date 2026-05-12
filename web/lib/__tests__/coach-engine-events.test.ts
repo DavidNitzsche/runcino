@@ -30,10 +30,11 @@ import { coachDaily, simulateRange, type CoachToday } from '../coach-engine';
 import { vdotSnapshot } from '../vdot';
 import { coach } from '../../coach/coach';
 import type { WorkoutPrescription } from '../../coach/coach';
+// dayOffsetISO + TODAY_ISO are re-exported from coach-events so this
+// suite doesn't depend on coach-states.ts landing first (Wave C2's
+// archetype fixtures travel on a separate path).
 import {
-  TODAY_ISO, dayOffsetISO, STATE_MID_BUILD_WEEK_4,
-} from './fixtures/coach-states';
-import {
+  TODAY_ISO, dayOffsetISO,
   STATE_BAD_CHECKIN_TODAY,
   STATE_BAD_WEEK_CHECKINS,
   STATE_THREE_SKIPPED_RUNS,
@@ -44,6 +45,7 @@ import {
   STATE_LONG_STREAK_THEN_BREAK,
   STATE_ILLNESS_RETURN,
   STATE_FIRST_MARATHON,
+  STATE_MID_BUILD_BASE,
 } from './fixtures/coach-events';
 
 type Day = CoachToday['weekShape'][number];
@@ -194,7 +196,7 @@ describe('K2 — bad WEEK of check-ins (poorDaysCount=7)', () => {
     // produce; failure here flags the gap until the engine reads
     // check-in directly (currently it's deferred to adjustForReality).
     const endISO = dayOffsetISO(6);
-    const cleanWeek = simulateRange(STATE_MID_BUILD_WEEK_4, TODAY_ISO, endISO);
+    const cleanWeek = simulateRange(STATE_MID_BUILD_BASE, TODAY_ISO, endISO);
     const badWeek = simulateRange(STATE_BAD_WEEK_CHECKINS, TODAY_ISO, endISO);
     const cleanQ = qualityMiles(cleanWeek);
     const badQ = qualityMiles(badWeek);

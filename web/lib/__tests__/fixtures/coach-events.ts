@@ -35,12 +35,28 @@
  */
 import type { CoachState } from '../../coach-state';
 import type { CheckinAggregate } from '../../checkin-aggregate';
-import { dayOffsetISO, TODAY_ISO } from './coach-states';
 
 // CoachState.checkin is required (Wave F). Every fixture in this file
 // sets it explicitly — null when the runner has no recent rows,
 // populated when the event fixture leans on the check-in signal.
 type CoachStateWithCheckin = CoachState;
+
+/** ISO date `dayOffset` days from today (anchored at noon UTC of the
+ *  local date so setDate/getDate math is timezone-safe). Mirrors the
+ *  helper in fixtures/coach-states.ts so this module stays self-
+ *  contained if coach-states.ts lands separately.
+ *
+ *  When fixtures/coach-states.ts is on the same branch, the two
+ *  copies render identical values for any given offset. */
+export function dayOffsetISO(daysFromToday: number, anchor: Date = new Date()): string {
+  const base = new Date(Date.UTC(
+    anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 12, 0, 0,
+  ));
+  base.setUTCDate(base.getUTCDate() + daysFromToday);
+  return base.toISOString().slice(0, 10);
+}
+
+export const TODAY_ISO = dayOffsetISO(0);
 
 // ─────────────────────────────────────────────────────────────────
 // Shared scaffolding — mid-build runner baseline shared across K1, K2,
@@ -48,7 +64,17 @@ type CoachStateWithCheckin = CoachState;
 // Each event fixture derives from this so the only delta vs the baseline
 // is the triggering signal — failures point at the adaptive path.
 // ─────────────────────────────────────────────────────────────────
+/** Exported variant of the mid-build baseline so partner tests can use
+ *  it as the apples-to-apples comparison point (e.g. "with bad checkins
+ *  vs without"). Equivalent in shape to STATE_MID_BUILD_WEEK_4 from
+ *  coach-states.ts; lives here so this module stays self-contained. */
+export const STATE_MID_BUILD_BASE: CoachStateWithCheckin = buildMidBuildBaseInternal();
+
 function buildMidBuildBase(): CoachState {
+  return buildMidBuildBaseInternal();
+}
+
+function buildMidBuildBaseInternal(): CoachState {
   const nextA = {
     slug: 'autumn-half-2026',
     name: 'Autumn Half',
