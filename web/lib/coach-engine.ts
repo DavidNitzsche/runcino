@@ -177,6 +177,40 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     const d = state.races.nextA.daysAway;
     if (d === 0) return race(state.races.nextA.distanceMi, state.races.nextA.name);
     if (d === 1) return shakeout();
+    // Race-week prescription: only easy, recovery, shakeout, or rest.
+    // Research/08-pacing-and-race-week.md §9.3 day-by-day race-week
+    // templates (HM/Marathon) — every day inside ~10 days of the
+    // race is short easy / shakeout / strides / optional rest day. No
+    // long runs, no T-pace continuous, no VO2 reps. The peak-week
+    // template's quality slots are PEAK-block content, not TAPER, so
+    // we short-circuit the template + defaultByDow lookups entirely
+    // for the final 10 days. §9.1: "The largest cut is to easy
+    // mileage; intensity is preserved" — intensity here means a few
+    // short strides, not a T-pace continuous workout.
+    if (d >= 2 && d <= 10) {
+      return raceWeekEasy(state, dow, d);
+    }
+    // daysAway 11-14 (still TAPER phase mathematically, but outside
+    // the final 10-day cutoff). Research/08 §9.2 HM week -2: "60-70%
+    // peak, 4-5 mi threshold or 6-8 mi at MP, 12-14 mi w/ MP miles
+    // late." This is the "last hard week" where a freshener long run
+    // is still appropriate, but volume is already trimmed. Fall
+    // through to defaultByDow which gives long_steady on Sat.
+  }
+
+  // PEAK→TAPER transition long-run placement. Research/08 §9.2 HM
+  // week -1 calls for a "freshener" 8-10 mi long. The normal Saturday
+  // long-run slot may fall inside the 10-day race-week cutoff, in
+  // which case we shift the long earlier in the week so the runner
+  // still gets a long anchor before the 10-day quiet zone closes.
+  // Triggers when daysAway is 11-14 (transition zone) and the day is
+  // Tue (dow=2) — that day always lands outside the cutoff and gives
+  // a 6-day buffer before race day.
+  if (state.races.nextA) {
+    const d = state.races.nextA.daysAway;
+    if (d >= 11 && d <= 14 && dow === 2) {
+      return buildPrescriptionFor('long_steady', state, phase);
+    }
   }
 
   // Heavy-block detected + base mode → mandate rest. Doc §13.3:
@@ -267,6 +301,28 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // recognize — we default to the safer phase+dow lookup).
   const def = defaultByDow(phase, dow);
   return buildPrescriptionFor(def.primary, state, phase);
+}
+
+/** Race-week (TAPER, d≥2 days from race) prescription. Research/08
+ *  §9.1: "The largest cut is to easy mileage; intensity is preserved" —
+ *  intensity in race week means a few short strides or 1-min @ 5K
+ *  pulses, not a continuous T-pace workout. §9.3 race-week templates
+ *  for HM/Marathon: every day is easy 25-50 min ± strides, with one
+ *  shakeout the day before. No long runs in this window. Race day is
+ *  handled in pickRun above; this function fills the d ≥ 2 days. */
+function raceWeekEasy(state: CoachState, dow: number, daysToRace: number): RunPrescription {
+  // 2 days out → light shakeout
+  if (daysToRace === 2) return shakeout();
+  // Mid-week of race week → easy with strides. Sunday/Monday of race
+  // week → short recovery.
+  if (dow === 0 || dow === 1) {
+    return recovery(Math.max(3, baseEasyMi(state, 'TAPER') * 0.6));
+  }
+  // Other days → easy with strides (intensity preserved per §9.1).
+  if (dow === 2 || dow === 4) {
+    return easyWithStrides(baseEasyMi(state, 'TAPER'), state);
+  }
+  return generalAerobic(baseEasyMi(state, 'TAPER'), state);
 }
 
 /** Graduated post-race recovery prescription. Looks at the LARGEST
@@ -398,7 +454,10 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
   const dailyShare = wkAvg / 5;  // Assume ~5 running days/week
   if (phase === 'POST_RACE') return Math.max(3, dailyShare * 0.5);
   if (phase === 'REBUILD')   return Math.max(3, dailyShare * 0.7);
-  if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.8);
+  // TAPER: 50% volume cut. Research/08 §9.1 / §9.2 HM table: HM taper
+  // drops 30-50% of peak volume across the 10-14 day window. Easy
+  // mileage takes the cut; intensity is preserved (strides + race).
+  if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.5);
   return Math.max(3, Math.min(dailyShare, 12));
 }
 

@@ -29,6 +29,8 @@ import type {
   ReadinessAssessment,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 
 // ─────────────────────────────────────────────────────────────────────
 // HR zones rollup — re-homed from /health per Research/00a §TID
@@ -58,6 +60,11 @@ export interface TrainingApiHrZoneTime {
   z5Min: number;
   easyShare: number;
   days: TrainingApiZoneDay[];
+  /** False until per-activity HR-stream rollup (lib/strava-hr-zones.ts)
+   *  lands. When false the per-day mix is empty and the UI renders
+   *  AWAITING STRAVA HR. easyShare is still real when intensity data
+   *  is available (it derives from pace, not HR). */
+  isAvailable: boolean;
 }
 
 interface TrainingApiOk {
@@ -71,6 +78,9 @@ interface TrainingApiOk {
   proofSessions: CoachDecision<ProofSessionsReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   hrZones: TrainingApiHrZoneTime;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface TrainingApiErr {
@@ -109,6 +119,8 @@ export async function GET(): Promise<Response> {
 
     const hrZones = buildHrZones(today, state);
 
+    const freshness = await gatherFreshness({ state });
+
     const body: TrainingApiOk = {
       ok: true,
       today,
@@ -120,6 +132,7 @@ export async function GET(): Promise<Response> {
       proofSessions,
       raceFitnessA,
       hrZones,
+      freshness,
     };
     return Response.json(body);
   } catch (e) {
@@ -155,55 +168,28 @@ function parseGoalHMS(s: string | undefined): number | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HR-zones rollup builder — synthesized per-day mix until per-activity
-// HR stream parsing lands (lib/strava-hr-zones.ts). easyShare comes
-// from coach-state.intensity which IS real when Strava activities load;
-// only the per-day mix is mock.
+// HR-zones rollup builder — gated on real Strava HR-stream rollup data.
+// Until lib/strava-hr-zones.ts lands (per-activity HR streams parsed
+// into per-day zone minutes), we return isAvailable:false and the UI
+// surfaces "AWAITING STRAVA HR." easyShare IS real when intensity data
+// is present (it derives from pace, not HR) so we surface that even
+// in the not-yet-available state — but with zero minute totals to make
+// it obvious to the UI that the per-day mix is unwired.
+// TODO (Wave J/H follow-up): wire to lib/strava-hr-zones.ts when it
+// lands.
 // ─────────────────────────────────────────────────────────────────────
 
-function buildHrZones(today: string, state: CoachState): TrainingApiHrZoneTime {
-  const easyShare = state.intensity.easyShare14d > 0 ? state.intensity.easyShare14d : 0.92;
-  const daysMix: TrainingApiZoneDay[] = [];
-  const offsetLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const baseDate = new Date(today + 'T12:00:00Z');
-  const pattern = [
-    { z1: 55, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 62, z4: 18, z5: 0, rest: false },
-    { z1: 48, z4: 0, z5: 0, rest: false },
-    { z1: 70, z4: 0, z5: 15, rest: false },
-    { z1: 42, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 52, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 38, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 40, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 35, z4: 0, z5: 0, rest: false },
-  ];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(baseDate);
-    d.setUTCDate(d.getUTCDate() + (i - 12));
-    const dow = d.getUTCDay();
-    daysMix.push({
-      dateISO: d.toISOString().slice(0, 10),
-      dayLabel: offsetLabels[(dow + 6) % 7],
-      rest: pattern[i].rest,
-      z1Min: pattern[i].z1,
-      z2Min: 0,
-      z3Min: 0,
-      z4Min: pattern[i].z4,
-      z5Min: pattern[i].z5,
-    });
-  }
+function buildHrZones(_today: string, state: CoachState): TrainingApiHrZoneTime {
+  void _today;
+  const easyShare = state.intensity.easyShare14d > 0 ? state.intensity.easyShare14d : 0;
   return {
-    z1Min: 14 * 60,
+    z1Min: 0,
     z2Min: 0,
     z3Min: 0,
-    z4Min: 42,
-    z5Min: 28,
+    z4Min: 0,
+    z5Min: 0,
     easyShare,
-    days: daysMix,
+    days: [],
+    isAvailable: false,
   };
 }
