@@ -1136,7 +1136,19 @@ class CoachImpl implements Coach {
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to plan_templates.ts × storage Strava actuals
+  // ── Stage 7 · weekDeltas (real data) ────────────────────────────
+  // Per-day planned-vs-actual for the current Mon→Sun week.
+  //
+  //   planned   ← coach engine simulateNext30Days() output, filtered
+  //               to dates in this week. The engine already knows the
+  //               runner's tier, phase, post-race recovery state, and
+  //               rest-day cadence — same numbers shown on /training.
+  //   actual    ← state.volume.last7Days (real Strava activities by
+  //               date). Future dates have no actual yet; we leave
+  //               actualMi null so the UI doesn't render a DONE pill.
+  //
+  // The projection adds remaining-week planned to logged-so-far and
+  // biases by the observed over/under-plan trend on completed days.
   // MOCKUP REF: designs/overview-2026-05-09.html:629-650 (WEEK STRIP day cards)
   async weekDeltas(input: WeekDeltasInput): Promise<CoachDecision<WeekDeltasReport>> {
     const today = new Date(input.today + 'T12:00:00Z');
@@ -1145,20 +1157,30 @@ class CoachImpl implements Coach {
     const monday = new Date(today); monday.setUTCDate(monday.getUTCDate() + monOffset);
     const mondayISO = monday.toISOString().slice(0, 10);
 
-    const dayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
-    const planned = [0, 0, 6.7, 0.5, 7.4, 3.0, 5.0]; // mockup-derived
-    const actual: Array<number | null> = [0, 0, 11.4, 0.5, 12.8, null, null];
+    // Run the coach engine once for its real weekShape (this week's
+    // Mon→Sun plan). Index by ISO date for lookup.
+    const coachOutput = coachDaily(input.state);
+    const plannedByDate = new Map<string, number>();
+    for (const d of coachOutput.weekShape) {
+      plannedByDate.set(d.date, d.distanceMi);
+    }
 
+    // Actuals from real Strava activities (already populated in state
+    // by gatherCoachState). Index by date.
+    const actualByDate = new Map<string, number>();
+    for (const d of input.state.volume.last7Days) {
+      actualByDate.set(d.date, d.miles);
+    }
+
+    const dayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
     const todayISO = input.today;
     const days: DayDelta[] = dayNames.map((label, i) => {
       const d = new Date(monday); d.setUTCDate(d.getUTCDate() + i);
       const dateISO = d.toISOString().slice(0, 10);
-      // Future days never have actuals — null out the stub array's
-      // values for any day past today (the mockup's hard-coded
-      // numbers leak into future days when the calendar moves).
       const isFuture = dateISO > todayISO;
-      const a = isFuture ? null : actual[i];
-      const p = planned[i];
+      const p = plannedByDate.get(dateISO) ?? 0;
+      // Future dates never have actuals — never query the actuals map.
+      const a = isFuture ? null : (actualByDate.get(dateISO) ?? (dateISO === todayISO ? null : 0));
       const delta = a == null ? null : a - p;
       let pin: string | null = null;
       let severity: DayDelta['severity'] = null;
@@ -1178,8 +1200,8 @@ class CoachImpl implements Coach {
       };
     });
 
-    const plannedWeekMi = planned.reduce((s, m) => s + m, 0);
-    const loggedWeekMi = actual.reduce<number>((s, m) => s + (m ?? 0), 0);
+    const plannedWeekMi = days.reduce((s, d) => s + d.plannedMi, 0);
+    const loggedWeekMi = days.reduce<number>((s, d) => s + (d.actualMi ?? 0), 0);
     // Naive projection: actuals so far + planned for remaining days, plus
     // the observed over-plan trend on completed days.
     const completedDelta = days.filter(d => d.deltaMi != null).reduce((s, d) => s + (d.deltaMi ?? 0), 0);
