@@ -214,9 +214,51 @@ function TrainingGreet({ data }: { data: TrainingData | null }) {
 // Body
 // ─────────────────────────────────────────────────────────────────────
 
+function PlanIntegrityBanner({ issues }: { issues: NonNullable<TrainingData['coach']['workout']['answer']['coachToday']['planIssues']> }) {
+  const errors = issues.filter((i) => i.severity === 'error');
+  const warns = issues.filter((i) => i.severity === 'warn');
+  const isError = errors.length > 0;
+  const accent = isError ? 'var(--warn)' : 'var(--att)';
+  const bg = isError ? 'rgba(252,77,84,.06)' : 'rgba(243,173,56,.06)';
+  const border = isError ? 'rgba(252,77,84,.30)' : 'rgba(243,173,56,.30)';
+  return (
+    <Card span={12} padding="14px 18px" style={{ background: bg, borderColor: border, borderLeft: `3px solid ${accent}` }}>
+      <div style={{
+        fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: '1.6px',
+        color: accent, fontWeight: 800, textTransform: 'uppercase',
+      }}>
+        PLAN INTEGRITY · {errors.length} {errors.length === 1 ? 'ERROR' : 'ERRORS'}
+        {warns.length > 0 ? ` · ${warns.length} WARN` : ''}
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[...errors, ...warns].slice(0, 5).map((iss, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5, fontWeight: 500 }}>
+              {iss.message}
+            </div>
+            <div style={{
+              fontFamily: 'var(--f-data)', fontSize: 9.5, color: 'var(--t3)',
+              letterSpacing: '0.6px', marginTop: 3,
+            }}>
+              {iss.location} · {iss.citation}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function TrainingBody({ data }: { data: TrainingData }) {
+  const issues = data.coach.workout.answer.coachToday.planIssues ?? [];
   return (
     <>
+      {issues.length > 0 && (
+        <Row>
+          <PlanIntegrityBanner issues={issues} />
+        </Row>
+      )}
+
       {/* ROW 1 — TODAY hero (7) + GOAL TRACKING (5) */}
       <Row>
         <TodayCard data={data} />

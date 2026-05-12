@@ -20,6 +20,7 @@
  */
 
 import type { CoachState } from './coach-state';
+import { validatePlan, type PlanIssue } from '../coach/plan-validator';
 import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
@@ -59,6 +60,11 @@ export interface CoachToday {
     hasStrength: boolean;
   }>;
   alerts: Array<{ severity: 'info' | 'warn' | 'rest'; message: string }>;
+  /** Plan-integrity issues raised by the validator on this prescription.
+   *  Empty array = clean plan. Each issue carries a research citation
+   *  and surfaces on /training as a banner so engine regressions are
+   *  visible to the runner, not just dev-facing logs. */
+  planIssues: PlanIssue[];
   generatedAt: string;
   isPlaceholder: boolean;
 }
@@ -91,6 +97,10 @@ export function coachDaily(state: CoachState): CoachToday {
   const alerts = computeAlerts(state, phase);
   const week = simulateWeek(state, phase, todayDow);
   const rationale = composeRationale(state, phase, run, strength);
+  // Plan-integrity validator runs against the simulated week. Each
+  // rule cites Research/. UI surfaces these as a banner so engine
+  // regressions are visible, not hidden behind dev logs.
+  const planIssues = validatePlan({ weekShape: week }, state);
 
   return {
     mode, modeDetail: describeMode(state, phase),
@@ -100,6 +110,7 @@ export function coachDaily(state: CoachState): CoachToday {
     rationale,
     weekShape: week,
     alerts,
+    planIssues,
     generatedAt: new Date().toISOString(),
     isPlaceholder: false,
   };
