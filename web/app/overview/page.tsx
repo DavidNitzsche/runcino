@@ -215,9 +215,10 @@ function OverviewBody({ data }: { data: OverviewData }) {
         <RaceCountdownCard data={data} />
       </Row>
 
-      {/* ROW 2 · WEEK STRIP (12) */}
+      {/* ROW 2 · WEEK STRIP (9) · COACH THIS WEEK (3) */}
       <Row>
         <WeekStripCard data={data} />
+        <CoachThisWeekCard data={data} />
       </Row>
 
       {/* ROW 3 · TRAJECTORY (8) · PLAN ADAPTED (4) */}
@@ -818,7 +819,7 @@ function WeekStripCard({ data }: { data: OverviewData }) {
 
   const todayISO_ = data.today;
   return (
-    <Card span={12} padding="18px 22px">
+    <Card span={9} padding="18px 22px">
       <div
         style={{
           display: 'grid',
@@ -921,6 +922,57 @@ function WeekStripCard({ data }: { data: OverviewData }) {
           <DayCell key={d.dateISO} day={d} todayISO={todayISO_} prescription={data.coach.workout.answer} />
         ))}
       </div>
+    </Card>
+  );
+}
+
+// Coach narrative for the week — sits next to the WEEK STRIP. Pulls
+// coachNote.headline + coachNote.body from coach.weekDeltas, which
+// composes the read from phase + recent race + week composition.
+function CoachThisWeekCard({ data }: { data: OverviewData }) {
+  const note = data.coach.weekDeltas.answer.coachNote;
+  const recentRace = data.coach.weekDeltas.answer; // pull citations via report-level rationale
+  return (
+    <Card span={3} padding="18px 20px" style={{
+      background: 'linear-gradient(135deg, rgba(39,180,224,.10) 0%, var(--l1) 65%)',
+      borderColor: 'rgba(39,180,224,.32)',
+    }}>
+      <CardHeader>
+        <CardLabel color="var(--coach)">▸ COACH THIS WEEK</CardLabel>
+      </CardHeader>
+      <div style={{
+        fontFamily: 'var(--f-display)',
+        fontSize: 16,
+        fontWeight: 700,
+        letterSpacing: '-.01em',
+        lineHeight: 1.2,
+        color: 'var(--t0)',
+        marginTop: 6,
+      }}>
+        {note.headline}
+      </div>
+      <div className="t-body" style={{
+        color: 'var(--t1)',
+        fontSize: 12.5,
+        lineHeight: 1.55,
+        marginTop: 10,
+      }}>
+        {note.body}
+      </div>
+      <div style={{
+        marginTop: 'auto',
+        paddingTop: 12,
+        fontFamily: 'var(--f-data)',
+        fontSize: 9,
+        letterSpacing: '1.2px',
+        color: 'var(--t3)',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+      }}>
+        Research/00b · /22 → live coach read
+      </div>
+      {/* hint to TS that recentRace is intentionally only used as a structural type-anchor */}
+      {recentRace && null}
     </Card>
   );
 }

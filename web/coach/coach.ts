@@ -1469,6 +1469,51 @@ class CoachImpl implements Coach {
     const projectedWeekMi = Math.round((loggedWeekMi + remainingPlanned + completedDelta * 0.3) * 10) / 10;
     const netDeltaMi = projectedWeekMi - plannedWeekMi;
 
+    // Compose the coach narrative — phase context + week composition
+    // beats. Reads off state.races.recent[0] for post-race framing,
+    // engine phase for the build-cycle context, and counts the days[]
+    // shape (rest count, quality count, long-run anchor) to call out
+    // the actual structure of the week.
+    const recentRace = input.state.races.recent[0] ?? null;
+    const nextA = input.state.races.nextA;
+    const enginePhase = coachOutput.phase;
+    const restCount = days.filter((d) => d.type === 'rest').length;
+    const qualityCount = days.filter((d) => d.isQuality).length;
+    const longDay = days.find((d) => d.isLong);
+    const todayDay = days.find((d) => d.dateISO === todayISO);
+
+    const headline = (() => {
+      if (recentRace && recentRace.daysAgo <= 14) return `Recovery week · day ${recentRace.daysAgo} post-${recentRace.name}`;
+      if (enginePhase === 'REBUILD') return 'Rebuild week · easing back in';
+      if (enginePhase === 'BASE_MAINTENANCE') return 'Maintenance week · aerobic only';
+      if (enginePhase === 'BASE') return 'Base week · building the floor';
+      if (enginePhase === 'BUILD') return `Build week · ${qualityCount} quality session${qualityCount === 1 ? '' : 's'}`;
+      if (enginePhase === 'PEAK') return 'Peak week · race-specific sharpening';
+      if (enginePhase === 'TAPER') return 'Taper week · volume down, intensity held';
+      return `${enginePhase} week`;
+    })();
+
+    const bodyParts: string[] = [];
+    if (recentRace && recentRace.daysAgo <= 14) {
+      bodyParts.push(`The engine is honoring the post-race recovery window (Research/00b §Recovery by Distance: ${recentRace.distanceMi >= 22 ? 'marathon 21-28d' : recentRace.distanceMi >= 12 ? 'half marathon 10-14d' : 'short race 5-7d'}).`);
+    }
+    if (todayDay && todayDay.plannedMi > 0) {
+      bodyParts.push(`Today's call: ${todayDay.label.toLowerCase()} ${todayDay.plannedMi.toFixed(1)} mi.`);
+    } else if (todayDay && todayDay.type === 'rest') {
+      bodyParts.push('Today is a protective rest day.');
+    }
+    bodyParts.push(`Structure this week: ${qualityCount} quality, ${restCount} rest, ${longDay ? `${longDay.label.toLowerCase()} ${longDay.plannedMi.toFixed(1)} mi on ${longDay.dayLabel.toLowerCase()}` : 'no scheduled long run'}.`);
+    if (qualityCount === 0 && recentRace && recentRace.daysAgo < 14) {
+      bodyParts.push(`No quality yet — that returns ${recentRace.distanceMi >= 22 ? 'around day 21-28' : recentRace.distanceMi >= 12 ? 'around day 10-14' : 'in the next day or two'}.`);
+    } else if (nextA && nextA.daysAway <= 14) {
+      bodyParts.push(`A race in ${nextA.daysAway} days — taper logic is shaping the week.`);
+    }
+    if (netDeltaMi > 1) {
+      bodyParts.push(`Projecting +${netDeltaMi.toFixed(1)} mi over plan — keep an eye on tomorrow's prescription.`);
+    } else if (netDeltaMi < -2 && loggedWeekMi > 0) {
+      bodyParts.push(`Currently ${Math.abs(netDeltaMi).toFixed(1)} mi under plan — engine will catch up via the remaining days.`);
+    }
+
     return {
       answer: {
         weekStartISO: mondayISO,
@@ -1480,10 +1525,15 @@ class CoachImpl implements Coach {
         rationale: netDeltaMi > 0
           ? `Projecting ${projectedWeekMi.toFixed(1)} mi · +${netDeltaMi.toFixed(1)} over plan.`
           : `On track for ${projectedWeekMi.toFixed(1)} mi.`,
+        coachNote: {
+          headline,
+          body: bodyParts.join(' '),
+        },
       },
       rationale: `Week projecting ${projectedWeekMi.toFixed(1)} mi vs ${plannedWeekMi.toFixed(1)} planned.`,
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Week structure', snippet: 'Weekly volume tracking with projected overshoot detection' },
+        { doc: 'Research/22-plan-templates.md', section: '§Week structure' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Recovery by Distance' },
       ],
       brain: 'deterministic',
     };

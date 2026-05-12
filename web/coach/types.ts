@@ -286,6 +286,14 @@ export interface WeekDeltasReport {
   days: DayDelta[];
   /** Highest-signal headline (e.g. "+8.1 over plan"). */
   rationale: string;
+  /** Coach narrative — multi-sentence context for the THIS WEEK card.
+   *  Explains phase, what this week's prescription is doing, key
+   *  beats (rest days, long run, quality returns), and what to watch.
+   *  Drives the "COACH THIS WEEK" side panel. */
+  coachNote: {
+    headline: string;
+    body: string;
+  };
 }
 
 /** A single Coach-engine derived rule the user can inspect. Surfaces
