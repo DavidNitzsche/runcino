@@ -203,6 +203,27 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     if (r) return r;
   }
 
+  // Injury-return / long-gap rebuild — Research/05 §1.4 + §1.5.
+  // "Volume before intensity, always" + the heuristic "weeks off ≈
+  // weeks to rebuild base". A runner with weeklyAvg4w ≤ 5 mi and the
+  // rebuildAfterBreak flag set (last7 ≤ 30% of last28 avg) is in
+  // week 1 of a graded return. Week 1 must cap total volume at ~2×
+  // the recent baseline. With baseline of ~4 mpw, that's ≤ 8mi — i.e.
+  // 3-4 short runs of 1.5-3 mi each plus 3-4 rest days, NOT 6 short
+  // runs.
+  if (phase === 'REBUILD' &&
+      state.flags.rebuildAfterBreak &&
+      state.volume.weeklyAvg4w < 8) {
+    // Run on Tue / Thu / Sat / Sun — 4 days/week max. Sat is a slightly
+    // longer "long" (capped at 30% of weekly via longRunTarget). Other
+    // days rest. This is the walk-run-to-easy bridge — cross-training
+    // (bike/elliptical) on rest days is encouraged per Research/05 §1.3.
+    if (dow === 2 || dow === 4) return buildPrescriptionFor('general_aerobic', state, phase);
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    return rest('Rest day — week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
+  }
+
   // Plan-template path (Stage 4): pick the active template for this
   // runner + goal race, classify today's slot in its sample peak week.
   // The template gives the SHAPE of the week (which days are quality,
@@ -304,8 +325,14 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
   const baseEasy = baseEasyMi(state, phase);
   const longTarget = longRunTarget(state, phase);
 
+  // Injury-return / very-low-volume override on the recovery floor.
+  // Standard recovery floors at 3mi; for a runner on 4 mpw baseline
+  // that's nearly the whole week. Research/05 §1.4 — distances need
+  // to fit the rebuild budget. Recovery is a 1-2mi jog in week 1.
+  const recoveryFloor = (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) ? 1 : 3;
+
   switch (type) {
-    case 'recovery':           return recovery(Math.min(5, Math.max(3, baseEasy * 0.6)));
+    case 'recovery':           return recovery(Math.min(5, Math.max(recoveryFloor, baseEasy * 0.6)));
     case 'general_aerobic':    return generalAerobic(baseEasy, state);
     case 'medium_long':        return mediumLong(Math.max(8, baseEasy * 1.6), state);
     case 'long_steady':        return longSteady(longTarget, state);
@@ -325,8 +352,24 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
 
 /** Daily easy mileage scaled to recent volume + phase. Floors at 3,
  *  caps at 25% of weekly average so a single easy day doesn't blow the
- *  weekly budget. */
+ *  weekly budget.
+ *
+ *  REBUILD: very-low-volume / injury-return path. Research/05 §1.4 +
+ *  §1.5: "Volume before intensity, always" + 10% rule (or weeks-off
+ *  ≈ weeks-to-rebuild-base heuristic). When weeklyAvg4w ≤ 5 mi (gap
+ *  of 21+ days, near-zero base), week-1 cap must be ~2× baseline so
+ *  the runner doesn't go from 4mi to 18mi in one week. Floor at 1.5mi
+ *  per easy day (a 25-30 min jog), not the generic 3mi. */
 function baseEasyMi(state: CoachState, phase: Phase): number {
+  // REBUILD with very-low baseline (injury return / long gap) — pin
+  // distance to baseline, not the 3mi floor. Research/05 §1.4: rebuild
+  // takes 4-8 weeks of continuous easy running to reach pre-injury
+  // volume. Week 1 starts at baseline, not at pre-injury volume.
+  if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
+    const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
+    // Spread over 4 days/week (rebuild frequency, with 3 rest days).
+    return Math.max(1.5, wkAvg / 4 * 0.9);
+  }
   const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
   const dailyShare = wkAvg / 5;  // Assume ~5 running days/week
   if (phase === 'POST_RACE') return Math.max(3, dailyShare * 0.5);
@@ -337,8 +380,18 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
 
 /** Long-run target — capped at 110% of longest run in last 30 days
  *  (single-session-spike rule, doc §13.1). PEAK targets a slight
- *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%. */
+ *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%.
+ *
+ *  REBUILD with weeklyAvg4w ≤ 5 mi (injury return) overrides the
+ *  generic 6-mile floor: Research/05 §1.4 "long run ≤30% of weekly
+ *  volume during rebuild". A runner on 4 mpw cannot have a 6mi long
+ *  run — that's 150% of weekly. Pin to ≤25% of week-1 budget. */
 function longRunTarget(state: CoachState, phase: Phase): number {
+  // Injury-return long-run pin — must respect the rebuild week budget.
+  if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
+    const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
+    return Math.max(2, wkAvg * 0.30);
+  }
   const cap = maxLongRunMi(state);
   const peakLast = state.volume.longestLast28Mi;
   switch (phase) {
@@ -384,9 +437,18 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
     return recovery(Math.max(3, baseEasyMi(state, phase) * 0.7));
   }
 
-  // 5. Rebuild — cap distance to a sensible easy.
+  // 5. Rebuild — cap distance to a sensible easy. Cap, don't replace:
+  // when longRunTarget is already a deliberately small ≤30%-of-weekly
+  // long run (Research/05 §1.4 long-run cap), we want the small long,
+  // not a 3mi general-aerobic. Only swap to easy when the original
+  // prescription is genuinely large (quality / standard long target).
   if (phase === 'REBUILD' && p.distanceMi > baseEasyMi(state, phase) * 1.3) {
-    return generalAerobic(Math.max(3, baseEasyMi(state, phase)), state);
+    const cap = Math.max(2, baseEasyMi(state, phase));
+    if (p.isLong) {
+      // Keep the long-run identity, just cap the distance.
+      return { ...p, distanceMi: round1(Math.min(p.distanceMi, cap * 1.6)) };
+    }
+    return generalAerobic(cap, state);
   }
 
   // dow used implicitly via the picker; keep for future placement rules.
