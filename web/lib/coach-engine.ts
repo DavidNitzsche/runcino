@@ -259,6 +259,31 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   }
 
   // ─────────────────────────────────────────────────────────────
+  // K2-3: Rebuild-after-break softening for ALL volume tiers.
+  // Research/05-injury-return-protocols.md §1.4 "Return-to-Volume
+  // Guidelines" + §1.5 "Volume before intensity, always" — the
+  // principle is scale-free: a 50mpw runner who took 5 days off
+  // cannot stack threshold/VO2 on day 1 back any more than a 4mpw
+  // runner can. The heuristic "weeks off ≈ weeks to rebuild base"
+  // scales (a 5-day break doesn't need a 5-day zero, but it does
+  // need ~3-5 days of softening before structured intensity returns).
+  //
+  // Trigger: state.flags.rebuildAfterBreak (set in coach-state when
+  // last7Mi ≤ 0.30 × last28Mi/4). The low-volume tier already
+  // short-circuited above; this branch covers the high-volume tier.
+  // Suppresses quality, ramps from last7Mi via the crater-aware
+  // path in baseEasyMi/longRunTarget.
+  // ─────────────────────────────────────────────────────────────
+  if (state.flags.rebuildAfterBreak && state.volume.weeklyAvg4w >= 8) {
+    // No quality for the first 3-5 days post-break (Research/05 §1.5
+    // "Volume before intensity, always"). Long-run slot still allowed,
+    // but distance comes from last7Mi via longRunTarget's crater path.
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // Daily check-in gate — qualitative-signal Decision Matrix.
   // Research/00b-recovery-protocols.md §"Warning Signs of Incomplete
   // Recovery" · §"Decision Matrix":

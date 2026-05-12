@@ -440,21 +440,18 @@ describe('K8 — long streak then 5-day break (still fit, not fresh)', () => {
     expect(STATE_LONG_STREAK_THEN_BREAK.flags.rebuildAfterBreak).toBe(true);
   });
 
-  // GAP — rebuildAfterBreak flag is set, but pickRun's REBUILD branch
-  // only activates when weeklyAvg4w<8 (injury-return path). A 50mpw
-  // runner who took a 5-day break drops through to normal race-mode
-  // BUILD prescription, including quality. Fix: pickRun should treat
-  // `rebuildAfterBreak` as a softening signal regardless of weeklyAvg4w
-  // (suppress quality for the first 3-5 days; ramp from last7Mi instead
-  // of weeklyAvg4w). Coordinating with Wave C2 editing coach-engine.ts —
-  // deferring the fix; flagged in the final report.
-  it.skip("today's prescription is moderate (not quality)", () => {
+  // FIXED (Wave K2-3) — pickRun's rebuildAfterBreak branch now fires
+  // for ALL volume tiers, not just weeklyAvg4w<8. Research/05 §1.4
+  // "Return-to-Volume Guidelines" + §1.5 "Volume before intensity,
+  // always" scales independent of baseline. Combined with K2-2's
+  // crater-aware ramp, week-1 plans from last7Mi × 1.10 not weeklyAvg4w.
+  it("today's prescription is moderate (not quality)", () => {
     const today = coachDaily(STATE_LONG_STREAK_THEN_BREAK);
     expect(QUALITY_TYPES.has(today.today.type)).toBe(false);
     expect(today.today.distanceMi).toBeLessThan(13);
   });
 
-  it.skip('rebuild ramp is gradual — week-1 miles ≤ 65% of pre-break weeklyAvg4w', () => {
+  it('rebuild ramp is gradual — week-1 miles ≤ 65% of pre-break weeklyAvg4w', () => {
     const days = simulateRange(STATE_LONG_STREAK_THEN_BREAK, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     expect(wkMi).toBeLessThanOrEqual(STATE_LONG_STREAK_THEN_BREAK.volume.weeklyAvg4w * 0.65);
