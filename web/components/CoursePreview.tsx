@@ -80,10 +80,11 @@ function phaseColorAt(mile: number, phases: PhaseRange[], colors: string[]): str
   return colors[phaseIndexAt(mile, phases)] ?? colors[colors.length - 1] ?? '#888888';
 }
 
-// Soft phase-boundary blend. Within fadeMi miles of a phase edge, lerp
+// Soft phase-boundary blend. Within fadeMi miles of a phase edge, ease
 // between this phase's color and the neighbor's so the elevation profile
-// doesn't snap from one tint to the next. Default 0.1 mi keeps the fade
-// narrow — most of each phase still reads as its own pure color.
+// doesn't snap from one tint to the next. Default 0.4 mi gives enough
+// width that the per-segment fills don't show visible seams; smoothstep
+// easing keeps the transition feeling natural rather than a hard ramp.
 function parseColor(c: string): [number, number, number] | null {
   if (c.startsWith('#')) {
     if (c.length === 7) return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
@@ -101,11 +102,17 @@ function mixColors(a: string, b: string, t: number): string {
   const bl = Math.round(ra[2] + (rb[2] - ra[2]) * t);
   return `rgb(${r},${g},${bl})`;
 }
+// Smoothstep easing — 3t² − 2t³. Gentler at endpoints, steeper in the
+// middle so the eye doesn't catch a hard slope change at the fade edges.
+function smoothstep(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
 function phaseColorAtBlended(
   mile: number,
   phases: PhaseRange[],
   colors: string[],
-  fadeMi = 0.1,
+  fadeMi = 0.4,
 ): string {
   const idx = phaseIndexAt(mile, phases);
   const here = colors[idx] ?? colors[colors.length - 1] ?? '#888888';
@@ -117,13 +124,13 @@ function phaseColorAtBlended(
   if (distFromStart < fadeMi && idx > 0) {
     const prev = colors[idx - 1] ?? here;
     // t = 0 right at boundary (full neighbor), 1 fully inside (full self)
-    const t = Math.max(0, Math.min(1, (distFromStart + fadeMi) / (2 * fadeMi)));
+    const t = smoothstep((distFromStart + fadeMi) / (2 * fadeMi));
     return mixColors(prev, here, t);
   }
   // Fade INTO the next phase as we approach our end boundary
   if (distFromEnd < fadeMi && idx < phases.length - 1) {
     const next = colors[idx + 1] ?? here;
-    const t = Math.max(0, Math.min(1, (distFromEnd + fadeMi) / (2 * fadeMi)));
+    const t = smoothstep((distFromEnd + fadeMi) / (2 * fadeMi));
     return mixColors(next, here, t);
   }
   return here;
@@ -548,7 +555,7 @@ export function ElevationProfile({
     if (tinting === 'phase' && phases && phaseColors) {
       return (segIdx: number, alpha = 1): string => {
         const midM = (cumDistM[segIdx] + cumDistM[segIdx + 1]) / 2;
-        const c = phaseColorAtBlended(midM / M_PER_MI, phases, phaseColors, 0.1);
+        const c = phaseColorAtBlended(midM / M_PER_MI, phases, phaseColors, 0.4);
         return alpha < 1 ? withAlpha(c, alpha) : c;
       };
     }
