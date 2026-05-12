@@ -382,8 +382,238 @@ class CoachImpl implements Coach {
     throw new Error(`Coach.${method}() lands in Stage ${stage}. See docs/COACH_BUILD_PLAN.md.`);
   }
 
-  retrospect(): Promise<CoachDecision<RetrospectiveOutput>> { return this.notYet(4, 'retrospect'); }
-  adjustForReality(): Promise<CoachDecision<AdjustedPlan>> { return this.notYet(5, 'adjustForReality'); }
+  // ── Stage 5 · adjustForReality ─────────────────────────────────────
+  // Decide whether today's prescribed workout should change based on
+  // recent signals (missed runs, ACWR, sleep debt, HRV trend). Walks the
+  // INCOMPLETE_RECOVERY decision matrix from Research/00b — counts how
+  // many quantitative signals are firing and maps that count to one of
+  // four actions: continue · defer 24-48h · 3-5d cutback · full cutback.
+  //
+  // The mapping from "action" to a modified WorkoutPrescription:
+  //   continue        → same workout, changed=false
+  //   defer 24-48h    → drop quality, keep distance (today becomes easy)
+  //   3-5d cutback    → recovery jog at 50% distance, no quality
+  //   full cutback    → rest, with a "stop training, see medical" note
+  //
+  // @research Research/00b §Warning Signs of Incomplete Recovery
+  //           — Decision Matrix · Quantitative Signals
+  //           Research/00a §13.1 ACWR sweet spot 0.8-1.3
+  async adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>> {
+    const { signals, scheduledWorkout } = input;
+
+    // Count quantitative signals firing right now. Per
+    // INCOMPLETE_RECOVERY_QUANTITATIVE_SIGNALS thresholds (Research/00b).
+    const fired: Array<{ signal: string; reason: string }> = [];
+
+    // ACWR danger zone — > 1.5 is the documented injury-risk threshold.
+    // Sweet spot is 0.8-1.3 per HSS 2024 marathon research.
+    if (signals.acwr > 1.5) {
+      fired.push({ signal: 'ACWR', reason: `ACWR ${signals.acwr.toFixed(2)} above 1.5 danger zone` });
+    }
+
+    // 5+ days since last run = rebuild territory, not just a deload.
+    if (signals.daysSinceLastRun >= 5) {
+      fired.push({ signal: 'daysSinceLastRun', reason: `${signals.daysSinceLastRun} days since last run — rebuilding` });
+    }
+
+    // 3+ missed runs in 7 days = adherence pattern, not a one-off.
+    if (signals.missedRunsLast7d >= 3) {
+      fired.push({ signal: 'missedRuns', reason: `${signals.missedRunsLast7d} missed runs in the last 7 days` });
+    }
+
+    // Sleep debt threshold: >90 min (≈1.5h) over a week. Per Research/00b
+    // sleep efficiency cumulative deficit warning.
+    if (signals.sleepDebtMin != null && signals.sleepDebtMin > 90) {
+      fired.push({ signal: 'sleepDebt', reason: `${Math.round(signals.sleepDebtMin / 60 * 10) / 10}h sleep debt` });
+    }
+
+    // HRV >1 SD below baseline = quantitative recovery signal per
+    // Research/00b. We accept a percent-delta input; treat -10% as
+    // roughly equivalent to >1 SD drop for a typical RMSSD value.
+    if (signals.hrvBaselineDelta != null && signals.hrvBaselineDelta < -10) {
+      fired.push({ signal: 'hrv', reason: `HRV ${signals.hrvBaselineDelta.toFixed(0)}% below baseline` });
+    }
+
+    const count = fired.length;
+
+    // ── Decision matrix · INCOMPLETE_RECOVERY_DECISION_MATRIX ─────
+    // 0-1 → continue · 2 → defer quality · 3+ → cutback.
+    // The 5+ days-since-last-run case overrides — that's rebuild,
+    // not a "skip today" call.
+    if (signals.daysSinceLastRun >= 5) {
+      const recoveryMi = Math.max(2.5, Math.min(5.0, scheduledWorkout.distanceMi * 0.5));
+      return {
+        answer: {
+          workout: {
+            ...scheduledWorkout,
+            type: 'recovery',
+            label: 'Recovery jog · returning',
+            distanceMi: Math.round(recoveryMi * 10) / 10,
+            isQuality: false,
+            isLong: false,
+            paceTargetSPerMi: null,
+            hrZone: 1,
+            phaseLabel: 'REBUILD',
+            voiceLead: `${signals.daysSinceLastRun} days since your last run — body needs a re-entry, not the prescribed session. Short and very easy today. Build the week back from here.`,
+          },
+          changed: true,
+        },
+        rationale: `Rebuild after gap: ${fired.map((f) => f.reason).join('; ')}`,
+        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        brain: 'deterministic',
+      };
+    }
+
+    if (count <= 1) {
+      return {
+        answer: { workout: scheduledWorkout, changed: false },
+        rationale: count === 0
+          ? 'No incomplete-recovery signals firing — today as scheduled.'
+          : `One signal firing (${fired[0]!.reason}). Below the defer threshold; continuing as planned.`,
+        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        brain: 'deterministic',
+      };
+    }
+
+    if (count === 2) {
+      // Defer 24-48h on quality. Keep distance, drop intensity.
+      if (scheduledWorkout.isQuality) {
+        return {
+          answer: {
+            workout: {
+              ...scheduledWorkout,
+              type: 'general_aerobic',
+              label: `Easy ${scheduledWorkout.distanceMi.toFixed(1)} mi (deferred quality)`,
+              isQuality: false,
+              paceTargetSPerMi: null,
+              hrZone: 2,
+              voiceLead: `Two recovery signals firing — ${fired.map((f) => f.reason).join(' and ')}. Keep the volume, drop the intensity today. Re-attempt quality in 24-48h once signals settle.`,
+            },
+            changed: true,
+          },
+          rationale: `Defer quality: ${fired.map((f) => f.signal).join(' + ')} both firing`,
+          citations: [{ doc: 'Research/00b-recovery.md', section: '§Decision Matrix · 2 quantitative → defer 24-48h' }],
+        brain: 'deterministic',
+        };
+      }
+      // Today is already easy — nothing to defer. Continue.
+      return {
+        answer: { workout: scheduledWorkout, changed: false },
+        rationale: `Two signals firing but today is already easy. Continuing as planned.`,
+        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        brain: 'deterministic',
+      };
+    }
+
+    // count >= 3 → cutback. 50% volume, no quality.
+    const cutbackMi = Math.max(0, Math.round(scheduledWorkout.distanceMi * 0.5 * 10) / 10);
+    return {
+      answer: {
+        workout: {
+          ...scheduledWorkout,
+          type: cutbackMi > 0 ? 'recovery' : 'rest',
+          label: cutbackMi > 0 ? `Recovery jog · ${cutbackMi} mi (cutback)` : 'Rest day (cutback)',
+          distanceMi: cutbackMi,
+          isQuality: false,
+          isLong: false,
+          paceTargetSPerMi: null,
+          hrZone: cutbackMi > 0 ? 1 : null,
+          voiceLead: `${count} recovery signals firing simultaneously: ${fired.map((f) => f.reason).join('; ')}. Doctrine says 3+ signals warrants a 3-5 day cutback. Today is the start — 50% volume, no quality. If signals persist past 2 weeks, escalate to a medical/coach review.`,
+        },
+        changed: true,
+      },
+      rationale: `Cutback prescribed: ${count} quantitative signals firing`,
+      citations: [{ doc: 'Research/00b-recovery.md', section: '§Decision Matrix · 3+ quantitative → 3-5d cutback' }],
+      brain: 'deterministic',
+    };
+  }
+
+  // ── Stage 4 · retrospect ──────────────────────────────────────────
+  // Post-race reflection. Parses the plan and actual to find the key
+  // deltas — finish-time gap, pacing pattern (positive/even/negative
+  // split), how the actual unfolded against the goal — and renders a
+  // two-paragraph reflection in the Coach voice.
+  //
+  // Calibration deltas are conservative by design: we only emit a
+  // delta when the evidence is strong enough to NOT be a one-race
+  // fluke. Doctrine warns against over-correcting on a single race.
+  //
+  // @research Research/01 §VDOT calibration windows
+  //           Research/00b §Single-race over-correction caution
+  async retrospect(input: RetrospectInput): Promise<CoachDecision<RetrospectiveOutput>> {
+    const summary = summarizeRetrospect(input.plan, input.actual);
+
+    const paras: string[] = [];
+
+    // Paragraph 1 — the race verdict.
+    if (summary.goalDeltaS == null) {
+      paras.push(
+        `Race in the books. Without a goal time on file I can read the splits but not measure against intent — log the goal next time and the verdict gets sharper.`,
+      );
+    } else {
+      const off = Math.abs(summary.goalDeltaS);
+      const dir = summary.goalDeltaS > 0 ? 'over' : 'under';
+      const offDisplay = off >= 60 ? `${Math.round(off / 60)} min ${off % 60}s` : `${Math.round(off)}s`;
+      if (off <= 30) {
+        paras.push(`Goal-line execution — finished ${offDisplay} ${dir} the target. Plan held. The kind of race that calibrates everything else; the engine is exactly where the model predicted.`);
+      } else if (summary.goalDeltaS > 0 && off > 30) {
+        const cause = summary.splitPattern === 'positive_split'
+          ? 'Positive split — second half slowed past the budget.'
+          : summary.splitPattern === 'even'
+          ? 'Pacing held even but the goal was ahead of current fitness.'
+          : 'Mixed pacing with a tough back half.';
+        paras.push(`Off goal by ${offDisplay} on the slow side. ${cause} Not a redo-the-plan situation on its own — race day adds friction the engine never sees. Log it, hold the build, see what the next mid-cycle test says.`);
+      } else {
+        paras.push(`Beat goal by ${offDisplay} — fitness is ahead of where the engine had it placed. ${summary.splitPattern === 'negative_split' ? 'Negative split too, which means the floor is still rising.' : 'Execution clean.'} The plan was conservative; the next build can lean harder.`);
+      }
+    }
+
+    // Paragraph 2 — pacing pattern + what changes.
+    const pacingNote = (() => {
+      switch (summary.splitPattern) {
+        case 'positive_split':
+          return 'Pacing went out hot. The cost showed up in the back half — that\'s usually a goal-pace miscalibration or aid-station discipline, not a fitness ceiling. Two options next time: dial the first-mile target back 5-8 s/mi, or commit to even-effort GAP on hills.';
+        case 'negative_split':
+          return 'Built into the second half — the gold standard for goal-pace races. Validates that the engine has more room than the goal implied. Next build can hold the same volume but stretch quality reps by a third.';
+        case 'even':
+          return 'Even-effort pacing across the course — the plan executed exactly as designed. Course shape didn\'t catch you off guard. Repeat the same pacing strategy template at the next A.';
+        default:
+          return 'Pacing was uneven enough that no clean pattern emerges. Worth reviewing the splits against the elevation chart before drawing structural conclusions.';
+      }
+    })();
+    paras.push(pacingNote);
+
+    // Conservative calibration delta. Single-race over-correction is
+    // a documented anti-pattern; emit a delta only on very strong
+    // evidence (clear PR pace or clear blown race AND consistent
+    // pattern). Otherwise leave the user record alone.
+    let calibrationDelta: RetrospectiveOutput['calibrationDelta'] | undefined;
+    if (summary.goalDeltaS != null) {
+      const offPct = Math.abs(summary.goalDeltaS) / summary.goalFinishS;
+      if (summary.goalDeltaS < 0 && offPct > 0.015 && summary.splitPattern === 'negative_split') {
+        // Beat goal by >1.5% with a negative split — bump up the
+        // engine's pace expectation by 1.5%.
+        calibrationDelta = { easyPaceFloorDelta: -summary.actualPaceSPerMi * 0.015 };
+      } else if (summary.goalDeltaS > 0 && offPct > 0.04 && summary.splitPattern === 'positive_split') {
+        // Off goal by >4% with a positive split — engine over-estimated.
+        // Lift the easy-pace floor by 2%.
+        calibrationDelta = { easyPaceFloorDelta: summary.actualPaceSPerMi * 0.02 };
+      }
+    }
+
+    return {
+      answer: {
+        narrative: paras.join('\n\n'),
+        calibrationDelta,
+      },
+      rationale: `Retrospect from ${summary.actualPaceSPerMi.toFixed(0)} s/mi avg pace, ${summary.splitPattern} split, ${summary.goalDeltaS == null ? 'no goal logged' : `${summary.goalDeltaS > 0 ? '+' : ''}${Math.round(summary.goalDeltaS)}s vs goal`}.`,
+      citations: [
+        { doc: 'Research/01-fitness.md', section: '§VDOT calibration windows' },
+        { doc: 'Research/00b-recovery.md', section: '§Single-race over-correction caution' },
+      ],
+      brain: 'deterministic',
+    };
+  }
 
   // ── Stage 1 · Pace strategy ────────────────────────────────────────
   // Builds per-segment paces from a goal time + course shape using the
@@ -1377,8 +1607,62 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+/** Best-effort summary of a race retrospect input. Both `plan` and
+ *  `actual` are typed `unknown` so this does runtime-safe extraction:
+ *  it reads named numeric fields if present, returns a defaulted-out
+ *  summary otherwise. Conservative — never throws, never crashes the
+ *  Coach if the caller hands in malformed data. */
+function summarizeRetrospect(plan: unknown, actual: unknown): {
+  goalFinishS: number;
+  actualFinishS: number;
+  goalDeltaS: number | null;
+  actualPaceSPerMi: number;
+  splitPattern: 'positive_split' | 'negative_split' | 'even' | 'unclear';
+} {
+  const planObj = (plan && typeof plan === 'object') ? plan as Record<string, unknown> : {};
+  const actualObj = (actual && typeof actual === 'object') ? actual as Record<string, unknown> : {};
+
+  const goalFinishS = numOrZero(planObj.goalFinishS) || numOrZero(planObj.goalSeconds);
+  const actualFinishS = numOrZero(actualObj.finishS) || numOrZero(actualObj.elapsedS) || numOrZero(actualObj.finishSeconds);
+  const totalMi = numOrZero(planObj.distanceMi) || numOrZero(actualObj.distanceMi) || 13.1;
+  const actualPaceSPerMi = actualFinishS > 0 ? actualFinishS / totalMi : 0;
+
+  const goalDeltaS = (goalFinishS > 0 && actualFinishS > 0) ? actualFinishS - goalFinishS : null;
+
+  // Detect pacing pattern from per-mile splits when present. Compare
+  // first-half avg pace to second-half avg pace.
+  const splits = Array.isArray(actualObj.miles) ? actualObj.miles as unknown[] : [];
+  let splitPattern: 'positive_split' | 'negative_split' | 'even' | 'unclear' = 'unclear';
+  if (splits.length >= 6) {
+    const halfIdx = Math.floor(splits.length / 2);
+    const paces = splits.map((m) => {
+      if (!m || typeof m !== 'object') return null;
+      const obj = m as Record<string, unknown>;
+      return numOrZero(obj.paceSPerMi) || null;
+    }).filter((p): p is number => p != null && p > 0);
+    if (paces.length >= 6) {
+      const firstAvg = avg(paces.slice(0, halfIdx));
+      const secondAvg = avg(paces.slice(halfIdx));
+      const driftPct = (secondAvg - firstAvg) / firstAvg;
+      if (driftPct > 0.025) splitPattern = 'positive_split';
+      else if (driftPct < -0.015) splitPattern = 'negative_split';
+      else splitPattern = 'even';
+    }
+  }
+
+  return { goalFinishS, actualFinishS, goalDeltaS, actualPaceSPerMi, splitPattern };
+}
+
+function numOrZero(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+function avg(xs: number[]): number {
+  return xs.length === 0 ? 0 : xs.reduce((s, x) => s + x, 0) / xs.length;
+}
+
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
  *  Stage 2 implements `briefRaceMorning`; Stage 3 adds `prescribeWorkout`
- *  + `assessReadiness`; other methods still stub with a clear "Stage N"
- *  error. Each stage flips one or more from stub → real. */
+ *  + `assessReadiness`; Stage 4 wires `retrospect`; Stage 5 wires
+ *  `adjustForReality`. Each stage flips one or more from stub → real. */
 export const coach: Coach = new CoachImpl();
