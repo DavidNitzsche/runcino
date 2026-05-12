@@ -172,6 +172,33 @@ function describeMode(state: CoachState, phase: Phase): string {
 
 /* ── Run picker ─────────────────────────────────────────────── */
 function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription {
+  // ─────────────────────────────────────────────────────────────
+  // K2-4: B-race shield. When a B-race sits within ±2 days of
+  // today, the engine cannot pile threshold/VO2 on top regardless
+  // of the A-race window. Research/00b §"Recovery by Effort (A vs
+  // B vs C Race)": "B race | Hard but not depleted; 1-week taper
+  // | 7-10 days | 60-70% of A-race recovery". A B-race day is a
+  // race day; the day before/after is recovery. Research/08 §9.3
+  // race-week templates document the principle — quality work in
+  // the ±2 day band around any race produces fatigue without
+  // adaptation.
+  //
+  // We scan state.races.inWindow (which includes A + B + C
+  // priorities) and act on B-races. A-race handling stays in the
+  // A-race TAPER branch below.
+  // ─────────────────────────────────────────────────────────────
+  const bRaceShield = findBRaceShield(state);
+  if (bRaceShield) {
+    if (bRaceShield.daysAway === 0) return race(bRaceShield.distanceMi, bRaceShield.name);
+    if (Math.abs(bRaceShield.daysAway) === 1) {
+      // ±1 day from B-race — easy or recovery only.
+      return recovery(Math.max(3, baseEasyMi(state, phase) * 0.6));
+    }
+    // ±2 days — no quality. Easy aerobic or long_steady on Sat.
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+
   // Race-week / race-day overrides — these short-circuit normal logic.
   if (phase === 'TAPER' && state.races.nextA) {
     const d = state.races.nextA.daysAway;
@@ -579,6 +606,28 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
   if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.5);
   if (phase === 'BASE' || phase === 'BUILD' || phase === 'PEAK') return Math.max(3, Math.min(dailyShareLow, 12));
   return Math.max(3, Math.min(dailyShare, 12));
+}
+
+/** Finds the closest B-race within ±2 days of `state.now`. Returns null
+ *  when no B-race is in window. A-race handling stays in the dedicated
+ *  TAPER branch. Used by pickRun to apply the B-race shield: race-day
+ *  → race, ±1 → recovery, ±2 → no quality.
+ *
+ *  @research Research/00b-recovery-protocols.md §"Recovery by Effort
+ *            (A vs B vs C Race)" + Research/08-pacing-and-race-week.md
+ *            §9.3 day-by-day race-week templates.
+ */
+function findBRaceShield(state: CoachState): { name: string; distanceMi: number; daysAway: number } | null {
+  if (!state.races.inWindow || state.races.inWindow.length === 0) return null;
+  let closest: { name: string; distanceMi: number; daysAway: number } | null = null;
+  for (const r of state.races.inWindow) {
+    if (r.priority !== 'B') continue;
+    if (Math.abs(r.daysAway) > 2) continue;
+    if (closest == null || Math.abs(r.daysAway) < Math.abs(closest.daysAway)) {
+      closest = { name: r.name, distanceMi: r.distanceMi, daysAway: r.daysAway };
+    }
+  }
+  return closest;
 }
 
 /** Crater detector — last7Mi has dropped well below the 4-week baseline

@@ -394,15 +394,13 @@ describe('K7 — two B-races stacked into an A-race week', () => {
     expect(bs.length).toBe(2);
   });
 
-  // GAP — engine does not register B-races. With A-race 14d out and HM
-  // taper window of ~10.5d, days +7/+10 fall in PEAK sub-phase, not
-  // TAPER. The engine prescribes threshold/VO2 in PEAK as usual — it
-  // can't see the B-races sitting on those exact days. Fix: pickRun
-  // should treat any B-race date within ±2 days as a "race-day shield"
-  // (rest/recovery on the B-race date; easy bracketed days; no quality
-  // within 2 days). Coordinating with Wave C2 editing coach-engine.ts —
-  // deferring; flagged in the final report as a load-conflict bug.
-  it.skip('day +7 / +10 (B-race dates) are NOT quality sessions, surrounding days easy', () => {
+  // FIXED (Wave K2-4) — pickRun now applies a B-race shield via
+  // findBRaceShield(state): scans state.races.inWindow for B-priority
+  // races within ±2 days of today (day-by-day via advanceState). B-race
+  // day → race type; ±1 day → recovery; ±2 days → general_aerobic or
+  // long_steady. Citation: Research/00b §"Recovery by Effort (A vs B vs
+  // C Race)" + Research/08 §9.3 race-week templates.
+  it('day +7 / +10 (B-race dates) are NOT quality sessions, surrounding days easy', () => {
     const days = simulateRange(STATE_STACKED_B_RACES, TODAY_ISO, dayOffsetISO(13));
     const b1Day = days.find(d => d.date === dayOffsetISO(7));
     const b2Day = days.find(d => d.date === dayOffsetISO(10));
