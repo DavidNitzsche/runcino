@@ -5,9 +5,9 @@
  * the Training page resolves to one of the functions in this module.
  *
  * Real sources are wired where they exist (Strava cache, saved races,
- * Coach engine state, Coach methods). Stubs are clearly marked with
- * `// TODO: wire to <source>` comments. The shapes are stable — when
- * the real engine ships, only the body of each helper changes.
+ * Coach engine state, Coach methods). Surfaces whose feeding source
+ * doesn't exist yet resolve to `null` — the page renders an explicit
+ * NO DATA YET empty-state.
  */
 
 import type {
@@ -16,6 +16,7 @@ import type {
   ProofSessionsReport,
   WeekDeltasReport,
   RaceFitnessPrediction,
+  TrajectoryPoint,
 } from '@/coach/types';
 import type {
   WorkoutPrescription,
@@ -24,6 +25,8 @@ import type {
 import type { CoachState } from '@/lib/coach-state';
 import type { NormalizedActivity } from '@/lib/strava-activities';
 import { onlyRuns } from '@/lib/strava-activities';
+import { vdotSnapshot } from '@/lib/vdot';
+import { naivePRs } from '@/lib/strava-stats';
 import { listRaces, type SavedRace } from '@/lib/storage';
 import { daysUntil } from '@/lib/dates';
 import type { TrainingApiHrZoneTime } from '../api/training/route';
@@ -58,25 +61,22 @@ export interface TrainingData {
     proofSessions: CoachDecision<ProofSessionsReport>;
     raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   };
-  /** Today workout structure (warm-up / main / cool-down split). Stub
-   *  until prescribeWorkout returns a real breakdown. */
+  /** Today workout structure (warm-up / main / cool-down split). */
   workoutStructure: WorkoutStructureBlock[];
-  /** Today readiness signals (Sleep / HRV / RHR / Soreness). Stub
-   *  until HealthKit ingestion lands. */
-  readyToRun: ReadyToRunSnapshot;
-  /** Today conditions + coach note inset. Stub until weather wiring. */
-  conditions: ConditionsSnapshot;
+  /** Today readiness signals (Sleep / HRV / RHR / Soreness). null until
+   *  HealthKit + a daily check-in pipeline ship. */
+  readyToRun: ReadyToRunSnapshot | null;
+  /** Today conditions + coach note. null until weather wiring lands. */
+  conditions: ConditionsSnapshot | null;
   /** Goal tracking — PR / Goal / Stretch tiles + fitness now vs goal.
-   *  Reads from race-prediction when an A-race is set; falls back to
-   *  doctrine placeholders otherwise. */
-  goalTracking: GoalTrackingSnapshot;
-  /** Next-4-weeks plan blocks. Stub until trajectory exposes a
-   *  block-level view alongside the 14-week curve. */
-  nextFourWeeks: NextFourWeeksSnapshot;
-  /** Plan-adapted (Coach Read) — same shape used on Overview. */
-  planAdapted: PlanAdaptedReport;
-  /** 14-day HR-zones rollup. Re-homed from Health per audit
-   *  /Research/00a §TID — training-design metric, not a readiness one. */
+   *  null when no A-race is set (page prompts the user to set one). */
+  goalTracking: GoalTrackingSnapshot | null;
+  /** Next-4-weeks plan blocks. null when trajectory has no upcoming weeks. */
+  nextFourWeeks: NextFourWeeksSnapshot | null;
+  /** Plan-adapted (Coach Read) — null when nothing has changed in the
+   *  last 7 days. */
+  planAdapted: PlanAdaptedReport | null;
+  /** 14-day HR-zones rollup. */
   hrZones: TrainingApiHrZoneTime;
   /** Strava activities for any client-side rollup. May be null. */
   activities: NormalizedActivity[] | null;
@@ -93,15 +93,10 @@ export interface ProfileSnapshot {
 }
 
 export interface WorkoutStructureBlock {
-  /** Display time offset, e.g. "0:00". */
   timeOffset: string;
-  /** Block label, e.g. "Warm-up · easy aerobic". */
   name: string;
-  /** Distance display, e.g. "0.5 mi". */
   distance: string;
-  /** Pace display, e.g. "9:30/mi". */
   pace: string;
-  /** True for the main block (rendered bold). */
   isMain?: boolean;
 }
 
@@ -110,51 +105,38 @@ export interface ReadyToRunSnapshot {
   headline: string;
   /** Headline color token. */
   headlineColor: string;
-  sleep: { value: string; delta: string; color: string };
-  hrv: { value: string; unit: string; delta: string; color: string };
-  rhr: { value: string; unit: string; delta: string; color: string };
-  soreness: { value: string; detail: string };
+  /** Individual signals — each is null until that sensor stream is live. */
+  sleep: { value: string; delta: string; color: string } | null;
+  hrv: { value: string; unit: string; delta: string; color: string } | null;
+  rhr: { value: string; unit: string; delta: string; color: string } | null;
+  soreness: { value: string; detail: string } | null;
 }
 
 export interface ConditionsSnapshot {
-  /** Big temp number, e.g. "62". */
   tempF: string;
-  /** Sub-line, e.g. "12 MPH · CLOUDY". */
   detail: string;
-  /** Coach note paragraph. */
   coachNote: string;
-  /** HR ceiling to mention inline. */
   hrCap: number;
 }
 
 export interface GoalTilesRow {
-  pr: { label: string; time: string; meta: string };
+  pr: { label: string; time: string; meta: string } | null;
   goal: { label: string; time: string; meta: string };
   stretch: { label: string; time: string; meta: string };
 }
 
 export interface GoalTrackingSnapshot {
-  /** A-race name, e.g. "AFC HALF". */
   aRaceName: string;
-  /** Goal time display, e.g. "1:35:00". */
   goalTime: string;
-  /** Goal pace display, e.g. "7:15/MI". */
   goalPace: string;
-  /** Current fitness time display, e.g. "1:32". */
   fitnessNow: string;
-  /** VDOT line, e.g. "VDOT 49.2 · ▲ +0.8". */
-  vdotLine: string;
-  /** Headroom seconds-per-mile (positive = room to spare). */
+  /** VDOT line. null when no VDOT anchored. */
+  vdotLine: string | null;
   headroomSPerMi: number;
-  /** Pin label, e.g. "▲ ON TRACK" / "▼ SHORT". */
   pinLabel: string;
-  /** Pin variant. */
   pinVariant: 'green' | 'amber' | 'warn';
-  /** Days to A race. */
   daysToA: number;
-  /** Tiles row at the bottom (PR · GOAL · STRETCH). */
   tiles: GoalTilesRow;
-  /** Latest-proof callout text (short summary line). */
   latestProof: {
     dateISO: string;
     title: string;
@@ -164,31 +146,20 @@ export interface GoalTrackingSnapshot {
 }
 
 export interface NextFourWeeksBlock {
-  /** Week range label, e.g. "WEEK · MAY 11–17". */
   rangeLabel: string;
-  /** Block title, e.g. "Recovery week 2". */
   title: string;
-  /** Phase tone — colors the left rail. */
   tone: 'recovery' | 'base' | 'build' | 'peak' | 'taper' | 'race';
-  /** Weekly miles. */
   miles: number;
-  /** Quality days count. */
   quality: number;
-  /** Long-run miles. */
   longMi: number;
-  /** Short rationale string. */
   rationale: string;
 }
 
 export interface NextFourWeeksSnapshot {
-  /** Block range header, e.g. "NEXT 4 WEEKS · MAY 11 → JUN 7". */
   rangeLabel: string;
-  /** Section title, e.g. "Recovery wraps · Base block opens". */
   title: string;
-  /** Two summary pins, e.g. ["RECOVERY 2/2", "BASE · 21D"]. */
   pins: Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }>;
   blocks: NextFourWeeksBlock[];
-  /** Summary strip at the bottom of the card. */
   summary: {
     totalMi: number;
     avgWeekMi: number;
@@ -257,7 +228,6 @@ export async function loadTrainingData(
 
   const today = api.today;
 
-  // Race calendar.
   const upcoming = savedRaces
     .filter((r) => daysUntil(r.meta.date) >= 0)
     .sort((a, b) => daysUntil(a.meta.date) - daysUntil(b.meta.date));
@@ -269,16 +239,20 @@ export async function loadTrainingData(
   const daysToNextA = nextA ? daysUntil(nextA.meta.date) : null;
 
   const runs = activities ? onlyRuns(activities) : null;
+  const prs = runs && runs.length > 0 ? naivePRs(runs) : null;
+  const vdotLib = vdotSnapshot(api.state);
 
   const profile = getProfileSnapshot(today);
   const workoutStructure = getWorkoutStructure(api.workout.answer);
   const readyToRun = getReadyToRun(api.readiness.answer);
-  const conditions = getConditions(api.workout.answer);
+  const conditions = getConditions();
   const goalTracking = getGoalTracking(
     api.raceFitnessA,
     api.proofSessions.answer,
     nextA,
     daysToNextA,
+    vdotLib,
+    prs,
   );
   const nextFourWeeks = getNextFourWeeks(api.trajectory.answer);
   const planAdapted = getPlanAdapted();
@@ -323,14 +297,11 @@ async function fetchTrainingApi(): Promise<TrainingApiPayload> {
 // ─────────────────────────────────────────────────────────────────────
 
 function getProfileSnapshot(today: string): ProfileSnapshot {
-  // TODO: wire to a user/profile table. Mirrors the Overview port —
-  // single-tenant placeholder until auth + profile data exists.
   const hour = new Date(today + 'T12:00:00').getHours();
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   return {
-    // TODO: wire to profile.name
-    name: 'David',
+    name: 'Runner',
     greeting,
   };
 }
@@ -340,14 +311,10 @@ function getProfileSnapshot(today: string): ProfileSnapshot {
 // ─────────────────────────────────────────────────────────────────────
 
 function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBlock[] {
-  // TODO: wire to coach.prescribeWorkout — once the Coach returns a
-  // structured warm-up / main / cool-down break, surface that
-  // directly. Currently the prescription is one paragraph; we
-  // synthesize a 3-step split from the distance + paceTarget.
   const totalMi = workout.distanceMi ?? 3.0;
   const paceMid = workout.paceTargetSPerMi
     ? (workout.paceTargetSPerMi.lower + workout.paceTargetSPerMi.upper) / 2
-    : 540; // 9:00/mi default
+    : 540;
   const warmMi = Math.max(0.4, Math.round(totalMi * 0.16 * 10) / 10);
   const coolMi = Math.max(0.4, Math.round(totalMi * 0.16 * 10) / 10);
   const mainMi = Math.max(0.1, Math.round((totalMi - warmMi - coolMi) * 10) / 10);
@@ -381,10 +348,10 @@ function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBloc
 // ─────────────────────────────────────────────────────────────────────
 
 function getReadyToRun(readiness: ReadinessAssessment): ReadyToRunSnapshot {
-  // TODO: wire to HealthKit (HRV / RHR / sleep). Until M2 lands the
-  // numbers below are mockup-faithful placeholders; only the headline
-  // is derived from Coach.assessReadiness so the at-a-glance signal
-  // tracks real Coach output.
+  // The headline is the only thing the Coach surfaces today — the
+  // individual signals (sleep / HRV / RHR / soreness) come from
+  // HealthKit + a daily check-in we haven't wired. Each is null until
+  // its source goes live; the page renders an AWAITING HEALTHKIT body.
   const headline =
     readiness.level === 'green'
       ? '▲ ALL SIGNALS GREEN'
@@ -400,14 +367,10 @@ function getReadyToRun(readiness: ReadinessAssessment): ReadyToRunSnapshot {
   return {
     headline,
     headlineColor,
-    // TODO: wire to HealthKit sleep
-    sleep: { value: '7:42', delta: '+18M GOAL', color: 'var(--good)' },
-    // TODO: wire to HealthKit HRV
-    hrv: { value: '68', unit: 'MS', delta: '▲ +4 vs BASE', color: 'var(--good)' },
-    // TODO: wire to HealthKit RHR
-    rhr: { value: '42', unit: 'BPM', delta: '▼ −1 vs BASE', color: 'var(--good)' },
-    // TODO: wire to daily self-report; mental.ts has the doctrine for the input
-    soreness: { value: 'MILD', detail: 'CALF · CONNECTIVE' },
+    sleep: null,
+    hrv: null,
+    rhr: null,
+    soreness: null,
   };
 }
 
@@ -415,17 +378,10 @@ function getReadyToRun(readiness: ReadinessAssessment): ReadyToRunSnapshot {
 // Conditions + coach note inset
 // ─────────────────────────────────────────────────────────────────────
 
-function getConditions(workout: WorkoutPrescription): ConditionsSnapshot {
-  // TODO: wire to weather.ts × coach.dailyConditionsNote (no such
-  // method yet). Until that lands we surface mockup-faithful weather
-  // with a coach note synthesized from the prescription HR zone.
-  const hrCap = workout.hrZone ? 130 + workout.hrZone * 8 : 145;
-  return {
-    tempF: '62',
-    detail: '12 MPH · CLOUDY',
-    coachNote: `Settle into pace — don't chase. Cap effort if HR drifts above ${hrCap}. Recovery means recovery; stop if anything pulls.`,
-    hrCap,
-  };
+function getConditions(): ConditionsSnapshot | null {
+  // No weather wiring yet. The card renders an AWAITING WEATHER empty
+  // state until lib/weather.ts × coach.dailyConditionsNote ship.
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -437,32 +393,62 @@ function getGoalTracking(
   proofs: ProofSessionsReport,
   nextA: SavedRace | null,
   daysToA: number | null,
-): GoalTrackingSnapshot {
-  const headroom = raceFitnessA?.answer.headroomSPerMi ?? 0;
+  vdotLib: ReturnType<typeof vdotSnapshot>,
+  prs: Array<{ label: string; distMi: number; bestS: number | null; activityId: number | null; date: string | null }> | null,
+): GoalTrackingSnapshot | null {
+  if (!nextA || !raceFitnessA) return null;
+
+  const headroom = raceFitnessA.answer.headroomSPerMi;
   const onTrack = headroom >= 0;
-  const aRaceName = (nextA?.meta.name ?? raceFitnessA?.answer.raceName ?? 'AFC HALF').toUpperCase();
-  const goalTime = raceFitnessA?.answer.goalDisplay ?? '1:35:00';
-  const goalPaceS = raceFitnessA?.answer.goalPaceSPerMi ?? 435;
-  const fitnessTime = raceFitnessA?.answer.predictedDisplay ?? '1:32';
-  const stretchTime = raceFitnessA?.answer.stretchDisplay ?? '1:30:00';
-  const days = daysToA ?? 98;
+  const aRaceName = nextA.meta.name.toUpperCase();
+  const goalTime = raceFitnessA.answer.goalDisplay;
+  const goalPaceS = raceFitnessA.answer.goalPaceSPerMi;
+  const fitnessTime = raceFitnessA.answer.predictedDisplay;
+  const stretchTime = raceFitnessA.answer.stretchDisplay;
+  const days = daysToA ?? 0;
+
+  // VDOT line — real snapshot or null. We don't yet track a delta so
+  // the line is just the current VDOT.
+  const vdotLine = vdotLib ? `VDOT ${vdotLib.vdot.toFixed(1)}` : null;
+
+  // PR tile — pull the closest-distance PR from naivePRs.
+  const distLabel = labelForDistanceFromMi(nextA.meta.distanceMi);
+  const prBucket = pickPrForRaceDistance(prs, nextA.meta.distanceMi);
+  const prTile =
+    prBucket && prBucket.bestS != null
+      ? {
+          label: `PR · ${distLabel}`,
+          time: fmtDuration(prBucket.bestS),
+          meta: prBucket.date ? formatShortDate(prBucket.date) : '—',
+        }
+      : null;
+
+  // Stretch pace — raceFitnessPrediction already gives a stretchDisplay
+  // but no pace; compute from goalPace - typical stretch delta.
+  const stretchPaceS = Math.max(0, goalPaceS - 8);
 
   return {
     aRaceName,
     goalTime,
     goalPace: `${fmtPace(goalPaceS).replace('/mi', '')}/MI`,
     fitnessNow: fitnessTime,
-    // TODO: wire to lib/vdot.ts and surface real trend
-    vdotLine: 'VDOT 49.2 · ▲ +0.8',
+    vdotLine,
     headroomSPerMi: headroom,
     pinLabel: onTrack ? '▲ ON TRACK' : '▼ SHORT',
     pinVariant: onTrack ? 'green' : 'warn',
     daysToA: days,
     tiles: {
-      // TODO: wire to PR shelf (lib/strava-stats.naivePRs); fallback
-      pr: { label: 'PR · DISNEY', time: '1:32:00', meta: '7:00/MI · 6 MO' },
-      goal: { label: 'GOAL · AFC', time: goalTime, meta: `${fmtPace(goalPaceS).replace('/mi', '')}/MI · ${days}D` },
-      stretch: { label: 'STRETCH', time: stretchTime, meta: '6:52/MI · IF GREAT' },
+      pr: prTile,
+      goal: {
+        label: `GOAL · ${distLabel}`,
+        time: goalTime,
+        meta: `${fmtPace(goalPaceS).replace('/mi', '')}/MI · ${days}D`,
+      },
+      stretch: {
+        label: 'STRETCH',
+        time: stretchTime,
+        meta: `${fmtPace(stretchPaceS).replace('/mi', '')}/MI · IF GREAT`,
+      },
     },
     latestProof: proofs.latestCompleted
       ? {
@@ -475,48 +461,46 @@ function getGoalTracking(
   };
 }
 
+function pickPrForRaceDistance(
+  prs: Array<{ label: string; distMi: number; bestS: number | null; activityId: number | null; date: string | null }> | null,
+  raceMi: number,
+): { label: string; distMi: number; bestS: number | null; date: string | null } | null {
+  if (!prs) return null;
+  // Map race distance → naivePR bucket label.
+  let key: string;
+  if (raceMi >= 24) key = 'Marathon';
+  else if (raceMi >= 12) key = 'Half';
+  else if (raceMi >= 6) key = '10K';
+  else if (raceMi >= 3) key = '5K';
+  else key = '1 mi';
+  return prs.find((p) => p.label === key) ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────
-// Next 4 weeks — derived from trajectory14wk's first few build points
+// Next 4 weeks — derived from trajectory14wk's first 4 upcoming points
 // ─────────────────────────────────────────────────────────────────────
 
-function getNextFourWeeks(trajectory: Trajectory14wk): NextFourWeeksSnapshot {
-  // TODO: wire to a dedicated Coach.next4Weeks() method backed by
-  // plan_templates.ts. For now we project the first 4 future points
-  // out of the 14-week trajectory and synthesize the supporting
-  // metadata.
-  const points = trajectory.points;
-  // Point index 4 is "today" in the stub trajectory (4 past + present).
-  // Take the next 4 (build wks 1-4 of the build block).
-  const startIdx = 5;
-  const nextFour = points.slice(startIdx, startIdx + 4);
-
-  const TONES: Array<NextFourWeeksBlock['tone']> = ['recovery', 'base', 'base', 'base'];
-  const TITLES = [
-    'Recovery week 2',
-    'Base · LT in',
-    'Base · build LR',
-    'Base · cutback',
-  ];
-  const RATIONALES = [
-    'Frequency rebuild · stride intro Fri',
-    'First T tempo Tue · long climbs',
-    'Cruise intervals Thu · build duration',
-    'Recovery week · −20% volume',
-  ];
-  const QUALITY = [0, 1, 1, 1];
-  const LONGS = [7, 9, 11, 8];
+function getNextFourWeeks(trajectory: Trajectory14wk): NextFourWeeksSnapshot | null {
+  // The trajectory walker returns 4 past + present + 9 future points.
+  // We take the first 4 strictly-future points.
+  const futurePoints = trajectory.points.filter(
+    (p) => p.phase !== 'past' && p.label !== 'NOW',
+  );
+  const nextFour = futurePoints.slice(0, 4);
+  if (nextFour.length === 0) return null;
 
   const blocks: NextFourWeeksBlock[] = nextFour.map((p, i) => ({
     rangeLabel: weekRangeLabel(p.weekStartISO),
-    title: TITLES[i] ?? `Week ${i + 1}`,
-    tone: TONES[i] ?? 'base',
+    title: titleForPhase(p, i),
+    tone: toneForPhase(p.phase),
     miles: Math.round(p.plannedMi),
-    quality: QUALITY[i] ?? 0,
-    longMi: LONGS[i] ?? Math.round(p.plannedMi * 0.4),
-    rationale: RATIONALES[i] ?? '',
+    quality: qualityForPhase(p.phase),
+    longMi: Math.round(p.plannedMi * 0.32),
+    rationale: rationaleForPhase(p),
   }));
 
-  // Fill if trajectory was short.
+  // Fill if trajectory was short (shouldn't happen — engine always
+  // returns 14 weeks — but defensive against future engine changes).
   while (blocks.length < 4) {
     blocks.push({
       rangeLabel: '—',
@@ -532,49 +516,102 @@ function getNextFourWeeks(trajectory: Trajectory14wk): NextFourWeeksSnapshot {
   const totalMi = blocks.reduce((s, b) => s + b.miles, 0);
   const avgWeek = totalMi / 4;
   const longestRun = blocks.reduce((m, b) => (b.longMi > m.longMi ? b : m), blocks[0]);
+  const qualityDays = blocks.reduce((s, b) => s + b.quality, 0);
+
+  const rangeStart = blocks[0].rangeLabel.replace('WEEK · ', '').split('–')[0];
+  const rangeEnd = blocks[3].rangeLabel.replace('WEEK · ', '').split('–')[1] ?? '';
 
   return {
-    rangeLabel: blocks[0] && blocks[3]
-      ? `NEXT 4 WEEKS · ${blocks[0].rangeLabel.replace('WEEK · ', '').split('–')[0]} → ${blocks[3].rangeLabel.replace('WEEK · ', '').split('–')[1] ?? ''}`
-      : 'NEXT 4 WEEKS',
-    title: 'Recovery wraps · Base block opens',
-    pins: [
-      { label: 'RECOVERY 2/2', variant: 'amber' },
-      { label: 'BASE · 21D', variant: 'blue' },
-    ],
+    rangeLabel: `NEXT 4 WEEKS · ${rangeStart} → ${rangeEnd}`,
+    title: titleForBlockSequence(nextFour),
+    pins: pinsForBlockSequence(nextFour),
     blocks,
     summary: {
       totalMi,
       avgWeekMi: Math.round(avgWeek * 10) / 10,
-      avgVsRecovery: '▲ +6 vs RECOVERY',
-      qualityDays: blocks.reduce((s, b) => s + b.quality, 0),
-      qualityDetail: 'FIRST T · CRUISE INT · STRIDES',
+      avgVsRecovery: avgWeek > 0 ? `${Math.round(avgWeek)} MI/WK AVG` : '—',
+      qualityDays,
+      qualityDetail: qualityDays > 0
+        ? `${qualityDays} QUALITY DAYS · TEMPO + INT`
+        : 'ALL EASY',
       longestRunMi: longestRun.longMi,
       longestRunWhen: longestRun.rangeLabel.replace('WEEK · ', '').replace('–', ' — '),
     },
   };
 }
 
+function toneForPhase(phase: TrajectoryPoint['phase']): NextFourWeeksBlock['tone'] {
+  switch (phase) {
+    case 'past': return 'base';
+    case 'base': return 'base';
+    case 'build': return 'build';
+    case 'peak': return 'peak';
+    case 'taper': return 'taper';
+    case 'race': return 'race';
+  }
+}
+
+function qualityForPhase(phase: TrajectoryPoint['phase']): number {
+  // Quality days per week, derived from doctrine: base = 1 (one tempo
+  // or stride session), build = 2 (T + I), peak = 2, taper/race = 0-1.
+  if (phase === 'build' || phase === 'peak') return 2;
+  if (phase === 'base') return 1;
+  return 0;
+}
+
+function titleForPhase(p: TrajectoryPoint, blockIdx: number): string {
+  if (p.isRaceWeek) return 'Race week';
+  if (p.phase === 'taper') return 'Taper';
+  if (p.phase === 'peak') return p.isPeak ? 'Peak week' : 'Peak block';
+  if (p.phase === 'build') return `Build · week ${blockIdx + 1}`;
+  if (p.phase === 'base') return `Base · week ${blockIdx + 1}`;
+  return p.label;
+}
+
+function rationaleForPhase(p: TrajectoryPoint): string {
+  if (p.isRaceWeek) return 'Race day. Sharpen, then deliver.';
+  if (p.phase === 'taper') return 'Drop volume, hold intensity. Sharpen the engine.';
+  if (p.phase === 'peak') return p.isPeak ? 'Peak mileage week — biggest aerobic ask.' : 'Peak block · max volume + quality.';
+  if (p.phase === 'build') return 'Add volume + quality. Absorb hard work.';
+  if (p.phase === 'base') return 'Aerobic foundation · frequency + easy mileage.';
+  return '';
+}
+
+function titleForBlockSequence(points: TrajectoryPoint[]): string {
+  const phases = points.map((p) => p.phase);
+  if (phases.includes('race')) return 'Race week ahead';
+  if (phases.includes('taper')) return 'Taper begins';
+  if (phases.includes('peak')) return 'Peak block in view';
+  if (phases.every((p) => p === 'build')) return 'Build block';
+  if (phases.every((p) => p === 'base')) return 'Base block';
+  return 'Phase transition';
+}
+
+function pinsForBlockSequence(points: TrajectoryPoint[]): Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }> {
+  const phases = points.map((p) => p.phase);
+  const pins: Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }> = [];
+  const baseDays = phases.filter((p) => p === 'base').length * 7;
+  const buildDays = phases.filter((p) => p === 'build').length * 7;
+  const peakDays = phases.filter((p) => p === 'peak').length * 7;
+  const taperDays = phases.filter((p) => p === 'taper').length * 7;
+  if (baseDays > 0) pins.push({ label: `BASE · ${baseDays}D`, variant: 'blue' });
+  if (buildDays > 0) pins.push({ label: `BUILD · ${buildDays}D`, variant: 'green' });
+  if (peakDays > 0) pins.push({ label: `PEAK · ${peakDays}D`, variant: 'amber' });
+  if (taperDays > 0) pins.push({ label: `TAPER · ${taperDays}D`, variant: 'warn' });
+  return pins;
+}
+
 // ─────────────────────────────────────────────────────────────────────
-// Plan adapted (Coach Read) — same as Overview until Stage A lands
+// Plan adapted (Coach Read)
 // ─────────────────────────────────────────────────────────────────────
 
-function getPlanAdapted(): PlanAdaptedReport {
-  // TODO: wire to coach.adjustForReality() — Stage A in the plan.
-  // The Coach method throws today; we surface the mockup's deltas as
-  // a stub so the card renders. When the engine lands, replace this
-  // body with a direct Coach call.
-  return {
-    title: 'Coach added volume and lifted the long-run cap.',
-    body:
-      'Last 3 runs felt easier than expected (effort −0.4 vs target) with manageable load. Coach saw you absorbing well.',
-    pinLabel: '+12%',
-    deltas: [
-      { label: 'VOLUME / WK', was: '14', now: '17', unit: 'mi' },
-      { label: 'LONG RUN CAP', was: '7.4', now: '8.2', unit: 'mi' },
-    ],
-    footLeft: 'WED 6.7 · FRI 7.4',
-  };
+function getPlanAdapted(): PlanAdaptedReport | null {
+  // The engine doesn't yet surface a 7-day "what the plan moved"
+  // history. coach.adjustForReality returns a single-day AdjustedPlan
+  // — useful for today's prescription but not for the weekly Coach
+  // Read card. Until a method like coach.recentAdjustments() lands,
+  // this is null and the page hides the card.
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -593,6 +630,23 @@ function fmtClock(secs: number): string {
   const mm = Math.floor(secs / 60);
   const ss = Math.round(secs - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}`;
+}
+
+function fmtDuration(s: number): string {
+  if (!isFinite(s) || s <= 0) return '—';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s - h * 3600) / 60);
+  const sec = Math.round(s - h * 3600 - m * 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function labelForDistanceFromMi(mi: number): string {
+  if (mi >= 24) return 'MARATHON';
+  if (mi >= 12) return 'HALF';
+  if (mi >= 6) return '10K';
+  if (mi >= 3) return '5K';
+  return `${mi.toFixed(1)}MI`;
 }
 
 /** Format minutes as "Xh" or "Xm" depending on size. Used by HR Zones card. */
@@ -618,7 +672,6 @@ function weekRangeLabel(weekStartISO: string): string {
   if (!m) return weekStartISO;
   const month = MONTHS[Number(m[2]) - 1];
   const start = Number(m[3]);
-  // 7-day span.
   const d = new Date(weekStartISO + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + 6);
   const endDay = d.getUTCDate();

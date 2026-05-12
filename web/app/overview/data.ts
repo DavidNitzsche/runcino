@@ -5,12 +5,11 @@
  * functions in this module. Real data sources are wired where they
  * exist today (Strava-cached activities, the localStorage-backed race
  * store, the Coach engine state, and the Coach methods on
- * `web/coach/coach.ts`). Stub data sources are marked with explicit
- * `// TODO: wire to <source>` comments so the gap is auditable.
+ * `web/coach/coach.ts`).
  *
- * The page component should be thin: it imports `loadOverviewData()`
- * once, threads the result into card-level UI, and gets every
- * coaching judgment via the Coach methods called from here.
+ * Surfaces whose feeding data source genuinely doesn't exist yet
+ * resolve to `null` (and the page renders an explicit NO DATA YET
+ * empty-state). No more synthesized mockup fallbacks.
  */
 
 import type {
@@ -35,8 +34,9 @@ import {
   effortBalance,
   type YearRollup,
 } from '@/lib/strava-stats';
+import { vdotSnapshot, vdotRow, type VdotSnapshot as VdotLibSnapshot } from '@/lib/vdot';
 import { listRaces, type SavedRace } from '@/lib/storage';
-import { todayISO, daysUntil } from '@/lib/dates';
+import { daysUntil } from '@/lib/dates';
 
 // ─────────────────────────────────────────────────────────────────────
 // Public type
@@ -83,20 +83,22 @@ export interface OverviewData {
    *  Stage-7 stub: the Coach prescription is one paragraph today, the
    *  structure split lives here until the engine returns it natively. */
   workoutStructure: WorkoutStructureBlock[];
-  /** Plan-adapted decision-delta card content. Stub today. */
-  planAdapted: PlanAdaptedReport;
-  /** HRV / RHR / Sleep / Effort spark cards. HealthKit stub today. */
-  biometrics: BiometricsSnapshot;
-  /** VDOT card content. */
-  vdot: VdotSnapshot;
-  /** ACWR load gauge content. */
-  load: LoadSnapshot;
-  /** Pace zones (E / M / T / I / R) display strings. */
-  paceZones: PaceZonesSnapshot;
-  /** Weekly-miles 4 past + 4 ahead. */
-  weeklyMilesStrip: WeeklyMilesStrip;
-  /** Long-run 6 past + 4 ahead. */
-  longRunStrip: LongRunStrip;
+  /** Plan-adapted decision-delta card content. null when no adjustment
+   *  has been made (nothing to surface; page hides the card). */
+  planAdapted: PlanAdaptedReport | null;
+  /** HRV / RHR / Sleep / Effort spark cards. HealthKit-blocked: null
+   *  until M2 ships. Page renders an AWAITING HEALTHKIT empty state. */
+  biometrics: BiometricsSnapshot | null;
+  /** VDOT card content. null when no recent canonical race is logged. */
+  vdot: VdotSnapshot | null;
+  /** ACWR load gauge content. null when not enough history to compute. */
+  load: LoadSnapshot | null;
+  /** Pace zones (E / M / T / I / R) display strings. null when no VDOT. */
+  paceZones: PaceZonesSnapshot | null;
+  /** Weekly-miles 4 past + 4 ahead. null when no Strava history. */
+  weeklyMilesStrip: WeeklyMilesStrip | null;
+  /** Long-run 6 past + 4 ahead. null when no Strava history. */
+  longRunStrip: LongRunStrip | null;
   /** Year-in-running heatmap + monthly volume + PRs + facts. */
   year: YearSnapshot;
 }
@@ -133,31 +135,31 @@ export interface PlanAdaptedDelta {
 }
 
 export interface PlanAdaptedReport {
-  /** Lead line, e.g. "Coach added volume and lifted the long-run cap." */
+  /** Lead line. */
   title: string;
   /** Body paragraph. */
   body: string;
-  /** +12% style pin label. null = no pin. */
+  /** Pin label. null = no pin. */
   pinLabel: string | null;
   deltas: PlanAdaptedDelta[];
-  /** Footer left text, e.g. "WED 6.7 · FRI 7.4 · BOTH OVER PLAN". */
+  /** Footer left text. */
   footLeft: string;
 }
 
 export interface BiometricSpark {
-  /** Latest reading display, e.g. "68". */
+  /** Latest reading display. */
   value: string;
-  /** Unit display, e.g. "ms". */
+  /** Unit display. */
   unit: string;
-  /** Pin label, e.g. "↑ BASELINE". */
+  /** Pin label. */
   pinLabel: string;
   /** Pin variant. */
   pinVariant: 'green' | 'amber' | 'warn' | 'blue' | 'purple';
-  /** Footer left, e.g. "BASE 64ms". */
+  /** Footer left. */
   footLeft: string;
-  /** Footer right delta, e.g. "+6%". */
+  /** Footer right delta. */
   footRight: string;
-  /** Sparkline polyline points (0–100 x, 0–36 y). */
+  /** Sparkline polyline points. */
   sparkPoints: string;
   /** Stroke color. */
   strokeColor: string;
@@ -179,16 +181,16 @@ export interface BiometricsSnapshot {
 }
 
 export interface VdotSnapshot {
-  /** "49.2" */
+  /** Display VDOT. null when no race anchored. */
   value: string;
-  /** Source label, e.g. "DISNEY HALF · 1:32:00 · 6 MO AGO" */
+  /** Source label (race name · finish time · how-long-ago). */
   source: string;
   /** Tier eyebrow row labels. */
   tiers: Array<{ label: string; active?: boolean }>;
   /** Tier band fill position (0–1). */
   bandPosition: number;
   bandWidth: number;
-  /** Display VDOT range labels under the band (e.g. ["30","40","50","60","70"]). */
+  /** Display VDOT range labels under the band. */
   scaleLabels: string[];
   /** Equivalent race times. */
   equivalents: Array<{ distance: string; time: string; isGoal?: boolean }>;
@@ -197,17 +199,17 @@ export interface VdotSnapshot {
 }
 
 export interface LoadSnapshot {
-  /** ACWR value, e.g. "1.05". */
+  /** ACWR value. */
   value: string;
-  /** Pin label, e.g. "SWEET SPOT". */
+  /** Pin label (e.g. "SWEET SPOT"). */
   pinLabel: string;
   /** Pin variant. */
   pinVariant: 'green' | 'amber' | 'warn';
-  /** Verdict line under value (e.g. "0.8–1.2 SAFE"). */
+  /** Verdict line under value. */
   bandLine: string;
-  /** Trend headline ("▲ HOLDING SWEET SPOT"). */
+  /** Trend headline. */
   trendLabel: string;
-  /** 4-week trend values, oldest → today (drives sparkline). */
+  /** 4-week trend values, oldest → today. */
   trend: number[];
 }
 
@@ -218,9 +220,9 @@ export interface PaceZone {
   rangeSuffix?: string;
 }
 export interface PaceZonesSnapshot {
-  /** Source label, e.g. "VDOT 49.2 · DANIELS". */
+  /** Source label. */
   source: string;
-  /** Race anchor label, e.g. "DISNEY HALF". */
+  /** Race anchor label. */
   raceAnchor: string;
   zones: PaceZone[];
   /** Distribution bars over 14 days. */
@@ -240,7 +242,7 @@ export interface PaceZonesSnapshot {
 }
 
 export interface WeeklyMilesStrip {
-  /** Pin label, e.g. "↑12% vs 8W AVG". */
+  /** Pin label. */
   pinLabel: string;
   /** Big "22 mi" hero. */
   thisWeekMi: number;
@@ -250,7 +252,7 @@ export interface WeeklyMilesStrip {
     date: string;
     kind: 'past' | 'past-race' | 'now' | 'future';
   }>;
-  /** Peak label for the footer, e.g. "PEAK · APR 13–19 · 42 MI". */
+  /** Peak label for the footer. */
   peakLabel: string;
   footRight: string;
 }
@@ -269,42 +271,47 @@ export interface LongRunStrip {
 }
 
 export interface YearSnapshot {
-  /** Top stats row: "87 RUNS · 62 DAYS · 78 HR". */
+  /** Top stats row. Empty array when no rollup data. */
   topStats: Array<{ value: string; label: string }>;
-  /** 52-week heatmap cells. */
+  /** 52-week heatmap cells. Empty array = NO DATA YET. */
   heatmap: Array<{
     color: string;
     isRaceWeek: boolean;
     isFutureRace: boolean;
     isToday: boolean;
   }>;
-  /** Monthly volume bars. */
+  /** Monthly volume bars. Empty array = NO DATA YET. */
   monthly: Array<{
     label: string;
     miles: number | null;
     isCurrent: boolean;
     isFuture: boolean;
   }>;
-  /** Highlights strip. */
+  /** Highlights strip. Empty array = NO DATA YET. */
   highlights: Array<{ label: string; value: string; unit: string; meta: string; color?: string }>;
-  /** PR shelf. */
+  /** PR shelf. Empty array = NO DATA YET. */
   prs: Array<{ distance: string; time: string; meta: string }>;
-  /** YTD ring + counters. */
-  ytd: {
-    miles: number;
-    dayOfYear: number;
-    pctOfYear: number;
-    vsLastYearMi: number;
-    vsLastYearDelta: number;
-    projectedEoyMi: number;
-    projectedDelta: number;
-    timeOnFeetHr: number;
-    elevationGainKFt: number;
-    avgPace: string;
-    avgPaceVs2025: string;
-    caloriesK: number;
-    caloriesEquiv: string;
-  };
+  /** YTD ring + counters. null when no Strava activities. */
+  ytd: YtdSnapshot | null;
+}
+
+export interface YtdSnapshot {
+  miles: number;
+  dayOfYear: number;
+  pctOfYear: number;
+  /** vs same day last year. null when no prior-year data. */
+  vsLastYearMi: number | null;
+  vsLastYearDelta: number | null;
+  /** Projected EOY miles based on current pace. */
+  projectedEoyMi: number;
+  projectedDelta: number | null;
+  timeOnFeetHr: number;
+  elevationGainKFt: number;
+  /** Avg pace display. null when no HR-validated data. */
+  avgPace: string | null;
+  avgPaceVs2025: string | null;
+  caloriesK: number | null;
+  caloriesEquiv: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -328,9 +335,6 @@ interface OverviewApiPayload {
 export async function loadOverviewData(
   activities: NormalizedActivity[] | null,
 ): Promise<OverviewData> {
-  // All Coach calls live on the server (the Coach module pulls in
-  // node-only deps via llm.ts). One bundled fetch returns every
-  // CoachDecision the page needs.
   const [savedRaces, api] = await Promise.all([
     listRaces().catch(() => [] as SavedRace[]),
     fetchOverviewApi(),
@@ -352,25 +356,26 @@ export async function loadOverviewData(
 
   // Strava-backed rollups (client-side).
   const runs = activities ? onlyRuns(activities) : null;
-  const rollup = runs ? rollupYear(runs) : null;
-  const heatmap = runs ? yearOfRunningHeatmap(runs) : null;
-  const weeklyHistory = runs ? weeklyMiles(runs, 12) : null;
-  const prs = runs ? naivePRs(runs) : null;
-  const effort = runs ? effortBalance(runs) : null;
+  const rollup = runs && runs.length > 0 ? rollupYear(runs) : null;
+  const heatmap = runs && runs.length > 0 ? yearOfRunningHeatmap(runs) : null;
+  const weeklyHistory = runs && runs.length > 0 ? weeklyMiles(runs, 12) : null;
+  const prs = runs && runs.length > 0 ? naivePRs(runs) : null;
+  const effort = runs && runs.length > 0 ? effortBalance(runs) : null;
 
   const coachState = api.state;
+  const vdotLib = vdotSnapshot(coachState);
 
-  // Stubbed sub-snapshots.
+  // Sub-snapshots — each returns null when its data source is empty.
   const profile = getProfileSnapshot(today);
   const workoutStructure = getWorkoutStructure(api.workout.answer);
-  const planAdapted = getPlanAdapted();
-  const biometrics = getBiometricsSnapshot(coachState);
-  const vdot = getVdotSnapshot();
+  const planAdapted = getPlanAdapted(api.weekDeltas.answer);
+  const biometrics = getBiometricsSnapshot();
+  const vdot = getVdotSnapshot(vdotLib, today);
   const load = getLoadSnapshot(coachState);
-  const paceZones = getPaceZonesSnapshot();
-  const weeklyMilesStrip = getWeeklyMilesStrip(weeklyHistory, today);
-  const longRunStrip = getLongRunStrip(weeklyHistory, today);
-  const year = getYearSnapshot(rollup, heatmap, prs);
+  const paceZones = getPaceZonesSnapshot(vdotLib, coachState, api.raceFitnessA);
+  const weeklyMilesStrip = getWeeklyMilesStrip(weeklyHistory, api.trajectory.answer, coachState);
+  const longRunStrip = getLongRunStrip(runs, savedRaces, today);
+  const year = getYearSnapshot(rollup, heatmap, prs, runs, savedRaces, today);
 
   return {
     today,
@@ -400,8 +405,7 @@ export async function loadOverviewData(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// /api/overview — single bundled server call. The endpoint owns the
-// coach.* method invocations so the client never imports the engine.
+// /api/overview — single bundled server call.
 // ─────────────────────────────────────────────────────────────────────
 
 async function fetchOverviewApi(): Promise<OverviewApiPayload> {
@@ -412,9 +416,6 @@ async function fetchOverviewApi(): Promise<OverviewApiPayload> {
     if (!json.ok) throw new Error(json.error || 'overview api not ok');
     return json;
   } catch (e) {
-    // The page handles `loadError` itself; we still need a typed
-    // fallback to satisfy the OverviewApiPayload shape so the rest of
-    // the function compiles. Throw so the caller's catch sees it.
     throw e instanceof Error ? e : new Error(String(e));
   }
 }
@@ -424,15 +425,13 @@ async function fetchOverviewApi(): Promise<OverviewApiPayload> {
 // ─────────────────────────────────────────────────────────────────────
 
 function getProfileSnapshot(today: string): ProfileSnapshot {
-  // TODO: wire to a user/profile table. For now, the user is the
-  // single tenant — name is hard-coded from the mockup until we have
-  // a profile data source.
+  // No profile/auth pipeline yet — single-tenant runner is anonymous.
+  // When a profile table lands, swap to that.
   const hour = new Date(today + 'T12:00:00').getHours();
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   return {
-    // TODO: wire to profile.name — pulled from auth / settings
-    name: 'David',
+    name: 'Runner',
     greeting,
   };
 }
@@ -442,10 +441,9 @@ function getProfileSnapshot(today: string): ProfileSnapshot {
 // ─────────────────────────────────────────────────────────────────────
 
 function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBlock[] {
-  // TODO: wire to coach.prescribeWorkout — once the Coach returns a
-  // structured warm-up / main / cool-down break, surface that
-  // directly. Currently the prescription is one paragraph; we
-  // synthesize a 3-step split from the distance + paceTarget.
+  // The Coach prescription is one paragraph today; we synthesize the
+  // warm-up / main / cool-down split from the distance + paceTarget.
+  // Stage-9 wires coach.prescribeWorkout to return a structured break.
   const totalMi = workout.distanceMi ?? 3.0;
   const paceMid = workout.paceTargetSPerMi
     ? (workout.paceTargetSPerMi.lower + workout.paceTargetSPerMi.upper) / 2
@@ -482,148 +480,129 @@ function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBloc
 // Plan-adapted decision deltas
 // ─────────────────────────────────────────────────────────────────────
 
-function getPlanAdapted(): PlanAdaptedReport {
-  // TODO: wire to coach.adjustForReality() — Stage A in the plan.
-  // Today this throws; we surface the mockup's deltas as a stub so
-  // the card renders. When adjustForReality lands, replace this body
-  // with `coach.adjustForReality(...)` and read the result's deltas.
-  return {
-    title: 'Coach added volume and lifted the long-run cap.',
-    body:
-      'Last 3 runs felt easier than expected (effort −0.4 vs target) with manageable load. Coach saw you absorbing well and unlocked +12% baseline + a longer long run.',
-    pinLabel: '+12%',
-    deltas: [
-      { label: 'VOLUME / WK', was: '14', now: '17', unit: 'mi' },
-      { label: 'LONG RUN CAP', was: '7.4', now: '8.2', unit: 'mi' },
-    ],
-    footLeft: 'WED 6.7 · FRI 7.4 · BOTH OVER PLAN',
-  };
+function getPlanAdapted(_weekDeltas: WeekDeltasReport): PlanAdaptedReport | null {
+  // coach.adjustForReality() returns an AdjustedPlan when today's
+  // session changes; the engine doesn't yet surface a 7-day "what the
+  // plan moved" history. Until it does, this surface stays null and
+  // the page hides the card. No synthesized "+12%" deltas.
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Biometrics
+// Biometrics — HealthKit-blocked
 // ─────────────────────────────────────────────────────────────────────
 
-function getBiometricsSnapshot(state: CoachState): BiometricsSnapshot {
-  // TODO: wire to HealthKit ingestion (HRV, RHR, sleep). Until M2 lands
-  // the values below are mockup-faithful placeholders so the visual
-  // language stays consistent.
-  void state;
-  return {
-    hrv: {
-      value: '68',
-      unit: 'ms',
-      pinLabel: '↑ BASELINE',
-      pinVariant: 'green',
-      footLeft: 'BASE 64ms',
-      footRight: '+6%',
-      sparkPoints: '0,28 14,26 28,22 42,24 56,18 70,16 84,12 100,10',
-      strokeColor: 'var(--good)',
-    },
-    rhr: {
-      value: '42',
-      unit: 'bpm',
-      pinLabel: 'STABLE',
-      pinVariant: 'green',
-      footLeft: 'BASE 43bpm · 7D',
-      footRight: '−1bpm',
-      sparkPoints: '0,18 14,18 28,17 42,18 56,16 70,17 84,16 100,15',
-      strokeColor: 'var(--corp)',
-    },
-    sleep: {
-      value: '7:42',
-      unit: 'hrs',
-      pinLabel: 'DEEP',
-      nights: [
-        { height: 0.6, color: 'rgba(38,127,255,.3)' },
-        { height: 0.9, color: 'rgba(38,127,255,.6)' },
-        { height: 1.0, color: '#9013FE' },
-        { height: 0.7, color: 'rgba(38,127,255,.5)' },
-        { height: 0.85, color: 'rgba(38,127,255,.7)' },
-        { height: 0.95, color: '#9013FE' },
-        { height: 0.5, color: 'rgba(38,127,255,.4)' },
-      ],
-      footLeft: 'DEEP 1:54 · REM 1:46',
-      footRight: '+0:18',
-    },
-    effort: {
-      value: '4.2',
-      unit: '',
-      pinLabel: '↓ EASIER',
-      pinVariant: 'green',
-      footLeft: 'WAS 4.6 · DRIFT',
-      footRight: '−0.4',
-      sparkPoints: '0,12 14,14 28,16 42,16 56,18 70,22 84,26 100,28',
-      strokeColor: 'var(--good)',
-    },
-  };
+function getBiometricsSnapshot(): BiometricsSnapshot | null {
+  // HRV / RHR / sleep / subjective effort all need HealthKit (M2) or a
+  // daily check-in (not built). Until one lands, this is null and the
+  // page renders an AWAITING HEALTHKIT empty state.
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // VDOT
 // ─────────────────────────────────────────────────────────────────────
 
-function getVdotSnapshot(): VdotSnapshot {
-  // TODO: wire to lib/vdot.ts (vdotSnapshot) — the engine already
-  // computes this from recent races. The /api/coach/today endpoint
-  // returns it. Once we plumb it through the state object, replace
-  // these placeholders with the live values.
+function getVdotSnapshot(
+  snap: VdotLibSnapshot | null,
+  _today: string,
+): VdotSnapshot | null {
+  if (!snap) return null;
+
+  const vdot = snap.vdot;
+  const tier =
+    vdot < 38 ? 'NOVICE' :
+    vdot < 46 ? 'INTERMED' :
+    vdot < 58 ? 'ADV' :
+    'ELITE';
+  const tierActive = (t: string) => t === tier;
+  // Band sits centered on the runner's VDOT within a 30..70 range.
+  const bandCenter = Math.max(0, Math.min(1, (vdot - 30) / 40));
+  const bandWidth = 0.10;
+  const bandPosition = Math.max(0, Math.min(1 - bandWidth, bandCenter - bandWidth / 2));
+
+  const sourceLabel = `${snap.source.name.toUpperCase()} · ${fmtDuration(snap.source.timeS)} · ${daysAgoLabel(snap.source.daysAgo)}`;
+
   return {
-    value: '49.2',
-    detailLine: 'RAW 50.0 · DECAY −0.8 · 6 MO TREND',
-    source: 'DISNEY HALF · 1:32:00 · 6 MO AGO',
+    value: vdot.toFixed(1),
+    detailLine: `FROM ${distLabelFromMi(snap.source.distanceMi)} · ${snap.source.daysAgo}D AGO`,
+    source: sourceLabel,
     tiers: [
-      { label: 'NOVICE' },
-      { label: 'INTERMED' },
-      { label: 'ADV ◀ YOU', active: true },
-      { label: 'ELITE' },
+      { label: 'NOVICE', active: tierActive('NOVICE') },
+      { label: 'INTERMED', active: tierActive('INTERMED') },
+      { label: `ADV${tierActive('ADV') ? ' ◀ YOU' : ''}`, active: tierActive('ADV') },
+      { label: 'ELITE', active: tierActive('ELITE') },
     ],
-    bandPosition: 0.5,
-    bandWidth: 0.34,
+    bandPosition,
+    bandWidth,
     scaleLabels: ['30', '40', '50', '60', '70'],
-    equivalents: [
-      { distance: '5K', time: '19:32' },
-      { distance: '10K', time: '40:55' },
-      { distance: 'HM', time: '1:31', isGoal: true },
-      { distance: 'M', time: '3:11' },
-    ],
+    equivalents: equivalentTimesFromVdot(snap),
   };
+}
+
+function equivalentTimesFromVdot(snap: VdotLibSnapshot): Array<{ distance: string; time: string; isGoal?: boolean }> {
+  const row = vdotRow(snap.vdot);
+  if (!row) return [];
+  return [
+    { distance: '5K', time: fmtDuration(row.km5S) },
+    { distance: '10K', time: fmtDuration(row.km10S) },
+    { distance: 'HM', time: fmtDuration(row.halfS) },
+    { distance: 'M', time: fmtDuration(row.marathonS) },
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // Load gauge
 // ─────────────────────────────────────────────────────────────────────
 
-function getLoadSnapshot(state: CoachState): LoadSnapshot {
-  // Real input — ACWR is computed in lib/coach-principles.ts. We get
-  // a value back from coach.assessReadiness via state, but using the
-  // mockup's "sweet spot" classification until Coach surfaces it.
-  const acwr =
-    state.volume.last7Mi > 0 && state.volume.weeklyAvg8w > 0
-      ? state.volume.last7Mi / state.volume.weeklyAvg8w
-      : 1.05;
+function getLoadSnapshot(state: CoachState): LoadSnapshot | null {
+  // Need both a last-7 and an 8-week baseline to anchor ACWR.
+  if (state.volume.last7Mi <= 0 || state.volume.weeklyAvg8w <= 0) return null;
+
+  const acwr = state.volume.last7Mi / state.volume.weeklyAvg8w;
   const v = Math.round(acwr * 100) / 100;
   let pinLabel = 'SWEET SPOT';
   let pinVariant: LoadSnapshot['pinVariant'] = 'green';
+  let trendLabel = '▲ HOLDING SWEET SPOT';
   if (acwr > 1.5) {
     pinLabel = 'OVERREACH';
     pinVariant = 'warn';
+    trendLabel = '▲ OVERREACH';
   } else if (acwr > 1.3) {
     pinLabel = 'STRETCHED';
     pinVariant = 'amber';
+    trendLabel = '▲ STRETCHED';
   } else if (acwr < 0.5) {
     pinLabel = 'DETRAIN';
     pinVariant = 'warn';
+    trendLabel = '▼ DETRAIN';
+  } else if (acwr < 0.8) {
+    pinLabel = 'EASING';
+    pinVariant = 'amber';
+    trendLabel = '▼ EASING';
   }
+
+  // 4-week ACWR trend — we have weeklyAvg4w and weeklyAvg8w plus last7.
+  // Without a true rolling acwr_w-3 .. acwr_w-0 series we approximate
+  // with a 3-point reconstruction: w-1 ≈ avg4w/avg8w, w0 = current.
+  // The trend renders as a 3-bar mini-sparkline rather than a 4-bar one
+  // when we lack the deeper history — honest dataset shape, not a fake
+  // 4-week curve.
+  const ratio4v8 =
+    state.volume.weeklyAvg8w > 0
+      ? state.volume.weeklyAvg4w / state.volume.weeklyAvg8w
+      : null;
+  const trend: number[] = [];
+  if (ratio4v8 != null) trend.push(Math.round(ratio4v8 * 100) / 100);
+  trend.push(v);
+
   return {
     value: v.toFixed(2),
     pinLabel,
     pinVariant,
     bandLine: '0.8–1.2 SAFE',
-    trendLabel: '▲ HOLDING SWEET SPOT',
-    // TODO: wire to a 4-week trend (acwr_week-3 .. acwr_week-0). Stub
-    // for now — mockup-faithful curve.
-    trend: [0.92, 0.98, 1.02, v],
+    trendLabel,
+    trend,
   };
 }
 
@@ -631,31 +610,80 @@ function getLoadSnapshot(state: CoachState): LoadSnapshot {
 // Pace zones
 // ─────────────────────────────────────────────────────────────────────
 
-function getPaceZonesSnapshot(): PaceZonesSnapshot {
-  // TODO: wire to pace_zones.ts × vdotSnapshot. The doctrine module
-  // already returns the 5-band table; once the engine surfaces it
-  // alongside today's prescription, swap this stub.
+function getPaceZonesSnapshot(
+  snap: VdotLibSnapshot | null,
+  state: CoachState,
+  raceFitnessA: CoachDecision<RaceFitnessPrediction> | null,
+): PaceZonesSnapshot | null {
+  if (!snap) return null;
+  const p = snap.paces;
+  const easyShare = state.intensity.easyShare14d;
+  const easyMi14d = state.intensity.easyMi14d;
+  const hardMi14d = state.intensity.hardMi14d;
+  const totalMi14d = easyMi14d + hardMi14d;
+
+  const fmt = (s: number) => fmtPaceLoose(s);
+  const eLow = p.E.lowS;
+  const eHigh = p.E.highS;
+  const mMid = Math.round((p.M.lowS + p.M.highS) / 2);
+  const tMid = Math.round((p.T.lowS + p.T.highS) / 2);
+  const iMid = Math.round((p.I.lowS + p.I.highS) / 2);
+  const rMid = Math.round((p.R.lowS + p.R.highS) / 2);
+
+  const easyPct = Math.round(easyShare * 100);
+  const hardPct = 100 - easyPct;
+
+  // Goal pace from raceFitnessA when set; otherwise leave as a dash.
+  const goalPaceS = raceFitnessA?.answer.goalPaceSPerMi ?? null;
+  const fitnessPaceS = raceFitnessA?.answer.predictedPaceSPerMi ?? null;
+  const headroomS = raceFitnessA?.answer.headroomSPerMi ?? 0;
+
   return {
-    source: 'VDOT 49.2 · DANIELS',
-    raceAnchor: 'DISNEY HALF',
+    source: `VDOT ${snap.vdot.toFixed(1)} · DANIELS`,
+    raceAnchor: snap.source.name.toUpperCase(),
     zones: [
-      { letter: 'E', label: 'Easy', value: '8:55', rangeSuffix: '–9:25' },
-      { letter: 'M', label: 'Marathon', value: '7:18' },
-      { letter: 'T', label: 'Threshold', value: '7:00' },
-      { letter: 'I', label: 'Interval', value: '6:30' },
-      { letter: 'R', label: 'Rep', value: '5:55' },
+      { letter: 'E', label: 'Easy', value: fmt(eLow), rangeSuffix: `–${fmt(eHigh).split(':').slice(1).join(':')}` },
+      { letter: 'M', label: 'Marathon', value: fmt(mMid) },
+      { letter: 'T', label: 'Threshold', value: fmt(tMid) },
+      { letter: 'I', label: 'Interval', value: fmt(iMid) },
+      { letter: 'R', label: 'Rep', value: fmt(rMid) },
     ],
-    distribution: [
-      { zoneLetter: 'E', label: 'EASY', timeDisplay: '14:12 HR', barFraction: 0.92, color: 'var(--good)' },
-      { zoneLetter: 'M', label: 'MARATHON', timeDisplay: '—', barFraction: 0, color: 'var(--corp)', muted: true },
-      { zoneLetter: 'T', label: 'THRESHOLD', timeDisplay: '0:42 HR', barFraction: 0.05, color: 'var(--milestone)' },
-      { zoneLetter: 'I', label: 'INTERVAL', timeDisplay: '0:28 HR', barFraction: 0.03, color: 'var(--warn)' },
-      { zoneLetter: 'R', label: 'REP', timeDisplay: '—', barFraction: 0, color: 'var(--xp)', muted: true },
-    ],
-    shareLine: 'Running 92% easy · aiming ≥80% · +12% headroom ✓',
-    currentFitnessPace: '7:00/MI',
-    goalPace: '7:15/MI',
-    headroomS: 15,
+    distribution:
+      totalMi14d > 0
+        ? [
+            {
+              zoneLetter: 'E',
+              label: 'EASY',
+              timeDisplay: `${easyMi14d.toFixed(1)} MI`,
+              barFraction: easyShare,
+              color: 'var(--good)',
+            },
+            {
+              zoneLetter: 'M',
+              label: 'MARATHON',
+              timeDisplay: '—',
+              barFraction: 0,
+              color: 'var(--corp)',
+              muted: true,
+            },
+            {
+              zoneLetter: 'T',
+              label: 'THRESHOLD',
+              timeDisplay: `${hardMi14d.toFixed(1)} MI`,
+              barFraction: 1 - easyShare,
+              color: 'var(--milestone)',
+            },
+            { zoneLetter: 'I', label: 'INTERVAL', timeDisplay: '—', barFraction: 0, color: 'var(--warn)', muted: true },
+            { zoneLetter: 'R', label: 'REP', timeDisplay: '—', barFraction: 0, color: 'var(--xp)', muted: true },
+          ]
+        : [],
+    shareLine:
+      totalMi14d > 0
+        ? `Running ${easyPct}% easy · aiming ≥80% · ${easyPct >= 80 ? '✓' : 'pull back hard work'}`
+        : 'No intensity data yet · log runs to anchor the distribution',
+    currentFitnessPace: fitnessPaceS ? `${fmt(fitnessPaceS)}/MI` : '—',
+    goalPace: goalPaceS ? `${fmt(goalPaceS)}/MI` : '—',
+    headroomS: Math.round(headroomS),
   };
 }
 
@@ -665,43 +693,62 @@ function getPaceZonesSnapshot(): PaceZonesSnapshot {
 
 function getWeeklyMilesStrip(
   weeklyHistory: Array<{ weekStart: string; miles: number; runs: number }> | null,
-  _today: string,
-): WeeklyMilesStrip {
-  // Real input where available — last 4 weeks come straight from
-  // Strava rollup. Future 4 weeks are coach.trajectory14wk's first
-  // few points. Today's projection is from coach.weekDeltas.
-  const past = (weeklyHistory ?? []).slice(0, 4).reverse(); // oldest → newest
+  trajectory: Trajectory14wk,
+  state: CoachState,
+): WeeklyMilesStrip | null {
+  // weeklyHistory contains the last 12 weeks (oldest → newest); the
+  // most recent slot is THIS week.
+  if (!weeklyHistory || weeklyHistory.length === 0) return null;
 
-  const bars: WeeklyMilesStrip['bars'] = [];
-  past.forEach((w, i) => {
-    bars.push({
-      miles: w.miles,
-      date: shortDate(w.weekStart),
-      // Penultimate past week is the Big Sur race week.
-      kind: i === past.length - 1 ? 'past-race' : 'past',
-    });
-  });
-  // Pad to 4 past with placeholders if Strava is thin.
-  while (bars.length < 4) {
-    bars.unshift({ miles: 0, date: '—', kind: 'past' });
-  }
-  // This week (now). Use mockup-faithful "22" if no real data.
+  const recent = weeklyHistory.slice(-5); // last 5 weeks incl current
+  const past = recent.slice(0, 4); // 4 prior weeks
+  const thisWeek = recent[recent.length - 1] ?? { miles: state.volume.last7Mi, weekStart: '' };
+
+  // Future weeks from trajectory. trajectory14wk's points include 4
+  // past + present + 9 future. We slice the first 3 future points.
+  const futurePoints = trajectory.points
+    .filter((p) => p.phase !== 'past' && p.label !== 'NOW')
+    .slice(0, 3);
+
+  const bars: WeeklyMilesStrip['bars'] = past.map((w) => ({
+    miles: Math.round(w.miles),
+    date: shortDate(w.weekStart),
+    kind: 'past',
+  }));
   bars.push({
-    miles: 22,
-    date: '5/4',
+    miles: Math.round(thisWeek.miles),
+    date: shortDate(thisWeek.weekStart),
     kind: 'now',
   });
-  // Future 3 weeks — placeholder ramp; replace with trajectory14wk.
-  bars.push({ miles: 17, date: '5/11', kind: 'future' });
-  bars.push({ miles: 24, date: '5/18', kind: 'future' });
-  bars.push({ miles: 28, date: '5/25', kind: 'future' });
+  futurePoints.forEach((p) => {
+    bars.push({
+      miles: Math.round(p.plannedMi),
+      date: shortDate(p.weekStartISO),
+      kind: 'future',
+    });
+  });
+
+  // Pin label = current week vs 8-week average.
+  const avg8w = state.volume.weeklyAvg8w;
+  const deltaPct =
+    avg8w > 0 ? Math.round(((thisWeek.miles - avg8w) / avg8w) * 100) : 0;
+  const pinLabel =
+    deltaPct > 5 ? `↑${deltaPct}% vs 8W AVG` :
+    deltaPct < -5 ? `↓${Math.abs(deltaPct)}% vs 8W AVG` :
+    'ON BASELINE';
+
+  // Peak label from history.
+  const peakWeek = weeklyHistory.reduce((m, w) => (w.miles > m.miles ? w : m), weeklyHistory[0]);
+  const peakLabel = peakWeek.miles > 0
+    ? `PEAK · ${shortDate(peakWeek.weekStart)} · ${Math.round(peakWeek.miles)} MI`
+    : '—';
 
   return {
-    pinLabel: '↑12% vs 8W AVG',
-    thisWeekMi: 22,
+    pinLabel,
+    thisWeekMi: Math.round(thisWeek.miles),
     bars,
-    peakLabel: 'PEAK · APR 13–19 · 42 MI',
-    footRight: 'RECOVERING',
+    peakLabel,
+    footRight: deltaPct > 0 ? 'BUILDING' : deltaPct < 0 ? 'RECOVERING' : 'HOLDING',
   };
 }
 
@@ -710,31 +757,70 @@ function getWeeklyMilesStrip(
 // ─────────────────────────────────────────────────────────────────────
 
 function getLongRunStrip(
-  weeklyHistory: Array<{ weekStart: string; miles: number; runs: number }> | null,
-  _today: string,
-): LongRunStrip {
-  void weeklyHistory;
-  // TODO: wire to per-week longest-run rollup. The mockup shows a
-  // 10-cell strip; we surface mockup-faithful values until the
-  // weekly-longest tracker lands.
+  runs: NormalizedActivity[] | null,
+  savedRaces: SavedRace[],
+  today: string,
+): LongRunStrip | null {
+  if (!runs || runs.length === 0) return null;
+
+  // Compute the longest run per ISO week (Mon-anchored) for the last 6 weeks.
+  const todayD = new Date(today + 'T12:00:00');
+  const monday = new Date(todayD);
+  const dayOfWeek = monday.getDay();
+  monday.setDate(monday.getDate() + (dayOfWeek === 0 ? -6 : 1 - dayOfWeek));
+  monday.setHours(0, 0, 0, 0);
+
+  const buckets: Array<{ weekStartISO: string; longest: number; kind: 'past' | 'past-race' | 'now' }> = [];
+  for (let w = 5; w >= 0; w--) {
+    const start = new Date(monday);
+    start.setDate(monday.getDate() - 7 * w);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    const startISO = start.toISOString().slice(0, 10);
+    const endISO = end.toISOString().slice(0, 10);
+    const inWeek = runs.filter((r) => r.date >= startISO && r.date < endISO);
+    const longest = inWeek.reduce((m, r) => Math.max(m, r.distanceMi), 0);
+    // Was a race finished this week?
+    const raceThisWeek = savedRaces.some(
+      (r) => r.meta.date >= startISO && r.meta.date < endISO,
+    );
+    buckets.push({
+      weekStartISO: startISO,
+      longest: Math.round(longest * 10) / 10,
+      kind: w === 0 ? 'now' : raceThisWeek ? 'past-race' : 'past',
+    });
+  }
+
+  if (buckets.every((b) => b.longest === 0)) return null;
+
+  const bars: LongRunStrip['bars'] = buckets.map((b) => ({
+    miles: b.longest,
+    date: shortDate(b.weekStartISO),
+    kind: b.kind,
+  }));
+
+  // Pad with 4 future entries with no miles (planned long-runs need
+  // trajectory data we don't yet have at the long-run grain).
+  for (let w = 1; w <= 4; w++) {
+    const future = new Date(monday);
+    future.setDate(monday.getDate() + 7 * w);
+    bars.push({
+      miles: 0,
+      date: shortDate(future.toISOString().slice(0, 10)),
+      kind: 'future',
+    });
+  }
+
+  const peakMi = Math.max(...buckets.map((b) => b.longest));
+  const thisWeekMi = buckets[buckets.length - 1].longest;
+
   return {
-    pinLabel: 'PEAK 14 MI',
-    nextMi: 5,
-    nextLabel: 'SUN MAY 10 · NEXT',
-    bars: [
-      { miles: 10, date: '3/22', kind: 'past' },
-      { miles: 12, date: '3/29', kind: 'past' },
-      { miles: 26, date: '4/26', kind: 'past-race' },
-      { miles: 2, date: '5/3', kind: 'past' },
-      { miles: 2, date: '5/3', kind: 'past' },
-      { miles: 5, date: '5/10', kind: 'now' },
-      { miles: 7, date: '5/17', kind: 'future' },
-      { miles: 9, date: '5/24', kind: 'future' },
-      { miles: 11, date: '5/31', kind: 'future' },
-      { miles: 14, date: '6/7', kind: 'future' },
-    ],
-    footLeft: 'RECOVERING → BUILDING',
-    footRight: '+2 MI/WK',
+    pinLabel: peakMi > 0 ? `PEAK ${peakMi} MI` : '—',
+    nextMi: Math.round(thisWeekMi),
+    nextLabel: 'THIS WK',
+    bars,
+    footLeft: thisWeekMi >= peakMi ? 'BUILDING' : 'HOLDING',
+    footRight: '—',
   };
 }
 
@@ -744,95 +830,236 @@ function getLongRunStrip(
 
 function getYearSnapshot(
   rollup: YearRollup | null,
-  _heatmap: Array<{ date: string; miles: number; runs: number }> | null,
+  heatmap: Array<{ date: string; miles: number; runs: number }> | null,
   prs: Array<{ label: string; distMi: number; bestS: number | null; activityId: number | null; date: string | null }> | null,
+  runs: NormalizedActivity[] | null,
+  savedRaces: SavedRace[],
+  today: string,
 ): YearSnapshot {
   const monthLabels = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const todayD = new Date(today + 'T12:00:00');
+  const currentMonth = todayD.getMonth();
+  const year = todayD.getFullYear();
 
-  // 52-week heatmap. Mockup-driven mix until per-week rollup lands.
-  // TODO: derive from yearOfRunningHeatmap + race detection.
-  const heatmapCells: YearSnapshot['heatmap'] = [];
-  for (let w = 0; w < 52; w++) {
-    let color = 'var(--l3)';
-    let isRaceWeek = false;
-    let isFutureRace = false;
-    let isToday = false;
-    if (w < 6) color = `rgba(62,189,65,${0.10 + w * 0.07})`;
-    else if (w === 6) { color = '#FF5722'; isRaceWeek = true; }
-    else if (w < 11) color = `rgba(62,189,65,${0.55 + (10 - w) * 0.02})`;
-    else if (w === 11) { color = '#FF5722'; isRaceWeek = true; }
-    else if (w < 16) color = `rgba(62,189,65,${0.65 + (w - 11) * 0.04})`;
-    else if (w === 16) { color = '#FF5722'; isRaceWeek = true; }
-    else if (w === 17) { color = '#FF5722'; isRaceWeek = true; }
-    else if (w === 18) { color = 'rgba(62,189,65,.32)'; isToday = true; }
-    else if (w === 24) isFutureRace = true;
-    else if (w === 32) isFutureRace = true;
-    heatmapCells.push({ color, isRaceWeek, isFutureRace, isToday });
+  // 52-week heatmap from real per-day data.
+  const heatmapCells = buildHeatmapCells(heatmap, savedRaces, today);
+
+  // Monthly volume — sum by calendar month from runs.
+  const monthly: YearSnapshot['monthly'] =
+    runs && runs.length > 0
+      ? monthLabels.map((label, i) => {
+          const monthRuns = runs.filter((r) => {
+            const m = r.date.match(/^(\d{4})-(\d{2})/);
+            return m && Number(m[1]) === year && Number(m[2]) - 1 === i;
+          });
+          const miles = monthRuns.reduce((s, r) => s + r.distanceMi, 0);
+          return {
+            label,
+            miles: i > currentMonth ? null : Math.round(miles),
+            isCurrent: i === currentMonth,
+            isFuture: i > currentMonth,
+          };
+        })
+      : [];
+
+  // Highlights — derived from rollup + runs + races.
+  const highlights = buildHighlights(rollup, runs, savedRaces);
+
+  // PRs from naivePRs — only the buckets that actually have a result.
+  const prShelf: YearSnapshot['prs'] = [];
+  if (prs) {
+    for (const p of prs) {
+      if (p.bestS == null) continue;
+      const label = p.label === 'Half' ? 'HALF' : p.label.toUpperCase();
+      const meta = p.date ? formatShortDateMeta(p.date) : '—';
+      prShelf.push({ distance: label, time: fmtDuration(p.bestS), meta });
+    }
   }
 
-  // Monthly volume — use rollup when present, mockup placeholders when not.
-  // TODO: rollupYear returns total; we want per-month breakdown.
-  const monthly: YearSnapshot['monthly'] = monthLabels.map((label, i) => {
-    const fallback = [52, 98, 120, 142, 14, null, null, null, null, null, null, null][i] ?? null;
-    return {
-      label,
-      miles: fallback,
-      isCurrent: i === 4,
-      isFuture: i > 4,
-    };
-  });
+  // YTD numbers from rollup. We don't have a 2025 rollup to diff
+  // against, so vsLastYear / projected delta / avgPaceVs2025 / calories
+  // come out null. The page renders dashes for those — honest, not
+  // a fake "+22 mi vs 2025" boast.
+  const ytd: YtdSnapshot | null = rollup
+    ? buildYtd(rollup, today)
+    : null;
 
-  const highlights = [
-    { label: 'BIGGEST WEEK', value: '42', unit: 'mi', meta: 'APR 13–19 · PRE-BIG SUR' },
-    { label: 'LONGEST RUN', value: '26.2', unit: 'mi', meta: 'APR 27 · BIG SUR', color: 'var(--good)' },
-    { label: 'RACES RUN', value: '5', unit: '', meta: '1×M · 3×HM · 1×10K' },
-    { label: 'HILLIEST RUN', value: '4.2', unit: 'k ft', meta: 'APR 27 · BIG SUR' },
-  ];
+  // Top stats: runs + days + avg HR from rollup. When no data, show empty.
+  const topStats: YearSnapshot['topStats'] = rollup
+    ? [
+        { value: String(rollup.totalRuns), label: 'RUNS' },
+        { value: String(rollup.daysRun), label: 'DAYS' },
+        ...(rollup.avgHr != null ? [{ value: String(rollup.avgHr), label: 'HR' }] : []),
+      ]
+    : [];
 
-  // PR shelf — pull from naivePRs() when available; otherwise mockup.
-  const prShelf: YearSnapshot['prs'] = [];
-  const labels: Array<{ key: string; label: string; mockTime: string; mockMeta: string }> = [
-    { key: '5K', label: '5K', mockTime: '19:48', mockMeta: 'FEB 14 · −24s' },
-    { key: '10K', label: '10K', mockTime: '41:32', mockMeta: 'MAR 22 · −36s' },
-    { key: 'half', label: 'HALF', mockTime: '1:32:00', mockMeta: 'DISNEY · −2:18' },
-    { key: 'marathon', label: 'MARATHON', mockTime: '3:18:42', mockMeta: 'BIG SUR APR · −5:29' },
-  ];
-  labels.forEach((p) => {
-    const hit = prs?.find((x) => x.label === p.key);
-    if (hit && hit.bestS != null) {
-      prShelf.push({ distance: p.label, time: fmtDuration(hit.bestS), meta: p.mockMeta });
-    } else {
-      prShelf.push({ distance: p.label, time: p.mockTime, meta: p.mockMeta });
-    }
-  });
-
-  const ytdMiles = rollup?.totalMiles != null ? Math.round(rollup.totalMiles) : 503;
-  // TODO: derive day-of-year and projection from real data.
   return {
-    topStats: [
-      { value: String(rollup?.totalRuns ?? 87), label: 'RUNS' },
-      { value: '62', label: 'DAYS' },
-      { value: '78', label: 'HR' },
-    ],
+    topStats,
     heatmap: heatmapCells,
     monthly,
     highlights,
     prs: prShelf,
-    ytd: {
-      miles: ytdMiles,
-      dayOfYear: 129,
-      pctOfYear: 35,
-      vsLastYearMi: 481,
-      vsLastYearDelta: 22,
-      projectedEoyMi: 1650,
-      projectedDelta: 42,
-      timeOnFeetHr: 78,
-      elevationGainKFt: 8.4,
-      avgPace: '8:21',
-      avgPaceVs2025: '−12s vs 2025',
-      caloriesK: 62.8,
-      caloriesEquiv: '≈ 220 BURRITOS',
-    },
+    ytd,
+  };
+}
+
+function buildHeatmapCells(
+  heatmap: Array<{ date: string; miles: number; runs: number }> | null,
+  savedRaces: SavedRace[],
+  today: string,
+): YearSnapshot['heatmap'] {
+  if (!heatmap || heatmap.length === 0) return [];
+
+  // Bucket the heatmap by ISO week of the year. We render one cell per
+  // week — colour by miles (green ramp), red on race weeks, dashed
+  // future weeks for future races.
+  const todayD = new Date(today + 'T12:00:00');
+  const yearStart = new Date(todayD.getFullYear(), 0, 1);
+
+  // Race lookup by ISO YYYY-WW.
+  const raceWeekKeys = new Set<string>();
+  const futureRaceWeekKeys = new Set<string>();
+  for (const r of savedRaces) {
+    const dateISO = r.meta.date;
+    const m = dateISO.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) continue;
+    const d = new Date(dateISO + 'T12:00:00');
+    if (d.getFullYear() !== todayD.getFullYear()) continue;
+    const wk = weekIndex(d, yearStart);
+    if (d.getTime() < todayD.getTime()) raceWeekKeys.add(String(wk));
+    else futureRaceWeekKeys.add(String(wk));
+  }
+
+  // Sum miles per week.
+  const weeksMi = new Array<number>(52).fill(0);
+  for (const cell of heatmap) {
+    const d = new Date(cell.date + 'T12:00:00');
+    if (d.getFullYear() !== todayD.getFullYear()) continue;
+    const wk = Math.min(51, weekIndex(d, yearStart));
+    weeksMi[wk] += cell.miles;
+  }
+  const maxMi = Math.max(...weeksMi, 1);
+  const todayWk = Math.min(51, weekIndex(todayD, yearStart));
+
+  const cells: YearSnapshot['heatmap'] = [];
+  for (let w = 0; w < 52; w++) {
+    const mi = weeksMi[w];
+    const isFutureRace = futureRaceWeekKeys.has(String(w));
+    const isRaceWeek = raceWeekKeys.has(String(w));
+    const isToday = w === todayWk;
+    let color = 'var(--l3)';
+    if (isRaceWeek) color = '#FF5722';
+    else if (mi > 0) {
+      const alpha = 0.15 + (mi / maxMi) * 0.55;
+      color = `rgba(62,189,65,${alpha.toFixed(2)})`;
+    }
+    cells.push({ color, isRaceWeek, isFutureRace, isToday });
+  }
+  return cells;
+}
+
+function weekIndex(d: Date, yearStart: Date): number {
+  const dayOffset = Math.floor((d.getTime() - yearStart.getTime()) / 86_400_000);
+  return Math.floor(dayOffset / 7);
+}
+
+function buildHighlights(
+  rollup: YearRollup | null,
+  runs: NormalizedActivity[] | null,
+  savedRaces: SavedRace[],
+): YearSnapshot['highlights'] {
+  if (!rollup || !runs || runs.length === 0) return [];
+
+  // Biggest week — sum per ISO week, pick max.
+  const weeklyTotals = new Map<string, number>();
+  for (const r of runs) {
+    const monday = isoMondayOfDate(r.date);
+    weeklyTotals.set(monday, (weeklyTotals.get(monday) ?? 0) + r.distanceMi);
+  }
+  let biggestWeek = { weekStart: '', miles: 0 };
+  for (const [weekStart, miles] of weeklyTotals.entries()) {
+    if (miles > biggestWeek.miles) biggestWeek = { weekStart, miles };
+  }
+
+  // Longest run.
+  const longest = runs.reduce((m, r) => (r.distanceMi > m.distanceMi ? r : m), runs[0]);
+
+  // Hilliest run.
+  const hilliest = runs.reduce((m, r) => (r.elevGainFt > m.elevGainFt ? r : m), runs[0]);
+
+  const racesThisYear = savedRaces.filter((r) => {
+    const m = r.meta.date.match(/^(\d{4})/);
+    return m && Number(m[1]) === new Date().getFullYear();
+  });
+
+  const out: YearSnapshot['highlights'] = [];
+  if (biggestWeek.miles > 0) {
+    out.push({
+      label: 'BIGGEST WEEK',
+      value: String(Math.round(biggestWeek.miles)),
+      unit: 'mi',
+      meta: `WEEK OF ${formatShortDateMeta(biggestWeek.weekStart)}`,
+    });
+  }
+  if (longest && longest.distanceMi > 0) {
+    out.push({
+      label: 'LONGEST RUN',
+      value: longest.distanceMi.toFixed(1),
+      unit: 'mi',
+      meta: formatShortDateMeta(longest.date),
+      color: 'var(--good)',
+    });
+  }
+  out.push({
+    label: 'RACES RUN',
+    value: String(racesThisYear.length),
+    unit: '',
+    meta: racesThisYear.length > 0 ? `${rollup.raceCount} TAGGED · ${rollup.raceMiles.toFixed(0)} MI` : 'NONE LOGGED',
+  });
+  if (hilliest && hilliest.elevGainFt > 0) {
+    out.push({
+      label: 'HILLIEST RUN',
+      value: (hilliest.elevGainFt / 1000).toFixed(1),
+      unit: 'k ft',
+      meta: formatShortDateMeta(hilliest.date),
+    });
+  }
+  return out;
+}
+
+function buildYtd(rollup: YearRollup, today: string): YtdSnapshot {
+  const todayD = new Date(today + 'T12:00:00');
+  const yearStart = new Date(todayD.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((todayD.getTime() - yearStart.getTime()) / 86_400_000) + 1;
+  const pctOfYear = Math.round((dayOfYear / 365) * 100);
+  const projectedEoyMi = dayOfYear > 0 ? Math.round((rollup.totalMiles / dayOfYear) * 365) : 0;
+  const timeOnFeetHr = Math.round(rollup.totalMovingS / 3600);
+  const elevationGainKFt = Math.round((rollup.totalElevFt / 1000) * 10) / 10;
+
+  let avgPaceDisplay: string | null = null;
+  if (rollup.avgPaceSPerMi != null) {
+    const m = Math.floor(rollup.avgPaceSPerMi / 60);
+    const s = rollup.avgPaceSPerMi - m * 60;
+    avgPaceDisplay = `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  return {
+    miles: Math.round(rollup.totalMiles),
+    dayOfYear,
+    pctOfYear,
+    // No prior-year rollup available — these stay null until a 2025
+    // snapshot is loaded. Page renders dashes.
+    vsLastYearMi: null,
+    vsLastYearDelta: null,
+    projectedEoyMi,
+    projectedDelta: null,
+    timeOnFeetHr,
+    elevationGainKFt,
+    avgPace: avgPaceDisplay,
+    avgPaceVs2025: null,
+    // Calorie estimation needs body weight + HR; not wired.
+    caloriesK: null,
+    caloriesEquiv: null,
   };
 }
 
@@ -845,6 +1072,13 @@ function fmtPace(sPerMi: number): string {
   const mm = Math.floor(sPerMi / 60);
   const ss = Math.round(sPerMi - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}/mi`;
+}
+
+function fmtPaceLoose(sPerMi: number): string {
+  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  const mm = Math.floor(sPerMi / 60);
+  const ss = Math.round(sPerMi - mm * 60);
+  return `${mm}:${ss.toString().padStart(2, '0')}`;
 }
 
 function fmtClock(secs: number): string {
@@ -867,4 +1101,34 @@ function shortDate(iso: string): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return iso;
   return `${Number(m[2])}/${Number(m[3])}`;
+}
+
+function formatShortDateMeta(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}`;
+}
+
+function distLabelFromMi(mi: number): string {
+  if (mi >= 26) return 'MARATHON';
+  if (mi >= 13) return 'HALF';
+  if (mi >= 9) return '15K';
+  if (mi >= 6) return '10K';
+  if (mi >= 3) return '5K';
+  return `${mi.toFixed(1)} MI`;
+}
+
+function daysAgoLabel(days: number): string {
+  if (days <= 0) return 'TODAY';
+  if (days < 30) return `${days}D AGO`;
+  if (days < 365) return `${Math.round(days / 30)} MO AGO`;
+  return `${Math.round(days / 365)} YR AGO`;
+}
+
+function isoMondayOfDate(iso: string): string {
+  const d = new Date(iso + 'T12:00:00');
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
 }

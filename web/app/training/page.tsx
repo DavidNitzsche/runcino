@@ -137,7 +137,8 @@ function TrainingGreet({ data }: { data: TrainingData | null }) {
   if (aRaceName && daysToA != null) {
     eyebrowParts.push(`${daysToA} DAYS TO ${aRaceName.toUpperCase()}`);
   }
-  const vdotValue = data.goalTracking.vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0];
+  const vdotLine = data.goalTracking?.vdotLine ?? null;
+  const vdotValue = vdotLine ? vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0] : null;
   if (vdotValue) {
     eyebrowParts.push(`VDOT ${vdotValue}`);
   }
@@ -319,7 +320,7 @@ function TodayCard({ data }: { data: TrainingData }) {
     w.paceTargetSPerMi != null
       ? fmtPaceRange(w.paceTargetSPerMi)
       : '—';
-  const hrCapBpm = conditions.hrCap;
+  const hrCapBpm = conditions?.hrCap ?? (w.hrZone ? 130 + w.hrZone * 8 : 145);
   const hrZoneLabel = w.hrZone ? `Z${w.hrZone}` : 'Z1';
   const duration = estimateDurationMin(w);
   // Eyebrow: "TODAY · SAT MAY 9 · LIGHT RECOVERY"
@@ -485,7 +486,7 @@ function TodayCard({ data }: { data: TrainingData }) {
         </div>
       )}
 
-      {/* READY TO RUN */}
+      {/* READY TO RUN — only renders when readiness signals are wired */}
       <div
         style={{
           marginTop: 14,
@@ -502,71 +503,103 @@ function TodayCard({ data }: { data: TrainingData }) {
           }}
         >
           <CardLabel>READY TO RUN</CardLabel>
-          <div
-            className="t-eyebrow"
-            style={{ color: ready.headlineColor }}
-          >
-            {ready.headline}
+          {ready && (
+            <div className="t-eyebrow" style={{ color: ready.headlineColor }}>
+              {ready.headline}
+            </div>
+          )}
+        </div>
+        {ready && (ready.sleep || ready.hrv || ready.rhr || ready.soreness) ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {ready.sleep
+              ? <SignalTile label="SLEEP" value={ready.sleep.value} delta={ready.sleep.delta} valueColor={ready.sleep.color} />
+              : <SignalEmptyTile label="SLEEP" />}
+            {ready.hrv
+              ? <SignalTile label="HRV" value={ready.hrv.value} unit={ready.hrv.unit} delta={ready.hrv.delta} valueColor={ready.hrv.color} deltaColor={ready.hrv.color} />
+              : <SignalEmptyTile label="HRV" />}
+            {ready.rhr
+              ? <SignalTile label="RHR" value={ready.rhr.value} unit={ready.rhr.unit} delta={ready.rhr.delta} deltaColor={ready.rhr.color} />
+              : <SignalEmptyTile label="RHR" />}
+            {ready.soreness
+              ? <SignalTile label="SORENESS" value={ready.soreness.value} delta={ready.soreness.detail} />
+              : <SignalEmptyTile label="SORENESS" />}
           </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-          <SignalTile label="SLEEP" value={ready.sleep.value} delta={ready.sleep.delta} valueColor={ready.sleep.color} />
-          <SignalTile label="HRV" value={ready.hrv.value} unit={ready.hrv.unit} delta={ready.hrv.delta} valueColor={ready.hrv.color} deltaColor={ready.hrv.color} />
-          <SignalTile label="RHR" value={ready.rhr.value} unit={ready.rhr.unit} delta={ready.rhr.delta} deltaColor={ready.rhr.color} />
-          <SignalTile label="SORENESS" value={ready.soreness.value} delta={ready.soreness.detail} />
-        </div>
+        ) : (
+          <div className="t-eyebrow" style={{ color: 'var(--t3)' }}>
+            AWAITING HEALTHKIT · sleep / HRV / RHR streams not yet connected
+          </div>
+        )}
       </div>
 
-      {/* CONDITIONS + COACH NOTE inset */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr',
-          gap: 14,
-          marginTop: 14,
-          padding: '12px 14px',
-          background: 'rgba(243,173,56,.06)',
-          border: '1px solid rgba(243,173,56,.20)',
-          borderRadius: 8,
-        }}
-      >
+      {/* CONDITIONS + COACH NOTE — only renders when weather is wired */}
+      {conditions ? (
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 2,
-            whiteSpace: 'nowrap',
-            borderRight: '1px solid var(--l4)',
-            paddingRight: 14,
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr',
+            gap: 14,
+            marginTop: 14,
+            padding: '12px 14px',
+            background: 'rgba(243,173,56,.06)',
+            border: '1px solid rgba(243,173,56,.20)',
+            borderRadius: 8,
           }}
         >
-          <div className="t-eyebrow">CONDITIONS</div>
           <div
             style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: 20,
-              fontWeight: 600,
-              letterSpacing: '-.02em',
-              lineHeight: 1,
-              marginTop: 4,
-              fontVariantNumeric: 'tabular-nums',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: 2,
+              whiteSpace: 'nowrap',
+              borderRight: '1px solid var(--l4)',
+              paddingRight: 14,
             }}
           >
-            {conditions.tempF}
-            <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 4 }}>°F</small>
+            <div className="t-eyebrow">CONDITIONS</div>
+            <div
+              style={{
+                fontFamily: 'var(--f-display)',
+                fontSize: 20,
+                fontWeight: 600,
+                letterSpacing: '-.02em',
+                lineHeight: 1,
+                marginTop: 4,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {conditions.tempF}
+              <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 4 }}>°F</small>
+            </div>
+            <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 3 }}>
+              {conditions.detail}
+            </div>
           </div>
-          <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 3 }}>
-            {conditions.detail}
+          <div>
+            <div className="t-eyebrow" style={{ color: 'var(--att)' }}>COACH NOTE</div>
+            <div className="t-body" style={{ color: 'var(--t1)', marginTop: 3 }}>
+              {conditions.coachNote}
+            </div>
           </div>
         </div>
-        <div>
-          <div className="t-eyebrow" style={{ color: 'var(--att)' }}>COACH NOTE</div>
-          <div className="t-body" style={{ color: 'var(--t1)', marginTop: 3 }}>
-            {conditions.coachNote}
+      ) : (
+        <div
+          style={{
+            marginTop: 14,
+            padding: '12px 14px',
+            background: 'rgba(243,173,56,.04)',
+            border: '1px dashed rgba(243,173,56,.20)',
+            borderRadius: 8,
+          }}
+        >
+          <div className="t-eyebrow" style={{ color: 'var(--t3)' }}>
+            CONDITIONS · NO WEATHER WIRING YET
+          </div>
+          <div className="t-body" style={{ color: 'var(--t2)', marginTop: 4, fontSize: 12 }}>
+            HR cap derived from prescribed zone: {hrCapBpm} bpm.
           </div>
         </div>
-      </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 18 }}>
         {isRest ? (
@@ -590,6 +623,31 @@ function RecoveryTile({ label, detail }: { label: string; detail: string }) {
     <div style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6, border: '1px solid var(--l4)' }}>
       <div className="t-eyebrow" style={{ color: 'var(--t1)' }}>{label}</div>
       <div className="t-eyebrow" style={{ color: 'var(--t3)', marginTop: 4, letterSpacing: '.08em', textTransform: 'none', fontSize: 10 }}>{detail}</div>
+    </div>
+  );
+}
+
+function SignalEmptyTile({ label }: { label: string }) {
+  return (
+    <div style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6, opacity: 0.65 }}>
+      <div className="t-eyebrow">{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--f-display)',
+          fontSize: 22,
+          fontWeight: 600,
+          letterSpacing: '-.02em',
+          lineHeight: 1,
+          marginTop: 5,
+          color: 'var(--t3)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        —
+      </div>
+      <div className="t-eyebrow" style={{ color: 'var(--t3)', marginTop: 3 }}>
+        NO DATA
+      </div>
     </div>
   );
 }
@@ -643,6 +701,22 @@ function GoalTrackingCard({ data }: { data: TrainingData }) {
   const proofs = data.coach.proofSessions.answer.sessions;
   const buildLen = data.coach.proofSessions.answer.buildLengthWk;
 
+  if (!g) {
+    return (
+      <Card span={5} padding="24px 26px">
+        <CardHeader>
+          <CardLabel>GOAL TRACKING</CardLabel>
+          <CardPin variant="muted">NO A-RACE</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No A-race set yet"
+          body="Set a goal race in /races to unlock goal tracking, pace targets, and proof sessions."
+        />
+      </Card>
+    );
+  }
+
   return (
     <Card span={5} padding="24px 26px">
       <CardHeader>
@@ -692,7 +766,7 @@ function GoalTrackingCard({ data }: { data: TrainingData }) {
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {g.vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0]}
+            {g.vdotLine ? g.vdotLine.replace(/^VDOT\s+/, '').split(' ·')[0] : '—'}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -707,7 +781,7 @@ function GoalTrackingCard({ data }: { data: TrainingData }) {
               marginTop: 4,
             }}
           >
-            ADV{g.vdotLine.includes('▲') ? ` · ${g.vdotLine.split('·').slice(-1)[0].trim()}` : ''}
+            {g.vdotLine ? `ADV${g.vdotLine.includes('▲') ? ` · ${g.vdotLine.split('·').slice(-1)[0].trim()}` : ''}` : 'NO VDOT'}
           </div>
         </div>
       </div>
@@ -723,7 +797,7 @@ function GoalTrackingCard({ data }: { data: TrainingData }) {
           borderTop: '1px solid var(--l4)',
         }}
       >
-        <FitnessCell label="FITNESS NOW" value={g.fitnessNow} valueColor="var(--good)" sub={g.vdotLine} />
+        <FitnessCell label="FITNESS NOW" value={g.fitnessNow} valueColor="var(--good)" sub={g.vdotLine ?? 'NO VDOT'} />
         <FitnessCell label={g.aRaceName.startsWith('AFC') ? 'AFC GOAL' : 'GOAL'} value={g.goalTime} valueColor="var(--race)" sub={`${g.goalPace} · ${g.daysToA} DAYS`} />
         <FitnessCell
           label="HEADROOM"
@@ -854,7 +928,9 @@ function GoalTrackingCard({ data }: { data: TrainingData }) {
           borderTop: '1px solid var(--l4)',
         }}
       >
-        <GoalTile tone="good" label={g.tiles.pr.label} time={g.tiles.pr.time} meta={g.tiles.pr.meta} />
+        {g.tiles.pr
+          ? <GoalTile tone="good" label={g.tiles.pr.label} time={g.tiles.pr.time} meta={g.tiles.pr.meta} />
+          : <GoalTile tone="good" label="PR" time="—" meta="NO RACE AT THIS DISTANCE" />}
         <GoalTile tone="race" label={g.tiles.goal.label} time={g.tiles.goal.time} meta={g.tiles.goal.meta} highlighted />
         <GoalTile tone="good" label={g.tiles.stretch.label} time={g.tiles.stretch.time} meta={g.tiles.stretch.meta} />
       </div>
@@ -1415,6 +1491,21 @@ function ZoneTile({
 
 function NextFourWeeksCard({ data }: { data: TrainingData }) {
   const n = data.nextFourWeeks;
+  if (!n) {
+    return (
+      <Card span={8} padding="20px 22px">
+        <CardHeader>
+          <CardLabel>NEXT 4 WEEKS</CardLabel>
+          <CardPin variant="muted">NO PLAN YET</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No upcoming plan blocks"
+          body="The 14-week trajectory has no future weeks to surface — either no A-race is set or the build has already finished."
+        />
+      </Card>
+    );
+  }
   return (
     <Card span={8} padding="20px 22px">
       <CardHeader>
@@ -1485,7 +1576,7 @@ function NextFourWeeksCard({ data }: { data: TrainingData }) {
   );
 }
 
-function BlockCell({ block }: { block: TrainingData['nextFourWeeks']['blocks'][number] }) {
+function BlockCell({ block }: { block: NonNullable<TrainingData['nextFourWeeks']>['blocks'][number] }) {
   const TONE_COLORS: Record<typeof block.tone, string> = {
     recovery: 'var(--good)',
     base: 'var(--corp)',
@@ -1597,6 +1688,21 @@ function SummaryCell({
 
 function PlanAdaptedCard({ data }: { data: TrainingData }) {
   const pa = data.planAdapted;
+  if (!pa) {
+    return (
+      <Card wash="coach" span={4} padding="20px 22px">
+        <CardHeader>
+          <CardLabel color="var(--coach)">▲ COACH ADAPTED · LAST 7 DAYS</CardLabel>
+          <CardPin variant="muted">NO CHANGES</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="Plan held steady"
+          body="Coach hasn't adjusted the plan in the last 7 days. Decision deltas surface here when training reality diverges from the prescription."
+        />
+      </Card>
+    );
+  }
   return (
     <Card wash="coach" span={4} padding="20px 22px">
       <CardHeader>

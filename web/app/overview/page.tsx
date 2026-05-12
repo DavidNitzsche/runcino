@@ -386,7 +386,7 @@ function ReadinessCard({ data }: { data: OverviewData }) {
   const signals: Array<{ name: string; v: string; severity: 'up' | 'dn' | 'flat'; width: number }> = [
     { name: 'Effort trend', v: '+0.25', severity: 'up', width: 80 },
     {
-      name: `Load balance · ${data.load.value}`,
+      name: `Load balance · ${data.load?.value ?? '—'}`,
       v: '+0.25',
       severity: 'up',
       width: 75,
@@ -1319,6 +1319,25 @@ function Marker({ x, label, color, dashed, right }: { x: number; label: string; 
 
 function PlanAdaptedCard({ data }: { data: OverviewData }) {
   const pa = data.planAdapted;
+  if (!pa) {
+    // Coach hasn't surfaced any plan adjustments in the last 7 days
+    // (or coach.adjustForReality hasn't been wired into a 7-day
+    // history yet). Render an explicit empty state instead of fake
+    // deltas.
+    return (
+      <Card wash="coach" span={4} padding="20px 22px">
+        <CardHeader>
+          <CardLabel color="var(--coach)">▲ PLAN ADAPTED · LAST 7 DAYS</CardLabel>
+          <CardPin variant="muted">NO CHANGES</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="Plan held steady"
+          body="Coach hasn't adjusted the plan in the last 7 days. Decision deltas surface here when training reality diverges from the prescription."
+        />
+      </Card>
+    );
+  }
   return (
     <Card wash="coach" span={4} padding="20px 22px">
       <CardHeader>
@@ -1387,19 +1406,31 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function SparkHRVCard({ data }: { data: OverviewData }) {
-  const b = data.biometrics.hrv;
-  // HRV: higher is better. invert option false (above = good).
+  const b = data.biometrics?.hrv;
+  if (!b) return <BiometricEmptyCard label="HRV · 7D AVG" body="AWAITING HEALTHKIT · HRV stream not connected" />;
   return <SimpleSparkCard label="HRV · 7D AVG" {...b} aboveColor="#3EBD41" />;
 }
 function SparkRHRCard({ data }: { data: OverviewData }) {
-  const b = data.biometrics.rhr;
-  // RHR: lower is better. Invert visualisation so dips read as "good".
+  const b = data.biometrics?.rhr;
+  if (!b) return <BiometricEmptyCard label="RESTING HR" body="AWAITING HEALTHKIT · RHR stream not connected" />;
   return <SimpleSparkCard label="RESTING HR" {...b} aboveColor="var(--warn)" belowColor="#008FEC" invert />;
 }
 function SparkEffortCard({ data }: { data: OverviewData }) {
-  const b = data.biometrics.effort;
-  // Effort/RPE: lower is better (easier). Invert so falling RPE reads as "good".
+  const b = data.biometrics?.effort;
+  if (!b) return <BiometricEmptyCard label="EFFORT · LAST 7D vs PRIOR 7D" body="AWAITING DAILY CHECK-IN · subjective signal not wired" />;
   return <SimpleSparkCard label="EFFORT · LAST 7D vs PRIOR 7D" {...b} valueColor="var(--good)" aboveColor="var(--warn)" belowColor="#3EBD41" invert />;
+}
+
+function BiometricEmptyCard({ label, body }: { label: string; body: string }) {
+  return (
+    <Card span={3} padding="16px 18px" style={{ minHeight: 148, display: 'flex', flexDirection: 'column' }}>
+      <CardHeader>
+        <CardLabel>{label}</CardLabel>
+        <CardPin variant="muted">NO DATA</CardPin>
+      </CardHeader>
+      <EmptyState variant="empty" title="No data yet" body={body} />
+    </Card>
+  );
 }
 
 /** Parse SVG polyline points-string ("x,y x,y x,y") into a numeric series.
@@ -1435,7 +1466,7 @@ function SimpleSparkCard({
   invert,
 }: {
   label: string;
-} & OverviewData['biometrics']['hrv'] & {
+} & NonNullable<OverviewData['biometrics']>['hrv'] & {
   valueColor?: string;
   /** Bar color for points above baseline (or all points if no baseline). */
   aboveColor: string;
@@ -1484,7 +1515,8 @@ function SimpleSparkCard({
 }
 
 function SparkSleepCard({ data }: { data: OverviewData }) {
-  const s = data.biometrics.sleep;
+  const s = data.biometrics?.sleep;
+  if (!s) return <BiometricEmptyCard label="SLEEP · LAST NIGHT" body="AWAITING HEALTHKIT · Sleep stages not connected" />;
   return (
     <Card span={3} padding="16px 18px" style={{ minHeight: 148 }}>
       <CardHeader>
@@ -1606,6 +1638,21 @@ function BodySystemsCard({ data }: { data: OverviewData }) {
 
 function PaceZonesCard({ data }: { data: OverviewData }) {
   const p = data.paceZones;
+  if (!p) {
+    return (
+      <Card span={5} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>PACE ZONES</CardLabel>
+          <CardPin variant="muted">NO VDOT</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No VDOT anchored yet"
+          body="Log a recent 5K, 10K, or HM to anchor your pace zones. Daniels VDOT needs a canonical race result inside the last 8 weeks."
+        />
+      </Card>
+    );
+  }
   const zoneClass: Record<PaceZone['letter'], string> = { E: 'E', M: 'M', T: 'T', I: 'I', R: 'R' };
   return (
     <Card span={5} padding="18px 20px">
@@ -1719,6 +1766,21 @@ function PaceZonesCard({ data }: { data: OverviewData }) {
 
 function VdotCard({ data }: { data: OverviewData }) {
   const v = data.vdot;
+  if (!v) {
+    return (
+      <Card span={3} padding="20px 22px" style={{ minHeight: 148 }}>
+        <CardHeader>
+          <CardLabel>VDOT · AGE-GRADED</CardLabel>
+          <CardPin variant="muted">NO DATA</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No VDOT yet"
+          body="Log a recent 5K / 10K / HM to anchor VDOT. Daniels lookup needs a canonical race time."
+        />
+      </Card>
+    );
+  }
   return (
     <Card span={3} padding="20px 22px" style={{ background: 'linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%)', border: 0, minHeight: 148 }}>
       <CardHeader>
@@ -1806,6 +1868,21 @@ function VdotCard({ data }: { data: OverviewData }) {
 
 function LoadGaugeCard({ data }: { data: OverviewData }) {
   const l = data.load;
+  if (!l) {
+    return (
+      <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column', minHeight: 108 }}>
+        <CardHeader>
+          <CardLabel>RECENT vs TYPICAL LOAD</CardLabel>
+          <CardPin variant="muted">NO DATA</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No load signal yet"
+          body="ACWR needs at least 7 days of recent volume and an 8-week baseline. Log runs to see the load gauge."
+        />
+      </Card>
+    );
+  }
   const valueColor = l.pinVariant === 'green' ? 'var(--good)' : l.pinVariant === 'amber' ? 'var(--att)' : 'var(--warn)';
   return (
     <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column', minHeight: 108 }}>
@@ -1867,6 +1944,21 @@ function LoadGaugeCard({ data }: { data: OverviewData }) {
 
 function WeeklyMilesCard({ data }: { data: OverviewData }) {
   const w = data.weeklyMilesStrip;
+  if (!w) {
+    return (
+      <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column' }}>
+        <CardHeader>
+          <CardLabel>WEEKLY MILES · 4 PAST + 4 AHEAD</CardLabel>
+          <CardPin variant="muted">NO DATA</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No weekly history yet"
+          body="Connect Strava or log this week's runs to see the weekly-miles strip."
+        />
+      </Card>
+    );
+  }
   const maxMi = Math.max(...w.bars.map((b) => b.miles), 1);
   return (
     <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1908,6 +2000,21 @@ function WeeklyMilesCard({ data }: { data: OverviewData }) {
 
 function LongRunCard({ data }: { data: OverviewData }) {
   const lr = data.longRunStrip;
+  if (!lr) {
+    return (
+      <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column' }}>
+        <CardHeader>
+          <CardLabel>LONG RUN · 6 PAST + 4 AHEAD</CardLabel>
+          <CardPin variant="muted">NO DATA</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No long-run history yet"
+          body="Log at least one run to start the long-run progression chart."
+        />
+      </Card>
+    );
+  }
   const maxMi = Math.max(...lr.bars.map((b) => b.miles), 1);
   return (
     <Card span={3} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -2156,6 +2263,21 @@ function YearInRunningCard({ data }: { data: OverviewData }) {
 
 function YtdCard({ data }: { data: OverviewData }) {
   const y = data.year.ytd;
+  if (!y) {
+    return (
+      <Card span={4} padding="24px 26px" style={{ display: 'flex', flexDirection: 'column' }}>
+        <CardHeader>
+          <CardLabel>YTD · 2026</CardLabel>
+          <CardPin variant="muted">NO DATA</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No YTD rollup yet"
+          body="Connect Strava to see year-to-date miles, time-on-feet, elevation, and pace stats."
+        />
+      </Card>
+    );
+  }
   const dashOffset = 251 - (251 * y.pctOfYear) / 100;
   return (
     <Card span={4} padding="24px 26px" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -2204,19 +2326,27 @@ function YtdCard({ data }: { data: OverviewData }) {
           marginTop: 14,
         }}
       >
-        ▲ +{y.vsLastYearDelta} MI vs 2025 SAME DAY
+        {y.vsLastYearDelta != null ? `▲ +${y.vsLastYearDelta} MI vs 2025 SAME DAY` : 'NO 2025 BASELINE'}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--l4)' }}>
-        <YtdStatTile label="vs 2025 SAME DAY" value={String(y.vsLastYearMi)} delta={`+${y.vsLastYearDelta} ▲`} />
-        <YtdStatTile label="PROJECTED EOY" value={y.projectedEoyMi.toLocaleString()} delta={`+${y.projectedDelta} ▲`} />
+        <YtdStatTile
+          label="vs 2025 SAME DAY"
+          value={y.vsLastYearMi != null ? String(y.vsLastYearMi) : '—'}
+          delta={y.vsLastYearDelta != null ? `+${y.vsLastYearDelta} ▲` : 'NO DATA'}
+        />
+        <YtdStatTile
+          label="PROJECTED EOY"
+          value={y.projectedEoyMi.toLocaleString()}
+          delta={y.projectedDelta != null ? `+${y.projectedDelta} ▲` : '—'}
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px', marginTop: 'auto', paddingTop: 18, borderTop: '1px solid var(--l4)' }}>
-        <YearFactCell label="Time on feet" value={String(y.timeOnFeetHr)} unit="hr" meta="≈ 3.2 DAYS RUNNING" />
-        <YearFactCell label="Elevation gain" value={String(y.elevationGainKFt)} unit="k ft" meta="≈ 4× HALF DOME" align="right" />
-        <YearFactCell label="Avg pace" value={y.avgPace} unit="/mi" meta={y.avgPaceVs2025} />
-        <YearFactCell label="Calories" value={String(y.caloriesK)} unit="k" meta={y.caloriesEquiv} align="right" />
+        <YearFactCell label="Time on feet" value={String(y.timeOnFeetHr)} unit="hr" meta="HOURS LOGGED" />
+        <YearFactCell label="Elevation gain" value={String(y.elevationGainKFt)} unit="k ft" meta="GAIN THIS YEAR" align="right" />
+        <YearFactCell label="Avg pace" value={y.avgPace ?? '—'} unit="/mi" meta={y.avgPaceVs2025 ?? 'NO 2025 BASELINE'} />
+        <YearFactCell label="Calories" value={y.caloriesK != null ? String(y.caloriesK) : '—'} unit="k" meta={y.caloriesEquiv ?? 'NEEDS BODY-WEIGHT + HR'} align="right" />
       </div>
     </Card>
   );
