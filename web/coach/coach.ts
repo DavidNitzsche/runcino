@@ -24,6 +24,7 @@
 import type {
   CoachBaseContext,
   CoachDecision,
+  Citation,
   BodySystemsReport,
   BodySystem,
   Trajectory14wk,
@@ -313,6 +314,18 @@ export interface Coach {
   /** Coach Read mini-takeaway under a race recap. One verdict line +
    *  one body sentence. (Stub Stage 7 — wire to retrospective loop.) */
   coachRead(input: CoachReadInput): Promise<CoachDecision<CoachReadReport>>;
+
+  // ── Wave G · alive-coach surfaces (real data) ───────────────────────
+
+  /** PATH TO RACE: current fitness vs goal time vs feasibility of
+   *  closing the gap in the available weeks. Drives the PathToRaceCard
+   *  on /overview. */
+  pathToRace(input: PathToRaceInput): Promise<CoachDecision<PathToRaceResult>>;
+
+  /** NEXT PUSH: prioritized state-derived nudges this week (extend long
+   *  run, add threshold, log check-in, fix easy-share drift). Drives
+   *  the NextPushCard on /overview. */
+  nextPushes(input: NextPushesInput): Promise<CoachDecision<NextPushesReport>>;
 }
 
 // ── Stage 7 stub input types ─────────────────────────────────────────
@@ -384,6 +397,87 @@ export interface CoachReadInput extends CoachBaseContext {
   paceSPerMi: number;
   /** Conditions summary, e.g. "58°F · misty · calm". */
   conditionsLabel?: string;
+}
+
+// ── Wave G · pathToRace + nextPushes types ───────────────────────────
+// Drives the new "alive coach" surfaces on /overview: PathToRaceCard
+// (G2) shows current-fitness vs goal vs feasibility; NextPushCard (G3)
+// surfaces the prioritized list of state-derived nudges this week.
+
+export interface PathToRaceInput extends CoachBaseContext {
+  state: CoachState;
+  raceName: string;
+  raceDateISO: string;
+  raceDistanceMi: number;
+  /** Goal time in seconds. */
+  goalTimeS: number;
+}
+
+export interface PathToRaceCurrentFitness {
+  /** Anchored VDOT used for the prediction. */
+  vdot: number;
+  /** Riegel-scaled predicted finish time (seconds). */
+  predictedTimeS: number;
+  /** Display string, e.g. "1:42:30". */
+  predictedDisplay: string;
+  /** Predicted pace s/mi. */
+  predictedPaceSPerMi: number;
+  /** Source race the VDOT was inferred from. */
+  sourceName: string;
+  /** Freshness of the VDOT signal. */
+  sourceDaysAgo: number;
+}
+
+export interface PathToRaceResult {
+  raceName: string;
+  raceDateISO: string;
+  raceDistanceMi: number;
+  /** Days until race day. */
+  daysToRace: number;
+  /** Weeks until race day (rounded). */
+  weeksToRace: number;
+  goalTimeS: number;
+  goalDisplay: string;
+  goalPaceSPerMi: number;
+  /** Current-fitness picture from VDOT. null when no recent race
+   *  signal exists; UI renders the empty-state CTA. */
+  currentFitness: PathToRaceCurrentFitness | null;
+  /** goalPace − predictedPace in s/mi.
+   *  positive = goal pace is slower than predicted = fitness ahead of goal
+   *  negative = goal pace is faster than predicted = fitness short of goal
+   *  null when currentFitness is null. */
+  gapSPerMi: number | null;
+  gapDisplay?: string;
+  /** Weeks of typical VDOT-progression-driven improvement needed to
+   *  close the gap. 0 when ahead. null when no fitness signal. */
+  weeksNeeded: number | null;
+  weeksAvailable: number;
+  /** Feasibility verdict. */
+  feasibility: 'ahead' | 'on_track' | 'tight' | 'behind' | 'unknown';
+  /** One-line "do this next" the card renders verbatim. */
+  nextMove: string;
+  rationale: string;
+}
+
+export interface NextPushesInput extends CoachBaseContext {
+  state: CoachState;
+}
+
+export interface CoachPush {
+  id: string;
+  /** The real signal that fired the push. */
+  signal: string;
+  /** The one-line "do this" instruction. */
+  action: string;
+  urgency: 'low' | 'med' | 'high';
+  citations: Citation[];
+}
+
+export interface NextPushesReport {
+  /** 1-3 prioritized pushes, highest urgency first. Empty when no
+   *  signals fire — the card renders "Plan steady". */
+  pushes: CoachPush[];
+  rationale: string;
 }
 
 // ── Coach implementation ─────────────────────────────────────────────
@@ -2043,6 +2137,361 @@ class CoachImpl implements Coach {
       console.warn('[coach.briefRaceMorning] LLM failed, falling back to deterministic:', e instanceof Error ? e.message : e);
       return buildDeterministic();
     }
+  }
+
+  // ── Wave G · pathToRace ────────────────────────────────────────────
+  // The "PATH TO RACE" hero — what current fitness predicts for the
+  // upcoming A-race, what the goal asks for, and a feasibility read on
+  // how many weeks of typical VDOT progression close the gap.
+  //
+  //   currentFitness  ← vdotSnapshot(state) → Riegel-scale to race
+  //                    distance using vdotRow + the canonical 1.06
+  //                    exponent (same path raceFitnessPrediction uses).
+  //   goalTime        ← passed in (race.goalFinishS or personal_goals).
+  //   gapSPerMi       ← goalPace − predictedPace
+  //                    positive  → goal is slower than predicted
+  //                                = fitness ahead of goal (room to spare)
+  //                    negative  → goal is faster than predicted
+  //                                = fitness short of goal (need to gain)
+  //   weeksNeeded     ← if behind: gap ÷ expected VDOT-driven seconds-
+  //                    per-mile improvement per week, capped at days-
+  //                    to-race ÷ 7.
+  //
+  // Per-week VDOT gain bands come from Research/00a §Volume progression
+  // rules — base growth: 5-15% per training cycle (≈12 weeks) for
+  // trained athletes, 20-25% over 8 weeks for novices. Translated to
+  // VDOT points (a 5% volume-driven aerobic gain typically tracks ~0.3
+  // VDOT/wk in the trained range, ~0.6 VDOT/wk for novices coming off
+  // a base), we use:
+  //   trained (weeklyAvg4w ≥ 25mi): 0.35 VDOT/wk
+  //   newer  (weeklyAvg4w < 25mi):  0.6  VDOT/wk
+  //
+  // @research Research/01-pace-zones-vdot.md §How to recalibrate paces
+  //           — Triggers to retest
+  //           Research/00a-distance-running-training.md §Volume
+  //           progression rules
+  //           Research/02-race-time-prediction.md §2. Riegel Formula
+  async pathToRace(input: PathToRaceInput): Promise<CoachDecision<PathToRaceResult>> {
+    const { state, raceName, raceDateISO, raceDistanceMi, goalTimeS, today } = input;
+    const goalPaceSPerMi = goalTimeS / raceDistanceMi;
+
+    const todayD = new Date(today + 'T12:00:00Z').getTime();
+    const raceD = new Date(raceDateISO + 'T12:00:00Z').getTime();
+    const daysToRace = Math.max(0, Math.round((raceD - todayD) / 86_400_000));
+    const weeksToRace = Math.max(1, Math.round(daysToRace / 7));
+
+    const snapshot = vdotSnapshot(state);
+
+    if (!snapshot) {
+      return {
+        answer: {
+          raceName,
+          raceDateISO,
+          raceDistanceMi,
+          daysToRace,
+          weeksToRace,
+          goalTimeS,
+          goalDisplay: formatTime(goalTimeS),
+          goalPaceSPerMi,
+          currentFitness: null,
+          gapSPerMi: null,
+          weeksNeeded: null,
+          weeksAvailable: weeksToRace,
+          feasibility: 'unknown',
+          nextMove: 'Log a recent 5K/10K/HM in the activities feed. The path opens up once the engine has a current-fitness signal to anchor against.',
+          rationale: 'No VDOT-eligible race in the freshness window. Cannot infer current fitness.',
+        },
+        rationale: 'No usable recent race to anchor the path.',
+        citations: [
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+        ],
+        brain: 'deterministic',
+      };
+    }
+
+    const row = vdotRow(snapshot.vdot);
+    const predictedTimeS = row
+      ? riegelScaleFromVdotRow(row, raceDistanceMi)
+      : snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, 1.06);
+    const predictedPaceSPerMi = predictedTimeS / raceDistanceMi;
+    const gapSPerMi = goalPaceSPerMi - predictedPaceSPerMi;
+    const sPerMiToGain = -gapSPerMi;
+    const isBehind = sPerMiToGain > 0;
+
+    const vdotGainPerWk = state.volume.weeklyAvg4w >= 25 ? 0.35 : 0.6;
+
+    const vdotPlus = vdotRow(snapshot.vdot + 1);
+    const sPerMiPerVdotPoint = (() => {
+      if (!row || !vdotPlus) return 6;
+      const cur = riegelScaleFromVdotRow(row, raceDistanceMi) / raceDistanceMi;
+      const nxt = riegelScaleFromVdotRow(vdotPlus, raceDistanceMi) / raceDistanceMi;
+      const delta = cur - nxt;
+      return Math.max(2, delta);
+    })();
+    const sPerMiPerWk = vdotGainPerWk * sPerMiPerVdotPoint;
+
+    const weeksNeeded = isBehind
+      ? Math.ceil(sPerMiToGain / sPerMiPerWk)
+      : 0;
+
+    let feasibility: 'ahead' | 'on_track' | 'tight' | 'behind' = 'on_track';
+    if (!isBehind) {
+      feasibility = 'ahead';
+    } else if (weeksNeeded <= weeksToRace * 0.8) {
+      feasibility = 'on_track';
+    } else if (weeksNeeded <= weeksToRace) {
+      feasibility = 'tight';
+    } else {
+      feasibility = 'behind';
+    }
+
+    const gapDisplay = isBehind
+      ? `${Math.round(sPerMiToGain)}s/mi short`
+      : `${Math.round(-sPerMiToGain)}s/mi ahead`;
+
+    const longestMi = state.volume.longestLast28Mi;
+    const weeklyMi = state.volume.weeklyAvg4w;
+    const nextMove = (() => {
+      if (feasibility === 'ahead') {
+        return `Fitness sits ahead of goal. Keep doing what you're doing — protect the easy share and avoid spike weeks until taper.`;
+      }
+      if (feasibility === 'behind') {
+        return `Gap is real. ${weeksNeeded} weeks of typical progression closes ${Math.round(weeksToRace * sPerMiPerWk)}s/mi — short by ${Math.round((weeksNeeded - weeksToRace) * sPerMiPerWk)}s/mi. Consider adjusting the goal or extending the training window.`;
+      }
+      if (raceDistanceMi >= 22) {
+        const targetLong = Math.max(16, Math.min(22, Math.round(raceDistanceMi * 0.8)));
+        if (longestMi < targetLong) {
+          const need = targetLong - longestMi;
+          return `${Math.round(need)}mi more on the long run unlocks the build. Last 28 days topped out at ${longestMi.toFixed(0)}mi; target sits at ${targetLong}mi for race-distance specificity.`;
+        }
+        return `Long run is in range. Add one threshold session per week to convert aerobic depth into race pace.`;
+      }
+      if (raceDistanceMi >= 10) {
+        const targetLong = Math.max(10, Math.round(raceDistanceMi * 0.85));
+        if (longestMi < targetLong) {
+          return `Two more weekly long runs above ${targetLong}mi unlocks the build phase. Last 28 days peaked at ${longestMi.toFixed(0)}mi.`;
+        }
+        return `Long run is in range. One threshold session per week closes the gap — aim for ${Math.round(weeklyMi * 0.08)}mi at T-pace.`;
+      }
+      return `Add one VO2 session (3-5min reps at 95-100% vVO2max) per week. ${weeksNeeded} weeks of that work closes the ${Math.round(sPerMiToGain)}s/mi gap.`;
+    })();
+
+    return {
+      answer: {
+        raceName,
+        raceDateISO,
+        raceDistanceMi,
+        daysToRace,
+        weeksToRace,
+        goalTimeS,
+        goalDisplay: formatTime(goalTimeS),
+        goalPaceSPerMi,
+        currentFitness: {
+          vdot: snapshot.vdot,
+          predictedTimeS,
+          predictedDisplay: formatTime(predictedTimeS),
+          predictedPaceSPerMi,
+          sourceName: snapshot.source.name,
+          sourceDaysAgo: snapshot.source.daysAgo,
+        },
+        gapSPerMi,
+        gapDisplay,
+        weeksNeeded,
+        weeksAvailable: weeksToRace,
+        feasibility,
+        nextMove,
+        rationale: `Riegel from VDOT ${snapshot.vdot.toFixed(1)} (${snapshot.source.name}, ${snapshot.source.daysAgo}d ago) predicts ${formatTime(predictedTimeS)}; goal is ${formatTime(goalTimeS)} (${gapDisplay}). ${vdotGainPerWk.toFixed(2)} VDOT/wk typical progression ≈ ${sPerMiPerWk.toFixed(1)}s/mi/wk; need ${weeksNeeded}wk vs ${weeksToRace}wk available.`,
+      },
+      rationale: `${gapDisplay} of goal; ${weeksNeeded}wk of typical progression needed (${weeksToRace}wk available).`,
+      citations: [
+        { doc: 'Research/02-race-time-prediction.md', section: '§2. Riegel Formula' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§How to recalibrate paces — Triggers to retest' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Volume progression rules' },
+      ],
+      brain: 'deterministic',
+    };
+  }
+
+  // ── Wave G · nextPushes ────────────────────────────────────────────
+  // The "NEXT PUSH" card surfaces the prioritized list of things the
+  // coach is actively pushing the runner toward this week. Every push
+  // is grounded in a real signal off `CoachState`:
+  //
+  //   long-run erosion     · days since last long run > 21 with race in
+  //                         build window → push extend long run
+  //   missing threshold    · 0 quality sessions in last 14d while in
+  //                         BUILD/PEAK phase → push one threshold
+  //   easy-share drift     · easyShare14d < 0.75 → push easier easy days
+  //                         (polarized 80/20 baseline)
+  //   missed check-in      · daysSinceLastCheckin ≥ 3 → push log check-in
+  //   volume cliff         · last7Mi < weeklyAvg4w × 0.5 → push back to
+  //                         baseline volume
+  //
+  // Priorities: each push has an `urgency` ('low' / 'med' / 'high').
+  // Heavy-block / post-race state suppresses pushes that would conflict
+  // (no "extend long run" during POST_RACE). The card renders top 1-3
+  // pushes; an empty array reads "Plan steady — keep executing."
+  //
+  // @research Research/00a-distance-running-training.md §The Seven
+  //           Workout Categories
+  //           Research/00a-distance-running-training.md §Training
+  //           Intensity Distribution (TID)
+  //           Research/00b-recovery-protocols.md §Warning Signs of
+  //           Incomplete Recovery
+  async nextPushes(input: NextPushesInput): Promise<CoachDecision<NextPushesReport>> {
+    const { state, today } = input;
+    const pushes: CoachPush[] = [];
+
+    const inRecoveryWindow = state.recoveryWindowEndsISO != null
+      && state.recoveryWindowEndsISO >= today;
+    const heavyBlock = state.flags.heavyBlockSuspected;
+    const rebuilding = state.flags.rebuildAfterBreak;
+
+    // ── Push 1: long-run erosion ──────────────────────────────────
+    const longRunMi = state.volume.longestLast28Mi;
+    const daysSinceLongRun = (() => {
+      if (longRunMi < 10) return 28;
+      const recent = state.volume.last7Days
+        .filter(d => d.miles >= 10)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (recent.length > 0 && recent[0]) {
+        const r = new Date(recent[0].date + 'T12:00:00Z').getTime();
+        const t = new Date(today + 'T12:00:00Z').getTime();
+        return Math.round((t - r) / 86_400_000);
+      }
+      return 14;
+    })();
+
+    const hasUpcomingA = state.races.nextA != null && state.races.nextA.daysAway <= 16 * 7;
+    if (
+      !inRecoveryWindow
+      && !heavyBlock
+      && !rebuilding
+      && daysSinceLongRun >= 21
+      && hasUpcomingA
+    ) {
+      pushes.push({
+        id: 'extend_long_run',
+        signal: longRunMi < 10
+          ? `No run ≥10mi in the last 28 days`
+          : `Last run >10mi was ~${daysSinceLongRun} days ago`,
+        action: `Extend your long run to 10+mi this Saturday — the aerobic base for ${state.races.nextA!.name} needs the depth.`,
+        urgency: daysSinceLongRun >= 28 ? 'high' : 'med',
+        citations: [
+          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories — 4. Long run' },
+          { doc: 'Research/00a-distance-running-training.md', section: '§Long-Run Variations' },
+        ],
+      });
+    }
+
+    // ── Push 2: missing threshold dose ────────────────────────────
+    const hardMi14d = state.intensity.hardMi14d;
+    if (
+      !inRecoveryWindow
+      && !heavyBlock
+      && !rebuilding
+      && hardMi14d < 1
+      && hasUpcomingA
+      && state.races.nextA!.daysAway > 21
+    ) {
+      pushes.push({
+        id: 'add_threshold',
+        signal: `Zero quality miles in last 14 days`,
+        action: `Get one threshold session in this week — ${Math.round(state.volume.weeklyAvg4w * 0.08) || 3}mi at T-pace converts aerobic depth into race pace.`,
+        urgency: 'med',
+        citations: [
+          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories — 5. Threshold / tempo' },
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Dosing rules — Daniels\' caps' },
+        ],
+      });
+    }
+
+    // ── Push 3: easy-share drift ──────────────────────────────────
+    const easyShare = state.intensity.easyShare14d;
+    if (
+      easyShare > 0 && easyShare < 0.75
+      && (state.intensity.easyMi14d + state.intensity.hardMi14d) > 10
+    ) {
+      pushes.push({
+        id: 'easy_share_drift',
+        signal: `Easy share at ${Math.round(easyShare * 100)}% over 14 days (target ≥80%)`,
+        action: `Pull the easy days easier this week. Polarized doctrine wants ≥80% of weekly miles in the easy band, not the grey zone.`,
+        urgency: easyShare < 0.65 ? 'high' : 'low',
+        citations: [
+          { doc: 'Research/00a-distance-running-training.md', section: '§Training Intensity Distribution (TID)' },
+        ],
+      });
+    }
+
+    // ── Push 4: stale check-in ────────────────────────────────────
+    // state.checkin is added in coach-state by the checkin-aggregate
+    // wiring; until that's universally present we read it defensively.
+    const checkin = state.checkin;
+    if (checkin && checkin.rowsCount > 0) {
+      const daysStale = (() => {
+        if (checkin.loggedToday) return 0;
+        if (checkin.latestDateISO == null) return 99;
+        const t = new Date(today + 'T12:00:00Z').getTime();
+        const l = new Date(checkin.latestDateISO + 'T12:00:00Z').getTime();
+        return Math.max(0, Math.round((t - l) / 86_400_000));
+      })();
+      if (daysStale >= 3) {
+        pushes.push({
+          id: 'log_checkin',
+          signal: checkin.latestDateISO == null
+            ? `No check-in logged yet`
+            : `Last check-in was ${daysStale} days ago`,
+          action: `Log today's check-in (energy / soreness / stress). The engine reads these to defer quality if recovery signals fire.`,
+          urgency: daysStale >= 7 ? 'high' : 'low',
+          citations: [
+            { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery — Qualitative Signals' },
+          ],
+        });
+      }
+    }
+
+    // ── Push 5: volume cliff ──────────────────────────────────────
+    const last7 = state.volume.last7Mi;
+    const avg4w = state.volume.weeklyAvg4w;
+    if (
+      !inRecoveryWindow
+      && !heavyBlock
+      && !rebuilding
+      && avg4w > 10
+      && last7 < avg4w * 0.5
+    ) {
+      pushes.push({
+        id: 'volume_cliff',
+        signal: `Last 7 days at ${last7.toFixed(0)}mi vs ${avg4w.toFixed(0)}mi 4-week average`,
+        action: `Get back to baseline volume this week. Two easy aerobic runs at typical distance will bring last-7 back into range without adding new stress.`,
+        urgency: last7 < avg4w * 0.25 ? 'high' : 'med',
+        citations: [
+          { doc: 'Research/00a-distance-running-training.md', section: '§Volume progression rules' },
+        ],
+      });
+    }
+
+    const urgencyRank = (u: CoachPush['urgency']): number =>
+      u === 'high' ? 0 : u === 'med' ? 1 : 2;
+    pushes.sort((a, b) => urgencyRank(a.urgency) - urgencyRank(b.urgency));
+    const top = pushes.slice(0, 3);
+
+    const rationale = top.length === 0
+      ? 'No actionable pushes this week — execute the plan as written.'
+      : `${top.length} push${top.length === 1 ? '' : 'es'} surfaced; most urgent: ${top[0]!.id}.`;
+
+    return {
+      answer: {
+        pushes: top,
+        rationale,
+      },
+      rationale,
+      citations: [
+        { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Training Intensity Distribution (TID)' },
+      ],
+      brain: 'deterministic',
+    };
   }
 }
 
