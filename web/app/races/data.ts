@@ -22,6 +22,7 @@ import type { NormalizedActivity } from '@/lib/strava-activities';
 import { onlyRuns } from '@/lib/strava-activities';
 import type { SavedRace, ActualResult } from '@/lib/storage-types';
 import { daysUntil } from '@/lib/dates';
+import { vdotSnapshot } from '@/lib/vdot';
 import type { RacesApiRacePrediction, RacesApiTaperReport } from '../api/races-page/route';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -95,8 +96,9 @@ export interface ARaceHero {
   fitnessPredicts: string;
   /** Predicted pace, e.g. "7:00/MI". */
   fitnessPace: string;
-  /** VDOT label (e.g. "VDOT 49.2"). */
-  vdotLabel: string;
+  /** VDOT label (e.g. "VDOT 50.4"). null when no usable race result yet
+   *  — the UI renders "NO VDOT YET" rather than a hardcoded number. */
+  vdotLabel: string | null;
   /** Headroom s/mi; positive = on track. */
   headroomSPerMi: number;
   /** Confidence label ("HIGH" / "MED" / "LOW"). */
@@ -204,6 +206,9 @@ interface RacesApiOk {
   tapers: RacesApiTaperReport[];
   bodySystems: CoachDecision<BodySystemsReport> | null;
   trajectory: CoachDecision<Trajectory14wk>;
+  /** Runner display name from `profile.full_name`. null when no profile
+   *  row exists — UI renders "Runner". */
+  profileName: string | null;
 }
 
 interface RacesApiErr {
@@ -248,8 +253,8 @@ export async function loadRacesData(
 
   const runs = activities ? onlyRuns(activities) : null;
 
-  const profile = getProfileSnapshot(today);
-  const aRaceHero = getARaceHero(nextA, nextB, predictions, today);
+  const profile = getProfileSnapshot(today, api.profileName ?? null);
+  const aRaceHero = getARaceHero(nextA, nextB, predictions, api.state, today);
   const latestRecap = getLatestRecap(past);
   const season = getSeasonTimeline(all, today);
 
@@ -284,15 +289,15 @@ async function fetchRacesApi(): Promise<RacesApiPayload> {
 // Profile
 // ─────────────────────────────────────────────────────────────────────
 
-function getProfileSnapshot(today: string): ProfileSnapshot {
-  // TODO: wire to a user/profile table. Mirrors Overview + Training — single-tenant
-  // placeholder until auth + profile data lands.
+function getProfileSnapshot(today: string, profileName: string | null): ProfileSnapshot {
+  // Pulled from /api/races-page → getProfile() (web/lib/profile-store.ts).
+  // Falls back to "Runner" when the profile row is missing or `full_name`
+  // is blank. No hardcoded identity.
   const hour = new Date(today + 'T12:00:00').getHours();
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   return {
-    // TODO: wire to profile.name
-    name: 'David',
+    name: profileName ?? 'Runner',
     greeting,
   };
 }
@@ -305,6 +310,7 @@ function getARaceHero(
   nextA: SavedRace | null,
   nextB: SavedRace | null,
   predictions: Map<string, RacesApiRacePrediction>,
+  state: CoachState,
   today: string,
 ): ARaceHero | null {
   if (!nextA) return null;
@@ -329,7 +335,14 @@ function getARaceHero(
   const fitnessTime = pred?.predictedDisplay ?? '—';
   const fitnessPace = pred?.predictedPaceSPerMi ?? null;
   const headroom = pred?.headroomSPerMi ?? 0;
-  const vdot = pred?.vdot ?? 49.2;
+
+  // VDOT — prefer the prediction's own VDOT (race-specific), else fall
+  // back to the dashboard snapshot (strongest recent race ≤ half). null
+  // when no usable race result is logged — UI renders "NO VDOT YET"
+  // rather than a hardcoded number.
+  const snap = vdotSnapshot(state);
+  const vdot = pred?.vdot ?? snap?.vdot ?? null;
+  const vdotLabel = vdot != null ? `VDOT ${vdot.toFixed(1)}` : null;
   const confidence = pred?.confidence ?? 'medium';
 
   // Build window — base phase typically opens 14 days after a recovery
@@ -355,7 +368,7 @@ function getARaceHero(
     goalPace: goalPaceS != null ? `${fmtPace(goalPaceS)}/MI` : '—',
     fitnessPredicts: fitnessTime,
     fitnessPace: fitnessPace != null ? `${fmtPace(fitnessPace)}/MI` : '—',
-    vdotLabel: `VDOT ${vdot.toFixed(1)}`,
+    vdotLabel,
     headroomSPerMi: headroom,
     confidenceLabel: confidence.toUpperCase(),
     buildStartsInDays,

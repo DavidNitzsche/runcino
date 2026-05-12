@@ -337,7 +337,7 @@ function ARaceHeroCard({ data }: { data: RacesData }) {
           label="FITNESS PREDICTS"
           value={hero.fitnessPredicts}
           valueColor="var(--good)"
-          sub={`${hero.fitnessPace} · ${hero.vdotLabel}`}
+          sub={`${hero.fitnessPace} · ${hero.vdotLabel ?? 'NO VDOT YET'}`}
         />
         <HeroStat
           label="HEADROOM"

@@ -35,6 +35,7 @@ import type {
   BodySystemsReport,
 } from '../../../coach/types';
 import { listRacesDB } from '../../../lib/race-store';
+import { getProfile } from '../../../lib/profile-store';
 import type { SavedRace } from '../../../lib/storage-types';
 
 export interface RacesApiRacePrediction {
@@ -71,6 +72,9 @@ interface RacesApiOk {
   /** 14-week trajectory for the phase backbone (BASE → BUILD → PEAK
    *  → TAPER segments along the season timeline). */
   trajectory: CoachDecision<Trajectory14wk>;
+  /** Runner's display name from the `profile` table. null when no row
+   *  exists or `full_name` is blank — UI renders "Runner" in that case. */
+  profileName: string | null;
 }
 
 interface RacesApiErr {
@@ -155,6 +159,11 @@ export async function GET(): Promise<Response> {
     // Season-timeline phase backbone.
     const trajectory = await coach.trajectory14wk({ today, state });
 
+    // Profile name — null when no profile row exists or `full_name` is
+    // blank. The /races page renders "Runner" in that case.
+    const profile = await getProfile().catch(() => null);
+    const profileName = profile?.full_name?.trim() || null;
+
     const body: RacesApiOk = {
       ok: true,
       today,
@@ -164,6 +173,7 @@ export async function GET(): Promise<Response> {
       tapers,
       bodySystems,
       trajectory,
+      profileName,
     };
     return Response.json(body);
   } catch (e) {
