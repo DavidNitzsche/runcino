@@ -42,7 +42,7 @@ import type {
 import { callCoachLLM, llmAvailable } from './llm';
 import { citationsForWorkoutType, citationsForReadiness } from './citations';
 import { composeVoiceLead } from './explanations';
-import { coachDaily, type CoachToday } from '../lib/coach-engine';
+import { coachDaily, simulateRange, type CoachToday } from '../lib/coach-engine';
 import { vdotSnapshot, vdotRow } from '../lib/vdot';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
@@ -219,6 +219,10 @@ export interface AdjustForRealityInput extends CoachBaseContext {
     acwr: number;
     sleepDebtMin?: number;
     hrvBaselineDelta?: number;
+    /** Number of "poor" days in the 7-day daily_checkin aggregate.
+     *  ≥2 counts as a qualitative signal per Research/00b §Decision
+     *  Matrix; the engine adds it to the firing-signal count. */
+    checkinPoorDaysLast7d?: number;
   };
   /** The currently scheduled workout the user would have done today. */
   scheduledWorkout: WorkoutPrescription;
@@ -229,6 +233,31 @@ export interface AdjustedPlan {
   /** True if we actually changed the plan; false if today's session
    *  stays as-is and the message is just commentary. */
   changed: boolean;
+  /** Human-readable reasons the plan moved. Empty when no signals
+   *  fired. The UI joins these with " · " for the WHY line. */
+  adjustedFor: string[];
+}
+
+export interface RecentAdjustmentsInput extends CoachBaseContext {
+  state: CoachState;
+  /** Lower-bound ISO date of the window. Defaults to 7 days before
+   *  today when omitted. */
+  sinceISO?: string;
+}
+
+export interface RecentAdjustmentItem {
+  dateISO: string;
+  dateDisplay: string;
+  changeDisplay: string;
+  why: string;
+  changed: boolean;
+}
+
+export interface RecentAdjustmentsReport {
+  sinceISO: string;
+  untilISO: string;
+  items: RecentAdjustmentItem[];
+  rationale: string;
 }
 
 // ── The Coach ────────────────────────────────────────────────────────
@@ -268,6 +297,11 @@ export interface Coach {
    *  illness flag) and decide whether today's scheduled workout still
    *  makes sense. (Wired Stage 5.) */
   adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>>;
+
+  /** 7-day rollup of plan adjustments — drives the PLAN ADAPTED card.
+   *  Empty `items` when nothing has moved (UI then renders "Plan held
+   *  steady"). (Wired Stage 5.) */
+  recentAdjustments(input: RecentAdjustmentsInput): Promise<CoachDecision<RecentAdjustmentsReport>>;
 
   // ── Stage 7 · UI consumption layer (stubs) ─────────────────────────
   // These methods exist so the May 9 mockups can be wired now. Each
@@ -542,6 +576,15 @@ class CoachImpl implements Coach {
       fired.push({ signal: 'hrv', reason: `HRV ${signals.hrvBaselineDelta.toFixed(0)}% below baseline` });
     }
 
+    // Daily-checkin qualitative signal — 2+ poor days in the 7-day
+    // aggregate reads as a pattern per Research/00b §Decision Matrix.
+    if (signals.checkinPoorDaysLast7d != null && signals.checkinPoorDaysLast7d >= 2) {
+      fired.push({
+        signal: 'checkin',
+        reason: `${signals.checkinPoorDaysLast7d} of last 7 check-ins flagged poor`,
+      });
+    }
+
     const count = fired.length;
 
     // ── Decision matrix · INCOMPLETE_RECOVERY_DECISION_MATRIX ─────
@@ -565,6 +608,7 @@ class CoachImpl implements Coach {
             voiceLead: `${signals.daysSinceLastRun} days since your last run — body needs a re-entry, not the prescribed session. Short and very easy today. Build the week back from here.`,
           },
           changed: true,
+          adjustedFor: fired.map((f) => f.reason),
         },
         rationale: `Rebuild after gap: ${fired.map((f) => f.reason).join('; ')}`,
         citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
@@ -574,7 +618,7 @@ class CoachImpl implements Coach {
 
     if (count <= 1) {
       return {
-        answer: { workout: scheduledWorkout, changed: false },
+        answer: { workout: scheduledWorkout, changed: false, adjustedFor: [] },
         rationale: count === 0
           ? 'No incomplete-recovery signals firing — today as scheduled.'
           : `One signal firing (${fired[0]!.reason}). Below the defer threshold; continuing as planned.`,
@@ -598,6 +642,7 @@ class CoachImpl implements Coach {
               voiceLead: `Two recovery signals firing — ${fired.map((f) => f.reason).join(' and ')}. Keep the volume, drop the intensity today. Re-attempt quality in 24-48h once signals settle.`,
             },
             changed: true,
+            adjustedFor: fired.map((f) => f.reason),
           },
           rationale: `Defer quality: ${fired.map((f) => f.signal).join(' + ')} both firing`,
           citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Decision Matrix' }],
@@ -606,7 +651,7 @@ class CoachImpl implements Coach {
       }
       // Today is already easy — nothing to defer. Continue.
       return {
-        answer: { workout: scheduledWorkout, changed: false },
+        answer: { workout: scheduledWorkout, changed: false, adjustedFor: [] },
         rationale: `Two signals firing but today is already easy. Continuing as planned.`,
         citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
         brain: 'deterministic',
@@ -629,9 +674,108 @@ class CoachImpl implements Coach {
           voiceLead: `${count} recovery signals firing simultaneously: ${fired.map((f) => f.reason).join('; ')}. Doctrine says 3+ signals warrants a 3-5 day cutback. Today is the start — 50% volume, no quality. If signals persist past 2 weeks, escalate to a medical/coach review.`,
         },
         changed: true,
+        adjustedFor: fired.map((f) => f.reason),
       },
       rationale: `Cutback prescribed: ${count} quantitative signals firing`,
       citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Decision Matrix' }],
+      brain: 'deterministic',
+    };
+  }
+
+  // ── Stage 5 · recentAdjustments ────────────────────────────────────
+  // 7-day rollup. Walks the simulated plan vs actual miles per past
+  // day; missed days emit items. Today's signal-based adjustment uses
+  // live state values + state.checkin.poorDaysCount.
+  //
+  // @research Research/00b §Decision Matrix
+  async recentAdjustments(input: RecentAdjustmentsInput): Promise<CoachDecision<RecentAdjustmentsReport>> {
+    const today = input.state.now;
+    const sinceISO = input.sinceISO ?? isoDateOffsetUTCInline(today, -6);
+
+    const planned = simulateRange(input.state, sinceISO, today);
+    const milesByDate = new Map<string, number>(
+      input.state.volume.last7Days.map((d) => [d.date, d.miles] as const),
+    );
+
+    const items: RecentAdjustmentItem[] = [];
+
+    for (const day of planned) {
+      if (day.date === today) continue;
+      if (day.distanceMi <= 0) continue;
+      const actualMi = milesByDate.get(day.date) ?? 0;
+      if (actualMi <= 0.3) {
+        items.push({
+          dateISO: day.date,
+          dateDisplay: formatDayLabelInline(day.date, today),
+          changeDisplay: day.isQuality
+            ? `${day.label} skipped → recover and re-stage`
+            : `${day.label} skipped`,
+          why: day.isQuality
+            ? 'Quality day not run — Coach defers next quality 24-48h per Research/00b §Decision Matrix.'
+            : 'Run not logged — week-volume target adjusts down by the missed distance.',
+          changed: true,
+        });
+      }
+    }
+
+    const todayPlanned = planned[planned.length - 1];
+    if (todayPlanned) {
+      const missedRunsLast7d = items.length;
+      const acwrVal =
+        input.state.volume.weeklyAvg8w > 0
+          ? input.state.volume.last7Mi / input.state.volume.weeklyAvg8w
+          : 0;
+      const scheduledWorkout: WorkoutPrescription = {
+        type: todayPlanned.type,
+        label: todayPlanned.label,
+        distanceMi: todayPlanned.distanceMi,
+        paceTargetSPerMi: todayPlanned.paceTargetSPerMi
+          ? { lower: todayPlanned.paceTargetSPerMi.lowS, upper: todayPlanned.paceTargetSPerMi.highS }
+          : null,
+        hrZone: todayPlanned.hrZone,
+        phaseLabel: '',
+        voiceLead: '',
+        isQuality: todayPlanned.isQuality,
+        isLong: todayPlanned.isLong,
+        coachToday: {} as CoachToday,
+      };
+      const adj = await this.adjustForReality({
+        today,
+        signals: {
+          daysSinceLastRun:
+            input.state.recovery.daysSinceLastRun >= 0
+              ? input.state.recovery.daysSinceLastRun
+              : 0,
+          missedRunsLast7d,
+          acwr: acwrVal,
+          checkinPoorDaysLast7d: input.state.checkin?.poorDaysCount,
+        },
+        scheduledWorkout,
+      });
+      if (adj.answer.changed) {
+        items.push({
+          dateISO: today,
+          dateDisplay: 'TODAY',
+          changeDisplay: `${scheduledWorkout.label} → ${adj.answer.workout.label}`,
+          why: adj.answer.adjustedFor.join('; '),
+          changed: true,
+        });
+      }
+    }
+
+    items.sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+
+    const rationale = items.length === 0
+      ? 'No plan adjustments needed in the last 7 days — Coach held the prescription steady.'
+      : `${items.length} of last 7 days adjusted (${items[0]!.dateDisplay} most recent).`;
+
+    return {
+      answer: { sinceISO, untilISO: today, items, rationale },
+      rationale,
+      citations: [
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Decision Matrix' },
+      ],
       brain: 'deterministic',
     };
   }
@@ -1994,6 +2138,19 @@ class CoachImpl implements Coach {
       reason = `The legs look ready. Trust today's plan.`;
     }
 
+    // Check-in escalation. 2+ poor days = qualitative pattern per
+    // Research/00b §Decision Matrix; bumps green→yellow. 3+ → red.
+    const poorDays = s.checkin?.poorDaysCount ?? 0;
+    if (s.checkin != null && level !== 'red') {
+      if (poorDays >= 3) {
+        level = 'red';
+        reason = `${poorDays} of the last 7 check-ins flagged poor (energy / soreness / stress). Doctrine reads that as a recovery pattern — today is rest or a very short jog.`;
+      } else if (poorDays >= 2 && level === 'green') {
+        level = 'yellow';
+        reason = `Two recent check-ins flagged poor (energy / soreness / stress). Hold the easy days honest and skip the next quality if signals don't clear in 24-48h.`;
+      }
+    }
+
     return {
       answer: {
         level,
@@ -2638,6 +2795,24 @@ function numOrZero(v: unknown): number {
 
 function avg(xs: number[]): number {
   return xs.length === 0 ? 0 : xs.reduce((s, x) => s + x, 0) / xs.length;
+}
+
+/** Offset an ISO date (YYYY-MM-DD) by N days, anchored at noon UTC. */
+function isoDateOffsetUTCInline(iso: string, days: number): string {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Format an ISO date relative to today: "TODAY", "YESTERDAY", or
+ *  "TUE · MAY 6". Used by recentAdjustments items. */
+function formatDayLabelInline(dateISO: string, todayISO: string): string {
+  if (dateISO === todayISO) return 'TODAY';
+  if (dateISO === isoDateOffsetUTCInline(todayISO, -1)) return 'YESTERDAY';
+  const d = new Date(dateISO + 'T12:00:00Z');
+  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getUTCDay()];
+  const mon = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][d.getUTCMonth()];
+  return `${dow} · ${mon} ${d.getUTCDate()}`;
 }
 
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
