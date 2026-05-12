@@ -42,6 +42,7 @@ import { callCoachLLM, llmAvailable } from './llm';
 import { citationsForWorkoutType, citationsForReadiness } from './citations';
 import { composeVoiceLead } from './explanations';
 import { coachDaily, type CoachToday } from '../lib/coach-engine';
+import { vdotSnapshot, vdotRow } from '../lib/vdot';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
 import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInput } from '../lib/weather-slowdown';
@@ -1097,19 +1098,76 @@ class CoachImpl implements Coach {
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to race_prediction.ts (VDOT × course correction)
-  // MOCKUP REF: designs/races-2026-05-09.html:168-188 (A-race hero quad)
-  // MOCKUP REF: designs/overview-2026-05-09.html (UP-NEXT B-race chip)
+  // ── Stage 7 · raceFitnessPrediction (real data) ────────────────
+  // Race-time prediction = current VDOT + Riegel scaling to the target
+  // distance. Inputs:
+  //
+  //   VDOT       ← vdotSnapshot(state) picks the strongest recent race
+  //                (per Daniels' ≤8-week freshness window) and reads
+  //                its row off the canonical VDOT lookup table.
+  //   Riegel     ← scales from the closest canonical distance on the
+  //                VDOT table to the target race distance:
+  //                  T2 = T1 × (D2 / D1)^1.06
+  //                Per Research/02 §Riegel formula. The 1.06 exponent
+  //                is the canonical fatigue factor for running.
+  //
+  // Confidence comes from headroom (predicted vs goal pace):
+  //   >10 s/mi headroom → 'high'   (fitness ahead of goal)
+  //    0-10 s/mi         → 'medium' (right at the goal)
+  //    <0 s/mi           → 'low'    (goal stretches the engine)
+  //
+  // Stretch time = the equivalent VDOT pace if the runner ran a clean
+  // race at current fitness, ~3% faster than the predicted band.
+  //
+  // @research Research/02-race-time-prediction.md §Riegel formula
+  //           Research/01-pace-zones-vdot.md §VDOT freshness window
   async raceFitnessPrediction(input: RaceFitnessPredictionInput): Promise<CoachDecision<RaceFitnessPrediction>> {
-    const { raceName, raceDateISO, raceDistanceMi, goalTimeS } = input;
-    // Mock VDOT-derived prediction — 2% faster than goal pace.
+    const { state, raceName, raceDateISO, raceDistanceMi, goalTimeS } = input;
     const goalPace = goalTimeS / raceDistanceMi;
-    const predictedPace = goalPace * 0.98;
-    const predictedTimeS = predictedPace * raceDistanceMi;
+
+    const snapshot = vdotSnapshot(state);
+    if (!snapshot) {
+      // No usable recent race → fall back to a conservative same-as-goal
+      // prediction with low confidence. The runner needs to log a race
+      // before the engine can speak to fitness.
+      return {
+        answer: {
+          raceName, raceDateISO, raceDistanceMi, goalTimeS,
+          goalDisplay: formatTime(goalTimeS),
+          goalPaceSPerMi: goalPace,
+          predictedTimeS: goalTimeS,
+          predictedDisplay: formatTime(goalTimeS),
+          predictedPaceSPerMi: goalPace,
+          vdot: 0,
+          headroomSPerMi: 0,
+          confidence: 'low',
+          stretchDisplay: formatTime(goalTimeS),
+          rationale: 'No recent race logged — fitness can\'t be inferred. Log a recent 5K/10K/HM and the prediction calibrates immediately.',
+        },
+        rationale: 'No VDOT-eligible race in the freshness window.',
+        citations: [
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT freshness window' },
+        ],
+        brain: 'deterministic',
+      };
+    }
+
+    const row = vdotRow(snapshot.vdot);
+    const equivAtTarget = row ? riegelScaleFromVdotRow(row, raceDistanceMi) : null;
+    const predictedTimeS = equivAtTarget ?? snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, 1.06);
+    const predictedPace = predictedTimeS / raceDistanceMi;
     const headroomSPerMi = goalPace - predictedPace;
-    const vdot = 49.2;
-    const stretchPace = goalPace * 0.95;
-    const stretchTimeS = stretchPace * raceDistanceMi;
+    // Stretch: another 3% off predicted pace — what fitness alone could
+    // produce on a perfect day before the engine breaks down.
+    const stretchTimeS = predictedTimeS * 0.97;
+
+    const confidence: 'high' | 'medium' | 'low' = headroomSPerMi > 10
+      ? 'high'
+      : headroomSPerMi > 0
+      ? 'medium'
+      : 'low';
+    const headroomDir = headroomSPerMi > 0 ? 'of headroom' : 'short of';
+    const headroomAbs = Math.abs(Math.round(headroomSPerMi));
 
     return {
       answer: {
@@ -1122,15 +1180,16 @@ class CoachImpl implements Coach {
         predictedTimeS,
         predictedDisplay: formatTime(predictedTimeS),
         predictedPaceSPerMi: predictedPace,
-        vdot,
+        vdot: snapshot.vdot,
         headroomSPerMi,
-        confidence: headroomSPerMi > 10 ? 'high' : headroomSPerMi > 0 ? 'medium' : 'low',
+        confidence,
         stretchDisplay: formatTime(stretchTimeS),
-        rationale: `Fitness predicts ${formatTime(predictedTimeS)} — ${Math.round(headroomSPerMi)} sec/mi of headroom against goal.`,
+        rationale: `Fitness predicts ${formatTime(predictedTimeS)} from VDOT ${snapshot.vdot.toFixed(1)} (${snapshot.source.name}, ${snapshot.source.daysAgo}d ago). ${headroomAbs} sec/mi ${headroomDir} goal.`,
       },
-      rationale: `Predicted ${formatTime(predictedTimeS)} on VDOT ${vdot}; goal ${formatTime(goalTimeS)}.`,
+      rationale: `Riegel from VDOT ${snapshot.vdot.toFixed(1)} (${snapshot.source.name} ${snapshot.source.daysAgo}d ago) to ${raceDistanceMi.toFixed(1)}mi: ${formatTime(predictedTimeS)} vs ${formatTime(goalTimeS)} goal.`,
       citations: [
-        { doc: 'Research/02-race-time-prediction.md', section: '§Riegel + course adjustments', snippet: 'Race time prediction from VDOT with distance + terrain corrections' },
+        { doc: 'Research/02-race-time-prediction.md', section: '§Riegel formula' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT freshness window' },
       ],
       brain: 'deterministic',
     };
@@ -1684,6 +1743,36 @@ function summarizeRetrospect(plan: unknown, actual: unknown): {
   }
 
   return { goalFinishS, actualFinishS, goalDeltaS, actualPaceSPerMi, splitPattern };
+}
+
+/** Scale a VDOT row's canonical times to a target race distance using
+ *  the Riegel formula (T2 = T1 × (D2/D1)^1.06). Picks the closest
+ *  canonical distance below or above the target so the exponent is
+ *  applied over the shortest jump — keeps the prediction tight.
+ *  Per Research/02 §Riegel formula. */
+function riegelScaleFromVdotRow(
+  row: { mileS: number; km3S: number; km5S: number; km10S: number; km15S: number; halfS: number; marathonS: number },
+  targetMi: number,
+): number {
+  // Canonical distances in miles, paired with their VDOT row times.
+  const canon: Array<{ mi: number; s: number }> = [
+    { mi: 1.0,          s: row.mileS },
+    { mi: 1.864114,     s: row.km3S },     // 3 km
+    { mi: 3.106856,     s: row.km5S },     // 5 km
+    { mi: 6.213712,     s: row.km10S },    // 10 km
+    { mi: 9.320568,     s: row.km15S },    // 15 km
+    { mi: 13.10942,     s: row.halfS },    // half marathon
+    { mi: 26.21885,     s: row.marathonS },// marathon
+  ];
+  // Pick the canonical entry closest to target — shortest Riegel jump
+  // is the most accurate.
+  let best = canon[0];
+  for (const c of canon) {
+    if (Math.abs(Math.log(c.mi / targetMi)) < Math.abs(Math.log(best.mi / targetMi))) {
+      best = c;
+    }
+  }
+  return best.s * Math.pow(targetMi / best.mi, 1.06);
 }
 
 function numOrZero(v: unknown): number {
