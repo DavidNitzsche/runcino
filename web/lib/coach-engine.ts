@@ -460,7 +460,61 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
       hasStrength,
     });
   }
+  // Tier-aware consecutive-non-rest cap per Research/00b §Recovery
+  // Scaled to Weekly Mileage. Without this post-process the per-day
+  // pickRun can produce 6+ run days in a row for low-tier runners
+  // (post-race recovery + Sun long-run + Mon recovery + Tue-Sat easy
+  // = 6 consecutive non-rest days). Convert the latest general-aerobic
+  // day in any over-cap streak to REST so the week shape honors the
+  // tier's recovery cadence.
+  enforceWeekStreakCap(out, state.volume.weeklyAvg4w);
   return out;
+}
+
+function enforceWeekStreakCap(days: CoachToday['weekShape'], weeklyAvg4w: number): void {
+  // Tier cap: low <40mpw = 5, mid <60 = 6, high <80 = 6, elite = 7
+  const cap = weeklyAvg4w < 40 ? 5 : weeklyAvg4w < 80 ? 6 : 7;
+  let streakStart = -1;
+  let i = 0;
+  while (i < days.length) {
+    const d = days[i];
+    const isRest = d.type === 'rest';
+    if (isRest) { streakStart = -1; i += 1; continue; }
+    if (streakStart < 0) streakStart = i;
+    const streakLen = i - streakStart + 1;
+    if (streakLen <= cap) { i += 1; continue; }
+    // Over cap — convert the latest non-quality, non-long general-
+    // aerobic day in the streak to rest. Walk back from i, prefer the
+    // most recent filler so the week keeps its quality + long shape.
+    let swapIdx = -1;
+    for (let j = i; j >= streakStart; j--) {
+      const c = days[j];
+      if (c.type === 'rest' || c.isQuality || c.isLong) continue;
+      if (c.type === 'recovery') continue; // already light — try a fuller easy first
+      swapIdx = j; break;
+    }
+    if (swapIdx < 0) {
+      for (let j = i; j >= streakStart; j--) {
+        const c = days[j];
+        if (c.type === 'rest' || c.isQuality || c.isLong) continue;
+        swapIdx = j; break;
+      }
+    }
+    if (swapIdx < 0) { i += 1; continue; }
+    days[swapIdx] = {
+      ...days[swapIdx],
+      type: 'rest',
+      label: 'Rest day',
+      distanceMi: 0,
+      paceTargetSPerMi: null,
+      hrZone: null,
+      description: 'Protective rest — cap on consecutive run days at this weekly mileage tier.',
+      isQuality: false,
+      isLong: false,
+    };
+    streakStart = -1;
+    i = swapIdx + 1;
+  }
 }
 
 /** Shift CoachState forward by N days for week-shape simulation:

@@ -740,11 +740,12 @@ function VdotCard({ data }: { data: ProfileData }) {
         style={{
           fontFamily: 'var(--f-display)',
           fontWeight: 700,
-          fontSize: 64,
-          letterSpacing: '-.015em',
-          lineHeight: 0.95,
+          fontSize: 96,
+          letterSpacing: '-.03em',
+          lineHeight: 0.9,
           color: '#fff',
           fontVariantNumeric: 'tabular-nums',
+          marginTop: 8,
         }}
       >
         {data.vdot.value}

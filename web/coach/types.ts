@@ -257,6 +257,17 @@ export interface DayDelta {
   pinLabel: string | null;
   /** Severity of the delta — drives chip color. */
   severity: 'good' | 'neutral' | 'warn' | 'over' | null;
+  /** Coach engine workout type (recovery / general_aerobic / threshold /
+   *  long_steady / rest / etc) — drives the day-cell label so each day
+   *  shows what's actually prescribed, not a generic "Easy". */
+  type: string;
+  /** Coach engine display label ("Recovery run", "Long easy",
+   *  "Threshold intervals", etc) — preferred over per-day fallbacks. */
+  label: string;
+  /** Quality flag — drives chip styling on quality days. */
+  isQuality: boolean;
+  /** Long-run flag — drives chip styling + axis emphasis on long days. */
+  isLong: boolean;
 }
 
 export interface WeekDeltasReport {

@@ -940,14 +940,17 @@ function DayCell({
   // gate, a stub or stale value on a future day's actualMi was rendering
   // a green DONE pill for a workout that hasn't happened yet.
   const isDone = (isPast || isToday) && day.actualMi != null && day.actualMi > 0;
-  const isRest = day.plannedMi === 0 && day.actualMi == null;
+  // Rest day = the engine prescribed rest, OR no prescription + no
+  // activity logged. With type now flowing through DayDelta the
+  // canonical signal is type === 'rest'.
+  const isRest = day.type === 'rest' || (day.plannedMi === 0 && day.actualMi == null);
 
-  // Tag color class.
+  // Tag color class — read off the real coach prescription type.
   let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
   if (isRest) tag = 'rest';
-  else if (isToday && prescription.type.startsWith('recovery')) tag = 'recovery';
-  else if (day.dayLabel === 'SUN') tag = 'long';
-  else if (prescription.isQuality && isToday) tag = 'quality';
+  else if (day.isQuality) tag = 'quality';
+  else if (day.isLong) tag = 'long';
+  else if (day.type === 'recovery') tag = 'recovery';
 
   const cls = [
     'day',
@@ -960,14 +963,15 @@ function DayCell({
     .filter(Boolean)
     .join(' ');
 
-  // What to render in the body.
+  // What to render in the body. Use the engine's prescription label
+  // when we have one (post-weekDeltas wiring, every day has it).
+  // Today still prefers the prescription's display label so the chip
+  // reads consistently with the big TodayCard above.
   const typeName = isRest
     ? 'Rest'
     : isToday
     ? capitalize(prescription.type.replace(/_/g, ' '))
-    : day.dayLabel === 'SUN'
-    ? 'Easy long'
-    : 'Easy';
+    : day.label || (day.isLong ? 'Long easy' : day.isQuality ? 'Quality' : 'Easy');
 
   // Future days always show plannedMi (what they'll run). Past days show
   // actualMi when logged. TODAY is special — `actualMi` may be 0 (no run
@@ -1668,11 +1672,11 @@ function VdotCard({ data }: { data: OverviewData }) {
           FRESH
         </span>
       </CardHeader>
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 72, lineHeight: .95, letterSpacing: '-.03em', color: '#fff' }}>
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 112, lineHeight: .9, letterSpacing: '-.04em', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
           {v.value}
         </div>
-        <div style={{ fontFamily: 'var(--f-data)', fontSize: 10, color: 'rgba(255,255,255,.78)', fontWeight: 700, letterSpacing: '.6px', marginTop: 8 }}>
+        <div style={{ fontFamily: 'var(--f-data)', fontSize: 10, color: 'rgba(255,255,255,.78)', fontWeight: 700, letterSpacing: '.6px', marginTop: 12 }}>
           {v.detailLine}
         </div>
       </div>

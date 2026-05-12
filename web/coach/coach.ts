@@ -1410,11 +1410,14 @@ class CoachImpl implements Coach {
     const mondayISO = monday.toISOString().slice(0, 10);
 
     // Run the coach engine once for its real weekShape (this week's
-    // Mon→Sun plan). Index by ISO date for lookup.
+    // Mon→Sun plan). Carry through type + label so the UI day cell
+    // can show what's actually prescribed (rest / recovery /
+    // threshold / long_steady), not a hardcoded "Easy".
     const coachOutput = coachDaily(input.state);
-    const plannedByDate = new Map<string, number>();
+    type WeekDay = typeof coachOutput.weekShape[number];
+    const planByDate = new Map<string, WeekDay>();
     for (const d of coachOutput.weekShape) {
-      plannedByDate.set(d.date, d.distanceMi);
+      planByDate.set(d.date, d);
     }
 
     // Actuals from real Strava activities (already populated in state
@@ -1430,7 +1433,8 @@ class CoachImpl implements Coach {
       const d = new Date(monday); d.setUTCDate(d.getUTCDate() + i);
       const dateISO = d.toISOString().slice(0, 10);
       const isFuture = dateISO > todayISO;
-      const p = plannedByDate.get(dateISO) ?? 0;
+      const plan = planByDate.get(dateISO);
+      const p = plan?.distanceMi ?? 0;
       // Future dates never have actuals — never query the actuals map.
       const a = isFuture ? null : (actualByDate.get(dateISO) ?? (dateISO === todayISO ? null : 0));
       const delta = a == null ? null : a - p;
@@ -1449,6 +1453,10 @@ class CoachImpl implements Coach {
         deltaMi: delta,
         pinLabel: pin,
         severity,
+        type: plan?.type ?? 'rest',
+        label: plan?.label ?? 'Rest day',
+        isQuality: plan?.isQuality ?? false,
+        isLong: plan?.isLong ?? false,
       };
     });
 
