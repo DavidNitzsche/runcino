@@ -40,12 +40,15 @@ import {
 } from '@/app/components';
 import { useActivities } from '@/lib/strava-activities';
 import { loadTrainingData, formatZoneTime, type TrainingData } from './data';
+import { CoachNarrativeLine } from '../overview/CoachNarrativeLine';
+import { CoachWatchingStrip } from '../overview/CoachWatchingStrip';
 
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [data, setData] = useState<TrainingData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { activities } = useActivities();
+  const { activities, fetchedAt } = useActivities();
+  const stravaFetchedAtMs = fetchedAt ? Date.parse(fetchedAt) : null;
 
   useEffect(() => {
     setNow(new Date());
@@ -55,7 +58,7 @@ export default function TrainingPage() {
     if (!now) return;
     let cancelled = false;
     setLoadError(null);
-    loadTrainingData(activities)
+    loadTrainingData(activities, stravaFetchedAtMs)
       .then((d) => {
         if (!cancelled) setData(d);
       })
@@ -67,7 +70,7 @@ export default function TrainingPage() {
     return () => {
       cancelled = true;
     };
-  }, [now, activities]);
+  }, [now, activities, stravaFetchedAtMs]);
 
   const clock = now ? formatTopbarClock(now) : null;
 
@@ -78,7 +81,19 @@ export default function TrainingPage() {
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
 
+      {/* Wave J · narrative line — same component as /overview. Collapses
+          when no priority signal fires. */}
+      {data?.narrative && <CoachNarrativeLine line={data.narrative} />}
+
       <TrainingGreet data={data} />
+
+      {/* Wave G · "Coach is watching" strip. Same chips as /overview so
+          the coach voice + signals read consistently across surfaces. */}
+      {data && (
+        <div style={{ margin: '0 0 16px 0' }}>
+          <CoachWatchingStrip chips={data.aliveCoach.watching} />
+        </div>
+      )}
 
       {loadError && (
         <Row>

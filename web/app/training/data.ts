@@ -32,6 +32,10 @@ import { naivePRs } from '@/lib/strava-stats';
 import { listRaces, type SavedRace } from '@/lib/storage';
 import { daysUntil } from '@/lib/dates';
 import type { TrainingApiHrZoneTime } from '../api/training/route';
+import type { FreshnessMap } from '@/lib/freshness-types';
+import { loadAliveCoachData, type AliveCoachData } from '../overview/_alive-coach';
+import type { NarrativeLine } from '@/coach/coach-narrative';
+import type { PathToRaceResult, NextPushesReport } from '@/coach/coach';
 
 export type { TrainingApiHrZoneTime as HrZoneTime, TrainingApiZoneDay as HrZoneDay } from '../api/training/route';
 
@@ -85,6 +89,14 @@ export interface TrainingData {
   /** Strava activities for any client-side rollup. May be null. */
   activities: NormalizedActivity[] | null;
   runs: NormalizedActivity[] | null;
+  /** Wave J · one-sentence coach voice. Same component as /overview. */
+  narrative: NarrativeLine | null;
+  /** Wave G · "Coach is watching" chips reusing the alive-coach loader.
+   *  Only the watching strip is rendered on /training — PathToRace and
+   *  NextPush live on /overview where they anchor the hero rows. */
+  aliveCoach: AliveCoachData;
+  /** Wave L · per-signal freshness map. */
+  freshness: FreshnessMap;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -220,6 +232,10 @@ interface TrainingApiOk {
   hrZones: TrainingApiHrZoneTime;
   recentAdjustments?: CoachDecision<RecentAdjustmentsReport> | null;
   adjustedToday?: CoachDecision<AdjustedPlan> | null;
+  freshness?: FreshnessMap;
+  pathToRace?: CoachDecision<PathToRaceResult> | null;
+  nextPushes?: CoachDecision<NextPushesReport>;
+  narrative?: NarrativeLine | null;
 }
 
 interface TrainingApiErr {
@@ -235,6 +251,7 @@ type TrainingApiPayload = TrainingApiOk | TrainingApiErr;
 
 export async function loadTrainingData(
   activities: NormalizedActivity[] | null,
+  stravaFetchedAtMs: number | null = null,
 ): Promise<TrainingData> {
   const [savedRaces, api] = await Promise.all([
     listRaces().catch(() => [] as SavedRace[]),
@@ -295,6 +312,34 @@ export async function loadTrainingData(
       }
     : null;
 
+  // Wave J · narrative line — computed server-side; client just renders.
+  const narrative = api.narrative ?? null;
+
+  // Wave G · alive-coach payload. PathToRace + NextPushes were computed
+  // server-side; chip builder runs client-side over the API result.
+  const aliveCoach = api.pathToRace !== undefined && api.nextPushes
+    ? loadAliveCoachData({
+        state: api.state,
+        today,
+        stravaFetchedAtMs,
+        checkin: api.state.checkin,
+        pathToRace: api.pathToRace,
+        nextPushes: api.nextPushes,
+        readiness: api.readiness,
+      })
+    : ({
+        watching: [],
+        pathToRace: null,
+        nextPushes: {
+          answer: { pushes: [], rationale: 'awaiting api' },
+          rationale: 'awaiting api',
+          citations: [],
+          brain: 'deterministic',
+        },
+      } as AliveCoachData);
+
+  const freshness: FreshnessMap = api.freshness ?? emptyFreshnessMap();
+
   return {
     today,
     profile,
@@ -318,6 +363,32 @@ export async function loadTrainingData(
     hrZones: api.hrZones,
     activities,
     runs,
+    narrative,
+    aliveCoach,
+    freshness,
+  };
+}
+
+/** Minimal "all unavailable" freshness map for the edge case where the
+ *  API route omits it. Production code path always provides one. */
+function emptyFreshnessMap(): FreshnessMap {
+  const unavailable = (source: FreshnessMap[keyof FreshnessMap]['source']) => ({
+    source,
+    label: 'AWAITING DATA',
+    isAvailable: false,
+    isStale: false,
+    staleness: 'unavailable' as const,
+    lastRefreshISO: null,
+    daysSince: null,
+    reason: 'No signal yet',
+  });
+  return {
+    strava: unavailable('strava'),
+    checkin: unavailable('checkin'),
+    vdotAnchor: unavailable('vdot-anchor'),
+    profile: unavailable('profile'),
+    raceCal: unavailable('race-cal'),
+    healthkit: unavailable('healthkit'),
   };
 }
 
