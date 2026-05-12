@@ -487,15 +487,11 @@ describe('K9 — returning from illness (proxy via 4 poor check-ins + 0 runs)', 
     expect(s.checkin?.avgEnergy).toBe(2);
   });
 
-  // GAP — coach-engine.pickRun does not consume state.checkin or any
-  // illness signal. The 4 poor-checkin pattern + 0 runs in 4 days flips
-  // rebuildAfterBreak=true (weeklyAvg4w=25 still > 8 threshold), so the
-  // REBUILD branch is bypassed. Result: the engine prescribes threshold
-  // + vo2 in the next 5 days. Fix: pickRun should read
-  // state.checkin?.poorDaysCount ≥ 3 as a hard signal to suppress
-  // quality regardless of phase (matches adjustForReality's Decision
-  // Matrix). Coordinating with Wave C2 / F editing coach-engine.ts.
-  it.skip('next 5 days are easy / recovery / rest only — no quality', () => {
+  // FIXED (Wave K2-1) — pickRun now reads state.checkin?.poorDaysCount
+  // and applies the Decision Matrix from Research/00b §Warning Signs of
+  // Incomplete Recovery. With 4 poor-checkin days, the 3+ cutback path
+  // fires regardless of phase: no quality, easy/long/recovery only.
+  it('next 5 days are easy / recovery / rest only — no quality', () => {
     const days = simulateRange(STATE_ILLNESS_RETURN, TODAY_ISO, dayOffsetISO(4));
     const offenders = days.filter(d => !EASY_OR_REST.has(d.type) && !d.type.startsWith('long_'));
     expect(offenders.map(d => `${d.date}:${d.type}`)).toEqual([]);

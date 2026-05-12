@@ -258,6 +258,55 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return rest('Rest day — week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Daily check-in gate — qualitative-signal Decision Matrix.
+  // Research/00b-recovery-protocols.md §"Warning Signs of Incomplete
+  // Recovery" · §"Decision Matrix":
+  //   0-1 qualitative signals → continue training
+  //   2 qualitative signals   → defer next quality 24-48h
+  //   3+ qualitative signals  → 3-5 day cutback (50% volume, no quality)
+  //   Persistent ≥2 weeks     → stop structured training (out of scope here).
+  // checkin-aggregate.ts marks a day "poor" if energy ≤4 OR soreness ≥7
+  // OR stress ≥7 — each row is one qualitative signal day. We read
+  // state.checkin?.poorDaysCount as the literal count for the matrix.
+  //
+  // Mid-week intensity adjustment is bound by phase; here we fold it
+  // into today's prescription so the underlying plan honors the
+  // qualitative signal — adjustForReality is a safety net, not the
+  // first responder.
+  //
+  // The other engine signals (REBUILD branch, low-volume gate) have
+  // already short-circuited above; this gate only fires for runners
+  // still inside the structured-training envelope.
+  // ─────────────────────────────────────────────────────────────
+  const poorDaysCount = state.checkin?.poorDaysCount ?? 0;
+  if (poorDaysCount >= 5) {
+    // 5+ poor days in the 7-day window — beyond the "3+ cutback"
+    // threshold and into "persistent" territory. Today is rest or
+    // recovery only; no long runs, no quality.
+    if (dow === 0 || dow === 6) return buildPrescriptionFor('recovery', state, phase);
+    return rest(`${poorDaysCount} of the last 7 daily check-ins were poor (energy/soreness/stress). Decision Matrix: full cutback. Rest today — the body is sending the signal.`);
+  }
+  if (poorDaysCount >= 3) {
+    // 3-4 poor days — Decision Matrix "3+ qualitative" cutback. Drop
+    // quality, keep easy volume (or long_steady if the slot is a long
+    // run). We let the long-run slot through because long easy aerobic
+    // is not a "quality" stimulus per Research/00a §1 ("Recovery run /
+    // General aerobic") — but threshold/VO2/MP-block are suppressed.
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+  if (poorDaysCount >= 1 && state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
+    // 1-2 poor days alone is below the matrix cutback threshold, but
+    // combined with an unhealthy easy-share (too much hard work in the
+    // last 14 days), still suppress quality today. Easy-share <60% is
+    // well below the Research/00a §"Polarized" 80% target — the runner
+    // is already over-loading the system before the check-in signal.
+    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    return buildPrescriptionFor('general_aerobic', state, phase);
+  }
+
   // Aerobic foundation gate — Research/00a §"Aerobic Base Development"
   // and §"Volume Guidelines by Experience and Distance": a runner
   // averaging <20 mpw who has no quality history yet ("Beginner" tier
