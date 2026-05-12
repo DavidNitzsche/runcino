@@ -596,6 +596,9 @@ function PosterCard({ race, analysis, days, totalMi, peakFt, peakMi, peakIdx, on
                   {result.notes}
                 </p>
               )}
+              {/* Coach retrospect — narrative reflection from coach.retrospect.
+                  Visible only in debrief mode (after actualResult is written). */}
+              <CoachRetrospectBlock race={race} />
             </>
           ) : (
             <>
@@ -1920,5 +1923,110 @@ function EditRaceModal({ race, onClose, onSaved }: { race: SavedRace; onClose: (
         </ModalFooter>
       </Modal>
     </ModalOverlay>
+  );
+}
+
+/* ── Coach retrospect block ─────────────────────────────────────
+   Fetches /api/race-retrospect on mount; renders the two-paragraph
+   narrative + a CALIBRATION UPDATED chip when the engine emitted a
+   delta. No fake reassurance when the engine can't compute. */
+function CoachRetrospectBlock({ race }: { race: SavedRace }) {
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [calibration, setCalibration] = useState<Record<string, number> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/race-retrospect?slug=${encodeURIComponent(race.slug)}`)
+      .then(async (res) => {
+        const json = (await res.json()) as
+          | { ok: true; retrospect: { answer: { narrative: string; calibrationDelta?: Record<string, number> } } }
+          | { ok: false; error: string };
+        if (cancelled) return;
+        if (!json.ok) {
+          setError(json.error);
+        } else {
+          setNarrative(json.retrospect.answer.narrative);
+          setCalibration(json.retrospect.answer.calibrationDelta ?? null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [race.slug]);
+
+  return (
+    <div
+      style={{
+        marginTop: 18,
+        paddingTop: 16,
+        borderTop: '1px solid rgba(255,255,255,.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span
+          style={{
+            fontFamily: 'var(--font-data)',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '1.6px',
+            textTransform: 'uppercase',
+            color: 'var(--coach, #7FAEFF)',
+          }}
+        >
+          ▾ Coach retrospect
+        </span>
+        {calibration && Object.keys(calibration).length > 0 && (
+          <span
+            style={{
+              fontFamily: 'var(--font-data)',
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '1.2px',
+              padding: '2px 7px',
+              borderRadius: 3,
+              background: 'rgba(127,174,255,.16)',
+              color: 'var(--coach, #7FAEFF)',
+            }}
+          >
+            CALIBRATION UPDATED
+          </span>
+        )}
+      </div>
+      {loading && (
+        <p className="pc-para" style={{ color: 'rgba(255,255,255,.45)', fontStyle: 'italic' }}>
+          Coach is reading the race…
+        </p>
+      )}
+      {!loading && narrative && (
+        <p
+          className="pc-para"
+          style={{
+            color: 'rgba(255,255,255,.85)',
+            whiteSpace: 'pre-wrap',
+            borderLeft: '2px solid var(--coach, #7FAEFF)',
+            paddingLeft: 14,
+          }}
+        >
+          {narrative}
+        </p>
+      )}
+      {!loading && error && (
+        <p className="pc-para" style={{ color: 'rgba(252,77,84,.85)' }}>
+          Coach retrospect unavailable: {error}
+        </p>
+      )}
+    </div>
   );
 }
