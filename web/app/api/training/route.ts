@@ -27,6 +27,8 @@ import type {
 import type {
   WorkoutPrescription,
   ReadinessAssessment,
+  RecentAdjustmentsReport,
+  AdjustedPlan,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
@@ -81,6 +83,8 @@ interface TrainingApiOk {
   /** Per-signal freshness map — drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
+  recentAdjustments: CoachDecision<RecentAdjustmentsReport>;
+  adjustedToday: CoachDecision<AdjustedPlan>;
 }
 
 interface TrainingApiErr {
@@ -105,13 +109,34 @@ export async function GET(): Promise<Response> {
       weekDeltas,
       trajectory,
       proofSessions,
+      recentAdjustments,
     ] = await Promise.all([
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
       coach.weekDeltas({ today, state }),
       coach.trajectory14wk({ today, state }),
       coach.proofSessions({ today, state }),
+      coach.recentAdjustments({ today, state }),
     ]);
+
+    const missedRunsLast7d = recentAdjustments.answer.items.filter(
+      (i) => i.dateISO !== today,
+    ).length;
+    const acwrVal =
+      state.volume.weeklyAvg8w > 0
+        ? state.volume.last7Mi / state.volume.weeklyAvg8w
+        : 0;
+    const adjustedToday = await coach.adjustForReality({
+      today,
+      scheduledWorkout: workout.answer,
+      signals: {
+        daysSinceLastRun:
+          state.recovery.daysSinceLastRun >= 0 ? state.recovery.daysSinceLastRun : 0,
+        missedRunsLast7d,
+        acwr: acwrVal,
+        checkinPoorDaysLast7d: state.checkin?.poorDaysCount,
+      },
+    });
 
     const raceFitnessA = nextA
       ? await callRacePrediction(today, state, nextA)
@@ -133,6 +158,8 @@ export async function GET(): Promise<Response> {
       raceFitnessA,
       hrZones,
       freshness,
+      recentAdjustments,
+      adjustedToday,
     };
     return Response.json(body);
   } catch (e) {

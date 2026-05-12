@@ -410,6 +410,9 @@ interface HealthApiOk {
   cycle: HealthApiCycle | null;
   ferritin: HealthApiFerritin | null;
   profile: HealthApiProfile;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface HealthApiErr {
@@ -445,13 +448,17 @@ export async function GET(): Promise<Response> {
 
     const readiness = buildReadinessComposite(state, readinessDecision.answer);
 
+    // Profile drives the female-only Row 5 (cycle + ferritin) and the
+    // VO2max age-band label — read it first.
+    const profile = await readProfileForHealth();              // real getProfile() read
+
     // Biometric stubs — every one of these is HealthKit-blocked per
     // Research/15 + the M2 placeholder in coach-state. Local-dev values
     // mirror the locked May 9 mockup so QA renders meaningfully.
     const hrv = stubHrv();
     const rhr = stubRhr();
     const sleep = stubSleep();
-    const vo2max = stubVo2max(today);
+    const vo2max = stubVo2max(today, profile.ageBandLabel);
     const respiratoryRate = stubRespiratoryRate();
     const bodyTemp = stubBodyTemp();
     const hrZones = buildHrZones(today, state);
@@ -462,7 +469,6 @@ export async function GET(): Promise<Response> {
     // TODO (Stage 7 Coach): replace each stub with the corresponding
     // Coach method when it lands. Names below match the planned
     // Coach surface so the wiring path stays obvious.
-    const profile = stubProfile();                              // → coach.profile()
     const expandedCheckin = await readExpandedCheckin(today);   // reads daily_checkin table, falls back to stub
     const hrvDetail = stubHrvDetail(hrv);                       // → coach.hrvDetail()
     const formReport = stubFormReport(trainingStress);          // → coach.formReport()
@@ -503,6 +509,7 @@ export async function GET(): Promise<Response> {
       cycle,
       ferritin,
       profile,
+      freshness: await gatherFreshness({ state }),
     };
     return Response.json(body);
   } catch (e) {
@@ -660,9 +667,11 @@ function stubSleep(): HealthApiSleep {
   };
 }
 
-function stubVo2max(today: string): HealthApiVo2Max {
+function stubVo2max(today: string, ageBandLabel: string): HealthApiVo2Max {
   // HealthKit-blocked. NO DATA YET until HealthKit VO2Max samples
   // land. Month labels stay so the X-axis can render in empty state.
+  // ageBandLabel comes from the real profile read (readProfileForHealth)
+  // so the percentile-band label reflects the runner — no more M 38.
   const month = Number(today.slice(5, 7));
   const monthOrder = [
     'JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC',
@@ -683,7 +692,7 @@ function stubVo2max(today: string): HealthApiVo2Max {
     series6mo: [],
     series6moLabels: labels,
     percentile: null,
-    ageBandLabel: 'M 38',
+    ageBandLabel,
   };
 }
 
@@ -799,15 +808,29 @@ function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
 // so QA renders meaningfully until the engine lands.
 // ─────────────────────────────────────────────────────────────────────
 
-/** Profile stub. Sex defaults to 'male' so Row 5 is off by default;
- *  toggle to 'female' here to QA the cycle + ferritin row. */
-function stubProfile(): HealthApiProfile {
-  // TODO: wire to coach.profile() (Stage 7) / users table.
-  // RESEARCH: Research/13 §1, §8 — sex-specific rendering.
-  return {
-    sex: 'male', // flip to 'female' to render Row 5 in QA.
-    ageBandLabel: 'M 38',
-  };
+/** Real profile reader — replaces the prior male/M-38 hardcoded stub
+ *  that Wave H caught. Reads sex + age from the `profile` table and
+ *  surfaces a band label like "M 38" / "F 41" / "— —" when missing.
+ *  Sex 'unspecified' suppresses the female-only Row 5. */
+async function readProfileForHealth(): Promise<HealthApiProfile> {
+  try {
+    const row = await getProfile();
+    const sexRaw = row?.sex?.trim().toLowerCase() ?? '';
+    const sex: HealthApiProfile['sex'] =
+      sexRaw === 'female' || sexRaw === 'f' ? 'female'
+      : sexRaw === 'male' || sexRaw === 'm' ? 'male'
+      : 'unspecified';
+    const ageStr = row?.age != null ? String(row.age) : '—';
+    const sexLetter = sex === 'female' ? 'F' : sex === 'male' ? 'M' : '—';
+    return {
+      sex,
+      ageBandLabel: `${sexLetter} ${ageStr}`,
+    };
+  } catch {
+    // DB down / table missing — surface a dash so the UI renders
+    // "NO PROFILE YET — set in /profile".
+    return { sex: 'unspecified', ageBandLabel: '— —' };
+  }
 }
 
 /** Reads today's daily_checkin row if it exists, otherwise returns

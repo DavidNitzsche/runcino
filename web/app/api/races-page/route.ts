@@ -37,6 +37,8 @@ import type {
 import { listRacesDB } from '../../../lib/race-store';
 import { getProfile } from '../../../lib/profile-store';
 import type { SavedRace } from '../../../lib/storage-types';
+import { gatherFreshness } from '../../../lib/freshness';
+import type { FreshnessMap } from '../../../lib/freshness-types';
 
 export interface RacesApiRacePrediction {
   slug: string;
@@ -75,6 +77,9 @@ interface RacesApiOk {
   /** Runner's display name from the `profile` table. null when no row
    *  exists or `full_name` is blank — UI renders "Runner" in that case. */
   profileName: string | null;
+  /** Per-signal freshness map — drives the "Coach is watching" UI
+   *  strip. See lib/freshness.ts for budgets. */
+  freshness: FreshnessMap;
 }
 
 interface RacesApiErr {
@@ -164,6 +169,8 @@ export async function GET(): Promise<Response> {
     const profile = await getProfile().catch(() => null);
     const profileName = profile?.full_name?.trim() || null;
 
+    const freshness = await gatherFreshness({ state });
+
     const body: RacesApiOk = {
       ok: true,
       today,
@@ -174,6 +181,7 @@ export async function GET(): Promise<Response> {
       bodySystems,
       trajectory,
       profileName,
+      freshness,
     };
     return Response.json(body);
   } catch (e) {

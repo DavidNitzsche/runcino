@@ -25,6 +25,8 @@ import type {
 import type {
   ReadinessAssessment,
   WorkoutPrescription,
+  RecentAdjustmentsReport,
+  AdjustedPlan,
 } from '../../../coach/coach';
 import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
@@ -45,6 +47,11 @@ interface OverviewApiOk {
    *  strip. Six signals: strava / checkin / vdotAnchor / profile /
    *  raceCal / healthkit. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
+  /** 7-day plan-adjustments rollup — drives the PLAN ADAPTED card. */
+  recentAdjustments: CoachDecision<RecentAdjustmentsReport>;
+  /** AdjustForReality applied to today's prescription. Drives the
+   *  COACH ADJUSTED pin + "why" line on the TodayCard. */
+  adjustedToday: CoachDecision<AdjustedPlan>;
 }
 
 interface OverviewApiErr {
@@ -73,13 +80,37 @@ export async function GET(): Promise<Response> {
       bodySystems,
       trajectory,
       weekDeltas,
+      recentAdjustments,
     ] = await Promise.all([
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
       coach.bodySystems({ today, state }),
       coach.trajectory14wk({ today, state }),
       coach.weekDeltas({ today, state }),
+      coach.recentAdjustments({ today, state }),
     ]);
+
+    // Today's adjustForReality consumes the live state.checkin
+    // aggregate so the engine can fold qualitative signals into the
+    // decision (Research/00b §Decision Matrix).
+    const missedRunsLast7d = recentAdjustments.answer.items.filter(
+      (i) => i.dateISO !== today,
+    ).length;
+    const acwrVal =
+      state.volume.weeklyAvg8w > 0
+        ? state.volume.last7Mi / state.volume.weeklyAvg8w
+        : 0;
+    const adjustedToday = await coach.adjustForReality({
+      today,
+      scheduledWorkout: workout.answer,
+      signals: {
+        daysSinceLastRun:
+          state.recovery.daysSinceLastRun >= 0 ? state.recovery.daysSinceLastRun : 0,
+        missedRunsLast7d,
+        acwr: acwrVal,
+        checkinPoorDaysLast7d: state.checkin?.poorDaysCount,
+      },
+    });
 
     const raceFitnessA = nextA
       ? await callRacePrediction(today, state, nextA)
@@ -102,6 +133,8 @@ export async function GET(): Promise<Response> {
       raceFitnessA,
       raceFitnessB,
       freshness,
+      recentAdjustments,
+      adjustedToday,
     };
     return Response.json(body);
   } catch (e) {
