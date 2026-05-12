@@ -569,6 +569,11 @@ function GoalTile({ goal }: { goal: Goal }) {
         background: 'var(--l2)',
         borderLeft: `3px solid ${accent}`,
         borderRadius: 8,
+        // overflow:hidden clips the in-tile progress bar to the
+        // rounded corners — without it, the colored fill bleeds past
+        // the right edge of the border-radius, showing as a weird
+        // accent-color sliver on the top-right and bottom-right.
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,

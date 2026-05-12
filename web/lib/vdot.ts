@@ -219,6 +219,14 @@ function pickStrongestRecentRace(state: CoachState): RecentRace | null {
   for (const r of state.races.recent) {
     if (r.finishS == null) continue;                  // no time logged
     if (!distanceKeyForMi(r.distanceMi)) continue;    // non-canonical
+    // Marathon performances underestimate aerobic VDOT — late-race
+    // fatigue, fueling, heat, and connective-tissue endurance pull
+    // marathon times below what pure aerobic ceiling would predict.
+    // Daniels + every contemporary VDOT picker excludes marathon
+    // (and ultra) distances from current-fitness inference. They're
+    // fine for goal-time prediction (the marathonS column on the
+    // lookup table is used elsewhere), just not for VDOT itself.
+    if (r.distanceMi >= 22) continue;
     const vdot = vdotFromRace(r.distanceMi, r.finishS);
     if (vdot == null) continue;
     if (best == null || vdot > best.vdot) {
@@ -288,6 +296,12 @@ export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
   for (const r of state.races.recent) {
     if (r.finishS == null) continue;
     if (!distanceKeyForMi(r.distanceMi)) continue;
+    // Marathon (and ultra) results don't reflect aerobic VDOT cleanly —
+    // late-race fatigue + fueling + heat are confounders. Skip for
+    // current-fitness inference. (Marathon times are still used by
+    // raceFitnessPrediction via vdotRow.marathonS — for predicting,
+    // not inferring.)
+    if (r.distanceMi >= 22) continue;
     const v = vdotFromRace(r.distanceMi, r.finishS);
     if (v == null) continue;
     if (best == null || v > best.vdot) best = { race: r, vdot: v };

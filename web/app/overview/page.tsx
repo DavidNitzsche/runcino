@@ -1470,7 +1470,7 @@ function SimpleSparkCard({
         {value}
         {unit && <small style={{ fontSize: '.32em', opacity: .5, fontWeight: 700, marginLeft: 7 }}>{unit}</small>}
       </div>
-      <div style={{ height: 36, marginTop: 6, display: 'flex' }}>
+      <div style={{ flex: 1, minHeight: 60, marginTop: 8, marginBottom: 10, display: 'flex' }}>
         <BarSeries
           series={series}
           baseline={baseline}
@@ -2480,7 +2480,11 @@ function BarSeries({
                 opacity: isLatest ? 1 : above ? 0.78 : 0.55,
                 minHeight: 4,
                 borderRadius: '2px 2px 0 0',
-                outline: isLatest ? `1.5px solid ${aboveColor}` : undefined,
+                // Outline color must match the BAR color, not always
+                // the above-color. Inverted metrics (RHR, effort) with
+                // the latest bar BELOW baseline = good = blue → outline
+                // was rendering warn-red. Fix: pick by `above`.
+                outline: isLatest ? `1.5px solid ${above ? aboveColor : belowColor}` : undefined,
                 outlineOffset: isLatest ? -1 : undefined,
               }}
             />

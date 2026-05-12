@@ -83,7 +83,7 @@ export default function PlanPage() {
 function PlanGreet({ data }: { data: PlanRangeApiOk | null }) {
   const today = data?.today ?? null;
   const eyebrow = today
-    ? `FULL PLAN · NEXT 4 MONTHS · ${new Date(today + 'T12Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()}`
+    ? `FULL PLAN · NEXT 4 MONTHS · ${new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()}`
     : 'FULL PLAN · LOADING';
   const dayCount = data?.days.length ?? null;
   return (
@@ -100,7 +100,7 @@ function PlanGreet({ data }: { data: PlanRangeApiOk | null }) {
       <div style={{
         fontSize: 14, color: 'var(--t1)', marginTop: 8, maxWidth: '70ch',
       }}>
-        Every day from this month through {data ? new Date(data.endISO + 'T12Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'four months from now'} —
+        Every day from this month through {data ? new Date(data.endISO + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'four months from now'} —
         same engine that prescribes today. {dayCount ? `${dayCount} days, ` : ''}same rest cadence, same quality cap.
         <Link href="/training" style={{ color: 'var(--coach)', marginLeft: 8, textDecoration: 'none' }}>← back to training</Link>
       </div>

@@ -20,6 +20,7 @@
  *   5. PATH TO AFC build curve + summary strip + phase breakdown
  */
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   Topbar,
@@ -566,7 +567,7 @@ function TodayCard({ data }: { data: TrainingData }) {
           </>
         ) : (
           <>
-            <button className="btn-flat btn-primary">▶ OPEN WORKOUT</button>
+            <Link href={`/workout/${data.today}`} className="btn-flat btn-primary" style={{ textDecoration: 'none' }}>▶ OPEN WORKOUT</Link>
             <button className="btn-flat btn-secondary">SKIP TODAY</button>
           </>
         )}
@@ -915,7 +916,7 @@ function GoalTile({
     : 'var(--l2)';
   const border = highlighted ? '1px solid rgba(255,87,34,.32)' : 'none';
   return (
-    <div style={{ textAlign: 'center', padding: '10px 4px', background: bg, border, borderRadius: 6 }}>
+    <div style={{ textAlign: 'center', padding: '12px 6px 14px', background: bg, border, borderRadius: 6 }}>
       <div className="mono-sm" style={{ color, fontSize: 9 }}>
         {label}
       </div>
@@ -928,12 +929,12 @@ function GoalTile({
           textTransform: 'uppercase',
           letterSpacing: '-.005em',
           color,
-          marginTop: 3,
+          marginTop: 6,
         }}
       >
         {time}
       </div>
-      <div className="mono-sm" style={{ color: 'var(--t2)', fontSize: 8.5 }}>
+      <div className="mono-sm" style={{ color: 'var(--t2)', fontSize: 8.5, marginTop: 6 }}>
         {meta}
       </div>
     </div>
@@ -1124,13 +1125,15 @@ function DayCell({
   // Only treat as "done" if the day is past AND has actualMi. Future days
   // may carry stub actuals from a mocked Coach method — ignore them.
   const isDone = !isFuture && day.actualMi != null && day.actualMi > 0;
-  const isRest = day.plannedMi === 0 && (isFuture || day.actualMi == null);
+  // Engine prescribed rest = canonical rest signal. Falls back to the
+  // "no plan, no actual" heuristic for legacy callers.
+  const isRest = day.type === 'rest' || (day.plannedMi === 0 && (isFuture || day.actualMi == null));
 
   let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
   if (isRest) tag = 'rest';
-  else if (isToday && prescription.type.startsWith('recovery')) tag = 'recovery';
-  else if (day.dayLabel === 'SUN') tag = 'long';
-  else if (prescription.isQuality && isToday) tag = 'quality';
+  else if (day.isQuality) tag = 'quality';
+  else if (day.isLong) tag = 'long';
+  else if (day.type === 'recovery') tag = 'recovery';
   else if (day.dayLabel === 'THU' && day.plannedMi < 1) tag = 'strength';
 
   const cls = [
@@ -1144,15 +1147,15 @@ function DayCell({
     .filter(Boolean)
     .join(' ');
 
+  // Use the engine's real label when we have one — fall back to phase-
+  // appropriate generic labels only when day.label is empty.
   const typeName = isRest
     ? 'Rest'
     : isToday
     ? capitalize(prescription.type.replace(/_/g, ' '))
-    : day.dayLabel === 'SUN'
-    ? 'Easy long'
     : tag === 'strength'
     ? 'Strength'
-    : 'Easy';
+    : day.label || (day.isLong ? 'Easy long' : day.isQuality ? 'Quality' : 'Easy');
 
   // Future days show planned miles only · past/today can show actual if logged
   const miles = isFuture ? day.plannedMi : (day.actualMi ?? day.plannedMi);
@@ -1672,7 +1675,9 @@ function BuildCurveCard({ data }: { data: TrainingData }) {
   const peakIdx = points.findIndex((p) => p.isPeak);
   const raceIdx = points.findIndex((p) => p.isRaceWeek);
 
-  const PX0 = 38, PY0 = 14, PX1 = 1062, PY1 = 232;
+  // PY0 raised from 14 → 32 so TODAY/PEAK callouts at y≈18 sit ABOVE
+  // the tallest bar instead of overlapping its cap.
+  const PX0 = 38, PY0 = 32, PX1 = 1062, PY1 = 232;
   const PW = PX1 - PX0, PH = PY1 - PY0;
   const maxMi = Math.max(...points.map((p) => p.plannedMi));
   const yMax = Math.ceil(maxMi / 10) * 10 || 50;
