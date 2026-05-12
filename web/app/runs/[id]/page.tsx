@@ -11,7 +11,9 @@
 
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
-import { Caption, Nav } from '../../../components/nav';
+import { Caption } from '../../../components/nav';
+import { Topbar } from '../../components/Topbar';
+import { TopbarClock } from '../../components/TopbarClock';
 import { formatShort } from '../../../lib/dates';
 import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-utils';
 
@@ -149,7 +151,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <Caption left="Runcino · runs" />
       <div className="stage">
-        <Nav active="log" />
+        <Topbar activeTab="log" back={{ href: '/log', label: 'BACK TO LOG' }} clock={<TopbarClock />} />
         <div className="body">
           {children}
         </div>

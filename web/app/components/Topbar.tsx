@@ -37,7 +37,7 @@ const TAB_LABELS: Record<TopbarTab, string> = {
 };
 
 const TAB_HREFS: Record<TopbarTab, string> = {
-  overview: '/',
+  overview: '/overview',
   training: '/training',
   races:    '/races',
   health:   '/health',

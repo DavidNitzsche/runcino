@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Caption, Nav } from '../../../components/nav';
+import { Caption } from '../../../components/nav';
+import { Topbar } from '../../components/Topbar';
+import { TopbarClock } from '../../components/TopbarClock';
 import { saveRace, listRaces, slugifyRaceName } from '../../../lib/storage';
 import { parseGpx } from '../../../lib/gpx';
 import { analyzeGpx, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -379,7 +381,7 @@ export default function NewRacePage() {
     <>
       <Caption left="Runcino · races · new" right="ADD RACE" />
       <div className="stage">
-        <Nav active="races" />
+        <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
         <div className="body">
 
           {/* ── Header ── */}

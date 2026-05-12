@@ -20,7 +20,9 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Caption, Nav } from '../../../components/nav';
+import { Caption } from '../../../components/nav';
+import { Topbar } from '../../components/Topbar';
+import { TopbarClock } from '../../components/TopbarClock';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -110,7 +112,7 @@ export default function RaceDetailPage() {
       <>
         <Caption left="Runcino · races" right="NOT FOUND" />
         <div className="stage">
-          <Nav active="races" />
+          <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
           <div className="body" style={{ padding: 80, textAlign: 'center' }}>
             <h1 style={{ fontSize: 56 }}>404</h1>
             <p style={{ color: 'var(--color-t2)', marginTop: 12 }}>No saved race for slug <code>{slug}</code>.</p>
@@ -178,10 +180,9 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     <>
       <Caption left={`Runcino · ${race.meta.name}`} right={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`} />
       <div className="stage">
-        <Nav active="races" />
+        <Topbar activeTab="races" back={{ href: '/races', label: 'ALL RACES' }} clock={<TopbarClock />} />
         <div className="body">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <Link href="/races" style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--color-t2)', fontWeight: 700 }}>← All races</Link>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn btn--ghost" onClick={onDelete}>Delete</button>

@@ -9,7 +9,9 @@
  */
 
 import Link from 'next/link';
-import { Caption, Nav } from '../../../components/nav';
+import { Caption } from '../../../components/nav';
+import { Topbar } from '../../components/Topbar';
+import { TopbarClock } from '../../components/TopbarClock';
 
 export default async function WorkoutDetailPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = await params;
@@ -18,7 +20,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
     <>
       <Caption left="Runcino · workout" right={`WORKOUT · ${date}`} />
       <div className="stage">
-        <Nav active="training" />
+        <Topbar activeTab="training" back={{ href: '/training', label: 'BACK TO TRAINING' }} clock={<TopbarClock />} />
         <div className="body">
 
           {/* Breadcrumb */}
