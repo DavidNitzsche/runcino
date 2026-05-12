@@ -22,6 +22,8 @@ import type {
 import type {
   ReadinessAssessment,
   WorkoutPrescription,
+  RecentAdjustmentsReport,
+  AdjustedPlan,
 } from '@/coach/coach';
 import type { CoachState } from '@/lib/coach-state';
 import type { NormalizedActivity } from '@/lib/strava-activities';
@@ -86,6 +88,13 @@ export interface OverviewData {
   /** Plan-adapted decision-delta card content. null when no adjustment
    *  has been made (nothing to surface; page hides the card). */
   planAdapted: PlanAdaptedReport | null;
+  /** READINESS · FROM YOUR CHECK-INS tile. 7-day aggregate of the
+   *  daily_checkin table. Null when no rows in the window. */
+  checkinReadiness: CheckinReadinessSnapshot | null;
+  /** AdjustForReality output for today. Null when the engine held the
+   *  plan steady. When set, the TodayCard renders the COACH ADJUSTED
+   *  pin + the "why" line under the workout title. */
+  adjustedToday: TodayAdjustment | null;
   /** HRV / RHR / Sleep / Effort spark cards. HealthKit-blocked: null
    *  until M2 ships. Page renders an AWAITING HEALTHKIT empty state. */
   biometrics: BiometricsSnapshot | null;
@@ -144,6 +153,34 @@ export interface PlanAdaptedReport {
   deltas: PlanAdaptedDelta[];
   /** Footer left text. */
   footLeft: string;
+  /** Per-day adjustment rows. */
+  items: PlanAdaptedItem[];
+}
+
+export interface PlanAdaptedItem {
+  dateISO: string;
+  dateDisplay: string;
+  changeDisplay: string;
+  why: string;
+}
+
+export interface CheckinReadinessSnapshot {
+  rowsCount: number;
+  latestDateISO: string;
+  loggedToday: boolean;
+  avgEnergyDisplay: string;
+  avgSorenessDisplay: string;
+  avgStressDisplay: string;
+  poorDaysCount: number;
+  pinLabel: string;
+  pinVariant: 'green' | 'amber' | 'warn' | 'muted';
+  headline: string;
+  body: string;
+}
+
+export interface TodayAdjustment {
+  why: string;
+  reasons: string[];
 }
 
 export interface BiometricSpark {
@@ -329,6 +366,8 @@ interface OverviewApiPayload {
   weekDeltas: CoachDecision<WeekDeltasReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   raceFitnessB: CoachDecision<RaceFitnessPrediction> | null;
+  recentAdjustments?: CoachDecision<RecentAdjustmentsReport> | null;
+  adjustedToday?: CoachDecision<AdjustedPlan> | null;
   error?: string;
 }
 
@@ -367,8 +406,13 @@ export async function loadOverviewData(
 
   // Sub-snapshots — each returns null when its data source is empty.
   const profile = getProfileSnapshot(today);
-  const workoutStructure = getWorkoutStructure(api.workout.answer);
-  const planAdapted = getPlanAdapted(api.weekDeltas.answer);
+  const adjustedAnswer = api.adjustedToday?.answer ?? null;
+  const renderedWorkout = adjustedAnswer?.changed
+    ? adjustedAnswer.workout
+    : api.workout.answer;
+  const workoutStructure = getWorkoutStructure(renderedWorkout);
+  const planAdapted = getPlanAdapted(api.weekDeltas.answer, api.recentAdjustments ?? null);
+  const checkinReadiness = getCheckinReadiness(coachState);
   const biometrics = getBiometricsSnapshot();
   const vdot = getVdotSnapshot(vdotLib, today);
   const load = getLoadSnapshot(coachState);
@@ -377,6 +421,23 @@ export async function loadOverviewData(
   const longRunStrip = getLongRunStrip(runs, savedRaces, today);
   const year = getYearSnapshot(rollup, heatmap, prs, runs, savedRaces, today);
 
+  // Swap api.workout for the adjusted workout when adjustForReality
+  // returned changed=true. Same CoachDecision wrapper, new answer.
+  const workoutDecision: CoachDecision<WorkoutPrescription> = adjustedAnswer?.changed
+    ? {
+        ...api.workout,
+        answer: adjustedAnswer.workout,
+        rationale: api.adjustedToday?.rationale ?? api.workout.rationale,
+      }
+    : api.workout;
+
+  const adjustedToday: TodayAdjustment | null = adjustedAnswer?.changed
+    ? {
+        why: adjustedAnswer.adjustedFor.join(' · '),
+        reasons: adjustedAnswer.adjustedFor,
+      }
+    : null;
+
   return {
     today,
     profile,
@@ -384,7 +445,7 @@ export async function loadOverviewData(
     races: { upcoming, past, nextA, nextB, daysToNextA },
     strava: { activities, runs, rollup, heatmap, weeklyHistory, prs, effort },
     coach: {
-      workout: api.workout,
+      workout: workoutDecision,
       readiness: api.readiness,
       bodySystems: api.bodySystems,
       trajectory: api.trajectory,
@@ -394,6 +455,8 @@ export async function loadOverviewData(
     },
     workoutStructure,
     planAdapted,
+    checkinReadiness,
+    adjustedToday,
     biometrics,
     vdot,
     load,
@@ -480,13 +543,62 @@ function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBloc
 // Plan-adapted decision deltas
 // ─────────────────────────────────────────────────────────────────────
 
-function getPlanAdapted(_weekDeltas: WeekDeltasReport): PlanAdaptedReport | null {
-  // coach.adjustForReality() returns an AdjustedPlan when today's
-  // session changes; the engine doesn't yet surface a 7-day "what the
-  // plan moved" history. Until it does, this surface stays null and
-  // the page hides the card. No synthesized "+12%" deltas.
-  return null;
+function getCheckinReadiness(state: CoachState): CheckinReadinessSnapshot | null {
+  const c = state.checkin;
+  if (!c || c.rowsCount === 0) return null;
+  const poorDays = c.poorDaysCount ?? 0;
+  let pinLabel = 'STEADY';
+  let pinVariant: CheckinReadinessSnapshot['pinVariant'] = 'green';
+  let headline = 'Check-ins steady.';
+  let body = `${c.rowsCount} of the last 7 days logged. Energy ${c.avgEnergy?.toFixed(1) ?? '—'}/10, soreness ${c.avgSoreness?.toFixed(1) ?? '—'}/10, stress ${c.avgStress?.toFixed(1) ?? '—'}/10.`;
+  if (poorDays >= 3) {
+    pinLabel = 'CUTBACK';
+    pinVariant = 'warn';
+    headline = `${poorDays} poor days this week.`;
+    body = `Doctrine reads ${poorDays} flagged days as a recovery pattern, not a one-off. Cutback territory until signals clear.`;
+  } else if (poorDays >= 2) {
+    pinLabel = 'WATCHING';
+    pinVariant = 'amber';
+    headline = `${poorDays} check-ins flagged.`;
+    body = `Two qualitative signals firing in the last week. Holding the next quality if they don't clear in 24-48h.`;
+  } else if (poorDays === 1) {
+    headline = 'One flagged day — not a pattern yet.';
+  }
+  return {
+    rowsCount: c.rowsCount,
+    latestDateISO: c.latestDateISO ?? '',
+    loggedToday: c.loggedToday,
+    avgEnergyDisplay: c.avgEnergy != null ? c.avgEnergy.toFixed(1) : '—',
+    avgSorenessDisplay: c.avgSoreness != null ? c.avgSoreness.toFixed(1) : '—',
+    avgStressDisplay: c.avgStress != null ? c.avgStress.toFixed(1) : '—',
+    poorDaysCount: poorDays,
+    pinLabel,
+    pinVariant,
+    headline,
+    body,
+  };
 }
+
+function getPlanAdapted(
+  _weekDeltas: WeekDeltasReport,
+  recent: CoachDecision<RecentAdjustmentsReport> | null,
+): PlanAdaptedReport | null {
+  if (!recent) return null;
+  const items = recent.answer.items;
+  if (items.length === 0) return null;
+  const head = items[0];
+  return {
+    title: `${items.length} adjustment${items.length === 1 ? '' : 's'} this week`,
+    body: head.why
+      ? `${head.dateDisplay} · ${head.changeDisplay}. ${head.why}.`
+      : `${head.dateDisplay} · ${head.changeDisplay}.`,
+    pinLabel: items.length >= 3 ? 'HEAVY ADJUST' : 'COACH ADJUSTED',
+    deltas: [],
+    footLeft: `${items.length} of last 7 days · doctrine driven`,
+    items,
+  };
+}
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Biometrics — HealthKit-blocked

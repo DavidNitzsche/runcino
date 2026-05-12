@@ -21,6 +21,8 @@ import type {
 import type {
   WorkoutPrescription,
   ReadinessAssessment,
+  RecentAdjustmentsReport,
+  AdjustedPlan,
 } from '@/coach/coach';
 import type { CoachState } from '@/lib/coach-state';
 import type { NormalizedActivity } from '@/lib/strava-activities';
@@ -76,6 +78,8 @@ export interface TrainingData {
   /** Plan-adapted (Coach Read) — null when nothing has changed in the
    *  last 7 days. */
   planAdapted: PlanAdaptedReport | null;
+  /** AdjustForReality output for today; null when the plan held. */
+  adjustedToday: TodayAdjustment | null;
   /** 14-day HR-zones rollup. */
   hrZones: TrainingApiHrZoneTime;
   /** Strava activities for any client-side rollup. May be null. */
@@ -184,6 +188,19 @@ export interface PlanAdaptedReport {
   pinLabel: string | null;
   deltas: PlanAdaptedDelta[];
   footLeft: string;
+  items: PlanAdaptedItem[];
+}
+
+export interface PlanAdaptedItem {
+  dateISO: string;
+  dateDisplay: string;
+  changeDisplay: string;
+  why: string;
+}
+
+export interface TodayAdjustment {
+  why: string;
+  reasons: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -201,6 +218,8 @@ interface TrainingApiOk {
   proofSessions: CoachDecision<ProofSessionsReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   hrZones: TrainingApiHrZoneTime;
+  recentAdjustments?: CoachDecision<RecentAdjustmentsReport> | null;
+  adjustedToday?: CoachDecision<AdjustedPlan> | null;
 }
 
 interface TrainingApiErr {
@@ -243,7 +262,11 @@ export async function loadTrainingData(
   const vdotLib = vdotSnapshot(api.state);
 
   const profile = getProfileSnapshot(today);
-  const workoutStructure = getWorkoutStructure(api.workout.answer);
+  const adjustedAnswer = api.adjustedToday?.answer ?? null;
+  const renderedWorkout = adjustedAnswer?.changed
+    ? adjustedAnswer.workout
+    : api.workout.answer;
+  const workoutStructure = getWorkoutStructure(renderedWorkout);
   const readyToRun = getReadyToRun(api.readiness.answer);
   const conditions = getConditions();
   const goalTracking = getGoalTracking(
@@ -255,7 +278,22 @@ export async function loadTrainingData(
     prs,
   );
   const nextFourWeeks = getNextFourWeeks(api.trajectory.answer);
-  const planAdapted = getPlanAdapted();
+  const planAdapted = getPlanAdapted(api.recentAdjustments ?? null);
+
+  const workoutDecision: CoachDecision<WorkoutPrescription> = adjustedAnswer?.changed
+    ? {
+        ...api.workout,
+        answer: adjustedAnswer.workout,
+        rationale: api.adjustedToday?.rationale ?? api.workout.rationale,
+      }
+    : api.workout;
+
+  const adjustedToday: TodayAdjustment | null = adjustedAnswer?.changed
+    ? {
+        why: adjustedAnswer.adjustedFor.join(' · '),
+        reasons: adjustedAnswer.adjustedFor,
+      }
+    : null;
 
   return {
     today,
@@ -263,7 +301,7 @@ export async function loadTrainingData(
     state: api.state,
     races: { upcoming, past, nextA, nextB, daysToNextA },
     coach: {
-      workout: api.workout,
+      workout: workoutDecision,
       readiness: api.readiness,
       weekDeltas: api.weekDeltas,
       trajectory: api.trajectory,
@@ -276,6 +314,7 @@ export async function loadTrainingData(
     goalTracking,
     nextFourWeeks,
     planAdapted,
+    adjustedToday,
     hrZones: api.hrZones,
     activities,
     runs,
@@ -605,7 +644,26 @@ function pinsForBlockSequence(points: TrajectoryPoint[]): Array<{ label: string;
 // Plan adapted (Coach Read)
 // ─────────────────────────────────────────────────────────────────────
 
-function getPlanAdapted(): PlanAdaptedReport | null {
+function getPlanAdapted(
+  recent: CoachDecision<RecentAdjustmentsReport> | null,
+): PlanAdaptedReport | null {
+  if (!recent) return null;
+  const items = recent.answer.items;
+  if (items.length === 0) return null;
+  const head = items[0];
+  return {
+    title: `${items.length} adjustment${items.length === 1 ? '' : 's'} this week`,
+    body: head.why
+      ? `${head.dateDisplay} · ${head.changeDisplay}. ${head.why}.`
+      : `${head.dateDisplay} · ${head.changeDisplay}.`,
+    pinLabel: items.length >= 3 ? 'HEAVY ADJUST' : 'COACH ADJUSTED',
+    deltas: [],
+    footLeft: `${items.length} of last 7 days · doctrine driven`,
+    items,
+  };
+}
+
+function _getPlanAdaptedLegacy(): PlanAdaptedReport | null {
   // The engine doesn't yet surface a 7-day "what the plan moved"
   // history. coach.adjustForReality returns a single-day AdjustedPlan
   // — useful for today's prescription but not for the weekly Coach

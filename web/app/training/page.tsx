@@ -329,6 +329,7 @@ function TodayCard({ data }: { data: TrainingData }) {
   const eyebrow = `TODAY · ${todayLabel} · ${phaseLabel}`;
   // The Coach's voiceLead doubles as the "why this is light" body.
   const why = w.voiceLead;
+  const adjusted = data.adjustedToday;
 
   return (
     <Card wash="amber" span={7} padding="26px 28px">
@@ -357,7 +358,11 @@ function TodayCard({ data }: { data: TrainingData }) {
           />
           {eyebrow}
         </div>
-        <CardPin variant="amber">{isRest ? 'RECOVERY' : w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+        {adjusted ? (
+          <CardPin variant="coach">▾ COACH ADJUSTED</CardPin>
+        ) : (
+          <CardPin variant="amber">{isRest ? 'RECOVERY' : w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+        )}
       </CardHeader>
 
       <div
@@ -371,6 +376,21 @@ function TodayCard({ data }: { data: TrainingData }) {
       >
         {w.label}
       </div>
+      {adjusted && (
+        <div
+          style={{
+            marginTop: 6,
+            fontFamily: 'var(--f-data)',
+            fontSize: 11,
+            color: 'var(--coach)',
+            fontWeight: 700,
+            letterSpacing: '1.2px',
+            textTransform: 'uppercase',
+          }}
+        >
+          WHY · {adjusted.why}
+        </div>
+      )}
 
       <div
         className="t-body"
@@ -1724,52 +1744,32 @@ function PlanAdaptedCard({ data }: { data: TrainingData }) {
         {pa.body}
       </div>
 
-      {pa.deltas.map((d, i) => (
+      {pa.items.map((item, i) => (
         <div
           key={i}
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
-            gap: 8,
-            alignItems: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
             padding: '10px 12px',
             background: 'var(--l2)',
             borderRadius: 8,
             marginTop: 10,
           }}
         >
-          <div>
-            <div className="mono-sm" style={{ fontSize: 8.5, color: 'var(--t3)' }}>{d.label}</div>
-            <div
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontWeight: 600,
-                fontSize: 18,
-                color: 'var(--t3)',
-                textDecoration: 'line-through',
-                marginTop: 3,
-              }}
-            >
-              {d.was}
-              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: '1.2px', color: 'var(--coach)', fontWeight: 700, textTransform: 'uppercase' }}>
+              {item.dateDisplay}
+            </span>
+            <span style={{ fontFamily: 'var(--f-display)', fontSize: 14, fontWeight: 700, color: 'var(--t0)' }}>
+              {item.changeDisplay}
+            </span>
           </div>
-          <span style={{ color: 'var(--coach)', fontWeight: 700 }}>→</span>
-          <div style={{ textAlign: 'right' }}>
-            <div className="mono-sm" style={{ fontSize: 8.5, color: 'var(--t3)' }}>NOW</div>
-            <div
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontWeight: 600,
-                fontSize: 18,
-                color: 'var(--coach)',
-                marginTop: 3,
-              }}
-            >
-              {d.now}
-              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
+          {item.why && (
+            <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.4 }}>
+              {item.why}
             </div>
-          </div>
+          )}
         </div>
       ))}
 

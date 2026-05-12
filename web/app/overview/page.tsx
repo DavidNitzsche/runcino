@@ -227,6 +227,11 @@ function OverviewBody({ data }: { data: OverviewData }) {
         <PlanAdaptedCard data={data} />
       </Row>
 
+      {/* ROW 3a · CHECK-IN READINESS — Coach's read on subjective recovery */}
+      <Row>
+        <CheckinReadinessCard data={data} />
+      </Row>
+
       {/* ROW 4 · BIOMETRIC SPARKS (3 + 3 + 3 + 3) */}
       <Row>
         <SparkHRVCard data={data} />
@@ -277,12 +282,20 @@ function TodayCard({ data }: { data: OverviewData }) {
   // a multi-sentence Coach-voice paragraph, perfect for this slot.
   const why = w.voiceLead;
   const duration = estimateDurationMin(w);
+  // adjustForReality fired today — surface a COACH ADJUSTED pin and
+  // a dedicated "why" line. When no adjustment, the card renders
+  // unchanged (no fake reassurance).
+  const adjusted = data.adjustedToday;
 
   return (
     <Card wash="amber" span={6} padding="26px 28px" style={{ minHeight: 340 }}>
       <CardHeader>
         <CardLabel color="var(--att)">{eyebrow}</CardLabel>
-        <CardPin variant="amber">{w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+        {adjusted ? (
+          <CardPin variant="coach">▾ COACH ADJUSTED</CardPin>
+        ) : (
+          <CardPin variant="amber">{w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+        )}
       </CardHeader>
       <div
         className="t-display"
@@ -294,6 +307,21 @@ function TodayCard({ data }: { data: OverviewData }) {
       >
         {w.label}
       </div>
+      {adjusted && (
+        <div
+          style={{
+            marginTop: 6,
+            fontFamily: 'var(--f-data)',
+            fontSize: 11,
+            color: 'var(--coach)',
+            fontWeight: 700,
+            letterSpacing: '1.2px',
+            textTransform: 'uppercase',
+          }}
+        >
+          WHY · {adjusted.why}
+        </div>
+      )}
       <div
         className="t-body"
         style={{
@@ -1372,43 +1400,78 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
         {pa.body}
       </div>
 
-      {pa.deltas.map((d, i) => (
+      {pa.items.map((item, i) => (
         <div
           key={i}
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
-            gap: 10,
-            alignItems: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
             padding: '10px 12px',
             background: 'var(--l2)',
             borderRadius: 8,
             marginTop: 10,
           }}
         >
-          <div>
-            <div style={{ fontFamily: 'var(--f-data)', fontSize: 9, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700, textTransform: 'uppercase' }}>
-              {d.label}
-            </div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 700, lineHeight: 1, marginTop: 3, color: 'var(--t3)', textDecoration: 'line-through' }}>
-              {d.was}
-              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: '1.2px', color: 'var(--coach)', fontWeight: 700, textTransform: 'uppercase' }}>
+              {item.dateDisplay}
+            </span>
+            <span style={{ fontFamily: 'var(--f-display)', fontSize: 14, fontWeight: 700, color: 'var(--t0)' }}>
+              {item.changeDisplay}
+            </span>
           </div>
-          <span style={{ fontFamily: 'var(--f-data)', fontSize: 14, color: 'var(--coach)', fontWeight: 700 }}>→</span>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--f-data)', fontSize: 9, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700, textTransform: 'uppercase' }}>
-              NOW
+          {item.why && (
+            <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.4 }}>
+              {item.why}
             </div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 700, lineHeight: 1, marginTop: 3, color: 'var(--coach)' }}>
-              {d.now}
-              {d.unit && <small style={{ fontSize: '.5em' }}>{d.unit}</small>}
-            </div>
-          </div>
+          )}
         </div>
       ))}
 
       <CardFoot left={pa.footLeft} right={<span style={{ color: 'var(--coach)' }}>SEE PLAN →</span>} />
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CHECK-IN READINESS · last 7 days from daily_checkin
+// ─────────────────────────────────────────────────────────────────────
+
+function CheckinReadinessCard({ data }: { data: OverviewData }) {
+  const c = data.checkinReadiness;
+  if (!c) {
+    return (
+      <Card wash="amber" span={4} padding="20px 22px">
+        <CardHeader>
+          <CardLabel color="var(--att)">READINESS · FROM YOUR CHECK-INS</CardLabel>
+          <CardPin variant="muted">NO DATA YET</CardPin>
+        </CardHeader>
+        <EmptyState
+          variant="empty"
+          title="No check-ins logged this week"
+          body="Daily energy / soreness / stress drive the Coach's recovery read."
+          cta={<a className="btn-flat btn-primary" href="/health">+ LOG CHECK-IN</a>}
+        />
+      </Card>
+    );
+  }
+  return (
+    <Card wash="amber" span={4} padding="20px 22px">
+      <CardHeader>
+        <CardLabel color="var(--att)">READINESS · FROM YOUR CHECK-INS</CardLabel>
+        <CardPin variant={c.pinVariant}>{c.pinLabel}</CardPin>
+      </CardHeader>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 600, lineHeight: 1.2, marginTop: 6 }}>
+        {c.headline}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5, marginTop: 6 }}>
+        {c.body}
+      </div>
+      <CardFoot
+        left={`${c.rowsCount} of last 7 days logged${c.loggedToday ? ' · today ✓' : ''}`}
+        right={<span style={{ color: 'var(--coach)' }}>SEE HEALTH →</span>}
+      />
     </Card>
   );
 }
