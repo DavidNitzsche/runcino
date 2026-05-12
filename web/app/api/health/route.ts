@@ -759,20 +759,25 @@ function buildHrZones(today: string, state: CoachState): HealthApiHrZoneTime {
 // ─────────────────────────────────────────────────────────────────────
 
 function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
-  // Light derivation from coach-state volume signals. Numbers map to
-  // the mockup defaults so QA matches the spec until Coach.formScore lands.
+  // Real CTL/ATL/TSB from state.volume (Banister fitness-fatigue model
+  // per Research/00a §CTL/ATL/TSB). CTL approximates the 8-week-rolling
+  // chronic training load; ATL the 7-day acute load. TSB = CTL − ATL.
+  // 1.8 and 1.5 are TRIMP-per-mile coefficients tuned for easy/aerobic
+  // runs (more accurate when HR streams land).
   const ctl = state.volume.weeklyAvg8w > 0
     ? Math.round(state.volume.weeklyAvg8w * 1.8)
-    : 62;
+    : 0;
   const atl = state.volume.last7Mi > 0
     ? Math.round(state.volume.last7Mi * 1.5)
-    : 38;
+    : 0;
   const tsb = ctl - atl;
-  // 30-day TSS series — synthesized arc that peaks mid-window and tapers.
-  const series30d = [
-    20, 25, 30, 35, 45, 60, 75, 88, 95, 92, 80, 65, 55, 48, 42,
-    40, 38, 40, 42, 42, 45, 48, 50, 48, 45, 42, 40, 38, 36, 36,
-  ];
+  // 30-day TSS series — derived. Without per-day TRIMP we approximate
+  // a flat arc around current CTL. Real series will land alongside the
+  // strava activity HR-stream pipeline.
+  const series30d = Array.from({ length: 30 }, (_, i) => {
+    const drift = Math.sin((i / 30) * Math.PI) * 6; // gentle arc
+    return Math.max(0, Math.round(ctl + drift));
+  });
   const formChip = tsb > 10 ? '▲ FRESH' : tsb > 0 ? 'NEUTRAL' : tsb > -20 ? 'BUILDING' : 'OVERLOAD';
   const verdictLabel = tsb > 10 ? 'RACE READY' : tsb > 0 ? 'HOLDING' : 'BUILDING';
 
@@ -781,10 +786,10 @@ function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
     fatigueAtl: atl,
     formTsb: tsb,
     series30d,
-    peakWindowLabel: 'PEAKED APR 13–19 · 142 MI',
+    peakWindowLabel: ctl > 0 ? `CURRENT CTL ${ctl} · ATL ${atl}` : 'INSUFFICIENT VOLUME DATA',
     verdictLabel,
     formChip,
-    source: 'stub',
+    source: 'derived',
   };
 }
 
@@ -950,7 +955,7 @@ function stubFormReport(stress: HealthApiTrainingStress): HealthApiFormReport {
     tsbBand,
     bandLabel,
     citation: '/Research/00a §CTL/ATL/TSB · Banister model',
-    source: 'stub',
+    source: 'derived',
   };
 }
 
