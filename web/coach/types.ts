@@ -104,7 +104,7 @@ export interface CoachCalibration {
 export interface BodySystem {
   /** Stable identifier for the system. UI uses this to look up the
    *  doctrine card it expands to. */
-  id: 'glycogen' | 'muscle' | 'connective' | 'cns' | 'immune';
+  id: 'glycogen' | 'muscle' | 'connective' | 'bone' | 'cns' | 'immune';
   /** Human label shown on the card. */
   label: string;
   /** Time window from peak stress (e.g. "5-10d"). */

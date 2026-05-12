@@ -889,62 +889,97 @@ class CoachImpl implements Coach {
   // These return mock data so the May 9 mockups can be wired before
   // their feeding engines exist. Real implementations land later.
 
-  // STUB · STAGE 7 · TODO: wire to recovery_protocols.ts (§Tissue Healing Timelines)
-  // MOCKUP REF: designs/overview-2026-05-09.html:895-961 (BODY SYSTEMS card)
-  // MOCKUP REF: designs/health-2026-05-09.html (Body Systems detail)
+  // ── Stage 7 · bodySystems (real data) ──────────────────────────
+  // 5 (or 6 incl. bone for ultras) tissue systems with per-system
+  // readiness state. Each window comes from doctrine
+  // TISSUE_RECOVERY_TIMELINES (Research/00b). Readiness is daysSince/
+  // windowHigh, clamped [0,1]. State is:
+  //   done     → daysSince ≥ windowHigh (fully repaired)
+  //   building → daysSince < windowHigh (still in repair)
+  //
+  // The anchor is state.races.recent[0] (most recent race). If there's
+  // no recent race, the body shows fully recovered (no peak stressor).
+  // Marathon recoveries include the bone-remodeling row (3-6 weeks)
+  // because cumulative skeletal load is the limiter at that distance
+  // per Research/00b.
+  //
+  // @research Research/00b §Tissue Healing Timelines
+  //           Research/00b §Post-Race Recovery › Recovery by Distance
   async bodySystems(input: BodySystemsInput): Promise<CoachDecision<BodySystemsReport>> {
     const recentRace = input.state.races.recent[0] ?? null;
-    const daysSince = recentRace?.daysAgo ?? 6;
-    // Mock anchors are the heuristic baselines the mockup shows: a
-    // half-marathon 6 days ago. UI just wants realistic values.
+    const daysSince = recentRace?.daysAgo ?? 999; // no race → fully recovered
+    const distMi = recentRace?.distanceMi ?? 0;
+    const isMarathonOrLonger = distMi >= 22;
+
     const today = new Date(input.today + 'T12:00:00Z');
     const addDays = (n: number) => {
       const d = new Date(today); d.setUTCDate(d.getUTCDate() + n);
       return d.toISOString().slice(0, 10);
     };
 
-    const systems: BodySystem[] = [
-      {
-        id: 'glycogen', label: 'Glycogen', windowLabel: '24-72h',
-        state: 'done', readiness: 1.0,
-        healedByISO: addDays(-1), daysToHealed: 0,
-      },
-      {
-        id: 'muscle', label: 'Muscle fibers', windowLabel: '5-10d',
-        state: 'done', readiness: 0.90,
-        healedByISO: addDays(4), daysToHealed: 4,
-      },
-      {
-        id: 'connective', label: 'Connective', windowLabel: '2-4wk',
-        state: 'building', readiness: 0.42,
-        healedByISO: addDays(15), daysToHealed: 15,
-      },
-      {
-        id: 'cns', label: 'CNS / hormonal', windowLabel: '2-4wk',
-        state: 'building', readiness: 0.55,
-        healedByISO: addDays(15), daysToHealed: 15,
-      },
-      {
-        id: 'immune', label: 'Immune', windowLabel: '1-3wk',
-        state: 'building', readiness: 0.75,
-        healedByISO: addDays(8), daysToHealed: 8,
-      },
+    // Window high in days, sourced from TISSUE_RECOVERY_TIMELINES.
+    // Glycogen 24-72h → 3 days · Muscle 5-10d → 10 · Connective 2-4wk
+    // → 28 · Bone 3-6wk → 42 · CNS/hormonal 2-4wk → 28 · Immune 1-3wk → 21.
+    type Tissue = { id: BodySystem['id']; label: string; windowLabel: string; windowDays: number };
+    const tissues: Tissue[] = [
+      { id: 'glycogen',   label: 'Glycogen',       windowLabel: '24-72h', windowDays: 3 },
+      { id: 'muscle',     label: 'Muscle fibers',  windowLabel: '5-10d',  windowDays: 10 },
+      { id: 'connective', label: 'Connective',     windowLabel: '2-4wk',  windowDays: 28 },
+      { id: 'cns',        label: 'CNS / hormonal', windowLabel: '2-4wk',  windowDays: 28 },
+      { id: 'immune',     label: 'Immune',         windowLabel: '1-3wk',  windowDays: 21 },
     ];
-    // Quality returns when the slowest still-building system finishes.
-    const slowestDays = Math.max(...systems.map(s => s.daysToHealed));
+    if (isMarathonOrLonger) {
+      tissues.splice(3, 0, { id: 'bone', label: 'Bone remodeling', windowLabel: '3-6wk', windowDays: 42 });
+    }
+
+    const systems: BodySystem[] = tissues.map((t) => {
+      const readiness = Math.max(0, Math.min(1, daysSince / t.windowDays));
+      const daysToHealed = Math.max(0, t.windowDays - daysSince);
+      return {
+        id: t.id,
+        label: t.label,
+        windowLabel: t.windowLabel,
+        state: daysSince >= t.windowDays ? 'done' : 'building',
+        readiness: Math.round(readiness * 100) / 100,
+        healedByISO: addDays(daysToHealed),
+        daysToHealed,
+      };
+    });
+
+    const slowestDays = Math.max(...systems.map((s) => s.daysToHealed));
     const qualityReturnsISO = addDays(slowestDays);
+    const doneCount = systems.filter((s) => s.state === 'done').length;
+    const buildingCount = systems.length - doneCount;
+
+    const contextLabel = !recentRace
+      ? 'RECOVERED'
+      : daysSince >= slowestDays
+      ? 'RECOVERED'
+      : daysSince < 7
+      ? 'EARLY REPAIR'
+      : daysSince < 14
+      ? 'REBUILDING'
+      : 'LATE REPAIR';
+
+    const stillBuilding = systems.filter((s) => s.state === 'building').map((s) => s.label.toLowerCase());
+    const rationale = !recentRace
+      ? 'No recent race. Every system is at baseline — train as scheduled.'
+      : buildingCount === 0
+      ? `${daysSince} days post-${recentRace.name}. Every system has finished its repair window. Quality work is back online.`
+      : `${daysSince} days post-${recentRace.name}. ${doneCount}/${systems.length} systems repaired; ${stillBuilding.join(' and ')} still ${stillBuilding.length === 1 ? 'rebuilding' : 'in repair'}. Quality returns when the slowest tops out — about ${slowestDays} days.`;
 
     return {
       answer: {
         daysSincePeakStress: daysSince,
-        contextLabel: daysSince < 14 ? 'REBUILDING' : 'RECOVERED',
+        contextLabel,
         systems,
         qualityReturnsISO,
-        rationale: `${daysSince} days post-${recentRace ? recentRace.name : 'last hard effort'}. Glycogen and muscle are back; connective and CNS still in repair. Quality work returns when the slowest system tops out — about ${slowestDays} days.`,
+        rationale,
       },
-      rationale: `${daysSince} days post-stressor. ${systems.filter(s => s.state === 'done').length}/${systems.length} systems healed.`,
+      rationale: `${daysSince}d post-stressor; ${doneCount}/${systems.length} healed. Slowest: ${slowestDays}d.`,
       citations: [
-        { doc: 'Research/00b-recovery-protocols.md', section: '§Tissue Healing Timelines', snippet: 'Per-system recovery windows: glycogen 24-72h, muscle fibers 5-10d, connective 2-4wk, CNS/hormonal 2-4wk, immune 1-3wk' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Tissue Healing Timelines' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Post-Race Recovery › Recovery by Distance' },
       ],
       brain: 'deterministic',
     };
