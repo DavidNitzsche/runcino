@@ -14,6 +14,7 @@ import { use, useEffect, useState } from 'react';
 import { Caption } from '../../../components/nav';
 import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
+import { EmptyState, Skeleton } from '../../components/EmptyState';
 import { formatShort } from '../../../lib/dates';
 import { recommendShoe, inferRunType, type Shoe } from '../../../lib/shoe-utils';
 
@@ -90,47 +91,65 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   }
 
   if (activity === 'loading') {
-    return <Shell><div className="hint" style={{ padding: 40 }}>Loading run…</div></Shell>;
+    return (
+      <Shell>
+        <div className="greet">
+          <div className="greet-id">
+            <Skeleton width={200} height={11} style={{ marginBottom: 8 }} />
+            <Skeleton width={320} height={36} />
+          </div>
+          <div className="greet-state">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div key={i} className="greet-tile">
+                <Skeleton width={56} height={9} style={{ marginBottom: 8 }} />
+                <Skeleton width={90} height={22} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+          <div className="card" style={{ gridColumn: 'span 12' }}>
+            <Skeleton height={280} />
+          </div>
+        </div>
+      </Shell>
+    );
   }
   if (!activity) {
     return (
       <Shell>
-        <div className="page-head">
-          <div>
-            <h1>Run not found</h1>
-            <div className="sub">{error || 'No activity matching that id.'}</div>
-          </div>
-          <div className="page-actions">
-            <Link href="/log" className="btn">← All runs</Link>
+        <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+          <div className="card" style={{ gridColumn: 'span 12' }}>
+            <EmptyState
+              variant="error"
+              title="Run not found"
+              body={error || 'No Strava activity matching that id. It may have been deleted.'}
+              cta={
+                <Link href="/log" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                  ← BACK TO LOG
+                </Link>
+              }
+            />
           </div>
         </div>
       </Shell>
     );
   }
 
-  const m = Math.floor(activity.paceSPerMi / 60);
-  const s = activity.paceSPerMi % 60;
+  const pacePerMi = `${Math.floor(activity.paceSPerMi / 60)}:${String(activity.paceSPerMi % 60).padStart(2, '0')}`;
+  const isRace = activity.workoutType === 1;
 
   return (
     <Shell>
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Strava run · {formatShort(activity.date)}</div>
-          <h1 style={{ textTransform: 'uppercase' }}>{activity.name}</h1>
-          <div className="sub">
-            {activity.distanceMi.toFixed(2)} mi · {fmtT(activity.movingTimeS)} · {m}:{String(s).padStart(2, '0')}/mi
-            {activity.workoutType === 1 && <> · <b style={{ color: 'var(--color-attention)' }}>RACE</b></>}
-          </div>
-        </div>
-        <div className="page-actions">
-          <Link href="/log" className="btn">← All runs</Link>
-          <a href={`https://www.strava.com/activities/${activity.id}`} className="btn btn--primary" target="_blank" rel="noopener noreferrer">↗ Strava</a>
-        </div>
-      </div>
+      <RunHero activity={activity} pacePerMi={pacePerMi} isRace={isRace} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10, marginBottom: 10 }}>
-        <RoutePoly polyline={activity.summaryPolyline} />
-        <StatsTile activity={activity} />
+      <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)', marginBottom: 10 }}>
+        <div className="card" style={{ gridColumn: 'span 7', padding: 0, overflow: 'hidden' }}>
+          <RoutePoly polyline={activity.summaryPolyline} />
+        </div>
+        <div className="card" style={{ gridColumn: 'span 5' }}>
+          <DescriptionOrMeta activity={activity} />
+        </div>
       </div>
 
       <ShoeTile
@@ -141,8 +160,99 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       />
       {activity.bestEfforts && activity.bestEfforts.length > 0 && <BestEffortsTile efforts={activity.bestEfforts} />}
       {activity.miles && activity.miles.length > 0 && <SplitsTable miles={activity.miles} />}
-      {activity.description && <DescriptionTile description={activity.description} />}
     </Shell>
+  );
+}
+
+/** Canonical hero matching _template-detail-2026-05-09.html — eyebrow + h1 left,
+ *  5 KPI tiles right (Distance / Time / Pace / HR / Elev). */
+function RunHero({ activity, pacePerMi, isRace }: { activity: RichActivity; pacePerMi: string; isRace: boolean }) {
+  return (
+    <div className="greet">
+      <div className="greet-id">
+        <div className="hi">
+          STRAVA RUN · {formatShort(activity.date)}
+          {isRace && <> · <span style={{ color: 'var(--race)' }}>RACE</span></>}
+        </div>
+        <h1>{activity.name}</h1>
+      </div>
+      <div className="greet-state">
+        <KpiTile label="DISTANCE" value={activity.distanceMi.toFixed(1)} unit="MI" />
+        <KpiTile label="TIME" value={fmtT(activity.movingTimeS)} />
+        <KpiTile
+          label="AVG PACE"
+          value={pacePerMi}
+          unit="/MI"
+          variant={isRace ? 'race' : 'good'}
+        />
+        <KpiTile
+          label="AVG HR"
+          value={activity.avgHr ? String(Math.round(activity.avgHr)) : '—'}
+          unit={activity.avgHr ? 'BPM' : undefined}
+        />
+        <KpiTile
+          label="ELEV"
+          value={activity.elevGainFt.toLocaleString()}
+          unit="FT"
+        />
+      </div>
+    </div>
+  );
+}
+
+function KpiTile({ label, value, unit, variant }: { label: string; value: string; unit?: string; variant?: 'race' | 'good' | 'amber' | 'coach' }) {
+  return (
+    <div className={`greet-tile${variant ? ` ${variant}` : ''}`}>
+      <div className="l">{label}</div>
+      <div className="v">
+        {value}
+        {unit && <small>{unit}</small>}
+      </div>
+    </div>
+  );
+}
+
+function DescriptionOrMeta({ activity }: { activity: RichActivity }) {
+  return (
+    <>
+      <div className="card-h">
+        <div className="card-l">{activity.description ? 'DESCRIPTION' : 'METADATA'}</div>
+        {(activity.kudosCount > 0 || activity.achievementCount > 0) && (
+          <span className="card-pin">
+            {activity.kudosCount > 0 && <>♡ {activity.kudosCount}</>}
+            {activity.achievementCount > 0 && <> · ★ {activity.achievementCount}</>}
+          </span>
+        )}
+      </div>
+      {activity.description ? (
+        <div className="t-body" style={{ whiteSpace: 'pre-wrap', color: 'var(--t1)' }}>
+          {activity.description}
+        </div>
+      ) : (
+        <div className="t-body" style={{ color: 'var(--t2)', fontStyle: 'italic' }}>
+          No description on this run.
+        </div>
+      )}
+      <div style={{
+        marginTop: 'auto', display: 'flex', gap: 12, paddingTop: 14,
+        borderTop: '1px solid var(--l4)',
+      }}>
+        <a
+          href={`https://www.strava.com/activities/${activity.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-primary"
+          style={{ textDecoration: 'none' }}
+        >↗ View on Strava</a>
+        {activity.maxHr && (
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            fontFamily: 'var(--f-data)', fontSize: 11, color: 'var(--t3)',
+            letterSpacing: '.06em', fontWeight: 600,
+          }}>MAX HR · {Math.round(activity.maxHr)} BPM</div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -222,45 +332,6 @@ function RoutePoly({ polyline }: { polyline: string | null }) {
   );
 }
 
-function StatsTile({ activity }: { activity: RichActivity }) {
-  const stats = [
-    { label: 'Distance', value: `${activity.distanceMi.toFixed(2)} mi` },
-    { label: 'Time', value: fmtT(activity.movingTimeS) },
-    { label: 'Avg pace', value: `${Math.floor(activity.paceSPerMi / 60)}:${String(activity.paceSPerMi % 60).padStart(2, '0')}/mi` },
-    { label: 'Elev gain', value: `${activity.elevGainFt.toLocaleString()} ft` },
-    { label: 'Avg HR', value: activity.avgHr ? `${Math.round(activity.avgHr)} bpm` : '—' },
-    { label: 'Max HR', value: activity.maxHr ? `${Math.round(activity.maxHr)} bpm` : '—' },
-    { label: 'Cadence', value: activity.avgCadence ? `${Math.round(activity.avgCadence * 2)} spm` : '—' },
-    { label: 'Suffer', value: activity.sufferScore != null ? String(activity.sufferScore) : '—' },
-  ];
-  return (
-    <div className="tile" style={{ minHeight: 320, padding: 0 }}>
-      <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-l4)' }}>
-        <div className="tile-sub">Run stats</div>
-        <div className="tile-lbl">From Strava</div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: 0 }}>
-        {stats.map((s, i) => (
-          <div key={s.label} style={{
-            padding: '14px 18px',
-            borderBottom: i < 6 ? '1px solid var(--color-l4)' : 'none',
-            borderRight: i % 2 === 0 ? '1px solid var(--color-l4)' : 'none',
-          }}>
-            <div className="tile-sub" style={{ marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 22, letterSpacing: '-.01em', color: 'var(--color-t0)', fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-      {(activity.kudosCount > 0 || activity.achievementCount > 0) && (
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--color-l4)', display: 'flex', gap: 14, fontSize: 12, color: 'var(--color-t2)' }}>
-          <span>♡ {activity.kudosCount} kudos</span>
-          {activity.achievementCount > 0 && <span style={{ color: 'var(--color-attention)' }}>★ {activity.achievementCount} achievement{activity.achievementCount === 1 ? '' : 's'}</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function BestEffortsTile({ efforts }: { efforts: NonNullable<RichActivity['bestEfforts']> }) {
   return (
     <div className="tile" style={{ marginBottom: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -326,15 +397,6 @@ function SplitsTable({ miles }: { miles: NonNullable<RichActivity['miles']> }) {
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function DescriptionTile({ description }: { description: string }) {
-  return (
-    <div className="tile" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div className="tile-sub">Strava description</div>
-      <div style={{ fontSize: 13.5, color: 'var(--color-t1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{description}</div>
     </div>
   );
 }
