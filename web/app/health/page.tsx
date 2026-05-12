@@ -137,8 +137,13 @@ function HealthGreet({ data }: { data: HealthData | null }) {
   }
 
   const { readiness, sleep, hrvDetail, expandedCheckin, bodySystems } = data;
-  const sleepDisplay = formatHoursToHMM(sleep.current);
-  const sleepGoalDelta = Math.round((sleep.current - sleep.goalHrs[0]) * 60);
+  // Sleep is HealthKit-blocked — when sleep.current is null, surface
+  // the tile as NO DATA YET rather than computing a fake H:MM string.
+  const sleepDisplay = sleep.current != null ? formatHoursToHMM(sleep.current) : '—';
+  const sleepGoalDelta = sleep.current != null
+    ? Math.round((sleep.current - sleep.goalHrs[0]) * 60)
+    : null;
+  const hrvHasData = hrvDetail.isAvailable && hrvDetail.current != null;
 
   const greetVariant =
     readiness.pinVariant === 'green' ? 'good'
@@ -172,20 +177,28 @@ function HealthGreet({ data }: { data: HealthData | null }) {
           }
         />
         <GreetTile
-          variant="good"
+          variant={hrvHasData ? 'good' : 'amber'}
           eyebrow="HRV · 7D AVG"
-          value={String(hrvDetail.current)}
-          unit="ms"
-          delta={`BASE ${hrvDetail.baseline}ms · CV ${hrvDetail.cv}%`}
-          deltaColor={hrvDetail.plewsVerdict === 'stable' ? 'var(--good)' : 'var(--warn)'}
+          value={hrvHasData ? String(hrvDetail.current) : '—'}
+          unit={hrvHasData ? 'ms' : ''}
+          delta={hrvHasData
+            ? `BASE ${hrvDetail.baseline}ms · CV ${hrvDetail.cv}%`
+            : 'AWAITING HEALTHKIT'}
+          deltaColor={hrvHasData
+            ? (hrvDetail.plewsVerdict === 'stable' ? 'var(--good)' : 'var(--warn)')
+            : 'var(--att)'}
         />
         <GreetTile
-          variant="coach"
+          variant={sleep.isAvailable ? 'coach' : 'amber'}
           eyebrow="SLEEP · 7D AVG"
           value={sleepDisplay}
-          unit="HRS"
-          delta={`${sleepGoalDelta >= 0 ? '+' : ''}${sleepGoalDelta}M vs GOAL`}
-          deltaColor={sleepGoalDelta >= 0 ? 'var(--good)' : 'var(--warn)'}
+          unit={sleep.isAvailable ? 'HRS' : ''}
+          delta={sleepGoalDelta != null
+            ? `${sleepGoalDelta >= 0 ? '+' : ''}${sleepGoalDelta}M vs GOAL`
+            : 'AWAITING HEALTHKIT'}
+          deltaColor={sleepGoalDelta != null
+            ? (sleepGoalDelta >= 0 ? 'var(--good)' : 'var(--warn)')
+            : 'var(--att)'}
         />
         <GreetTile
           variant={allHealed ? 'good' : 'amber'}
@@ -952,6 +965,23 @@ function shortRaceLabel(name: string): string {
 
 function HrvDetailCard({ data }: { data: HealthData }) {
   const h = data.hrvDetail;
+  // HealthKit-blocked. When HRV is unavailable, render the card title +
+  // citation but show NO DATA YET in place of the metric tiles + chart.
+  if (!h.isAvailable || h.current == null || h.baseline == null || h.cv == null) {
+    return (
+      <Card span={7} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>HRV DETAIL · 30-DAY</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once HealthKit is connected, your HRV (LnRMSSD), 30-day baseline, CV (Plews §5) and trend will populate here."
+        />
+        <CardFoot left={h.citation} />
+      </Card>
+    );
+  }
   const tone =
     h.plewsVerdict === 'stable' ? 'var(--good)'
     : h.plewsVerdict === 'drifting' ? 'var(--att)'
@@ -986,7 +1016,7 @@ function HrvDetailCard({ data }: { data: HealthData }) {
           color={h.cv < 8 ? 'var(--good)' : h.cv < 12 ? 'var(--att)' : 'var(--warn)'}
           subtitle="(Plews §5)"
         />
-        <HrvTile label="TREND" value={h.trendDirection} unit="" color={tone} valueFontSize={18} />
+        <HrvTile label="TREND" value={h.trendDirection ?? '—'} unit="" color={tone} valueFontSize={18} />
       </div>
 
       {/* 30-day daily HRV bars · one bar per morning reading. Bars above the
@@ -1101,6 +1131,22 @@ function HrvTile({
 
 function SleepCard({ data }: { data: HealthData }) {
   const s = data.sleep;
+  // HealthKit-blocked. Render NO DATA YET when sleep stream is empty.
+  if (!s.isAvailable || s.current == null || s.deepHrs == null || s.remHrs == null) {
+    return (
+      <Card span={4} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>SLEEP</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body={`Once HealthKit is connected, sleep duration, deep/REM, and efficiency will populate here. Goal ${s.goalHrs[0]}–${s.goalHrs[1]}h.`}
+        />
+        <CardFoot left="Total sleep, deep, REM, and how efficiently you slept. Deep + REM > 3 hours signals a recovery night." />
+      </Card>
+    );
+  }
   const display = formatHoursToHMM(s.current);
   const goalDeltaMin = Math.round((s.current - s.goalHrs[0]) * 60);
   const onGoal = goalDeltaMin >= 0;
@@ -1129,6 +1175,22 @@ function SleepCard({ data }: { data: HealthData }) {
 
 function RhrCard({ data }: { data: HealthData }) {
   const r = data.rhr;
+  // HealthKit-blocked. Render NO DATA YET when RHR stream is empty.
+  if (!r.isAvailable || r.current == null || r.baseline == null) {
+    return (
+      <Card span={4} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>RHR</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once HealthKit is connected, morning resting heart rate and its 7/30-day trend will populate here."
+        />
+        <CardFoot left="Morning resting heart rate. Trending up over baseline is an early signal of accumulated stress or illness." />
+      </Card>
+    );
+  }
   const trend = r.current - r.baseline;
   const fresher = trend < 0;
   const coachLine =
@@ -1324,6 +1386,23 @@ function FormBandBar({ tsb }: { tsb: number }) {
 
 function IllnessEarlyCompositeCard({ data }: { data: HealthData }) {
   const ic = data.illnessComposite;
+  // HealthKit-blocked. All 5 markers (RHR/HRV/sleep eff/body temp/resp
+  // rate) require HealthKit. Render NO DATA YET until ingestion lands.
+  if (!ic.isAvailable || ic.markers.length === 0) {
+    return (
+      <Card span={5} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>ILLNESS EARLY · 5 MARKERS</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once HealthKit is connected, RHR, HRV, sleep efficiency, body temperature, and respiratory rate will populate here — 3+ drifting at once is the early-warning trigger."
+        />
+        <CardFoot left={ic.citation} />
+      </Card>
+    );
+  }
   const pinVariant =
     ic.compositeVerdict === 'allClear' ? 'green'
     : ic.compositeVerdict === 'oneDrift' ? 'amber'
@@ -1428,6 +1507,22 @@ function IllnessMarkerRow({ marker }: { marker: IllnessMarker }) {
 
 function Vo2MaxCard({ data }: { data: HealthData }) {
   const v = data.vo2max;
+  // HealthKit-blocked. Render NO DATA YET when VO2Max samples are empty.
+  if (!v.isAvailable || v.current == null || v.baseline == null) {
+    return (
+      <Card span={4} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>VO₂MAX · 6-MO TREND</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once HealthKit is connected, your monthly VO₂Max samples and 6-month trend will populate here."
+        />
+        <CardFoot left="Your aerobic engine size. Trends slowly across months — short-term wiggles aren't signal." />
+      </Card>
+    );
+  }
   const trend = v.current - v.baseline;
   const series = v.series6mo;
   const labels = v.series6moLabels;
@@ -1501,6 +1596,22 @@ function Vo2MaxCard({ data }: { data: HealthData }) {
 
 function BodyMassCard({ data }: { data: HealthData }) {
   const bm = data.bodyMass;
+  // HealthKit-blocked. Render NO DATA YET when weight samples are empty.
+  if (!bm.isAvailable || bm.current == null || bm.baseline28d == null || bm.delta14dPct == null) {
+    return (
+      <Card span={3} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>BODY MASS · 28D</CardLabel>
+          <CardPin variant="amber">AWAITING HEALTHKIT</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once HealthKit is connected, daily weight and the 14-day delta will populate here."
+        />
+        <CardFoot left="Sudden weight drops mean hydration loss or under-fueling. Sustained >2% drop over 2 weeks is a flag." />
+      </Card>
+    );
+  }
   const pinVariant = bm.warningTriggered ? 'warn' : 'green';
   const pinLabel = bm.warningTriggered ? '▼ DROP' : '● STABLE';
 
@@ -1583,6 +1694,28 @@ function BodyMassCard({ data }: { data: HealthData }) {
 
 function SubmaxHrDriftCard({ data }: { data: HealthData }) {
   const sd = data.submaxHrDrift;
+  // Strava HR-stream-blocked. Render NO DATA YET when the 8-week
+  // series isn't computed yet.
+  if (!sd.isAvailable || sd.current == null || sd.baseline == null || sd.driftBpm == null || sd.series8w.length === 0) {
+    return (
+      <Card span={data.profile.sex === 'female' ? 6 : 12} padding="18px 20px">
+        <CardHeader>
+          <div>
+            <CardLabel>SUBMAX HR DRIFT · EASY PACE</CardLabel>
+            <div className="mono-sm" style={{ marginTop: 4, color: 'var(--t3)' }}>
+              Avg HR at 8:30–9:00 /mi · 8-week window
+            </div>
+          </div>
+          <CardPin variant="amber">AWAITING STRAVA HR</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once Strava HR streams are wired, your easy-pace HR drift over the last 8 weeks will populate here — the earliest reliable overtraining marker."
+        />
+        <CardFoot left="Heart rate at the same easy pace, week over week. Creeping up = body is taking on more stress than it's clearing." />
+      </Card>
+    );
+  }
   const pinVariant =
     sd.verdict === 'stable' ? 'green'
     : sd.verdict === 'creeping' ? 'amber'
@@ -1616,7 +1749,9 @@ function SubmaxHrDriftCard({ data }: { data: HealthData }) {
     const weeksAgo = series.length - 1 - i;
     return weeksAgo === 0 ? 'NOW' : `−${weeksAgo}w`;
   });
-  const weeksAboveBaseline = series.filter((v) => v > sd.baseline).length;
+  // Hoist baseline into a non-null local so callbacks below don't lose narrowing.
+  const baselineBpm = sd.baseline;
+  const weeksAboveBaseline = series.filter((v) => v > baselineBpm).length;
   const verdictExplain =
     sd.verdict === 'stable'
       ? "Easy-pace HR is sitting at baseline — your aerobic system is keeping up with the training load."
@@ -1710,7 +1845,7 @@ function SubmaxHrDriftCard({ data }: { data: HealthData }) {
                   </div>
                   {series.map((v, i) => {
                     const hPct = ((v - barMin) / barRange) * 100;
-                    const aboveBase = v > sd.baseline;
+                    const aboveBase = v > baselineBpm;
                     const isLatest = i === series.length - 1;
                     const barColor = aboveBase
                       ? tone
@@ -1811,6 +1946,22 @@ function KpiTile({ label, value, unit, color }: { label: string; value: string; 
 // ─────────────────────────────────────────────────────────────────────
 
 function CycleCard({ cycle }: { cycle: NonNullable<HealthData['cycle']> }) {
+  // Cycle-log table not yet built. Render NO DATA YET until cycle data lands.
+  if (!cycle.isAvailable || cycle.phase == null || cycle.daysIntoPhase == null) {
+    return (
+      <Card span={3} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>CYCLE · PHASE</CardLabel>
+          <CardPin variant="amber">AWAITING CHECK-IN</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once you start logging cycle phases, the active phase, days in, and load adjustment will populate here."
+        />
+        <CardFoot left={cycle.citation} />
+      </Card>
+    );
+  }
   return (
     <Card span={3} padding="18px 20px">
       <CardHeader>
@@ -1861,6 +2012,22 @@ function CycleCard({ cycle }: { cycle: NonNullable<HealthData['cycle']> }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function FerritinCard({ ferritin }: { ferritin: NonNullable<HealthData['ferritin']> }) {
+  // Lab-result table not yet built. Render NO DATA YET until lab data lands.
+  if (!ferritin.isAvailable || ferritin.currentNgPerMl == null) {
+    return (
+      <Card span={3} padding="18px 20px">
+        <CardHeader>
+          <CardLabel>FERRITIN · IRON</CardLabel>
+          <CardPin variant="amber">AWAITING LABS</CardPin>
+        </CardHeader>
+        <EmptyState
+          title="NO DATA YET"
+          body="Once lab results are logged, ferritin (ng/mL), trend, and the <30 threshold flag will populate here."
+        />
+        <CardFoot left={ferritin.citation} />
+      </Card>
+    );
+  }
   const pinVariant = ferritin.belowThreshold ? 'warn' : 'green';
   const pinLabel = ferritin.belowThreshold ? '▼ LOW' : '● OK';
   const valueColor = ferritin.belowThreshold ? 'var(--warn)' : 'var(--good)';

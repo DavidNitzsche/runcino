@@ -41,37 +41,39 @@ import type {
 export interface HealthBioStub {
   /** Whence this number came. 'stub' until HealthKit lands. */
   source: 'stub' | 'healthkit' | 'derived';
-  /** Latest reading (display number). */
-  current: number;
-  /** Baseline / 30-day reference value. */
-  baseline: number;
-  /** 7-day series, oldest → today. */
+  /** False until HealthKit lands. When false every numeric field is null. */
+  isAvailable: boolean;
+  /** Latest reading (display number). Null when isAvailable:false. */
+  current: number | null;
+  /** Baseline / 30-day reference value. Null when isAvailable:false. */
+  baseline: number | null;
+  /** 7-day series, oldest → today. Empty when isAvailable:false. */
   series7d: number[];
   /** Optional 30-day series (HRV trend chart, VO2max). */
   series30d?: number[];
   /** 7-day low. */
-  low7d?: number;
+  low7d?: number | null;
   /** 7-day high. */
-  high7d?: number;
+  high7d?: number | null;
 }
 
 export interface HealthApiSleep extends HealthBioStub {
-  /** Deep-sleep hours (avg over the window). */
-  deepHrs: number;
-  /** REM hours. */
-  remHrs: number;
-  /** Efficiency percent (0–100). */
-  efficiencyPct: number;
+  /** Deep-sleep hours (avg over the window). Null when isAvailable:false. */
+  deepHrs: number | null;
+  /** REM hours. Null when isAvailable:false. */
+  remHrs: number | null;
+  /** Efficiency percent (0–100). Null when isAvailable:false. */
+  efficiencyPct: number | null;
   /** Goal window in hours, e.g. [7, 9]. */
   goalHrs: [number, number];
 }
 
 export interface HealthApiVo2Max extends HealthBioStub {
-  /** Age-graded percentile (0–100). */
-  percentile: number;
+  /** Age-graded percentile (0–100). Null when isAvailable:false. */
+  percentile: number | null;
   /** Sex + age label for the percentile band (e.g. "M 38"). */
   ageBandLabel: string;
-  /** Monthly series for the 6-month chart, oldest → newest. */
+  /** Monthly series for the 6-month chart, oldest → newest. Empty when isAvailable:false. */
   series6mo: number[];
   /** Month labels matching `series6mo` (e.g. ["DEC","JAN", ...]). */
   series6moLabels: string[];
@@ -181,19 +183,21 @@ export interface HealthApiSubjectiveAgreement {
 
 /** Row 2 — HRV deep card with CV + Plews verdict. */
 export interface HealthApiHrvDetail {
-  /** Latest 7-day rolling LnRMSSD (ms). */
-  current: number;
-  /** Personal baseline (30-day rolling). */
-  baseline: number;
-  /** Coefficient of variation (%) over the trailing window. */
-  cv: number;
-  /** Plews-method verdict bucket. */
-  plewsVerdict: 'stable' | 'drifting' | 'crashed';
-  /** Display label for the verdict ("STABLE", "DRIFTING", "CRASHED"). */
+  /** False until HealthKit HRV streams land. When false every metric is null. */
+  isAvailable: boolean;
+  /** Latest 7-day rolling LnRMSSD (ms). Null when isAvailable:false. */
+  current: number | null;
+  /** Personal baseline (30-day rolling). Null when isAvailable:false. */
+  baseline: number | null;
+  /** Coefficient of variation (%) over the trailing window. Null when isAvailable:false. */
+  cv: number | null;
+  /** Plews-method verdict bucket. Null when isAvailable:false. */
+  plewsVerdict: 'stable' | 'drifting' | 'crashed' | null;
+  /** Display label for the verdict ("STABLE", "DRIFTING", "CRASHED", "NO DATA YET"). */
   plewsLabel: string;
-  /** Trend direction summary ("▲ +4 vs base"). */
-  trendDirection: string;
-  /** 30-day series. */
+  /** Trend direction summary ("▲ +4 vs base"). Null when isAvailable:false. */
+  trendDirection: string | null;
+  /** 30-day series. Empty when isAvailable:false. */
   series30d: number[];
   /** Citation. */
   citation: string;
@@ -242,12 +246,14 @@ export interface HealthApiIllnessMarker {
 }
 
 export interface HealthApiIllnessComposite {
+  /** False until HealthKit lands. When false markers is empty. */
+  isAvailable: boolean;
   markers: HealthApiIllnessMarker[];
   /** Number of markers currently firing (0–5). */
   markersFiring: number;
-  /** Top-level verdict bucket. */
-  compositeVerdict: 'allClear' | 'oneDrift' | 'risk' | 'stopRest';
-  /** Display label for the verdict. */
+  /** Top-level verdict bucket. Null when isAvailable:false. */
+  compositeVerdict: 'allClear' | 'oneDrift' | 'risk' | 'stopRest' | null;
+  /** Display label for the verdict ("ALL CLEAR" / "NO DATA YET" / etc.). */
   verdictLabel: string;
   /** Citation. */
   citation: string;
@@ -257,15 +263,17 @@ export interface HealthApiIllnessComposite {
 
 /** Row 4 — Body mass trend. */
 export interface HealthApiBodyMass {
-  /** Current weight. */
-  current: number;
-  /** 28-day baseline. */
-  baseline28d: number;
-  /** 14-day % delta (negative = lost weight). */
-  delta14dPct: number;
+  /** False until HealthKit weight samples land. */
+  isAvailable: boolean;
+  /** Current weight. Null when isAvailable:false. */
+  current: number | null;
+  /** 28-day baseline. Null when isAvailable:false. */
+  baseline28d: number | null;
+  /** 14-day % delta (negative = lost weight). Null when isAvailable:false. */
+  delta14dPct: number | null;
   /** True when 14-day drop > 2% per 00b. */
   warningTriggered: boolean;
-  /** 28-day series. */
+  /** 28-day series. Empty when isAvailable:false. */
   series28d: number[];
   /** Display unit. */
   unit: 'lb' | 'kg';
@@ -277,16 +285,18 @@ export interface HealthApiBodyMass {
 
 /** Row 5 — Submax HR drift (earliest overtraining marker). */
 export interface HealthApiSubmaxHrDrift {
-  /** Current submax HR at fixed easy pace. */
-  current: number;
-  /** Personal baseline at same pace. */
-  baseline: number;
-  /** Drift in bpm (positive = trending overtrained). */
-  driftBpm: number;
-  /** 8-week series. */
+  /** False until Strava HR-stream rollup lands. */
+  isAvailable: boolean;
+  /** Current submax HR at fixed easy pace. Null when isAvailable:false. */
+  current: number | null;
+  /** Personal baseline at same pace. Null when isAvailable:false. */
+  baseline: number | null;
+  /** Drift in bpm (positive = trending overtrained). Null when isAvailable:false. */
+  driftBpm: number | null;
+  /** 8-week series. Empty when isAvailable:false. */
   series8w: number[];
-  /** Verdict bucket. */
-  verdict: 'stable' | 'creeping' | 'drifting' | 'crashed';
+  /** Verdict bucket. Null when isAvailable:false. */
+  verdict: 'stable' | 'creeping' | 'drifting' | 'crashed' | null;
   /** Display label. */
   verdictLabel: string;
   /** Citation. */
@@ -297,21 +307,25 @@ export interface HealthApiSubmaxHrDrift {
 
 /** Row 5 (female users) — Cycle phase tracker. */
 export interface HealthApiCycle {
-  /** Current cycle phase. */
-  phase: 'menstruation' | 'follicular' | 'ovulation' | 'luteal';
+  /** False until cycle-log table lands. */
+  isAvailable: boolean;
+  /** Current cycle phase. Null when isAvailable:false. */
+  phase: 'menstruation' | 'follicular' | 'ovulation' | 'luteal' | null;
   /** Display label. */
   phaseLabel: string;
-  /** Days into current phase. */
-  daysIntoPhase: number;
-  /** Training-load adjustment recommendation. */
-  loadAdjustmentRec: string;
+  /** Days into current phase. Null when isAvailable:false. */
+  daysIntoPhase: number | null;
+  /** Training-load adjustment recommendation. Null when isAvailable:false. */
+  loadAdjustmentRec: string | null;
   /** Citation. */
   citation: string;
 }
 
 /** Row 5 (female users) — Ferritin / iron status. */
 export interface HealthApiFerritin {
-  /** Latest ferritin reading (ng/mL). Null = not measured. */
+  /** False until lab-result table lands. */
+  isAvailable: boolean;
+  /** Latest ferritin reading (ng/mL). Null = not measured / not yet available. */
   currentNgPerMl: number | null;
   /** Trend bucket. */
   trend: 'rising' | 'stable' | 'falling' | 'unknown';
@@ -597,44 +611,55 @@ function buildReadinessComposite(
 // ─────────────────────────────────────────────────────────────────────
 
 function stubHrv(): HealthBioStub {
+  // HealthKit-blocked. NO DATA YET until HealthKit ingestion writes
+  // real LnRMSSD values per Research/15 §HRV.
   return {
     source: 'stub',
-    current: 68,
-    baseline: 64,
-    series7d: [62, 60, 64, 66, 70, 72, 74],
-    series30d: [58, 59, 58, 60, 60, 62, 61, 62, 63, 62, 64, 63, 65, 64, 64, 65, 64, 66, 66, 67, 68, 67, 68, 68, 69, 70, 70, 71, 72, 74],
-    low7d: 62,
-    high7d: 72,
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    series7d: [],
+    series30d: [],
+    low7d: null,
+    high7d: null,
   };
 }
 
 function stubRhr(): HealthBioStub {
+  // HealthKit-blocked. NO DATA YET until HealthKit writes morning
+  // resting heart rate samples.
   return {
     source: 'stub',
-    current: 42,
-    baseline: 43,
-    series7d: [44, 43, 44, 43, 43, 42, 42],
-    low7d: 41,
-    high7d: 44,
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    series7d: [],
+    low7d: null,
+    high7d: null,
   };
 }
 
 function stubSleep(): HealthApiSleep {
+  // HealthKit-blocked. NO DATA YET until HealthKit sleep analysis
+  // lands. Goal window stays so the card can render its target band.
   return {
     source: 'stub',
-    current: 7.7, // 7:42 in decimal
-    baseline: 7.4,
-    series7d: [7.5, 7.8, 7.3, 8.1, 7.6, 8.2, 7.9],
-    low7d: 7.3,
-    high7d: 8.2,
-    deepHrs: 1.90, // 1:54
-    remHrs: 1.77,  // 1:46
-    efficiencyPct: 92,
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    series7d: [],
+    low7d: null,
+    high7d: null,
+    deepHrs: null,
+    remHrs: null,
+    efficiencyPct: null,
     goalHrs: [7, 9],
   };
 }
 
 function stubVo2max(today: string): HealthApiVo2Max {
+  // HealthKit-blocked. NO DATA YET until HealthKit VO2Max samples
+  // land. Month labels stay so the X-axis can render in empty state.
   const month = Number(today.slice(5, 7));
   const monthOrder = [
     'JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC',
@@ -647,32 +672,39 @@ function stubVo2max(today: string): HealthApiVo2Max {
   }
   return {
     source: 'stub',
-    current: 52,
-    baseline: 50.8,
+    isAvailable: false,
+    current: null,
+    baseline: null,
     series7d: [],
     series30d: [],
-    series6mo: [50.8, 51.0, 51.3, 51.6, 51.8, 52.0],
+    series6mo: [],
     series6moLabels: labels,
-    percentile: 90,
+    percentile: null,
     ageBandLabel: 'M 38',
   };
 }
 
 function stubRespiratoryRate(): HealthBioStub {
+  // HealthKit-blocked. NO DATA YET until HealthKit respiratory rate
+  // samples land (Research/15 §Spotting Illness Early §5).
   return {
     source: 'stub',
-    current: 14,
-    baseline: 14.2,
-    series7d: [14.5, 13.8, 14.6, 14.2, 13.6, 14.0, 13.8],
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    series7d: [],
   };
 }
 
 function stubBodyTemp(): HealthApiBodyTemp {
+  // HealthKit-blocked. NO DATA YET until HealthKit wrist temperature
+  // samples land (Research/15 §Spotting Illness Early §4).
   return {
     source: 'stub',
-    current: 98.4,
-    baseline: 98.3,
-    series7d: [98.3, 98.2, 98.4, 98.5, 98.3, 98.2, 98.4],
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    series7d: [],
     unit: 'F',
   };
 }
@@ -699,56 +731,21 @@ function stubMoodCheckin(_today: string): HealthApiMoodCheckin {
 // per-activity HR streams into zone minutes per day.
 // ─────────────────────────────────────────────────────────────────────
 
-function buildHrZones(today: string, state: CoachState): HealthApiHrZoneTime {
-  // Synthesized 14-day rollup mirroring the mockup. Easy share comes
-  // from coach-state.intensity which IS real if Strava activities are
-  // loaded; the per-day mix is mock.
-  const easyShare = state.intensity.easyShare14d > 0 ? state.intensity.easyShare14d : 0.92;
-  const daysMix: HealthApiZoneDay[] = [];
-  const offsetLabels = ['M','T','W','T','F','S','S'];
-  const baseDate = new Date(today + 'T12:00:00Z');
-  // Mockup pattern: 14 days, mix of mostly Z1 with sprinkled Z4/Z5 + rest days.
-  // Index 12 = today; index 13 = tomorrow (future, rendered dashed).
-  const pattern = [
-    { z1: 55, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 62, z4: 18, z5: 0, rest: false },
-    { z1: 48, z4: 0, z5: 0, rest: false },
-    { z1: 70, z4: 0, z5: 15, rest: false },
-    { z1: 42, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 52, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 38, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true },
-    { z1: 40, z4: 0, z5: 0, rest: false },
-    { z1: 0, z4: 0, z5: 0, rest: true }, // today
-    { z1: 35, z4: 0, z5: 0, rest: false }, // tomorrow (future hint)
-  ];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(baseDate);
-    d.setUTCDate(d.getUTCDate() + (i - 12));
-    const dow = d.getUTCDay();
-    daysMix.push({
-      dateISO: d.toISOString().slice(0, 10),
-      dayLabel: offsetLabels[(dow + 6) % 7], // Mon-first
-      rest: pattern[i].rest,
-      z1Min: pattern[i].z1,
-      z2Min: 0,
-      z3Min: 0,
-      z4Min: pattern[i].z4,
-      z5Min: pattern[i].z5,
-    });
-  }
-
+function buildHrZones(_today: string, state: CoachState): HealthApiHrZoneTime {
+  // easyShare is REAL — derived from Strava intensity (pace-based proxy
+  // for polarized share). The per-zone minute totals + daily mix require
+  // Strava HR streams which aren't wired yet; those return NO DATA YET
+  // (zero totals, empty days) until lib/strava-hr-zones.ts lands.
+  void _today;
+  const easyShare = state.intensity.easyShare14d > 0 ? state.intensity.easyShare14d : 0;
   return {
-    z1Min: 14 * 60, // 14h
+    z1Min: 0,
     z2Min: 0,
     z3Min: 0,
-    z4Min: 42,
-    z5Min: 28,
+    z4Min: 0,
+    z5Min: 0,
     easyShare,
-    days: daysMix,
+    days: [],
   };
 }
 
@@ -892,34 +889,20 @@ function stubExpandedCheckin(_today: string): HealthApiExpandedCheckin {
 /** HRV detail stub. Surfaces the CV + Plews-method verdict per
  *  Research/15 §HRV — Plews approach §5. */
 function stubHrvDetail(hrv: HealthBioStub): HealthApiHrvDetail {
-  // TODO: wire to coach.hrvDetail() (Stage 7).
+  // HealthKit-blocked. When HRV is unavailable, return NO DATA YET.
   // RESEARCH: Research/15 §HRV Plews approach — CV (coefficient of
   // variation) is the first-line destabilization signal; rises before
-  // the rolling mean drops.
-  const series = hrv.series30d ?? hrv.series7d;
-  const mean = series.reduce((a, b) => a + b, 0) / Math.max(1, series.length);
-  const variance =
-    series.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, series.length);
-  const cv = mean > 0 ? Math.round((Math.sqrt(variance) / mean) * 100 * 10) / 10 : 0;
-
-  // Plews-method bucket: stable if CV < 8%, drifting 8-12%, crashed >12%
-  // OR if current dropped more than 1 SD below baseline.
-  let plewsVerdict: HealthApiHrvDetail['plewsVerdict'] = 'stable';
-  if (cv > 12) plewsVerdict = 'crashed';
-  else if (cv > 8 || hrv.current < hrv.baseline - Math.sqrt(variance)) plewsVerdict = 'drifting';
-
-  const plewsLabel = plewsVerdict === 'stable' ? 'STABLE' : plewsVerdict === 'drifting' ? 'DRIFTING' : 'CRASHED';
-  const trend = hrv.current - hrv.baseline;
-  const trendDirection = `${trend >= 0 ? '▲ +' : '▼ −'}${Math.abs(Math.round(trend))} VS BASE`;
-
+  // the rolling mean drops. Cannot be computed without HRV samples.
+  void hrv;
   return {
-    current: hrv.current,
-    baseline: hrv.baseline,
-    cv,
-    plewsVerdict,
-    plewsLabel,
-    trendDirection,
-    series30d: series,
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    cv: null,
+    plewsVerdict: null,
+    plewsLabel: 'NO DATA YET',
+    trendDirection: null,
+    series30d: [],
     citation: '/Research/15 §HRV Plews approach §5',
     source: 'stub',
   };
@@ -962,83 +945,17 @@ function stubFormReport(stress: HealthApiTrainingStress): HealthApiFormReport {
 /** Illness-early-warning composite stub. Combines 5 markers per
  *  /Research/15 §Spotting Illness Early. */
 function stubIllnessComposite(): HealthApiIllnessComposite {
-  // TODO: wire to coach.illnessComposite() (Stage 7).
-  // RESEARCH: /Research/15 §Spotting Illness Early — when 3+
-  // markers go off simultaneously, illness is likely within 48-72h.
-  const markers: HealthApiIllnessMarker[] = [
-    {
-      id: 'rhr',
-      label: 'RHR',
-      current: 42,
-      baseline: 43,
-      series4d: [43, 42, 42, 42],
-      warningTriggered: false,
-      deltaLabel: '−1 BPM',
-      warningDirection: 'up',
-      unit: 'bpm',
-    },
-    {
-      id: 'hrv',
-      label: 'HRV',
-      current: 68,
-      baseline: 64,
-      series4d: [62, 65, 67, 68],
-      warningTriggered: false,
-      deltaLabel: '+4 MS',
-      warningDirection: 'down',
-      unit: 'ms',
-    },
-    {
-      id: 'sleepEff',
-      label: 'SLEEP EFFICIENCY',
-      current: 92,
-      baseline: 91,
-      series4d: [90, 91, 92, 92],
-      warningTriggered: false,
-      deltaLabel: '+1%',
-      warningDirection: 'down',
-      unit: '%',
-    },
-    {
-      id: 'bodyTemp',
-      label: 'BODY TEMP',
-      current: 98.4,
-      baseline: 98.3,
-      series4d: [98.3, 98.4, 98.4, 98.4],
-      warningTriggered: false,
-      deltaLabel: '+0.1°F',
-      warningDirection: 'up',
-      unit: '°F',
-    },
-    {
-      id: 'respRate',
-      label: 'RESP RATE',
-      current: 14,
-      baseline: 14.2,
-      series4d: [14.2, 14.0, 14.1, 14.0],
-      warningTriggered: false,
-      deltaLabel: '−0.2',
-      warningDirection: 'up',
-      unit: '/min',
-    },
-  ];
-  const markersFiring = markers.filter((m) => m.warningTriggered).length;
-  let compositeVerdict: HealthApiIllnessComposite['compositeVerdict'] = 'allClear';
-  if (markersFiring >= 4) compositeVerdict = 'stopRest';
-  else if (markersFiring >= 3) compositeVerdict = 'risk';
-  else if (markersFiring >= 1) compositeVerdict = 'oneDrift';
-
-  const verdictLabel =
-    compositeVerdict === 'allClear' ? 'ALL CLEAR'
-    : compositeVerdict === 'oneDrift' ? `${markersFiring} SIGNAL DRIFTING`
-    : compositeVerdict === 'risk' ? 'ILLNESS RISK ELEVATED'
-    : 'STOP — REST';
-
+  // HealthKit-blocked. All 5 markers (RHR · HRV · sleep efficiency ·
+  // body temp · respiratory rate) require HealthKit samples. NO DATA
+  // YET until ingestion lands.
+  // RESEARCH: /Research/15 §Spotting Illness Early — when 3+ markers
+  // go off simultaneously, illness is likely within 48-72h.
   return {
-    markers,
-    markersFiring,
-    compositeVerdict,
-    verdictLabel,
+    isAvailable: false,
+    markers: [],
+    markersFiring: 0,
+    compositeVerdict: null,
+    verdictLabel: 'NO DATA YET',
     citation: '/Research/15 §Spotting Illness Early',
     source: 'stub',
   };
@@ -1046,26 +963,16 @@ function stubIllnessComposite(): HealthApiIllnessComposite {
 
 /** Body-mass trend stub. Flags 2%+ drop in 14d per 00b. */
 function stubBodyMass(): HealthApiBodyMass {
-  // TODO: wire to coach.bodyMassTrend() (Stage 7) / HealthKit weight.
+  // HealthKit-blocked. NO DATA YET until HealthKit weight samples land.
   // RESEARCH: /Research/00b §Quantitative Signals — sustained drop
   // >2% over 14 days = stress signal.
-  const series28d = [
-    169.4, 169.6, 169.2, 169.0, 168.9, 169.1, 168.8, 168.6, 168.5, 168.7,
-    168.4, 168.2, 168.3, 168.0, 167.9, 168.1, 167.8, 167.6, 167.4, 167.5,
-    167.3, 167.1, 167.2, 166.9, 167.0, 166.8, 166.7, 166.8,
-  ];
-  const current = series28d[series28d.length - 1];
-  const baseline28d = series28d.reduce((a, b) => a + b, 0) / series28d.length;
-  const valueAt14dAgo = series28d[series28d.length - 14];
-  const delta14dPct = ((current - valueAt14dAgo) / valueAt14dAgo) * 100;
-  const warningTriggered = delta14dPct < -2.0;
-
   return {
-    current: Math.round(current * 10) / 10,
-    baseline28d: Math.round(baseline28d * 10) / 10,
-    delta14dPct: Math.round(delta14dPct * 10) / 10,
-    warningTriggered,
-    series28d,
+    isAvailable: false,
+    current: null,
+    baseline28d: null,
+    delta14dPct: null,
+    warningTriggered: false,
+    series28d: [],
     unit: 'lb',
     citation: '/Research/00b §Quantitative Signals',
     source: 'stub',
@@ -1074,33 +981,18 @@ function stubBodyMass(): HealthApiBodyMass {
 
 /** Submax HR drift stub — earliest reliable overtraining marker. */
 function stubSubmaxHrDrift(): HealthApiSubmaxHrDrift {
-  // TODO: wire to coach.submaxHrDrift() (Stage 7) — derives HR at
-  // fixed easy pace from Strava activity HR streams.
+  // Strava-HR-stream blocked. NO DATA YET until the per-activity HR-
+  // stream rollup at fixed easy pace lands.
   // RESEARCH: /Research/15 §Spotting Overtraining Early §4 — "HR
   // for a given easy pace creeps up 3–8 bpm."
-  const series8w = [138, 137, 138, 139, 138, 139, 140, 141];
-  const current = series8w[series8w.length - 1];
-  const baseline = 138;
-  const driftBpm = current - baseline;
-
-  let verdict: HealthApiSubmaxHrDrift['verdict'] = 'stable';
-  if (driftBpm >= 8) verdict = 'crashed';
-  else if (driftBpm >= 5) verdict = 'drifting';
-  else if (driftBpm >= 3) verdict = 'creeping';
-
-  const verdictLabel =
-    verdict === 'stable' ? '● STABLE'
-    : verdict === 'creeping' ? '▲ CREEPING'
-    : verdict === 'drifting' ? '▲ DRIFTING'
-    : '▲ CRASHED';
-
   return {
-    current,
-    baseline,
-    driftBpm,
-    series8w,
-    verdict,
-    verdictLabel,
+    isAvailable: false,
+    current: null,
+    baseline: null,
+    driftBpm: null,
+    series8w: [],
+    verdict: null,
+    verdictLabel: 'NO DATA YET',
     citation: '/Research/15 §Spotting Overtraining Early §4',
     source: 'stub',
   };
@@ -1108,24 +1000,26 @@ function stubSubmaxHrDrift(): HealthApiSubmaxHrDrift {
 
 /** Cycle stub — only renders for female users. */
 function stubCycle(): HealthApiCycle {
-  // TODO: wire to coach.cyclePhase() (Stage 7) + cycle-log table.
+  // Cycle-log table not yet built. NO DATA YET until cycle-log lands.
   // RESEARCH: /Research/13 §1 Menstrual Cycle — phase-aware load.
   return {
-    phase: 'follicular',
-    phaseLabel: 'FOLLICULAR',
-    daysIntoPhase: 4,
-    loadAdjustmentRec: 'Build window — quality days well-tolerated.',
+    isAvailable: false,
+    phase: null,
+    phaseLabel: 'NO DATA YET',
+    daysIntoPhase: null,
+    loadAdjustmentRec: null,
     citation: '/Research/13 §1 Menstrual Cycle',
   };
 }
 
 /** Ferritin stub — only renders for female users. */
 function stubFerritin(): HealthApiFerritin {
-  // TODO: wire to coach.ferritinLevel() (Stage 7) + lab-result table.
+  // Lab-result table not yet built. NO DATA YET until lab results land.
   // RESEARCH: /Research/13 §8 Iron Deficiency — threshold <30 ng/mL.
   return {
-    currentNgPerMl: 38,
-    trend: 'stable',
+    isAvailable: false,
+    currentNgPerMl: null,
+    trend: 'unknown',
     belowThreshold: false,
     citation: '/Research/13 §8 Iron Deficiency',
   };
