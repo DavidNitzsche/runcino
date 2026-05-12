@@ -368,6 +368,9 @@ export interface RunReadInput extends CoachBaseContext {
 }
 
 export interface CoachReadInput extends CoachBaseContext {
+  /** State at the time of the recap — used to compare the actual finish
+   *  against what current VDOT predicted before this race factored in. */
+  state: CoachState;
   /** Race the read is about. */
   raceName: string;
   raceDateISO: string;
@@ -1565,52 +1568,174 @@ class CoachImpl implements Coach {
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to retrospective + Coach state diff
-  // MOCKUP REF: designs/_template-detail-2026-05-09.html:449-477 (COACH READ card on run detail)
+  // ── Stage 7 · runRead (real data) ─────────────────────────────
+  // Per-run verdict for the /runs/[id] Coach Read card. Reads the
+  // activity vs its planned counterpart + state's HR thresholds and
+  // current longest-long anchor to decide:
+  //
+  //   PATTERN MATCHING (deterministic):
+  //   - Big overshoot + controlled HR → "absorbed more"; unlocks a
+  //     baseline bump and a new long-run cap (Research/00a +10% rule).
+  //   - Big overshoot + HR > Z2        → "ran hot"; flag, no unlock.
+  //   - On-plan + on-pace               → "steady aerobic"; no change.
+  //   - Quality + missed targets        → "couldn't hit pace"; flag.
+  //   - Quality + hit targets           → "quality executed"; no change.
+  //
+  // The deltas[] list shows the state-record fields that change as a
+  // result of this run — emit only when meaningful, never as filler.
+  //
+  // @research Research/00a §Progressive overload (+10% rule)
+  //           Research/00a §13.1 Single-session spike
+  //           Research/00b §HR drift thresholds
   async runRead(input: RunReadInput): Promise<CoachDecision<RunReadReport>> {
-    const { activity } = input;
+    const { activity, state } = input;
     const plannedMi = activity.plannedDistanceMi ?? 0;
     const deltaMi = activity.distanceMi - plannedMi;
-    const overshootFlag = deltaMi > 2 && (activity.avgHr == null || activity.avgHr < 145);
+    const overPct = plannedMi > 0 ? deltaMi / plannedMi : 0;
+    const hr = activity.avgHr ?? null;
+    // HRmax fallback: 180 is a sensible default for an adult age 40
+    // per Tanaka. Profile-driven HRmax will land via state expansion
+    // alongside the runner-profile wiring.
+    const hrmax = 180;
+    const z2Ceiling = hrmax * 0.80; // Z1/Z2 cap
+
+    const longestLast28 = state.volume.longestLast28Mi;
+    const newLongRunCap = Math.round(Math.max(longestLast28, activity.distanceMi) * 1.10 * 10) / 10;
+    const baseline = state.volume.weeklyAvg4w;
+    const baselineBumpPct = overPct >= 0.20 ? 12 : overPct >= 0.10 ? 7 : 0;
+
+    type Verdict = { verdict: string; body: string; unlockPin: string | null; deltas: RunReadReport['deltas'] };
+    let v: Verdict;
+
+    const plannedType = (activity.plannedType ?? '').toLowerCase();
+    const isQualityPlanned = plannedType.includes('threshold') || plannedType.includes('vo2')
+      || plannedType.includes('marathon_specific') || plannedType.includes('long_mp');
+
+    if (overPct >= 0.20 && hr != null && hr <= z2Ceiling) {
+      // Big overshoot at controlled effort = real absorption.
+      const newBaseline = Math.round(baseline * (1 + baselineBumpPct / 100) * 10) / 10;
+      v = {
+        verdict: 'Absorbed more than planned.',
+        body: `Ran +${deltaMi.toFixed(1)} mi over plan at HR ${hr} (${Math.round((hr / hrmax) * 100)}% max). Effort stayed inside Z1-Z2 — that's signal, not luck. Coach bumps baseline +${baselineBumpPct}% and lifts the long-run cap accordingly.`,
+        unlockPin: `+${baselineBumpPct}% BASELINE UNLOCKED`,
+        deltas: [
+          { label: 'VOL / WK', wasDisplay: `${baseline.toFixed(0)}`, nowDisplay: `${newBaseline.toFixed(0)} mi` },
+          { label: 'LONG RUN CAP', wasDisplay: `${(longestLast28 * 1.10).toFixed(1)}`, nowDisplay: `${newLongRunCap.toFixed(1)} mi` },
+        ],
+      };
+    } else if (overPct >= 0.20 && hr != null && hr > z2Ceiling) {
+      v = {
+        verdict: 'Went long and hot.',
+        body: `+${deltaMi.toFixed(1)} mi over plan but HR averaged ${hr} (${Math.round((hr / hrmax) * 100)}% max) — above the easy cap. Volume didn't come for free. No state change; let tomorrow be genuinely easy.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    } else if (isQualityPlanned && hr != null && hr > hrmax * 0.92) {
+      v = {
+        verdict: 'Quality day, ran hot.',
+        body: `HR averaged ${hr} (${Math.round((hr / hrmax) * 100)}% max) on a ${plannedType.replace(/_/g, ' ')} session — above the prescribed ceiling. Pace targets likely missed late. Coach defers the next quality 24-48h to absorb.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    } else if (isQualityPlanned) {
+      v = {
+        verdict: 'Quality session executed.',
+        body: `Held the prescribed ${plannedType.replace(/_/g, ' ')} structure ${hr != null ? `at HR ${hr} (${Math.round((hr / hrmax) * 100)}% max)` : ''}. Clean rep. State unchanged.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    } else if (plannedMi > 0 && Math.abs(overPct) < 0.05) {
+      v = {
+        verdict: 'On plan — steady aerobic.',
+        body: `Held distance and effort. Easy aerobic adds to the base without spiking the load. The kind of run the engine wants more of.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    } else if (plannedMi === 0) {
+      v = {
+        verdict: 'Unprescribed run logged.',
+        body: `No coach prescription for this date — Strava picked it up automatically. Counts toward weekly volume; effort patterns will surface in the next retrospect.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    } else {
+      v = {
+        verdict: 'Run logged.',
+        body: `${activity.distanceMi.toFixed(1)} mi vs ${plannedMi.toFixed(1)} planned${hr != null ? `, HR ${hr}` : ''}. Inside variance — no state change.`,
+        unlockPin: null,
+        deltas: [],
+      };
+    }
+
     return {
-      answer: {
-        verdict: overshootFlag ? 'Recovery run, but you absorbed more.' : 'Steady aerobic work — stayed inside the plan.',
-        body: overshootFlag
-          ? `Ran +${deltaMi.toFixed(1)} mi over plan at controlled effort. HR stayed Z1–Z2 the whole way. Coach bumped baseline +12%, lifted long-run cap to 8.2 mi.`
-          : `Held the prescribed pace and effort. No changes to plan.`,
-        unlockPin: overshootFlag ? '+12% BASELINE UNLOCKED' : null,
-        deltas: overshootFlag
-          ? [
-              { label: 'VOL / WK', wasDisplay: '14', nowDisplay: '17 mi' },
-              { label: 'LONG RUN CAP', wasDisplay: '7.4', nowDisplay: '8.2 mi' },
-            ]
-          : [],
-      },
-      rationale: overshootFlag ? '+12% baseline unlocked.' : 'No state change.',
+      answer: v,
+      rationale: v.unlockPin ?? 'No state change',
       citations: [
-        { doc: 'Research/00a-distance-running-training.md', section: '§Progressive overload', snippet: '+10% rule for weekly volume jumps' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Progressive overload' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§13.1 Single-session spike' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§HR drift thresholds' },
       ],
       brain: 'deterministic',
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to retrospective loop (post-race verdict)
-  // MOCKUP REF: designs/races-2026-05-09.html:235-239 (COACH READ recap)
-  // MOCKUP REF: designs/_template-detail-2026-05-09.html (race detail Coach Read)
+  // ── Stage 7 · coachRead (real data) ───────────────────────────
+  // Race recap verdict on /races [slug] and the LATEST RESULT card on
+  // /races index. Compares the finish against what fitness predicted
+  // (Riegel from current VDOT) + conditions to land an honest read:
+  //
+  //   PR + within prediction band     → PR confirmed; engine validated
+  //   PR + faster than prediction     → engine under-estimated; bump VDOT
+  //   Non-PR + close to prediction    → race executed, no surprises
+  //   Non-PR + slower than prediction → conditions / execution problem;
+  //                                     prediction unchanged
+  //
+  // @research Research/02 §Riegel + late-race fade
+  //           Research/00b §Single-race over-correction caution
   async coachRead(input: CoachReadInput): Promise<CoachDecision<CoachReadReport>> {
-    const { raceName, paceSPerMi, isPR } = input;
-    const pin = isPR ? 'PR' : 'ON TRACK';
+    const { state, raceName, raceDistanceMi, finishTimeS, paceSPerMi, isPR, conditionsLabel } = input;
+
+    // Try to predict the same race from current fitness (BEFORE this
+    // race factored in) so the read can compare actual vs predicted.
+    const snapshot = vdotSnapshot(state);
+    const row = snapshot ? vdotRow(snapshot.vdot) : null;
+    const predictedS = row ? riegelScaleFromVdotRow(row, raceDistanceMi) : null;
+    const deltaS = predictedS != null ? finishTimeS - predictedS : null;
+    const offPct = predictedS != null ? Math.abs(deltaS!) / predictedS : null;
+    const condClause = conditionsLabel ? ` · ${conditionsLabel.toLowerCase()}` : '';
+
+    let pin: string;
+    let verdict: string;
+    let body: string;
+
+    if (isPR && deltaS != null && deltaS < 0 && offPct! > 0.02) {
+      // PR by >2% under prediction — fitness ahead of model.
+      pin = 'PR';
+      verdict = `${raceName} PR — engine under-called the fitness.`;
+      body = `Finished ${formatPace(paceSPerMi)}/mi avg vs ${formatPace(predictedS! / raceDistanceMi)} predicted${condClause}. The aerobic ceiling has more room than the model showed. Next build can lean harder on quality without protest.`;
+    } else if (isPR) {
+      pin = 'PR';
+      verdict = `${raceName} PR — aerobic engine confirmed.`;
+      body = `Sustained ${formatPace(paceSPerMi)}/mi avg ${predictedS != null ? `vs ${formatPace(predictedS / raceDistanceMi)} predicted${condClause}` : 'with no late fade'}. Race execution matched what the engine expected — the model is calibrated.`;
+    } else if (deltaS != null && deltaS > 0 && offPct! > 0.04) {
+      // Off goal by >4% slow — flag conditions / execution.
+      pin = 'OFF GOAL';
+      verdict = `${raceName} — race came up short of fitness.`;
+      body = `Finished ${formatPace(paceSPerMi)}/mi avg vs ${formatPace(predictedS! / raceDistanceMi)} predicted${condClause}. The engine had this race ${Math.round(deltaS / 60)} min faster. Race day adds friction the model can't see; ${Math.abs(offPct!) > 0.06 ? 'review course + conditions before adjusting training.' : 'one race isn\'t enough to recalibrate — hold the build, watch the next mid-cycle test.'}`;
+    } else {
+      pin = 'ON TRACK';
+      verdict = `${raceName} — solid effort, no surprises.`;
+      body = `Sustained ${formatPace(paceSPerMi)}/mi avg${predictedS != null ? ` vs ${formatPace(predictedS / raceDistanceMi)} predicted` : ''}${condClause}. Engine and execution matched. Fitness on track for the next goal.`;
+    }
+
     return {
-      answer: {
-        verdict: isPR
-          ? `${raceName} PR — aerobic engine confirmed.`
-          : `${raceName} — solid effort, no surprises.`,
-        body: `Sustained ${formatPace(paceSPerMi)}/mi avg with no late fade. Aerobic engine confirmed for the next build — fitness on track for the goal.`,
-        pin,
-      },
-      rationale: isPR ? `PR confirmed. Aerobic base proven.` : `Effort logged.`,
+      answer: { verdict, body, pin },
+      rationale: deltaS != null
+        ? `Predicted ${formatTime(predictedS!)}, actual ${formatTime(finishTimeS)}; delta ${deltaS > 0 ? '+' : ''}${Math.round(deltaS)}s.`
+        : `${isPR ? 'PR' : 'Effort'} logged; no VDOT baseline to compare against yet.`,
       citations: [
-        { doc: 'Research/02-race-time-prediction.md', section: '§Negative splits + late-race fade', snippet: 'A flat or negative-split race confirms aerobic readiness' },
+        { doc: 'Research/02-race-time-prediction.md', section: '§Riegel + late-race fade' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Single-race over-correction caution' },
       ],
       brain: 'deterministic',
     };
