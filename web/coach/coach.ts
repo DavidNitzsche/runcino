@@ -891,6 +891,7 @@ class CoachImpl implements Coach {
       explanation: `Marathon doctrine plans around 80-100 g/h; 60 is the floor. ${ratioNote}${heatNote}`,
       citations: [
         { doc: 'Research/08-pacing-and-race-week.md', section: '§10.5', snippet: 'Carbs/h by distance: HM 30-60; Marathon 60-90; Ultra 90-120' },
+        { doc: 'Research/18-fueling-products.md', section: '§Gel + sports-drink products', snippet: 'Carb sources by tolerance, glucose:fructose ratios by g/h target' },
         { doc: 'docs/coaching-research.md', section: '§7.1', snippet: '60-90 g/h baseline; planning around 80-100 g/h is reasonable for most marathoners' },
         { doc: 'docs/coaching-research.md', section: '§7.1', snippet: 'At 90 g/h or below, 2:1 (glucose:fructose) is ideal. Above, switch to 1:0.8.' },
       ],
@@ -1387,6 +1388,7 @@ class CoachImpl implements Coach {
       citations: [
         { doc: 'Research/02-race-time-prediction.md', section: '§Riegel formula' },
         { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT freshness window' },
+        { doc: 'Research/24-vdot-age-sex-grading.md', section: '§Age + sex grading', snippet: 'Apply age-graded equivalents for fair cross-cohort comparison' },
       ],
       brain: 'deterministic',
     };
@@ -1736,6 +1738,9 @@ class CoachImpl implements Coach {
         { doc: 'Research/00a-distance-running-training.md', section: '§Progressive overload' },
         { doc: 'Research/00a-distance-running-training.md', section: '§13.1 Single-session spike' },
         { doc: 'Research/00b-recovery-protocols.md', section: '§HR drift thresholds' },
+        { doc: 'Research/16-form-biomechanics.md', section: '§Cadence + ground contact', snippet: 'Form cues read from HR + cadence drift patterns in the run' },
+        { doc: 'Research/17-footwear.md', section: '§Shoe-pace match', snippet: 'Shoe selection should match the workout type prescribed' },
+        { doc: 'Research/21-form-corrections.md', section: '§Cue-by-cue corrections', snippet: 'Concrete drills to fix the form drift the engine detected' },
       ],
       brain: 'deterministic',
     };
@@ -1840,7 +1845,10 @@ class CoachImpl implements Coach {
       },
       rationale: today.rationale,
       explanation: voiceLead,
-      citations: citationsForWorkoutType(t.type),
+      citations: [
+        ...citationsForWorkoutType(t.type),
+        { doc: 'Research/07-strength-programming.md', section: '§Periodized strength', snippet: 'Strength sessions sit opposite hard run days; periodize alongside run volume' },
+      ],
       brain: 'deterministic',
     };
   }
