@@ -1148,69 +1148,141 @@ class CoachImpl implements Coach {
     };
   }
 
-  // STUB · STAGE 7 · TODO: wire to plan_templates.ts (quality session catalog)
-  // MOCKUP REF: designs/training-2026-05-09.html:277-322 (PROOF SESSIONS card)
+  // ── Stage 7 · proofSessions (real data) ───────────────────────
+  // The 4-5 milestone workouts that signal a build is on track. Each
+  // is calendar-anchored relative to state.races.nextA.daysAway and
+  // priced at the runner's current VDOT-derived pace bands:
+  //
+  //   first T tempo       ← T pace, week 2-3 of build
+  //   first HMP miles     ← M pace (HM goal pace ≈ M+10s for sub-elites),
+  //                          week 5-6
+  //   B-race tune-up      ← state.races.nextB if scheduled in window,
+  //                          otherwise a 10K predicted pace
+  //   race-pace long      ← M pace, week peak-1
+  //   final fitness check ← T pace test, ~10 days out
+  //
+  // Sessions whose anchor date falls in the past (build already
+  // underway) get filtered out — only show what's still upcoming.
+  //
+  // @research Research/22 §Half-marathon build · Research/04 §Threshold
+  //           Research/01 §VDOT pace bands · Research/08 §Race-pace work
   async proofSessions(input: ProofSessionsInput): Promise<CoachDecision<ProofSessionsReport>> {
-    const nextA = input.state.races.nextA;
-    const raceName = input.raceName ?? nextA?.name ?? 'AFC Half';
+    const state = input.state;
+    const nextA = state.races.nextA;
+    const raceName = input.raceName ?? nextA?.name ?? 'Next race';
+    const daysToRace = nextA?.daysAway ?? 90;
     const today = new Date(input.today + 'T12:00:00Z');
     const addDays = (n: number) => {
       const d = new Date(today); d.setUTCDate(d.getUTCDate() + n);
       return d.toISOString().slice(0, 10);
     };
 
-    const sessions: ProofSession[] = [
-      {
-        dateISO: addDays(15),
-        label: 'First T tempo',
-        structure: '4 × 1MI @ T',
-        phaseTag: 'BUILD-WK 2',
-        targetPaceDisplay: '7:00/MI',
-        priority: 'milestone',
-      },
-      {
-        dateISO: addDays(34),
-        label: 'First HMP miles',
-        structure: '3 × 2MI @ HMP',
-        phaseTag: 'BUILD-WK 5',
-        targetPaceDisplay: '7:15/MI',
-        priority: 'milestone',
-      },
-      {
-        dateISO: addDays(42),
-        label: 'Mission Bay 10K',
-        structure: 'B-RACE TUNE-UP',
+    const snapshot = vdotSnapshot(state);
+    const fmtPace = (sPerMi: number | undefined) => {
+      if (sPerMi == null) return '—';
+      const m = Math.floor(sPerMi / 60);
+      const s = Math.round(sPerMi % 60);
+      return `${m}:${String(s).padStart(2, '0')}/MI`;
+    };
+    const tPace = snapshot ? (snapshot.paces.T.lowS + snapshot.paces.T.highS) / 2 : undefined;
+    const mPace = snapshot ? (snapshot.paces.M.lowS + snapshot.paces.M.highS) / 2 : undefined;
+
+    // Build a candidate list of milestones positioned by days-from-today.
+    // Negative = already past; we filter those out.
+    type Candidate = {
+      offsetDays: number;
+      label: string;
+      structure: string;
+      phaseTag: string;
+      targetPace: number | undefined;
+      priority: ProofSession['priority'];
+    };
+    const candidates: Candidate[] = [];
+
+    // First T tempo: ~3 weeks into the build
+    candidates.push({
+      offsetDays: Math.max(0, daysToRace - 91),
+      label: 'First T tempo',
+      structure: '4 × 1MI @ T · 90s float',
+      phaseTag: 'BUILD WK 2',
+      targetPace: tPace,
+      priority: 'milestone',
+    });
+
+    // First HMP miles: ~6 weeks into the build
+    candidates.push({
+      offsetDays: Math.max(0, daysToRace - 56),
+      label: 'First HMP miles',
+      structure: '3 × 2MI @ HMP · 60s jog',
+      phaseTag: 'BUILD WK 5',
+      targetPace: mPace,
+      priority: 'milestone',
+    });
+
+    // B-race tune-up: if a B/C race is scheduled in the window
+    const nextB = state.races.nextAny && state.races.nextAny.priority !== 'A' ? state.races.nextAny : null;
+    if (nextB && nextB.daysAway > 14 && nextB.daysAway < daysToRace) {
+      candidates.push({
+        offsetDays: nextB.daysAway,
+        label: nextB.name,
+        structure: `B-RACE TUNE-UP · ${nextB.distanceMi.toFixed(1)} mi`,
         phaseTag: 'FITNESS CHECK',
-        targetPaceDisplay: '6:46/MI',
+        targetPace: tPace,
         priority: 'race',
-      },
-      {
-        dateISO: addDays(62),
-        label: 'Race-pace 8mi',
-        structure: 'CONTINUOUS @ HMP',
-        phaseTag: 'PEAK-WK 1',
-        targetPaceDisplay: '7:15/MI',
-        priority: 'milestone',
-      },
-    ];
+      });
+    }
+
+    // Race-pace long: ~4 weeks out
+    candidates.push({
+      offsetDays: Math.max(0, daysToRace - 28),
+      label: 'Race-pace long',
+      structure: '8 MI continuous @ HMP',
+      phaseTag: 'PEAK WK 1',
+      targetPace: mPace,
+      priority: 'milestone',
+    });
+
+    // Final fitness check: ~10 days out
+    candidates.push({
+      offsetDays: Math.max(0, daysToRace - 10),
+      label: 'Sharpener',
+      structure: '3 × 1KM @ T · race-week tune',
+      phaseTag: 'TAPER',
+      targetPace: tPace,
+      priority: 'milestone',
+    });
+
+    // Sort by date, drop past-today candidates, cap at 5.
+    const sessions: ProofSession[] = candidates
+      .filter((c) => c.offsetDays > 0 && c.offsetDays <= daysToRace)
+      .sort((a, b) => a.offsetDays - b.offsetDays)
+      .slice(0, 5)
+      .map((c) => ({
+        dateISO: addDays(c.offsetDays),
+        label: c.label,
+        structure: c.structure,
+        phaseTag: c.phaseTag,
+        targetPaceDisplay: fmtPace(c.targetPace),
+        priority: c.priority,
+      }));
+
+    const buildLengthWk = Math.max(8, Math.min(20, Math.ceil(daysToRace / 7)));
 
     return {
       answer: {
         raceName,
         totalProofs: sessions.length,
-        buildLengthWk: 14,
+        buildLengthWk,
         sessions,
-        latestCompleted: {
-          dateISO: addDays(-18),
-          label: '3 × 1mi @ T pace',
-          summary: '6:55 avg (target 7:00). HR 167 avg, sustainable.',
-          onTarget: true,
-        },
+        latestCompleted: null, // wires through retrospect once a quality day has logged actuals
       },
-      rationale: `${sessions.length} proof sessions across the ${14}-week build to ${raceName}.`,
+      rationale: nextA
+        ? `${sessions.length} proof sessions over the ${buildLengthWk}-week build to ${raceName}.`
+        : 'No A race scheduled — proof sessions are race-relative.',
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons', snippet: 'Key quality sessions per phase' },
-        { doc: 'Research/04-workout-vocabulary.md', section: '§Threshold + tempo', snippet: 'T pace workout dosing' },
+        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons' },
+        { doc: 'Research/04-workout-vocabulary.md', section: '§Threshold + tempo' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT pace bands' },
       ],
       brain: 'deterministic',
     };
