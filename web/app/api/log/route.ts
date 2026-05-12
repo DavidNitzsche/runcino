@@ -15,9 +15,9 @@
  *   - getCachedActivities() · the full year of Strava activities
  *                             (Postgres-backed cache, 15 min TTL)
  *
- * Local-dev fallback: when no Strava activities are present we
- * synthesize a mockup-faithful set of runs so the page still renders
- * meaningfully. Production deploys hit the real cache.
+ * When no Strava activities are present, the API returns empty
+ * collections and the page renders its own empty-state CTAs
+ * ("CONNECT STRAVA"). We never synthesize fake runs.
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
@@ -170,7 +170,8 @@ export async function GET(): Promise<Response> {
 
     // Pull this year's activities. The cache returns up to one year of
     // data; we filter to current-year-only here. If empty (no Strava
-    // sync), surface mockup-faithful demo runs so the page renders.
+    // sync), the page handles the empty state itself — we never
+    // synthesize fake runs.
     const cache = await getCachedActivities().catch(
       () => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 }),
     );
@@ -179,9 +180,7 @@ export async function GET(): Promise<Response> {
     const priorYearStart = `${year - 1}-01-01`;
     const priorYearEnd = `${year - 1}-12-31`;
 
-    const allRuns = cache.activities.length > 0
-      ? cache.activities
-      : demoActivities(today);
+    const allRuns = cache.activities;
     const ytdRuns = allRuns.filter((a) => a.date >= yearStart && a.date <= today);
     const priorYearRuns = allRuns.filter((a) => a.date >= priorYearStart && a.date <= priorYearEnd);
 
@@ -551,147 +550,3 @@ function fmtPace(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Local-dev demo — fires only when Strava cache is empty. Mirrors the
-// May 9 mockup so QA sees a populated page without a Postgres seed.
-// ─────────────────────────────────────────────────────────────────────
-
-function demoActivities(todayISO: string): NormalizedActivity[] {
-  // Synthesize a year of runs that match the locked mockup numbers:
-  // 503 mi YTD, 87 runs, 62 unique days, 5 races, April peak at 142 mi.
-  // Distribution: ~5 runs/wk through April, fewer in May (tapered post-Big-Sur).
-  const todayDate = new Date(todayISO + 'T12:00:00Z');
-  const year = todayDate.getUTCFullYear();
-  const out: NormalizedActivity[] = [];
-
-  // Hard-coded races for the mockup
-  const races: Array<{ name: string; dateOffsetFromMay9: number; distMi: number; timeS: number; gainFt: number; avgHr: number }> = [
-    { name: 'Disney Half Marathon',     dateOffsetFromMay9: -118, distMi: 13.1, timeS: 5520, gainFt: 80,   avgHr: 168 }, // Jan 12
-    { name: 'Surf City 10K',            dateOffsetFromMay9: -92,  distMi: 6.21, timeS: 2538, gainFt: 60,   avgHr: 172 }, // Feb 7
-    { name: 'Tempo TT — Solo 5K',       dateOffsetFromMay9: -42,  distMi: 3.12, timeS: 1275, gainFt: 40,   avgHr: 170 }, // Mar 28
-    { name: 'Big Sur Marathon',         dateOffsetFromMay9: -12,  distMi: 26.2, timeS: 13015, gainFt: 4189, avgHr: 165 }, // Apr 27
-    { name: 'Sombrero Half',            dateOffsetFromMay9: -6,   distMi: 13.2, timeS: 6057, gainFt: 280,  avgHr: 158 }, // May 3
-  ];
-
-  // May 9 anchor — most recent month is May
-  const may9 = new Date(`${year}-05-09T12:00:00Z`);
-  let id = 100000;
-  for (const r of races) {
-    const d = new Date(may9);
-    d.setUTCDate(may9.getUTCDate() + r.dateOffsetFromMay9);
-    const iso = d.toISOString().slice(0, 10);
-    out.push(synthesizeRun({
-      id: id++,
-      name: r.name,
-      dateISO: iso,
-      distanceMi: r.distMi,
-      movingTimeS: r.timeS,
-      elevGainFt: r.gainFt,
-      avgHr: r.avgHr,
-      workoutType: 1,
-      achievementCount: 3,
-    }));
-  }
-
-  // Easy / long / workout runs sprinkled across the year. Pattern that
-  // sums close to the mockup target of 503 mi / 87 runs through May 9.
-  const easyTemplates: Array<{ name: string; distMi: number; paceSPerMi: number; avgHr: number }> = [
-    { name: 'Recovery jog · East Bay Loop',      distMi: 7.4, paceSPerMi: 522, avgHr: 141 },
-    { name: 'Recovery jog · Presidio Loop',      distMi: 6.7, paceSPerMi: 512, avgHr: 138 },
-    { name: 'Shakeout · Pre-Sombrero',           distMi: 2.0, paceSPerMi: 515, avgHr: 132 },
-    { name: 'Pre-race shakeout · Carmel',        distMi: 3.0, paceSPerMi: 534, avgHr: 128 },
-    { name: 'Threshold tempo · 5mi @ T',         distMi: 8.0, paceSPerMi: 446, avgHr: 162 },
-    { name: 'Easy aerobic',                      distMi: 6.2, paceSPerMi: 510, avgHr: 142 },
-    { name: 'Long run · Headlands',              distMi: 16.0, paceSPerMi: 498, avgHr: 148 },
-    { name: 'Easy aerobic',                      distMi: 5.4, paceSPerMi: 508, avgHr: 140 },
-    { name: 'Mile repeats · 6×1mi',              distMi: 10.0, paceSPerMi: 440, avgHr: 165 },
-    { name: 'Easy with strides',                 distMi: 5.0, paceSPerMi: 502, avgHr: 144 },
-  ];
-
-  // Generate ~82 supporting runs distributed across the year (with peak in Apr).
-  const startOfYear = new Date(`${year}-01-01T12:00:00Z`);
-  const totalDays = Math.floor((may9.getTime() - startOfYear.getTime()) / 86_400_000);
-  const seedRunDates = new Set<string>();
-  for (const r of races) {
-    const d = new Date(may9);
-    d.setUTCDate(may9.getUTCDate() + r.dateOffsetFromMay9);
-    seedRunDates.add(d.toISOString().slice(0, 10));
-  }
-
-  // Deterministic spread — Mon/Wed/Thu/Sat/Sun pattern with bump in Apr.
-  for (let day = 0; day <= totalDays; day++) {
-    const d = new Date(startOfYear);
-    d.setUTCDate(startOfYear.getUTCDate() + day);
-    const iso = d.toISOString().slice(0, 10);
-    if (seedRunDates.has(iso)) continue;
-    const dow = d.getUTCDay();
-    const month = d.getUTCMonth();
-    // Skip Tue + Fri (rest days), reduce density in May (post-race),
-    // and increase density in April (peak month).
-    if (dow === 2 || dow === 5) continue;
-    if (month === 4 && day % 3 !== 0) continue; // May = lighter
-    if (month === 0 && day % 2 === 0) continue; // Jan = lighter ramp-in
-    // Pick a template based on dow.
-    let tpl: typeof easyTemplates[number];
-    if (dow === 0) tpl = easyTemplates[6]; // long run Sunday
-    else if (dow === 3) tpl = easyTemplates[4]; // tempo Wed
-    else if (dow === 6 && month <= 3) tpl = easyTemplates[8]; // workout Sat through Mar
-    else tpl = easyTemplates[(day + dow) % easyTemplates.length];
-    out.push(synthesizeRun({
-      id: id++,
-      name: tpl.name,
-      dateISO: iso,
-      distanceMi: tpl.distMi,
-      movingTimeS: Math.round(tpl.distMi * tpl.paceSPerMi),
-      elevGainFt: Math.round(tpl.distMi * 80),
-      avgHr: tpl.avgHr,
-      workoutType: tpl.name.toLowerCase().includes('repeats') || tpl.name.toLowerCase().includes('tempo') ? 3 : 0,
-      achievementCount: 0,
-    }));
-  }
-
-  return out;
-}
-
-function synthesizeRun(opts: {
-  id: number;
-  name: string;
-  dateISO: string;
-  distanceMi: number;
-  movingTimeS: number;
-  elevGainFt: number;
-  avgHr: number;
-  workoutType: number;
-  achievementCount: number;
-}): NormalizedActivity {
-  const paceSPerMi = opts.distanceMi > 0 ? Math.round(opts.movingTimeS / opts.distanceMi) : 0;
-  return {
-    id: opts.id,
-    name: opts.name,
-    type: 'Run',
-    sportType: 'Run',
-    workoutType: opts.workoutType,
-    startLocal: opts.dateISO + 'T08:00:00',
-    date: opts.dateISO,
-    distanceMi: opts.distanceMi,
-    movingTimeS: opts.movingTimeS,
-    elapsedTimeS: opts.movingTimeS,
-    paceSPerMi,
-    avgHr: opts.avgHr,
-    maxHr: opts.avgHr + 10,
-    avgCadence: 88,
-    elevGainFt: opts.elevGainFt,
-    avgSpeedMph: opts.distanceMi > 0 && opts.movingTimeS > 0
-      ? Math.round((opts.distanceMi / (opts.movingTimeS / 3600)) * 100) / 100
-      : null,
-    startLatLng: null,
-    endLatLng: null,
-    summaryPolyline: null,
-    kudosCount: 0,
-    achievementCount: opts.achievementCount,
-    sufferScore: null,
-    canonicalFinishS: null,
-    canonicalDistanceMi: null,
-    canonicalLabel: null,
-  };
-}
