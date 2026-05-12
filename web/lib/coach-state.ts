@@ -20,6 +20,7 @@ import { listRacesDB } from './race-store';
 import { getCachedActivities } from './strava-cache';
 import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './strava-stats';
 import { todayISO as todayLAISO, todayDate } from './dates';
+import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -99,6 +100,14 @@ export interface CoachState {
     healthKitAvailable: boolean;
   };
 
+  /** 7-day daily_checkin rollup (energy / soreness / stress, each 1-10).
+   *  Null when no rows in the window — the engine treats it as a
+   *  missing signal, not zeroed-out.
+   *
+   *  @research Research/00b §Warning Signs of Incomplete Recovery —
+   *            Qualitative Signals · Decision Matrix */
+  checkin: CheckinAggregate | null;
+
   /** ISO date when the LATEST race-recovery window closes. Each
    *  recent race contributes a window; this picks the furthest-out
    *  end-date. Engine treats `today < recoveryWindowEndsISO` as
@@ -158,13 +167,20 @@ export async function gatherCoachState(): Promise<CoachState> {
   const today = todayDate();
   const todayISO = todayLAISO();
 
-  const [savedRaces, { activities }] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
     listRacesDB().catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
     getCachedActivities().catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
+    // gatherCheckinAggregate swallows DB failures internally so this
+    // resolves to a 0-rows aggregate when Postgres is unavailable.
+    gatherCheckinAggregate(todayISO),
   ]);
+
+  // Null `state.checkin` means "no rows in the last 7 days" — the
+  // engine treats it as a missing signal, not zeroed-out.
+  const checkin: CheckinAggregate | null = checkinAgg.rowsCount > 0 ? checkinAgg : null;
 
   // ── Race calendar ─────────────────────────────────────────
   const futureSaved = savedRaces
@@ -311,6 +327,7 @@ export async function gatherCoachState(): Promise<CoachState> {
       rebuildAfterBreak,
       healthKitAvailable: false,
     },
+    checkin,
     recoveryWindowEndsISO,
   };
 }
