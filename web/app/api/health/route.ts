@@ -26,6 +26,7 @@
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
 import { coach } from '../../../coach/coach';
+import { query } from '../../../lib/db';
 import type {
   CoachDecision,
   BodySystemsReport,
@@ -445,7 +446,7 @@ export async function GET(): Promise<Response> {
     // Coach method when it lands. Names below match the planned
     // Coach surface so the wiring path stays obvious.
     const profile = stubProfile();                              // → coach.profile()
-    const expandedCheckin = stubExpandedCheckin(today);         // → coach.dailyCheckin() / mood-log table
+    const expandedCheckin = await readExpandedCheckin(today);   // reads daily_checkin table, falls back to stub
     const hrvDetail = stubHrvDetail(hrv);                       // → coach.hrvDetail()
     const formReport = stubFormReport(trainingStress);          // → coach.formReport()
     const illnessComposite = stubIllnessComposite();            // → coach.illnessComposite()
@@ -802,6 +803,66 @@ function stubProfile(): HealthApiProfile {
     sex: 'male', // flip to 'female' to render Row 5 in QA.
     ageBandLabel: 'M 38',
   };
+}
+
+/** Reads today's daily_checkin row if it exists, otherwise returns
+ *  the stub (no-checkin state). Wraps stubExpandedCheckin so the
+ *  greet tile + DAILY CHECK-IN card both react to a real DB write
+ *  the moment the runner clicks LOG TODAY. */
+async function readExpandedCheckin(today: string): Promise<HealthApiExpandedCheckin> {
+  try {
+    const rows = await query<{
+      energy: number;
+      soreness: number;
+      stress: number;
+      logged_at: string;
+    }>(
+      `SELECT energy, soreness, stress, logged_at::text
+       FROM daily_checkin
+       WHERE user_id = $1 AND date = $2
+       LIMIT 1`,
+      ['me', today],
+    );
+    const row = rows[0];
+    if (!row) return stubExpandedCheckin(today);
+
+    // Compute the composite subjective score: higher energy + lower
+    // soreness + lower stress = better. 0-100 scale. (Saw 2016 / Hooper).
+    const energyN = row.energy;                  // 1-10, higher = better
+    const sorenessInv = 11 - row.soreness;       // invert: 10 → 1, 1 → 10
+    const stressInv = 11 - row.stress;
+    const subjectiveScore = Math.round(((energyN + sorenessInv + stressInv) / 30) * 100);
+
+    // 1-5 label band derived from subjectiveScore.
+    let score = 1;
+    let label = 'Drained';
+    if (subjectiveScore >= 85) { score = 5; label = 'Peak'; }
+    else if (subjectiveScore >= 70) { score = 4; label = 'Good'; }
+    else if (subjectiveScore >= 55) { score = 3; label = 'Steady'; }
+    else if (subjectiveScore >= 40) { score = 2; label = 'Tired'; }
+
+    // Local time of the logged_at timestamp.
+    const loggedAt = new Date(row.logged_at);
+    const loggedTimeLabel = loggedAt.toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles',
+    });
+
+    return {
+      loggedAtISO: row.logged_at,
+      score,
+      label,
+      loggedTimeLabel,
+      energy: row.energy,
+      soreness: row.soreness,
+      stress: row.stress,
+      subjectiveScore,
+      citation: 'Saw 2016 · /Research/15 §Decision Matrix',
+    };
+  } catch {
+    // DB down or table missing — fall back to stub silently. The page
+    // shouldn't 500 on a check-in lookup.
+    return stubExpandedCheckin(today);
+  }
 }
 
 /** Expanded check-in stub. Mockup default: not yet logged today. */

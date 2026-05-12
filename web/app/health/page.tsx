@@ -54,6 +54,7 @@ export default function HealthPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [data, setData] = useState<HealthData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const { activities } = useActivities();
 
   useEffect(() => {
@@ -76,7 +77,9 @@ export default function HealthPage() {
     return () => {
       cancelled = true;
     };
-  }, [now, activities]);
+  }, [now, activities, reloadTick]);
+
+  const reload = () => setReloadTick((t) => t + 1);
 
   const clock = now ? formatTopbarClock(now) : null;
 
@@ -102,7 +105,7 @@ export default function HealthPage() {
       )}
 
       {data ? (
-        <HealthBody data={data} />
+        <HealthBody data={data} onSaved={reload} />
       ) : (
         !loadError && <HealthSkeleton />
       )}
@@ -208,13 +211,13 @@ function HealthGreet({ data }: { data: HealthData | null }) {
 // Body
 // ─────────────────────────────────────────────────────────────────────
 
-function HealthBody({ data }: { data: HealthData }) {
+function HealthBody({ data, onSaved }: { data: HealthData; onSaved: () => void }) {
   const showRow5 = data.profile.sex === 'female';
   return (
     <>
       {/* ROW 1 — Subjective state + composite (audit Row 1) */}
       <Row>
-        <ExpandedDailyCheckinCard data={data} />
+        <ExpandedDailyCheckinCard data={data} onSaved={onSaved} />
         <ReadinessCompositeCard data={data} />
       </Row>
 
@@ -253,33 +256,49 @@ function HealthBody({ data }: { data: HealthData }) {
 // Audit: Saw 2016 — subjective wins ties. /Research/15 §Decision Matrix.
 // ─────────────────────────────────────────────────────────────────────
 
-function ExpandedDailyCheckinCard({ data }: { data: HealthData }) {
+function ExpandedDailyCheckinCard({ data, onSaved }: { data: HealthData; onSaved: () => void }) {
   const c = data.expandedCheckin;
   const todayShort = formatShortDate(data.today);
   const agree = data.subjectiveAgreement;
 
-  // Local state for the 3 sliders · the stubbed data values are the defaults.
-  // When Stage 7 coach.dailyCheckin() lands, these values will POST to the
-  // mood-log endpoint; for now they live in component state so the check-in
-  // is at least interactive and the UI responds to user input.
+  // Slider state · seeded from the persisted check-in row if one
+  // exists for today, otherwise null until the user moves a slider.
   const [energy, setEnergy] = useState<number | null>(c.energy);
   const [soreness, setSoreness] = useState<number | null>(c.soreness);
   const [stress, setStress] = useState<number | null>(c.stress);
 
-  // Explicit "logged" gate · the runner has to commit their answers by
-  // clicking LOG. Without this, the sliders could be moved around and
-  // we'd silently treat each adjustment as "logged" — that's wrong.
-  // The button POSTs to `coach.dailyCheckin()` once Stage 7 ships;
-  // until then it flips a local flag so the UI reads as logged.
+  // Logged gate · true when a row exists in daily_checkin for today
+  // (server-side truth) AND the local sliders match. Editing flips
+  // it back to false so the runner has to re-confirm.
   const [hasLogged, setHasLogged] = useState<boolean>(c.score != null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const allFilled = energy != null && soreness != null && stress != null;
   const logged = hasLogged && allFilled;
-  const canLog = allFilled && !hasLogged;
+  const canLog = allFilled && !hasLogged && !saving;
 
-  function handleLog() {
-    // TODO: wire to POST /api/health/checkin (Stage 7 · coach.dailyCheckin())
-    setHasLogged(true);
+  async function handleLog() {
+    if (!allFilled || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch('/api/health/checkin', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ energy, soreness, stress, date: data.today }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setHasLogged(true);
+      // Refresh parent health data so the greet tile + composite both
+      // pick up the new check-in immediately.
+      onSaved();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
   }
   function handleEdit() {
     setHasLogged(false);
@@ -408,10 +427,24 @@ function ExpandedDailyCheckinCard({ data }: { data: HealthData }) {
               cursor: canLog ? 'pointer' : 'not-allowed',
             }}
           >
-            ▸ LOG TODAY
+            {saving ? 'SAVING…' : '▸ LOG TODAY'}
           </button>
         )}
       </div>
+
+      {saveError && (
+        <div style={{
+          marginTop: 8,
+          padding: '8px 12px',
+          fontSize: 12,
+          color: 'var(--warn)',
+          background: 'rgba(252,77,84,.08)',
+          border: '1px solid rgba(252,77,84,.30)',
+          borderRadius: 6,
+        }}>
+          Couldn&apos;t save your check-in: {saveError}
+        </div>
+      )}
 
       {/* Agreement chip — the divergence rule made visible. */}
       <div

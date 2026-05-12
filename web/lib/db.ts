@@ -157,6 +157,22 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS personal_goals_user_idx ON personal_goals (user_id, created_at DESC);
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS daily_checkin (
+        id          BIGSERIAL PRIMARY KEY,
+        user_id     TEXT NOT NULL DEFAULT 'me',
+        date        DATE NOT NULL,
+        energy      SMALLINT NOT NULL CHECK (energy BETWEEN 1 AND 10),
+        soreness    SMALLINT NOT NULL CHECK (soreness BETWEEN 1 AND 10),
+        stress      SMALLINT NOT NULL CHECK (stress BETWEEN 1 AND 10),
+        notes       TEXT,
+        logged_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, date)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS daily_checkin_user_date_idx ON daily_checkin (user_id, date DESC);
+    `);
   } finally {
     client.release();
   }
