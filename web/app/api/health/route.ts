@@ -954,7 +954,7 @@ function stubFormReport(stress: HealthApiTrainingStress): HealthApiFormReport {
     tsb: stress.formTsb,
     tsbBand,
     bandLabel,
-    citation: '/Research/00a §CTL/ATL/TSB · Banister model',
+    citation: '/Research/15-wearable-data.md §Fitness/Fatigue/Form (CTL/ATL/TSB)',
     source: 'derived',
   };
 }

@@ -473,7 +473,7 @@ class CoachImpl implements Coach {
           changed: true,
         },
         rationale: `Rebuild after gap: ${fired.map((f) => f.reason).join('; ')}`,
-        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
         brain: 'deterministic',
       };
     }
@@ -484,7 +484,7 @@ class CoachImpl implements Coach {
         rationale: count === 0
           ? 'No incomplete-recovery signals firing — today as scheduled.'
           : `One signal firing (${fired[0]!.reason}). Below the defer threshold; continuing as planned.`,
-        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
         brain: 'deterministic',
       };
     }
@@ -506,7 +506,7 @@ class CoachImpl implements Coach {
             changed: true,
           },
           rationale: `Defer quality: ${fired.map((f) => f.signal).join(' + ')} both firing`,
-          citations: [{ doc: 'Research/00b-recovery.md', section: '§Decision Matrix · 2 quantitative → defer 24-48h' }],
+          citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Decision Matrix' }],
         brain: 'deterministic',
         };
       }
@@ -514,7 +514,7 @@ class CoachImpl implements Coach {
       return {
         answer: { workout: scheduledWorkout, changed: false },
         rationale: `Two signals firing but today is already easy. Continuing as planned.`,
-        citations: [{ doc: 'Research/00b-recovery.md', section: '§Warning Signs of Incomplete Recovery' }],
+        citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
         brain: 'deterministic',
       };
     }
@@ -537,7 +537,7 @@ class CoachImpl implements Coach {
         changed: true,
       },
       rationale: `Cutback prescribed: ${count} quantitative signals firing`,
-      citations: [{ doc: 'Research/00b-recovery.md', section: '§Decision Matrix · 3+ quantitative → 3-5d cutback' }],
+      citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Decision Matrix' }],
       brain: 'deterministic',
     };
   }
@@ -622,8 +622,8 @@ class CoachImpl implements Coach {
       },
       rationale: `Retrospect from ${summary.actualPaceSPerMi.toFixed(0)} s/mi avg pace, ${summary.splitPattern} split, ${summary.goalDeltaS == null ? 'no goal logged' : `${summary.goalDeltaS > 0 ? '+' : ''}${Math.round(summary.goalDeltaS)}s vs goal`}.`,
       citations: [
-        { doc: 'Research/01-fitness.md', section: '§VDOT calibration windows' },
-        { doc: 'Research/00b-recovery.md', section: '§Single-race over-correction caution' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' },
       ],
       brain: 'deterministic',
     };
@@ -1148,9 +1148,9 @@ class CoachImpl implements Coach {
       },
       rationale: `14-week build to ${raceName} from ${baseline.toFixed(0)}-mi baseline, peaking at ${Math.max(...futureMi).toFixed(0)} mi/wk ~3 weeks out.`,
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons' },
-        { doc: 'Research/00b-recovery-protocols.md', section: '§Cutback cadence' },
-        { doc: 'Research/08-pacing-and-race-week.md', section: '§Taper volume reduction' },
+        { doc: 'Research/22-plan-templates.md', section: '§Half Marathon Plans' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Cutback Weeks (Down Weeks, Recovery Weeks)' },
+        { doc: 'Research/08-pacing-and-race-week.md', section: '§9.1 Taper duration by distance' },
       ],
       brain: 'deterministic',
     };
@@ -1288,9 +1288,9 @@ class CoachImpl implements Coach {
         ? `${sessions.length} proof sessions over the ${buildLengthWk}-week build to ${raceName}.`
         : 'No A race scheduled — proof sessions are race-relative.',
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Plan skeletons' },
-        { doc: 'Research/04-workout-vocabulary.md', section: '§Threshold + tempo' },
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT pace bands' },
+        { doc: 'Research/22-plan-templates.md', section: '§Half Marathon Plans' },
+        { doc: 'Research/04-workout-vocabulary.md', section: '§5. Threshold workouts' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Daniels training paces (E, M, T, I, R)' },
       ],
       brain: 'deterministic',
     };
@@ -1344,7 +1344,7 @@ class CoachImpl implements Coach {
         },
         rationale: 'No VDOT-eligible race in the freshness window.',
         citations: [
-          { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT freshness window' },
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
         ],
         brain: 'deterministic',
       };
@@ -1386,9 +1386,8 @@ class CoachImpl implements Coach {
       },
       rationale: `Riegel from VDOT ${snapshot.vdot.toFixed(1)} (${snapshot.source.name} ${snapshot.source.daysAgo}d ago) to ${raceDistanceMi.toFixed(1)}mi: ${formatTime(predictedTimeS)} vs ${formatTime(goalTimeS)} goal.`,
       citations: [
-        { doc: 'Research/02-race-time-prediction.md', section: '§Riegel formula' },
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§VDOT freshness window' },
-        { doc: 'Research/24-vdot-age-sex-grading.md', section: '§Age + sex grading', snippet: 'Apply age-graded equivalents for fair cross-cohort comparison' },
+        { doc: 'Research/02-race-time-prediction.md', section: '§2. Riegel Formula' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
       ],
       brain: 'deterministic',
     };
@@ -1538,7 +1537,7 @@ class CoachImpl implements Coach {
       },
       rationale: `Week projecting ${projectedWeekMi.toFixed(1)} mi vs ${plannedWeekMi.toFixed(1)} planned.`,
       citations: [
-        { doc: 'Research/22-plan-templates.md', section: '§Week structure' },
+        { doc: 'Research/22-plan-templates.md', section: '§Half Marathon Plans' },
         { doc: 'Research/00b-recovery-protocols.md', section: '§Recovery by Distance' },
       ],
       brain: 'deterministic',
@@ -1623,9 +1622,9 @@ class CoachImpl implements Coach {
       },
       rationale: `Pace zones ${snapshot ? `@ VDOT ${snapshot.vdot.toFixed(1)}` : 'pending race'}; long-run cap ${longRunCap.toFixed(1)}mi; easy share ${easySharePct}%; cutback every ${cutbackEvery}wk.`,
       citations: [
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§Pace zones' },
-        { doc: 'Research/00a-distance-running-training.md', section: '§13.1 single-session spike rule' },
-        { doc: 'Research/00a-distance-running-training.md', section: '§Polarized 80/20' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Daniels training paces (E, M, T, I, R)' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Training Load and Injury Risk' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Training Intensity Distribution (TID)' },
         { doc: 'Research/00b-recovery-protocols.md', section: '§Recovery Scaled to Weekly Mileage' },
       ],
       brain: 'deterministic',
@@ -1735,12 +1734,9 @@ class CoachImpl implements Coach {
       answer: v,
       rationale: v.unlockPin ?? 'No state change',
       citations: [
-        { doc: 'Research/00a-distance-running-training.md', section: '§Progressive overload' },
-        { doc: 'Research/00a-distance-running-training.md', section: '§13.1 Single-session spike' },
-        { doc: 'Research/00b-recovery-protocols.md', section: '§HR drift thresholds' },
-        { doc: 'Research/16-form-biomechanics.md', section: '§Cadence + ground contact', snippet: 'Form cues read from HR + cadence drift patterns in the run' },
-        { doc: 'Research/17-footwear.md', section: '§Shoe-pace match', snippet: 'Shoe selection should match the workout type prescribed' },
-        { doc: 'Research/21-form-corrections.md', section: '§Cue-by-cue corrections', snippet: 'Concrete drills to fix the form drift the engine detected' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Volume progression rules' },
+        { doc: 'Research/00a-distance-running-training.md', section: '§Training Load and Injury Risk' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' },
       ],
       brain: 'deterministic',
     };
@@ -1801,8 +1797,8 @@ class CoachImpl implements Coach {
         ? `Predicted ${formatTime(predictedS!)}, actual ${formatTime(finishTimeS)}; delta ${deltaS > 0 ? '+' : ''}${Math.round(deltaS)}s.`
         : `${isPR ? 'PR' : 'Effort'} logged; no VDOT baseline to compare against yet.`,
       citations: [
-        { doc: 'Research/02-race-time-prediction.md', section: '§Riegel + late-race fade' },
-        { doc: 'Research/00b-recovery-protocols.md', section: '§Single-race over-correction caution' },
+        { doc: 'Research/02-race-time-prediction.md', section: '§2. Riegel Formula' },
+        { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' },
       ],
       brain: 'deterministic',
     };
@@ -1847,7 +1843,6 @@ class CoachImpl implements Coach {
       explanation: voiceLead,
       citations: [
         ...citationsForWorkoutType(t.type),
-        { doc: 'Research/07-strength-programming.md', section: '§Periodized strength', snippet: 'Strength sessions sit opposite hard run days; periodize alongside run volume' },
       ],
       brain: 'deterministic',
     };
@@ -1983,8 +1978,8 @@ class CoachImpl implements Coach {
           ? `Weather slowdown computed: ${slowdown.totalPct.toFixed(1)}% (${slowdown.rationale.join('; ') || 'neutral conditions'}).`
           : 'Conservative start + trust-the-plan default. No weather forecast provided.',
         citations: [
-          { doc: 'Research/06-weather-adjustments.md', section: '§10', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
-          { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon — every fast plan dies in the opening miles' },
+          { doc: 'Research/06-weather-adjustments.md', section: '§Section 10 — Race-Day Recalibration', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
+          { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5 The marathon', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon — every fast plan dies in the opening miles' },
         ],
         brain: 'deterministic',
       };

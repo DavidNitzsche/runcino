@@ -83,7 +83,7 @@ export function validatePlan(
         severity: 'error',
         message: `Quality on ${days[i].date} immediately follows quality on ${days[i - 1].date}. Hard-easy alternation requires ≥1 easy day between quality sessions.`,
         location: `${days[i - 1].date} → ${days[i].date}`,
-        citation: 'Research/00a §Hard-Easy Alternation',
+        citation: 'Research/00b §Hard/Easy Alternation',
       });
     }
   }
@@ -101,7 +101,7 @@ export function validatePlan(
         severity: 'error',
         message: `Long run on ${d.date} (${d.distanceMi.toFixed(1)} mi) exceeds the ${cap28.toFixed(1)}-mi cap (${(spikeRatio * 100).toFixed(0)}% of recent training longest ${longest28.toFixed(1)} mi). Connective-tissue injury risk.`,
         location: d.date,
-        citation: 'Research/00a §13.1 Single-Session Spike',
+        citation: 'Research/00a §Training Load and Injury Risk',
       });
     }
   }
@@ -114,7 +114,7 @@ export function validatePlan(
       severity: 'warn',
       message: `Easy share is ${Math.round(state.intensity.easyShare14d * 100)}% over the last 14 days — below the 80% polarized target. More easy miles, fewer moderate ones.`,
       location: 'last 14 days',
-      citation: 'Research/00a §Polarized 80/20',
+      citation: 'Research/00a §Training Intensity Distribution (TID)',
     });
   }
 
