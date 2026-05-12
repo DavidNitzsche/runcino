@@ -451,6 +451,17 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
     return Math.max(1.5, wkAvg / 4 * 0.9);
   }
   const wkAvg = Math.max(state.volume.weeklyAvg4w, 12);
+  // Higher-volume phases stack 2 quality + 1 long onto the easy days,
+  // so the easy slot has to be tighter or the week blows past the
+  // phase's volume multiplier ceiling. Math: in a 7-day BUILD/PEAK
+  // week we typically have 1 rest + 2 quality + 1 long + 3 easy.
+  // Quality days carry their own fixed mileage; long is independent.
+  // Divisor 6.5 keeps 3-easy + 1-long + 2-quality + rest within the
+  // 1.10× weeklyAvg target (Research/00a §"Volume progression rules":
+  // 5-15% per cycle for trained athletes). BASE / POST_RACE / REBUILD
+  // / BASE_MAINTENANCE keep the legacy /5 share since they don't stack
+  // as much fixed-distance work.
+  const dailyShareLow = wkAvg / 6.5;
   const dailyShare = wkAvg / 5;  // Assume ~5 running days/week
   if (phase === 'POST_RACE') return Math.max(3, dailyShare * 0.5);
   if (phase === 'REBUILD')   return Math.max(3, dailyShare * 0.7);
@@ -458,6 +469,7 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
   // drops 30-50% of peak volume across the 10-14 day window. Easy
   // mileage takes the cut; intensity is preserved (strides + race).
   if (phase === 'TAPER')     return Math.max(3, dailyShare * 0.5);
+  if (phase === 'BASE' || phase === 'BUILD' || phase === 'PEAK') return Math.max(3, Math.min(dailyShareLow, 12));
   return Math.max(3, Math.min(dailyShare, 12));
 }
 
