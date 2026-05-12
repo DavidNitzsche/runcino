@@ -208,7 +208,6 @@ function daysUntilISO(todayISO: string, targetISO: string): number {
  * Production deploys never hit this — listRacesDB returns real rows. This
  * only fires in local dev when no races have been seeded.
  */
-import type { SavedRace } from '../../../lib/storage-types';
 
 function demoRaceCalendar(today: string): SavedRace[] {
   const minimalPlan = {
