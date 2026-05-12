@@ -1790,6 +1790,13 @@ function BuildCurveCard({ data }: { data: TrainingData }) {
   const peakIdx = points.findIndex((p) => p.isPeak);
   const raceIdx = points.findIndex((p) => p.isRaceWeek);
 
+  // Volume delta · last 7 days vs trailing 4-week weekly average.
+  // null when state is too sparse — we hide the badge in that case.
+  const last7 = data.state.volume.last7Mi;
+  const avg4w = data.state.volume.weeklyAvg4w;
+  const volumeDeltaPct =
+    avg4w > 0 && last7 >= 0 ? Math.round(((last7 - avg4w) / avg4w) * 100) : null;
+
   // PY0 raised from 14 → 32 so TODAY/PEAK callouts at y≈18 sit ABOVE
   // the tallest bar instead of overlapping its cap.
   const PX0 = 38, PY0 = 32, PX1 = 1062, PY1 = 232;
@@ -1842,7 +1849,11 @@ function BuildCurveCard({ data }: { data: TrainingData }) {
             fontWeight: 700,
           }}
         >
-          <span style={{ color: 'var(--good)' }}>▲ +12% VOL</span>
+          {volumeDeltaPct != null && (
+            <span style={{ color: volumeDeltaPct >= 0 ? 'var(--good)' : 'var(--warn)' }}>
+              {volumeDeltaPct >= 0 ? '▲' : '▼'} {volumeDeltaPct >= 0 ? '+' : ''}{volumeDeltaPct}% VOL
+            </span>
+          )}
           <span style={{ color: 'var(--corp)' }}>PROJECTED</span>
         </div>
       </CardHeader>

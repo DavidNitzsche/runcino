@@ -1085,6 +1085,14 @@ function TrajectoryCard({ data }: { data: OverviewData }) {
   const peakIdx = points.findIndex((p) => p.isPeak);
   const raceIdx = points.findIndex((p) => p.isRaceWeek);
 
+  // Volume delta · last 7 days vs trailing 4-week weekly average.
+  // null when state is too sparse (no 4w avg or no recent week) — we hide
+  // the badge in that case rather than rendering "+0%" or "+—%".
+  const last7 = data.state.volume.last7Mi;
+  const avg4w = data.state.volume.weeklyAvg4w;
+  const volumeDeltaPct =
+    avg4w > 0 && last7 >= 0 ? Math.round(((last7 - avg4w) / avg4w) * 100) : null;
+
   // Technical chart layout · plot area is inset from viewBox edges for axes
   //   viewBox: 0..1080 × 0..280  · taller than wide-ratio for in-card presence
   //   plot area: x [38, 1062]   y [14, 232]   (width 1024, height 218)
@@ -1108,7 +1116,11 @@ function TrajectoryCard({ data }: { data: OverviewData }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 14, fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: '1.4px', textTransform: 'uppercase', fontWeight: 700 }}>
-          <span style={{ color: 'var(--good)' }}>▲ +12% VOL</span>
+          {volumeDeltaPct != null && (
+            <span style={{ color: volumeDeltaPct >= 0 ? 'var(--good)' : 'var(--warn)' }}>
+              {volumeDeltaPct >= 0 ? '▲' : '▼'} {volumeDeltaPct >= 0 ? '+' : ''}{volumeDeltaPct}% VOL
+            </span>
+          )}
           <span style={{ color: 'var(--corp)' }}>PROJECTED</span>
         </div>
       </div>
