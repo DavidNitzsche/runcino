@@ -24,6 +24,7 @@ import { Caption } from '../../../components/nav';
 import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
 import { EmptyState, Skeleton } from '../../components/EmptyState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -170,6 +171,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
   const totalMi = race.plan.race.distance_mi
     ?? (analysis ? analysis.stats.totalDistM / 1609.344 : 0);
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const peakFt = analysis ? analysis.stats.maxEleM * FT_PER_M : 0;
   const peakMi = analysis ? analysis.cumDistM[analysis.stats.maxEleIdx] / 1609.344 : 0;
   const peakIdx = analysis?.stats.maxEleIdx ?? null;
@@ -213,11 +215,40 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
-              <button className="btn btn--ghost" onClick={onDelete}>Delete</button>
+              <button className="btn btn--ghost" onClick={() => setConfirmingDelete(true)}>Delete</button>
               <button className="btn btn--primary" onClick={downloadJson}>↓ Export .runcino.json</button>
             </div>
           </div>
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
+          <ConfirmDialog
+            open={confirmingDelete}
+            eyebrow="DELETE"
+            title={<>Delete {race.meta.name}?</>}
+            body={
+              <>
+                This removes the race plan, GPX trace, and any logged result from
+                your library. You can&apos;t undo this — re-import the .runcino.json
+                if you change your mind.
+              </>
+            }
+            summary={
+              <>
+                <div className="t-eyebrow">RACE SUMMARY</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                  <DialogStat label="DISTANCE" value={`${race.meta.distanceMi.toFixed(1)} mi`} />
+                  <DialogStat label="DATE" value={race.meta.date} />
+                  <DialogStat label="GOAL" value={race.meta.goalDisplay || '—'} />
+                  <DialogStat
+                    label="RESULT"
+                    value={race.actualResult?.finishS != null ? formatFinishTime(race.actualResult.finishS) : '—'}
+                  />
+                </div>
+              </>
+            }
+            confirmLabel="Delete race"
+            onConfirm={async () => { await onDelete(); }}
+            onCancel={() => setConfirmingDelete(false)}
+          />
 
           {analysis ? (
             <PosterCard
@@ -341,6 +372,27 @@ function narrativeFor(slug: string, race: SavedRace, peakMi: number, peakFt: num
     para1: <>The course is <b>five sectors</b>, auto-detected from the elevation profile. The day&apos;s high point lands at mile {peakMi.toFixed(1)} ({Math.round(peakFt)} ft) — pace targets adjust per phase using the Minetti grade-adjusted-pace curve.</>,
     para2: <>Goal: <em>{race.meta.goalDisplay}</em>. Strategy: {race.plan.goal.strategy.replace(/_/g, ' ')}. Watch tolerance ±{race.plan.tolerance.pace_s_per_mi} s/mi.</>,
   };
+}
+
+function DialogStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="t-eyebrow" style={{ color: 'var(--t3)' }}>{label}</div>
+      <div style={{
+        fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 600,
+        marginTop: 4, lineHeight: 1,
+      }}>{value}</div>
+    </div>
+  );
+}
+
+function formatFinishTime(totalS: number): string {
+  const h = Math.floor(totalS / 3600);
+  const m = Math.floor((totalS % 3600) / 60);
+  const s = Math.floor(totalS % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
 }
 
 /* ── Poster card ────────────────────────────────────────────
