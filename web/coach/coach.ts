@@ -49,6 +49,7 @@ import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInp
 import { gradeAdjustmentFactor } from '../lib/minetti';
 import { M_PER_MI } from '../lib/time';
 import { TAPER_BY_DISTANCE, RACE_DAY_FUELING } from './doctrine/race_week';
+import { TISSUE_RECOVERY_TIMELINES } from './doctrine/recovery_protocols';
 
 /** Tier the runner's weekly mileage per Research/00b §Recovery Scaled
  *  to Weekly Mileage. Drives cutback cadence + per-tier recovery rules. */
@@ -929,29 +930,32 @@ class CoachImpl implements Coach {
       return d.toISOString().slice(0, 10);
     };
 
-    // Window high in days, sourced from TISSUE_RECOVERY_TIMELINES.
-    // Glycogen 24-72h → 3 days · Muscle 5-10d → 10 · Connective 2-4wk
-    // → 28 · Bone 3-6wk → 42 · CNS/hormonal 2-4wk → 28 · Immune 1-3wk → 21.
-    type Tissue = { id: BodySystem['id']; label: string; windowLabel: string; windowDays: number };
-    const tissues: Tissue[] = [
-      { id: 'glycogen',   label: 'Glycogen',       windowLabel: '24-72h', windowDays: 3 },
-      { id: 'muscle',     label: 'Muscle fibers',  windowLabel: '5-10d',  windowDays: 10 },
-      { id: 'connective', label: 'Connective',     windowLabel: '2-4wk',  windowDays: 28 },
-      { id: 'cns',        label: 'CNS / hormonal', windowLabel: '2-4wk',  windowDays: 28 },
-      { id: 'immune',     label: 'Immune',         windowLabel: '1-3wk',  windowDays: 21 },
-    ];
-    if (isMarathonOrLonger) {
-      tissues.splice(3, 0, { id: 'bone', label: 'Bone remodeling', windowLabel: '3-6wk', windowDays: 42 });
-    }
+    // Tissues + their recovery windows now come literally from the
+    // TISSUE_RECOVERY_TIMELINES doctrine constant (Research/00b §Reverse
+    // Periodization). Filter out the marathon-only entry (bone remodel)
+    // for sub-marathon efforts; keep it for 22+mi races.
+    type DoctrineTissue = typeof TISSUE_RECOVERY_TIMELINES.value[number];
+    const tissues: DoctrineTissue[] = TISSUE_RECOVERY_TIMELINES.value
+      .filter((t) => !t.marathonOnly || isMarathonOrLonger);
 
     const systems: BodySystem[] = tissues.map((t) => {
-      const readiness = Math.max(0, Math.min(1, daysSince / t.windowDays));
-      const daysToHealed = Math.max(0, t.windowDays - daysSince);
+      // Window high day-count is the "fully healed" cap; daysSince /
+      // windowHigh = readiness fraction.
+      const readiness = Math.max(0, Math.min(1, daysSince / t.windowDaysHigh));
+      const daysToHealed = Math.max(0, t.windowDaysHigh - daysSince);
+      // Compact display label per doctrine ("Glycogen" not the full
+      // "Glycogen 24-72h with adequate carbohydrate" string).
+      const displayLabel = t.id === 'cns' ? 'CNS / hormonal'
+        : t.id === 'muscle' ? 'Muscle fibers'
+        : t.id === 'connective' ? 'Connective'
+        : t.id === 'bone' ? 'Bone remodeling'
+        : t.id === 'immune' ? 'Immune'
+        : 'Glycogen';
       return {
         id: t.id,
-        label: t.label,
+        label: displayLabel,
         windowLabel: t.windowLabel,
-        state: daysSince >= t.windowDays ? 'done' : 'building',
+        state: daysSince >= t.windowDaysHigh ? 'done' : 'building',
         readiness: Math.round(readiness * 100) / 100,
         healedByISO: addDays(daysToHealed),
         daysToHealed,

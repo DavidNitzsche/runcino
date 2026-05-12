@@ -341,17 +341,34 @@ export const MARATHON_BIOMARKER_TIMELINE: Cited<Array<{
 
 // ── Reverse periodization tissue timelines ────────────────────────
 
+/** Stable per-tissue identifiers — match the UI BodySystem['id'] union
+ *  so consumers can index by id rather than by string lookup. */
+export type TissueId = 'glycogen' | 'muscle' | 'connective' | 'bone' | 'cns' | 'immune';
+
 export const TISSUE_RECOVERY_TIMELINES: Cited<Array<{
+  id: TissueId;
   tissue: string;
   recoveryWindow: string;
+  /** Display-ready compact window label (e.g. "24-72h", "5-10d"). */
+  windowLabel: string;
+  /** Lower bound in days — minimum the engine waits before this tissue
+   *  is generally considered repaired. */
+  windowDaysLow: number;
+  /** Upper bound in days — engine readiness math uses this as the
+   *  "fully healed" cap (daysSince ≥ high → state='done'). */
+  windowDaysHigh: number;
+  /** True when this tissue only matters for marathon-distance and
+   *  longer efforts (skeletal load is the documented limiter at 26+
+   *  miles per Research/00b §Reverse Periodization). */
+  marathonOnly: boolean;
 }>> = {
   value: [
-    { tissue: 'Glycogen',                                  recoveryWindow: '24-72h with adequate carbohydrate' },
-    { tissue: 'Muscle fibers (microdamage)',               recoveryWindow: '5-10 days' },
-    { tissue: 'Connective tissue (tendon, fascia)',        recoveryWindow: '2-4 weeks' },
-    { tissue: 'Bone remodeling (post-stress)',              recoveryWindow: '3-6 weeks' },
-    { tissue: 'CNS / hormonal balance',                    recoveryWindow: '2-4 weeks' },
-    { tissue: 'Immune',                                     recoveryWindow: '1-3 weeks' },
+    { id: 'glycogen',   tissue: 'Glycogen',                            recoveryWindow: '24-72h with adequate carbohydrate', windowLabel: '24-72h', windowDaysLow: 1,  windowDaysHigh: 3,  marathonOnly: false },
+    { id: 'muscle',     tissue: 'Muscle fibers (microdamage)',         recoveryWindow: '5-10 days',                          windowLabel: '5-10d',  windowDaysLow: 5,  windowDaysHigh: 10, marathonOnly: false },
+    { id: 'connective', tissue: 'Connective tissue (tendon, fascia)',  recoveryWindow: '2-4 weeks',                          windowLabel: '2-4wk',  windowDaysLow: 14, windowDaysHigh: 28, marathonOnly: false },
+    { id: 'bone',       tissue: 'Bone remodeling (post-stress)',       recoveryWindow: '3-6 weeks',                          windowLabel: '3-6wk',  windowDaysLow: 21, windowDaysHigh: 42, marathonOnly: true  },
+    { id: 'cns',        tissue: 'CNS / hormonal balance',              recoveryWindow: '2-4 weeks',                          windowLabel: '2-4wk',  windowDaysLow: 14, windowDaysHigh: 28, marathonOnly: false },
+    { id: 'immune',     tissue: 'Immune',                              recoveryWindow: '1-3 weeks',                          windowLabel: '1-3wk',  windowDaysLow: 7,  windowDaysHigh: 21, marathonOnly: false },
   ],
   note: 'Reverse-taper ordering matches tissue-repair timelines: rebuild volume first (week 1-2), then frequency, then duration, then strides, then short tempo, then full quality. Loading high-intensity work before connective tissue and CNS recover risks tendon injury and stress fractures — the most common post-marathon injury pattern.',
   citations: [
