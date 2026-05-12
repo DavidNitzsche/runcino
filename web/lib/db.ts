@@ -140,6 +140,23 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS recovery_sessions_date_idx ON recovery_sessions (date);
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS personal_goals (
+        id          SERIAL PRIMARY KEY,
+        user_id     TEXT NOT NULL DEFAULT 'me',
+        goal_type   TEXT NOT NULL CHECK (goal_type IN ('volume','speed','distance','habit','strength','health')),
+        target      TEXT NOT NULL,
+        current     TEXT,
+        deadline    DATE,
+        tolerance   TEXT,
+        rationale   TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS personal_goals_user_idx ON personal_goals (user_id, created_at DESC);
+    `);
   } finally {
     client.release();
   }

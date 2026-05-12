@@ -42,6 +42,7 @@ import {
   EmptyState,
   Skeleton,
 } from '@/app/components';
+import { AddGoalModal } from '@/app/components/AddGoalModal';
 import {
   loadProfileData,
   formatTopbarClock,
@@ -61,6 +62,7 @@ export default function ProfilePage() {
   const [now, setNow] = useState<Date | null>(null);
   const [data, setData] = useState<ProfileData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     setNow(new Date());
@@ -82,7 +84,9 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [now]);
+  }, [now, reloadTick]);
+
+  const reload = () => setReloadTick((t) => t + 1);
 
   const clock = now ? formatTopbarClock(now) : null;
 
@@ -108,7 +112,7 @@ export default function ProfilePage() {
       )}
 
       {data ? (
-        <ProfileBody data={data} />
+        <ProfileBody data={data} onRefresh={reload} />
       ) : (
         !loadError && <ProfileSkeleton />
       )}
@@ -192,7 +196,7 @@ function ProfileGreet({ data }: { data: ProfileData | null }) {
 // Body
 // ─────────────────────────────────────────────────────────────────────
 
-function ProfileBody({ data }: { data: ProfileData }) {
+function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
   return (
     <>
       <Row>
@@ -200,7 +204,7 @@ function ProfileBody({ data }: { data: ProfileData }) {
         <LifetimePrsCard data={data} />
       </Row>
       <Row>
-        <PersonalGoalsCard data={data} />
+        <PersonalGoalsCard data={data} onRefresh={onRefresh} />
       </Row>
       <Row>
         <VdotCard data={data} />
@@ -453,7 +457,8 @@ function LifetimePrRow({ pr }: { pr: LifetimePr }) {
 // ROW 2 · Personal Goals (span 12)
 // ─────────────────────────────────────────────────────────────────────
 
-function PersonalGoalsCard({ data }: { data: ProfileData }) {
+function PersonalGoalsCard({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
+  const [addingGoal, setAddingGoal] = useState(false);
   return (
     <Card span={12} padding="22px 26px">
       <CardHeader>
@@ -479,12 +484,7 @@ function PersonalGoalsCard({ data }: { data: ProfileData }) {
             type="button"
             className="card-pin muted"
             style={{ border: 0, cursor: 'pointer' }}
-            onClick={() => {
-              // TODO (Stage 7): wire to Add Personal Goal modal
-              // (designs/_template-action-2026-05-09.html). Placeholder
-              // CTA for now — the goals data model doesn't exist yet.
-              alert('Add Personal Goal — coming soon.');
-            }}
+            onClick={() => setAddingGoal(true)}
           >
             + ADD GOAL
           </button>
@@ -540,7 +540,7 @@ function PersonalGoalsCard({ data }: { data: ProfileData }) {
               textTransform: 'uppercase',
               textAlign: 'center',
             }}
-            onClick={() => alert('Add Personal Goal — coming soon.')}
+            onClick={() => setAddingGoal(true)}
           >
             + ADD GOAL
           </button>
@@ -549,6 +549,11 @@ function PersonalGoalsCard({ data }: { data: ProfileData }) {
 
       <CardFoot
         left="Goals shape the plan. Coach reads each one — volume sets weekly ramps, sleep floor gates quality sessions, strength caps stacking."
+      />
+      <AddGoalModal
+        open={addingGoal}
+        onClose={() => setAddingGoal(false)}
+        onSaved={() => { setAddingGoal(false); onRefresh(); }}
       />
     </Card>
   );
