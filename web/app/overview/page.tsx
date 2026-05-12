@@ -914,6 +914,11 @@ function WeekStripCard({ data }: { data: OverviewData }) {
           <div style={{ fontFamily: 'var(--f-data)', fontSize: 9.5, letterSpacing: '1.2px', color: 'var(--good)', fontWeight: 700, textTransform: 'uppercase' }}>
             ✓ LOGGED
           </div>
+          <Link href="/plan" style={{
+            fontFamily: 'var(--f-data)', fontSize: 9.5, letterSpacing: '1.2px',
+            color: 'var(--coach)', fontWeight: 700, textTransform: 'uppercase',
+            textDecoration: 'none', marginTop: 4,
+          }}>VIEW FULL PLAN →</Link>
         </div>
       </div>
 

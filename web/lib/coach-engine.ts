@@ -422,6 +422,59 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
 // at a time so race-week overrides and post-race graduated recovery
 // reflect what the day will actually look like. Today's entry is
 // guaranteed to match coachDaily's prescription.
+/** Public range-simulator — walks the engine day-by-day from `startISO`
+ *  through `endISO` (inclusive) and returns one entry per day. Same
+ *  per-day path as `simulateWeek` (advance state, re-derive phase, run
+ *  pickRun → applyConstraints). Used by the /plan page to render
+ *  month-by-month calendars without each consumer having to import the
+ *  internal helpers. The tier-aware streak cap is applied within each
+ *  Mon→Sun window so the multi-month view honors the same rest cadence
+ *  the single-week strip does. */
+export function simulateRange(state: CoachState, startISO: string, endISO: string): CoachToday['weekShape'] {
+  const start = new Date(startISO + 'T12:00:00Z');
+  const end = new Date(endISO + 'T12:00:00Z');
+  if (end.getTime() < start.getTime()) return [];
+  const today = new Date(state.now + 'T12:00:00Z');
+  const cadence = strengthWeekContext(state, decidePhase(state, decideMode(state))).cadence;
+  const out: CoachToday['weekShape'] = [];
+
+  for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
+    const offset = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+    const dayState = offset > 0 ? advanceState(state, offset) : state;
+    const dayPhase = decidePhase(dayState, decideMode(dayState));
+    const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
+    const hasStrength = strengthFitsThisDay(state, dayPhase, dow, isHardRun(run), cadence.perWeek);
+    out.push({
+      date: iso,
+      type: run.type,
+      label: run.label,
+      distanceMi: run.distanceMi,
+      description: run.description,
+      paceTargetSPerMi: run.paceTargetSPerMi,
+      hrZone: run.hrZone,
+      isQuality: run.isQuality,
+      isLong: run.isLong,
+      isToday: iso === state.now,
+      hasStrength,
+    });
+  }
+
+  // Apply the tier-aware streak cap per Mon→Sun chunk so weekly cadence
+  // is honored regardless of how many weeks the caller requested.
+  for (let i = 0; i < out.length; i += 7) {
+    const chunk = out.slice(i, Math.min(i + 7, out.length));
+    if (chunk.length === 7) {
+      enforceWeekStreakCap(chunk, state.volume.weeklyAvg4w);
+      // Splice modified chunk back. enforceWeekStreakCap mutates in
+      // place — chunk references the array; reassign each index.
+      for (let j = 0; j < chunk.length; j++) out[i + j] = chunk[j];
+    }
+  }
+  return out;
+}
+
 function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachToday['weekShape'] {
   const today = new Date(state.now + 'T12:00:00Z');
   const monday = new Date(today);
