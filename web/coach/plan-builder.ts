@@ -1,28 +1,28 @@
 /**
- * plan-builder · authoring algorithm for the plan-as-artifact rewrite.
+ * plan-builder · authoring algorithm for the plan-as-artifact.
  *
- * `buildPlan(state, prefs, race?)` produces a full multi-week Plan:
- * phases, weeks, workouts. Every number is either (a) doctrine-prescribed
- * for the level (Research/22 plan-template tables), (b) derived from
- * doctrine + the runner's current state (the ramp curve), or (c) from
- * Research/22 sample-week templates scaled to the week's volume target.
+ * `buildPlan(inputs)` produces a full multi-week Plan. Session sizing
+ * is proportion-based, not template-lookup based:
+ *
+ *   Long run   → 26% of weekly volume
+ *   Threshold  → 18% (solo) / 17% (dual-quality week)
+ *   Intervals  → 13% (dual-quality week only)
+ *   Easy       → what remains, split across easy days
+ *
+ * These proportions match the advanced sample weeks in the training
+ * research: Advanced HM at 60 mpw → Long 16 + T 10 + I 8 + Easy 26.
+ *
+ * Half marathon training is threshold-dominant.
+ * Marathon training is durability-dominant.
+ *
+ * When the user explicitly selects a level, the plan starts from at
+ * least 70% of that level's peak volume — so an Advanced runner who
+ * selected Advanced but has a stale Strava cache doesn't get a
+ * 1.5-mile easy-run plan.
  *
  * Two modes:
- *   - race-prep: there's an A-race within ~16 weeks. Phases land at
- *     BASE → BUILD → PEAK → TAPER → RACE_WEEK with cutback every 3rd.
- *   - maintenance: no A-race in window. 16 weeks flat at ~current
- *     volume, 1 quality/week, long run on prefs.longRunDow at 50% of
- *     historical longest. No phase arc.
- *
- * The builder doesn't persist — call saveActivePlan(plan) afterward.
- * This separation keeps the function pure for tests.
- *
- * Citations:
- *  - Phase shape & cutback: Research/00a §Volume progression rules
- *  - Level bands & sample weeks: Research/22 §3-4
- *  - Long-run cap (≤25-30% of weekly): Research/00a §Volume progression rules
- *  - Race-week template: Research/08 §9.2 (HM) / Research/08 §9.1 taper
- *  - Maintenance: Research/22 §7 Maintenance Plan
+ *   race-prep   — A-race within ~16 weeks. BASE → BUILD → PEAK → TAPER → RACE_WEEK.
+ *   maintenance — No A-race. 16 weeks flat aerobic, 1 quality/week.
  */
 
 import type { CoachState } from '../lib/coach-state';
@@ -35,43 +35,44 @@ import {
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 
-/** Bump this when the builder algorithm changes significantly (quality
- *  sizing, easy allocation, phase shape, etc.). Plans authored with an
- *  older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 2;
+/** Bump when the builder algorithm changes significantly. Plans authored
+ *  at an older version are transparently rewritten on next load. */
+export const BUILDER_VERSION = 3;
 
 export interface BuildPlanRace {
   id: string;
   name: string;
-  /** ISO date (YYYY-MM-DD) of race day. */
   dateISO: string;
   distanceMi: number;
   priority: 'A' | 'B' | 'C';
 }
 
 export interface BuildPlanInputs {
-  /** Coach state — provides current volume/recovery/race calendar. */
   state: CoachState;
-  /** User-level prefs override CoachState.prefs for authoring. */
   prefs: {
     longRunDow: number;
     qualityDows: number[];
     restDow: number;
-    /** Explicit level setting; omit to auto-detect from weeklyAvg4w. */
     level?: Level;
   };
-  /** Target A-race (race-prep mode). Omit for maintenance. */
   race?: BuildPlanRace;
-  /** Override "today" for tests / deterministic runs. */
   todayISO?: string;
-  /** Plan ID — generated when omitted (real builds use newId()). */
   planId?: string;
-  /** User id — defaults to 'me'. */
   userId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Level autodetect — Research/22 band bottoms
+// Proportion constants — grounded in the research example weeks.
+// Advanced HM 60 mpw: Long 16 (27%) + T 10 (17%) + I 8 (13%) + Easy 26 (43%)
+// ─────────────────────────────────────────────────────────────────
+
+const LONG_PCT   = 0.26;   // Long run as share of weekly
+const T_SOLO_PCT = 0.18;   // Threshold only (1 quality day)
+const T_DUAL_PCT = 0.17;   // Threshold in dual-quality week
+const I_DUAL_PCT = 0.13;   // Intervals in dual-quality week
+
+// ─────────────────────────────────────────────────────────────────
+// Level helpers
 // ─────────────────────────────────────────────────────────────────
 
 export function autoDetectLevel(weeklyAvg4w: number): Level {
@@ -80,54 +81,64 @@ export function autoDetectLevel(weeklyAvg4w: number): Level {
   return 'beginner';
 }
 
-/** Peak weekly volume for a (distance, level) pair. Conservative ramp:
- *  pick the LOW end of each band, not the top (so the plan doesn't
- *  ask a 25mpw runner to ramp to 45 in 12 weeks). */
+/** Peak weekly mileage for a (race distance, level) pair.
+ *  Conservative: low end of each band so the ramp is achievable. */
 export function peakVolumeForLevel(distanceMi: number, level: Level): number {
   if (distanceMi >= 22) {
-    // Marathon
-    if (level === 'beginner')      return 30;
-    if (level === 'intermediate')  return 45;
+    if (level === 'beginner')     return 35;
+    if (level === 'intermediate') return 50;
     return 65;
   }
   if (distanceMi >= 11) {
-    // Half-marathon — Research/22 §3
-    if (level === 'beginner')      return 25;     // band 22-28
-    if (level === 'intermediate')  return 35;     // band 35-45 (low end)
-    return 55;                                    // band 55-85 (low end)
+    if (level === 'beginner')     return 25;
+    if (level === 'intermediate') return 35;
+    return 55;
   }
   if (distanceMi >= 8) {
-    // 10K
-    if (level === 'beginner')      return 20;
-    if (level === 'intermediate')  return 32;
+    if (level === 'beginner')     return 20;
+    if (level === 'intermediate') return 32;
     return 50;
   }
-  // 5K
-  if (level === 'beginner')      return 14;
-  if (level === 'intermediate')  return 26;
+  if (level === 'beginner')     return 14;
+  if (level === 'intermediate') return 26;
   return 42;
 }
 
-/** Peak long-run distance per Research/22 template constants. */
+/** Peak long-run mileage for a (race distance, level) pair. */
 export function peakLongRunForLevel(distanceMi: number, level: Level): number {
   if (distanceMi >= 22) {
-    if (level === 'beginner')      return 20;
-    if (level === 'intermediate')  return 20;
+    if (level === 'beginner')     return 18;
+    if (level === 'intermediate') return 20;
     return 22;
   }
   if (distanceMi >= 11) {
-    if (level === 'beginner')      return 10;
-    if (level === 'intermediate')  return 12;
-    return 15;
+    if (level === 'beginner')     return 10;
+    if (level === 'intermediate') return 12;
+    return 16;
   }
   if (distanceMi >= 8) {
-    if (level === 'beginner')      return 6;
-    if (level === 'intermediate')  return 9;
+    if (level === 'beginner')     return 6;
+    if (level === 'intermediate') return 9;
     return 13;
   }
-  if (level === 'beginner')      return 4;
-  if (level === 'intermediate')  return 6;
+  if (level === 'beginner')     return 4;
+  if (level === 'intermediate') return 6;
   return 10;
+}
+
+/** Minimum weekly starting volume when the user explicitly picks a level.
+ *  An Advanced runner who selects Advanced should not get a plan anchored
+ *  at 20 mi/wk just because their Strava cache is stale. */
+export function levelMinStartMpw(distanceMi: number, level: Level): number {
+  return Math.round(peakVolumeForLevel(distanceMi, level) * 0.70);
+}
+
+/** Minimum easy run to prescribe. Days that can't reach this are
+ *  dropped to 0 (effectively rest) rather than prescribing junk mileage. */
+export function minEasyRunMi(level: Level): number {
+  if (level === 'advanced')     return 4;
+  if (level === 'intermediate') return 3;
+  return 2;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -142,46 +153,44 @@ interface PhaseSlice {
   citation: string;
 }
 
-/** Distribute N weeks across BASE/BUILD/PEAK/TAPER/RACE_WEEK.
- *  Doc: BASE (≈33%) → BUILD (≈33%) → PEAK (≈25%) → TAPER (1 wk)
- *       → RACE_WEEK (always 1 wk, the week race-day falls in). */
+/** Split N weeks into training phases. */
 export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
   if (mode === 'maintenance') {
     return [{
       label: 'MAINTENANCE',
       startWeekIdx: 0,
       endWeekIdx: totalWeeks - 1,
-      rationale: 'No A-race in window — holding aerobic baseline with a single weekly quality session.',
-      citation: 'Research/22 §7 Maintenance Plan',
+      rationale: 'No A-race — holding aerobic base with 1 quality session/week.',
+      citation: 'Advanced training research §13 Periodization',
     }];
   }
-  // race-prep
-  const slices: PhaseSlice[] = [];
+
   if (totalWeeks <= 1) {
     return [{
       label: 'RACE_WEEK',
       startWeekIdx: 0,
       endWeekIdx: 0,
-      rationale: 'Race-week template — shakeout + race only.',
-      citation: 'Research/08 §9.2 HM race-week template',
+      rationale: 'Race week — shakeout + race only.',
+      citation: 'Advanced training research §12 Tapering',
     }];
   }
-  // The final week is always RACE_WEEK. The penultimate week is TAPER.
+
   const raceWeekIdx = totalWeeks - 1;
   const taperWeekIdx = totalWeeks - 2;
-  const buildAndPeakWeeks = totalWeeks - 2;
-  // Roughly split base/build/peak in 4:4:3 ratio (HM intermediate doc default).
-  const baseEnd = Math.max(0, Math.floor(buildAndPeakWeeks * 4 / 11) - 1);
-  const buildEnd = Math.max(baseEnd + 1, Math.floor(buildAndPeakWeeks * 8 / 11) - 1);
-  const peakEnd = taperWeekIdx - 1;
+  const buildable = totalWeeks - 2;  // weeks before taper/race
+  // 4:4:3 base/build/peak split
+  const baseEnd  = Math.max(0, Math.floor(buildable * 4 / 11) - 1);
+  const buildEnd = Math.max(baseEnd + 1, Math.floor(buildable * 8 / 11) - 1);
+  const peakEnd  = taperWeekIdx - 1;
 
+  const slices: PhaseSlice[] = [];
   if (baseEnd >= 0) {
     slices.push({
       label: 'BASE',
       startWeekIdx: 0,
       endWeekIdx: baseEnd,
-      rationale: `Aerobic base — building durability before the workload climbs.`,
-      citation: 'Research/00a §Plan skeletons + Volume progression rules',
+      rationale: 'Aerobic base — durability before the quality load climbs.',
+      citation: 'Advanced training research §13.1 Phase 1: Base / speed support',
     });
   }
   if (buildEnd > baseEnd) {
@@ -190,7 +199,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       startWeekIdx: baseEnd + 1,
       endWeekIdx: buildEnd,
       rationale: 'Threshold-dominant block — LT continuous + VO2max introduction.',
-      citation: 'Research/22 §3 Half Marathon Plans (BUILD phase)',
+      citation: 'Advanced training research §13.2 Phase 2: Threshold build',
     });
   }
   if (peakEnd > buildEnd) {
@@ -198,8 +207,8 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'PEAK',
       startWeekIdx: buildEnd + 1,
       endWeekIdx: peakEnd,
-      rationale: 'Race-specific — long runs with race-pace segments + sharpening.',
-      citation: 'Research/22 §3 Half Marathon Plans (PEAK phase)',
+      rationale: 'Race-specific — long runs with race-pace finish + sharpening.',
+      citation: 'Advanced training research §13.3 Phase 3: Race-specific',
     });
   }
   if (taperWeekIdx > peakEnd) {
@@ -207,16 +216,16 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'TAPER',
       startWeekIdx: taperWeekIdx,
       endWeekIdx: taperWeekIdx,
-      rationale: 'Volume drops 30-50%, intensity preserved via strides + a short tune-up.',
-      citation: 'Research/08 §9.1 HM taper table',
+      rationale: 'Volume −40%, intensity touches preserved. Not rest — fatigue reduction.',
+      citation: 'Advanced training research §12 Tapering',
     });
   }
   slices.push({
     label: 'RACE_WEEK',
     startWeekIdx: raceWeekIdx,
     endWeekIdx: raceWeekIdx,
-    rationale: 'Shakeout + race day. No quality work inside ±7 days of race.',
-    citation: 'Research/08 §9.2 HM race-week template',
+    rationale: 'Shakeout + race day.',
+    citation: 'Advanced training research §15 Race execution',
   });
   return slices;
 }
@@ -225,58 +234,46 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
 // Weekly volume curve
 // ─────────────────────────────────────────────────────────────────
 
-/** Compute weekly volume target per week index. Ramps from current
- *  toward peak (5-8% per week, capped at +10%/wk), cutback every 3rd
- *  week (-15-20%), taper drops 30-50%. Race week = ~14mi (shakeout +
- *  race). */
+/** Compute volume target per week. Ramps startMpw → peakMpw at ≤10%/wk,
+ *  cutback every 3rd week (−18%), taper −40%, race week ballpark. */
 export function weeklyVolumeCurve(
   weeksTotal: number,
   startMpw: number,
   peakMpw: number,
   phases: PhaseSlice[],
 ): { volumeMi: number[]; isCutback: boolean[]; isPeak: boolean[]; isRaceWeek: boolean[] } {
-  const volumeMi = new Array(weeksTotal).fill(0);
+  const volumeMi  = new Array(weeksTotal).fill(0);
   const isCutback = new Array(weeksTotal).fill(false);
-  const isPeak = new Array(weeksTotal).fill(false);
+  const isPeak    = new Array(weeksTotal).fill(false);
   const isRaceWeek = new Array(weeksTotal).fill(false);
 
-  const phaseOf = (i: number) => phases.find(p => i >= p.startWeekIdx && i <= p.endWeekIdx)!;
-
-  // Maintenance: flat at startMpw.
   if (phases.length === 1 && phases[0].label === 'MAINTENANCE') {
     for (let i = 0; i < weeksTotal; i++) {
-      volumeMi[i] = startMpw;
-      if ((i + 1) % 3 === 0) {
-        volumeMi[i] = round1(startMpw * 0.82);
-        isCutback[i] = true;
-      }
+      volumeMi[i] = (i + 1) % 3 === 0
+        ? round1(startMpw * 0.82)
+        : startMpw;
+      if ((i + 1) % 3 === 0) isCutback[i] = true;
     }
     return { volumeMi, isCutback, isPeak, isRaceWeek };
   }
 
-  // race-prep — find PEAK phase end (the last non-taper week)
-  const peakSlice = phases.find(p => p.label === 'PEAK');
-  const buildSlice = phases.find(p => p.label === 'BUILD');
-  const taperSlice = phases.find(p => p.label === 'TAPER');
+  const peakSlice    = phases.find(p => p.label === 'PEAK');
+  const buildSlice   = phases.find(p => p.label === 'BUILD');
+  const taperSlice   = phases.find(p => p.label === 'TAPER');
   const raceWeekSlice = phases.find(p => p.label === 'RACE_WEEK');
 
-  // Identify which idx hits peak: prefer last week of PEAK; else last
-  // BUILD week if no PEAK; else mid-way week.
   const peakAtIdx =
-    peakSlice ? peakSlice.endWeekIdx :
+    peakSlice  ? peakSlice.endWeekIdx  :
     buildSlice ? buildSlice.endWeekIdx :
     Math.max(0, weeksTotal - 3);
 
-  // Ramp from startMpw to peakMpw over [0..peakAtIdx]. Linear+cap.
   for (let i = 0; i <= peakAtIdx; i++) {
     const t = peakAtIdx === 0 ? 1 : i / peakAtIdx;
     let v = startMpw + (peakMpw - startMpw) * t;
-    // 10% cap per week vs prior week's intended (uncutback) value.
     if (i > 0) {
       const priorIntent = startMpw + (peakMpw - startMpw) * ((i - 1) / Math.max(1, peakAtIdx));
       v = Math.min(v, priorIntent * 1.10);
     }
-    // Cutback every 3rd week: weeks 3, 6, 9, ... (1-indexed).
     if ((i + 1) % 3 === 0 && i !== peakAtIdx) {
       v = v * 0.82;
       isCutback[i] = true;
@@ -285,24 +282,18 @@ export function weeklyVolumeCurve(
     if (i === peakAtIdx) isPeak[i] = true;
   }
 
-  // Taper: typically 30-50% drop from peak in first taper week.
   if (taperSlice) {
-    const taperFirst = taperSlice.startWeekIdx;
-    const taperLast = taperSlice.endWeekIdx;
     const peakVol = volumeMi[peakAtIdx];
-    for (let i = taperFirst; i <= taperLast; i++) {
-      const stepsFromPeak = i - peakAtIdx;
-      const drop = stepsFromPeak === 1 ? 0.35 : 0.55;   // wk1 of taper ~65%, wk2 ~45%
+    for (let i = taperSlice.startWeekIdx; i <= taperSlice.endWeekIdx; i++) {
+      const drop = (i - peakAtIdx) === 1 ? 0.38 : 0.55;
       volumeMi[i] = round1(peakVol * (1 - drop));
     }
   }
 
-  // Race week: shakeout + race only.
   if (raceWeekSlice) {
     const idx = raceWeekSlice.startWeekIdx;
     isRaceWeek[idx] = true;
-    // Volume = race distance + ~4 mi of shakeout/easy
-    volumeMi[idx] = round1(startMpw * 0.35);   // ballpark — race distance dominates anyway
+    volumeMi[idx] = round1(startMpw * 0.35);
   }
 
   return { volumeMi, isCutback, isPeak, isRaceWeek };
@@ -313,75 +304,56 @@ export function weeklyVolumeCurve(
 // ─────────────────────────────────────────────────────────────────
 
 interface DayPick {
-  /** Which type the slot will be. */
   type: WorkoutType;
   isQuality: boolean;
   isLong: boolean;
 }
 
-/** Build the 7-day shape for a single week. Long on prefs.longRunDow,
- *  quality on prefs.qualityDows, rest on prefs.restDow, easy on the
- *  remaining days. Phase scales the quality count:
- *   BASE: 1 quality
- *   BUILD: 2 quality
- *   PEAK: 2 quality (+ long-run-w/-HMP-segment, handled in author)
- *   TAPER: 1 quality
- *   RACE_WEEK: 0 quality (race day only)
- *   MAINTENANCE: 1 quality
- */
+/** Assign workout types to each day of the week.
+ *  BASE / MAINTENANCE: 1 quality (threshold)
+ *  BUILD / PEAK:       2 quality (threshold + intervals)
+ *  TAPER:              1 quality (short threshold)
+ *  RACE_WEEK:          shakeout + race */
 export function weekShape(
   phaseLabel: PhaseLabel,
   prefs: { longRunDow: number; qualityDows: number[]; restDow: number },
   raceDow: number | null,
 ): DayPick[] {
-  const days: DayPick[] = [];
-  for (let dow = 0; dow < 7; dow++) {
-    days.push({ type: 'easy', isQuality: false, isLong: false });
-  }
-  // Rest
+  const days: DayPick[] = Array.from({ length: 7 }, () => ({
+    type: 'easy' as WorkoutType, isQuality: false, isLong: false,
+  }));
+
   if (prefs.restDow >= 0 && prefs.restDow < 7) {
     days[prefs.restDow] = { type: 'rest', isQuality: false, isLong: false };
   }
-  // Long
   if (prefs.longRunDow >= 0 && prefs.longRunDow < 7
       && prefs.longRunDow !== prefs.restDow) {
     days[prefs.longRunDow] = { type: 'long', isQuality: false, isLong: true };
   }
 
-  // Quality slot count by phase
-  let qualityCount: number;
-  switch (phaseLabel) {
-    case 'BASE':        qualityCount = 1; break;
-    case 'BUILD':       qualityCount = 2; break;
-    case 'PEAK':        qualityCount = 2; break;
-    case 'TAPER':       qualityCount = 1; break;
-    case 'RACE_WEEK':   qualityCount = 0; break;
-    case 'MAINTENANCE': qualityCount = 1; break;
-  }
+  const qualityCount: number =
+    phaseLabel === 'BUILD' || phaseLabel === 'PEAK' ? 2 :
+    phaseLabel === 'RACE_WEEK' ? 0 : 1;
 
-  // Quality day assignment — uses prefs.qualityDows in order, skipping
-  // rest/long. Tempo first, then intervals (alternates by index).
-  const qualityCandidates = prefs.qualityDows.filter(d =>
-    d >= 0 && d < 7 && d !== prefs.restDow && d !== prefs.longRunDow);
-  const assignedQuality: number[] = [];
-  for (const d of qualityCandidates) {
-    if (assignedQuality.length >= qualityCount) break;
+  const candidates = prefs.qualityDows.filter(
+    d => d >= 0 && d < 7 && d !== prefs.restDow && d !== prefs.longRunDow,
+  );
+  let assigned = 0;
+  for (const d of candidates) {
+    if (assigned >= qualityCount) break;
     days[d] = {
-      type: assignedQuality.length === 0 ? 'threshold' : 'interval',
+      type: assigned === 0 ? 'threshold' : 'interval',
       isQuality: true,
       isLong: false,
     };
-    assignedQuality.push(d);
+    assigned++;
   }
 
-  // RACE_WEEK overrides
   if (phaseLabel === 'RACE_WEEK' && raceDow != null) {
     for (let i = 0; i < 7; i++) {
-      // Most days easy / shakeout; race-day → race; ±1 day soft.
-      const dist = (i - raceDow + 7) % 7;
       if (i === raceDow) {
         days[i] = { type: 'race', isQuality: false, isLong: false };
-      } else if (dist === 6 /* day before race in mod-7 land = 1 day ahead */ || (raceDow - i + 7) % 7 === 1) {
+      } else if ((raceDow - i + 7) % 7 === 1) {
         days[i] = { type: 'shakeout', isQuality: false, isLong: false };
       } else if (i === prefs.restDow) {
         days[i] = { type: 'rest', isQuality: false, isLong: false };
@@ -395,79 +367,28 @@ export function weekShape(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Distance allocation for the week
-// ─────────────────────────────────────────────────────────────────
-
-/** Allocate distance across the 7 days such that long run gets its
- *  doctrine share, quality gets the template distance (scaled), and
- *  easy days share the remainder with a 3-mi floor.
- *  Returns mileage per dow index. */
-export function allocateDistances(
-  shape: DayPick[],
-  weeklyMi: number,
-  longMi: number,
-  qualityMi: number,
-): number[] {
-  const out = new Array(7).fill(0);
-  const qualityDows: number[] = [];
-  const easyDows: number[] = [];
-  let longDow: number | null = null;
-  for (let i = 0; i < 7; i++) {
-    if (shape[i].type === 'rest' || shape[i].type === 'race' || shape[i].type === 'shakeout') {
-      // Race/shakeout get fixed values below.
-      continue;
-    }
-    if (shape[i].isLong) longDow = i;
-    else if (shape[i].isQuality) qualityDows.push(i);
-    else easyDows.push(i);
-  }
-  if (longDow != null) out[longDow] = round1(longMi);
-  let qualityTotal = 0;
-  for (const d of qualityDows) {
-    out[d] = round1(qualityMi);
-    qualityTotal += qualityMi;
-  }
-  const longShare = longDow != null ? longMi : 0;
-  let remaining = weeklyMi - longShare - qualityTotal;
-  // race-week special: race day's distance set externally
-  for (let i = 0; i < 7; i++) {
-    if (shape[i].type === 'shakeout') out[i] = 3;
-    if (shape[i].type === 'race') {/* leave 0 here; caller fills with race distance */}
-  }
-  if (easyDows.length > 0 && remaining > 0) {
-    const baseEasy = round1(remaining / easyDows.length);
-    for (const d of easyDows) {
-      out[d] = baseEasy;
-    }
-  }
-  return out;
-}
-
-// ─────────────────────────────────────────────────────────────────
 // Top-level builder
 // ─────────────────────────────────────────────────────────────────
 
 export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
   const { state, prefs, race } = inputs;
   const todayISO = inputs.todayISO ?? state.now;
-  const userId = inputs.userId ?? 'me';
-  const planId = inputs.planId ?? newId();
+  const userId   = inputs.userId  ?? 'me';
+  const planId   = inputs.planId  ?? newId();
 
-  // Mode: race-prep if race within ~16 weeks; else maintenance.
-  const today = new Date(todayISO + 'T12:00:00Z');
+  const today    = new Date(todayISO + 'T12:00:00Z');
   const raceDate = race ? new Date(race.dateISO + 'T12:00:00Z') : null;
   const daysToRace = raceDate
     ? Math.round((raceDate.getTime() - today.getTime()) / 86_400_000)
     : null;
   const mode: PlanMode =
     race && daysToRace != null && daysToRace > 0 && daysToRace <= 16 * 7
-      ? 'race-prep'
-      : 'maintenance';
+      ? 'race-prep' : 'maintenance';
 
-  // Level
   const level: Level = prefs.level ?? autoDetectLevel(state.volume.weeklyAvg4w);
+  const raceDist = race?.distanceMi ?? 13.1;
 
-  // Total weeks
+  // Plan window
   const startMonday = startOfWeekMonday(today);
   let totalWeeks: number;
   let goalISO: string;
@@ -485,22 +406,26 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     goalISO = end.toISOString().slice(0, 10);
   }
 
-  // Phases
   const phaseSlices = planPhases(totalWeeks, mode);
 
-  // Volume curve
-  const peakMpwTarget = mode === 'race-prep' && race
-    ? peakVolumeForLevel(race.distanceMi, level)
+  // Volume targets
+  const peakMpwTarget = mode === 'race-prep'
+    ? peakVolumeForLevel(raceDist, level)
     : Math.max(8, state.volume.weeklyAvg4w);
-  const peakLongTarget = mode === 'race-prep' && race
-    ? peakLongRunForLevel(race.distanceMi, level)
+
+  const peakLongTarget = mode === 'race-prep'
+    ? peakLongRunForLevel(raceDist, level)
     : Math.max(4, round1(state.volume.longestTrainingRunLast28Mi * 0.5));
-  const startMpw = mode === 'race-prep'
-    ? Math.max(8, state.volume.weeklyAvg4w)
-    : Math.max(8, state.volume.weeklyAvg4w);
+
+  // When the user explicitly sets their level, honour the level's minimum
+  // starting volume — avoids embarrassingly tiny runs from stale Strava data.
+  const actualMpw = Math.max(8, state.volume.weeklyAvg4w);
+  const startMpw = prefs.level != null
+    ? Math.max(actualMpw, levelMinStartMpw(raceDist, level))
+    : actualMpw;
+
   const curve = weeklyVolumeCurve(totalWeeks, startMpw, peakMpwTarget, phaseSlices);
 
-  // ── Materialize phases ───────────────────────────────────────
   const phases: PlanPhase[] = phaseSlices.map(ps => ({
     id: newId(),
     label: ps.label,
@@ -510,75 +435,136 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     citation: ps.citation,
   }));
 
-  // ── Materialize weeks + workouts ─────────────────────────────
+  const raceDow  = raceDate ? raceDate.getUTCDay() : null;
+  const peakVol  = (() => {
+    const peakIdx = curve.isPeak.indexOf(true);
+    return peakIdx >= 0 ? curve.volumeMi[peakIdx] : peakMpwTarget;
+  })();
+  const minEasy  = minEasyRunMi(level);
+
   const weeks: PlanWeek[] = [];
-  const raceDow = raceDate ? raceDate.getUTCDay() : null;
+
   for (let w = 0; w < totalWeeks; w++) {
-    const weekStart = new Date(startMonday);
+    const weekStart    = new Date(startMonday);
     weekStart.setUTCDate(weekStart.getUTCDate() + w * 7);
     const weekStartISO = weekStart.toISOString().slice(0, 10);
-    const phaseSlice = phaseSlices.find(p => w >= p.startWeekIdx && w <= p.endWeekIdx)!;
-    const phaseRow = phases.find(p => p.label === phaseSlice.label
-      && p.startWeekIdx === phaseSlice.startWeekIdx)!;
 
-    const weekShapeArr = weekShape(
+    const phaseSlice = phaseSlices.find(p => w >= p.startWeekIdx && w <= p.endWeekIdx)!;
+    const phaseRow   = phases.find(p =>
+      p.label === phaseSlice.label && p.startWeekIdx === phaseSlice.startWeekIdx,
+    )!;
+
+    const shape    = weekShape(
       phaseSlice.label,
       prefs as { longRunDow: number; qualityDows: number[]; restDow: number },
       curve.isRaceWeek[w] ? raceDow : null,
     );
     const weeklyMi = curve.volumeMi[w];
 
-    // Long run distance — peak long scaled by week's volume ratio to peak
-    const peakVol = curve.volumeMi[curve.isPeak.indexOf(true)] || peakMpwTarget;
-    let weekLongMi = curve.isCutback[w]
-      ? round1(peakLongTarget * 0.80)
-      : round1(peakLongTarget * Math.min(1, weeklyMi / peakVol));
-    if (phaseSlice.label === 'TAPER') weekLongMi = round1(peakLongTarget * 0.5);
-    if (phaseSlice.label === 'RACE_WEEK') weekLongMi = 0;
-    if (phaseSlice.label === 'BASE') weekLongMi = Math.max(weekLongMi, round1(peakLongTarget * 0.6));
-
-    // Quality block size — peak-week template sizes scaled to this week's volume.
-    // Research/00a: quality sessions combined should not exceed ~30% of weekly.
-    const qualityBlockRaw = qualityBlockMi(phaseSlice.label, level, race?.distanceMi ?? 13.1);
-    const numQualitySlots = weekShapeArr.filter(d => d.isQuality).length;
-    const volScale = peakMpwTarget > 0 ? Math.min(1, weeklyMi / peakMpwTarget) : 1;
-    const qualityBudgetPerSession = numQualitySlots > 0
-      ? round1(weeklyMi * 0.30 / numQualitySlots)
-      : 0;
-    const qualityMi = Math.max(2, Math.min(round1(qualityBlockRaw * volScale), qualityBudgetPerSession));
-
-    const distances = allocateDistances(weekShapeArr, weeklyMi, weekLongMi, qualityMi);
-    if (curve.isRaceWeek[w] && race) {
-      const raceDowIdx = raceDow!;
-      distances[raceDowIdx] = race.distanceMi;
+    // ── Long run ────────────────────────────────────────────────
+    let longMi = 0;
+    if (phaseSlice.label !== 'RACE_WEEK' && shape.some(d => d.isLong)) {
+      if (phaseSlice.label === 'TAPER') {
+        longMi = round1(peakLongTarget * 0.50);
+      } else {
+        // Scale toward peakLongTarget proportionally with weekly volume.
+        // Minimum: 60% of peakLong in BASE so early weeks aren't trivial.
+        const scaledLong = round1(peakLongTarget * Math.min(1, weeklyMi / peakVol));
+        longMi = phaseSlice.label === 'BASE'
+          ? Math.max(scaledLong, round1(peakLongTarget * 0.60))
+          : scaledLong;
+        if (curve.isCutback[w]) longMi = round1(peakLongTarget * 0.75);
+      }
+      // Hard cap: long run ≤ 35% of weekly per research §6
+      longMi = Math.min(longMi, round1(weeklyMi * 0.35));
     }
 
-    // Iterate calendar days Mon → Sun (offset 0..6 from Monday-anchored
-    // weekStart). Use the JS getUTCDay() value as the dow so it matches
-    // CoachState.prefs.*Dow conventions (0=Sun..6=Sat) — that's what
-    // weekShapeArr and distances are indexed by.
+    // ── Quality sessions (proportion-based) ─────────────────────
+    const numQ = shape.filter(d => d.isQuality).length;
+    let threshMi  = 0;
+    let intervalMi = 0;
+
+    if (phaseSlice.label === 'TAPER') {
+      // Taper: keep intensity alive with a shorter touch
+      threshMi = Math.max(4, round1(weeklyMi * 0.15));
+    } else if (numQ === 2) {
+      threshMi   = round1(weeklyMi * T_DUAL_PCT);
+      intervalMi = round1(weeklyMi * I_DUAL_PCT);
+    } else if (numQ === 1) {
+      threshMi = round1(weeklyMi * T_SOLO_PCT);
+    }
+
+    // Minimum quality size: at least 4 mi total (warmup + some work + cooldown)
+    if (threshMi > 0)   threshMi   = Math.max(4, threshMi);
+    if (intervalMi > 0) intervalMi = Math.max(4, intervalMi);
+
+    // ── Easy days ───────────────────────────────────────────────
+    const usedMi     = longMi + threshMi + (numQ >= 2 ? intervalMi : 0);
+    const easyBudget = Math.max(0, weeklyMi - usedMi);
+    const easySlots  = shape.reduce<number[]>((acc, d, i) => {
+      if (!d.isQuality && !d.isLong && d.type === 'easy') acc.push(i);
+      return acc;
+    }, []);
+
+    // How many easy days the budget can support at minEasy?
+    const activeDays = easyBudget >= minEasy
+      ? Math.min(easySlots.length, Math.max(1, Math.floor(easyBudget / minEasy)))
+      : easySlots.length > 0 ? 1 : 0;
+    const easyPerDay = activeDays > 0 ? round1(easyBudget / activeDays) : 0;
+
+    // ── Assemble distances array indexed by JS dow ───────────────
+    const distances: number[] = new Array(7).fill(0);
+    for (let i = 0; i < 7; i++) {
+      const d = shape[i];
+      if (d.type === 'rest' || d.type === 'race') continue;
+      if (d.type === 'shakeout') { distances[i] = 3; continue; }
+      if (d.isLong) { distances[i] = longMi; continue; }
+      if (d.isQuality) {
+        // threshold first, then interval
+        const qualityIdx = shape.slice(0, i + 1).filter(x => x.isQuality).length - 1;
+        distances[i] = qualityIdx === 0 ? threshMi : intervalMi;
+        continue;
+      }
+      // Easy day
+      const easyIdx = shape.slice(0, i + 1).filter(
+        x => !x.isQuality && !x.isLong && x.type === 'easy',
+      ).length - 1;
+      distances[i] = easyIdx < activeDays ? easyPerDay : 0;
+    }
+
+    // Race day gets actual race distance
+    if (curve.isRaceWeek[w] && race && raceDow != null) {
+      distances[raceDow] = race.distanceMi;
+    }
+
+    // ── Materialize workout rows ─────────────────────────────────
     const workouts: PlanWorkout[] = [];
     for (let offset = 0; offset < 7; offset++) {
-      const d = new Date(weekStart);
+      const d       = new Date(weekStart);
       d.setUTCDate(weekStart.getUTCDate() + offset);
       const dateISO = d.toISOString().slice(0, 10);
-      const jsDow = d.getUTCDay();
-      const pick = weekShapeArr[jsDow];
-      const dist = distances[jsDow];
+      const jsDow   = d.getUTCDay();
+      const pick    = shape[jsDow];
+      // If this easy day was dropped (distance=0 but type=easy), mark as rest
+      const effectiveType: WorkoutType =
+        pick.type === 'easy' && distances[jsDow] === 0 && !pick.isQuality && !pick.isLong
+          ? 'rest'
+          : pick.type;
+
       workouts.push({
         id: newId(),
         dateISO,
         dow: jsDow,
-        type: pick.type,
-        distanceMi: dist,
+        type: effectiveType,
+        distanceMi: distances[jsDow],
         paceTargetSPerMi: null,
         durationMin: null,
         isQuality: pick.isQuality,
         isLong: pick.isLong,
-        notes: notesFor(pick.type, phaseSlice.label, level),
+        notes: notesFor(effectiveType, phaseSlice.label, level),
         originalDateISO: dateISO,
-        originalType: pick.type,
-        originalDistanceMi: dist,
+        originalType: effectiveType,
+        originalDistanceMi: distances[jsDow],
         mutations: [],
       });
     }
@@ -615,7 +601,6 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
 // ─────────────────────────────────────────────────────────────────
 
 function startOfWeekMonday(d: Date): Date {
-  // JS getUTCDay: 0=Sun..6=Sat. We want Monday = start of week.
   const dow = d.getUTCDay();
   const delta = dow === 0 ? -6 : 1 - dow;
   const out = new Date(d);
@@ -626,44 +611,29 @@ function startOfWeekMonday(d: Date): Date {
 
 function round1(n: number): number { return Math.round(n * 10) / 10; }
 
-function qualityBlockMi(phase: PhaseLabel, level: Level, raceDistanceMi: number): number {
-  // From Research/22 §3 templates (HM intermediate sample):
-  //  T = 5 mi (WU+T+CD = 8); I = 4×1200 = ~3 mi reps + 5mi WU/CD = 8.
-  //  These are PEAK-week sizes — the caller scales proportionally by vol.
-  if (phase === 'TAPER' || phase === 'RACE_WEEK') return 3;
-  // Maintenance: Research/22 §7 "WU + 20 min @ T + CD ≈ 5 mi" — smaller dose.
-  if (phase === 'MAINTENANCE') {
-    if (level === 'advanced')     return 7;
-    if (level === 'intermediate') return 6;
-    return 5;
-  }
-  const hm = raceDistanceMi >= 11 && raceDistanceMi < 22;
-  const mar = raceDistanceMi >= 22;
-  if (level === 'beginner')      return mar ? 5 : hm ? 4 : 3;
-  if (level === 'intermediate')  return mar ? 9 : hm ? 8 : 6;
-  return mar ? 11 : hm ? 10 : 8;
-}
-
-function notesFor(t: WorkoutType, phase: PhaseLabel, level: Level): string {
+function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level): string {
   switch (t) {
     case 'rest':      return 'Full rest day.';
-    case 'easy':      return 'Easy / conversational. E pace.';
+    case 'easy':      return 'Easy / conversational pace. Build aerobic base.';
     case 'long':      return phase === 'PEAK'
-      ? `Long run with race-pace segment (middle 5 mi @ HMP per Research/22 §3 ${level} template).`
-      : 'Long run at E pace.';
-    case 'threshold': return 'Threshold continuous block at T pace per Research/01 Daniels.';
-    case 'interval':  return 'VO2max intervals — 1000-1200 m at I pace.';
-    case 'mp':        return 'Marathon-pace block.';
-    case 'race':      return 'Race day — execute per Research/08 pacing strategy.';
-    case 'shakeout':  return 'Short shakeout, optional 4 strides.';
-    case 'recovery':  return 'Recovery run — lower than easy.';
+      ? 'Long run — last 4 mi progressing toward HM pace.'
+      : 'Long run at easy pace. Build durability.';
+    case 'threshold': return 'Threshold — controlled discomfort. T-pace continuous or cruise intervals.';
+    case 'interval':  return 'VO2max intervals — 5K–10K effort. 1K–1200m reps with equal jog recovery.';
+    case 'mp':        return 'Marathon pace block — rhythm, fueling, restraint.';
+    case 'race':      return 'Race day.';
+    case 'shakeout':  return 'Short shakeout. Optional 4 strides. Stay loose.';
+    case 'recovery':  return 'Recovery run — below easy pace.';
     default:          return '';
   }
 }
 
-function weekRationale(idx: number, phase: PhaseLabel, isCutback: boolean, isPeak: boolean, isRaceWeek: boolean): string {
+function weekRationale(
+  idx: number, phase: PhaseLabel,
+  isCutback: boolean, isPeak: boolean, isRaceWeek: boolean,
+): string {
   if (isRaceWeek) return 'Race week — shakeout + race day.';
-  if (isPeak)     return `Peak week of ${phase} — highest volume of the plan.`;
-  if (isCutback)  return `Cutback week — volume down ~18% per Research/00b §Cutback Weeks.`;
+  if (isPeak)     return `Peak week — highest volume of the plan.`;
+  if (isCutback)  return `Cutback week — volume down ~18% to absorb the work.`;
   return `Week ${idx + 1} · ${phase.toLowerCase()} phase.`;
 }
