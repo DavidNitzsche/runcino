@@ -283,6 +283,9 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
           )}
         </div>
       )}
+      {day.hasStrength && !isRest && (
+        <div style={{ fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, color: 'var(--att)', letterSpacing: '0.05em' }}>+ STR</div>
+      )}
     </div>
   );
 }

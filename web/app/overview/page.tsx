@@ -154,7 +154,7 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
     activePhaseUpper === 'RECOVERY';
   const phaseDelta = isPostRace
     ? `DAY ${recentRace.daysAgo} POST-${recentRace.name.toUpperCase().slice(0, 20)}`
-    : activePhaseUpper;
+    : undefined;
 
   // Race countdown tile.
   const aRaceName = races.nextA?.meta.name ?? '—';
