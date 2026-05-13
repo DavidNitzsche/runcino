@@ -198,6 +198,102 @@ async function bootstrap(): Promise<void> {
         updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    // Plan-driving inputs surfaced by the Profile modal. These coexist
+    // with the legacy string-based day columns above so old reads keep
+    // working; the plan-builder reads the numeric dow + level columns.
+    await client.query(`
+      ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS level         TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS long_run_dow  INTEGER;
+    `);
+    await client.query(`
+      ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS quality_dows  TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS rest_dow      INTEGER;
+    `);
+
+    // ── Plan-as-artifact schema (docs/PLAN_ARCHITECTURE.md §Database) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS training_plans (
+        id              TEXT PRIMARY KEY,
+        user_id         TEXT NOT NULL DEFAULT 'me',
+        mode            TEXT NOT NULL CHECK (mode IN ('race-prep','maintenance')),
+        race_id         TEXT,
+        goal_iso        TEXT NOT NULL,
+        authored_iso    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        authored_state  JSONB NOT NULL,
+        archived_iso    TIMESTAMPTZ
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS training_plans_active
+        ON training_plans (user_id) WHERE archived_iso IS NULL;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS plan_phases (
+        id              TEXT PRIMARY KEY,
+        plan_id         TEXT NOT NULL REFERENCES training_plans(id) ON DELETE CASCADE,
+        label           TEXT NOT NULL,
+        start_week_idx  INTEGER NOT NULL,
+        end_week_idx    INTEGER NOT NULL,
+        rationale       TEXT NOT NULL,
+        citation        TEXT NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS plan_weeks (
+        id              TEXT PRIMARY KEY,
+        plan_id         TEXT NOT NULL REFERENCES training_plans(id) ON DELETE CASCADE,
+        week_idx        INTEGER NOT NULL,
+        week_start_iso  TEXT NOT NULL,
+        phase_id        TEXT NOT NULL REFERENCES plan_phases(id) ON DELETE CASCADE,
+        is_cutback      BOOLEAN NOT NULL DEFAULT FALSE,
+        is_peak         BOOLEAN NOT NULL DEFAULT FALSE,
+        is_race_week    BOOLEAN NOT NULL DEFAULT FALSE,
+        rationale       TEXT NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS plan_workouts (
+        id                    TEXT PRIMARY KEY,
+        plan_id               TEXT NOT NULL REFERENCES training_plans(id) ON DELETE CASCADE,
+        week_id               TEXT NOT NULL REFERENCES plan_weeks(id) ON DELETE CASCADE,
+        date_iso              TEXT NOT NULL,
+        dow                   INTEGER NOT NULL CHECK (dow BETWEEN 0 AND 6),
+        type                  TEXT NOT NULL,
+        distance_mi           NUMERIC NOT NULL,
+        pace_target_s_per_mi  INTEGER,
+        duration_min          INTEGER,
+        is_quality            BOOLEAN NOT NULL DEFAULT FALSE,
+        is_long               BOOLEAN NOT NULL DEFAULT FALSE,
+        notes                 TEXT NOT NULL DEFAULT '',
+        original_date_iso     TEXT NOT NULL,
+        original_type         TEXT NOT NULL,
+        original_distance_mi  NUMERIC NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS plan_workouts_date
+        ON plan_workouts (plan_id, date_iso);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS plan_mutations (
+        id                TEXT PRIMARY KEY,
+        workout_id        TEXT NOT NULL REFERENCES plan_workouts(id) ON DELETE CASCADE,
+        ts                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reason            TEXT NOT NULL,
+        citation          TEXT NOT NULL,
+        trigger_kind      TEXT NOT NULL,
+        signal_snapshot   JSONB NOT NULL,
+        changed_fields    JSONB NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS plan_mutations_by_ts
+        ON plan_mutations (ts DESC);
+    `);
   } finally {
     client.release();
   }
