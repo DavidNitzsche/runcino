@@ -299,35 +299,11 @@ export async function gatherCoachState(): Promise<CoachState> {
       finishS: a.movingTimeS,
       daysAgo: daysBetween(a.date, todayISO),
     }));
-  // Training runs where Strava computed a canonical best effort (fastest
-  // segment at 1 mi / 5K / 10K / 15K / HM inside ANY run). These land on
-  // NormalizedActivity.canonicalFinishS when activity detail has been fetched
-  // (the /api/strava/bests lazy-fetcher caches detail on demand). A fast 5K
-  // best effort pulled out of a tempo run is real VDOT data — the runner
-  // sustained that pace over a canonical distance in aerobic training conditions.
-  // Marathon+ excluded (fatigue confounds inference, same rule as races above).
-  const trainingWithBests = activities
-    .filter(a =>
-      a.date >= cutoff180 &&
-      a.date <= todayISO &&
-      !isRaceActivity(a) &&
-      a.canonicalFinishS != null &&
-      (a.canonicalDistanceMi ?? 0) > 0 &&
-      (a.canonicalDistanceMi ?? 0) < 22,
-    )
-    .map<PastRace>(a => ({
-      slug: null,
-      activityId: a.id,
-      name: `${a.name} (best effort)`,
-      date: a.date,
-      distanceMi: a.canonicalDistanceMi!,
-      finishS: a.canonicalFinishS,
-      daysAgo: daysBetween(a.date, todayISO),
-    }));
-
-  const bestForVdot = [...vdotSaved, ...vdotStrava, ...trainingWithBests]
+  const bestForVdot = [...vdotSaved, ...vdotStrava]
     .filter(r => r.finishS != null)
-    .sort((a, b) => b.date.localeCompare(a.date)); // vdotSnapshot will pick the highest VDOT
+    .sort((a, b) => b.date.localeCompare(a.date));
+  // vdotSnapshot picks the highest VDOT; training best efforts added below
+  // (after isRaceActivity is defined)
 
   const cutoff30 = isoDateOffset(today, -30);
   const raceCount30d = activities.filter(a => a.date >= cutoff30 && a.date <= todayISO && isProbablyRace(a)).length
@@ -357,6 +333,33 @@ export async function gatherCoachState(): Promise<CoachState> {
   const savedRaceDates = new Set(savedRaces.map(r => r.meta.date));
   const isRaceActivity = (a: NormalizedActivity): boolean =>
     isProbablyRace(a) || savedRaceDates.has(a.date);
+
+  // Training runs where Strava computed a canonical best effort (fastest
+  // segment at 1 mi / 5K / 10K / 15K / HM inside ANY run). These land on
+  // NormalizedActivity.canonicalFinishS when activity detail has been fetched
+  // (the /api/strava/bests lazy-fetcher caches detail on demand). A fast 5K
+  // best effort pulled out of a tempo run is real VDOT data.
+  // Marathon+ excluded (fatigue confounds inference, same rule as races above).
+  const trainingWithBests = activities
+    .filter(a =>
+      a.date >= cutoff180 &&
+      a.date <= todayISO &&
+      !isRaceActivity(a) &&
+      a.canonicalFinishS != null &&
+      (a.canonicalDistanceMi ?? 0) > 0 &&
+      (a.canonicalDistanceMi ?? 0) < 22,
+    )
+    .map<PastRace>(a => ({
+      slug: null,
+      activityId: a.id,
+      name: `${a.name} (best effort)`,
+      date: a.date,
+      distanceMi: a.canonicalDistanceMi!,
+      finishS: a.canonicalFinishS,
+      daysAgo: daysBetween(a.date, todayISO),
+    }));
+  bestForVdot.push(...trainingWithBests.filter(r => r.finishS != null));
+
   const last28Training = last28.filter(a => !isRaceActivity(a));
   const longestTrainingRunLast28Mi = last28Training.length > 0
     ? round1(Math.max(...last28Training.map(a => a.distanceMi)))
