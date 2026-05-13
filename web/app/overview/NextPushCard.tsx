@@ -51,7 +51,7 @@ export function NextPushCard({ decision }: NextPushCardProps) {
   const pushes = r.pushes;
 
   return (
-    <Card wash="coach" span={12} padding="26px 32px">
+    <Card wash="coach" span={6} padding="24px 26px">
       <CardHeader>
         <CardLabel color="#27B4E0">NEXT PUSH</CardLabel>
         <CardPin variant={pushes.length === 0 ? 'green' : pushes[0]!.urgency === 'high' ? 'warn' : 'coach'}>

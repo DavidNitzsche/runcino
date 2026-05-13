@@ -233,15 +233,13 @@ function OverviewBody({ data }: { data: OverviewData }) {
         <RaceCountdownCard data={data} />
       </Row>
 
-      {/* ROW 1a · Wave G · PATH TO RACE (12) — hero, anchors the build.
-          Renders empty-state CTA when no A-race / no goal time set. */}
+      {/* ROW 1a · Wave G · PATH TO RACE (6) · NEXT PUSH (6) — paired hero
+          row. Each card splits half the width so the row sits in the same
+          12-col rhythm as the rows above (6/3/3) and below (3/9, 8/4).
+          PATH TO RACE renders an empty-state CTA when no A-race / no goal
+          time is set; NEXT PUSH renders "Plan steady" when nothing fires. */}
       <Row>
         <PathToRaceCard decision={data.aliveCoach.pathToRace} />
-      </Row>
-
-      {/* ROW 1b · Wave G · NEXT PUSH (12) — 1–3 prioritized pushes.
-          Renders "Plan steady" when nothing fires. */}
-      <Row>
         <NextPushCard decision={data.aliveCoach.nextPushes} />
       </Row>
 

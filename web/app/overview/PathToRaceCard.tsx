@@ -72,7 +72,7 @@ function formatDistance(mi: number): string {
 
 function EmptyPathCard() {
   return (
-    <Card wash="race" span={12} padding="28px 32px">
+    <Card wash="race" span={6} padding="24px 26px">
       <CardHeader>
         <CardLabel color="var(--race)">PATH TO RACE</CardLabel>
         <CardPin variant="muted">NO A-RACE</CardPin>
@@ -141,7 +141,7 @@ export function PathToRaceCard({ decision }: PathToRaceCardProps) {
   const fitness = r.currentFitness;
 
   return (
-    <Card wash="race" span={12} padding="26px 32px">
+    <Card wash="race" span={6} padding="24px 26px">
       <CardHeader>
         <CardLabel color="var(--race)">PATH TO RACE</CardLabel>
         <CardPin variant={pin.variant}>{pin.label}</CardPin>
