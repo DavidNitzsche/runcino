@@ -55,7 +55,7 @@ function mapToRunType(planType: string): RunWorkoutType {
 
 function mapToLabel(planType: string): string {
   switch (planType) {
-    case 'easy':      return 'General Aerobic';
+    case 'easy':      return 'Easy Run';
     case 'long':      return 'Long Run · Steady';
     case 'threshold': return 'Threshold Tempo';
     case 'interval':  return 'VO₂ Max Intervals';
@@ -64,7 +64,7 @@ function mapToLabel(planType: string): string {
     case 'shakeout':  return 'Shakeout';
     case 'recovery':  return 'Recovery Run';
     case 'rest':      return 'Rest';
-    default:          return 'General Aerobic';
+    default:          return 'Easy Run';
   }
 }
 
