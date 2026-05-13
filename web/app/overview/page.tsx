@@ -1751,7 +1751,7 @@ function CheckinReadinessCard({ data }: { data: OverviewData }) {
   const fromTen = (v: number) => Math.round((v - 1) / 2 + 1); // invert toTen for display
 
   return (
-    <Card span={4} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Card span={4} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column', gap: 10, alignSelf: 'start' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--att)', textTransform: 'uppercase' }}>
@@ -1782,7 +1782,7 @@ function CheckinReadinessCard({ data }: { data: OverviewData }) {
       </div>
 
       {/* Foot */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4, borderTop: '1px solid var(--l4)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid var(--l4)' }}>
         <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, color: 'var(--t3)', fontWeight: 600 }}>
           {energy == null && soreness == null && stress == null
             ? 'TAP TO LOG'
