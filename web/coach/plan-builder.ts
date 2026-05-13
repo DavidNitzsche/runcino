@@ -429,10 +429,10 @@ export function allocateDistances(
     if (shape[i].type === 'shakeout') out[i] = 3;
     if (shape[i].type === 'race') {/* leave 0 here; caller fills with race distance */}
   }
-  if (easyDows.length > 0) {
-    const baseEasy = Math.max(3, remaining / easyDows.length);
+  if (easyDows.length > 0 && remaining > 0) {
+    const baseEasy = round1(remaining / easyDows.length);
     for (const d of easyDows) {
-      out[d] = round1(baseEasy);
+      out[d] = baseEasy;
     }
   }
   return out;
@@ -532,8 +532,15 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     if (phaseSlice.label === 'RACE_WEEK') weekLongMi = 0;
     if (phaseSlice.label === 'BASE') weekLongMi = Math.max(weekLongMi, round1(peakLongTarget * 0.6));
 
-    // Quality block size from template
-    const qualityMi = qualityBlockMi(phaseSlice.label, level, race?.distanceMi ?? 13.1);
+    // Quality block size — peak-week template sizes scaled to this week's volume.
+    // Research/00a: quality sessions combined should not exceed ~30% of weekly.
+    const qualityBlockRaw = qualityBlockMi(phaseSlice.label, level, race?.distanceMi ?? 13.1);
+    const numQualitySlots = weekShapeArr.filter(d => d.isQuality).length;
+    const volScale = peakMpwTarget > 0 ? Math.min(1, weeklyMi / peakMpwTarget) : 1;
+    const qualityBudgetPerSession = numQualitySlots > 0
+      ? round1(weeklyMi * 0.30 / numQualitySlots)
+      : 0;
+    const qualityMi = Math.max(2, Math.min(round1(qualityBlockRaw * volScale), qualityBudgetPerSession));
 
     const distances = allocateDistances(weekShapeArr, weeklyMi, weekLongMi, qualityMi);
     if (curve.isRaceWeek[w] && race) {
@@ -617,10 +624,16 @@ function round1(n: number): number { return Math.round(n * 10) / 10; }
 function qualityBlockMi(phase: PhaseLabel, level: Level, raceDistanceMi: number): number {
   // From Research/22 §3 templates (HM intermediate sample):
   //  T = 5 mi (WU+T+CD = 8); I = 4×1200 = ~3 mi reps + 5mi WU/CD = 8.
-  //  We use just the "block" (warmup + work + cooldown = same as easy day).
+  //  These are PEAK-week sizes — the caller scales proportionally by vol.
+  if (phase === 'TAPER' || phase === 'RACE_WEEK') return 3;
+  // Maintenance: Research/22 §7 "WU + 20 min @ T + CD ≈ 5 mi" — smaller dose.
+  if (phase === 'MAINTENANCE') {
+    if (level === 'advanced')     return 7;
+    if (level === 'intermediate') return 6;
+    return 5;
+  }
   const hm = raceDistanceMi >= 11 && raceDistanceMi < 22;
   const mar = raceDistanceMi >= 22;
-  if (phase === 'TAPER' || phase === 'RACE_WEEK') return 3;
   if (level === 'beginner')      return mar ? 5 : hm ? 4 : 3;
   if (level === 'intermediate')  return mar ? 9 : hm ? 8 : 6;
   return mar ? 11 : hm ? 10 : 8;
