@@ -42,6 +42,7 @@ import { useActivities } from '@/lib/strava-activities';
 import { loadTrainingData, formatZoneTime, type TrainingData } from './data';
 import { CoachNarrativeLine } from '../overview/CoachNarrativeLine';
 import { CoachWatchingStrip } from '../overview/CoachWatchingStrip';
+import { PlanCalendar } from './PlanCalendar';
 
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -306,6 +307,13 @@ function TrainingBody({ data }: { data: TrainingData }) {
       <Row>
         <NextFourWeeksCard data={data} />
         <PlanAdaptedCard data={data} />
+      </Row>
+
+      {/* Wave V · multi-week plan calendar — sourced from /api/plan/active.
+          Reads getActivePlan().weeks (plan-as-artifact) and renders
+          phase-colored rows with mutation chips inline. */}
+      <Row>
+        <PlanCalendar />
       </Row>
 
       {/* ROW 4 — PATH TO AFC build curve */}
@@ -1722,6 +1730,56 @@ function SummaryCell({
 // ─────────────────────────────────────────────────────────────────────
 
 function PlanAdaptedCard({ data }: { data: TrainingData }) {
+  const [realMutations, setRealMutations] = useState<Array<{ reason: string; trigger: string; citation: string; workoutDateISO: string; ts: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/plan/active', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((j: { ok: boolean; recentMutations?: typeof realMutations }) => {
+        if (cancelled) return;
+        if (j.ok && Array.isArray(j.recentMutations)) setRealMutations(j.recentMutations);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Prefer real plan_mutations rows when present.
+  if (realMutations.length > 0) {
+    return (
+      <Card wash="coach" span={4} padding="20px 22px">
+        <CardHeader>
+          <CardLabel color="var(--coach)">▲ COACH ADAPTED · LAST 7 DAYS</CardLabel>
+          <CardPin variant="coach">{realMutations.length} CHANGE{realMutations.length === 1 ? '' : 'S'}</CardPin>
+        </CardHeader>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, fontWeight: 600, marginTop: 6 }}>
+          Coach moved the plan
+        </div>
+        <div style={{ fontSize: 14, color: 'var(--t1)', lineHeight: 1.55, marginTop: 6 }}>
+          {realMutations.length === 1
+            ? '1 doctrine-grounded adaptation in the last 7 days. Each cites the research passage that triggered it.'
+            : `${realMutations.length} doctrine-grounded adaptations in the last 7 days. Each cites the research passage that triggered it.`}
+        </div>
+        {realMutations.slice(0, 5).map((m, i) => (
+          <div key={i} style={{
+            display: 'flex', flexDirection: 'column', gap: 4,
+            padding: '10px 12px', background: 'var(--l2)', borderRadius: 8, marginTop: 10,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: 1.2, color: 'var(--coach)', fontWeight: 700, textTransform: 'uppercase' }}>
+                {m.workoutDateISO}
+              </span>
+              <span style={{ fontFamily: 'var(--f-display)', fontSize: 12, fontWeight: 700, color: 'var(--t0)', textTransform: 'uppercase' }}>
+                {m.trigger.replace(/-/g, ' ')}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.4 }}>{m.reason}</div>
+            <div style={{ fontSize: 10, color: 'var(--t3)', fontFamily: 'var(--f-data)' }}>{m.citation}</div>
+          </div>
+        ))}
+      </Card>
+    );
+  }
+
   const pa = data.planAdapted;
   if (!pa) {
     return (
@@ -1733,7 +1791,7 @@ function PlanAdaptedCard({ data }: { data: TrainingData }) {
         <EmptyState
           variant="empty"
           title="Plan held steady"
-          body="Coach hasn't adjusted the plan in the last 7 days. Decision deltas surface here when training reality diverges from the prescription."
+          body="Plan held steady — Coach didn't need to move anything this week."
         />
       </Card>
     );

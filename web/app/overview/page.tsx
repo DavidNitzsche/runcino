@@ -310,10 +310,38 @@ function TodayCard({ data }: { data: OverviewData }) {
   // a multi-sentence Coach-voice paragraph, perfect for this slot.
   const why = w.voiceLead;
   const duration = estimateDurationMin(w);
+
+  // Wave V · plan-as-artifact: when today's PlanWorkout has mutations,
+  // surface COACH ADJUSTED + the most-recent mutation's reason.
+  const [planMutation, setPlanMutation] = useState<{ reason: string; citation: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/plan/active', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((j: { ok: boolean; plan: { weeks: Array<{ workouts: Array<{ dateISO: string; mutations: Array<{ reason: string; citation: string; ts: string }> }> }> } | null }) => {
+        if (cancelled || !j.ok || !j.plan) return;
+        const todayISO = data.today;
+        for (const wk of j.plan.weeks) {
+          for (const wko of wk.workouts) {
+            if (wko.dateISO === todayISO && wko.mutations.length > 0) {
+              // Take the most-recent mutation.
+              const sorted = wko.mutations.slice().sort((a, b) => b.ts.localeCompare(a.ts));
+              setPlanMutation({ reason: sorted[0].reason, citation: sorted[0].citation });
+              return;
+            }
+          }
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [data.today]);
+
   // adjustForReality fired today — surface a COACH ADJUSTED pin and
-  // a dedicated "why" line. When no adjustment, the card renders
-  // unchanged (no fake reassurance).
-  const adjusted = data.adjustedToday;
+  // a dedicated "why" line. Plan mutation takes priority over the
+  // legacy adjustForReality channel.
+  const adjusted = planMutation
+    ? { why: planMutation.reason }
+    : data.adjustedToday;
 
   return (
     <Card wash="amber" span={6} padding="26px 28px" style={{ minHeight: 340 }}>
@@ -1386,12 +1414,52 @@ function Marker({ x, label, color, dashed, right }: { x: number; label: string; 
 }
 
 function PlanAdaptedCard({ data }: { data: OverviewData }) {
+  const [realMutations, setRealMutations] = useState<Array<{ reason: string; trigger: string; citation: string; workoutDateISO: string; ts: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/plan/active', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((j: { ok: boolean; recentMutations?: typeof realMutations }) => {
+        if (cancelled) return;
+        if (j.ok && Array.isArray(j.recentMutations)) setRealMutations(j.recentMutations);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Prefer real plan_mutations rows when present — single source of truth
+  // per docs/PLAN_ARCHITECTURE.md §What the UI reads from the plan.
+  if (realMutations.length > 0) {
+    return (
+      <Card wash="coach" span={4} padding="20px 22px">
+        <CardHeader>
+          <CardLabel color="var(--coach)">▲ PLAN ADAPTED · LAST 7 DAYS</CardLabel>
+          <CardPin variant="coach">{realMutations.length} CHANGE{realMutations.length === 1 ? '' : 'S'}</CardPin>
+        </CardHeader>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, fontWeight: 600, lineHeight: 1.15, marginTop: 6 }}>
+          COACH MOVED THE PLAN
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5, marginTop: 6 }}>
+          Doctrine-grounded adaptations. Each cites the research passage that triggered it.
+        </div>
+        {realMutations.slice(0, 4).map((m, i) => (
+          <div key={i} style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 8, marginTop: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 10, letterSpacing: 1.2, color: 'var(--coach)', fontWeight: 700, textTransform: 'uppercase' }}>{m.workoutDateISO}</span>
+              <span style={{ fontFamily: 'var(--f-display)', fontSize: 12, fontWeight: 700, color: 'var(--t0)', textTransform: 'uppercase' }}>{m.trigger.replace(/-/g, ' ')}</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--t2)', lineHeight: 1.4, marginTop: 4 }}>{m.reason}</div>
+            <div style={{ fontSize: 10, color: 'var(--t3)', fontFamily: 'var(--f-data)', marginTop: 4 }}>{m.citation}</div>
+          </div>
+        ))}
+      </Card>
+    );
+  }
+
   const pa = data.planAdapted;
   if (!pa) {
-    // Coach hasn't surfaced any plan adjustments in the last 7 days
-    // (or coach.adjustForReality hasn't been wired into a 7-day
-    // history yet). Render an explicit empty state instead of fake
-    // deltas.
+    // No real mutations yet AND no legacy report. Show the canonical
+    // empty state per docs/PLAN_ARCHITECTURE.md.
     return (
       <Card wash="coach" span={4} padding="20px 22px">
         <CardHeader>
@@ -1401,7 +1469,7 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
         <EmptyState
           variant="empty"
           title="Plan held steady"
-          body="Coach hasn't adjusted the plan in the last 7 days. Decision deltas surface here when training reality diverges from the prescription."
+          body="Plan held steady — Coach didn't need to move anything this week."
         />
       </Card>
     );
