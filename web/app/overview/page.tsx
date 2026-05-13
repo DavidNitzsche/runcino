@@ -1050,6 +1050,7 @@ function WeekStripCard({ data }: { data: OverviewData }) {
               day={merged}
               todayISO={todayISO_}
               prescription={data.coach.workout.answer}
+              planNotes={planDay?.notes}
               onClick={() => setPopupDay(popupData)}
             />
           );
@@ -1115,11 +1116,13 @@ function DayCell({
   day,
   todayISO,
   prescription,
+  planNotes,
   onClick,
 }: {
   day: OverviewData['coach']['weekDeltas']['answer']['days'][number];
   todayISO: string;
   prescription: OverviewData['coach']['workout']['answer'];
+  planNotes?: string | null;
   onClick?: () => void;
 }) {
   const isToday = day.dateISO === todayISO;
@@ -1132,6 +1135,7 @@ function DayCell({
   // activity logged. With type now flowing through DayDelta the
   // canonical signal is type === 'rest'.
   const isRest = day.type === 'rest' || (day.plannedMi === 0 && day.actualMi == null);
+  const hasStrength = planNotes?.includes('\n\nStrength:') ?? false;
 
   // Tag color class — read off the real coach prescription type.
   let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
@@ -1198,6 +1202,9 @@ function DayCell({
         )}
         {!isRest && day.deltaMi != null && (
           <div className="day-pace">{day.severity === 'good' ? 'on plan' : ''}</div>
+        )}
+        {hasStrength && !isRest && (
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, color: 'var(--att)', letterSpacing: '0.05em', marginTop: 2 }}>+ STR</div>
         )}
       </div>
       <div

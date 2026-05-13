@@ -42,7 +42,6 @@ import { useActivities } from '@/lib/strava-activities';
 import { loadTrainingData, formatZoneTime, type TrainingData } from './data';
 import { CoachNarrativeLine } from '../overview/CoachNarrativeLine';
 import { CoachWatchingStrip } from '../overview/CoachWatchingStrip';
-import { PlanCalendar } from './PlanCalendar';
 
 export default function TrainingPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -307,13 +306,6 @@ function TrainingBody({ data }: { data: TrainingData }) {
       <Row>
         <NextFourWeeksCard data={data} />
         <PlanAdaptedCard data={data} />
-      </Row>
-
-      {/* Wave V · multi-week plan calendar — sourced from /api/plan/active.
-          Reads getActivePlan().weeks (plan-as-artifact) and renders
-          phase-colored rows with mutation chips inline. */}
-      <Row>
-        <PlanCalendar />
       </Row>
 
       {/* ROW 4 — PATH TO AFC build curve */}
@@ -1248,7 +1240,7 @@ function ThisWeekCard({ data }: { data: TrainingData }) {
                 label: planDay.subLabel || PLAN_TYPE_LABELS[planDay.type] || d.label,
               }
             : d;
-          return <DayCell key={d.dateISO} day={merged} todayISO={todayISO} prescription={data.coach.workout.answer} planDay={planDay} />;
+          return <DayCell key={d.dateISO} day={merged} todayISO={todayISO} prescription={data.coach.workout.answer} planDay={planDay ? { ...planDay, notes: planDay.notes } : null} />;
         })}
       </div>
     </Card>
@@ -1264,24 +1256,20 @@ function DayCell({
   day: TrainingData['coach']['weekDeltas']['answer']['days'][number];
   todayISO: string;
   prescription: TrainingData['coach']['workout']['answer'];
-  planDay?: { type: string; subLabel?: string | null } | null;
+  planDay?: { type: string; subLabel?: string | null; notes?: string | null } | null;
 }) {
   const isToday = day.dateISO === todayISO;
   const isPast = day.dateISO < todayISO;
   const isFuture = day.dateISO > todayISO;
-  // Only treat as "done" if the day is past AND has actualMi. Future days
-  // may carry stub actuals from a mocked Coach method — ignore them.
   const isDone = !isFuture && day.actualMi != null && day.actualMi > 0;
-  // Engine prescribed rest = canonical rest signal. Falls back to the
-  // "no plan, no actual" heuristic for legacy callers.
   const isRest = day.type === 'rest' || (day.plannedMi === 0 && (isFuture || day.actualMi == null));
+  const hasStrength = planDay?.notes?.includes('\n\nStrength:') ?? false;
 
   let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
   if (isRest) tag = 'rest';
   else if (day.isQuality) tag = 'quality';
   else if (day.isLong) tag = 'long';
   else if (day.type === 'recovery') tag = 'recovery';
-  else if (day.dayLabel === 'THU' && day.plannedMi < 1) tag = 'strength';
 
   const cls = [
     'day',
@@ -1333,6 +1321,9 @@ function DayCell({
         )}
         {!isRest && isToday && prescription.paceTargetSPerMi && (
           <div className="day-pace">{fmtPaceRange(prescription.paceTargetSPerMi)}</div>
+        )}
+        {hasStrength && !isRest && (
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, color: 'var(--att)', letterSpacing: '0.05em', marginTop: 2 }}>+ STR</div>
         )}
       </div>
       <div className={`day-foot ${isDone ? 'done' : isToday ? 'active' : isRest ? 'rest' : 'future'}`}>

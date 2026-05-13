@@ -1311,35 +1311,38 @@ export const COMBINATIONS_TO_AVOID: Cited<Array<{
 /** Strength training integration rules for runners.
  *
  * Key principle: strength supports running, never competes with it.
- * Schedule it on easy days, AFTER your run (cardio first), never
- * within 24h of a quality session or long run.
+ * Fixed slots: Monday (lower/core) and Friday (upper/core, light lower),
+ * always after the run, never adjacent to quality or long sessions.
  *
- * Duration tiers per phase (Research/04 §Supplemental work):
- *   BASE/BUILD:  2-3 sessions/week, 30-45 min each.
- *   PEAK:        2 sessions/week, 30 min each — volume drops, intensity focus rises.
- *   TAPER:       1 session/week, 30 min max — maintain recruitment, not fitness.
- *   RACE_WEEK:   1 light session (Mon/Tue only), 20-30 min, nothing new. */
+ * Duration and effort tiers per phase (Research/04 §Supplemental work):
+ *   BASE/BUILD:  2 sessions/week, 30 min, effort 7/10.
+ *   PEAK:        2 sessions/week, 30 min, effort 6/10.
+ *   TAPER:       1 session/week, 20 min, effort 5/10 — maintenance only.
+ *   RACE_WEEK:   Skip entirely. */
 export const STRENGTH_SCHEDULE: Cited<{
-  /** Max sessions per week by phase. */
   sessionsPerWeek: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
-  /** Duration recommendation in minutes. */
   durationMin: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
-  /** Rules for placement within a week. */
+  effortOutOf10: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
+  monFocus: string;
+  friFocus: string;
   rules: string[];
 }> = {
   value: {
-    sessionsPerWeek: { BASE: 3, BUILD: 2, PEAK: 2, TAPER: 1, RACE_WEEK: 1 },
-    durationMin:     { BASE: 45, BUILD: 45, PEAK: 30, TAPER: 30, RACE_WEEK: 20 },
+    sessionsPerWeek: { BASE: 2, BUILD: 2, PEAK: 2, TAPER: 1, RACE_WEEK: 0 },
+    durationMin:     { BASE: 30, BUILD: 30, PEAK: 30, TAPER: 20, RACE_WEEK: 0 },
+    effortOutOf10:   { BASE: 7, BUILD: 7, PEAK: 6, TAPER: 5, RACE_WEEK: 0 },
+    monFocus: 'Lower body + core — glutes, hips, single-leg work. This is runner strength: the stuff that keeps form together when you\'re tired.',
+    friFocus: 'Upper body + core, light lower. Support strength — nothing that loads the legs hard going into the weekend.',
     rules: [
-      'Always run first — do strength after running, not before.',
-      'Never the day before a long run or quality session.',
-      'Never the day after a long run (recovery day = full recovery).',
-      'Minimum 24h between strength and next quality running session.',
-      'Total body sessions preferred over split — keeps session count low.',
-      'Taper: drop volume, keep intensity (2 sets vs. 3, not lighter weights).',
+      'Always run first — strength after running, never before.',
+      'Never the day before or after a quality session or long run.',
+      'Monday = lower/core. Friday = upper/core (light lower). These slots are fixed.',
+      'Default 30 min. On low-stress weeks (cutback, base) you can go 45 if legs feel good.',
+      'Effort drops as race approaches: 7/10 build → 6/10 peak → 4–5/10 taper.',
+      'Race week: skip entirely.',
     ],
   },
-  note: 'Strength training builds injury resistance and running economy. The goal is to support the running — not add fatigue that bleeds into quality sessions.',
+  note: 'Strength supports the running — it doesn\'t compete with it. Two sessions a week on Mon and Fri, after the run, targeting the movements that actually matter for half marathon performance.',
   citations: [
     cite('§Supplemental work', 'Strength 2-3x/week, easy days only, after runs. Reduce in taper.', 'research', '04'),
   ],
