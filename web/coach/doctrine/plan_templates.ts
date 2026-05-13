@@ -74,6 +74,11 @@ export interface PlanTemplate {
   samplePeakWeek: SamplePeakWeekDay[];
   basedOn: string;
   researchSection: string;
+  /** Whether a medium-long run (11-15 mi) is prescribed in this plan. Defaults false. */
+  mlrIncluded?: boolean;
+  /** MLRs per week during build/peak (omit or 0 when mlrIncluded=false). */
+  mlrPerWeekLow?: number;
+  mlrPerWeekHigh?: number;
 }
 
 // ── Catalog of plans ──────────────────────────────────────────────
@@ -268,6 +273,7 @@ export const PLAN_TEMPLATES: Cited<PlanTemplate[]> = {
       ],
       basedOn: 'Higdon Intermediate / Pfitzinger 12/47',
       researchSection: '§3 Half Marathon Intermediate',
+      mlrIncluded: true, mlrPerWeekLow: 1, mlrPerWeekHigh: 1,
     },
     {
       id: 'half_marathon_advanced',
@@ -291,6 +297,7 @@ export const PLAN_TEMPLATES: Cited<PlanTemplate[]> = {
       ],
       basedOn: 'Pfitzinger 12/63 or 12/84',
       researchSection: '§3 Half Marathon Advanced',
+      mlrIncluded: true, mlrPerWeekLow: 1, mlrPerWeekHigh: 2,
     },
 
     // Marathon plans
@@ -339,6 +346,7 @@ export const PLAN_TEMPLATES: Cited<PlanTemplate[]> = {
       ],
       basedOn: 'Higdon Intermediate 1/2 or Pfitzinger 18/55',
       researchSection: '§4 Marathon Intermediate',
+      mlrIncluded: true, mlrPerWeekLow: 1, mlrPerWeekHigh: 1,
     },
     {
       id: 'marathon_advanced',
@@ -362,6 +370,7 @@ export const PLAN_TEMPLATES: Cited<PlanTemplate[]> = {
       ],
       basedOn: 'Pfitzinger 18/70 or 18/85',
       researchSection: '§4 Marathon Advanced',
+      mlrIncluded: true, mlrPerWeekLow: 1, mlrPerWeekHigh: 1,
     },
 
     // Special plans
@@ -507,5 +516,78 @@ export const MULTI_RACE_YEAR: Cited<{
   note: 'Research suggests one primary peak and one secondary peak per year is optimal for recreationals.',
   citations: [
     cite('§11 Multi-Race Year Planning', 'Two marathons / three halves / 5K-10K series intervals', 'research', '22'),
+  ],
+};
+
+// ── Phase definitions ─────────────────────────────────────────────
+
+export type PhaseName = 'base' | 'build' | 'peak' | 'taper' | 'race_week' | 'maintenance';
+
+export interface PhaseDefinition {
+  /** Quality sessions (threshold + VO2) per week. */
+  qualitySessionsPerWeek: { low: number; high: number };
+  /** Strides sessions per week — appended to easy runs. */
+  stridesPerWeek: { low: number; high: number };
+  /** Primary workout families for the phase. */
+  primaryWorkoutFamilies: string[];
+  /** Families explicitly excluded this phase. */
+  excludedWorkoutFamilies: string[];
+  /** Volume relative to peak (1.0 = peak volume). */
+  volumeRelativeToPeak: { low: number; high: number };
+}
+
+/**
+ * Phase-specific session selection rules.
+ * Source: Research/00a §Plan skeletons + Research/22 sample weeks.
+ */
+export const PHASE_DEFINITIONS: Cited<Record<PhaseName, PhaseDefinition>> = {
+  value: {
+    base: {
+      qualitySessionsPerWeek: { low: 1, high: 1 },
+      stridesPerWeek: { low: 2, high: 2 },
+      primaryWorkoutFamilies: ['easy', 'long', 'strides', 'fartlek', 'hill'],
+      excludedWorkoutFamilies: ['vo2max', 'marathon_specific'],
+      volumeRelativeToPeak: { low: 0.60, high: 0.80 },
+    },
+    build: {
+      qualitySessionsPerWeek: { low: 2, high: 2 },
+      stridesPerWeek: { low: 2, high: 3 },
+      primaryWorkoutFamilies: ['threshold', 'vo2max', 'long', 'easy', 'strides'],
+      excludedWorkoutFamilies: [],
+      volumeRelativeToPeak: { low: 0.80, high: 1.0 },
+    },
+    peak: {
+      qualitySessionsPerWeek: { low: 2, high: 2 },
+      stridesPerWeek: { low: 2, high: 3 },
+      primaryWorkoutFamilies: ['threshold', 'vo2max', 'long_hm_specific', 'easy', 'strides'],
+      excludedWorkoutFamilies: [],
+      volumeRelativeToPeak: { low: 0.90, high: 1.0 },
+    },
+    taper: {
+      qualitySessionsPerWeek: { low: 1, high: 1 },
+      stridesPerWeek: { low: 2, high: 3 },
+      primaryWorkoutFamilies: ['easy', 'threshold_short', 'strides'],
+      excludedWorkoutFamilies: ['vo2max', 'long_mp_block', 'marathon_specific'],
+      volumeRelativeToPeak: { low: 0.40, high: 0.55 },
+    },
+    race_week: {
+      qualitySessionsPerWeek: { low: 0, high: 0 },
+      stridesPerWeek: { low: 0, high: 4 },
+      primaryWorkoutFamilies: ['easy', 'shakeout', 'strides', 'race'],
+      excludedWorkoutFamilies: ['threshold', 'vo2max', 'long', 'marathon_specific'],
+      volumeRelativeToPeak: { low: 0.25, high: 0.35 },
+    },
+    maintenance: {
+      qualitySessionsPerWeek: { low: 1, high: 1 },
+      stridesPerWeek: { low: 2, high: 3 },
+      primaryWorkoutFamilies: ['easy', 'threshold', 'long', 'strides'],
+      excludedWorkoutFamilies: ['vo2max', 'marathon_specific', 'race_specific'],
+      volumeRelativeToPeak: { low: 0.50, high: 0.70 },
+    },
+  },
+  note: 'Phase definitions drive session selection — base avoids VO2 work, build/peak introduce it, taper cuts volume while preserving intensity touches.',
+  citations: [
+    cite('§Plan skeletons + Volume progression rules', 'BASE: aerobic only. BUILD: threshold + VO2 introduced. PEAK: race-specific. TAPER: volume drops 50-70%, intensity preserved.', 'research', '00a'),
+    cite('§3 Half Marathon Plans', 'HM intermediate phases: Endurance build → LT focus + LR with HMP segments → Race-specific → Taper.', 'research', '22'),
   ],
 };

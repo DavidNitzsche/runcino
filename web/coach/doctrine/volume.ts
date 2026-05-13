@@ -85,6 +85,76 @@ export const MAINTENANCE_BLOCK: Cited<{
   ],
 };
 
+/** Weekly volume progression rules — Research/00a §Volume progression rules. */
+export const VOLUME_PROGRESSION: Cited<{
+  /** Conservative weekly increase cap for trained athletes (pct). */
+  weeklyIncreaseCapPct: number;
+  /** Single-session long-run spike cap vs prior longest long run (pct).
+   *  Exceeding raises injury risk significantly. */
+  singleSessionSpikeCapPctOfPriorLongRun: number;
+  /** Injury risk increase when spike cap exceeded — Gabbett 2016. */
+  injuryRiskIncreasePct: number;
+}> = {
+  value: {
+    weeklyIncreaseCapPct: 10,
+    singleSessionSpikeCapPctOfPriorLongRun: 110,
+    injuryRiskIncreasePct: 64,
+  },
+  note: '10%/week is the conservative cap; single-session spikes >110% of prior longest run raise injury risk 64%.',
+  citations: [
+    cite('§Volume progression rules', '5–15% weekly increase for trained athletes; accumulate volume gradually in cycles', 'research', '00a'),
+    cite('§Volume progression rules', 'Single-session spike >110% of prior longest long run raises injury risk 64%', 'research', '00a'),
+  ],
+};
+
+/** Cutback / down-week rules — every 3rd or 4th week. */
+export const CUTBACK_WEEK_RULES: Cited<{
+  /** How often to take a down week (weeks of build before cutback). */
+  frequencyWeeksLow: number;
+  frequencyWeeksHigh: number;
+  /** Volume reduction from the preceding build week (pct). */
+  volumeReductionPctLow: number;
+  volumeReductionPctHigh: number;
+}> = {
+  value: {
+    frequencyWeeksLow: 3,
+    frequencyWeeksHigh: 4,
+    volumeReductionPctLow: 20,
+    volumeReductionPctHigh: 30,
+  },
+  note: 'Pattern: 3 weeks build, 1 week cutback (or 4 + 1). Reduces volume 20–30% from build peak.',
+  citations: [
+    cite('§Volume progression rules', 'Every 3–4 weeks, reduce volume 20–30% from peak', 'research', '00a'),
+  ],
+};
+
+/** Taper rules by race distance. */
+export const TAPER_VOLUME_RULES: Cited<{
+  volumeReductionPctFromPeakLow: number;
+  volumeReductionPctFromPeakHigh: number;
+  durationWeeksByDistance: {
+    fiveK: number;
+    tenK: number;
+    halfMarathon: number;
+    marathon: { low: number; high: number };
+  };
+}> = {
+  value: {
+    volumeReductionPctFromPeakLow: 50,
+    volumeReductionPctFromPeakHigh: 70,
+    durationWeeksByDistance: {
+      fiveK: 2,
+      tenK: 2,
+      halfMarathon: 3,
+      marathon: { low: 3, high: 4 },
+    },
+  },
+  note: 'Taper reduces 50–70% from peak weekly volume. Intensity preserved — volume drops, quality touches remain.',
+  citations: [
+    cite('§12 Tapering', 'Reduce 50–70% from peak weekly volume over 2–4 weeks depending on race distance', 'research', '00a'),
+  ],
+};
+
 /** Recovery period after a marathon, by peak weekly volume. */
 export const POST_MARATHON_RECOVERY: Cited<{
   peak70mpwWeeksLow: number;

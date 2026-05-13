@@ -61,7 +61,7 @@ describe('autoDetectLevel', () => {
 
 describe('peakVolumeForLevel', () => {
   it('uses HM band low ends per Research/22 §3', () => {
-    expect(peakVolumeForLevel(13.1, 'beginner')).toBe(25);
+    expect(peakVolumeForLevel(13.1, 'beginner')).toBe(22); // half_marathon_beginner.peakWeeklyMpwLow
     expect(peakVolumeForLevel(13.1, 'intermediate')).toBe(35);
     expect(peakVolumeForLevel(13.1, 'advanced')).toBe(55);
   });

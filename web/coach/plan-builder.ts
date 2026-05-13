@@ -32,6 +32,8 @@ import {
   type PlanMode, type WorkoutType, type PhaseLabel,
   snapshotFromState,
 } from './plan-types';
+import { PLAN_TEMPLATES, type PlanDistance } from './doctrine/plan_templates';
+import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../lib/vdot';
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 
@@ -81,49 +83,36 @@ export function autoDetectLevel(weeklyAvg4w: number): Level {
   return 'beginner';
 }
 
-/** Peak weekly mileage for a (race distance, level) pair.
- *  Conservative: low end of each band so the ramp is achievable. */
-export function peakVolumeForLevel(distanceMi: number, level: Level): number {
-  if (distanceMi >= 22) {
-    if (level === 'beginner')     return 35;
-    if (level === 'intermediate') return 50;
-    return 65;
-  }
-  if (distanceMi >= 11) {
-    if (level === 'beginner')     return 25;
-    if (level === 'intermediate') return 35;
-    return 55;
-  }
-  if (distanceMi >= 8) {
-    if (level === 'beginner')     return 20;
-    if (level === 'intermediate') return 32;
-    return 50;
-  }
-  if (level === 'beginner')     return 14;
-  if (level === 'intermediate') return 26;
-  return 42;
+// ─────────────────────────────────────────────────────────────────
+// Doctrine-grounded lookups — all volume targets come from
+// doctrine/plan_templates.ts which is the authoritative source.
+// ─────────────────────────────────────────────────────────────────
+
+function distanceToPlanDistance(distanceMi: number): PlanDistance {
+  if (distanceMi >= 22) return 'marathon';
+  if (distanceMi >= 11) return 'half_marathon';
+  if (distanceMi >= 6)  return '10K';
+  return '5K';
 }
 
-/** Peak long-run mileage for a (race distance, level) pair. */
+function doctrineTemplate(distanceMi: number, level: Level) {
+  const planDistance = distanceToPlanDistance(distanceMi);
+  return PLAN_TEMPLATES.value.find(
+    t => t.distance === planDistance && t.level === level,
+  );
+}
+
+/** Peak weekly mileage for a (race distance, level) pair.
+ *  Conservative: low (peakWeeklyMpwLow) end so the ramp is achievable.
+ *  Values come from doctrine/plan_templates.ts (Research/22). */
+export function peakVolumeForLevel(distanceMi: number, level: Level): number {
+  return doctrineTemplate(distanceMi, level)?.peakWeeklyMpwLow ?? 25;
+}
+
+/** Peak long-run mileage for a (race distance, level) pair.
+ *  Values come from doctrine/plan_templates.ts (Research/22). */
 export function peakLongRunForLevel(distanceMi: number, level: Level): number {
-  if (distanceMi >= 22) {
-    if (level === 'beginner')     return 18;
-    if (level === 'intermediate') return 20;
-    return 22;
-  }
-  if (distanceMi >= 11) {
-    if (level === 'beginner')     return 10;
-    if (level === 'intermediate') return 12;
-    return 16;
-  }
-  if (distanceMi >= 8) {
-    if (level === 'beginner')     return 6;
-    if (level === 'intermediate') return 9;
-    return 13;
-  }
-  if (level === 'beginner')     return 4;
-  if (level === 'intermediate') return 6;
-  return 10;
+  return doctrineTemplate(distanceMi, level)?.peakLongRunMiLow ?? 10;
 }
 
 /** Minimum weekly starting volume when the user explicitly picks a level.
@@ -388,6 +377,10 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
   const level: Level = prefs.level ?? autoDetectLevel(state.volume.weeklyAvg4w);
   const raceDist = race?.distanceMi ?? 13.1;
 
+  // VDOT-derived Daniels pace bands (null when no race result is available).
+  const vdotSnap = vdotSnapshot(state);
+  const paces: DanielsPaceSet | null = vdotSnap ? pacesFromVdot(vdotSnap.vdot) : null;
+
   // Plan window
   const startMonday = startOfWeekMonday(today);
   let totalWeeks: number;
@@ -475,8 +468,9 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
           : scaledLong;
         if (curve.isCutback[w]) longMi = round1(peakLongTarget * 0.75);
       }
-      // Hard cap: long run ≤ 35% of weekly per research §6
-      longMi = Math.min(longMi, round1(weeklyMi * 0.35));
+      // Hard cap: long run ≤ 50% of weekly. Lower-volume plans (e.g. HM beginner
+      // at 22 mpw) legitimately have long runs = 40-50% of weekly volume.
+      longMi = Math.min(longMi, round1(weeklyMi * 0.50));
     }
 
     // ── Quality sessions (proportion-based) ─────────────────────
@@ -557,7 +551,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         dow: jsDow,
         type: effectiveType,
         distanceMi: distances[jsDow],
-        paceTargetSPerMi: null,
+        paceTargetSPerMi: paceTargetFor(effectiveType, paces),
         durationMin: null,
         isQuality: pick.isQuality,
         isLong: pick.isLong,
@@ -610,6 +604,27 @@ function startOfWeekMonday(d: Date): Date {
 }
 
 function round1(n: number): number { return Math.round(n * 10) / 10; }
+
+/** Center of a pace band in s/mi (null when paces unavailable or not applicable). */
+function paceCenter(band: { lowS: number; highS: number } | undefined | null): number | null {
+  if (!band) return null;
+  return Math.round((band.lowS + band.highS) / 2);
+}
+
+/** VDOT-derived pace target in s/mi for a given workout type. */
+function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): number | null {
+  if (!paceSet) return null;
+  switch (type) {
+    case 'easy':      return paceCenter(paceSet.E);
+    case 'long':      return paceCenter(paceSet.E);
+    case 'recovery':  return paceCenter(paceSet.E) ? Math.round(paceCenter(paceSet.E)! + 30) : null;
+    case 'threshold': return paceCenter(paceSet.T);
+    case 'interval':  return paceCenter(paceSet.I);
+    case 'mp':        return paceCenter(paceSet.M);
+    case 'shakeout':  return paceCenter(paceSet.E);
+    default:          return null; // rest, race — no target
+  }
+}
 
 function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: number, isCutback: boolean): string {
   switch (t) {

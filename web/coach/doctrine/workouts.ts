@@ -204,11 +204,21 @@ export const TEMPO_CONTINUOUS: Cited<{
   durationMinLow: number;
   durationMinHigh: number;
   paceAnchor: 'threshold';
+  /** Warm-up before the quality block (easy jog). Not included in miLow/miHigh. */
+  warmupMiLow: number;
+  warmupMiHigh: number;
+  /** Cool-down after the quality block. Not included in miLow/miHigh. */
+  cooldownMiLow: number;
+  cooldownMiHigh: number;
 }> = {
-  value: { miLow: 3, miHigh: 8, durationMinLow: 20, durationMinHigh: 40, paceAnchor: 'threshold' },
-  note: '"Comfortably hard" — sustainable for ~1 hour in a race. 20 min minimum for stimulus.',
+  value: {
+    miLow: 3, miHigh: 8, durationMinLow: 20, durationMinHigh: 40, paceAnchor: 'threshold',
+    warmupMiLow: 1.5, warmupMiHigh: 2,
+    cooldownMiLow: 1, cooldownMiHigh: 1.5,
+  },
+  note: '"Comfortably hard" — sustainable for ~1 hour in a race. 20 min minimum for stimulus. WU/CD miles are easy and counted in total session distance.',
   citations: [
-    cite('§5.2 Continuous tempo', '3-8 mi at T pace. 20-40 min sweet spot.', 'research', '04'),
+    cite('§5.2 Continuous tempo', '3-8 mi at T pace. 20-40 min sweet spot. Include 1-2 mi WU + 1 mi CD.', 'research', '04'),
   ],
 };
 
@@ -220,16 +230,39 @@ export const THRESHOLD_INTERVALS: Cited<{
   recoveryJogSecLow: number;
   recoveryJogSecHigh: number;
   weeklyMileagePctCap: number;
+  warmupMiLow: number;
+  warmupMiHigh: number;
+  cooldownMiLow: number;
+  cooldownMiHigh: number;
+  /** Per-level rep counts. Research/22 §3 sample weeks + Research/04 §5.3. */
+  perLevel: {
+    beginner:     { repsLow: number; repsHigh: number; miReps: number };
+    intermediate: { repsLow: number; repsHigh: number; miReps: number };
+    advanced:     { repsLow: number; repsHigh: number; miReps: number };
+  };
+  /** HM-specific variant: cruise intervals at HM pace, not T pace. */
+  hmSpecific: {
+    repsLow: number; repsHigh: number; miReps: number; recoveryJogSecLow: number; recoveryJogSecHigh: number;
+  };
 }> = {
   value: {
     miReps: 1,
     repsLow: 3, repsHigh: 6,
     recoveryJogSecLow: 60, recoveryJogSecHigh: 90,
     weeklyMileagePctCap: 10,
+    warmupMiLow: 1.5, warmupMiHigh: 2,
+    cooldownMiLow: 1, cooldownMiHigh: 1.5,
+    perLevel: {
+      beginner:     { repsLow: 2, repsHigh: 4, miReps: 1 },
+      intermediate: { repsLow: 3, repsHigh: 5, miReps: 1 },
+      advanced:     { repsLow: 3, repsHigh: 6, miReps: 1 },
+    },
+    hmSpecific: { repsLow: 2, repsHigh: 3, miReps: 2, recoveryJogSecLow: 60, recoveryJogSecHigh: 90 },
   },
-  note: "Daniels' staple: 3-6 × 1 mile at T with 60-90 s jog, or 2-4 × 2 mi with 2 min jog. Recovery: 1 min jog per mi of work.",
+  note: "Daniels' staple: 3-6 × 1 mile at T with 60-90 s jog, or 2-4 × 2 mi with 2 min jog. HM-specific variant: 3×2 mi or 2×3 mi at HM pace. Recovery: 1 min jog per mi of work.",
   citations: [
     cite('§5.3 Cruise intervals (Daniels)', '3-6 × 1 mi with 1 min jog, or 2-4 × 2 mi with 2 min jog. Total at-pace 4-8 mi (Daniels: cap T-pace at 10% of weekly mileage).', 'research', '04'),
+    cite('§3 Half Marathon Plans', 'HM-specific threshold: 3×2 mi at HM effort, 90 sec jog. Or 2×3 mi at HM effort, 2 min jog.', 'research', '22'),
   ],
 };
 
@@ -288,6 +321,21 @@ export const VO2_INTERVALS: Cited<{
   recoveryFractionOfWorkLow: number;
   recoveryFractionOfWorkHigh: number;
   weeklyMileagePctCap: number;
+  warmupMiLow: number;
+  warmupMiHigh: number;
+  cooldownMiLow: number;
+  cooldownMiHigh: number;
+  /** Rep distance variants with per-level defaults. Research/04 §6 + Research/22 §3. */
+  repVariants: {
+    m800:  { repsLow: number; repsHigh: number; recoveryEqualWork: true };
+    m1000: { repsLow: number; repsHigh: number; recoveryEqualWork: true };
+    m1200: { repsLow: number; repsHigh: number; recoverySec: number };
+  };
+  perLevel: {
+    beginner:     { preferredVariant: 'm800';  repsLow: number; repsHigh: number };
+    intermediate: { preferredVariant: 'm1000'; repsLow: number; repsHigh: number };
+    advanced:     { preferredVariant: 'm1200'; repsLow: number; repsHigh: number };
+  };
 }> = {
   value: {
     totalWorkMiLow: 3, totalWorkMiHigh: 6,
@@ -295,11 +343,24 @@ export const VO2_INTERVALS: Cited<{
     pctVO2maxLow: 95, pctVO2maxHigh: 100,
     recoveryFractionOfWorkLow: 0.5, recoveryFractionOfWorkHigh: 1.0,
     weeklyMileagePctCap: 8,
+    warmupMiLow: 1.5, warmupMiHigh: 2,
+    cooldownMiLow: 1, cooldownMiHigh: 1.5,
+    repVariants: {
+      m800:  { repsLow: 4, repsHigh: 8,  recoveryEqualWork: true },
+      m1000: { repsLow: 4, repsHigh: 8,  recoveryEqualWork: true },
+      m1200: { repsLow: 4, repsHigh: 6,  recoverySec: 180 },
+    },
+    perLevel: {
+      beginner:     { preferredVariant: 'm800',  repsLow: 4, repsHigh: 6 },
+      intermediate: { preferredVariant: 'm1000', repsLow: 5, repsHigh: 7 },
+      advanced:     { preferredVariant: 'm1200', repsLow: 4, repsHigh: 6 },
+    },
   },
-  note: 'Daniels: each interval 3-5 min long; cap at 8% of weekly mileage; recovery roughly equals interval duration. For marathon training, secondary importance — raises the ceiling so MP feels easier.',
+  note: 'Daniels: each interval 3-5 min long; cap at 8% of weekly mileage; recovery roughly equals interval duration. Finish feeling like you could do one more rep.',
   citations: [
     cite('§6.1 VO2max family overview', 'Mile, 1200, 1000, 800, 600, 400 reps + Yasso 800s. Pace I (5K) to slightly faster.', 'research', '04'),
     cite('§6 VO2max workouts', 'Daniels rule: each interval 3-5 min; total at-pace ≤8% of weekly mileage; recovery roughly equals interval duration.', 'research', '04'),
+    cite('§3 Half Marathon Plans', 'HM intermediate: 4×1200m @ I, 3 min jog. Advanced: 6×1200m @ I, 3 min jog.', 'research', '22'),
   ],
 };
 
@@ -313,16 +374,38 @@ export const STRIDES: Cited<{
   repsHigh: number;
   perWeekLow: number;
   perWeekHigh: number;
+  /** Full walk-back or ~90 s jog — no accumulated fatigue. */
+  recoveryNote: string;
+  /** When to tag strides onto a run — end of easy, or standalone after warmup. */
+  timingNote: string;
+  /** Per-phase frequency. Research/22 §3 sample weeks show strides on Sat in every level. */
+  perPhase: {
+    base:         { perWeekLow: number; perWeekHigh: number };
+    build:        { perWeekLow: number; perWeekHigh: number };
+    peak:         { perWeekLow: number; perWeekHigh: number };
+    taper:        { perWeekLow: number; perWeekHigh: number };
+    maintenance:  { perWeekLow: number; perWeekHigh: number };
+  };
 }> = {
   value: {
     distanceMLow: 50, distanceMHigh: 100,
     durationSLow: 15, durationSHigh: 30,
     repsLow: 4, repsHigh: 8,
     perWeekLow: 2, perWeekHigh: 4,
+    recoveryNote: 'Full walk-back (60-90 s) — no accumulated fatigue between reps.',
+    timingNote: 'Append to end of easy run or Saturday run. Not before a hard workout.',
+    perPhase: {
+      base:        { perWeekLow: 2, perWeekHigh: 2 },
+      build:       { perWeekLow: 2, perWeekHigh: 3 },
+      peak:        { perWeekLow: 2, perWeekHigh: 3 },
+      taper:       { perWeekLow: 2, perWeekHigh: 3 },
+      maintenance: { perWeekLow: 2, perWeekHigh: 3 },
+    },
   },
-  note: 'Accelerate to mile-to-5K race pace; ~85-95% max effort, relaxed. Full walk-back recovery — no fatigue between strides.',
+  note: 'Accelerate to mile-to-5K race pace; ~85-95% max effort, relaxed. Full walk-back recovery — no fatigue between strides. Tagged onto Saturday easy runs per Research/22 sample weeks.',
   citations: [
     cite('§7.2 Strides', '50-100m or 15-30 s each. 4-8 reps. Full walk-back or 60-90 s jog. 2-4×/week. End of an easy run, mid-warmup, or standalone.', 'research', '04'),
+    cite('§3 Half Marathon Plans', 'HM intermediate peak: Sat 5 mi E + 6×ST. HM advanced peak: Sat 6 mi E + 8×ST.', 'research', '22'),
   ],
 };
 
