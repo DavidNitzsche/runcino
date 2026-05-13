@@ -221,9 +221,9 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
     : isRest
     ? 'var(--t3)'
     : day.isQuality
-    ? 'var(--att)'
-    : day.isLong
     ? 'var(--corp)'
+    : day.isLong
+    ? 'var(--good)'
     : day.type === 'recovery'
     ? 'var(--coach)'
     : 'var(--good)';
