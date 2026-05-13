@@ -226,6 +226,41 @@ CREATE INDEX IF NOT EXISTS plan_mutations_by_ts
   ON plan_mutations (ts DESC);
 ```
 
+## How weekly volume gets picked
+
+Grounded in `Research/22-plan-templates.md` (the plan-template tables) and `Research/00a §Volume progression rules`.
+
+1. **Level lookup.** When `buildPlan` runs, the runner is placed into a level by comparing `state.volume.weeklyAvg4w` against the template bands for the race distance. For a half-marathon: Beginner = 22-28 mpw peak, Intermediate = 35-45, Advanced = 55-85. That level fixes the peak-week target.
+2. **Ramp from current.** Week 1 starts at the runner's actual current `weeklyAvg4w` (no fantasy starting point). Weeks ramp toward peak — capped at +10% per week per the 10% rule (`Research/00a §Volume progression rules`). The cap is a ceiling, not a target — actual ramp is typically 5-8% per week.
+3. **Cutback every 3rd week.** -15-20% volume on cutback weeks (`Research/00a §Cutback Weeks`). The cutback is intentional, not a fall-off.
+4. **Long run gets a fixed share.** Peak long run is a doctrine constant per level (HM intermediate: 12-14 mi; HM advanced: 15-17 mi; per `Research/22 §3 Half Marathon Plans`). Typically 25-30% of the week's total at peak. Cutback weeks shorten the long run proportionally.
+5. **Taper drops 30-50%** in the final two weeks per `Research/08 §9.1 HM taper table`. Intensity preserved via strides + a short tune-up; volume takes the cut.
+
+## How each run gets picked
+
+For each day of each week, `buildPlan` makes three independent decisions: WHICH DAY, WHAT TYPE, WHAT DISTANCE.
+
+1. **WHICH DAY — from user prefs.** `state.prefs.longRunDow` → long run goes there. `state.prefs.qualityDows` → quality slots. `state.prefs.restDow` → rest. No more hardcoded `dow === 6`.
+2. **WHAT TYPE — scaled by phase**, drawn from `Research/22-plan-templates.md` sample weeks for the runner's level:
+   - **BASE**: 1 quality (T tempo or strides), 1 long, rest easy/recovery.
+   - **BUILD**: 2 quality (T + I), 1 long, rest easy. T = threshold continuous (e.g. 4-6 mi at T pace per HM Intermediate template). I = intervals (e.g. 4×1200 m at I pace).
+   - **PEAK**: 2 quality + long-run-with-HMP-segment (the "middle 5 mi at half-marathon pace" pattern from the template).
+   - **TAPER**: drop one quality, keep race-pace strides + a short tune-up workout.
+   - **RACE_WEEK**: shakeout + race only. No quality work inside ±7 days of race day per `Research/08 §9.2 HM race-week template`.
+3. **WHAT DISTANCE.** Long = the doctrine-prescribed share for the week. Quality block = the template-defined distance (e.g. "5 mi @ T"). Remaining easy days = `(weekly_total − long − quality_blocks) / count_of_easy_days`. Floor at 3 mi per `Research/04 §Easy run dosing` (sub-3-mi easy runs don't accumulate meaningful aerobic stimulus).
+4. **PACE per workout — from VDOT lookup.** The template specifies zones (E/M/T/I/R). The pace for each zone comes from the runner's VDOT via `Research/01 §Daniels training paces`. So "5 mi @ T" for a VDOT 50 runner = 5 mi at ~7:15/mi T pace. Same workout for a VDOT 40 runner = 5 mi at ~8:25/mi T pace. No two runners get the same paces.
+
+**Worked example — HM intermediate at current 25 mpw, 12 weeks out:**
+- Level: Intermediate (between Beginner band and Intermediate band).
+- Peak target: 35 mpw (low end of Intermediate band — conservative ramp).
+- Build ramp from 25 → 35 over 8 build weeks: ~+1.25 mpw/wk (~5%/wk, well under the 10% cap).
+- Peak long run: 12 mi.
+- Sample peak week: 4 E + 5 T + 6 GA + 8 I + rest + 5 + 13 long = 41 mi (right around the Intermediate band).
+- Cutback week (every 3rd): 80% × 35 = 28 mpw, long drops to 9.
+- Taper (final 2 weeks): 35 → 22 → 14. Race week.
+
+Every number above is either (a) doctrine-prescribed for the level, (b) derived from doctrine + the runner's current state (the ramp curve), or (c) from `Research/22` sample-week templates scaled to the week's total volume target.
+
 ## What the existing engine becomes
 
 The current `pickRun(state, dateISO) → workout` becomes a strict fallback only used when:
