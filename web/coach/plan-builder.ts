@@ -39,7 +39,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 7;
+export const BUILDER_VERSION = 8;
 
 export interface BuildPlanRace {
   id: string;
@@ -631,10 +631,10 @@ function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): numbe
 function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutback: boolean): string | null {
   if (t === 'long') {
     if (phase === 'TAPER') return 'Long Run · Taper';
-    // Every other BUILD/PEAK long run gets an HM-specific format.
-    const isHmWeek = !isCutback && weekIdx % 2 === 1 && (phase === 'BUILD' || phase === 'PEAK');
-    if (isHmWeek) {
-      return weekIdx % 4 < 2 ? 'Long Run · HM Finish' : 'Long Run · Progression';
+    // All non-cutback BUILD/PEAK long runs are HM-specific (Research/22 §3).
+    // Alternate between two formats to vary the stimulus.
+    if (!isCutback && (phase === 'BUILD' || phase === 'PEAK')) {
+      return weekIdx % 2 === 0 ? 'Long Run · HM Finish' : 'Long Run · Progression';
     }
     return null; // default: "Long Run · Steady"
   }
@@ -661,8 +661,7 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
       // Every 3rd qualifying week in BUILD/PEAK: HM-specific long run.
       // Research/22 §3: "LR w/ middle 5 mi @ HMP" (intermediate) /
       // "LR w/ last 8 mi @ HMP" (advanced).
-      const isSpecificWeek = !isCutback && weekIdx % 2 === 1 &&
-        (phase === 'BUILD' || phase === 'PEAK');
+      const isSpecificWeek = !isCutback && (phase === 'BUILD' || phase === 'PEAK');
       if (phase === 'TAPER') return 'Taper long — easy pace, cut distance. Absorb the work.';
       if (isSpecificWeek) {
         // Rotate between two HM-specific formats.
