@@ -170,6 +170,40 @@ function describeMode(state: CoachState, phase: Phase): string {
   return 'Maintain the base — steady volume, weekly long run, no peaking';
 }
 
+/* ── Day-of-week preference helpers ─────────────────────────── */
+//
+// Every "is this a long-run day / quality day / recovery day" question
+// the picker asks routes through these three predicates. They read
+// state.prefs (parsed from the user_prefs table by gatherCoachState) so
+// runners who configured Sunday long runs get Sunday long runs.
+//
+// Recovery-day logic: when state.prefs.restDow is set, the engine
+// respects it; otherwise recovery defaults to the day AFTER the long
+// run (mod 7). That keeps the "easy day after the longest day"
+// invariant for the common case where the user only configured a long
+// run day.
+
+function isLongRunDow(state: CoachState, dow: number): boolean {
+  return dow === state.prefs.longRunDow;
+}
+
+function isQualityDow(state: CoachState, dow: number): boolean {
+  return state.prefs.qualityDows.includes(dow);
+}
+
+/** Returns the dow the engine treats as the post-long recovery day.
+ *  When the user explicitly set a rest day (state.prefs.restDow), the
+ *  engine uses it; otherwise it derives recovery as (longRunDow + 1)
+ *  mod 7 so the day after the long run is light. */
+function recoveryDowFor(state: CoachState): number {
+  if (state.prefs.restDow != null) return state.prefs.restDow;
+  return (state.prefs.longRunDow + 1) % 7;
+}
+
+function isRecoveryDow(state: CoachState, dow: number): boolean {
+  return dow === recoveryDowFor(state);
+}
+
 /* ── Run picker ─────────────────────────────────────────────── */
 function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription {
   // ─────────────────────────────────────────────────────────────
@@ -194,8 +228,9 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
       // ±1 day from B-race — easy or recovery only.
       return recovery(Math.max(3, baseEasyMi(state, phase) * 0.6));
     }
-    // ±2 days — no quality. Easy aerobic or long_steady on Sat.
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    // ±2 days — no quality. Easy aerobic or long_steady on the user's
+    // configured long-run day.
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
@@ -275,13 +310,14 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   if (phase === 'REBUILD' &&
       state.flags.rebuildAfterBreak &&
       state.volume.weeklyAvg4w < 8) {
-    // Run on Tue / Thu / Sat / Sun — 4 days/week max. Sat is a slightly
+    // Run on the user's quality days + their long-run day + the post-long
+    // recovery day — 4 days/week max. The long-run day gets a slightly
     // longer "long" (capped at 30% of weekly via longRunTarget). Other
     // days rest. This is the walk-run-to-easy bridge — cross-training
     // (bike/elliptical) on rest days is encouraged per Research/05 §1.3.
-    if (dow === 2 || dow === 4) return buildPrescriptionFor('general_aerobic', state, phase);
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
-    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    if (isQualityDow(state, dow)) return buildPrescriptionFor('general_aerobic', state, phase);
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
+    if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return rest('Rest day — week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
   }
 
@@ -305,8 +341,8 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     // No quality for the first 3-5 days post-break (Research/05 §1.5
     // "Volume before intensity, always"). Long-run slot still allowed,
     // but distance comes from last7Mi via longRunTarget's crater path.
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
-    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
+    if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
@@ -336,7 +372,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     // 5+ poor days in the 7-day window — beyond the "3+ cutback"
     // threshold and into "persistent" territory. Today is rest or
     // recovery only; no long runs, no quality.
-    if (dow === 0 || dow === 6) return buildPrescriptionFor('recovery', state, phase);
+    if (isLongRunDow(state, dow) || isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return rest(`${poorDaysCount} of the last 7 daily check-ins were poor (energy/soreness/stress). Decision Matrix: full cutback. Rest today — the body is sending the signal.`);
   }
   if (poorDaysCount >= 3) {
@@ -345,8 +381,8 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     // run). We let the long-run slot through because long easy aerobic
     // is not a "quality" stimulus per Research/00a §1 ("Recovery run /
     // General aerobic") — but threshold/VO2/MP-block are suppressed.
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
-    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
+    if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
   if (poorDaysCount >= 1 && state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
@@ -355,7 +391,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     // last 14 days), still suppress quality today. Easy-share <60% is
     // well below the Research/00a §"Polarized" 80% target — the runner
     // is already over-loading the system before the check-in signal.
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
@@ -370,8 +406,8 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // cycle" + 10% rule (Research/05 §1.4 "Return-to-Volume Guidelines").
   // ─────────────────────────────────────────────────────────────
   if (isCrateredVolume(state)) {
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
-    if (dow === 0) return buildPrescriptionFor('recovery', state, phase);
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
+    if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
@@ -391,11 +427,12 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     state.volume.weeklyAvg4w < 20 &&
     state.intensity.hardMi14d <= state.volume.last28Mi * 0.05;
   if (lowVolumeNoQualityHistory && phase !== 'PEAK' && phase !== 'TAPER') {
-    // Saturday → long_steady (capped by longRunTarget). Sunday/Mon →
-    // recovery (active recovery day). Other days → easy general
-    // aerobic. No threshold, no VO2, no MP-blocks.
-    if (dow === 6) return buildPrescriptionFor('long_steady', state, phase);
-    if (dow === 0 || dow === 1) return buildPrescriptionFor('recovery', state, phase);
+    // Long-run day → long_steady (capped by longRunTarget). Post-long
+    // recovery day + explicit rest day → recovery (active recovery
+    // day). Other days → easy general aerobic. No threshold, no VO2,
+    // no MP-blocks.
+    if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
+    if (isRecoveryDow(state, dow) || dow === state.prefs.restDow) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
@@ -659,34 +696,35 @@ function isCrateredVolume(state: CoachState): boolean {
  *  volume during rebuild". A runner on 4 mpw cannot have a 6mi long
  *  run — that's 150% of weekly. Pin to ≤25% of week-1 budget. */
 function longRunTarget(state: CoachState, phase: Phase): number {
+  // POST_RACE — anchor on pre-race TRAINING, not the race itself.
+  // Research/00b §Recovery by Effort + marathon-specific recovery:
+  // long runs restart at ~50% of pre-race long, ramping back 2-3 weeks.
+  if (phase === 'POST_RACE' && state.volume.preRaceLongestTrainingMi != null) {
+    const anchor = state.volume.preRaceLongestTrainingMi;
+    return Math.min(maxLongRunMi(state), Math.max(3, anchor * 0.50));
+  }
   // Injury-return long-run pin — must respect the rebuild week budget.
   if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
     return Math.max(2, wkAvg * 0.30);
   }
-  // Crater-aware long-run cap. Research/00a §"Volume progression rules":
-  // long run ≤25-30% of weekly volume. After a crater (last7Mi <70% of
-  // weeklyAvg4w), planning from the cratered week — not the pre-crater
-  // average — keeps the long under the 30% of the realistic recovery
-  // budget. Match the cratered-easy ramp (~1.10 × last7Mi target week)
-  // and cap the long at ~30% of it.
+  // Crater-aware long-run cap. Anchor is TRAINING-only longest (races
+  // excluded) so a recent race doesn't inflate the cap.
   if (isCrateredVolume(state)) {
     const targetWeek = state.volume.last7Mi * 1.10;
     return Math.max(3, Math.min(maxLongRunMi(state), targetWeek * 0.30,
-      state.volume.longestLast28Mi * 1.10));
+      state.volume.longestTrainingRunLast28Mi * 1.10));
   }
-  // Low-volume aerobic-foundation runner (weeklyAvg4w < 20 mpw, no
-  // quality history yet). Research/00a §"Practical base-building":
-  // "Long run grows up to 25-30% of weekly volume". An 8mi long run
-  // on 8 mpw is 100% of weekly — clearly wrong. Cap to ~30% of recent
-  // weekly volume here too, ignoring the generic 8mi floor.
+  // Low-volume aerobic-foundation runner.
   if (state.volume.weeklyAvg4w < 20 &&
       state.intensity.hardMi14d <= state.volume.last28Mi * 0.05) {
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
     return Math.max(3, Math.min(maxLongRunMi(state), wkAvg * 0.30));
   }
   const cap = maxLongRunMi(state);
-  const peakLast = state.volume.longestLast28Mi;
+  // peakLast must be a TRAINING run, never a race — using race effort
+  // produced a 29mi prescription off a 26.2mi marathon.
+  const peakLast = state.volume.longestTrainingRunLast28Mi;
   switch (phase) {
     case 'TAPER':            return Math.min(cap, Math.max(8, peakLast * 0.65));
     case 'PEAK':             return Math.min(cap, Math.max(14, peakLast * 1.05));
@@ -1102,7 +1140,23 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
   const totalMi14d = easyMi14d + hardMi14d;
   const easyShare14d = totalMi14d > 0 ? easyMi14d / totalMi14d : orig.easyShare14d;
 
-  const rebuildAfterBreak = last28Mi > 0 && last7Mi <= last28Mi / 4 * 0.30;
+  // rebuildAfterBreak: hold the original signal sticky for the first
+  // 28 days of projection. Research/05 §1.4 "Return-to-Volume
+  // Guidelines": "weeks off ≈ weeks to rebuild base" — when the real
+  // state says "this runner just had a break", we honor it for the
+  // first projection block before allowing it to clear naturally as
+  // the rolling-window math takes over. Without this hold, the
+  // simulator's progressive ramp clears the rebuild flag after a
+  // single week of imagined easy runs, and the engine pivots to a
+  // full BASE/BUILD plan that doctrinally belongs 3-4 weeks later.
+  let rebuildAfterBreak: boolean;
+  if (orig.last28Mi > 0 && state.flags.rebuildAfterBreak && daysOffset < 28) {
+    // Original state says we're rebuilding; respect it until the
+    // simulator has had 4 weeks to legitimately rebuild the base.
+    rebuildAfterBreak = true;
+  } else {
+    rebuildAfterBreak = last28Mi > 0 && last7Mi <= last28Mi / 4 * 0.30;
+  }
 
   return {
     ...base,

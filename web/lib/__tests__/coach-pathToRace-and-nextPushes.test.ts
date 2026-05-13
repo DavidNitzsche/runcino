@@ -70,6 +70,8 @@ function makeTrainedState(overrides: Partial<CoachState> = {}): CoachState {
       weeklyAvg4w: 32,
       weeklyAvg8w: 30,
       longestLast28Mi: 12,
+      longestTrainingRunLast28Mi: 12,
+      preRaceLongestTrainingMi: null,
       deltaPct4v4: 0.1,
     },
     intensity: {
@@ -94,6 +96,9 @@ function makeTrainedState(overrides: Partial<CoachState> = {}): CoachState {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: {
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+    },
   };
   return { ...base, ...overrides };
 }

@@ -40,6 +40,28 @@ export function dayOffsetISO(daysFromToday: number, anchor: Date = new Date()): 
 export const TODAY_ISO = dayOffsetISO(0);
 
 // ─────────────────────────────────────────────────────────────────
+// Default-prefs object. Most fixtures are testing engine behavior
+// against the runner-standard cadence (Sat long / Tue+Thu quality /
+// Mon rest). Tests that exercise custom prefs override this inline.
+// ─────────────────────────────────────────────────────────────────
+const DEFAULT_PREFS: CoachState['prefs'] = {
+  longRunDow: 6,           // Saturday
+  qualityDows: [2, 4],     // Tue / Thu
+  restDow: 1,              // Monday
+  isDefaults: true,
+};
+
+// Default training-only volume signals for fixtures. Several fixtures
+// predate the longestTrainingRunLast28Mi / preRaceLongestTrainingMi
+// fields; this helper keeps the shape compact at each site.
+function defaultTrainingVolume(longestMi: number, preRaceMi: number | null = null) {
+  return {
+    longestTrainingRunLast28Mi: longestMi,
+    preRaceLongestTrainingMi: preRaceMi,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Helper: build a NextRace object for the fixture's nextA slot.
 // ─────────────────────────────────────────────────────────────────
 function buildNextRace(opts: {
@@ -108,6 +130,7 @@ export const STATE_POST_HALF_DAY_3: CoachState = (() => {
       weeklyAvg4w: 25,
       weeklyAvg8w: 26,
       longestLast28Mi: 13.1,
+      ...defaultTrainingVolume(10, 11),    // training-long ~10mi; pre-race long 11mi
       deltaPct4v4: -0.05,
     },
     intensity: { easyMi14d: 35, hardMi14d: 12, easyShare14d: 0.74 },
@@ -129,6 +152,7 @@ export const STATE_POST_HALF_DAY_3: CoachState = (() => {
     checkin: null,
     // race -3d + 14d HM recovery = +11d
     recoveryWindowEndsISO: dayOffsetISO(11),
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -164,6 +188,7 @@ export const STATE_MID_BUILD_WEEK_4: CoachState = (() => {
       weeklyAvg4w: 31,        // mid-ramp
       weeklyAvg8w: 28,
       longestLast28Mi: 11,
+      ...defaultTrainingVolume(11),
       deltaPct4v4: 0.12,
     },
     intensity: { easyMi14d: 45, hardMi14d: 16, easyShare14d: 0.74 },
@@ -184,6 +209,7 @@ export const STATE_MID_BUILD_WEEK_4: CoachState = (() => {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -220,6 +246,7 @@ export const STATE_PEAK_WEEK_MINUS_2: CoachState = (() => {
       weeklyAvg4w: 38,
       weeklyAvg8w: 36,
       longestLast28Mi: 14,
+      ...defaultTrainingVolume(14),
       deltaPct4v4: 0.08,
     },
     intensity: { easyMi14d: 56, hardMi14d: 19, easyShare14d: 0.75 },
@@ -240,6 +267,7 @@ export const STATE_PEAK_WEEK_MINUS_2: CoachState = (() => {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -275,6 +303,7 @@ export const STATE_TAPER_WEEK_MINUS_5: CoachState = (() => {
       weeklyAvg4w: 28,
       weeklyAvg8w: 34,
       longestLast28Mi: 14,
+      ...defaultTrainingVolume(14),
       deltaPct4v4: -0.18,
     },
     intensity: { easyMi14d: 44, hardMi14d: 12, easyShare14d: 0.78 },
@@ -295,6 +324,7 @@ export const STATE_TAPER_WEEK_MINUS_5: CoachState = (() => {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -330,6 +360,7 @@ export const STATE_EARLY_BASE_REBUILD: CoachState = (() => {
       weeklyAvg4w: 8,
       weeklyAvg8w: 6,
       longestLast28Mi: 4,
+      ...defaultTrainingVolume(4),
       deltaPct4v4: 0.5,
     },
     intensity: { easyMi14d: 14, hardMi14d: 0.7, easyShare14d: 0.95 },
@@ -350,6 +381,7 @@ export const STATE_EARLY_BASE_REBUILD: CoachState = (() => {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -405,6 +437,9 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
       weeklyAvg4w: 18,
       weeklyAvg8w: 22,
       longestLast28Mi: 26.2,
+      // Training-only excludes the marathon + half — pre-race training
+      // long was ~20mi (typical marathon prep peak).
+      ...defaultTrainingVolume(11, 20),
       deltaPct4v4: -0.1,
     },
     intensity: { easyMi14d: 50, hardMi14d: 22, easyShare14d: 0.69 },
@@ -426,6 +461,7 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
     // Marathon was -15d ago + 26 day window = +11d from today
     checkin: null,
     recoveryWindowEndsISO: dayOffsetISO(11),
+    prefs: DEFAULT_PREFS,
   };
 })();
 
@@ -457,6 +493,7 @@ export const STATE_INJURY_RETURN: CoachState = (() => {
       weeklyAvg4w: 4,
       weeklyAvg8w: 6,
       longestLast28Mi: 4,
+      ...defaultTrainingVolume(4),
       deltaPct4v4: -0.6,
     },
     intensity: { easyMi14d: 0, hardMi14d: 0, easyShare14d: 1.0 },
@@ -477,5 +514,6 @@ export const STATE_INJURY_RETURN: CoachState = (() => {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: DEFAULT_PREFS,
   };
 })();

@@ -82,6 +82,8 @@ function makeBaseState(): CoachState {
       weeklyAvg4w: 30,
       weeklyAvg8w: 30,
       longestLast28Mi: 10,
+      longestTrainingRunLast28Mi: 10,
+      preRaceLongestTrainingMi: null,
       deltaPct4v4: 0.02,
     },
     intensity: { easyMi14d: 50, hardMi14d: 8, easyShare14d: 0.86 },
@@ -102,6 +104,9 @@ function makeBaseState(): CoachState {
     },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: {
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+    },
   };
 }
 

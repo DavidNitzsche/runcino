@@ -60,6 +60,8 @@ function makePostRaceState(opts: { inWindow: boolean }): CoachState {
       weeklyAvg4w: 18,
       weeklyAvg8w: 22,
       longestLast28Mi: 26.2,
+      longestTrainingRunLast28Mi: 11,    // training-only excludes the races
+      preRaceLongestTrainingMi: 20,
       deltaPct4v4: -0.1,
     },
     intensity: { easyMi14d: 50, hardMi14d: 22, easyShare14d: 0.69 },
@@ -82,6 +84,9 @@ function makePostRaceState(opts: { inWindow: boolean }): CoachState {
     checkin: null,
     // Marathon Apr 27 + 26 days = May 23.
     recoveryWindowEndsISO: '2026-05-23',
+    prefs: {
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+    },
   };
 }
 

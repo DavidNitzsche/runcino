@@ -94,7 +94,10 @@ function buildMidBuildBaseInternal(): CoachState {
     volume: {
       last7Mi: 30, last28Mi: 124, last7Days: [],
       weeklyAvg4w: 31, weeklyAvg8w: 28,
-      longestLast28Mi: 11, deltaPct4v4: 0.12,
+      longestLast28Mi: 11,
+      longestTrainingRunLast28Mi: 11,
+      preRaceLongestTrainingMi: null,
+      deltaPct4v4: 0.12,
     },
     intensity: { easyMi14d: 45, hardMi14d: 16, easyShare14d: 0.74 },
     recovery: {
@@ -106,6 +109,9 @@ function buildMidBuildBaseInternal(): CoachState {
     flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false },
     checkin: null,
     recoveryWindowEndsISO: null,
+    prefs: {
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+    },
   };
 }
 
