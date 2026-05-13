@@ -17,12 +17,23 @@
 
 import { getProfile } from '../../../../lib/profile-store';
 import { saveProfile } from '../../../../lib/profile-write';
+import { getUserPrefs, saveUserPrefs, type UserPrefsInput } from '../../../../lib/prefs-store';
 import type { ProfileInput } from '../../../../lib/profile-types';
+
+interface CombinedInput extends ProfileInput {
+  level?: 'beginner' | 'intermediate' | 'advanced' | null;
+  long_run_dow?: number | null;
+  quality_dows?: number[] | null;
+  rest_dow?: number | null;
+}
 
 export async function GET() {
   try {
-    const profile = await getProfile();
-    return Response.json({ ok: true, profile });
+    const [profile, prefs] = await Promise.all([
+      getProfile(),
+      getUserPrefs('me').catch(() => null),
+    ]);
+    return Response.json({ ok: true, profile, prefs });
   } catch (e) {
     return Response.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
@@ -32,16 +43,26 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: ProfileInput;
+  let body: CombinedInput;
   try {
-    body = (await req.json()) as ProfileInput;
+    body = (await req.json()) as CombinedInput;
   } catch {
     return Response.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
   try {
     const row = await saveProfile(body);
-    return Response.json({ ok: true, profile: row });
+    // Save plan-driving prefs alongside identity. Each field is
+    // independently nullable so users can ADD before they think about
+    // training cadence.
+    const prefsInput: UserPrefsInput = {
+      level: body.level ?? null,
+      long_run_dow: body.long_run_dow ?? null,
+      quality_dows: body.quality_dows ?? null,
+      rest_dow: body.rest_dow ?? null,
+    };
+    const prefs = await saveUserPrefs(prefsInput);
+    return Response.json({ ok: true, profile: row, prefs });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // Validation errors thrown by validateProfileInput are human-

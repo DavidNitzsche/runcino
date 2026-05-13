@@ -459,6 +459,23 @@ export function parseDayName(raw: string | null | undefined): number | null {
   return null;
 }
 
+/** Coerce a value into a JS getDay() int, or null if invalid. */
+function isValidDow(v: number | null | undefined): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 6;
+}
+
+/** Parse a comma-separated list of dow ints ("2,4") into a sorted
+ *  dedup list. Tolerant — invalid entries are dropped. */
+function parseIntList(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  const out = new Set<number>();
+  for (const p of raw.split(/[,\s/]+/).map(s => s.trim()).filter(Boolean)) {
+    const n = Number(p);
+    if (Number.isInteger(n) && n >= 0 && n <= 6) out.add(n);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
 /** Parse a comma/slash-separated combo string ("Tue / Thu", "Wed, Sat")
  *  into a sorted dedup list of dows. Empty/garbage returns []. */
 export function parseDayCombo(raw: string | null | undefined): number[] {
@@ -484,9 +501,12 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
       isDefaults: true,
     };
   }
-  const longParsed = parseDayName(row.long_run_day);
-  const qualityParsed = parseDayCombo(row.quality_days);
-  const restParsed = parseDayName(row.rest_day);
+  // Prefer the new int columns set by the EditProfileModal. Fall back
+  // to parsing the legacy day-name strings when ints aren't set.
+  const longParsed = isValidDow(row.long_run_dow) ? row.long_run_dow : parseDayName(row.long_run_day);
+  const qualityFromInt = parseIntList(row.quality_dows);
+  const qualityParsed = qualityFromInt.length > 0 ? qualityFromInt : parseDayCombo(row.quality_days);
+  const restParsed = isValidDow(row.rest_dow) ? row.rest_dow : parseDayName(row.rest_day);
 
   // Warn on unparseable input so DB rot is visible in logs — don't
   // throw, fall back silently in production-ish behavior.

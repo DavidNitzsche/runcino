@@ -27,6 +27,24 @@ import {
 } from './Modal';
 import { VALID_SEX, type ProfileRow } from '@/lib/profile-types';
 
+type Level = 'beginner' | 'intermediate' | 'advanced';
+
+interface PrefsSnapshot {
+  level: Level | null;
+  long_run_dow: number | null;
+  quality_dows: string | null;
+  rest_dow: number | null;
+}
+
+const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function parseQualityDows(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  return raw.split(/[,\s/]+/).map(s => Number(s.trim()))
+    .filter(n => Number.isInteger(n) && n >= 0 && n <= 6);
+}
+
 export interface EditProfileModalProps {
   open: boolean;
   onClose: () => void;
@@ -41,6 +59,11 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
   const [sex, setSex] = useState<typeof VALID_SEX[number]>('Prefer not to say');
   const [city, setCity] = useState('');
   const [hrmax, setHrmax] = useState('');
+  // Plan-driving prefs (Wave V): level + day prefs feed buildPlan.
+  const [level, setLevel] = useState<Level>('intermediate');
+  const [longRunDow, setLongRunDow] = useState<number>(6);     // Sat
+  const [qualityDows, setQualityDows] = useState<number[]>([2, 4]);  // Tue / Thu
+  const [restDow, setRestDow] = useState<number>(1);           // Mon
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +87,7 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
 
     fetch('/api/profile/edit', { cache: 'no-store' })
       .then((res) => res.json())
-      .then((json: { ok: boolean; profile: ProfileRow | null; error?: string }) => {
+      .then((json: { ok: boolean; profile: ProfileRow | null; prefs: PrefsSnapshot | null; error?: string }) => {
         if (cancelled) return;
         if (!json.ok) {
           setError(json.error || 'Failed to load profile.');
@@ -81,6 +104,16 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
           setSex(profileSex);
           setCity(p.city ?? '');
           setHrmax(p.hrmax != null ? String(p.hrmax) : '');
+        }
+        const pr = json.prefs;
+        if (pr) {
+          if (pr.level === 'beginner' || pr.level === 'intermediate' || pr.level === 'advanced') {
+            setLevel(pr.level);
+          }
+          if (pr.long_run_dow != null) setLongRunDow(pr.long_run_dow);
+          const qd = parseQualityDows(pr.quality_dows);
+          if (qd.length > 0) setQualityDows(qd);
+          if (pr.rest_dow != null) setRestDow(pr.rest_dow);
         }
       })
       .catch((e) => {
@@ -112,6 +145,18 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
         return;
       }
     }
+    if (qualityDows.length < 1 || qualityDows.length > 2) {
+      setError('Pick 1 or 2 quality days.');
+      return;
+    }
+    if (qualityDows.includes(restDow) || qualityDows.includes(longRunDow)) {
+      setError('Quality days can\'t overlap with rest day or long run day.');
+      return;
+    }
+    if (restDow === longRunDow) {
+      setError('Rest day and long run day must differ.');
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch('/api/profile/edit', {
@@ -123,12 +168,20 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
           sex,
           city: city.trim() || null,
           hrmax: hrmax.trim() ? Number(hrmax) : null,
+          level,
+          long_run_dow: longRunDow,
+          quality_dows: qualityDows,
+          rest_dow: restDow,
         }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);
       }
+      // Plan-driving prefs changed → trigger a buildPlan rebuild by
+      // hitting /api/plan/active (lifecycle will rewrite or continue
+      // as appropriate). Best-effort: don't block the save on it.
+      fetch('/api/plan/active', { cache: 'no-store' }).catch(() => {});
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -229,6 +282,99 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
             </div>
           </div>
 
+          {/* ── Plan-driving inputs · Wave V ─────────────────────── */}
+          <div className="field" style={{ marginTop: 8, paddingTop: 14, borderTop: '1px dashed var(--l4)' }}>
+            <label className="field-label">5 · Level</label>
+            <div className="chip-group" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {(['beginner', 'intermediate', 'advanced'] as Level[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setLevel(l)}
+                  className={`chip-pick${level === l ? ' active' : ''}`}
+                  style={{ textTransform: 'uppercase' }}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div className="field-help">
+              {level === 'beginner' && 'Beginner — under 20 mpw / typical weeks.'}
+              {level === 'intermediate' && 'Intermediate — 20-40 mpw / 5 days/wk.'}
+              {level === 'advanced' && 'Advanced — 40+ mpw / 6-7 days/wk.'}
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field-label">6 · Long-run day</label>
+            <div className="chip-group" style={{ gap: 6 }}>
+              {DAY_LETTERS.map((letter, d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setLongRunDow(d)}
+                  className={`chip-pick${longRunDow === d ? ' active' : ''}`}
+                  title={DAY_NAMES[d]}
+                  style={{ minWidth: 32, padding: '6px 10px' }}
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
+            <div className="field-help">Where your long run lives each week. Default Saturday.</div>
+          </div>
+
+          <div className="field">
+            <label className="field-label">7 · Quality days <span style={{ color: 'var(--t3)', fontWeight: 400 }}>(1-2)</span></label>
+            <div className="chip-group" style={{ gap: 6 }}>
+              {DAY_LETTERS.map((letter, d) => {
+                const active = qualityDows.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => {
+                      if (active) {
+                        setQualityDows(qualityDows.filter(x => x !== d));
+                      } else {
+                        // Cap at 2.
+                        const next = qualityDows.length >= 2
+                          ? [qualityDows[1], d]
+                          : [...qualityDows, d];
+                        setQualityDows(next.sort((a, b) => a - b));
+                      }
+                    }}
+                    className={`chip-pick${active ? ' active' : ''}`}
+                    title={DAY_NAMES[d]}
+                    style={{ minWidth: 32, padding: '6px 10px' }}
+                  >
+                    {letter}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="field-help">Threshold + interval workouts. Default Tue / Thu.</div>
+          </div>
+
+          <div className="field">
+            <label className="field-label">8 · Rest day</label>
+            <div className="chip-group" style={{ gap: 6 }}>
+              {DAY_LETTERS.map((letter, d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setRestDow(d)}
+                  className={`chip-pick${restDow === d ? ' active' : ''}`}
+                  title={DAY_NAMES[d]}
+                  style={{ minWidth: 32, padding: '6px 10px' }}
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
+            <div className="field-help">Full rest. Default Monday.</div>
+          </div>
+
           <div style={{
             padding: '14px 16px',
             background: 'rgba(39,180,224,.06)',
@@ -238,8 +384,9 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
           }}>
             <div className="t-eyebrow" style={{ color: 'var(--coach)' }}>▸ WHAT THE COACH USES THIS FOR</div>
             <div className="t-body" style={{ color: 'var(--t1)', marginTop: 8, lineHeight: 1.55 }}>
-              Age and Max HR drive the 5-zone HR table. Name + sex populate identity surfaces
-              (IdentityHero, /health page). Location lets Coach pull weather for upcoming races.
+              Age and Max HR drive the 5-zone HR table. Name + sex populate identity surfaces.
+              Level + day prefs drive the multi-week plan: which template (Research/22) the
+              coach reads, where the long run lands, and when quality vs rest hit.
             </div>
           </div>
 
