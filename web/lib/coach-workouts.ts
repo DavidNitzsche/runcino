@@ -259,59 +259,115 @@ export function race(distanceMi: number, name: string): RunPrescription {
 /* ── Default-day pickers per phase ──────────────────────────────
    When the engine knows the phase + day-of-week + recent state, it
    reaches into here for sensible defaults. Hard constraints in the
-   engine then trim distance / swap workout types as needed. */
+   engine then trim distance / swap workout types as needed.
+
+   Day-of-week placement is driven by the runner's `user_prefs` cadence
+   (passed in as `prefs`). When prefs are defaults (Sat long / Tue+Thu
+   quality / Mon rest), this behaves identically to the pre-refactor
+   hardcoded version. */
 
 export interface DefaultByDow {
   /** Mon=1 ... Sun=0 (JS Date.getDay()). Default workout type. */
   primary: RunWorkoutType;
 }
 
-export function defaultByDow(phase: Phase, dow: number): DefaultByDow {
-  // Within race-mode phases, place quality midweek and long Saturday.
-  // Within base-mode, fewer hard days, more general aerobic.
+/** Cadence inputs the day-picker reads. Subset of CoachState['prefs']
+ *  so this module stays light-weight + easy to unit test. */
+export interface DayPrefs {
+  longRunDow: number;
+  qualityDows: number[];
+  restDow: number | null;
+}
+
+/** Picks one quality day for the phase template's primary quality slot,
+ *  preferring the first user-quality-day that's NOT the long-run day. */
+function pickPrimaryQualityDow(prefs: DayPrefs): number | null {
+  for (const d of prefs.qualityDows) {
+    if (d !== prefs.longRunDow) return d;
+  }
+  return prefs.qualityDows[0] ?? null;
+}
+
+/** Picks a secondary quality day (medium-long) — the second
+ *  user-quality-day that's NOT the long-run day. */
+function pickSecondaryQualityDow(prefs: DayPrefs): number | null {
+  const used = new Set<number>();
+  const primary = pickPrimaryQualityDow(prefs);
+  if (primary != null) used.add(primary);
+  for (const d of prefs.qualityDows) {
+    if (d === prefs.longRunDow) continue;
+    if (used.has(d)) continue;
+    return d;
+  }
+  return null;
+}
+
+/** Post-long recovery dow — used inside defaultByDow for the "easy day
+ *  after the long" slot. Mirrors recoveryDowFor() in coach-engine. */
+function postLongRecoveryDow(prefs: DayPrefs): number {
+  return (prefs.longRunDow + 1) % 7;
+}
+
+export function defaultByDow(phase: Phase, dow: number, prefs: DayPrefs): DefaultByDow {
+  const longDow = prefs.longRunDow;
+  const recoveryDow = postLongRecoveryDow(prefs);
+  const restDow = prefs.restDow;
+  const primaryQualityDow = pickPrimaryQualityDow(prefs);
+  const secondaryQualityDow = pickSecondaryQualityDow(prefs);
+
+  // Within race-mode phases, place quality midweek and long on the
+  // user's configured long day. Within base-mode, fewer hard days,
+  // more general aerobic.
   if (phase === 'BASE') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 3) return { primary: 'threshold_intervals' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === primaryQualityDow) return { primary: 'threshold_intervals' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'BUILD') {
-    if (dow === 6) return { primary: 'long_progression' };
-    if (dow === 3) return { primary: 'threshold_intervals' };
-    if (dow === 4) return { primary: 'medium_long' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_progression' };
+    if (dow === primaryQualityDow) return { primary: 'threshold_intervals' };
+    if (dow === secondaryQualityDow) return { primary: 'medium_long' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'PEAK') {
-    if (dow === 6) return { primary: 'long_mp_block' };
-    if (dow === 3) return { primary: 'marathon_specific' };
-    if (dow === 4) return { primary: 'medium_long' };
-    if (dow === 0) return { primary: 'recovery' };
-    if (dow === 1) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_mp_block' };
+    if (dow === primaryQualityDow) return { primary: 'marathon_specific' };
+    if (dow === secondaryQualityDow) return { primary: 'medium_long' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
+    if (dow === restDow) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'TAPER') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 3) return { primary: 'threshold' };
-    if (dow === 0) return { primary: 'recovery' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === primaryQualityDow) return { primary: 'threshold' };
+    if (dow === recoveryDow) return { primary: 'recovery' };
     return { primary: 'general_aerobic' };
   }
   if (phase === 'POST_RACE') {
-    if (dow === 1 || dow === 4) return { primary: 'rest' };
+    // POST_RACE: 2 rest days per week (rest-day + the user's secondary
+    // quality day repurposed as rest while in recovery).
+    if (dow === restDow) return { primary: 'rest' };
+    if (dow === secondaryQualityDow) return { primary: 'rest' };
     return { primary: 'recovery' };
   }
   if (phase === 'REBUILD') {
-    if (dow === 6) return { primary: 'long_steady' };
-    if (dow === 1 || dow === 5) return { primary: 'rest' };
+    if (dow === longDow) return { primary: 'long_steady' };
+    if (dow === restDow) return { primary: 'rest' };
+    // Day before the long-run also gets a rest (originally dow=5 when
+    // long is Sat). Preserve that "day before the long is rest"
+    // invariant relative to the user's configured long-run day.
+    if (dow === (prefs.longRunDow + 6) % 7) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
   // BASE_MAINTENANCE — default state.
-  if (dow === 6) return { primary: 'long_steady' };
-  if (dow === 3) return { primary: 'threshold' };
-  if (dow === 0) return { primary: 'recovery' };
-  if (dow === 1) return { primary: 'rest' };
+  if (dow === longDow) return { primary: 'long_steady' };
+  if (dow === primaryQualityDow) return { primary: 'threshold' };
+  if (dow === recoveryDow) return { primary: 'recovery' };
+  if (dow === restDow) return { primary: 'rest' };
   return { primary: 'general_aerobic' };
 }
 

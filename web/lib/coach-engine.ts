@@ -204,6 +204,26 @@ function isRecoveryDow(state: CoachState, dow: number): boolean {
   return dow === recoveryDowFor(state);
 }
 
+/** Maps a user-relative dow into the template's dow space.
+ *
+ *  Plan templates (see coach-plan.ts) encode the runner-standard
+ *  cadence: Sat=long, Tue+Thu=quality, Mon=rest. When a runner has set
+ *  a different long-run day (e.g. Sunday), we shift the dow before
+ *  querying the template so today's user-Sunday lands on template-Sat
+ *  (its long-run slot).
+ *
+ *  Shift = templateLong (6) − userLong, modulo 7. Then
+ *  templateDow = (userDow + shift) mod 7.
+ *
+ *  Concretely with userLong=0 (Sun): shift = 6 − 0 = 6. User-Sun (0) ⇒
+ *  template-(0+6) = template-Sat. User-Mon (1) ⇒ template-(1+6)=7%7=0
+ *  = template-Sun. */
+function remapDowForTemplate(state: CoachState, userDow: number): number {
+  const TEMPLATE_LONG_DOW = 6;
+  const shift = (TEMPLATE_LONG_DOW - state.prefs.longRunDow + 7) % 7;
+  return (userDow + shift) % 7;
+}
+
 /* ── Run picker ─────────────────────────────────────────────── */
 function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription {
   // ─────────────────────────────────────────────────────────────
@@ -444,9 +464,17 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // The template gives the SHAPE of the week (which days are quality,
   // which are long, which are easy); buildPrescriptionFor still
   // applies user VDOT + state-driven distance/pace targets.
+  //
+  // Templates encode the runner-standard cadence (Sat long, Tue+Thu
+  // quality). To honor user_prefs without rewriting every template, we
+  // SHIFT the dow before lookup so the template's "Sat" slot lands on
+  // the user's configured long-run day. `remapDowForTemplate` returns
+  // the template-relative dow corresponding to today's user-relative
+  // dow.
   const template = selectActiveTemplate(state, phase);
   if (template) {
-    const wkType = templateWorkoutType(template, dow);
+    const templateDow = remapDowForTemplate(state, dow);
+    const wkType = templateWorkoutType(template, templateDow);
     if (wkType) {
       return buildPrescriptionFor(wkType, state, phase);
     }
