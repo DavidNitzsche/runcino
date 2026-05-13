@@ -295,13 +295,10 @@ export async function narrativeLine(
     }
     return 14; // somewhere between 7 and 28 — midpoint estimate
   })();
-  const inRecoveryWindow = state.recoveryWindowEndsISO != null
-    && state.recoveryWindowEndsISO >= todayISO;
+  // Reuse the recovery gate computed above for Priorities 7 + 8.
   if (
     daysSinceLong > 21
-    && !inRecoveryWindow
-    && !state.flags.rebuildAfterBreak
-    && !state.flags.heavyBlockSuspected
+    && !inExpectedDownPhase
   ) {
     const weeks = Math.round(daysSinceLong / 7);
     return {
