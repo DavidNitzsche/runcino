@@ -315,27 +315,27 @@ export const THRESHOLD_SESSION_PROGRESSION: Cited<Record<
   value: {
     BASE: {
       label: 'Cruise Intervals',
-      prescription: 'Cruise intervals — warm up 1.5 mi easy, then 5 × 1K at threshold (comfortably hard, 1 min jog between reps), close with 1 mi easy cool-down. If 1K feels short, swap to 4 × 1 mile same effort. Purpose: teach the body to clear lactate while running fast. (Research/04 §5.3)',
+      prescription: 'Cruise intervals — warm up 1.5 mi easy, then 5 × 1K at threshold (comfortably hard, 1 min jog between). Finish with 1 mi easy. If 1K feels too short, swap to 4 × 1 mile at the same effort. This is where your body learns to clear lactate while moving fast — it won\'t feel dramatic, but it compounds. (Research/04 §5.3)',
       citation: 'Research/04 §5.3 Cruise intervals — 3-6 × 1 mi with 1 min jog, or 5 × 1K.',
     },
     BUILD_EARLY: {
       label: 'HM Cruise Intervals',
-      prescription: '3 × 2 miles at goal half-marathon effort, 90 sec jog between. This is the pace that needs to feel boring on race day — controlled, strong, sustainable. Warm up 1.5 mi, cool down 1 mi. (Research/22 §3)',
+      prescription: '3 × 2 miles at goal half-marathon effort, 90 sec jog between. Warm up 1.5 mi, cool down 1 mi. This is the pace that needs to feel almost boring on race day — controlled, strong, sustainable. If it feels too hard right now, the pace target is right and your fitness will catch up. (Research/22 §3)',
       citation: 'Research/22 §3 — HM threshold: 3×2 mi at HM effort, 90 sec jog.',
     },
     BUILD_LATE: {
       label: 'HM Threshold Blocks',
-      prescription: '2 × 3 miles at goal HM effort, 2 min jog between. Controlled discomfort — you should be able to speak in short phrases, not sentences. Longer blocks teach race-pace economy. Warm up 1.5 mi, cool down 1 mi. (Research/22 §3)',
+      prescription: '2 × 3 miles at goal HM effort, 2 min jog between. Warm up 1.5 mi, cool down 1 mi. Controlled discomfort — short phrases, not sentences. Longer blocks teach your body to hold race-pace economy when you\'re actually tired. Nail this and the race-pace miles in the long run will feel familiar. (Research/22 §3)',
       citation: 'Research/22 §3 — HM threshold: 2×3 mi at HM effort, 2 min jog.',
     },
     PEAK: {
       label: 'HM Continuous Tempo',
-      prescription: '4–5 miles continuous at goal HM effort (slightly slower than T-pace). No breaks, no rep structure — this is as close to racing as you get before taper. The legs should be a little tired; that\'s the point. Warm up 1.5 mi easy, cool down 1 mi. (Research/04 §5.2, Research/22 §3)',
+      prescription: '4–5 miles continuous at goal HM effort — no rep structure, no breaks. Warm up 1.5 mi easy, cool down 1 mi. This is as close to racing as you get before taper. Your legs should be a little tired going in; that\'s what makes it specific. If you nail this one, race day gets a lot less mysterious. (Research/04 §5.2, Research/22 §3)',
       citation: 'Research/04 §5.2 + Research/22 §3 — PEAK: 4-5 mi continuous near HMP.',
     },
     TAPER: {
       label: 'Threshold Touch',
-      prescription: 'Short threshold touch — 2 × 1.5 miles at T-pace, 90 sec jog between. Keep the intensity alive without adding fatigue. The work is already in the bank. (Research/04 §5.3)',
+      prescription: 'Short threshold touch — 2 × 1.5 miles at T-pace, 90 sec jog between. The work is in the bank; this just keeps the engine warm. Don\'t add reps because you feel good. Feeling good is the taper doing its job — protect it. (Research/04 §5.3)',
       citation: 'Research/04 §5.3 — taper: cut volume, keep intensity.',
     },
   },
