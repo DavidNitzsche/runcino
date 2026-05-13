@@ -614,7 +614,7 @@ function startOfWeekMonday(d: Date): Date {
   return out;
 }
 
-function round1(n: number): number { return Math.round(n * 10) / 10; }
+function round1(n: number): number { return Math.round(n * 2) / 2; }
 
 /** Center of a pace band in s/mi (null when paces unavailable or not applicable). */
 function paceCenter(band: { lowS: number; highS: number } | undefined | null): number | null {
