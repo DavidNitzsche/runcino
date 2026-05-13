@@ -216,10 +216,10 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
   const isPast = day.date < todayISO;
   const isRest = day.type === 'rest';
   const strengthFocus = day.hasStrength
-    ? (day.description?.includes('Lower') ? 'LOWER + CORE' : 'UPPER + CORE')
+    ? (day.description?.toLowerCase().includes('lower') ? 'Lower + Core' : 'Upper + Core')
     : null;
 
-  const accent = isToday
+  const typeColor = isToday
     ? 'var(--att)'
     : isRest
     ? 'var(--t3)'
@@ -227,73 +227,85 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
     ? 'var(--corp)'
     : day.isLong
     ? 'var(--good)'
-    : day.type === 'recovery'
-    ? 'var(--coach)'
-    : 'var(--good)';
+    : 'var(--t2)';
 
   const dayN = parseInt(day.date.slice(8, 10), 10);
   const typeName = isRest
-    ? 'REST'
+    ? 'Rest'
     : day.label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div style={{
-      aspectRatio: '1 / 1',
-      padding: '8px 9px',
-      background: isToday ? 'rgba(243,173,56,.08)' : 'var(--l2)',
-      border: `1px solid ${isToday ? 'rgba(243,173,56,.5)' : 'var(--l4)'}`,
-      borderLeft: `3px solid ${accent}`,
-      borderRadius: 6,
-      display: 'flex', flexDirection: 'column', gap: 4,
-      opacity: isPast && !isToday ? 0.6 : 1,
+      borderRadius: 7,
+      background: isToday ? 'rgba(209,168,90,.07)' : 'var(--l2)',
+      border: `1px solid ${isToday ? 'rgba(209,168,90,.4)' : 'var(--l4)'}`,
+      display: 'flex', flexDirection: 'column',
+      minHeight: 90,
+      overflow: 'hidden',
+      opacity: isPast && !isToday ? 0.5 : 1,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{
-          fontFamily: 'var(--f-display)', fontSize: 14, fontWeight: 700,
-          color: isToday ? 'var(--att)' : 'var(--t1)',
-        }}>{dayN}</span>
-        {isToday && (
+      {/* run body */}
+      <div style={{ flex: 1, padding: '8px 10px 6px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
           <span style={{
-            fontFamily: 'var(--f-data)', fontSize: 8, letterSpacing: '1.2px',
-            color: 'var(--att)', fontWeight: 700, textTransform: 'uppercase',
-          }}>TODAY</span>
-        )}
-      </div>
-      <div style={{
-        fontFamily: 'var(--f-data)', fontSize: 9, letterSpacing: '.8px',
-        color: accent, fontWeight: 700, textTransform: 'uppercase',
-        lineHeight: 1.3,
-        overflow: 'hidden', textOverflow: 'ellipsis',
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-      }}>
-        {typeName}
-      </div>
-      {!isRest && day.distanceMi > 0 && (
-        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <div style={{
             fontFamily: 'var(--f-data)', fontSize: 11, fontWeight: 700,
-            color: 'var(--t0)', fontVariantNumeric: 'tabular-nums',
-          }}>
-            {day.distanceMi.toFixed(1)}<span style={{ fontSize: 8, opacity: 0.5, marginLeft: 2 }}>MI</span>
-          </div>
-          {day.paceTargetSPerMi && (
-            <div style={{
-              fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 600,
-              color: accent, opacity: 0.75, fontVariantNumeric: 'tabular-nums',
-            }}>
-              {fmtPace(day.paceTargetSPerMi)}
-            </div>
+            color: isToday ? 'var(--att)' : 'var(--t3)', lineHeight: 1,
+          }}>{dayN}</span>
+          {isToday && (
+            <span style={{
+              fontFamily: 'var(--f-data)', fontSize: 7, letterSpacing: '1px',
+              color: 'var(--att)', fontWeight: 700,
+            }}>TODAY</span>
           )}
         </div>
-      )}
+        {/* type name — big and colored */}
+        <div style={{
+          fontFamily: 'var(--f-data)', fontSize: 9.5, fontWeight: 700,
+          letterSpacing: '.5px', textTransform: 'uppercase',
+          color: typeColor, lineHeight: 1.2, marginBottom: 4,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {typeName}
+        </div>
+        {/* distance hero */}
+        {!isRest && day.distanceMi > 0 && (
+          <div style={{
+            fontFamily: 'var(--f-data)', fontSize: 24, fontWeight: 800,
+            letterSpacing: '-.03em', color: 'var(--t0)', lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {day.distanceMi.toFixed(1)}
+            <small style={{ fontSize: 10, fontWeight: 500, opacity: 0.4, marginLeft: 2 }}>mi</small>
+          </div>
+        )}
+        {isRest && (
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 18, color: 'var(--t3)', lineHeight: 1 }}>—</div>
+        )}
+        {/* pace */}
+        {!isRest && day.paceTargetSPerMi && (
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 8, color: 'var(--t3)', marginTop: 2 }}>
+            {fmtPace(day.paceTargetSPerMi)}
+          </div>
+        )}
+      </div>
+      {/* strength strip — first-class session */}
       {strengthFocus && (
         <div style={{
-          marginTop: 'auto',
-          fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700,
-          color: 'var(--att)', letterSpacing: '0.05em', lineHeight: 1.3,
+          background: 'rgba(209,168,90,.1)',
+          borderTop: '1px solid rgba(209,168,90,.25)',
+          padding: '5px 10px',
+          display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          ▸ STR<br />
-          <span style={{ fontWeight: 600, opacity: 0.8 }}>{strengthFocus}</span>
+          <span style={{ fontSize: 9, lineHeight: 1 }}>🏋</span>
+          <span style={{
+            fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700,
+            color: 'var(--att)', letterSpacing: '.5px', textTransform: 'uppercase',
+          }}>Strength</span>
+          <span style={{
+            fontFamily: 'var(--f-data)', fontSize: 7.5, fontWeight: 600,
+            color: 'rgba(209,168,90,.65)', letterSpacing: '.3px', textTransform: 'uppercase',
+            marginLeft: 'auto',
+          }}>{strengthFocus}</span>
         </div>
       )}
     </div>
