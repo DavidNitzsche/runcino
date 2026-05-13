@@ -216,15 +216,30 @@ export async function narrativeLine(
     };
   }
 
+  // ── Pre-compute recovery gates (also used by Priority 9 below).
+  // When the runner is in a post-race recovery window, has heavy-block
+  // suspected, or is in a rebuild-after-break phase, volume drops and
+  // missed quality sessions are EXPECTED and doctrine-correct — not
+  // signs of "falling behind." The narrative must not yell about them.
+  const inRecoveryWindow = state.recoveryWindowEndsISO != null
+    && state.recoveryWindowEndsISO >= todayISO;
+  const inExpectedDownPhase = inRecoveryWindow
+    || state.flags.heavyBlockSuspected
+    || state.flags.rebuildAfterBreak;
+
   // ── Priority 7: Falling behind on a build ──────────────────────────
   // 4-week-vs-prior-4-week volume trending down by ≥15% with an A-race
   // still in the build window. Reorienting voice — name the trajectory.
+  // GATED: only when the down-trend isn't doctrine-correct (i.e., the
+  // runner isn't in a recovery window or rebuild phase, where volume
+  // drops are expected).
   const deltaPct = state.volume.deltaPct4v4;
   const hasUpcomingA = nextA != null && nextA.daysAway > 7 && nextA.daysAway <= 16 * 7;
   if (
     deltaPct != null
     && deltaPct <= -0.15
     && hasUpcomingA
+    && !inExpectedDownPhase
   ) {
     const dropPct = Math.round(Math.abs(deltaPct) * 100);
     const weeksOut = Math.round(nextA!.daysAway / 7);
@@ -240,11 +255,13 @@ export async function narrativeLine(
   // voice. Narrative: "It's been X days…" (state). Push: "Get one
   // session in this week" (action). We only fire when there's an
   // A-race still some way out — no point pushing threshold inside
-  // the taper.
+  // the taper. GATED on recovery/heavy-block/rebuild — doctrine says
+  // no quality during those phases.
   if (
     state.intensity.hardMi14d < 1
     && nextA != null
     && nextA.daysAway > 21
+    && !inExpectedDownPhase
   ) {
     return {
       sentence: `It's been 14+ days since your last threshold session — Tuesday is the day to break that.`,
