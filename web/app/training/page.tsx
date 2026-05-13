@@ -1311,12 +1311,7 @@ function DayCell({
             <small>mi</small>
           </div>
         )}
-        {tag === 'strength' && (
-          <div className="day-mi">
-            30
-            <small>min</small>
-          </div>
-        )}
+
         {!isRest && isToday && prescription.paceTargetSPerMi && (
           <div className="day-pace">{fmtPaceRange(prescription.paceTargetSPerMi)}</div>
         )}
