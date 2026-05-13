@@ -36,6 +36,7 @@ import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import type { PlanWorkout } from '../../../coach/plan-types';
+import { getProfile } from '../../../lib/profile-store';
 
 interface OverviewApiOk {
   ok: true;
@@ -68,6 +69,8 @@ interface OverviewApiOk {
   /** Current week's phase from the plan artifact (BASE/BUILD/PEAK/TAPER).
    *  Replaces coach.workout.answer.phaseLabel which reads from old engine. */
   planCurrentPhase: string | null;
+  /** Runner display name from the profile table. null when no profile row. */
+  profileName: string | null;
 }
 
 interface OverviewApiErr {
@@ -91,7 +94,28 @@ export async function GET(): Promise<Response> {
     const nextB = upcoming.find((r) => r.meta.priority === 'B') ?? null;
 
     // Resolve plan first so trajectory14wk can consume actual plan volumes.
-    const planResult = await getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' }));
+    const [planResult, profileRow] = await Promise.all([
+      getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
+      getProfile('me').catch(() => null),
+    ]);
+
+    // Build planWeeks with resolved phase labels (phaseId is a UUID in the
+    // plan artifact; trajectory14wk needs the label string BASE/BUILD/etc).
+    const planWeeksForTrajectory = (() => {
+      const plan = planResult.plan;
+      if (!plan) return [];
+      return plan.weeks.map((wk) => {
+        const phase = plan.phases.find((p) => p.id === wk.phaseId);
+        return {
+          weekStartISO: wk.weekStartISO,
+          phaseLabel: phase?.label ?? 'BASE',
+          isCutback: wk.isCutback,
+          isPeak: wk.isPeak,
+          isRaceWeek: wk.isRaceWeek,
+          workouts: wk.workouts.map((w) => ({ distanceMi: w.distanceMi })),
+        };
+      });
+    })();
 
     const [
       workout,
@@ -104,7 +128,7 @@ export async function GET(): Promise<Response> {
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
       coach.bodySystems({ today, state }),
-      coach.trajectory14wk({ today, state, planWeeks: planResult.plan?.weeks ?? [] }),
+      coach.trajectory14wk({ today, state, planWeeks: planWeeksForTrajectory }),
       coach.weekDeltas({ today, state }),
       coach.recentAdjustments({ today, state }),
     ]);
@@ -125,9 +149,10 @@ export async function GET(): Promise<Response> {
       const week = plan.weeks.find(
         (wk) => wk.weekStartISO >= monISO && wk.weekStartISO <= sunISO,
       );
+      const phase = week ? plan.phases.find((p) => p.id === week.phaseId) : null;
       return {
         planWeekWorkouts: week?.workouts ?? null,
-        planCurrentPhase: week?.phaseId ?? null,
+        planCurrentPhase: phase?.label ?? null,
       };
     })();
 
@@ -210,6 +235,7 @@ export async function GET(): Promise<Response> {
       narrative,
       planWeekWorkouts,
       planCurrentPhase,
+      profileName: profileRow?.full_name?.trim() || null,
     };
     return Response.json(body);
   } catch (e) {

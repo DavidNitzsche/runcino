@@ -401,6 +401,7 @@ interface OverviewApiPayload {
     subLabel?: string | null;
   }> | null;
   planCurrentPhase?: string | null;
+  profileName?: string | null;
   error?: string;
 }
 
@@ -439,7 +440,7 @@ export async function loadOverviewData(
   const vdotLib = vdotSnapshot(coachState);
 
   // Sub-snapshots — each returns null when its data source is empty.
-  const profile = getProfileSnapshot(today);
+  const profile = getProfileSnapshot(today, api.profileName ?? null);
   const adjustedAnswer = api.adjustedToday?.answer ?? null;
   const renderedWorkout = adjustedAnswer?.changed
     ? adjustedAnswer.workout
@@ -582,14 +583,12 @@ async function fetchOverviewApi(): Promise<OverviewApiPayload> {
 // Profile snapshot
 // ─────────────────────────────────────────────────────────────────────
 
-function getProfileSnapshot(today: string): ProfileSnapshot {
-  // No profile/auth pipeline yet — single-tenant runner is anonymous.
-  // When a profile table lands, swap to that.
+function getProfileSnapshot(today: string, profileName: string | null): ProfileSnapshot {
   const hour = new Date(today + 'T12:00:00').getHours();
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   return {
-    name: 'Runner',
+    name: profileName ?? 'Runner',
     greeting,
   };
 }

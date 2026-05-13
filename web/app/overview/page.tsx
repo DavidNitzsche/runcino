@@ -708,7 +708,7 @@ function RaceCountdownCard({ data }: { data: OverviewData }) {
                 textTransform: 'uppercase',
               }}
             >
-              ▶ UP NEXT · B-RACE · SOONER
+              ▶ UP NEXT · B-RACE
             </div>
             <div
               style={{
@@ -1205,7 +1205,7 @@ function DayCell({
         }`}
       >
         <span>{isDone ? '✓ DONE' : isToday ? '● ACTIVE' : isRest ? '—' : day.dayLabel === 'SUN' ? 'LONG RUN' : '—'}</span>
-        <span>{day.pinLabel ?? (isToday ? 'OPEN →' : '')}</span>
+        <span>{isDone && day.pinLabel ? day.pinLabel : isToday && !isDone ? 'OPEN →' : ''}</span>
       </div>
     </div>
   );
@@ -1336,7 +1336,12 @@ function TrajectoryCard({ data }: { data: OverviewData }) {
             return (
               <>
                 {renderCallout(todayIdx, '● TODAY', 'var(--att)')}
-                {peakIdx > -1 && renderCallout(peakIdx, `◇ PEAK · ${points[peakIdx].plannedMi} MI`, 'var(--good)')}
+                {peakIdx > -1 && renderCallout(
+                  peakIdx,
+                  `◇ PEAK · ${points[peakIdx].plannedMi} MI`,
+                  'var(--good)',
+                  peakIdx >= points.length - 3 ? 'end' : peakIdx <= 2 ? 'start' : 'middle',
+                )}
                 {raceIdx > -1 && renderCallout(raceIdx, '▣ RACE', 'var(--race)', 'end')}
               </>
             );

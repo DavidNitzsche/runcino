@@ -527,7 +527,8 @@ function buildIdentity(
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
 function buildLifetimePrs(runs: NormalizedActivity[], year: number): ProfileApiLifetimePr[] {
-  const prs = runs.length > 0 ? naivePRs(runs) : [];
+  const raceRuns = runs.filter(isProbablyRace);
+  const prs = raceRuns.length > 0 ? naivePRs(raceRuns) : [];
   const yearStart = `${year}-01-01`;
 
   function find(label: string): ProfileApiLifetimePr {
@@ -564,44 +565,12 @@ function buildLifetimePrs(runs: NormalizedActivity[], year: number): ProfileApiL
     };
   }
 
-  const out: ProfileApiLifetimePr[] = [
+  return [
     find('5K'),
     find('10K'),
     find('Half'),
     find('Marathon'),
   ];
-
-  // 50K row — naivePRs doesn't bucket 50K; check directly for any
-  // run >= 30 miles, picking the fastest.
-  const ultras = runs.filter((r) => r.distanceMi >= 30);
-  if (ultras.length > 0) {
-    const fastest = ultras.reduce((b, r) =>
-      r.movingTimeS < b.movingTimeS ? r : b, ultras[0]);
-    const paceS = fastest.distanceMi > 0
-      ? Math.round(fastest.movingTimeS / fastest.distanceMi)
-      : null;
-    const dateBits = fastest.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    const dateLabel = dateBits
-      ? `${MONTHS[Number(dateBits[2]) - 1]} ${Number(dateBits[3])} ${dateBits[1]}`
-      : fastest.date;
-    const isNew = fastest.date >= yearStart;
-    out.push({
-      label: '50K',
-      timeDisplay: fmtTime(fastest.movingTimeS),
-      detail: paceS != null
-        ? `${dateLabel} · ${fastest.name.toUpperCase().slice(0, 30)} · ${fmtPace(paceS)}/MI`
-        : `${dateLabel} · ${fastest.name.toUpperCase().slice(0, 30)}`,
-      isNew,
-      ageLabel: isNew ? null : null,
-      accent: isNew ? 'good' : 'muted',
-      activityId: fastest.id,
-      isEmpty: false,
-    });
-  } else {
-    out.push(emptyPr('50K'));
-  }
-
-  return out;
 }
 
 function emptyPr(label: string): ProfileApiLifetimePr {

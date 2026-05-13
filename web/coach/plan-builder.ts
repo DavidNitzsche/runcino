@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 11;
+export const BUILDER_VERSION = 12;
 
 export interface BuildPlanRace {
   id: string;
@@ -606,13 +606,53 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       }
     }
 
+    // Effort cue per phase.
+    const effortCue =
+      phaseSlice.label === 'TAPER' || phaseSlice.label === 'RACE_WEEK'
+        ? '4–5/10 effort — maintenance only.'
+        : phaseSlice.label === 'PEAK'
+        ? '6/10 effort — strong but controlled.'
+        : '7/10 effort — work hard, leave something in the tank.';
+
+    // Day-specific strength slots: Mon = lower + core, Fri = upper + core.
+    // Fallback to any safe easy day when the preferred DOW is protected.
+    const strSlots: Array<{ dow: number; focus: string; note: string }> = [
+      {
+        dow: 1,
+        focus: 'Lower + Core',
+        note: `Lower body + core — squats, deadlifts, single-leg work, planks. ${effortCue} Run first, always.`,
+      },
+      {
+        dow: 5,
+        focus: 'Upper + Core',
+        note: `Upper body + core — rows, presses, pull-ups, carries. ${effortCue} Keep it controlled — tomorrow is a rest day.`,
+      },
+    ];
+
+    const slottedDates = new Set<string>();
     let strCount = 0;
-    for (const wo of workouts) {
+    for (const slot of strSlots) {
       if (strCount >= maxStr) break;
-      if (wo.type !== 'easy' || protectedDates.has(wo.dateISO) || wo.distanceMi === 0) continue;
-      const tapNote = phaseSlice.label === 'TAPER' ? ' Keep it light — this is maintenance, not a PR.' : '';
-      const raceNote = phaseSlice.label === 'RACE_WEEK' ? ' Nothing new, nothing heavy.' : '';
-      wo.notes += `\n\nStrength: Good day for a ${strDurMin}-min Amp Fitness session after your run. Total body, controlled effort. Run first, always.${tapNote}${raceNote}`;
+      // Try the preferred DOW first, then any safe easy day.
+      const preferred = workouts.find(
+        (wo) =>
+          new Date(wo.dateISO + 'T12:00:00Z').getUTCDay() === slot.dow &&
+          wo.type === 'easy' &&
+          !protectedDates.has(wo.dateISO) &&
+          !slottedDates.has(wo.dateISO) &&
+          wo.distanceMi > 0,
+      );
+      const fallback = workouts.find(
+        (wo) =>
+          wo.type === 'easy' &&
+          !protectedDates.has(wo.dateISO) &&
+          !slottedDates.has(wo.dateISO) &&
+          wo.distanceMi > 0,
+      );
+      const target = preferred ?? fallback;
+      if (!target) continue;
+      target.notes += `\n\nStrength: ${slot.focus} — ${strDurMin} min Amp Fitness session after your run. ${slot.note}`;
+      slottedDates.add(target.dateISO);
       strCount++;
     }
 

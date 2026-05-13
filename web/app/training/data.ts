@@ -250,6 +250,7 @@ interface TrainingApiOk {
     paceTargetSPerMi: number | null; notes: string; subLabel?: string | null;
   }> | null;
   planCurrentPhase?: string | null;
+  profileName?: string | null;
 }
 
 interface TrainingApiErr {
@@ -292,7 +293,7 @@ export async function loadTrainingData(
   const prs = runs && runs.length > 0 ? naivePRs(runs) : null;
   const vdotLib = vdotSnapshot(api.state);
 
-  const profile = getProfileSnapshot(today);
+  const profile = getProfileSnapshot(today, api.profileName ?? null);
   const adjustedAnswer = api.adjustedToday?.answer ?? null;
   const renderedWorkout = adjustedAnswer?.changed
     ? adjustedAnswer.workout
@@ -422,12 +423,12 @@ async function fetchTrainingApi(): Promise<TrainingApiPayload> {
 // Profile
 // ─────────────────────────────────────────────────────────────────────
 
-function getProfileSnapshot(today: string): ProfileSnapshot {
+function getProfileSnapshot(today: string, profileName: string | null): ProfileSnapshot {
   const hour = new Date(today + 'T12:00:00').getHours();
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   return {
-    name: 'Runner',
+    name: profileName ?? 'Runner',
     greeting,
   };
 }

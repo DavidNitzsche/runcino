@@ -380,7 +380,7 @@ export interface Trajectory14wkInput extends CoachBaseContext {
    *  the formula-based ramp. Imported from plan-types to avoid a circular dep. */
   planWeeks?: Array<{
     weekStartISO: string;
-    phaseId: string;
+    phaseLabel: string;
     isCutback: boolean;
     isPeak: boolean;
     isRaceWeek: boolean;
@@ -1346,9 +1346,9 @@ class CoachImpl implements Coach {
       if (planWk) {
         mi = Math.round(planWk.workouts.reduce((s, w) => s + w.distanceMi, 0) * 2) / 2;
         phase = planWk.isRaceWeek ? 'taper'
-          : planWk.phaseId === 'TAPER' ? 'taper'
-          : planWk.phaseId === 'PEAK' ? 'peak'
-          : planWk.phaseId === 'BUILD' ? 'build'
+          : planWk.phaseLabel === 'TAPER' ? 'taper'
+          : planWk.phaseLabel === 'PEAK' ? 'peak'
+          : planWk.phaseLabel === 'BUILD' ? 'build'
           : 'base';
       } else {
         mi = runningMi;
@@ -1395,9 +1395,9 @@ class CoachImpl implements Coach {
       const pw = planWeeks.find((wk) => wk.weekStartISO === thisMonISO);
       if (pw) {
         if (pw.isRaceWeek) return 'taper' as const;
-        if (pw.phaseId === 'TAPER') return 'taper' as const;
-        if (pw.phaseId === 'PEAK') return 'peak' as const;
-        if (pw.phaseId === 'BUILD') return 'build' as const;
+        if (pw.phaseLabel === 'TAPER') return 'taper' as const;
+        if (pw.phaseLabel === 'PEAK') return 'peak' as const;
+        if (pw.phaseLabel === 'BUILD') return 'build' as const;
         return 'base' as const;
       }
       if (daysToRace <= 14) return 'taper' as const;

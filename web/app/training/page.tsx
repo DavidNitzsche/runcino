@@ -2039,7 +2039,12 @@ function BuildCurveCard({ data }: { data: TrainingData }) {
             return (
               <>
                 {renderCallout(todayIdx, '● TODAY', 'var(--att)')}
-                {peakIdx > -1 && renderCallout(peakIdx, `◇ PEAK · ${points[peakIdx].plannedMi} MI`, 'var(--good)')}
+                {peakIdx > -1 && renderCallout(
+                  peakIdx,
+                  `◇ PEAK · ${points[peakIdx].plannedMi} MI`,
+                  'var(--good)',
+                  peakIdx >= points.length - 3 ? 'end' : peakIdx <= 2 ? 'start' : 'middle',
+                )}
                 {raceIdx > -1 && renderCallout(raceIdx, '▣ RACE', 'var(--race)', 'end')}
               </>
             );
