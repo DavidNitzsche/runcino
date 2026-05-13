@@ -40,7 +40,8 @@ export type TriggerKind =
   | 'illness'
   | 'bad-race-result'
   | 'good-race-result'
-  | 'vdot-upgrade-dampening';
+  | 'vdot-upgrade-dampening'
+  | 'positive-drift';
 
 export interface SignalSnapshot {
   /** Minimal slice of the state at trigger time — used for audit. */

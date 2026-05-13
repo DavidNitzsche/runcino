@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { adaptPlan, isCrateredVolume } from '../../coach/plan-adapter';
+import { adaptPlan, isCrateredVolume, detectPositiveDrift } from '../../coach/plan-adapter';
 import { buildPlan } from '../../coach/plan-builder';
 import type { CoachState } from '../coach-state';
 import type { Plan } from '../../coach/plan-types';
@@ -184,6 +184,105 @@ describe('adaptPlan — rebuild after break', () => {
     expect(todayAfter.isQuality).toBe(false);
     expect(todayAfter.mutations[0].citation).toContain('Research/05');
     expect(todayAfter.mutations[0].trigger).toBe('rebuild-after-break');
+  });
+});
+
+describe('detectPositiveDrift', () => {
+  it('returns 0 when running at plan volume', async () => {
+    const state = makeState({ now: TODAY });
+    const plan = await buildTestPlan(state);
+    expect(detectPositiveDrift(plan, state, TODAY)).toBe(0);
+  });
+
+  it('returns > 0 when running ≥15% above plan and recovery is healthy', async () => {
+    const plan = await buildTestPlan(makeState({ now: TODAY }));
+    const prescribedWeekMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
+    const state = makeState({
+      now: TODAY,
+      volume: {
+        last7Mi: prescribedWeekMi * 1.30,  // 30% above plan
+        last28Mi: 100, last7Days: [],
+        weeklyAvg4w: 25, weeklyAvg8w: 25,
+        longestLast28Mi: 10, longestTrainingRunLast28Mi: 10, preRaceLongestTrainingMi: null,
+        deltaPct4v4: 0,
+      },
+    });
+    const drift = detectPositiveDrift(plan, state, TODAY);
+    expect(drift).toBeGreaterThan(0);
+    expect(drift).toBeLessThanOrEqual(0.10);  // never exceeds ramp cap
+  });
+
+  it('returns 0 when checkin is red (≥3 poor days)', async () => {
+    const plan = await buildTestPlan(makeState({ now: TODAY }));
+    const prescribedMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
+    const state = makeState({
+      now: TODAY,
+      checkin: makeCheckin(4),
+      volume: {
+        last7Mi: prescribedMi * 1.30,
+        last28Mi: 100, last7Days: [],
+        weeklyAvg4w: 25, weeklyAvg8w: 25,
+        longestLast28Mi: 10, longestTrainingRunLast28Mi: 10, preRaceLongestTrainingMi: null,
+        deltaPct4v4: 0,
+      },
+    });
+    expect(detectPositiveDrift(plan, state, TODAY)).toBe(0);
+  });
+});
+
+describe('adaptPlan — positive drift', () => {
+  it('bumps next week workouts when running well above plan', async () => {
+    const plan = await buildTestPlan(makeState({ now: TODAY }));
+    const prescribedMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
+    const state = makeState({
+      now: TODAY,
+      volume: {
+        last7Mi: prescribedMi * 1.30,
+        last28Mi: 100, last7Days: [],
+        weeklyAvg4w: 25, weeklyAvg8w: 25,
+        longestLast28Mi: 10, longestTrainingRunLast28Mi: 10, preRaceLongestTrainingMi: null,
+        deltaPct4v4: 0,
+      },
+    });
+
+    const nextWeekStart = '2026-05-19';
+    const sumBefore = plan.weeks.flatMap(w => w.workouts)
+      .filter(w => w.dateISO > TODAY && w.dateISO <= nextWeekStart)
+      .reduce((s, w) => s + w.distanceMi, 0);
+
+    const mutated = await adaptPlan(plan, state, TODAY, { persist: false });
+    const nextWeek = mutated.weeks.flatMap(w => w.workouts)
+      .filter(w => w.dateISO > TODAY && w.dateISO <= nextWeekStart && w.type !== 'rest' && w.type !== 'race');
+    const sumAfter = nextWeek.reduce((s, w) => s + w.distanceMi, 0);
+
+    expect(sumAfter).toBeGreaterThan(sumBefore);
+    const driftMuts = nextWeek.flatMap(w => w.mutations).filter(m => m.trigger === 'positive-drift');
+    expect(driftMuts.length).toBeGreaterThan(0);
+    expect(driftMuts[0].citation).toContain('Research/00a');
+  });
+
+  it('is idempotent — double-apply does not compound the bump', async () => {
+    const plan = await buildTestPlan(makeState({ now: TODAY }));
+    const prescribedMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
+    const state = makeState({
+      now: TODAY,
+      volume: {
+        last7Mi: prescribedMi * 1.30,
+        last28Mi: 100, last7Days: [],
+        weeklyAvg4w: 25, weeklyAvg8w: 25,
+        longestLast28Mi: 10, longestTrainingRunLast28Mi: 10, preRaceLongestTrainingMi: null,
+        deltaPct4v4: 0,
+      },
+    });
+    const once = await adaptPlan(plan, state, TODAY, { persist: false });
+    const twice = await adaptPlan(once, state, TODAY, { persist: false });
+    const onceWorkouts = once.weeks.flatMap(w => w.workouts)
+      .filter(w => w.dateISO > TODAY && w.dateISO <= '2026-05-19');
+    const twiceWorkouts = twice.weeks.flatMap(w => w.workouts)
+      .filter(w => w.dateISO > TODAY && w.dateISO <= '2026-05-19');
+    const sumOnce = onceWorkouts.reduce((s, w) => s + w.distanceMi, 0);
+    const sumTwice = twiceWorkouts.reduce((s, w) => s + w.distanceMi, 0);
+    expect(sumOnce).toBe(sumTwice);
   });
 });
 

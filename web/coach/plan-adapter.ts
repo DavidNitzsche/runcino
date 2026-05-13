@@ -252,6 +252,30 @@ export async function adaptPlan(plan: Plan, state: CoachState, today: string, op
     }
   }
 
+  // ─── Trigger 8 · positive volume drift ──────────────────────────
+  // When actual running outpaces the plan (running on rest days, extra
+  // miles, bonus runs), bump next week's prescribed workouts within the
+  // 10%/week ramp cap. Only fires when recovery looks healthy.
+  const positiveDrift = detectPositiveDrift(next, state, today);
+  if (positiveDrift > 0) {
+    const nextWeekWorkouts = futureWeekWorkouts(next, today);
+    const bumpRatio = 1 + positiveDrift;
+    for (const w of nextWeekWorkouts) {
+      if (w.type === 'rest' || w.type === 'race' || w.distanceMi === 0) continue;
+      const newDist = round1(w.distanceMi * bumpRatio);
+      await maybeMutate({
+        workout: w,
+        trigger: 'positive-drift',
+        citation: 'Research/00a §Volume progression rules',
+        reason: `Running ${Math.round(positiveDrift * 100)}% above plan this week — nudging next week up within 10%/wk ramp cap.`,
+        shouldFire: () => true,
+        mutate: () => ({ distanceMi: newDist }),
+        snapshot: { todayISO: today, last7Mi: state.volume.last7Mi, weeklyAvg4w: state.volume.weeklyAvg4w },
+        persist,
+      });
+    }
+  }
+
   return next;
 }
 
@@ -266,6 +290,36 @@ export function isCrateredVolume(state: CoachState): boolean {
   const l = state.volume.last7Mi;
   if (a <= 0) return false;
   return l < a * 0.7;
+}
+
+/** Returns the bump ratio (0–0.10) to apply to next week's workouts when
+ *  the runner is consistently outpacing the plan. Returns 0 when no bump. */
+export function detectPositiveDrift(plan: Plan, state: CoachState, today: string): number {
+  // Don't bump when checkin is poor — going hard on tired legs is injury.
+  if ((state.checkin?.poorDaysCount ?? 0) >= 3) return 0;
+  // Don't bump after a gap — runner may just be catching up.
+  if (state.recovery.daysSinceLastRun > 3) return 0;
+
+  // Find the week that contains today.
+  const currentWeek = plan.weeks.find(
+    wk => today >= wk.weekStartISO && today <= isoOffset(wk.weekStartISO, 6),
+  );
+  if (!currentWeek) return 0;
+
+  // Never bump in taper or race week — the prescribed drop is intentional.
+  const phase = plan.phases.find(p => p.id === currentWeek.phaseId);
+  if (phase?.label === 'TAPER' || phase?.label === 'RACE_WEEK' || phase?.label === 'MAINTENANCE') return 0;
+
+  const prescribedWeeklyMi = currentWeek.workouts.reduce((s, w) => s + w.distanceMi, 0);
+  if (prescribedWeeklyMi <= 0) return 0;
+
+  const drift = (state.volume.last7Mi - prescribedWeeklyMi) / prescribedWeeklyMi;
+  // Only fire when running ≥15% above plan.
+  if (drift < 0.15) return 0;
+
+  // Cap bump at 10%/week — the ramp limit from Research/00a.
+  // Scale: 15% drift → 5% bump, 30% drift → 10% bump (capped).
+  return Math.min(0.10, drift * 0.35);
 }
 
 function inferInjuryReturning(state: CoachState): boolean {
