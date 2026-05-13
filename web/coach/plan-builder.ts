@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 15;
+export const BUILDER_VERSION = 16;
 
 export interface BuildPlanRace {
   id: string;
@@ -594,20 +594,6 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       phaseSlice.label === 'BUILD'     ? ss.durationMin.BUILD     :
       ss.durationMin.BASE;
 
-    // Build a set of dates that are off-limits for strength.
-    // Rule: never the day OF or the day BEFORE a quality/long/race session.
-    // The day AFTER is intentionally allowed — an easy run + lower body
-    // strength on Monday after Sunday's long is standard practice.
-    const protectedDates = new Set<string>();
-    for (const wo of workouts) {
-      if (wo.isQuality || wo.isLong || wo.type === 'race') {
-        const d = new Date(wo.dateISO + 'T12:00:00Z');
-        const prev = new Date(d); prev.setUTCDate(prev.getUTCDate() - 1);
-        protectedDates.add(wo.dateISO);
-        protectedDates.add(prev.toISOString().slice(0, 10));
-      }
-    }
-
     // Effort cue per phase.
     const effortCue =
       phaseSlice.label === 'TAPER' || phaseSlice.label === 'RACE_WEEK'
@@ -616,8 +602,12 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         ? '6/10 effort — strong but controlled.'
         : '7/10 effort — work hard, leave something in the tank.';
 
-    // Day-specific strength slots: Mon = lower + core, Fri = upper + core.
-    // Fallback to any safe easy day when the preferred DOW is protected.
+    // Day-specific strength slots: Mon(1) = lower + core, Fri(5) = upper + core.
+    // These slots are FIXED per STRENGTH_SCHEDULE doctrine — no adjacency
+    // protection. Mon and Fri are specifically chosen to be safe: strength is
+    // after the run, 30 min, and doesn't compromise Tuesday quality or the
+    // weekend long run. The only reason to skip is if the day itself is a
+    // quality/long/race/rest day (wo.type === 'easy' check covers this).
     const strSlots: Array<{ dow: number; focus: string; note: string }> = [
       {
         dow: 1,
@@ -635,14 +625,10 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     let strCount = 0;
     for (const slot of strSlots) {
       if (strCount >= maxStr) break;
-      // Only use the preferred DOW — Mon for lower, Fri for upper.
-      // No fallback: if the preferred day is adjacent to quality/long, skip
-      // this slot entirely. Back-to-back strength is worse than missing one.
       const target = workouts.find(
         (wo) =>
           new Date(wo.dateISO + 'T12:00:00Z').getUTCDay() === slot.dow &&
           wo.type === 'easy' &&
-          !protectedDates.has(wo.dateISO) &&
           !slottedDates.has(wo.dateISO) &&
           wo.distanceMi > 0,
       );
