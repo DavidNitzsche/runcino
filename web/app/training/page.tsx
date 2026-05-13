@@ -1265,7 +1265,7 @@ function DayCell({
   const isRest = day.type === 'rest' || (day.plannedMi === 0 && (isFuture || day.actualMi == null));
   const hasStrength = planDay?.notes?.includes('\n\nStrength:') ?? false;
 
-  let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' | 'strength' = 'easy';
+  let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' = 'easy';
   if (isRest) tag = 'rest';
   else if (day.isQuality) tag = 'quality';
   else if (day.isLong) tag = 'long';
@@ -1285,8 +1285,6 @@ function DayCell({
   // Plan label takes precedence; prescription.type is last resort for today.
   const typeName = isRest
     ? 'Rest'
-    : tag === 'strength'
-    ? 'Strength'
     : day.label
     ? day.label
     : isToday
@@ -1295,7 +1293,7 @@ function DayCell({
 
   // Future days show planned miles only · past/today can show actual if logged
   const miles = isFuture ? day.plannedMi : (day.actualMi ?? day.plannedMi);
-  const showMiles = miles > 0 && tag !== 'strength';
+  const showMiles = miles > 0;
 
   return (
     <div className={cls}>
