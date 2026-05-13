@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 12;
+export const BUILDER_VERSION = 13;
 
 export interface BuildPlanRace {
   id: string;
@@ -633,8 +633,10 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     let strCount = 0;
     for (const slot of strSlots) {
       if (strCount >= maxStr) break;
-      // Try the preferred DOW first, then any safe easy day.
-      const preferred = workouts.find(
+      // Only use the preferred DOW — Mon for lower, Fri for upper.
+      // No fallback: if the preferred day is adjacent to quality/long, skip
+      // this slot entirely. Back-to-back strength is worse than missing one.
+      const target = workouts.find(
         (wo) =>
           new Date(wo.dateISO + 'T12:00:00Z').getUTCDay() === slot.dow &&
           wo.type === 'easy' &&
@@ -642,14 +644,6 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
           !slottedDates.has(wo.dateISO) &&
           wo.distanceMi > 0,
       );
-      const fallback = workouts.find(
-        (wo) =>
-          wo.type === 'easy' &&
-          !protectedDates.has(wo.dateISO) &&
-          !slottedDates.has(wo.dateISO) &&
-          wo.distanceMi > 0,
-      );
-      const target = preferred ?? fallback;
       if (!target) continue;
       target.notes += `\n\nStrength: ${slot.focus} — ${strDurMin} min Amp Fitness session after your run. ${slot.note}`;
       slottedDates.add(target.dateISO);

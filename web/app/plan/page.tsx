@@ -215,6 +215,9 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
   const isToday = day.date === todayISO;
   const isPast = day.date < todayISO;
   const isRest = day.type === 'rest';
+  const strengthFocus = day.hasStrength
+    ? (day.description?.includes('Lower') ? 'LOWER + CORE' : 'UPPER + CORE')
+    : null;
 
   const accent = isToday
     ? 'var(--att)'
@@ -235,7 +238,7 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
 
   return (
     <div style={{
-      minHeight: 78,
+      aspectRatio: '1 / 1',
       padding: '8px 9px',
       background: isToday ? 'rgba(243,173,56,.08)' : 'var(--l2)',
       border: `1px solid ${isToday ? 'rgba(243,173,56,.5)' : 'var(--l4)'}`,
@@ -283,8 +286,15 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
           )}
         </div>
       )}
-      {day.hasStrength && !isRest && (
-        <div style={{ fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, color: 'var(--att)', letterSpacing: '0.05em' }}>+ STR</div>
+      {strengthFocus && (
+        <div style={{
+          marginTop: 'auto',
+          fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700,
+          color: 'var(--att)', letterSpacing: '0.05em', lineHeight: 1.3,
+        }}>
+          ▸ STR<br />
+          <span style={{ fontWeight: 600, opacity: 0.8 }}>{strengthFocus}</span>
+        </div>
       )}
     </div>
   );
