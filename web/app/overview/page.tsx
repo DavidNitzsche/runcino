@@ -89,12 +89,14 @@ export default function OverviewPage() {
           the layout stable. */}
       <OverviewGreet data={data} />
 
-      {/* Wave G · "Coach is watching" strip. Sits just under the Greet
-          band so the runner can read every signal the engine is
-          scanning at a glance. */}
+      {/* Wave G · "Coach is watching" strip + quick check-in card.
+          Side by side: strip grows to fill remaining width, card fixed. */}
       {data && (
-        <div style={{ margin: '0 0 16px 0' }}>
-          <CoachWatchingStrip chips={data.aliveCoach.watching} />
+        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', marginBottom: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <CoachWatchingStrip chips={data.aliveCoach.watching} />
+          </div>
+          <CheckinReadinessCard data={data} />
         </div>
       )}
 
@@ -255,11 +257,6 @@ function OverviewBody({ data }: { data: OverviewData }) {
       <Row>
         <TrajectoryCard data={data} />
         <PlanAdaptedCard data={data} />
-      </Row>
-
-      {/* ROW 3a · CHECK-IN READINESS — Coach's read on subjective recovery */}
-      <Row>
-        <CheckinReadinessCard data={data} />
       </Row>
 
       {/* ROW 4 · BIOMETRIC SPARKS (3 + 3 + 3 + 3) */}
@@ -1645,44 +1642,158 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// CHECK-IN READINESS · last 7 days from daily_checkin
+// CHECK-IN READINESS · last 7 days from daily_checkin + quick log widget
 // ─────────────────────────────────────────────────────────────────────
+
+const CHECKIN_DOT_COLORS = {
+  energy:   ['#FC4D64','#F3AD38','#F3AD38','#7CD97F','#3EBD41'],
+  soreness: ['#3EBD41','#7CD97F','#F3AD38','#F3AD38','#FC4D64'],
+  stress:   ['#3EBD41','#7CD97F','#F3AD38','#F3AD38','#FC4D64'],
+} as const;
+
+function DotRow({
+  label,
+  metric,
+  value,
+  saved,
+  onChange,
+}: {
+  label: string;
+  metric: keyof typeof CHECKIN_DOT_COLORS;
+  value: number | null;
+  saved: number | null;
+  onChange: (v: number) => void;
+}) {
+  const colors = CHECKIN_DOT_COLORS[metric];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--t2)', width: 58, flexShrink: 0 }}>{label}</span>
+      <div style={{ display: 'flex', gap: 5 }}>
+        {colors.map((color, i) => {
+          const v = i + 1;
+          const isSelected = value === v;
+          const isSaved = saved !== null && Math.round((saved - 1) / 2) === i;
+          return (
+            <button
+              key={v}
+              onClick={() => onChange(v)}
+              style={{
+                width: 22, height: 22, borderRadius: 6, border: 'none', cursor: 'pointer',
+                background: isSelected ? color : isSaved ? color + '55' : 'var(--l3)',
+                outline: isSelected ? `2px solid ${color}` : 'none',
+                outlineOffset: 1,
+                transition: 'background 0.1s, outline 0.1s',
+                flexShrink: 0,
+              }}
+              title={`${label} ${v}/5`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CheckinReadinessCard({ data }: { data: OverviewData }) {
   const c = data.checkinReadiness;
-  if (!c) {
-    return (
-      <Card wash="amber" span={4} padding="20px 22px">
-        <CardHeader>
-          <CardLabel color="var(--att)">READINESS · FROM YOUR CHECK-INS</CardLabel>
-          <CardPin variant="muted">NO DATA YET</CardPin>
-        </CardHeader>
-        <EmptyState
-          variant="empty"
-          title="No check-ins logged this week"
-          body="Daily energy / soreness / stress drive the Coach's recovery read."
-          cta={<a className="btn-flat btn-primary" href="/health">+ LOG CHECK-IN</a>}
-        />
-      </Card>
-    );
-  }
+
+  const [energy, setEnergy] = useState<number | null>(null);
+  const [soreness, setSoreness] = useState<number | null>(null);
+  const [stress, setStress] = useState<number | null>(null);
+  const [savedToday, setSavedToday] = useState<{ energy: number; soreness: number; stress: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(c?.loggedToday ?? false);
+
+  // Fetch today's check-in to pre-fill dots.
+  useEffect(() => {
+    fetch('/api/health/checkin')
+      .then(r => r.json())
+      .then((d: { ok: boolean; checkin?: { energy: number; soreness: number; stress: number } | null }) => {
+        if (d.ok && d.checkin) {
+          setSavedToday(d.checkin);
+          setSaved(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-submit when all 3 are selected (map 1-5 → 1,3,5,7,9 on 1-10 scale).
+  useEffect(() => {
+    if (energy == null || soreness == null || stress == null) return;
+    if (saving) return;
+    setSaving(true);
+    const toTen = (v: number) => Math.min(10, v * 2 - 1); // 1→1, 2→3, 3→5, 4→7, 5→9
+    fetch('/api/health/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ energy: toTen(energy), soreness: toTen(soreness), stress: toTen(stress) }),
+    })
+      .then(r => r.json())
+      .then((d: { ok: boolean; checkin?: { energy: number; soreness: number; stress: number } }) => {
+        if (d.ok && d.checkin) { setSavedToday(d.checkin); setSaved(true); }
+        setSaving(false);
+      })
+      .catch(() => setSaving(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [energy, soreness, stress]);
+
+  const fromTen = (v: number) => Math.round((v - 1) / 2 + 1); // invert toTen for display
+
   return (
-    <Card wash="amber" span={4} padding="20px 22px">
-      <CardHeader>
-        <CardLabel color="var(--att)">READINESS · FROM YOUR CHECK-INS</CardLabel>
-        <CardPin variant={c.pinVariant}>{c.pinLabel}</CardPin>
-      </CardHeader>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 600, lineHeight: 1.2, marginTop: 6 }}>
-        {c.headline}
+    <div style={{
+      background: 'var(--l1)',
+      border: '1px solid var(--l4)',
+      borderRadius: 14,
+      padding: '14px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+      width: 260,
+      flexShrink: 0,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--att)', textTransform: 'uppercase' }}>
+          Check-In
+        </span>
+        <span style={{
+          fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+          padding: '2px 7px', borderRadius: 4,
+          background: saved ? 'rgba(62,189,65,.14)' : 'rgba(244,246,248,.07)',
+          color: saved ? 'var(--good)' : 'var(--t3)',
+        }}>
+          {saving ? 'SAVING…' : saved ? 'LOGGED ✓' : c ? `${c.rowsCount}/7 DAYS` : 'LOG TODAY'}
+        </span>
       </div>
-      <div style={{ fontSize: 13, color: 'var(--t1)', lineHeight: 1.5, marginTop: 6 }}>
-        {c.body}
+
+      {/* 7-day headline when there's history */}
+      {c && (
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 15, fontWeight: 600, lineHeight: 1.2, color: 'var(--t0)' }}>
+          {c.headline}
+        </div>
+      )}
+
+      {/* Quick log — 3 metric rows */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <DotRow label="ENERGY" metric="energy" value={energy} saved={savedToday ? fromTen(savedToday.energy) : null} onChange={setEnergy} />
+        <DotRow label="SORENESS" metric="soreness" value={soreness} saved={savedToday ? fromTen(savedToday.soreness) : null} onChange={setSoreness} />
+        <DotRow label="STRESS" metric="stress" value={stress} saved={savedToday ? fromTen(savedToday.stress) : null} onChange={setStress} />
       </div>
-      <CardFoot
-        left={`${c.rowsCount} of last 7 days logged${c.loggedToday ? ' · today ✓' : ''}`}
-        right={<span style={{ color: 'var(--coach)' }}>SEE HEALTH →</span>}
-      />
-    </Card>
+
+      {/* Foot */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'auto', paddingTop: 4, borderTop: '1px solid var(--l4)' }}>
+        <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, color: 'var(--t3)', fontWeight: 600 }}>
+          {energy == null && soreness == null && stress == null
+            ? 'TAP TO LOG'
+            : energy != null && soreness != null && stress != null
+            ? 'ALL SET'
+            : 'KEEP GOING…'}
+        </span>
+        <a href="/health" style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, color: 'var(--coach)', fontWeight: 700, textDecoration: 'none' }}>
+          SEE HEALTH →
+        </a>
+      </div>
+    </div>
   );
 }
 
