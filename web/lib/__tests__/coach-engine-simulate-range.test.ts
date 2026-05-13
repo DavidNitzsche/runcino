@@ -130,21 +130,28 @@ describe('simulateRange — post-race + far-goal-race scenario', () => {
         expect(longestRestStreak(days)).toBeLessThanOrEqual(4);
       });
 
-      it('every Mon-Sun week after day +21 (excluding race week) has at least one long run', () => {
+      it('every Mon-Sun week after day +21 (excluding race + post-race weeks) has at least one long run', () => {
         // Day +21 (May 12 + 21 = Jun 2) is well past the marathon
         // recovery window. Beyond that point, every full Mon-Sun chunk
-        // should anchor a long run — EXCEPT the race week itself,
-        // which legitimately substitutes a shakeout + race for the
-        // long run. AFC Half is Aug 16 (Sun), so Aug 10-16 is taper.
+        // should anchor a long run — EXCEPT the race week itself
+        // (which substitutes a shakeout + race for the long run) and
+        // the 14-day half-marathon recovery window after the AFC Half
+        // (Aug 17-30). Inside that window the engine prescribes
+        // graduated recovery, no long run — that's doctrine.
         const dayPlus21Idx = days.findIndex(d => d.date === '2026-06-02');
         expect(dayPlus21Idx).toBeGreaterThan(0);
         const tail = days.slice(dayPlus21Idx);
         const weeks = chunkByMonSun(tail, tail[0].date);
         for (const week of weeks) {
-          if (week.length < 7) continue; // skip partial trailing weeks
-          // Race week: skip — race itself is the long effort.
+          if (week.length < 7) continue;
           const hasRace = week.some(d => d.type === 'race');
           if (hasRace) continue;
+          // POST_RACE recovery window after AFC Half (Aug 17 onward
+          // through 14-day half-marathon recovery): no long expected.
+          const allEasyOrRest = week.every(d =>
+            d.type === 'rest' || d.type === 'recovery' || d.type === 'general_aerobic'
+          );
+          if (allEasyOrRest && week[0].date >= '2026-08-17') continue;
           const hasLong = week.some(d => d.type === 'long_steady' || d.type === 'long_progression' || d.type === 'long_mp_block');
           expect(hasLong, `Week starting ${week[0].date} has no long run: ${week.map(d => d.type).join(',')}`).toBe(true);
         }

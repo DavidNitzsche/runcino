@@ -815,12 +815,21 @@ export function simulateRange(state: CoachState, startISO: string, endISO: strin
   const today = new Date(state.now + 'T12:00:00Z');
   const cadence = strengthWeekContext(state, decidePhase(state, decideMode(state))).cadence;
   const out: CoachToday['weekShape'] = [];
+  // Per-day record of what the simulator has prescribed so far. We feed
+  // these back into rolling 7/28-day volume aggregates BEFORE running
+  // pickRun for the next day. Without this loop, every projected day
+  // computes against the frozen "today" baseline: weeklyAvg4w never
+  // climbs, baseEasyMi pegs at its 3.0mi floor for months, and the
+  // long-run cap never lifts off today's longest run. That is the
+  // root cause of "every weekday for 4 months: GENERAL AEROBIC 3.0
+  // MI" — fixed by advanceStateForSim below.
+  const simHistory: SimRun[] = [];
 
   for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
     const iso = d.toISOString().slice(0, 10);
     const dow = d.getUTCDay();
     const offset = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-    const dayState = offset > 0 ? advanceState(state, offset) : state;
+    const dayState = offset > 0 ? advanceStateForSim(state, offset, simHistory) : state;
     const dayPhase = decidePhase(dayState, decideMode(dayState));
     const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
     const hasStrength = strengthFitsThisDay(state, dayPhase, dow, isHardRun(run), cadence.perWeek);
@@ -837,6 +846,13 @@ export function simulateRange(state: CoachState, startISO: string, endISO: strin
       isToday: iso === state.now,
       hasStrength,
     });
+    if (offset > 0 && run.type !== 'rest' && run.distanceMi > 0) {
+      simHistory.push({
+        dateISO: iso,
+        distanceMi: run.distanceMi,
+        isRace: run.type === 'race',
+      });
+    }
   }
 
   // Apply the tier-aware streak cap per Mon→Sun chunk so weekly cadence
@@ -860,6 +876,10 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
 
   const cadence = strengthWeekContext(state, phase).cadence;
   const out: CoachToday['weekShape'] = [];
+  // Within-week feedback: each prior day's run feeds into rolling
+  // volume for the next pickRun call so a post-race ramp or rebuild
+  // progression evolves day-by-day across the week, not in one jump.
+  const simHistoryWeek: SimRun[] = [];
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i);
@@ -871,7 +891,7 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
     // simulation (Strava actuals fill those in on the client) — we
     // still emit an entry so the strip stays 7 wide.
     const offset = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-    const dayState = offset > 0 ? advanceState(state, offset) : state;
+    const dayState = offset > 0 ? advanceStateForSim(state, offset, simHistoryWeek) : state;
     const dayPhase = offset > 0 ? decidePhase(dayState, decideMode(dayState)) : phase;
 
     const run = applyConstraints(pickRun(dayState, dayPhase, dow), dayState, dayPhase, dow);
@@ -890,6 +910,13 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
       isToday,
       hasStrength,
     });
+    if (offset > 0 && run.type !== 'rest' && run.distanceMi > 0) {
+      simHistoryWeek.push({
+        dateISO: iso,
+        distanceMi: run.distanceMi,
+        isRace: run.type === 'race',
+      });
+    }
   }
   // Tier-aware consecutive-non-rest cap per Research/00b §Recovery
   // Scaled to Weekly Mileage. Without this post-process the per-day
@@ -989,6 +1016,114 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
       inWindow: state.races.inWindow.map(r => ({ ...r, daysAway: r.daysAway - daysOffset })),
     },
     flags: { ...state.flags, heavyBlockSuspected },
+  };
+}
+
+/** One simulated future run, captured during simulateRange / simulateWeek
+ *  walks so later days can read the rolling 7/28-day window correctly.
+ *  Race-day entries are included — the runner's body registers that
+ *  mileage. */
+interface SimRun {
+  dateISO: string;
+  distanceMi: number;
+  isRace: boolean;
+}
+
+/** Extends `advanceState` with rolling-window volume + intensity
+ *  aggregates rebuilt from the simulator's accumulated history. Fixes
+ *  "every weekday GENERAL AEROBIC 3.0 MI for 4 months": pickRun reads
+ *  `weeklyAvg4w`, `last7Mi`, `last28Mi`, `longestLast28Mi`,
+ *  `longestTrainingRunLast28Mi`, and easyShare. None of these moved
+ *  before because plain `advanceState` only bumped `now` + decayed
+ *  race-dates. The engine kept seeing today's mileage forever, so the
+ *  3mi `baseEasyMi` floor bound every projected easy day across all
+ *  four months.
+ *
+ *  Window math (where T = advanced "now"):
+ *    last7Mi  = (sim runs T-6..T)  + decayed remnant of original last7Mi
+ *    last28Mi = (sim runs T-27..T) + decayed remnant of original last28Mi
+ *    weeklyAvg4w = last28Mi / 4
+ *    longestLast28Mi = max(sim runs in window,
+ *                          original longestLast28Mi if offset < 28)
+ *
+ *  Linear decay isn't perfectly accurate (real miles weren't uniform)
+ *  but it's a defensible interpolation that hands off smoothly to the
+ *  simulated runs as they fill the window. By offset ≥ 28 the original
+ *  contribution has fully aged out and the window is purely simulated
+ *  mileage. */
+function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: SimRun[]): CoachState {
+  const base = advanceState(state, daysOffset);
+  if (daysOffset === 0) return base;
+  const advancedTs = Date.parse(base.now + 'T12:00:00Z');
+
+  let simLast7 = 0;
+  let simLast28 = 0;
+  let simLongest28 = 0;
+  let simLongestTraining28 = 0;
+  let simEasy14 = 0;
+  let simHard14 = 0;
+  for (const r of simHistory) {
+    const runTs = Date.parse(r.dateISO + 'T12:00:00Z');
+    const daysAgo = Math.round((advancedTs - runTs) / MS_PER_DAY);
+    if (daysAgo < 0 || daysAgo >= 28) continue;
+    simLast28 += r.distanceMi;
+    if (r.distanceMi > simLongest28) simLongest28 = r.distanceMi;
+    if (!r.isRace && r.distanceMi > simLongestTraining28) simLongestTraining28 = r.distanceMi;
+    if (daysAgo < 7) simLast7 += r.distanceMi;
+    if (daysAgo < 14) {
+      if (r.isRace || r.distanceMi >= 10) simHard14 += r.distanceMi;
+      else simEasy14 += r.distanceMi;
+    }
+  }
+
+  const orig = state.volume;
+  const origLast7Remain = Math.max(0, (7 - daysOffset) / 7);
+  const origLast28Remain = Math.max(0, (28 - daysOffset) / 28);
+  const origIntensity14Remain = Math.max(0, (14 - daysOffset) / 14);
+
+  const last7Mi = Math.round((orig.last7Mi * origLast7Remain + simLast7) * 10) / 10;
+  const last28Mi = Math.round((orig.last28Mi * origLast28Remain + simLast28) * 10) / 10;
+  const weeklyAvg4w = Math.round((last28Mi / 4) * 10) / 10;
+  const orig8wRemain = Math.max(0, (56 - daysOffset) / 56);
+  const weeklyAvg8w = Math.round((orig.weeklyAvg8w * orig8wRemain + weeklyAvg4w * (1 - orig8wRemain)) * 10) / 10;
+
+  const origLongestStillInWindow = daysOffset < 28;
+  const longestLast28Mi = Math.max(
+    origLongestStillInWindow ? orig.longestLast28Mi : 0,
+    simLongest28,
+  );
+  const longestTrainingRunLast28Mi = Math.max(
+    origLongestStillInWindow ? (orig.longestTrainingRunLast28Mi ?? 0) : 0,
+    simLongestTraining28,
+  );
+
+  const easyMi14d = Math.round((orig.easyMi14d * origIntensity14Remain + simEasy14) * 10) / 10;
+  const hardMi14d = Math.round((orig.hardMi14d * origIntensity14Remain + simHard14) * 10) / 10;
+  const totalMi14d = easyMi14d + hardMi14d;
+  const easyShare14d = totalMi14d > 0 ? easyMi14d / totalMi14d : orig.easyShare14d;
+
+  const rebuildAfterBreak = last28Mi > 0 && last7Mi <= last28Mi / 4 * 0.30;
+
+  return {
+    ...base,
+    volume: {
+      ...orig,
+      last7Mi,
+      last28Mi,
+      weeklyAvg4w,
+      weeklyAvg8w,
+      longestLast28Mi: Math.round(longestLast28Mi * 10) / 10,
+      longestTrainingRunLast28Mi: Math.round(longestTrainingRunLast28Mi * 10) / 10,
+    },
+    intensity: {
+      easyMi14d,
+      hardMi14d,
+      easyShare14d,
+    },
+    flags: {
+      ...base.flags,
+      rebuildAfterBreak,
+    },
   };
 }
 

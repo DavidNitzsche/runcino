@@ -9,6 +9,7 @@
  * Read sources:
  *   - races + actualResult     → race calendar + recent finishes
  *   - strava_activities        → volume, intensity, recent execution
+ *   - user_prefs               → per-runner weekly cadence (long/quality/rest days)
  *   - HealthKit (M2 placeholder) → HRV / RHR / sleep
  *
  * The engine itself is in lib/coach-engine.ts. State and engine are
@@ -140,6 +141,34 @@ export interface CoachState {
    *    10K:          7 days
    *    5K:           3 days */
   recoveryWindowEndsISO: string | null;
+
+  /** User-configured weekly cadence parsed from the `user_prefs` table.
+   *  Every day-of-week comparison in the engine reads from this block —
+   *  hardcoded weekdays in the engine encoded `isDefaults: true` behavior
+   *  and ignored what the user actually wanted.
+   *
+   *  Days are JS `Date.getDay()` integers: 0=Sun, 1=Mon, ..., 6=Sat.
+   *
+   *  Defaults (when no row exists OR a field is null/garbage):
+   *    longRunDow: 6 (Saturday) — runner-standard default
+   *    qualityDows: [2, 4] (Tue / Thu)
+   *    restDow: 1 (Monday)
+   *
+   *  Saturday — not Sunday — is the long-run default. Most adult runners
+   *  with Mon-Fri jobs run their long on Saturday so Sunday is open for
+   *  recovery + the rest of life; coaching doctrine (Pfitzinger, Daniels,
+   *  Hudson) all default to Saturday in their published plans. */
+  prefs: {
+    longRunDow: number;
+    qualityDows: number[];
+    /** null means "engine decides" — engine derives the rest day
+     *  relative to the long run when this is null. */
+    restDow: number | null;
+    /** True when no user_prefs row existed (or every parsed field fell
+     *  back to a default). Lets the UI surface "Using defaults — set
+     *  yours" without re-querying. */
+    isDefaults: boolean;
+  };
 }
 
 interface NextRace {
@@ -186,7 +215,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   const today = todayDate();
   const todayISO = todayLAISO();
 
-  const [savedRaces, { activities }, checkinAgg] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg, prefsRow] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
@@ -195,6 +224,9 @@ export async function gatherCoachState(): Promise<CoachState> {
     // gatherCheckinAggregate swallows DB failures internally so this
     // resolves to a 0-rows aggregate when Postgres is unavailable.
     gatherCheckinAggregate(todayISO),
+    // Prefs are optional — when the user_prefs table is unreachable or
+    // has no row, parsePrefsRow(null) returns the engine-wide defaults.
+    getUserPrefs('me').catch(() => null),
   ]);
 
   // Null `state.checkin` means "no rows in the last 7 days" — the
@@ -374,6 +406,7 @@ export async function gatherCoachState(): Promise<CoachState> {
     },
     checkin,
     recoveryWindowEndsISO,
+    prefs: parsePrefsRow(prefsRow),
   };
 }
 
@@ -384,6 +417,102 @@ function recoveryDaysForDistance(distMi: number): number {
   if (distMi >= 11) return 14;   // half
   if (distMi >= 5)  return 7;    // 10K
   return 3;                       // 5K-ish
+}
+
+// ─────────────────────────────────────────────────────────────────
+// User-preference parsing
+// The `user_prefs` table stores days as free-form strings: "Saturday",
+// "Sat", "SAT" all mean dow=6. Quality days arrive as "Tue / Thu" (slash
+// + spaces) or sometimes "Tue, Thu". Tolerant parsing — fall back to
+// defaults on anything we can't decode rather than throwing.
+// ─────────────────────────────────────────────────────────────────
+
+/** Default cadence applied when no `user_prefs` row exists OR when an
+ *  individual field is null/garbage. Saturday long run, Tue/Thu quality,
+ *  Monday rest is the runner-standard default in every major coaching
+ *  manual (Pfitzinger, Daniels, Hudson). */
+export const DEFAULT_LONG_RUN_DOW = 6;        // Saturday
+export const DEFAULT_QUALITY_DOWS = [2, 4];   // Tue / Thu
+export const DEFAULT_REST_DOW = 1;            // Monday
+
+/** Parse one day-name string into a JS `getDay()` integer.
+ *  Returns null when the string can't be decoded — caller falls back
+ *  to a default and (optionally) logs a warning. */
+export function parseDayName(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  const MAP: Record<string, number> = {
+    sun: 0, sunday: 0,
+    mon: 1, monday: 1,
+    tue: 2, tues: 2, tuesday: 2,
+    wed: 3, weds: 3, wednesday: 3,
+    thu: 4, thur: 4, thurs: 4, thursday: 4,
+    fri: 5, friday: 5,
+    sat: 6, saturday: 6,
+  };
+  if (s in MAP) return MAP[s];
+  // Try a 3-char prefix as last resort: handles "Saturdays", "MONDAYS",
+  // ".sat", etc.
+  const head = s.slice(0, 3);
+  if (head in MAP) return MAP[head];
+  return null;
+}
+
+/** Parse a comma/slash-separated combo string ("Tue / Thu", "Wed, Sat")
+ *  into a sorted dedup list of dows. Empty/garbage returns []. */
+export function parseDayCombo(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  const parts = raw.split(/[,/]/).map(p => p.trim()).filter(Boolean);
+  const out = new Set<number>();
+  for (const p of parts) {
+    const d = parseDayName(p);
+    if (d != null) out.add(d);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+/** Translate a `user_prefs` row (or null = no row) into the engine's
+ *  `prefs` block. Tolerant — every field individually falls back to a
+ *  default. `isDefaults` is true only when nothing custom survived. */
+export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
+  if (!row) {
+    return {
+      longRunDow: DEFAULT_LONG_RUN_DOW,
+      qualityDows: DEFAULT_QUALITY_DOWS.slice(),
+      restDow: DEFAULT_REST_DOW,
+      isDefaults: true,
+    };
+  }
+  const longParsed = parseDayName(row.long_run_day);
+  const qualityParsed = parseDayCombo(row.quality_days);
+  const restParsed = parseDayName(row.rest_day);
+
+  // Warn on unparseable input so DB rot is visible in logs — don't
+  // throw, fall back silently in production-ish behavior.
+  if (row.long_run_day && longParsed == null) {
+    console.warn(`[coach-state] Could not parse user_prefs.long_run_day=${JSON.stringify(row.long_run_day)} — using default Saturday`);
+  }
+  if (row.quality_days && qualityParsed.length === 0) {
+    console.warn(`[coach-state] Could not parse user_prefs.quality_days=${JSON.stringify(row.quality_days)} — using default [Tue, Thu]`);
+  }
+  if (row.rest_day && restParsed == null) {
+    console.warn(`[coach-state] Could not parse user_prefs.rest_day=${JSON.stringify(row.rest_day)} — using default Monday`);
+  }
+
+  const longRunDow = longParsed ?? DEFAULT_LONG_RUN_DOW;
+  const qualityDows = qualityParsed.length > 0 ? qualityParsed : DEFAULT_QUALITY_DOWS.slice();
+  const restDow = restParsed ?? DEFAULT_REST_DOW;
+
+  // isDefaults: every parsed field landed on its default. A row may
+  // exist but be all-null — that still counts as defaults from the
+  // engine's perspective.
+  const isDefaults =
+    longParsed == null &&
+    qualityParsed.length === 0 &&
+    restParsed == null;
+
+  return { longRunDow, qualityDows, restDow, isDefaults };
 }
 
 function toNextRace(r: SavedRace): NextRace {
