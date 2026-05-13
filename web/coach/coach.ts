@@ -683,9 +683,25 @@ class CoachImpl implements Coach {
   }
 
   // ── Stage 5 · recentAdjustments ────────────────────────────────────
-  // 7-day rollup. Walks the simulated plan vs actual miles per past
-  // day; missed days emit items. Today's signal-based adjustment uses
-  // live state values + state.checkin.poorDaysCount.
+  // 7-day rollup of REAL plan adjustments — what the engine actually
+  // moved over the last 7 days.
+  //
+  // This method does NOT retroactively re-simulate past days. The
+  // adaptive layer doesn't have a persistence layer yet (no
+  // plan_adjustments table), so any "what would Coach have decided
+  // yesterday?" walk is hindsight, not history — and the UI honors
+  // that distinction. Until the persistence layer ships, historical
+  // adjustments surface as empty ("Plan held steady"), and today's
+  // adjustment is the only item that can fire.
+  //
+  // Today's item is real: `adjustForReality` runs against live signals
+  // (daysSinceLastRun, ACWR, check-in poor-days, missed runs in the
+  // current calendar week) and emits an item iff `changed === true`.
+  //
+  // `missedRunsLast7d` is derived from `state.volume.last7Days` — the
+  // current Mon-Sun calendar week. Days in the past with 0 miles where
+  // the engine would have prescribed a run count as "missed". This is
+  // a SIGNAL for today's decision, not a retroactive history entry.
   //
   // @research Research/00b §Decision Matrix
   async recentAdjustments(input: RecentAdjustmentsInput): Promise<CoachDecision<RecentAdjustmentsReport>> {
@@ -693,34 +709,27 @@ class CoachImpl implements Coach {
     const sinceISO = input.sinceISO ?? isoDateOffsetUTCInline(today, -6);
 
     const planned = simulateRange(input.state, sinceISO, today);
+    const items: RecentAdjustmentItem[] = [];
+
+    // Compute missedRunsLast7d as an INPUT SIGNAL for today's decision.
+    // Walks planned days that fall within the current calendar week
+    // (the only window for which we have reliable per-day actuals via
+    // state.volume.last7Days). Days outside that window can't be
+    // honestly checked, so we don't count them.
     const milesByDate = new Map<string, number>(
       input.state.volume.last7Days.map((d) => [d.date, d.miles] as const),
     );
-
-    const items: RecentAdjustmentItem[] = [];
-
+    let missedRunsLast7d = 0;
     for (const day of planned) {
       if (day.date === today) continue;
       if (day.distanceMi <= 0) continue;
+      if (!milesByDate.has(day.date)) continue;  // outside known-actuals window
       const actualMi = milesByDate.get(day.date) ?? 0;
-      if (actualMi <= 0.3) {
-        items.push({
-          dateISO: day.date,
-          dateDisplay: formatDayLabelInline(day.date, today),
-          changeDisplay: day.isQuality
-            ? `${day.label} skipped → recover and re-stage`
-            : `${day.label} skipped`,
-          why: day.isQuality
-            ? 'Quality day not run — Coach defers next quality 24-48h per Research/00b §Decision Matrix.'
-            : 'Run not logged — week-volume target adjusts down by the missed distance.',
-          changed: true,
-        });
-      }
+      if (actualMi <= 0.3) missedRunsLast7d++;
     }
 
     const todayPlanned = planned[planned.length - 1];
     if (todayPlanned) {
-      const missedRunsLast7d = items.length;
       const acwrVal =
         input.state.volume.weeklyAvg8w > 0
           ? input.state.volume.last7Mi / input.state.volume.weeklyAvg8w
@@ -763,11 +772,9 @@ class CoachImpl implements Coach {
       }
     }
 
-    items.sort((a, b) => b.dateISO.localeCompare(a.dateISO));
-
     const rationale = items.length === 0
-      ? 'No plan adjustments needed in the last 7 days — Coach held the prescription steady.'
-      : `${items.length} of last 7 days adjusted (${items[0]!.dateDisplay} most recent).`;
+      ? 'Plan held steady — Coach didn\'t need to move anything this week.'
+      : `${items.length} adjustment${items.length === 1 ? '' : 's'} this week (${items[0]!.dateDisplay} most recent).`;
 
     return {
       answer: { sinceISO, untilISO: today, items, rationale },
@@ -2804,16 +2811,6 @@ function isoDateOffsetUTCInline(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Format an ISO date relative to today: "TODAY", "YESTERDAY", or
- *  "TUE · MAY 6". Used by recentAdjustments items. */
-function formatDayLabelInline(dateISO: string, todayISO: string): string {
-  if (dateISO === todayISO) return 'TODAY';
-  if (dateISO === isoDateOffsetUTCInline(todayISO, -1)) return 'YESTERDAY';
-  const d = new Date(dateISO + 'T12:00:00Z');
-  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getUTCDay()];
-  const mon = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][d.getUTCMonth()];
-  return `${dow} · ${mon} ${d.getUTCDate()}`;
-}
 
 /** The singleton Coach. Import via `import { coach } from '@/coach/coach'`.
  *  Stage 2 implements `briefRaceMorning`; Stage 3 adds `prescribeWorkout`

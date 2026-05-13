@@ -46,7 +46,16 @@ export interface CoachState {
   volume: {
     last7Mi: number;
     last28Mi: number;
-    /** Last 7 days as daily totals (oldest → today). */
+    /** Daily totals for the CURRENT calendar week (Mon → Sun in LA tz),
+     *  including future days (miles=0). Built via `currentWeekDays`.
+     *
+     *  ⚠ Despite the name, this is NOT a sliding 7-day window — it's
+     *  the user's Mon-Sun work week. Consumers that want a true rolling
+     *  7-day rollup must either (a) sum activities directly, or (b)
+     *  fall back to `last7Mi` (which IS the rolling sum). Matching
+     *  planned dates from `simulateRange(today-6, today)` against this
+     *  array silently fails for any planned date that falls in last
+     *  week — those dates are not in the map. */
     last7Days: Array<{ date: string; miles: number; runs: number }>;
     weeklyAvg4w: number;
     weeklyAvg8w: number;

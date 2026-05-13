@@ -107,10 +107,13 @@ export const LONG_RUN_SPIKE_CAP =
   1 + SINGLE_SESSION_SPIKE.value.ceilingPctAboveLongestRecent / 100;
 
 export function maxLongRunMi(state: CoachState): number {
-  // Floor at 8mi so a runner returning from a break has a sane minimum
-  // even when their "longest in 30 days" is small (otherwise rebuild
-  // is impossible).
-  return Math.max(8, state.volume.longestLast28Mi * LONG_RUN_SPIKE_CAP);
+  // Floor at 8mi so a runner returning from a break has a sane minimum.
+  //
+  // BUG FIX: anchor on longestTrainingRunLast28Mi (races excluded).
+  // 26mi race × 1.10 = 29mi unsafe training prescription. Research/00a
+  // §13.1 spike rule applies to the longest TRAINING run, not the
+  // runner's longest competitive effort.
+  return Math.max(8, state.volume.longestTrainingRunLast28Mi * LONG_RUN_SPIKE_CAP);
 }
 
 /* ── 6. ACWR (§13.1) ─────────────────────────────────────────────
