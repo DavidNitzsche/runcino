@@ -36,6 +36,8 @@ import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
+import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import type { PlanWorkout } from '../../../coach/plan-types';
 
 // ─────────────────────────────────────────────────────────────────────
 // HR zones rollup — re-homed from /health per Research/00a §TID
@@ -83,17 +85,17 @@ interface TrainingApiOk {
   proofSessions: CoachDecision<ProofSessionsReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   hrZones: TrainingApiHrZoneTime;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
-   *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
   recentAdjustments: CoachDecision<RecentAdjustmentsReport>;
   adjustedToday: CoachDecision<AdjustedPlan>;
-  /** Wave G · PATH TO RACE decision — null when no A-race with goal. */
   pathToRace: CoachDecision<PathToRaceResult> | null;
-  /** Wave G · NEXT PUSH report. */
   nextPushes: CoachDecision<NextPushesReport>;
-  /** Wave J · narrative line. Null when no priority signal fires. */
   narrative: NarrativeLine | null;
+  /** Plan workouts for the current Mon→Sun week. Null when no active plan. */
+  planWeekWorkouts: PlanWorkout[] | null;
+  /** Current week's phase from the plan artifact (BASE/BUILD/PEAK/TAPER).
+   *  Replaces coach.workout.answer.phaseLabel which reads from old engine. */
+  planCurrentPhase: string | null;
 }
 
 interface TrainingApiErr {
@@ -112,6 +114,9 @@ export async function GET(): Promise<Response> {
       .sort((a, b) => a.meta.date.localeCompare(b.meta.date));
     const nextA = upcoming.find((r) => (r.meta.priority ?? 'A') === 'A') ?? null;
 
+    // Resolve plan first so trajectory14wk uses actual plan volumes.
+    const planResult = await getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' }));
+
     const [
       workout,
       readiness,
@@ -123,10 +128,30 @@ export async function GET(): Promise<Response> {
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
       coach.weekDeltas({ today, state }),
-      coach.trajectory14wk({ today, state }),
+      coach.trajectory14wk({ today, state, planWeeks: planResult.plan?.weeks ?? [] }),
       coach.proofSessions({ today, state }),
       coach.recentAdjustments({ today, state }),
     ]);
+
+    // Extract current week's plan workouts and phase.
+    const { planWeekWorkouts, planCurrentPhase } = (() => {
+      const plan = planResult.plan;
+      if (!plan) return { planWeekWorkouts: null, planCurrentPhase: null };
+      const todayD = new Date(today + 'T12:00:00Z');
+      const dow = todayD.getUTCDay();
+      const monOffset = dow === 0 ? -6 : 1 - dow;
+      const monDate = new Date(todayD);
+      monDate.setUTCDate(monDate.getUTCDate() + monOffset);
+      const monISO = monDate.toISOString().slice(0, 10);
+      const sunDate = new Date(monDate);
+      sunDate.setUTCDate(sunDate.getUTCDate() + 6);
+      const sunISO = sunDate.toISOString().slice(0, 10);
+      const week = plan.weeks.find((wk) => wk.weekStartISO >= monISO && wk.weekStartISO <= sunISO);
+      return {
+        planWeekWorkouts: week?.workouts ?? null,
+        planCurrentPhase: week?.phaseId ?? null,
+      };
+    })();
 
     const missedRunsLast7d = recentAdjustments.answer.items.filter(
       (i) => i.dateISO !== today,
@@ -199,6 +224,8 @@ export async function GET(): Promise<Response> {
       pathToRace,
       nextPushes,
       narrative,
+      planWeekWorkouts,
+      planCurrentPhase,
     };
     return Response.json(body);
   } catch (e) {

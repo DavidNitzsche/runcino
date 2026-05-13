@@ -97,6 +97,14 @@ export interface TrainingData {
   aliveCoach: AliveCoachData;
   /** Wave L · per-signal freshness map. */
   freshness: FreshnessMap;
+  /** Plan workouts for the current Mon→Sun week. Null when no active plan. */
+  planWeekWorkouts: Array<{
+    dateISO: string; type: string; distanceMi: number;
+    isQuality: boolean; isLong: boolean;
+    paceTargetSPerMi: number | null; notes: string; subLabel?: string | null;
+  }> | null;
+  /** Current week's phase from the plan (BASE/BUILD/PEAK/TAPER). */
+  planCurrentPhase: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -236,6 +244,12 @@ interface TrainingApiOk {
   pathToRace?: CoachDecision<PathToRaceResult> | null;
   nextPushes?: CoachDecision<NextPushesReport>;
   narrative?: NarrativeLine | null;
+  planWeekWorkouts?: Array<{
+    dateISO: string; type: string; distanceMi: number;
+    isQuality: boolean; isLong: boolean;
+    paceTargetSPerMi: number | null; notes: string; subLabel?: string | null;
+  }> | null;
+  planCurrentPhase?: string | null;
 }
 
 interface TrainingApiErr {
@@ -366,6 +380,8 @@ export async function loadTrainingData(
     narrative,
     aliveCoach,
     freshness,
+    planWeekWorkouts: api.planWeekWorkouts ?? null,
+    planCurrentPhase: api.planCurrentPhase ?? null,
   };
 }
 

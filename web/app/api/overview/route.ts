@@ -63,10 +63,11 @@ interface OverviewApiOk {
   nextPushes: CoachDecision<NextPushesReport>;
   /** Wave J · one-sentence narrative line. Null when no signal fires. */
   narrative: NarrativeLine | null;
-  /** Plan-artifact workouts for the current Mon→Sun week. Used by the
-   *  week strip and TodayCard so they read from the same plan artifact
-   *  as the /training calendar. Null when no active plan. */
+  /** Plan-artifact workouts for the current Mon→Sun week. */
   planWeekWorkouts: PlanWorkout[] | null;
+  /** Current week's phase from the plan artifact (BASE/BUILD/PEAK/TAPER).
+   *  Replaces coach.workout.answer.phaseLabel which reads from old engine. */
+  planCurrentPhase: string | null;
 }
 
 interface OverviewApiErr {
@@ -108,10 +109,10 @@ export async function GET(): Promise<Response> {
       coach.recentAdjustments({ today, state }),
     ]);
 
-    // Extract this week's plan workouts (Mon–Sun containing today).
-    const planWeekWorkouts: PlanWorkout[] | null = (() => {
+    // Extract this week's plan workouts and phase (Mon–Sun containing today).
+    const { planWeekWorkouts, planCurrentPhase } = (() => {
       const plan = planResult.plan;
-      if (!plan) return null;
+      if (!plan) return { planWeekWorkouts: null, planCurrentPhase: null };
       const todayD = new Date(today + 'T12:00:00Z');
       const dow = todayD.getUTCDay();
       const monOffset = dow === 0 ? -6 : 1 - dow;
@@ -124,7 +125,10 @@ export async function GET(): Promise<Response> {
       const week = plan.weeks.find(
         (wk) => wk.weekStartISO >= monISO && wk.weekStartISO <= sunISO,
       );
-      return week?.workouts ?? null;
+      return {
+        planWeekWorkouts: week?.workouts ?? null,
+        planCurrentPhase: week?.phaseId ?? null,
+      };
     })();
 
     // Today's adjustForReality consumes the live state.checkin
@@ -205,6 +209,7 @@ export async function GET(): Promise<Response> {
       nextPushes,
       narrative,
       planWeekWorkouts,
+      planCurrentPhase,
     };
     return Response.json(body);
   } catch (e) {

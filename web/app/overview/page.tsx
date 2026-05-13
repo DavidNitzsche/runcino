@@ -39,6 +39,7 @@ import { CoachNarrativeLine } from './CoachNarrativeLine';
 import { CoachWatchingStrip } from './CoachWatchingStrip';
 import { PathToRaceCard } from './PathToRaceCard';
 import { NextPushCard } from './NextPushCard';
+import { WorkoutDetailPopup, type WorkoutPopupData } from './WorkoutDetailPopup';
 
 export default function OverviewPage() {
   const [now, setNow] = useState<Date | null>(null);
@@ -138,13 +139,14 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
 
   const { profile, races, coach, today } = data;
   const greetEyebrow = `${profile.greeting.toUpperCase()} · ${formatDateLabel(today)}`;
-  const phase = data.coach.workout.answer.phaseLabel || 'BASE';
+  // Plan phase is the source of truth; old engine phaseLabel is fallback.
+  const phase = data.planCurrentPhase || data.coach.workout.answer.phaseLabel || 'BASE';
   const readiness = coach.readiness.answer;
 
-  // Phase tile — surface the Coach phase + days-since-last-race when
-  // we're inside a recovery window.
+  // Phase tile delta — show race-week context when applicable, else phase.
   const recentRace = data.state.races.recent[0];
-  const phaseDelta = recentRace
+  const isPostRace = recentRace && recentRace.daysAgo <= 10;
+  const phaseDelta = isPostRace
     ? `DAY ${recentRace.daysAgo} POST-${recentRace.name.toUpperCase().slice(0, 20)}`
     : phase.toUpperCase();
 
@@ -908,6 +910,7 @@ function WeekStripCard({ data }: { data: OverviewData }) {
   const planPct = (w.plannedWeekMi / scale) * 100;
 
   const todayISO_ = data.today;
+  const [popupDay, setPopupDay] = useState<WorkoutPopupData | null>(null);
   return (
     <Card span={9} padding="18px 22px">
       <div
@@ -1029,9 +1032,29 @@ function WeekStripCard({ data }: { data: OverviewData }) {
                 label: planDay.subLabel || PLAN_TYPE_LABELS[planDay.type] || d.label,
               }
             : d;
-          return <DayCell key={d.dateISO} day={merged} todayISO={todayISO_} prescription={data.coach.workout.answer} />;
+          const popupData: WorkoutPopupData = {
+            dateISO: d.dateISO,
+            type: merged.type,
+            subLabel: planDay?.subLabel,
+            distanceMi: merged.plannedMi,
+            isQuality: merged.isQuality,
+            isLong: merged.isLong,
+            paceTargetSPerMi: planDay?.paceTargetSPerMi,
+            notes: planDay?.notes,
+            mutations: [],
+          };
+          return (
+            <DayCell
+              key={d.dateISO}
+              day={merged}
+              todayISO={todayISO_}
+              prescription={data.coach.workout.answer}
+              onClick={() => setPopupDay(popupData)}
+            />
+          );
         })}
       </div>
+      <WorkoutDetailPopup workout={popupDay} onClose={() => setPopupDay(null)} />
     </Card>
   );
 }
@@ -1091,10 +1114,12 @@ function DayCell({
   day,
   todayISO,
   prescription,
+  onClick,
 }: {
   day: OverviewData['coach']['weekDeltas']['answer']['days'][number];
   todayISO: string;
   prescription: OverviewData['coach']['workout']['answer'];
+  onClick?: () => void;
 }) {
   const isToday = day.dateISO === todayISO;
   const isPast = day.dateISO < todayISO;
@@ -1155,7 +1180,7 @@ function DayCell({
   const showMiles = miles > 0;
 
   return (
-    <div className={cls}>
+    <div className={cls} onClick={onClick} style={onClick ? { cursor: 'pointer' } : undefined}>
       <div className="day-strip">
         <span className="day-dow" style={isToday ? { color: 'var(--att)' } : undefined}>
           {isToday ? `TODAY · ${day.dayLabel}` : day.dayLabel}

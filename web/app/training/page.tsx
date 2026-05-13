@@ -139,7 +139,7 @@ function TrainingGreet({ data }: { data: TrainingData | null }) {
   }
 
   const { coach, races } = data;
-  const phase = (coach.workout.answer.phaseLabel || 'BASE').toUpperCase();
+  const phase = (data.planCurrentPhase || coach.workout.answer.phaseLabel || 'BASE').toUpperCase();
   const week = coach.weekDeltas.answer;
   const today = coach.workout.answer;
   const r = coach.readiness.answer;
@@ -348,7 +348,7 @@ function TodayCard({ data }: { data: TrainingData }) {
   const duration = estimateDurationMin(w);
   // Eyebrow: "TODAY · SAT MAY 9 · LIGHT RECOVERY"
   const todayLabel = formatFullDateLabel(data.today);
-  const phaseLabel = (w.phaseLabel || 'TRAINING').toUpperCase();
+  const phaseLabel = (data.planCurrentPhase || w.phaseLabel || 'TRAINING').toUpperCase();
   const eyebrow = `TODAY · ${todayLabel} · ${phaseLabel}`;
   // The Coach's voiceLead doubles as the "why this is light" body.
   const why = w.voiceLead;
@@ -1073,6 +1073,12 @@ function GoalTile({
 // THIS WEEK strip
 // ─────────────────────────────────────────────────────────────────────
 
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  easy: 'Easy Run', long: 'Long Run', threshold: 'Threshold',
+  interval: 'Intervals', mp: 'Marathon Pace', recovery: 'Recovery',
+  shakeout: 'Shakeout', race: 'Race', rest: 'Rest',
+};
+
 function ThisWeekCard({ data }: { data: TrainingData }) {
   const w = data.coach.weekDeltas.answer;
   const loggedRuns = countLoggedRuns(w.days);
@@ -1081,7 +1087,7 @@ function ThisWeekCard({ data }: { data: TrainingData }) {
   const loggedPct = (w.loggedWeekMi / scale) * 100;
   const planPct = (w.plannedWeekMi / scale) * 100;
   const todayISO = data.today;
-  const phaseLabel = (data.coach.workout.answer.phaseLabel || 'TRAINING').toUpperCase();
+  const phaseLabel = (data.planCurrentPhase || data.coach.workout.answer.phaseLabel || 'TRAINING').toUpperCase();
 
   return (
     <Card span={12} padding="18px 22px">
@@ -1230,9 +1236,20 @@ function ThisWeekCard({ data }: { data: TrainingData }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-        {w.days.map((d) => (
-          <DayCell key={d.dateISO} day={d} todayISO={todayISO} prescription={data.coach.workout.answer} />
-        ))}
+        {w.days.map((d) => {
+          const planDay = data.planWeekWorkouts?.find(p => p.dateISO === d.dateISO);
+          const merged = planDay
+            ? {
+                ...d,
+                type: planDay.type as typeof d.type,
+                isQuality: planDay.isQuality,
+                isLong: planDay.isLong,
+                plannedMi: planDay.distanceMi > 0 ? planDay.distanceMi : d.plannedMi,
+                label: planDay.subLabel || PLAN_TYPE_LABELS[planDay.type] || d.label,
+              }
+            : d;
+          return <DayCell key={d.dateISO} day={merged} todayISO={todayISO} prescription={data.coach.workout.answer} planDay={planDay} />;
+        })}
       </div>
     </Card>
   );
@@ -1242,10 +1259,12 @@ function DayCell({
   day,
   todayISO,
   prescription,
+  planDay,
 }: {
   day: TrainingData['coach']['weekDeltas']['answer']['days'][number];
   todayISO: string;
   prescription: TrainingData['coach']['workout']['answer'];
+  planDay?: { type: string; subLabel?: string | null } | null;
 }) {
   const isToday = day.dateISO === todayISO;
   const isPast = day.dateISO < todayISO;
@@ -1275,15 +1294,16 @@ function DayCell({
     .filter(Boolean)
     .join(' ');
 
-  // Use the engine's real label when we have one — fall back to phase-
-  // appropriate generic labels only when day.label is empty.
+  // Plan label takes precedence; prescription.type is last resort for today.
   const typeName = isRest
     ? 'Rest'
-    : isToday
-    ? capitalize(prescription.type.replace(/_/g, ' '))
     : tag === 'strength'
     ? 'Strength'
-    : day.label || (day.isLong ? 'Easy long' : day.isQuality ? 'Quality' : 'Easy');
+    : day.label
+    ? day.label
+    : isToday
+    ? capitalize(prescription.type.replace(/_/g, ' '))
+    : day.isLong ? 'Long Run' : day.isQuality ? 'Quality' : 'Easy Run';
 
   // Future days show planned miles only · past/today can show actual if logged
   const miles = isFuture ? day.plannedMi : (day.actualMi ?? day.plannedMi);

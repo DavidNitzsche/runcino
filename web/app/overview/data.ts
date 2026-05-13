@@ -124,10 +124,10 @@ export interface OverviewData {
   /** Wave L — per-signal freshness map driving chip variants on the
    *  watching strip and elsewhere. */
   freshness: FreshnessMap;
-  /** Active plan workouts for the current Mon→Sun week. Null when no plan.
-   *  Used by WeekStripCard + TodayCard so they read from the same artifact
-   *  as the /training calendar. */
+  /** Active plan workouts for the current Mon→Sun week. Null when no plan. */
   planWeekWorkouts: OverviewApiPayload['planWeekWorkouts'];
+  /** Current week's phase from the plan (BASE/BUILD/PEAK/TAPER). */
+  planCurrentPhase: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -390,7 +390,6 @@ interface OverviewApiPayload {
   pathToRace?: CoachDecision<PathToRaceResult> | null;
   nextPushes?: CoachDecision<NextPushesReport>;
   narrative?: NarrativeLine | null;
-  /** Active plan workouts for the current Mon→Sun week. Null when no plan. */
   planWeekWorkouts?: Array<{
     dateISO: string;
     type: string;
@@ -401,6 +400,7 @@ interface OverviewApiPayload {
     notes: string;
     subLabel?: string | null;
   }> | null;
+  planCurrentPhase?: string | null;
   error?: string;
 }
 
@@ -535,6 +535,7 @@ export async function loadOverviewData(
     aliveCoach,
     freshness,
     planWeekWorkouts: api.planWeekWorkouts ?? null,
+    planCurrentPhase: api.planCurrentPhase ?? null,
   };
 }
 
