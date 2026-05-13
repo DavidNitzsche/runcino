@@ -40,6 +40,10 @@ export interface CoachState {
     inWindow: NextRace[];
     /** Races finished in the last 28 days, newest first. */
     recent: PastRace[];
+    /** Best race performances within the last 180 days — used for VDOT
+     *  inference. Wider window catches fast efforts that predate a recovery
+     *  or maintenance block. Optional for backwards compat with test fixtures. */
+    bestForVdot?: PastRace[];
     /** Number of races (any priority) finished in the last 30 days. Heavy-block signal. */
     raceCount30d: number;
   };
@@ -269,6 +273,31 @@ export async function gatherCoachState(): Promise<CoachState> {
     }));
   const recent = [...recentSaved, ...recentStrava].sort((a, b) => b.date.localeCompare(a.date));
 
+  // VDOT source: best performances within 180 days. Wider window catches
+  // peak fitness from a completed build even when currently in recovery.
+  // Excludes marathon+ (late-race fatigue confounds VDOT inference).
+  const cutoff180 = isoDateOffset(today, -180);
+  const vdotSaved = savedRaces
+    .filter(r => r.meta.date >= cutoff180 && r.meta.date <= todayISO && r.actualResult && r.meta.distanceMi < 22)
+    .map<PastRace>(r => ({
+      slug: r.slug, activityId: r.actualResult?.stravaActivityId ?? null,
+      name: r.meta.name, date: r.meta.date, distanceMi: r.meta.distanceMi,
+      finishS: r.actualResult?.finishS ?? null,
+      daysAgo: daysBetween(r.meta.date, todayISO),
+    }));
+  const vdotSavedActIds = new Set(vdotSaved.map(r => r.activityId).filter((id): id is number => id != null));
+  const vdotStrava = activities
+    .filter(a => a.date >= cutoff180 && a.date <= todayISO && isProbablyRace(a) && a.distanceMi < 22 && !vdotSavedActIds.has(a.id))
+    .map<PastRace>(a => ({
+      slug: null, activityId: a.id,
+      name: a.name, date: a.date, distanceMi: a.distanceMi,
+      finishS: a.movingTimeS,
+      daysAgo: daysBetween(a.date, todayISO),
+    }));
+  const bestForVdot = [...vdotSaved, ...vdotStrava]
+    .filter(r => r.finishS != null)
+    .sort((a, b) => b.date.localeCompare(a.date)); // vdotSnapshot will pick the highest VDOT
+
   const cutoff30 = isoDateOffset(today, -30);
   const raceCount30d = activities.filter(a => a.date >= cutoff30 && a.date <= todayISO && isProbablyRace(a)).length
     + savedRaces.filter(r => r.meta.date >= cutoff30 && r.meta.date <= todayISO && r.actualResult).length;
@@ -368,7 +397,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   return {
     now: todayISO,
     races: {
-      nextA, nextAny, inWindow, recent, raceCount30d,
+      nextA, nextAny, inWindow, recent, raceCount30d, bestForVdot,
     },
     volume: {
       last7Mi, last28Mi, last7Days,

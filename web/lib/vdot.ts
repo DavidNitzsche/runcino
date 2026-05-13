@@ -215,8 +215,9 @@ interface RecentRace {
  *    a runner's true fitness is the best of their recent results.)
  *  Returns null when no usable race is available. */
 function pickStrongestRecentRace(state: CoachState): RecentRace | null {
+  const pool = (state.races.bestForVdot?.length ? state.races.bestForVdot : state.races.recent);
   let best: { race: RecentRace; vdot: number } | null = null;
-  for (const r of state.races.recent) {
+  for (const r of pool) {
     if (r.finishS == null) continue;                  // no time logged
     if (!distanceKeyForMi(r.distanceMi)) continue;    // non-canonical
     // Marathon performances underestimate aerobic VDOT — late-race
@@ -291,9 +292,12 @@ export interface VdotSnapshot {
  *  current VDOT + all 5 pace bands. Returns null when no usable
  *  recent race is logged. */
 export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
-  // Walk recent races, pick the strongest by VDOT, return its details.
+  // Use 180-day window (bestForVdot) to find peak fitness — a casual race
+  // during a recovery block shouldn't drag VDOT below a runner's real ceiling.
+  // Falls back to recent (28-day) if bestForVdot isn't populated (old state shape).
+  const pool = (state.races.bestForVdot?.length ? state.races.bestForVdot : state.races.recent);
   let best: { race: typeof state.races.recent[number]; vdot: number } | null = null;
-  for (const r of state.races.recent) {
+  for (const r of pool) {
     if (r.finishS == null) continue;
     if (!distanceKeyForMi(r.distanceMi)) continue;
     // Marathon (and ultra) results don't reflect aerobic VDOT cleanly —
