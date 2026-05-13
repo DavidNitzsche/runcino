@@ -226,6 +226,22 @@ CREATE INDEX IF NOT EXISTS plan_mutations_by_ts
   ON plan_mutations (ts DESC);
 ```
 
+## Profile fields that drive the plan
+
+The runner must be able to set the inputs the plan reads. The profile-edit modal exposes:
+
+| Field | Type | Drives | Default |
+|---|---|---|---|
+| `level` | enum: `'beginner' \| 'intermediate' \| 'advanced'` | template lookup in `Research/22` (which volume band + peak long-run constant) | inferred from `state.volume.weeklyAvg4w` (auto-detect on first save; user can override) |
+| `longRunDow` | int 0-6 | which day each week the long run lands | 6 (Saturday) |
+| `qualityDows` | int[] | which days quality slots go (1-2 of them) | [2, 4] (Tue/Thu) |
+| `restDow` | int 0-6 | full rest day | 1 (Monday) |
+| `name`, `age`, `sex`, `location`, `maxHr` | identity (already in Wave R) | Tanaka HRmax default + display | — |
+
+The level field is the new one and it matters: it picks which row of `Research/22` the plan reads (Beginner vs Intermediate vs Advanced tables, with different peak volume bands and peak long-run constants). Auto-detection on first save uses current `weeklyAvg4w`: <20 mpw → beginner, 20-40 → intermediate, 40+ → advanced. User can override the auto-pick.
+
+The profile-edit UI surfaces all of these in one modal, with the day-of-week pickers as segmented selects (M T W T F S S buttons) and `level` as a three-button group with a small caption explaining each band.
+
 ## How weekly volume gets picked
 
 Grounded in `Research/22-plan-templates.md` (the plan-template tables) and `Research/00a §Volume progression rules`.
