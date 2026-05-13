@@ -402,6 +402,7 @@ interface OverviewApiPayload {
   }> | null;
   planCurrentPhase?: string | null;
   profileName?: string | null;
+  planFutureLongRuns?: Array<{ weekStartISO: string; longMi: number }>;
   error?: string;
 }
 
@@ -453,7 +454,7 @@ export async function loadOverviewData(
   const load = getLoadSnapshot(coachState);
   const paceZones = getPaceZonesSnapshot(vdotLib, coachState, api.raceFitnessA);
   const weeklyMilesStrip = getWeeklyMilesStrip(weeklyHistory, api.trajectory.answer, coachState);
-  const longRunStrip = getLongRunStrip(runs, savedRaces, today);
+  const longRunStrip = getLongRunStrip(runs, savedRaces, today, api.planFutureLongRuns ?? []);
   const year = getYearSnapshot(rollup, heatmap, prs, runs, savedRaces, today);
 
   // Swap api.workout for the adjusted workout when adjustForReality
@@ -966,6 +967,7 @@ function getLongRunStrip(
   runs: NormalizedActivity[] | null,
   savedRaces: SavedRace[],
   today: string,
+  futureLongRuns: Array<{ weekStartISO: string; longMi: number }> = [],
 ): LongRunStrip | null {
   if (!runs || runs.length === 0) return null;
 
@@ -1005,14 +1007,15 @@ function getLongRunStrip(
     kind: b.kind,
   }));
 
-  // Pad with 4 future entries with no miles (planned long-runs need
-  // trajectory data we don't yet have at the long-run grain).
+  // Pad with 4 future entries from the plan artifact (Sunday long run distance).
   for (let w = 1; w <= 4; w++) {
     const future = new Date(monday);
     future.setDate(monday.getDate() + 7 * w);
+    const futureMonISO = future.toISOString().slice(0, 10);
+    const planEntry = futureLongRuns.find((r) => r.weekStartISO === futureMonISO);
     bars.push({
-      miles: 0,
-      date: shortDate(future.toISOString().slice(0, 10)),
+      miles: planEntry?.longMi ?? 0,
+      date: shortDate(futureMonISO),
       kind: 'future',
     });
   }

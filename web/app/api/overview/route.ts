@@ -71,6 +71,9 @@ interface OverviewApiOk {
   planCurrentPhase: string | null;
   /** Runner display name from the profile table. null when no profile row. */
   profileName: string | null;
+  /** Next 4 future weeks' long-run distances from the plan artifact.
+   *  Used by the long-run strip to show projected Sunday bars. */
+  planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
 }
 
 interface OverviewApiErr {
@@ -112,7 +115,7 @@ export async function GET(): Promise<Response> {
           isCutback: wk.isCutback,
           isPeak: wk.isPeak,
           isRaceWeek: wk.isRaceWeek,
-          workouts: wk.workouts.map((w) => ({ distanceMi: w.distanceMi })),
+          workouts: wk.workouts.map((w) => ({ distanceMi: w.distanceMi, isLong: w.isLong })),
         };
       });
     })();
@@ -134,6 +137,8 @@ export async function GET(): Promise<Response> {
     ]);
 
     // Extract this week's plan workouts and phase (Mon–Sun containing today).
+    // Also post-process weekDeltas so planned miles come from the plan artifact
+    // rather than the old coachDaily simulation.
     const { planWeekWorkouts, planCurrentPhase } = (() => {
       const plan = planResult.plan;
       if (!plan) return { planWeekWorkouts: null, planCurrentPhase: null };
@@ -150,8 +155,33 @@ export async function GET(): Promise<Response> {
         (wk) => wk.weekStartISO >= monISO && wk.weekStartISO <= sunISO,
       );
       const phase = week ? plan.phases.find((p) => p.id === week.phaseId) : null;
+      const workouts = week?.workouts ?? null;
+
+      // Post-process weekDeltas: override planned miles per day from the
+      // plan artifact so delta comparisons reflect the real plan, not the
+      // old engine simulation. Recompute aggregates to match.
+      if (workouts) {
+        const planByDate = new Map(workouts.map((w) => [w.dateISO, w.distanceMi]));
+        for (const day of weekDeltas.answer.days) {
+          const planMi = planByDate.get(day.dateISO);
+          if (planMi !== undefined) day.plannedMi = planMi;
+        }
+        weekDeltas.answer.plannedWeekMi = weekDeltas.answer.days.reduce((s, d) => s + d.plannedMi, 0);
+        weekDeltas.answer.loggedWeekMi = weekDeltas.answer.days.reduce((s, d) => s + (d.actualMi ?? 0), 0);
+        const completedDelta = weekDeltas.answer.days
+          .filter((d) => d.deltaMi != null)
+          .reduce((s, d) => s + (d.deltaMi ?? 0), 0);
+        const remainingPlanned = weekDeltas.answer.days
+          .filter((d) => d.actualMi == null)
+          .reduce((s, d) => s + d.plannedMi, 0);
+        weekDeltas.answer.projectedWeekMi = Math.round(
+          (weekDeltas.answer.loggedWeekMi + remainingPlanned + completedDelta * 0.3) * 10,
+        ) / 10;
+        weekDeltas.answer.netDeltaMi = weekDeltas.answer.projectedWeekMi - weekDeltas.answer.plannedWeekMi;
+      }
+
       return {
-        planWeekWorkouts: week?.workouts ?? null,
+        planWeekWorkouts: workouts,
         planCurrentPhase: phase?.label ?? null,
       };
     })();
@@ -216,6 +246,29 @@ export async function GET(): Promise<Response> {
         : undefined,
     });
 
+    // Future long runs: next 4 weeks after this week, largest isLong workout in each.
+    const planFutureLongRuns = (() => {
+      const plan = planResult.plan;
+      if (!plan) return [];
+      const todayD = new Date(today + 'T12:00:00Z');
+      const dow = todayD.getUTCDay();
+      const monOffset = dow === 0 ? -6 : 1 - dow;
+      const thisMonDate = new Date(todayD);
+      thisMonDate.setUTCDate(thisMonDate.getUTCDate() + monOffset);
+      const result: Array<{ weekStartISO: string; longMi: number }> = [];
+      for (let w = 1; w <= 4; w++) {
+        const futureMonDate = new Date(thisMonDate);
+        futureMonDate.setUTCDate(futureMonDate.getUTCDate() + 7 * w);
+        const futureMonISO = futureMonDate.toISOString().slice(0, 10);
+        const week = plan.weeks.find((wk) => wk.weekStartISO === futureMonISO);
+        const longMi = week
+          ? week.workouts.filter((wo) => wo.isLong).reduce((m, wo) => Math.max(m, wo.distanceMi), 0)
+          : 0;
+        result.push({ weekStartISO: futureMonISO, longMi });
+      }
+      return result;
+    })();
+
     const body: OverviewApiOk = {
       ok: true,
       today,
@@ -236,6 +289,7 @@ export async function GET(): Promise<Response> {
       planWeekWorkouts,
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,
+      planFutureLongRuns,
     };
     return Response.json(body);
   } catch (e) {
