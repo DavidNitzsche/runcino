@@ -92,7 +92,7 @@ export default function OverviewPage() {
       {/* Wave G · "Coach is watching" strip + quick check-in card in one grid row. */}
       {data && (
         <Row style={{ marginBottom: 16 }}>
-          <div className="span-8" style={{ minWidth: 0 }}>
+          <div className="span-8" style={{ minWidth: 0, alignSelf: 'start' }}>
             <CoachWatchingStrip chips={data.aliveCoach.watching} />
           </div>
           <CheckinReadinessCard data={data} />
