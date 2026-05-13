@@ -89,15 +89,14 @@ export default function OverviewPage() {
           the layout stable. */}
       <OverviewGreet data={data} />
 
-      {/* Wave G · "Coach is watching" strip + quick check-in card.
-          Side by side: strip grows to fill remaining width, card fixed. */}
+      {/* Wave G · "Coach is watching" strip + quick check-in card in one grid row. */}
       {data && (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', marginBottom: 16 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        <Row style={{ marginBottom: 16 }}>
+          <div className="span-8" style={{ minWidth: 0 }}>
             <CoachWatchingStrip chips={data.aliveCoach.watching} />
           </div>
           <CheckinReadinessCard data={data} />
-        </div>
+        </Row>
       )}
 
       {loadError && (
@@ -145,12 +144,17 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
   const phase = data.planCurrentPhase || data.coach.workout.answer.phaseLabel || 'BASE';
   const readiness = coach.readiness.answer;
 
-  // Phase tile delta — show race-week context when applicable, else phase.
+  // Phase tile delta — post-race note only fires when the plan is still in
+  // a recovery phase. Once the plan moves to BASE/BUILD/etc, just show phase.
   const recentRace = data.state.races.recent[0];
-  const isPostRace = recentRace && recentRace.daysAgo <= 10;
+  const activePhaseUpper = phase.toUpperCase();
+  const isPostRace =
+    recentRace &&
+    recentRace.daysAgo <= 14 &&
+    activePhaseUpper === 'RECOVERY';
   const phaseDelta = isPostRace
     ? `DAY ${recentRace.daysAgo} POST-${recentRace.name.toUpperCase().slice(0, 20)}`
-    : phase.toUpperCase();
+    : activePhaseUpper;
 
   // Race countdown tile.
   const aRaceName = races.nextA?.meta.name ?? '—';
@@ -1740,17 +1744,7 @@ function CheckinReadinessCard({ data }: { data: OverviewData }) {
   const fromTen = (v: number) => Math.round((v - 1) / 2 + 1); // invert toTen for display
 
   return (
-    <div style={{
-      background: 'var(--l1)',
-      border: '1px solid var(--l4)',
-      borderRadius: 14,
-      padding: '14px 16px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 10,
-      width: 260,
-      flexShrink: 0,
-    }}>
+    <Card span={4} padding="14px 16px" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--att)', textTransform: 'uppercase' }}>
@@ -1793,7 +1787,7 @@ function CheckinReadinessCard({ data }: { data: OverviewData }) {
           SEE HEALTH →
         </a>
       </div>
-    </div>
+    </Card>
   );
 }
 
