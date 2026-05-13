@@ -1256,14 +1256,14 @@ function DayCell({
   day: TrainingData['coach']['weekDeltas']['answer']['days'][number];
   todayISO: string;
   prescription: TrainingData['coach']['workout']['answer'];
-  planDay?: { type: string; subLabel?: string | null; notes?: string | null } | null;
+  planDay?: { type: string; subLabel?: string | null; notes?: string | null; hasStrength?: boolean } | null;
 }) {
   const isToday = day.dateISO === todayISO;
   const isPast = day.dateISO < todayISO;
   const isFuture = day.dateISO > todayISO;
   const isDone = !isFuture && day.actualMi != null && day.actualMi > 0;
   const isRest = day.type === 'rest' || (day.plannedMi === 0 && (isFuture || day.actualMi == null));
-  const hasStrength = planDay?.notes?.includes('\n\nStrength:') ?? false;
+  const hasStrength = planDay?.hasStrength ?? planDay?.notes?.includes('\n\nStrength:') ?? false;
 
   let tag: 'rest' | 'recovery' | 'easy' | 'long' | 'quality' = 'easy';
   if (isRest) tag = 'rest';

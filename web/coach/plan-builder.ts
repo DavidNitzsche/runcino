@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 14;
+export const BUILDER_VERSION = 15;
 
 export interface BuildPlanRace {
   id: string;
@@ -565,6 +565,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         durationMin: null,
         isQuality: pick.isQuality,
         isLong: pick.isLong,
+        hasStrength: false,
         notes: notesFor(effectiveType, phaseSlice.label, level, w, curve.isCutback[w]),
         subLabel: subLabelFor(effectiveType, phaseSlice.label, w, curve.isCutback[w]),
         originalDateISO: dateISO,
@@ -647,6 +648,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       );
       if (!target) continue;
       target.notes += `\n\nStrength: ${slot.focus} — ${strDurMin} min Amp Fitness session after your run. ${slot.note}`;
+      target.hasStrength = true;
       slottedDates.add(target.dateISO);
       strCount++;
     }

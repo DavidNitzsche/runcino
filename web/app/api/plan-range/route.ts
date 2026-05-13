@@ -159,7 +159,7 @@ export async function GET(req: Request) {
             isQuality: w.isQuality,
             isLong: w.isLong,
             isToday: w.dateISO === today,
-            hasStrength: w.notes?.includes('\n\nStrength:') ?? false,
+            hasStrength: w.hasStrength,
           });
         }
       }

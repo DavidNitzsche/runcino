@@ -1260,19 +1260,25 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
  *  said for that day. */
 function strengthFitsThisDay(state: CoachState, phase: Phase, dow: number, todayHard: boolean, perWeek: number): boolean {
   if (perWeek === 0) return false;
+  // Slots are fixed per STRENGTH_SCHEDULE doctrine: Mon(1) = lower/core, Fri(5) = upper/core.
+  // power(3=Wed) and mobility(0=Sun,2=Tue) are phase-specific variants.
   const PLACEMENT: Record<string, number[]> = {
-    heavy: [1, 4], power: [3], maintenance: [2, 5], mobility: [0, 2],
+    lower_core: [1],        // Mon — lower body + core (STRENGTH_SCHEDULE.monFocus)
+    upper_core: [5],        // Fri — upper body + core (STRENGTH_SCHEDULE.friFocus)
+    power: [3],             // Wed — power/explosive work (build phase)
+    maintenance: [1, 5],    // Mon or Fri — maintenance (taper/peak, 1 session)
+    mobility: [0, 2],       // Sun, Tue — mobility (rebuild)
   };
-  const types = phase === 'BASE' ? ['heavy', 'heavy']
-    : phase === 'BUILD' ? ['heavy', 'power']
+  const types = phase === 'BASE' ? ['lower_core', 'upper_core']
+    : phase === 'BUILD' ? ['lower_core', 'upper_core']
     : phase === 'PEAK' ? ['maintenance']
     : phase === 'TAPER' ? ['maintenance']
-    : phase === 'BASE_MAINTENANCE' ? ['heavy', 'heavy']
-    : phase === 'REBUILD' ? ['heavy', 'mobility']
+    : phase === 'BASE_MAINTENANCE' ? ['lower_core', 'upper_core']
+    : phase === 'REBUILD' ? ['lower_core', 'mobility']
     : ['mobility'];
   for (let i = 0; i < Math.min(perWeek, types.length); i++) {
     if (PLACEMENT[types[i]]?.includes(dow)) {
-      if (todayHard && (types[i] === 'heavy' || types[i] === 'power')) continue;
+      if (todayHard && (types[i] === 'lower_core' || types[i] === 'power')) continue;
       return true;
     }
   }

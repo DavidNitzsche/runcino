@@ -235,6 +235,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
       durationMin: w.duration_min,
       isQuality: w.is_quality,
       isLong: w.is_long,
+      hasStrength: w.notes?.includes('\n\nStrength:') ?? false,
       notes: w.notes,
       originalDateISO: w.original_date_iso,
       originalType: w.original_type,

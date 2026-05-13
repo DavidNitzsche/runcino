@@ -79,6 +79,7 @@ export interface PlanWorkout {
   durationMin: number | null;
   isQuality: boolean;
   isLong: boolean;
+  hasStrength: boolean;
   notes: string;
   /** Short display label override — e.g. 'Long Run · HM Finish' for HM-specific weeks.
    *  Null means use the default label for the workout type. */
