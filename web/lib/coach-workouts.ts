@@ -111,7 +111,7 @@ export function recovery(distanceMi: number): RunPrescription {
 
 export function generalAerobic(distanceMi: number, state: CoachState): RunPrescription {
   return {
-    type: 'general_aerobic', label: 'General aerobic',
+    type: 'general_aerobic', label: 'Easy Run',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('general_aerobic', state), hrZone: 2,
     description: `${r1(distanceMi)} mi easy · conversational · 30-60 s/mi slower than goal pace`,

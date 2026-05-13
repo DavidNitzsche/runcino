@@ -52,6 +52,7 @@ import { gradeAdjustmentFactor } from '../lib/minetti';
 import { M_PER_MI } from '../lib/time';
 import { TAPER_BY_DISTANCE, RACE_DAY_FUELING } from './doctrine/race_week';
 import { TISSUE_RECOVERY_TIMELINES } from './doctrine/recovery_protocols';
+import { getCurrentPlan } from './plan-lifecycle';
 
 /** Tier the runner's weekly mileage per Research/00b §Recovery Scaled
  *  to Weekly Mileage. Drives cutback cadence + per-tier recovery rules. */

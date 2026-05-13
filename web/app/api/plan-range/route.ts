@@ -151,9 +151,9 @@ export async function GET(req: Request) {
           workoutByDate.set(w.dateISO, {
             date: w.dateISO,
             type: mapToRunType(w.type),
-            label: mapToLabel(w.type),
+            label: w.subLabel ?? mapToLabel(w.type),
             distanceMi: w.distanceMi,
-            description: mapToDescription(w.type),
+            description: w.notes || mapToDescription(w.type),
             paceTargetSPerMi: pace,
             hrZone: null,
             isQuality: w.isQuality,

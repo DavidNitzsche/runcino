@@ -595,7 +595,7 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
   if (days <= easyEnd) {
     const baseEasy = baseEasyMi(state, 'POST_RACE');
     return {
-      type: 'general_aerobic', label: 'General aerobic',
+      type: 'general_aerobic', label: 'Easy Run',
       distanceMi: round1(Math.max(3, Math.min(baseEasy * 0.7, 6))), durationMin: null,
       paceTargetSPerMi: null, hrZone: 2,
       description: `${round1(Math.max(3, Math.min(baseEasy * 0.7, 6)))} mi easy aerobic · stay conversational · gradual return`,

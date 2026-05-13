@@ -31,6 +31,14 @@ import type { PlanRangeApiOk } from '@/app/api/plan-range/route';
 
 type DayEntry = PlanRangeApiOk['days'][number];
 
+function fmtPace(sPerMi: { lowS: number; highS: number } | number | null): string | null {
+  if (!sPerMi) return null;
+  const s = typeof sPerMi === 'number' ? sPerMi : Math.round((sPerMi.lowS + sPerMi.highS) / 2);
+  const min = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${min}:${sec.toString().padStart(2, '0')}/mi`;
+}
+
 export default function PlanPage() {
   const [data, setData] = useState<PlanRangeApiOk | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -258,12 +266,21 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
         {typeName}
       </div>
       {!isRest && day.distanceMi > 0 && (
-        <div style={{
-          fontFamily: 'var(--f-data)', fontSize: 11, fontWeight: 700,
-          color: 'var(--t0)', fontVariantNumeric: 'tabular-nums',
-          marginTop: 'auto',
-        }}>
-          {day.distanceMi.toFixed(1)}<span style={{ fontSize: 8, opacity: 0.5, marginLeft: 2 }}>MI</span>
+        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <div style={{
+            fontFamily: 'var(--f-data)', fontSize: 11, fontWeight: 700,
+            color: 'var(--t0)', fontVariantNumeric: 'tabular-nums',
+          }}>
+            {day.distanceMi.toFixed(1)}<span style={{ fontSize: 8, opacity: 0.5, marginLeft: 2 }}>MI</span>
+          </div>
+          {day.paceTargetSPerMi && (
+            <div style={{
+              fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 600,
+              color: accent, opacity: 0.75, fontVariantNumeric: 'tabular-nums',
+            }}>
+              {fmtPace(day.paceTargetSPerMi)}
+            </div>
+          )}
         </div>
       )}
     </div>

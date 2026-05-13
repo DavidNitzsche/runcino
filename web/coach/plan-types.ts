@@ -78,6 +78,9 @@ export interface PlanWorkout {
   isQuality: boolean;
   isLong: boolean;
   notes: string;
+  /** Short display label override — e.g. 'Long Run · HM Finish' for HM-specific weeks.
+   *  Null means use the default label for the workout type. */
+  subLabel?: string | null;
   /** As-planned snapshot frozen at authoring time. */
   originalDateISO: string;
   originalType: WorkoutType;

@@ -556,6 +556,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         isQuality: pick.isQuality,
         isLong: pick.isLong,
         notes: notesFor(effectiveType, phaseSlice.label, level, w, curve.isCutback[w]),
+        subLabel: subLabelFor(effectiveType, phaseSlice.label, w, curve.isCutback[w]),
         originalDateISO: dateISO,
         originalType: effectiveType,
         originalDistanceMi: distances[jsDow],
@@ -624,6 +625,26 @@ function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): numbe
     case 'shakeout':  return paceCenter(paceSet.E);
     default:          return null; // rest, race — no target
   }
+}
+
+/** Short tile label for the calendar — null means use the type default. */
+function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutback: boolean): string | null {
+  if (t === 'long') {
+    if (phase === 'TAPER') return 'Long Run · Taper';
+    const isHmWeek = !isCutback && weekIdx % 3 === 2 && (phase === 'BUILD' || phase === 'PEAK');
+    if (isHmWeek) {
+      return weekIdx % 6 < 3 ? 'Long Run · HM Finish' : 'Long Run · Progression';
+    }
+    return null; // default: "Long Run · Steady"
+  }
+  if (t === 'threshold') {
+    const isHmSpecific = (phase === 'BUILD' || phase === 'PEAK') && weekIdx % 2 === 1;
+    if (isHmSpecific) {
+      return weekIdx % 4 < 2 ? 'HM Cruise Intervals' : 'HM Threshold Blocks';
+    }
+    return null; // default: "Threshold Tempo"
+  }
+  return null;
 }
 
 function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: number, isCutback: boolean): string {
