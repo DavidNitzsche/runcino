@@ -541,17 +541,22 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       distances[raceDowIdx] = race.distanceMi;
     }
 
+    // Iterate calendar days Mon → Sun (offset 0..6 from Monday-anchored
+    // weekStart). Use the JS getUTCDay() value as the dow so it matches
+    // CoachState.prefs.*Dow conventions (0=Sun..6=Sat) — that's what
+    // weekShapeArr and distances are indexed by.
     const workouts: PlanWorkout[] = [];
-    for (let dow = 0; dow < 7; dow++) {
+    for (let offset = 0; offset < 7; offset++) {
       const d = new Date(weekStart);
-      d.setUTCDate(weekStart.getUTCDate() + dow);
+      d.setUTCDate(weekStart.getUTCDate() + offset);
       const dateISO = d.toISOString().slice(0, 10);
-      const pick = weekShapeArr[dow];
-      const dist = distances[dow];
+      const jsDow = d.getUTCDay();
+      const pick = weekShapeArr[jsDow];
+      const dist = distances[jsDow];
       workouts.push({
         id: newId(),
         dateISO,
-        dow,
+        dow: jsDow,
         type: pick.type,
         distanceMi: dist,
         paceTargetSPerMi: null,
