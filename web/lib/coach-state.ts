@@ -21,6 +21,7 @@ import { getCachedActivities } from './strava-cache';
 import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './strava-stats';
 import { todayISO as todayLAISO, todayDate } from './dates';
 import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
+import { getUserPrefs, type PrefsRow } from './prefs-store';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -59,8 +60,17 @@ export interface CoachState {
     last7Days: Array<{ date: string; miles: number; runs: number }>;
     weeklyAvg4w: number;
     weeklyAvg8w: number;
-    /** Longest single run in the last 28 days. */
+    /** Longest single activity in last 28 days — INCLUDES races. NEVER
+     *  use as +10% spike baseline. Use `longestTrainingRunLast28Mi`. */
     longestLast28Mi: number;
+    /** Longest TRAINING run in last 28 days — races excluded. Anchor
+     *  for the +10% spike rule. @research Research/00a §13.1 */
+    longestTrainingRunLast28Mi: number;
+    /** Longest TRAINING run in 28 days BEFORE the most recent race.
+     *  Anchors post-race long-run ramp at ~50%. Null when no recent
+     *  race / no pre-race training. @research Research/00b §Recovery
+     *  by Effort */
+    preRaceLongestTrainingMi: number | null;
     /** Recent 4w vs prior 4w. null when prior is 0 (no signal). */
     deltaPct4v4: number | null;
   };
