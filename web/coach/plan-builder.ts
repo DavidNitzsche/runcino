@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 13;
+export const BUILDER_VERSION = 14;
 
 export interface BuildPlanRace {
   id: string;
@@ -593,16 +593,17 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       phaseSlice.label === 'BUILD'     ? ss.durationMin.BUILD     :
       ss.durationMin.BASE;
 
-    // Build a set of dates that are off-limits for strength (quality/long + their neighbors).
+    // Build a set of dates that are off-limits for strength.
+    // Rule: never the day OF or the day BEFORE a quality/long/race session.
+    // The day AFTER is intentionally allowed — an easy run + lower body
+    // strength on Monday after Sunday's long is standard practice.
     const protectedDates = new Set<string>();
     for (const wo of workouts) {
       if (wo.isQuality || wo.isLong || wo.type === 'race') {
         const d = new Date(wo.dateISO + 'T12:00:00Z');
         const prev = new Date(d); prev.setUTCDate(prev.getUTCDate() - 1);
-        const next = new Date(d); next.setUTCDate(next.getUTCDate() + 1);
         protectedDates.add(wo.dateISO);
         protectedDates.add(prev.toISOString().slice(0, 10));
-        protectedDates.add(next.toISOString().slice(0, 10));
       }
     }
 
