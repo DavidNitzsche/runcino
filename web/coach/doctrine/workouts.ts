@@ -1306,6 +1306,45 @@ export const COMBINATIONS_TO_AVOID: Cited<Array<{
   ],
 };
 
+// ── Strength training scheduling ─────────────────────────────────
+
+/** Strength training integration rules for runners.
+ *
+ * Key principle: strength supports running, never competes with it.
+ * Schedule it on easy days, AFTER your run (cardio first), never
+ * within 24h of a quality session or long run.
+ *
+ * Duration tiers per phase (Research/04 §Supplemental work):
+ *   BASE/BUILD:  2-3 sessions/week, 30-45 min each.
+ *   PEAK:        2 sessions/week, 30 min each — volume drops, intensity focus rises.
+ *   TAPER:       1 session/week, 30 min max — maintain recruitment, not fitness.
+ *   RACE_WEEK:   1 light session (Mon/Tue only), 20-30 min, nothing new. */
+export const STRENGTH_SCHEDULE: Cited<{
+  /** Max sessions per week by phase. */
+  sessionsPerWeek: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
+  /** Duration recommendation in minutes. */
+  durationMin: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
+  /** Rules for placement within a week. */
+  rules: string[];
+}> = {
+  value: {
+    sessionsPerWeek: { BASE: 3, BUILD: 2, PEAK: 2, TAPER: 1, RACE_WEEK: 1 },
+    durationMin:     { BASE: 45, BUILD: 45, PEAK: 30, TAPER: 30, RACE_WEEK: 20 },
+    rules: [
+      'Always run first — do strength after running, not before.',
+      'Never the day before a long run or quality session.',
+      'Never the day after a long run (recovery day = full recovery).',
+      'Minimum 24h between strength and next quality running session.',
+      'Total body sessions preferred over split — keeps session count low.',
+      'Taper: drop volume, keep intensity (2 sets vs. 3, not lighter weights).',
+    ],
+  },
+  note: 'Strength training builds injury resistance and running economy. The goal is to support the running — not add fatigue that bleeds into quality sessions.',
+  citations: [
+    cite('§Supplemental work', 'Strength 2-3x/week, easy days only, after runs. Reduce in taper.', 'research', '04'),
+  ],
+};
+
 // ── Easy pace floor ───────────────────────────────────────────────
 
 /** Easy-pace floor — the threshold below which an "easy" run drifted

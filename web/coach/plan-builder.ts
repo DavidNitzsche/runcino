@@ -33,7 +33,7 @@ import {
   snapshotFromState,
 } from './plan-types';
 import { PLAN_TEMPLATES, type PlanDistance } from './doctrine/plan_templates';
-import { THRESHOLD_SESSION_PROGRESSION } from './doctrine/workouts';
+import { THRESHOLD_SESSION_PROGRESSION, STRENGTH_SCHEDULE } from './doctrine/workouts';
 import { RACE_WEEK_TEMPLATES } from './doctrine/race_week';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../lib/vdot';
 
@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 9;
+export const BUILDER_VERSION = 10;
 
 export interface BuildPlanRace {
   id: string;
@@ -574,6 +574,48 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       });
     }
 
+    // ── Strength training annotations ────────────────────────────
+    // After all workouts are materialized, identify easy days that are
+    // safe for strength work (not adjacent to quality/long sessions)
+    // and append the recommendation. Rule: never the day before or after
+    // a quality session or long run. Max per STRENGTH_SCHEDULE doctrine.
+    const ss = STRENGTH_SCHEDULE.value;
+    const maxStr: number =
+      phaseSlice.label === 'RACE_WEEK' ? ss.sessionsPerWeek.RACE_WEEK :
+      phaseSlice.label === 'TAPER'     ? ss.sessionsPerWeek.TAPER     :
+      phaseSlice.label === 'PEAK'      ? ss.sessionsPerWeek.PEAK      :
+      phaseSlice.label === 'BUILD'     ? ss.sessionsPerWeek.BUILD     :
+      ss.sessionsPerWeek.BASE;
+    const strDurMin: number =
+      phaseSlice.label === 'RACE_WEEK' ? ss.durationMin.RACE_WEEK :
+      phaseSlice.label === 'TAPER'     ? ss.durationMin.TAPER     :
+      phaseSlice.label === 'PEAK'      ? ss.durationMin.PEAK      :
+      phaseSlice.label === 'BUILD'     ? ss.durationMin.BUILD     :
+      ss.durationMin.BASE;
+
+    // Build a set of dates that are off-limits for strength (quality/long + their neighbors).
+    const protectedDates = new Set<string>();
+    for (const wo of workouts) {
+      if (wo.isQuality || wo.isLong || wo.type === 'race') {
+        const d = new Date(wo.dateISO + 'T12:00:00Z');
+        const prev = new Date(d); prev.setUTCDate(prev.getUTCDate() - 1);
+        const next = new Date(d); next.setUTCDate(next.getUTCDate() + 1);
+        protectedDates.add(wo.dateISO);
+        protectedDates.add(prev.toISOString().slice(0, 10));
+        protectedDates.add(next.toISOString().slice(0, 10));
+      }
+    }
+
+    let strCount = 0;
+    for (const wo of workouts) {
+      if (strCount >= maxStr) break;
+      if (wo.type !== 'easy' || protectedDates.has(wo.dateISO) || wo.distanceMi === 0) continue;
+      const tapNote = phaseSlice.label === 'TAPER' ? ' Keep it light — this is maintenance, not a PR.' : '';
+      const raceNote = phaseSlice.label === 'RACE_WEEK' ? ' Nothing new, nothing heavy.' : '';
+      wo.notes += `\n\nStrength: Good day for a ${strDurMin}-min Amp Fitness session after your run. Total body, controlled effort. Run first, always.${tapNote}${raceNote}`;
+      strCount++;
+    }
+
     weeks.push({
       id: newId(),
       weekIdx: w,
@@ -710,7 +752,7 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     case 'interval': {
       if (phase === 'BASE') return 'VO₂max intervals — warm up 1.5 mi, then 5 × 800m at 5K effort, jog equal distance between. Finish feeling like you could do one more rep. (Research/04 §I-pace)';
       if (phase === 'BUILD') return 'VO₂max intervals — 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled — this is speed support for your threshold work. (Research/04 §I-pace, Research/22 §3)';
-      if (phase === 'PEAK') return 'VO₂max sharpener — 4 × 1200m at 10K effort, 2 min jog between. Economy and top-end speed. (Research/04 §I-pace)';
+      if (phase === 'PEAK') return 'Controlled VO₂ maintenance — 8–10 × 1 min fast / 1 min easy fartlek, or 5 × 3 min at 10K effort / 2 min easy. You want pop, not damage. This sits between big long runs — the goal is to keep the legs sharp without digging a hole. (Research/04 §I-pace)';
       return 'VO₂max intervals — 5K to 10K effort. 1K reps with equal-time jog recovery. (Research/04 §I-pace)';
     }
 
