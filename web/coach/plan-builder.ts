@@ -37,7 +37,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 3;
+export const BUILDER_VERSION = 4;
 
 export interface BuildPlanRace {
   id: string;
@@ -561,7 +561,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         durationMin: null,
         isQuality: pick.isQuality,
         isLong: pick.isLong,
-        notes: notesFor(effectiveType, phaseSlice.label, level),
+        notes: notesFor(effectiveType, phaseSlice.label, level, w, curve.isCutback[w]),
         originalDateISO: dateISO,
         originalType: effectiveType,
         originalDistanceMi: distances[jsDow],
@@ -611,20 +611,50 @@ function startOfWeekMonday(d: Date): Date {
 
 function round1(n: number): number { return Math.round(n * 10) / 10; }
 
-function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level): string {
+function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: number, isCutback: boolean): string {
   switch (t) {
-    case 'rest':      return 'Full rest day.';
-    case 'easy':      return 'Easy / conversational pace. Build aerobic base.';
-    case 'long':      return phase === 'PEAK'
-      ? 'Long run — last 4 mi progressing toward HM pace.'
-      : 'Long run at easy pace. Build durability.';
-    case 'threshold': return 'Threshold — controlled discomfort. T-pace continuous or cruise intervals.';
-    case 'interval':  return 'VO2max intervals — 5K–10K effort. 1K–1200m reps with equal jog recovery.';
-    case 'mp':        return 'Marathon pace block — rhythm, fueling, restraint.';
-    case 'race':      return 'Race day.';
-    case 'shakeout':  return 'Short shakeout. Optional 4 strides. Stay loose.';
-    case 'recovery':  return 'Recovery run — below easy pace.';
-    default:          return '';
+    case 'rest':     return 'Full rest day.';
+    case 'easy':     return 'Easy / conversational pace. No watch-staring — if you can\'t hold a sentence, slow down.';
+    case 'recovery': return 'Recovery run — genuinely easy. Below easy pace. Legs should feel better when you finish.';
+    case 'shakeout': return 'Short shakeout. Optional 4 strides at the end. Stay loose.';
+    case 'race':     return 'Race day.';
+    case 'mp':       return 'Marathon pace block — find the rhythm, practice fueling, show restraint.';
+
+    case 'long': {
+      // Every 3rd qualifying week in BUILD/PEAK: HM-specific long run.
+      // Research/22 §3: "LR w/ middle 5 mi @ HMP" (intermediate) /
+      // "LR w/ last 8 mi @ HMP" (advanced).
+      const isSpecificWeek = !isCutback && (weekIdx % 3 === 2) &&
+        (phase === 'BUILD' || phase === 'PEAK');
+      if (phase === 'TAPER') return 'Taper long — easy pace, cut distance. Absorb the work.';
+      if (isSpecificWeek) {
+        // Rotate between two HM-specific formats.
+        return weekIdx % 6 < 3
+          ? 'Long run with HM finish — run the first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. Teach your legs what fast feels like when they\'re already tired. (Research/22 §3)'
+          : 'Progression long run — first third easy, middle third steady, final third squeezing toward HM effort. Not a race — a controlled fade-in. (Research/22 §3)';
+      }
+      return phase === 'PEAK'
+        ? 'Long run — easy throughout. Save the race-specific work for the designated HM-finish weeks.'
+        : 'Long run at easy conversational pace. Durability, not speed.';
+    }
+
+    case 'threshold': {
+      // Alternate between classic continuous tempo and HM-specific tempo.
+      // Research/22 §3: T workouts include "5 mi @ T" and HM-specific
+      // cruise intervals at goal HM effort.
+      const isHmSpecific = (phase === 'BUILD' || phase === 'PEAK') && weekIdx % 2 === 1;
+      if (isHmSpecific) {
+        return weekIdx % 4 < 2
+          ? 'HM-specific tempo — 3 × 2 miles at goal half-marathon effort, 90 sec jog between. This is the pace that needs to feel boring on race day. (Research/22 §3)'
+          : '2 × 3 miles at HM effort, 2 min jog between. Controlled discomfort — you should be able to speak in short phrases, not sentences. (Research/22 §3)';
+      }
+      return 'Threshold tempo — 5–6 miles continuous at T-pace (comfortably hard; could hold 20 min race effort). Or 4 × 1.5 miles with 60–90 sec jog. (Research/04 §T-pace)';
+    }
+
+    case 'interval':
+      return 'VO₂max intervals — 5K to 10K effort. 1K or 1200m reps with equal-time jog recovery. Finish feeling like you could do one more rep — this is speed support, not a time trial. (Research/04 §I-pace)';
+
+    default: return '';
   }
 }
 
