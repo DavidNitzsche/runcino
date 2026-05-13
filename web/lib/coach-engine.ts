@@ -206,22 +206,46 @@ function isRecoveryDow(state: CoachState, dow: number): boolean {
 
 /** Maps a user-relative dow into the template's dow space.
  *
- *  Plan templates (see coach-plan.ts) encode the runner-standard
- *  cadence: Sat=long, Tue+Thu=quality, Mon=rest. When a runner has set
- *  a different long-run day (e.g. Sunday), we shift the dow before
- *  querying the template so today's user-Sunday lands on template-Sat
- *  (its long-run slot).
+ *  Plan templates encode a fixed weekly cadence (some put the long on
+ *  Saturday, others on Sunday — e.g. half_marathon_intermediate has its
+ *  long on Sunday, while 5K_beginner has it on Saturday). When a runner
+ *  has set a different long-run day from the template's, we shift the
+ *  dow before querying so today's user-long-day lands on the template's
+ *  long slot.
  *
- *  Shift = templateLong (6) − userLong, modulo 7. Then
- *  templateDow = (userDow + shift) mod 7.
- *
- *  Concretely with userLong=0 (Sun): shift = 6 − 0 = 6. User-Sun (0) ⇒
- *  template-(0+6) = template-Sat. User-Mon (1) ⇒ template-(1+6)=7%7=0
- *  = template-Sun. */
-function remapDowForTemplate(state: CoachState, userDow: number): number {
-  const TEMPLATE_LONG_DOW = 6;
-  const shift = (TEMPLATE_LONG_DOW - state.prefs.longRunDow + 7) % 7;
+ *  Shift = templateLong − userLong, modulo 7. Then
+ *  templateDow = (userDow + shift) mod 7. */
+function remapDowForTemplate(template: { samplePeakWeek: Array<{ day: string; workout: string }> } | null, state: CoachState, userDow: number): number {
+  const templateLongDow = template ? detectTemplateLongDow(template) : 6;
+  const shift = (templateLongDow - state.prefs.longRunDow + 7) % 7;
   return (userDow + shift) % 7;
+}
+
+/** Detects which dow the template's samplePeakWeek treats as the long
+ *  run by scanning for the longest-mile entry whose workout string is
+ *  long-shaped. Falls back to Saturday (6) when no clear winner. */
+function detectTemplateLongDow(template: { samplePeakWeek: Array<{ day: string; workout: string }> }): number {
+  const DAY_TO_DOW: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  // Look for the entry containing 'LR' (Pfitzinger shorthand), 'long',
+  // or having the highest leading-mile count.
+  let bestDow = 6;
+  let bestMiles = 0;
+  let bestPriority = 0;  // 2 = explicit LR/long, 1 = miles, 0 = none
+  for (const entry of template.samplePeakWeek) {
+    const dow = DAY_TO_DOW[entry.day];
+    if (dow === undefined) continue;
+    const s = entry.workout;
+    const milesMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:-\s*\d+)?\s*mi\b/i);
+    const miles = milesMatch ? Number(milesMatch[1]) : 0;
+    const isExplicitLong = /\blr\b|\blong\b/i.test(s);
+    const priority = isExplicitLong ? 2 : miles > 0 ? 1 : 0;
+    if (priority > bestPriority || (priority === bestPriority && miles > bestMiles)) {
+      bestDow = dow;
+      bestMiles = miles;
+      bestPriority = priority;
+    }
+  }
+  return bestDow;
 }
 
 /* ── Run picker ─────────────────────────────────────────────── */
@@ -473,7 +497,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // dow.
   const template = selectActiveTemplate(state, phase);
   if (template) {
-    const templateDow = remapDowForTemplate(state, dow);
+    const templateDow = remapDowForTemplate(template, state, dow);
     const wkType = templateWorkoutType(template, templateDow);
     if (wkType) {
       return buildPrescriptionFor(wkType, state, phase);
