@@ -146,6 +146,11 @@ export interface CoachState {
    *    5K:           3 days */
   recoveryWindowEndsISO: string | null;
 
+  /** Raw activity list — surfaced for plan adaptation triggers that need
+   *  per-run execution signals (e.g., quality session pace scoring).
+   *  Optional for backwards compat with test fixtures. */
+  activities?: NormalizedActivity[];
+
   /** User-configured weekly cadence parsed from the `user_prefs` table.
    *  Every day-of-week comparison in the engine reads from this block —
    *  hardcoded weekdays in the engine encoded `isDefaults: true` behavior
@@ -437,6 +442,7 @@ export async function gatherCoachState(): Promise<CoachState> {
       rebuildAfterBreak,
       healthKitAvailable: false,
     },
+    activities,
     checkin,
     recoveryWindowEndsISO,
     prefs: parsePrefsRow(prefsRow),

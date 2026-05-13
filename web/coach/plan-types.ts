@@ -41,7 +41,9 @@ export type TriggerKind =
   | 'bad-race-result'
   | 'good-race-result'
   | 'vdot-upgrade-dampening'
-  | 'positive-drift';
+  | 'positive-drift'
+  | 'quality-execution-advance'
+  | 'quality-execution-retreat';
 
 export interface SignalSnapshot {
   /** Minimal slice of the state at trigger time — used for audit. */

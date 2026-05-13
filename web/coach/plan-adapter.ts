@@ -17,6 +17,7 @@
  */
 
 import type { CoachState } from '../lib/coach-state';
+import { scoreRecentQualitySessions } from '../lib/strava-stats';
 import { newId, insertMutation, updateWorkout } from '../lib/plan-store';
 import type {
   Plan, PlanWorkout, PlanMutation, TriggerKind, SignalSnapshot,
@@ -273,6 +274,69 @@ export async function adaptPlan(plan: Plan, state: CoachState, today: string, op
         snapshot: { todayISO: today, last7Mi: state.volume.last7Mi, weeklyAvg4w: state.volume.weeklyAvg4w },
         persist,
       });
+    }
+  }
+
+  // ─── Trigger 9 · quality execution pace calibration ──────────────
+  // Score recent continuous-effort quality sessions (tempo/threshold)
+  // against their prescribed paces. If the runner is consistently
+  // crushing targets with controlled HR → advance upcoming quality pace
+  // targets by 5 s/mi. Consistently struggling → retreat by 8 s/mi.
+  //
+  // Only fires once per day (today's ISO baked into citation) so the
+  // adapter is idempotent within a day but can re-evaluate each morning.
+  // Only scores continuous sessions — interval/rep overall pace is
+  // muddied by jogging recovery and can't be compared to a target.
+  if ((state.activities?.length ?? 0) > 0) {
+    const scores = scoreRecentQualitySessions(
+      state.activities ?? [],
+      (date) => workoutsByDate.get(date)?.paceTargetSPerMi ?? null,
+    );
+    const recent6 = scores.slice(0, 6);
+    const scoredCount = recent6.filter(s => s.verdict !== 'no_data').length;
+    const crushedCount = recent6.filter(s => s.verdict === 'crushed').length;
+    const struggledCount = recent6.filter(s => s.verdict === 'struggled').length;
+
+    if (scoredCount >= 2 && crushedCount >= 2 && (state.checkin?.poorDaysCount ?? 0) < 3) {
+      // Runner is consistently beating prescribed pace with controlled effort —
+      // the plan is under-stimulating. Advance upcoming quality targets.
+      const advanceCitation = `Research/01 §Training Pace Calibration — advance ${today}`;
+      for (const wk of next.weeks) {
+        for (const w of wk.workouts) {
+          if (w.dateISO <= today) continue;
+          if (!w.isQuality || w.paceTargetSPerMi == null) continue;
+          await maybeMutate({
+            workout: w,
+            trigger: 'quality-execution-advance',
+            citation: advanceCitation,
+            reason: `${crushedCount}/${scoredCount} recent quality sessions exceeded prescribed pace with controlled HR — advancing quality pace targets by 5 s/mi.`,
+            shouldFire: () => true,
+            mutate: () => ({ paceTargetSPerMi: w.paceTargetSPerMi! - 5 }),
+            snapshot: { todayISO: today },
+            persist,
+          });
+        }
+      }
+    } else if (scoredCount >= 3 && struggledCount >= 3) {
+      // Runner is consistently unable to hit targets — back off so sessions
+      // remain productive (aerobic stimulus without chronic over-reaching).
+      const retreatCitation = `Research/01 §Training Pace Calibration — retreat ${today}`;
+      for (const wk of next.weeks) {
+        for (const w of wk.workouts) {
+          if (w.dateISO <= today) continue;
+          if (!w.isQuality || w.paceTargetSPerMi == null) continue;
+          await maybeMutate({
+            workout: w,
+            trigger: 'quality-execution-retreat',
+            citation: retreatCitation,
+            reason: `${struggledCount}/${scoredCount} recent quality sessions below prescribed pace — retreating quality pace targets by 8 s/mi.`,
+            shouldFire: () => true,
+            mutate: () => ({ paceTargetSPerMi: w.paceTargetSPerMi! + 8 }),
+            snapshot: { todayISO: today },
+            persist,
+          });
+        }
+      }
     }
   }
 

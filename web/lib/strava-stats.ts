@@ -600,3 +600,96 @@ export function effortBalance(activities: NormalizedActivity[], windowDays = 14,
     totalSamples: inWindow.length,
   };
 }
+
+// ─── Quality session scoring ──────────────────────────────────────
+
+export type QualityVerdict = 'crushed' | 'on_target' | 'struggled' | 'no_data';
+
+export interface QualitySessionScore {
+  activityId: number;
+  date: string;
+  name: string;
+  /** Plan-prescribed pace for this date (s/mi). null = no plan target. */
+  prescribedSPerMi: number | null;
+  /** Actual average moving pace (s/mi). */
+  actualSPerMi: number;
+  /** actual / prescribed. <1 = faster than target. null when no prescribed. */
+  paceRatio: number | null;
+  avgHr: number | null;
+  /** True when avgHr < hrCeiling — HR stayed in controlled threshold zone. */
+  hrControlled: boolean | null;
+  verdict: QualityVerdict;
+}
+
+/** Interval/rep sessions have moving-rest laps that drag the overall pace
+ *  below the rep pace — scoring them by overall pace is misleading. Only
+ *  continuous-effort sessions (tempo, threshold, cruise) are scoreable. */
+const FRAGMENTED_QUALITY_RE = /\b(interval|repeat|rep\b|vo2|yasso|pyramid)\b/i;
+
+function isScorable(a: NormalizedActivity): boolean {
+  if (isProbablyRace(a)) return false;
+  if (a.distanceMi < 2) return false;
+  const isQuality = a.workoutType === 3 || HARD_NAME_RE.test(a.name);
+  if (!isQuality) return false;
+  // Fragmented sessions: jogging recovery muddies overall pace — skip.
+  if (FRAGMENTED_QUALITY_RE.test(a.name)) return false;
+  return true;
+}
+
+/** Score a single continuous quality session against its prescribed pace.
+ *  hrCeiling: avg HR above this signals a max effort, not controlled threshold.
+ *  170 bpm is a loose ceiling — most runners doing threshold work stay below it;
+ *  above it suggests they were racing/redlining rather than hitting a training target. */
+export function scoreQualitySession(
+  a: NormalizedActivity,
+  prescribedSPerMi: number | null,
+  hrCeiling = 170,
+): QualitySessionScore {
+  const paceRatio = prescribedSPerMi != null ? a.paceSPerMi / prescribedSPerMi : null;
+  const hrControlled = a.avgHr != null ? a.avgHr < hrCeiling : null;
+
+  let verdict: QualityVerdict;
+  if (prescribedSPerMi == null) {
+    verdict = 'no_data';
+  } else if (paceRatio! < 0.97 && hrControlled !== false) {
+    // ≥3% faster than prescribed AND HR wasn't blown → runner crushed it
+    verdict = 'crushed';
+  } else if (paceRatio! > 1.05 || hrControlled === false) {
+    // >5% below target OR HR was redlined → runner struggled
+    verdict = 'struggled';
+  } else {
+    verdict = 'on_target';
+  }
+
+  return {
+    activityId: a.id,
+    date: a.date,
+    name: a.name,
+    prescribedSPerMi,
+    actualSPerMi: a.paceSPerMi,
+    paceRatio,
+    avgHr: a.avgHr,
+    hrControlled,
+    verdict,
+  };
+}
+
+/** Score continuous quality sessions from the last windowDays.
+ *  getPrescribed(date) returns the plan's paceTargetSPerMi for that date, or null.
+ *  Results are newest-first. Interval/rep sessions are excluded (unreliable overall pace). */
+export function scoreRecentQualitySessions(
+  activities: NormalizedActivity[],
+  getPrescribed: (date: string) => number | null,
+  windowDays = 42,
+): QualitySessionScore[] {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayISO = today.toISOString().slice(0, 10);
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - windowDays);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+
+  return activities
+    .filter(a => a.date >= cutoffISO && a.date < todayISO && isScorable(a))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(a => scoreQualitySession(a, getPrescribed(a.date)));
+}
