@@ -261,13 +261,16 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   }
 
   // PEAK→TAPER transition long-run placement. Research/08 §9.2 HM
-  // week -1 calls for a "freshener" 8-10 mi long. The normal Saturday
-  // long-run slot may fall inside the 10-day race-week cutoff, in
-  // which case we shift the long earlier in the week so the runner
-  // still gets a long anchor before the 10-day quiet zone closes.
-  // Triggers when daysAway is 11-14 (transition zone) and the day is
-  // Tue (dow=2) — that day always lands outside the cutoff and gives
-  // a 6-day buffer before race day.
+  // week -1 calls for a "freshener" 8-10 mi long. The normal long-run
+  // slot may fall inside the 10-day race-week cutoff, in which case we
+  // shift the long earlier in the week so the runner still gets a long
+  // anchor before the 10-day quiet zone closes.
+  //
+  // NOTE: `dow === 2` here is race-day-relative, NOT user-preference-
+  // relative. Tuesday is 5 days before a Sunday race (the canonical race
+  // day in the doctrine templates), giving the right buffer. If your
+  // race lands on a different day, this constant may need rework — flag
+  // for follow-up when we generalize race-day to any weekday.
   if (state.races.nextA) {
     const d = state.races.nextA.daysAway;
     if (d >= 11 && d <= 14 && dow === 2) {
@@ -452,8 +455,10 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // Fallback: default by phase + day-of-week (from coach-workouts).
   // Used when no template applies, or when the template's sample-week
   // string didn't classify (e.g., a custom workout name we don't
-  // recognize — we default to the safer phase+dow lookup).
-  const def = defaultByDow(phase, dow);
+  // recognize — we default to the safer phase+dow lookup). The picker
+  // reads the runner's configured weekly cadence (state.prefs) so the
+  // long-run / quality / rest days land on the user's chosen weekdays.
+  const def = defaultByDow(phase, dow, state.prefs);
   return buildPrescriptionFor(def.primary, state, phase);
 }
 
@@ -467,13 +472,15 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
 function raceWeekEasy(state: CoachState, dow: number, daysToRace: number): RunPrescription {
   // 2 days out → light shakeout
   if (daysToRace === 2) return shakeout();
-  // Mid-week of race week → easy with strides. Sunday/Monday of race
-  // week → short recovery.
-  if (dow === 0 || dow === 1) {
+  // Recovery day or explicit rest day inside race-week → short recovery.
+  // (Race-week templates don't include a true rest day — even the rest
+  // slot gets a short recovery run per Research/08 §9.3.)
+  if (isRecoveryDow(state, dow) || dow === state.prefs.restDow) {
     return recovery(Math.max(3, baseEasyMi(state, 'TAPER') * 0.6));
   }
-  // Other days → easy with strides (intensity preserved per §9.1).
-  if (dow === 2 || dow === 4) {
+  // Quality days → easy with strides (intensity preserved per §9.1 —
+  // strides on what would normally be a hard day).
+  if (isQualityDow(state, dow)) {
     return easyWithStrides(baseEasyMi(state, 'TAPER'), state);
   }
   return generalAerobic(baseEasyMi(state, 'TAPER'), state);
@@ -1135,10 +1142,25 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
     simLongestTraining28,
   );
 
-  const easyMi14d = Math.round((orig.easyMi14d * origIntensity14Remain + simEasy14) * 10) / 10;
-  const hardMi14d = Math.round((orig.hardMi14d * origIntensity14Remain + simHard14) * 10) / 10;
+  // Intensity 14-day rollups: hold the ORIGINAL signal across the
+  // projection rather than decaying it to zero. The gates that read
+  // these (lowVolumeNoQualityHistory: hardMi14d <= last28Mi * 0.05)
+  // measure the runner's TRAINING HISTORY — what their body has
+  // actually done. The simulator's hypothetical future doesn't change
+  // the runner's history. If we decay hardMi14d to zero while the
+  // simulator's easy runs inflate last28Mi, the gate flips to "no
+  // quality history" and locks the runner out of quality forever
+  // (feedback loop — engine prescribes easy → simHard stays 0 → gate
+  // stays triggered → engine prescribes easy …). Keep history
+  // sticky; the simulator's accumulated simHard14 / simEasy14 ADD
+  // on top so quality the engine does plan still moves the needle.
+  const origInt = state.intensity;
+  const easyMi14d = Math.round((origInt.easyMi14d + simEasy14) * 10) / 10;
+  const hardMi14d = Math.round((origInt.hardMi14d + simHard14) * 10) / 10;
   const totalMi14d = easyMi14d + hardMi14d;
-  const easyShare14d = totalMi14d > 0 ? easyMi14d / totalMi14d : orig.easyShare14d;
+  const easyShare14d = totalMi14d > 0 ? easyMi14d / totalMi14d : origInt.easyShare14d;
+  // origIntensity14Remain considered for decay, rejected — see above.
+  void origIntensity14Remain;
 
   // rebuildAfterBreak: hold the original signal sticky for the first
   // 28 days of projection. Research/05 §1.4 "Return-to-Volume
