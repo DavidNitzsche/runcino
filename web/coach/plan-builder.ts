@@ -33,13 +33,15 @@ import {
   snapshotFromState,
 } from './plan-types';
 import { PLAN_TEMPLATES, type PlanDistance } from './doctrine/plan_templates';
+import { THRESHOLD_SESSION_PROGRESSION } from './doctrine/workouts';
+import { RACE_WEEK_TEMPLATES } from './doctrine/race_week';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../lib/vdot';
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 8;
+export const BUILDER_VERSION = 9;
 
 export interface BuildPlanRace {
   id: string;
@@ -302,11 +304,12 @@ interface DayPick {
  *  BASE / MAINTENANCE: 1 quality (threshold)
  *  BUILD / PEAK:       2 quality (threshold + intervals)
  *  TAPER:              1 quality (short threshold)
- *  RACE_WEEK:          shakeout + race */
+ *  RACE_WEEK:          tune-up (Tue) + shakeout + race */
 export function weekShape(
   phaseLabel: PhaseLabel,
   prefs: { longRunDow: number; qualityDows: number[]; restDow: number },
   raceDow: number | null,
+  raceDist?: number,
 ): DayPick[] {
   const days: DayPick[] = Array.from({ length: 7 }, () => ({
     type: 'easy' as WorkoutType, isQuality: false, isLong: false,
@@ -339,11 +342,17 @@ export function weekShape(
   }
 
   if (phaseLabel === 'RACE_WEEK' && raceDow != null) {
+    // HM race: Tuesday gets the 4×1K tune-up session (Research/08 §9.3).
+    // Tuesday = JS day-of-week 2.
+    const isHmRace = raceDist != null && raceDist >= 10 && raceDist <= 15;
     for (let i = 0; i < 7; i++) {
       if (i === raceDow) {
         days[i] = { type: 'race', isQuality: false, isLong: false };
       } else if ((raceDow - i + 7) % 7 === 1) {
         days[i] = { type: 'shakeout', isQuality: false, isLong: false };
+      } else if (isHmRace && i === 2) {
+        // Tuesday tune-up: short quality session to stay sharp (Research/08 §9.3).
+        days[i] = { type: 'threshold', isQuality: true, isLong: false };
       } else if (i === prefs.restDow) {
         days[i] = { type: 'rest', isQuality: false, isLong: false };
       } else {
@@ -451,6 +460,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       phaseSlice.label,
       prefs as { longRunDow: number; qualityDows: number[]; restDow: number },
       curve.isRaceWeek[w] ? raceDow : null,
+      raceDist,
     );
     const weeklyMi = curve.volumeMi[w];
 
@@ -639,16 +649,21 @@ function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutba
     return null; // default: "Long Run · Steady"
   }
   if (t === 'threshold') {
-    const isHmSpecific = (phase === 'BUILD' || phase === 'PEAK') && weekIdx % 2 === 1;
-    if (isHmSpecific) {
-      return weekIdx % 4 < 2 ? 'HM Cruise Intervals' : 'HM Threshold Blocks';
+    const tsp = THRESHOLD_SESSION_PROGRESSION.value;
+    if (phase === 'RACE_WEEK') return 'Race Week Tune-Up';
+    if (phase === 'BASE') return tsp.BASE.label;
+    if (phase === 'TAPER') return tsp.TAPER.label;
+    if (phase === 'PEAK') return tsp.PEAK.label;
+    if (phase === 'BUILD') {
+      return weekIdx % 2 === 1 ? tsp.BUILD_EARLY.label : tsp.BUILD_LATE.label;
     }
-    return null; // default: "Threshold Tempo"
+    return null;
   }
   return null;
 }
 
 function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: number, isCutback: boolean): string {
+  const tsp = THRESHOLD_SESSION_PROGRESSION.value;
   switch (t) {
     case 'rest':     return 'Full rest day.';
     case 'easy':     return 'Easy / conversational pace. No watch-staring — if you can\'t hold a sentence, slow down.';
@@ -658,16 +673,14 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     case 'mp':       return 'Marathon pace block — find the rhythm, practice fueling, show restraint.';
 
     case 'long': {
-      // Every 3rd qualifying week in BUILD/PEAK: HM-specific long run.
-      // Research/22 §3: "LR w/ middle 5 mi @ HMP" (intermediate) /
-      // "LR w/ last 8 mi @ HMP" (advanced).
-      const isSpecificWeek = !isCutback && (phase === 'BUILD' || phase === 'PEAK');
       if (phase === 'TAPER') return 'Taper long — easy pace, cut distance. Absorb the work.';
+      const isSpecificWeek = !isCutback && (phase === 'BUILD' || phase === 'PEAK');
       if (isSpecificWeek) {
-        // Rotate between two HM-specific formats.
-        return weekIdx % 6 < 3
-          ? 'Long run with HM finish — run the first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. Teach your legs what fast feels like when they\'re already tired. (Research/22 §3)'
-          : 'Progression long run — first third easy, middle third steady, final third squeezing toward HM effort. Not a race — a controlled fade-in. (Research/22 §3)';
+        // Alternate two HM-specific long run formats. Research/22 §3.
+        if (weekIdx % 6 < 3) {
+          return 'Long run with HM finish — run the first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. Last 4 miles at HM goal pace: run the first 10 easy, then gradually drop to race effort over the final stretch — negative split the whole thing. (Research/22 §3)';
+        }
+        return 'Progression long run — first third easy, middle third steady (marathon effort), final third squeezing toward HM goal pace. Three gears, controlled the whole way — not a race, a controlled fade-in. (Research/22 §3)';
       }
       return phase === 'PEAK'
         ? 'Long run — easy throughout. Save the race-specific work for the designated HM-finish weeks.'
@@ -675,20 +688,31 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     }
 
     case 'threshold': {
-      // Alternate between classic continuous tempo and HM-specific tempo.
-      // Research/22 §3: T workouts include "5 mi @ T" and HM-specific
-      // cruise intervals at goal HM effort.
-      const isHmSpecific = (phase === 'BUILD' || phase === 'PEAK') && weekIdx % 2 === 1;
-      if (isHmSpecific) {
-        return weekIdx % 4 < 2
-          ? 'HM-specific tempo — 3 × 2 miles at goal half-marathon effort, 90 sec jog between. This is the pace that needs to feel boring on race day. (Research/22 §3)'
-          : '2 × 3 miles at HM effort, 2 min jog between. Controlled discomfort — you should be able to speak in short phrases, not sentences. (Research/22 §3)';
+      // RACE_WEEK Tuesday tune-up: 4×1K at HMP (Research/08 §9.3).
+      if (phase === 'RACE_WEEK') {
+        const tuneUp = RACE_WEEK_TEMPLATES.value.half_sunday.find(d => d.day === 'Tue');
+        return tuneUp
+          ? `Race week tune-up — ${tuneUp.workout}. Keep it sharp, not draining. (Research/08 §9.3)`
+          : 'Race week tune-up — 4–5 mi w/ 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. (Research/08 §9.3)';
       }
-      return 'Threshold tempo — 5–6 miles continuous at T-pace (comfortably hard; could hold 20 min race effort). Or 4 × 1.5 miles with 60–90 sec jog. (Research/04 §T-pace)';
+      // Phase-specific threshold progressions from THRESHOLD_SESSION_PROGRESSION doctrine.
+      if (phase === 'BASE') return tsp.BASE.prescription;
+      if (phase === 'TAPER') return tsp.TAPER.prescription;
+      if (phase === 'BUILD' || phase === 'PEAK') {
+        // BUILD: alternate early (odd weekIdx → 3×2mi blocks) and late (even → 2×3mi).
+        // PEAK: continuous HM tempo.
+        if (phase === 'PEAK') return tsp.PEAK.prescription;
+        return weekIdx % 2 === 1 ? tsp.BUILD_EARLY.prescription : tsp.BUILD_LATE.prescription;
+      }
+      return tsp.BASE.prescription;
     }
 
-    case 'interval':
-      return 'VO₂max intervals — 5K to 10K effort. 1K or 1200m reps with equal-time jog recovery. Finish feeling like you could do one more rep — this is speed support, not a time trial. (Research/04 §I-pace)';
+    case 'interval': {
+      if (phase === 'BASE') return 'VO₂max intervals — warm up 1.5 mi, then 5 × 800m at 5K effort, jog equal distance between. Finish feeling like you could do one more rep. (Research/04 §I-pace)';
+      if (phase === 'BUILD') return 'VO₂max intervals — 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled — this is speed support for your threshold work. (Research/04 §I-pace, Research/22 §3)';
+      if (phase === 'PEAK') return 'VO₂max sharpener — 4 × 1200m at 10K effort, 2 min jog between. Economy and top-end speed. (Research/04 §I-pace)';
+      return 'VO₂max intervals — 5K to 10K effort. 1K reps with equal-time jog recovery. (Research/04 §I-pace)';
+    }
 
     default: return '';
   }

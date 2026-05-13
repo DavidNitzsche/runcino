@@ -1360,7 +1360,14 @@ class CoachImpl implements Coach {
       const weekOffset = i - 4; // 0 = this week
       let phase: TrajectoryPoint['phase'];
       if (weekOffset < 0) phase = 'past';
-      else if (weekOffset === 0) phase = 'base';
+      else if (weekOffset === 0) {
+        // Compute current week's phase the same way the future weeks do.
+        if (daysToRace <= 7) phase = 'taper';
+        else if (daysToRace <= 14) phase = 'taper';
+        else if (daysToRace <= 28) phase = 'peak';
+        else if (daysToRace <= 56) phase = 'build';
+        else phase = 'base';
+      }
       else phase = phaseSeq[weekOffset - 1];
       const isPeak = weekOffset > 0 && weekOffset - 1 === peakIdx;
       const isRaceWeek = weekOffset > 0 && (daysToRace - weekOffset * 7) <= 0 && (daysToRace - (weekOffset - 1) * 7) > 0;

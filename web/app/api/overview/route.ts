@@ -34,6 +34,8 @@ import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
+import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import type { PlanWorkout } from '../../../coach/plan-types';
 
 interface OverviewApiOk {
   ok: true;
@@ -61,6 +63,10 @@ interface OverviewApiOk {
   nextPushes: CoachDecision<NextPushesReport>;
   /** Wave J · one-sentence narrative line. Null when no signal fires. */
   narrative: NarrativeLine | null;
+  /** Plan-artifact workouts for the current Mon→Sun week. Used by the
+   *  week strip and TodayCard so they read from the same plan artifact
+   *  as the /training calendar. Null when no active plan. */
+  planWeekWorkouts: PlanWorkout[] | null;
 }
 
 interface OverviewApiErr {
@@ -90,6 +96,7 @@ export async function GET(): Promise<Response> {
       trajectory,
       weekDeltas,
       recentAdjustments,
+      planResult,
     ] = await Promise.all([
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
@@ -97,7 +104,27 @@ export async function GET(): Promise<Response> {
       coach.trajectory14wk({ today, state }),
       coach.weekDeltas({ today, state }),
       coach.recentAdjustments({ today, state }),
+      getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
     ]);
+
+    // Extract this week's plan workouts (Mon–Sun containing today).
+    const planWeekWorkouts: PlanWorkout[] | null = (() => {
+      const plan = planResult.plan;
+      if (!plan) return null;
+      const todayD = new Date(today + 'T12:00:00Z');
+      const dow = todayD.getUTCDay();
+      const monOffset = dow === 0 ? -6 : 1 - dow;
+      const monDate = new Date(todayD);
+      monDate.setUTCDate(monDate.getUTCDate() + monOffset);
+      const monISO = monDate.toISOString().slice(0, 10);
+      const sunDate = new Date(monDate);
+      sunDate.setUTCDate(sunDate.getUTCDate() + 6);
+      const sunISO = sunDate.toISOString().slice(0, 10);
+      const week = plan.weeks.find(
+        (wk) => wk.weekStartISO >= monISO && wk.weekStartISO <= sunISO,
+      );
+      return week?.workouts ?? null;
+    })();
 
     // Today's adjustForReality consumes the live state.checkin
     // aggregate so the engine can fold qualitative signals into the
@@ -176,6 +203,7 @@ export async function GET(): Promise<Response> {
       pathToRace,
       nextPushes,
       narrative,
+      planWeekWorkouts,
     };
     return Response.json(body);
   } catch (e) {

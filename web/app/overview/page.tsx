@@ -1007,9 +1007,22 @@ function WeekStripCard({ data }: { data: OverviewData }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-        {w.days.map((d) => (
-          <DayCell key={d.dateISO} day={d} todayISO={todayISO_} prescription={data.coach.workout.answer} />
-        ))}
+        {w.days.map((d) => {
+          // Override day type/label with plan artifact when available —
+          // plan artifact is the canonical source (same as /training calendar).
+          const planDay = data.planWeekWorkouts?.find(p => p.dateISO === d.dateISO);
+          const merged = planDay
+            ? {
+                ...d,
+                type: planDay.type as typeof d.type,
+                isQuality: planDay.isQuality,
+                isLong: planDay.isLong,
+                plannedMi: planDay.distanceMi > 0 ? planDay.distanceMi : d.plannedMi,
+                label: planDay.subLabel || d.label,
+              }
+            : d;
+          return <DayCell key={d.dateISO} day={merged} todayISO={todayISO_} prescription={data.coach.workout.answer} />;
+        })}
       </div>
     </Card>
   );
@@ -1343,13 +1356,72 @@ function TrajectoryCard({ data }: { data: OverviewData }) {
         </g>
       </svg>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginTop: 14 }}>
-        <TrajectoryPhasePill label="NOW" h="Hold floor" tone="now" />
-        <TrajectoryPhasePill label="3 WK" h="Base · LT" tone="base" />
-        <TrajectoryPhasePill label="5 WK" h="Build" tone="build" />
-        <TrajectoryPhasePill label="3 WK" h={`Peak ${t.summary.peakWeekMi}`} tone="peak" />
-        <TrajectoryPhasePill label="2 WK" h="Taper" tone="taper" />
-      </div>
+      {(() => {
+        // Derive phase pills dynamically from trajectory points.
+        // Present week (index todayIdx): use plan phase if available,
+        // else fall back to trajectory point phase.
+        const presentPoint = points[todayIdx];
+        // Current phase display: use weekDeltas coachNote headline for the richer
+        // phase context (e.g. "Recovery week" when in post-race window).
+        const coachHeadline = data.coach.weekDeltas.answer.coachNote?.headline ?? '';
+        const nowPhaseName = (() => {
+          if (coachHeadline) {
+            const m = coachHeadline.match(/^(Recovery|Rebuild|Maintenance|Base|Build|Peak|Taper|Race)/i);
+            if (m) return m[1];
+          }
+          const p = presentPoint?.phase;
+          if (p === 'build') return 'Build';
+          if (p === 'peak')  return 'Peak';
+          if (p === 'taper') return 'Taper';
+          return 'Base';
+        })();
+
+        // Group future weeks (after today) by phase, count consecutive runs.
+        const future = points.slice(todayIdx + 1).filter(p => !p.isRaceWeek);
+        const groups: Array<{ phase: string; count: number }> = [];
+        for (const p of future) {
+          const ph = p.phase;
+          if (groups.length > 0 && groups[groups.length - 1].phase === ph) {
+            groups[groups.length - 1].count++;
+          } else {
+            groups.push({ phase: ph, count: 1 });
+          }
+        }
+        const raceWk = points.filter(p => p.isRaceWeek).length;
+
+        const phaseTone = (ph: string): 'base' | 'build' | 'peak' | 'taper' | 'now' => {
+          if (ph === 'build') return 'build';
+          if (ph === 'peak')  return 'peak';
+          if (ph === 'taper') return 'taper';
+          return 'base';
+        };
+        const phaseLabel = (ph: string) => {
+          if (ph === 'build') return 'Build';
+          if (ph === 'peak')  return 'Peak';
+          if (ph === 'taper') return 'Taper';
+          return 'Base';
+        };
+
+        const pills = [
+          <TrajectoryPhasePill key="now" label="NOW" h={nowPhaseName} tone="now" />,
+          ...groups.map((g, i) => (
+            <TrajectoryPhasePill
+              key={i}
+              label={`${g.count} WK`}
+              h={g.phase === 'peak' ? `Peak ${t.summary.peakWeekMi} mi` : phaseLabel(g.phase)}
+              tone={phaseTone(g.phase)}
+            />
+          )),
+          ...(raceWk > 0 ? [<TrajectoryPhasePill key="race" label="RACE WK" h="Race" tone="taper" />] : []),
+        ];
+
+        const cols = pills.length;
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 4, marginTop: 14 }}>
+            {pills}
+          </div>
+        );
+      })()}
     </Card>
   );
 }

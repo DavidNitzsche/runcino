@@ -295,6 +295,57 @@ export const SUB_THRESHOLD: Cited<{
   ],
 };
 
+/** Phase-keyed threshold session progression for half-marathon training.
+ *  Plan-builder uses this to pick the right session type per phase so
+ *  the plan "runs itself" and the coach voice can explain the rationale.
+ *
+ *  Phases: BASE → cruise intervals; BUILD → continuous tempo / long blocks;
+ *  PEAK → continuous near HMP. All derived from Research/04 §5 + Research/22 §3. */
+export const THRESHOLD_SESSION_PROGRESSION: Cited<Record<
+  'BASE' | 'BUILD_EARLY' | 'BUILD_LATE' | 'PEAK' | 'TAPER',
+  {
+    /** Short session label for the calendar tile. */
+    label: string;
+    /** Full session prescription shown in the workout card notes. */
+    prescription: string;
+    /** Key citation anchor. */
+    citation: string;
+  }
+>> = {
+  value: {
+    BASE: {
+      label: 'Cruise Intervals',
+      prescription: 'Cruise intervals — warm up 1.5 mi easy, then 5 × 1K at threshold (comfortably hard, 1 min jog between reps), close with 1 mi easy cool-down. If 1K feels short, swap to 4 × 1 mile same effort. Purpose: teach the body to clear lactate while running fast. (Research/04 §5.3)',
+      citation: 'Research/04 §5.3 Cruise intervals — 3-6 × 1 mi with 1 min jog, or 5 × 1K.',
+    },
+    BUILD_EARLY: {
+      label: 'HM Cruise Intervals',
+      prescription: '3 × 2 miles at goal half-marathon effort, 90 sec jog between. This is the pace that needs to feel boring on race day — controlled, strong, sustainable. Warm up 1.5 mi, cool down 1 mi. (Research/22 §3)',
+      citation: 'Research/22 §3 — HM threshold: 3×2 mi at HM effort, 90 sec jog.',
+    },
+    BUILD_LATE: {
+      label: 'HM Threshold Blocks',
+      prescription: '2 × 3 miles at goal HM effort, 2 min jog between. Controlled discomfort — you should be able to speak in short phrases, not sentences. Longer blocks teach race-pace economy. Warm up 1.5 mi, cool down 1 mi. (Research/22 §3)',
+      citation: 'Research/22 §3 — HM threshold: 2×3 mi at HM effort, 2 min jog.',
+    },
+    PEAK: {
+      label: 'HM Continuous Tempo',
+      prescription: '4–5 miles continuous at goal HM effort (slightly slower than T-pace). No breaks, no rep structure — this is as close to racing as you get before taper. The legs should be a little tired; that\'s the point. Warm up 1.5 mi easy, cool down 1 mi. (Research/04 §5.2, Research/22 §3)',
+      citation: 'Research/04 §5.2 + Research/22 §3 — PEAK: 4-5 mi continuous near HMP.',
+    },
+    TAPER: {
+      label: 'Threshold Touch',
+      prescription: 'Short threshold touch — 2 × 1.5 miles at T-pace, 90 sec jog between. Keep the intensity alive without adding fatigue. The work is already in the bank. (Research/04 §5.3)',
+      citation: 'Research/04 §5.3 — taper: cut volume, keep intensity.',
+    },
+  },
+  note: 'Threshold session progression: BASE cruise intervals → BUILD HM-specific blocks → PEAK continuous near HMP → TAPER short touch. Every session at Research-cited pace targets.',
+  citations: [
+    cite('§5 Threshold training', 'T-pace = comfortably hard, 20-min race effort. Cruise intervals or continuous 20-40 min.', 'research', '04'),
+    cite('§3 Half Marathon Plans', 'HM-specific threshold: 3×2 mi at HM effort, 90 sec jog. Or 2×3 mi, 2 min jog.', 'research', '22'),
+  ],
+};
+
 /** Long tempo — HM-pace continuous. */
 export const LONG_TEMPO: Cited<{
   miLow: number;
