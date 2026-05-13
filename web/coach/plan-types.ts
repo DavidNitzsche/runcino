@@ -114,6 +114,9 @@ export interface CoachStateSnapshot {
   longRunDow: number;
   qualityDows: number[];
   restDow: number;
+  /** Builder algorithm version. Bump when the authoring logic changes
+   *  significantly — triggers a transparent rewrite on next load. */
+  builderVersion?: number;
 }
 
 export interface Plan {
@@ -131,8 +134,14 @@ export interface Plan {
   archivedISO: string | null;
 }
 
-/** Helper — pick the inputs that drive authoring out of CoachState. */
-export function snapshotFromState(state: CoachState, level: 'beginner' | 'intermediate' | 'advanced'): CoachStateSnapshot {
+/** Helper — pick the inputs that drive authoring out of CoachState.
+ *  Pass builderVersion from plan-builder so stored snapshots carry the
+ *  version that produced them. */
+export function snapshotFromState(
+  state: CoachState,
+  level: 'beginner' | 'intermediate' | 'advanced',
+  builderVersion?: number,
+): CoachStateSnapshot {
   return {
     weeklyAvg4w: state.volume.weeklyAvg4w,
     weeklyAvg8w: state.volume.weeklyAvg8w,
@@ -141,5 +150,6 @@ export function snapshotFromState(state: CoachState, level: 'beginner' | 'interm
     longRunDow: state.prefs.longRunDow,
     qualityDows: state.prefs.qualityDows,
     restDow: state.prefs.restDow ?? 1,
+    builderVersion,
   };
 }

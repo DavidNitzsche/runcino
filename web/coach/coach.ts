@@ -44,6 +44,7 @@ import { citationsForWorkoutType, citationsForReadiness } from './citations';
 import { composeVoiceLead } from './explanations';
 import { coachDaily, simulateRange, type CoachToday } from '../lib/coach-engine';
 import { vdotSnapshot, vdotRow } from '../lib/vdot';
+import { peakVolumeForLevel, autoDetectLevel } from './plan-builder';
 import type { CoachState } from '../lib/coach-state';
 import { acwr, ACWR_LOW, ACWR_HIGH, intensityTarget } from '../lib/coach-principles';
 import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInput } from '../lib/weather-slowdown';
@@ -1287,7 +1288,11 @@ class CoachImpl implements Coach {
     };
 
     const baseline = state.volume.weeklyAvg4w || 30;
-    const peakMi = Math.max(baseline * 1.35, baseline + 10);
+    const level = state.prefs.level ?? autoDetectLevel(baseline);
+    const raceDistMi = nextA?.distanceMi ?? 13.1;
+    // Use level-aware peak from plan-builder (Research/22 §Level bands).
+    // Don't set a hard ceiling here — the week-by-week ramp caps naturally.
+    const peakMi = peakVolumeForLevel(raceDistMi, level);
 
     // PAST 4 weeks
     const last7Sum = state.volume.last7Days.reduce((s, d) => s + d.miles, 0);

@@ -35,6 +35,11 @@ import {
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 
+/** Bump this when the builder algorithm changes significantly (quality
+ *  sizing, easy allocation, phase shape, etc.). Plans authored with an
+ *  older version are transparently rewritten on next load. */
+export const BUILDER_VERSION = 2;
+
 export interface BuildPlanRace {
   id: string;
   name: string;
@@ -598,7 +603,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     raceId: race?.id ?? null,
     goalISO,
     authoredISO: new Date().toISOString(),
-    authoredFromState: snapshotFromState(state, level),
+    authoredFromState: snapshotFromState(state, level, BUILDER_VERSION),
     phases,
     weeks,
     archivedISO: null,

@@ -19,7 +19,7 @@
 import { getActivePlan, saveActivePlan } from '../lib/plan-store';
 import { gatherCoachState } from '../lib/coach-state';
 import type { CoachState } from '../lib/coach-state';
-import { buildPlan, autoDetectLevel } from './plan-builder';
+import { buildPlan, autoDetectLevel, BUILDER_VERSION } from './plan-builder';
 import { adaptPlan } from './plan-adapter';
 import type { Plan } from './plan-types';
 import type { BuildPlanRace } from './plan-builder';
@@ -35,6 +35,8 @@ export interface LifecycleResult {
  *  needs to be authored. Pure — no side effects. */
 export function lifecycleCheck(plan: Plan | null, state: CoachState): LifecycleAction {
   if (!plan) return 'first-time';
+  // Builder algorithm changed — transparently rewrite to pick up new logic.
+  if ((plan.authoredFromState.builderVersion ?? 0) < BUILDER_VERSION) return 'rewrite';
   if (plan.goalISO < state.now) return 'transition';
 
   // New A-race not yet represented in the plan.

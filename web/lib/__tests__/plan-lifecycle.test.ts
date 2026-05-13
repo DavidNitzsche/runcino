@@ -11,6 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { lifecycleCheck } from '../../coach/plan-lifecycle';
+import { BUILDER_VERSION } from '../../coach/plan-builder';
 import type { CoachState } from '../coach-state';
 import type { Plan } from '../../coach/plan-types';
 
@@ -53,6 +54,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       longRunDow: 6,
       qualityDows: [2, 4],
       restDow: 1,
+      builderVersion: BUILDER_VERSION,
     },
     phases: [],
     weeks: [],
