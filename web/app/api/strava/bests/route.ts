@@ -21,7 +21,7 @@
 
 import { fetchActivityDetail, type StravaActivity } from '../../../../lib/strava';
 import { setCachedDetail } from '../../../../lib/strava-cache';
-import { isProbablyRace } from '../../../../lib/strava-stats';
+import { isProbablyRace, isQualityWorkout } from '../../../../lib/strava-stats';
 import { type NormalizedActivity } from '../activities/route-shared';
 import { query } from '../../../../lib/db';
 
@@ -74,11 +74,22 @@ export async function GET() {
   // detail-cached.
   const rows = await query<DBRow>(`SELECT id, data, detail FROM strava_activities`);
 
-  // Identify race-like activities that don't yet have detail. These are
-  // the highest-value candidates for lazy fetching since PRs almost
-  // always live in races.
+  // Lazy-fetch detail for activities that need it. Priority order:
+  //   1. Race-like activities — PRs almost always come from races.
+  //   2. Recent quality sessions (last 90 days) — their best_efforts feed
+  //      VDOT calibration and interval session scoring.
+  // Capped at FETCH_BUDGET requests per call to stay inside Strava's
+  // 100 req / 15 min rate limit across all concurrent app activity.
+  const cutoff90ISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const needsDetail = rows
-    .filter(r => r.detail == null && isProbablyRace(r.data))
+    .filter(r => {
+      if (r.detail != null) return false;
+      if (isProbablyRace(r.data)) return true;
+      // Quality sessions in the last 90 days — will populate best_efforts
+      // for interval scoring and training-run VDOT inference.
+      if (r.data.date >= cutoff90ISO && isQualityWorkout(r.data)) return true;
+      return false;
+    })
     .slice(0, FETCH_BUDGET);
 
   let fetched = 0;

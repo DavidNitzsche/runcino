@@ -621,31 +621,50 @@ export interface QualitySessionScore {
   verdict: QualityVerdict;
 }
 
+/** True when the activity looks like an intentional quality session
+ *  (tempo, threshold, intervals, VO2, etc.) — used here and by the
+ *  lazy-detail fetcher in /api/strava/bests. */
+export function isQualityWorkout(a: NormalizedActivity): boolean {
+  return a.workoutType === 3 || HARD_NAME_RE.test(a.name);
+}
+
 /** Interval/rep sessions have moving-rest laps that drag the overall pace
- *  below the rep pace — scoring them by overall pace is misleading. Only
- *  continuous-effort sessions (tempo, threshold, cruise) are scoreable. */
+ *  below the rep pace — can't score by overall pace. Score them using
+ *  the canonical best-effort segment (fastest 5K/10K split) instead,
+ *  which is available when detail has been fetched from Strava. */
 const FRAGMENTED_QUALITY_RE = /\b(interval|repeat|rep\b|vo2|yasso|pyramid)\b/i;
+
+function isIntervalSession(a: NormalizedActivity): boolean {
+  return FRAGMENTED_QUALITY_RE.test(a.name);
+}
 
 function isScorable(a: NormalizedActivity): boolean {
   if (isProbablyRace(a)) return false;
   if (a.distanceMi < 2) return false;
-  const isQuality = a.workoutType === 3 || HARD_NAME_RE.test(a.name);
-  if (!isQuality) return false;
-  // Fragmented sessions: jogging recovery muddies overall pace — skip.
-  if (FRAGMENTED_QUALITY_RE.test(a.name)) return false;
-  return true;
+  if (!isQualityWorkout(a)) return false;
+  // Interval sessions: score via canonical best effort (fastest contiguous
+  // segment at a canonical distance). Only scoreable when detail is cached.
+  if (isIntervalSession(a)) return a.canonicalFinishS != null && a.canonicalDistanceMi != null;
+  return true; // continuous session — overall moving pace is the target
 }
 
-/** Score a single continuous quality session against its prescribed pace.
- *  hrCeiling: avg HR above this signals a max effort, not controlled threshold.
- *  170 bpm is a loose ceiling — most runners doing threshold work stay below it;
- *  above it suggests they were racing/redlining rather than hitting a training target. */
+/** Score a single quality session against its prescribed pace.
+ *  For interval sessions: uses the canonical best-effort pace (fastest
+ *  contiguous segment at a canonical distance — e.g., fastest 5K split in
+ *  an 8×800m workout) rather than the overall moving pace, which includes
+ *  jogging recovery and understates actual rep speed.
+ *  hrCeiling: avg HR above this signals a max effort, not controlled threshold. */
 export function scoreQualitySession(
   a: NormalizedActivity,
   prescribedSPerMi: number | null,
   hrCeiling = 170,
 ): QualitySessionScore {
-  const paceRatio = prescribedSPerMi != null ? a.paceSPerMi / prescribedSPerMi : null;
+  // Interval sessions scored via canonical best effort; continuous via overall pace.
+  const effectivePaceS = isIntervalSession(a) && a.canonicalFinishS != null && a.canonicalDistanceMi
+    ? Math.round(a.canonicalFinishS / a.canonicalDistanceMi)
+    : a.paceSPerMi;
+
+  const paceRatio = prescribedSPerMi != null ? effectivePaceS / prescribedSPerMi : null;
   const hrControlled = a.avgHr != null ? a.avgHr < hrCeiling : null;
 
   let verdict: QualityVerdict;
@@ -666,7 +685,7 @@ export function scoreQualitySession(
     date: a.date,
     name: a.name,
     prescribedSPerMi,
-    actualSPerMi: a.paceSPerMi,
+    actualSPerMi: effectivePaceS,
     paceRatio,
     avgHr: a.avgHr,
     hrControlled,
