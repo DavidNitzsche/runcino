@@ -1794,17 +1794,32 @@ class CoachImpl implements Coach {
   // right now. Reads four state-derived rules:
   //
   //   pace_zones      ← vdotSnapshot.vdot (real, source race named)
-  //   long_run_cap    ← state.volume.longestLast28Mi × 1.10 spike cap
+  //   long_run_cap    ← state.volume.longestTrainingRunLast28Mi × 1.10
+  //                     spike cap (races EXCLUDED — anchoring on a
+  //                     marathon produced a 29mi prescription bug).
+  //                     In POST_RACE the cap pins to 50% of pre-race
+  //                     long, ramping back 2-3 weeks.
   //   easy_share      ← state.intensity.easyShare14d vs 80% target
   //   cutback_cadence ← runner's mileage tier from MILEAGE_TIER_RECOVERY
   //
   // @research Research/01 §Pace zones · Research/00a §13.1 spike rule
   //           Research/00a §Polarized 80/20 · Research/00b §Cutbacks
+  //           Research/00b §Recovery by Effort (post-race long anchor)
   async engineDetails(input: EngineDetailsInput): Promise<CoachDecision<EngineDetailsReport>> {
     const state = input.state;
     const snapshot = vdotSnapshot(state);
-    const longestLast28 = state.volume.longestLast28Mi;
-    const longRunCap = Math.round(longestLast28 * 1.10 * 10) / 10;
+    // Use TRAINING-only longest — a 26mi race × 1.10 ≠ a 29mi training
+    // long. In POST_RACE we anchor on 50% of pre-race training long.
+    const inPostRace = state.recoveryWindowEndsISO != null
+      && state.now <= state.recoveryWindowEndsISO;
+    const longestTraining = state.volume.longestTrainingRunLast28Mi;
+    const preRaceTraining = state.volume.preRaceLongestTrainingMi;
+    const usePostRaceAnchor = inPostRace && preRaceTraining != null;
+    const longRunCap = usePostRaceAnchor
+      ? Math.round((preRaceTraining as number) * 0.50 * 10) / 10
+      : Math.round(longestTraining * 1.10 * 10) / 10;
+    const longRunCapHasValue = usePostRaceAnchor || longestTraining > 0;
+    const recentRaceName = state.races.recent[0]?.name ?? null;
     const easyShare = state.intensity.easyShare14d;
     const easySharePct = Math.round(easyShare * 100);
     const tier = mileageTier(state.volume.weeklyAvg4w);
@@ -1824,11 +1839,13 @@ class CoachImpl implements Coach {
       {
         id: 'long_run_cap',
         label: 'NEXT WEEK\'S LONG-RUN LIMIT',
-        valueDisplay: longestLast28 > 0 ? `${longRunCap.toFixed(1)} MI` : '—',
-        explanation: longestLast28 > 0
-          ? `Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week. Your longest in the last 28 days was ${longestLast28.toFixed(1)} mi; the +10% cap protects connective tissue from a single-session spike.`
-          : 'No long run logged in the last 28 days — the cap starts at the next absorbed week.',
-        sourceLabel: '+10% rule',
+        valueDisplay: longRunCapHasValue ? `${longRunCap.toFixed(1)} MI` : '—',
+        explanation: !longRunCapHasValue
+          ? 'No training long run logged in the last 28 days — the cap starts at the next absorbed week.'
+          : usePostRaceAnchor && preRaceTraining != null
+            ? `Post-race recovery — Coach holds the long run to ${longRunCap.toFixed(1)} mi next week, roughly 50% of your pre-race long (${preRaceTraining.toFixed(1)} mi)${recentRaceName ? `. Your ${recentRaceName} doesn't count toward training progression` : ''}; the ramp back takes 2-3 weeks.`
+            : `Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week. Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi; the +10% cap protects connective tissue from a single-session spike (races excluded).`,
+        sourceLabel: usePostRaceAnchor ? 'Post-race 50% restart' : '+10% rule',
         doctrineModule: 'training',
       },
       {
@@ -1907,8 +1924,20 @@ class CoachImpl implements Coach {
     const hrmax = 180;
     const z2Ceiling = hrmax * 0.80; // Z1/Z2 cap
 
-    const longestLast28 = state.volume.longestLast28Mi;
-    const newLongRunCap = Math.round(Math.max(longestLast28, activity.distanceMi) * 1.10 * 10) / 10;
+    // Use TRAINING-only longest as the cap anchor. The activity's
+    // distance only lifts the cap if it was a training run, not a race
+    // — a marathon shouldn't lift the next-week long-run cap.
+    // RunReadInput lacks workoutType so we use a name/distance heuristic.
+    const longestTraining = state.volume.longestTrainingRunLast28Mi;
+    const longestLast28 = longestTraining;
+    const looksLikeRaceName = /\b(marathon|half[\s-]?marathon|championship|grand\s*prix)\b/i.test(activity.name)
+      && !/\b(race\s*pace|race\s*practice|tempo|repeat|interval|long\s*run|easy|recovery)\b/i.test(activity.name);
+    const activityLooksLikeRace = looksLikeRaceName ||
+      (activity.distanceMi >= 22 && !activity.plannedType);
+    const liftBase = activityLooksLikeRace
+      ? longestTraining
+      : Math.max(longestTraining, activity.distanceMi);
+    const newLongRunCap = Math.round(liftBase * 1.10 * 10) / 10;
     const baseline = state.volume.weeklyAvg4w;
     const baselineBumpPct = overPct >= 0.20 ? 12 : overPct >= 0.10 ? 7 : 0;
 
@@ -2413,7 +2442,11 @@ class CoachImpl implements Coach {
       ? `${Math.round(sPerMiToGain)}s/mi short`
       : `${Math.round(-sPerMiToGain)}s/mi ahead`;
 
-    const longestMi = state.volume.longestLast28Mi;
+    // Use TRAINING longest, not race longest — a marathon in the last
+    // 28 days doesn't mean the runner's training long-run depth is at
+    // marathon distance. For race-specificity gap analysis, the relevant
+    // question is "what's the aerobic ceiling in absorbed training?"
+    const longestMi = state.volume.longestTrainingRunLast28Mi;
     const weeklyMi = state.volume.weeklyAvg4w;
     const nextMove = (() => {
       if (feasibility === 'ahead') {

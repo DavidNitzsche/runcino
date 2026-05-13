@@ -940,13 +940,25 @@ function buildShoeRows(shoes: Shoe[]): ProfileApiShoeRow[] {
 
 // ─────────────────────────────────────────────────────────────────────
 // Coach engine details — pace zones + long-run cap + easy share +
-// cutback cadence. Long-run cap reads coach-state.longestLast28Mi.
+// cutback cadence. Long-run cap reads longestTrainingRunLast28Mi
+// (training-only — a 26mi race × 1.10 = unsafe 29mi prescription).
+// In POST_RACE the cap anchors on preRaceLongestTrainingMi × 0.50
+// (50% restart, ramping back 2-3 weeks per Research/00b §Recovery
+// by Effort + marathon-specific recovery).
 // ─────────────────────────────────────────────────────────────────────
 
 function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEngineBlock {
-  const longestLast28 = state.volume.longestLast28Mi;
-  const hasLong = longestLast28 > 0;
-  const longRunCap = hasLong ? Math.round(longestLast28 * 1.10 * 10) / 10 : null;
+  const inPostRace = state.recoveryWindowEndsISO != null
+    && state.now <= state.recoveryWindowEndsISO;
+  const longestTraining = state.volume.longestTrainingRunLast28Mi;
+  const preRaceTraining = state.volume.preRaceLongestTrainingMi;
+  const usePostRaceAnchor = inPostRace && preRaceTraining != null;
+  const hasLong = usePostRaceAnchor || longestTraining > 0;
+  const longRunCap = !hasLong
+    ? null
+    : usePostRaceAnchor
+      ? Math.round((preRaceTraining as number) * 0.50 * 10) / 10
+      : Math.round(longestTraining * 1.10 * 10) / 10;
 
   const easyShareFrac = state.intensity.easyShare14d;
   const hasEasy = easyShareFrac > 0;
@@ -970,13 +982,17 @@ function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEn
       eyebrow: "NEXT WEEK'S LONG-RUN LIMIT",
       value: longRunCap != null ? longRunCap.toFixed(1) : 'NO DATA YET',
       unit: longRunCap != null ? 'MI' : null,
-      lead: longRunCap != null
-        ? `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week — keeps the jump safe.`
-        : 'Long-run cap needs a recent run history. Log a run to unlock the +10% bump.',
-      footEyebrow: longRunCap != null ? 'HOW' : '',
-      footBody: longRunCap != null
-        ? `Your longest run in the last 28 days was ${longestLast28.toFixed(1)} mi. Coach caps the next at +10% to prevent spikes.`
-        : '',
+      lead: longRunCap == null
+        ? 'Long-run cap needs a recent training run. Log one to unlock the +10% bump.'
+        : usePostRaceAnchor
+          ? `Post-race window — Coach holds next week's long to ${longRunCap.toFixed(1)} mi (~50% of pre-race long).`
+          : `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week — keeps the jump safe.`,
+      footEyebrow: longRunCap != null ? (usePostRaceAnchor ? 'WHY' : 'HOW') : '',
+      footBody: longRunCap == null
+        ? ''
+        : usePostRaceAnchor && preRaceTraining != null
+          ? `You just raced — race efforts don't count as training progression. Pre-race longest training run was ${preRaceTraining.toFixed(1)} mi; the long rebuilds at ~50% (${longRunCap.toFixed(1)} mi) and ramps back over 2-3 weeks.`
+          : `Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi. Coach caps the next at +10% — races are excluded from this baseline.`,
     },
     {
       eyebrow: 'EASY-PACE TARGET',
