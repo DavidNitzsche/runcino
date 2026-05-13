@@ -43,6 +43,7 @@ import {
   Skeleton,
 } from '@/app/components';
 import { AddGoalModal } from '@/app/components/AddGoalModal';
+import { EditProfileModal } from '@/app/components/EditProfileModal';
 import {
   loadProfileData,
   formatTopbarClock,
@@ -200,7 +201,7 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
   return (
     <>
       <Row>
-        <IdentityHeroCard data={data} />
+        <IdentityHeroCard data={data} onRefresh={onRefresh} />
         <LifetimePrsCard data={data} />
       </Row>
       <Row>
@@ -227,8 +228,10 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
 // ROW 1 · Identity hero (span 7)
 // ─────────────────────────────────────────────────────────────────────
 
-function IdentityHeroCard({ data }: { data: ProfileData }) {
+function IdentityHeroCard({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
+  const [editing, setEditing] = useState(false);
   const id = data.identity;
+  const hasProfile = id.fullName != null;
   const nameForDisplay = id.fullName ?? 'Anonymous runner';
   const nameParts = nameForDisplay.split(/\s+/);
   const initialsForDisplay = id.initials ?? '—';
@@ -242,9 +245,21 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
     >
       <CardHeader>
         <CardLabel>{id.idLabel}</CardLabel>
-        {id.yearsRunningPin && (
-          <CardPin variant="blue">{id.yearsRunningPin}</CardPin>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {id.yearsRunningPin && (
+            <CardPin variant="blue">{id.yearsRunningPin}</CardPin>
+          )}
+          {hasProfile && (
+            <button
+              type="button"
+              className="card-pin muted"
+              style={{ border: 0, cursor: 'pointer' }}
+              onClick={() => setEditing(true)}
+            >
+              EDIT →
+            </button>
+          )}
+        </div>
       </CardHeader>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 18 }}>
         <div
@@ -297,6 +312,28 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
           >
             {id.bioLine ?? 'NO DATA YET'}
           </div>
+          {!hasProfile && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              style={{
+                marginTop: 18,
+                padding: '12px 22px',
+                background: 'var(--corp)',
+                color: '#fff',
+                border: 0,
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontFamily: 'var(--f-data)',
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: '1.2px',
+                textTransform: 'uppercase',
+              }}
+            >
+              + ADD YOUR INFO
+            </button>
+          )}
         </div>
       </div>
 
@@ -351,6 +388,11 @@ function IdentityHeroCard({ data }: { data: ProfileData }) {
           </div>
         ))}
       </div>
+      <EditProfileModal
+        open={editing}
+        onClose={() => setEditing(false)}
+        onSaved={() => { setEditing(false); onRefresh(); }}
+      />
     </Card>
   );
 }

@@ -255,6 +255,31 @@ export async function gatherCoachState(): Promise<CoachState> {
   const deltaPct4v4 = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
   const longestLast28Mi = last28.length > 0 ? round1(Math.max(...last28.map(a => a.distanceMi))) : 0;
 
+  // Training-only longest — excludes races. Detection unions Strava
+  // workout_type/isProbablyRace name pattern with the user's `races`
+  // table. Safe baseline for the +10% single-session spike rule.
+  const savedRaceDates = new Set(savedRaces.map(r => r.meta.date));
+  const isRaceActivity = (a: NormalizedActivity): boolean =>
+    isProbablyRace(a) || savedRaceDates.has(a.date);
+  const last28Training = last28.filter(a => !isRaceActivity(a));
+  const longestTrainingRunLast28Mi = last28Training.length > 0
+    ? round1(Math.max(...last28Training.map(a => a.distanceMi)))
+    : 0;
+
+  // Pre-race longest training run: anchors post-race long-run ramp at
+  // ~50% of pre-race long. Research/00b §Recovery by Effort.
+  let preRaceLongestTrainingMi: number | null = null;
+  const mostRecentRace = recent[0];
+  if (mostRecentRace) {
+    const preRaceStart = isoDateOffset(new Date(mostRecentRace.date + 'T12:00:00Z'), -28);
+    const preRaceTraining = activities.filter(a =>
+      a.date >= preRaceStart && a.date < mostRecentRace.date && !isRaceActivity(a)
+    );
+    if (preRaceTraining.length > 0) {
+      preRaceLongestTrainingMi = round1(Math.max(...preRaceTraining.map(a => a.distanceMi)));
+    }
+  }
+
   // ── Intensity ─────────────────────────────────────────────
   const balance = effortBalance(activities, 14);
 
@@ -312,7 +337,8 @@ export async function gatherCoachState(): Promise<CoachState> {
     volume: {
       last7Mi, last28Mi, last7Days,
       weeklyAvg4w, weeklyAvg8w,
-      longestLast28Mi, deltaPct4v4,
+      longestLast28Mi, longestTrainingRunLast28Mi, preRaceLongestTrainingMi,
+      deltaPct4v4,
     },
     intensity: {
       easyMi14d: balance.easyMi,
