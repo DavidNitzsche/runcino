@@ -161,18 +161,25 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
   const aRaceDate = races.nextA?.meta.date ?? null;
   const daysTo = races.daysToNextA;
 
-  // Week tile.
+  // Week tile. Suppress delta during post-race recovery (within 14 days of
+  // a recent race) — the plan has big planned miles but the runner is intentionally
+  // running less; showing "-14 UNDER" is alarming and unhelpful.
   const week = data.coach.weekDeltas.answer;
-  const weekDeltaLabel =
-    week.netDeltaMi > 0.5
-      ? `+${week.netDeltaMi.toFixed(1)} OVER`
-      : week.netDeltaMi < -0.5
-      ? `${week.netDeltaMi.toFixed(1)} UNDER`
-      : 'ON PLAN';
+  const isRecentRaceWeek = recentRace && recentRace.daysAgo <= 14;
+  const weekDeltaLabel = isRecentRaceWeek
+    ? 'RECOVERY WEEK'
+    : week.netDeltaMi > 0.5
+    ? `+${week.netDeltaMi.toFixed(1)} OVER`
+    : week.netDeltaMi < -0.5
+    ? `${week.netDeltaMi.toFixed(1)} UNDER`
+    : 'ON PLAN';
 
-  // Today tile.
+  // Today tile — plan artifact is the source of truth for distance.
+  // Old engine (coach.workout.answer) gives 3.0mi for post-race recovery;
+  // the plan artifact gives the actual planned distance for this day.
   const today_ = data.coach.workout.answer;
-  const todayDist = today_.distanceMi.toFixed(1);
+  const planToday = data.planWeekWorkouts?.find((w) => w.dateISO === today) ?? null;
+  const todayDist = (planToday?.distanceMi ?? today_.distanceMi).toFixed(1);
   const todayPace =
     today_.paceTargetSPerMi != null
       ? `${labelOfWorkout(today_.label)} · ${fmtPaceRange(today_.paceTargetSPerMi)}`
