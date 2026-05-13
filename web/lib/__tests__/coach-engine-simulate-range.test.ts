@@ -85,7 +85,7 @@ function makePostRaceState(opts: { inWindow: boolean }): CoachState {
     // Marathon Apr 27 + 26 days = May 23.
     recoveryWindowEndsISO: '2026-05-23',
     prefs: {
-      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: null, isDefaults: true,
     },
   };
 }

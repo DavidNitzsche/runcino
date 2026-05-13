@@ -63,6 +63,7 @@ function makeBaseState(): CoachState {
       longRunDow: 6,    // Saturday
       qualityDows: [2, 4],
       restDow: 1,
+      level: null,
       isDefaults: true,
     },
   };

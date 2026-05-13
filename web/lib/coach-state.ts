@@ -164,6 +164,10 @@ export interface CoachState {
     /** null means "engine decides" — engine derives the rest day
      *  relative to the long run when this is null. */
     restDow: number | null;
+    /** Explicit level set by the user in their profile. null = auto-detect
+     *  from weeklyAvg4w at plan-authoring time. When set, overrides the
+     *  auto-detect and drives the plan-template lookup directly. */
+    level: 'beginner' | 'intermediate' | 'advanced' | null;
     /** True when no user_prefs row existed (or every parsed field fell
      *  back to a default). Lets the UI surface "Using defaults — set
      *  yours" without re-querying. */
@@ -498,6 +502,7 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
       longRunDow: DEFAULT_LONG_RUN_DOW,
       qualityDows: DEFAULT_QUALITY_DOWS.slice(),
       restDow: DEFAULT_REST_DOW,
+      level: null,
       isDefaults: true,
     };
   }
@@ -523,6 +528,7 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
   const longRunDow = longParsed ?? DEFAULT_LONG_RUN_DOW;
   const qualityDows = qualityParsed.length > 0 ? qualityParsed : DEFAULT_QUALITY_DOWS.slice();
   const restDow = restParsed ?? DEFAULT_REST_DOW;
+  const level = row.level ?? null;
 
   // isDefaults: every parsed field landed on its default. A row may
   // exist but be all-null — that still counts as defaults from the
@@ -530,9 +536,10 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
   const isDefaults =
     longParsed == null &&
     qualityParsed.length === 0 &&
-    restParsed == null;
+    restParsed == null &&
+    level == null;
 
-  return { longRunDow, qualityDows, restDow, isDefaults };
+  return { longRunDow, qualityDows, restDow, level, isDefaults };
 }
 
 function toNextRace(r: SavedRace): NextRace {

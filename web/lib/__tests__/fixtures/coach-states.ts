@@ -48,6 +48,7 @@ const DEFAULT_PREFS: CoachState['prefs'] = {
   longRunDow: 6,           // Saturday
   qualityDows: [2, 4],     // Tue / Thu
   restDow: 1,              // Monday
+  level: null,
   isDefaults: true,
 };
 

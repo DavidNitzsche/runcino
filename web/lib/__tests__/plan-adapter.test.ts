@@ -37,7 +37,7 @@ function makeState(overrides: Partial<CoachState> = {}): CoachState {
     flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false },
     checkin: null,
     recoveryWindowEndsISO: null,
-    prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true },
+    prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: null, isDefaults: true },
   };
   return { ...base, ...overrides };
 }

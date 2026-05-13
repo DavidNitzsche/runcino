@@ -37,7 +37,7 @@ function makeState(weeklyAvg4w: number, longestTrainingMi: number, todayISO: str
     flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false },
     checkin: null,
     recoveryWindowEndsISO: null,
-    prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true },
+    prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: null, isDefaults: true },
   };
 }
 

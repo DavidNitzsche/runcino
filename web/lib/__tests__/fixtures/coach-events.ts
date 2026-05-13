@@ -110,7 +110,7 @@ function buildMidBuildBaseInternal(): CoachState {
     checkin: null,
     recoveryWindowEndsISO: null,
     prefs: {
-      longRunDow: 6, qualityDows: [2, 4], restDow: 1, isDefaults: true,
+      longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: null, isDefaults: true,
     },
   };
 }

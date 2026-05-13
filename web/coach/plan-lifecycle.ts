@@ -36,21 +36,43 @@ export interface LifecycleResult {
 export function lifecycleCheck(plan: Plan | null, state: CoachState): LifecycleAction {
   if (!plan) return 'first-time';
   if (plan.goalISO < state.now) return 'transition';
-  // New A-race not yet represented in the plan
+
+  // New A-race not yet represented in the plan.
   const nextA = state.races.nextA;
   if (nextA && (plan.raceId == null || plan.goalISO !== nextA.date)) {
     return 'transition';
   }
-  // Rewrite when state has diverged dramatically. Heuristic: 4 weeks
-  // of completely-off-plan running without any mutations applied.
-  // Approximation: if weeklyAvg4w differs from authoredFromState by
-  // ≥40% in either direction AND no mutation has been recorded.
-  const authoredAvg = plan.authoredFromState.weeklyAvg4w;
-  if (authoredAvg > 0) {
-    const drift = Math.abs(state.volume.weeklyAvg4w - authoredAvg) / authoredAvg;
-    const anyMutations = plan.weeks.some(w => w.workouts.some(x => x.mutations.length > 0));
-    if (drift >= 0.40 && !anyMutations) return 'rewrite';
+
+  // Profile prefs changed since the plan was authored → rebuild so the
+  // new long-run day / quality days / level take effect immediately.
+  // Only compare level when the user explicitly set it — auto-detected
+  // level changes with volume drift, which the separate drift check handles.
+  const snap = plan.authoredFromState;
+  const p = state.prefs;
+  const explicitLevelChanged = p.level != null && snap.level !== p.level;
+  if (
+    snap.longRunDow !== p.longRunDow ||
+    snap.restDow !== (p.restDow ?? 1) ||
+    explicitLevelChanged ||
+    snap.qualityDows.join(',') !== p.qualityDows.join(',')
+  ) {
+    return 'transition';
   }
+
+  // Rewrite when volume has drifted significantly from what the plan
+  // was authored at — catches stale first-builds from empty Strava cache.
+  const authoredAvg = snap.weeklyAvg4w;
+  const anyMutations = plan.weeks.some(w => w.workouts.some(x => x.mutations.length > 0));
+  if (!anyMutations) {
+    if (authoredAvg > 0) {
+      const drift = Math.abs(state.volume.weeklyAvg4w - authoredAvg) / authoredAvg;
+      if (drift >= 0.40) return 'rewrite';
+    } else if (state.volume.weeklyAvg4w > 5) {
+      // Plan was authored with zero Strava data; now we have real volume.
+      return 'rewrite';
+    }
+  }
+
   return 'continue';
 }
 
@@ -74,7 +96,9 @@ export async function getCurrentPlan(userId = 'me'): Promise<LifecycleResult> {
 
   if (action !== 'continue') {
     const race = toBuildRace(state.races.nextA);
-    const level = autoDetectLevel(state.volume.weeklyAvg4w);
+    // Use the explicit level the user set in their profile. Only fall
+    // back to auto-detect when they haven't set one.
+    const level = state.prefs.level ?? autoDetectLevel(state.volume.weeklyAvg4w);
     const fresh = await buildPlan({
       state,
       prefs: {
