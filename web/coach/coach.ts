@@ -376,6 +376,16 @@ export interface Trajectory14wkInput extends CoachBaseContext {
   raceName?: string;
   /** Target race date ISO; defaults to state.races.nextA.dateISO. */
   raceDateISO?: string;
+  /** When provided, use the plan artifact's per-week volumes instead of
+   *  the formula-based ramp. Imported from plan-types to avoid a circular dep. */
+  planWeeks?: Array<{
+    weekStartISO: string;
+    phaseId: string;
+    isCutback: boolean;
+    isPeak: boolean;
+    isRaceWeek: boolean;
+    workouts: Array<{ distanceMi: number }>;
+  }>;
 }
 
 export interface ProofSessionsInput extends CoachBaseContext {
@@ -1291,8 +1301,6 @@ class CoachImpl implements Coach {
     const baseline = state.volume.weeklyAvg4w || 30;
     const level = state.prefs.level ?? autoDetectLevel(baseline);
     const raceDistMi = nextA?.distanceMi ?? 13.1;
-    // Use level-aware peak from plan-builder (Research/22 §Level bands).
-    // Don't set a hard ceiling here — the week-by-week ramp caps naturally.
     const peakMi = peakVolumeForLevel(raceDistMi, level);
 
     // PAST 4 weeks
@@ -1304,70 +1312,105 @@ class CoachImpl implements Coach {
       Math.round((last7Sum || baseline) * 10) / 10,
     ];
 
-    // PRESENT (week 0)
-    const today0 = coachDaily(state);
-    const presentMi = Math.round(today0.weekShape.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    // PRESENT (week 0) — use plan if available, else coachDaily
+    const planWeeks = input.planWeeks ?? [];
+    const todayISO = input.today;
+    const todayD = new Date(todayISO + 'T12:00:00Z');
+    const monOffset = todayD.getUTCDay() === 0 ? -6 : 1 - todayD.getUTCDay();
+    const thisMonDate = new Date(todayD);
+    thisMonDate.setUTCDate(thisMonDate.getUTCDate() + monOffset);
+    const thisMonISO = thisMonDate.toISOString().slice(0, 10);
 
-    // FUTURE 9 weeks — phase ramp keyed on days-to-race at each future week
+    const today0 = coachDaily(state);
+    const presentMi = (() => {
+      const pw = planWeeks.find((wk) => wk.weekStartISO === thisMonISO);
+      if (pw) return Math.round(pw.workouts.reduce((s, w) => s + w.distanceMi, 0) * 2) / 2;
+      return Math.round(today0.weekShape.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    })();
+
+    // FUTURE 9 weeks — use plan artifact when a matching week exists,
+    // otherwise fall back to the formula-based ramp.
     const futureMi: number[] = [];
     const phaseSeq: TrajectoryPoint['phase'][] = [];
     let runningMi = presentMi > 0 ? presentMi : baseline;
     for (let w = 1; w <= 9; w++) {
       const futureDays = daysToRace - w * 7;
-      let mi = runningMi;
-      let phase: TrajectoryPoint['phase'] = 'build';
-      if (futureDays <= 0) {
-        mi = peakMi * 0.50;
-        phase = 'taper';
-      } else if (futureDays <= 7) {
-        mi = peakMi * 0.55;
-        phase = 'taper';
-      } else if (futureDays <= 14) {
-        mi = peakMi * 0.70;
-        phase = 'taper';
-      } else if (futureDays <= 28) {
-        mi = peakMi;
-        phase = 'peak';
-      } else if (futureDays <= 56) {
-        // BUILD: +10%/wk with -20% every 3rd week
-        const isCutback = w % 3 === 0;
-        mi = Math.min(peakMi, runningMi * (isCutback ? 0.80 : 1.10));
-        phase = 'build';
+      const futureMonDate = new Date(thisMonDate);
+      futureMonDate.setUTCDate(futureMonDate.getUTCDate() + w * 7);
+      const futureMonISO = futureMonDate.toISOString().slice(0, 10);
+      const planWk = planWeeks.find((wk) => wk.weekStartISO === futureMonISO);
+
+      let mi: number;
+      let phase: TrajectoryPoint['phase'];
+
+      if (planWk) {
+        mi = Math.round(planWk.workouts.reduce((s, w) => s + w.distanceMi, 0) * 2) / 2;
+        phase = planWk.isRaceWeek ? 'taper'
+          : planWk.phaseId === 'TAPER' ? 'taper'
+          : planWk.phaseId === 'PEAK' ? 'peak'
+          : planWk.phaseId === 'BUILD' ? 'build'
+          : 'base';
       } else {
-        // BASE: +5%/wk gentle ramp
-        mi = Math.min(peakMi, runningMi * 1.05);
-        phase = 'base';
+        mi = runningMi;
+        phase = 'build';
+        if (futureDays <= 0) {
+          mi = peakMi * 0.50; phase = 'taper';
+        } else if (futureDays <= 7) {
+          mi = peakMi * 0.55; phase = 'taper';
+        } else if (futureDays <= 14) {
+          mi = peakMi * 0.70; phase = 'taper';
+        } else if (futureDays <= 28) {
+          mi = peakMi; phase = 'peak';
+        } else if (futureDays <= 56) {
+          const isCutback = w % 3 === 0;
+          mi = Math.min(peakMi, runningMi * (isCutback ? 0.80 : 1.10));
+          phase = 'build';
+        } else {
+          mi = Math.min(peakMi, runningMi * 1.05);
+          phase = 'base';
+        }
+        mi = Math.round(mi * 10) / 10;
       }
-      futureMi.push(Math.round(mi * 10) / 10);
+
+      futureMi.push(mi);
       phaseSeq.push(phase);
       runningMi = mi;
     }
 
     // Determine peak week — highest mi in the future series before taper.
     const peakIdx = futureMi.reduce((best, mi, i) => {
-      if (phaseSeq[i] === 'taper') return best;
+      if (phaseSeq[i] === 'taper' || phaseSeq[i] === 'past') return best;
       return mi > futureMi[best] ? i : best;
     }, 0);
 
     const plannedSeries = [...past4, presentMi, ...futureMi];
     const actualSeries: Array<number | null> = [
       past4[0], past4[1], past4[2], past4[3],
-      null, // present week
+      null,
       ...Array(9).fill(null),
     ];
 
+    // Map plan phaseId back to trajectory phase label for present week
+    const presentPhase = (() => {
+      const pw = planWeeks.find((wk) => wk.weekStartISO === thisMonISO);
+      if (pw) {
+        if (pw.isRaceWeek) return 'taper' as const;
+        if (pw.phaseId === 'TAPER') return 'taper' as const;
+        if (pw.phaseId === 'PEAK') return 'peak' as const;
+        if (pw.phaseId === 'BUILD') return 'build' as const;
+        return 'base' as const;
+      }
+      if (daysToRace <= 14) return 'taper' as const;
+      if (daysToRace <= 28) return 'peak' as const;
+      if (daysToRace <= 56) return 'build' as const;
+      return 'base' as const;
+    })();
+
     const points: TrajectoryPoint[] = plannedSeries.map((mi, i) => {
-      const weekOffset = i - 4; // 0 = this week
+      const weekOffset = i - 4;
       let phase: TrajectoryPoint['phase'];
       if (weekOffset < 0) phase = 'past';
-      else if (weekOffset === 0) {
-        // Compute current week's phase the same way the future weeks do.
-        if (daysToRace <= 7) phase = 'taper';
-        else if (daysToRace <= 14) phase = 'taper';
-        else if (daysToRace <= 28) phase = 'peak';
-        else if (daysToRace <= 56) phase = 'build';
-        else phase = 'base';
-      }
+      else if (weekOffset === 0) phase = presentPhase;
       else phase = phaseSeq[weekOffset - 1];
       const isPeak = weekOffset > 0 && weekOffset - 1 === peakIdx;
       const isRaceWeek = weekOffset > 0 && (daysToRace - weekOffset * 7) <= 0 && (daysToRace - (weekOffset - 1) * 7) > 0;
@@ -1382,10 +1425,13 @@ class CoachImpl implements Coach {
       };
     });
 
+    const actualPeakMi = Math.max(...futureMi);
     const totalBuildMi = Math.round(plannedSeries.slice(4).reduce((s, m) => s + m, 0) * 10) / 10;
-    const longRunMaxMi = Math.round(peakMi * 0.35 * 10) / 10; // ~35% of peak weekly is the long-run ceiling
+    const longRunMaxMi = Math.round(actualPeakMi * 0.35 * 10) / 10;
     const qualityDays = phaseSeq.filter((p) => p === 'build' || p === 'peak').length * 2;
-    const cutbacks = phaseSeq.filter((_, i) => (i + 1) % 3 === 0).length;
+    const cutbacks = planWeeks.length > 0
+      ? planWeeks.filter((wk) => wk.isCutback).length
+      : phaseSeq.filter((_, i) => (i + 1) % 3 === 0).length;
 
     return {
       answer: {
@@ -1396,15 +1442,15 @@ class CoachImpl implements Coach {
         points,
         summary: {
           totalBuildMi,
-          peakWeekMi: Math.max(...futureMi),
+          peakWeekMi: actualPeakMi,
           longRunMaxMi,
           qualityDays,
-          racePaceMi: Math.round(peakMi * 1.2),
+          racePaceMi: Math.round(actualPeakMi * 1.2),
           cutbacks,
         },
-        rationale: `${daysToRace} days · baseline ${baseline.toFixed(0)} mi/wk · peak ${Math.max(...futureMi).toFixed(0)} mi/wk · ${cutbacks} cutback${cutbacks === 1 ? '' : 's'}`,
+        rationale: `${daysToRace} days · baseline ${baseline.toFixed(0)} mi/wk · peak ${actualPeakMi.toFixed(0)} mi/wk · ${cutbacks} cutback${cutbacks === 1 ? '' : 's'}`,
       },
-      rationale: `14-week build to ${raceName} from ${baseline.toFixed(0)}-mi baseline, peaking at ${Math.max(...futureMi).toFixed(0)} mi/wk ~3 weeks out.`,
+      rationale: `14-week build to ${raceName} from ${baseline.toFixed(0)}-mi baseline, peaking at ${actualPeakMi.toFixed(0)} mi/wk ~3 weeks out.`,
       citations: [
         { doc: 'Research/22-plan-templates.md', section: '§Half Marathon Plans' },
         { doc: 'Research/00b-recovery-protocols.md', section: '§Cutback Weeks (Down Weeks, Recovery Weeks)' },

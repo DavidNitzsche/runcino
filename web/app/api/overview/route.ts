@@ -89,6 +89,9 @@ export async function GET(): Promise<Response> {
     const nextA = upcoming.find((r) => (r.meta.priority ?? 'A') === 'A') ?? null;
     const nextB = upcoming.find((r) => r.meta.priority === 'B') ?? null;
 
+    // Resolve plan first so trajectory14wk can consume actual plan volumes.
+    const planResult = await getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' }));
+
     const [
       workout,
       readiness,
@@ -96,15 +99,13 @@ export async function GET(): Promise<Response> {
       trajectory,
       weekDeltas,
       recentAdjustments,
-      planResult,
     ] = await Promise.all([
       coach.prescribeWorkout({ today, state }),
       coach.assessReadiness({ today, state }),
       coach.bodySystems({ today, state }),
-      coach.trajectory14wk({ today, state }),
+      coach.trajectory14wk({ today, state, planWeeks: planResult.plan?.weeks ?? [] }),
       coach.weekDeltas({ today, state }),
       coach.recentAdjustments({ today, state }),
-      getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
     ]);
 
     // Extract this week's plan workouts (Mon–Sun containing today).

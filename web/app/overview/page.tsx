@@ -892,6 +892,12 @@ function FinishProjTile({ label, value, emphasized }: { label: string; value: st
   );
 }
 
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  easy: 'Easy Run', long: 'Long Run', threshold: 'Threshold',
+  interval: 'Intervals', mp: 'Marathon Pace', recovery: 'Recovery',
+  shakeout: 'Shakeout', race: 'Race', rest: 'Rest',
+};
+
 function WeekStripCard({ data }: { data: OverviewData }) {
   const w = data.coach.weekDeltas.answer;
   const loggedRuns = countLoggedRuns(w.days);
@@ -1018,7 +1024,9 @@ function WeekStripCard({ data }: { data: OverviewData }) {
                 isQuality: planDay.isQuality,
                 isLong: planDay.isLong,
                 plannedMi: planDay.distanceMi > 0 ? planDay.distanceMi : d.plannedMi,
-                label: planDay.subLabel || d.label,
+                // Prefer plan's subLabel; derive a clean fallback from plan type
+                // rather than letting the old engine's label bleed through.
+                label: planDay.subLabel || PLAN_TYPE_LABELS[planDay.type] || d.label,
               }
             : d;
           return <DayCell key={d.dateISO} day={merged} todayISO={todayISO_} prescription={data.coach.workout.answer} />;
@@ -1121,11 +1129,15 @@ function DayCell({
   // when we have one (post-weekDeltas wiring, every day has it).
   // Today still prefers the prescription's display label so the chip
   // reads consistently with the big TodayCard above.
+  // Use merged plan label/type when available; prescription.type is the
+  // final fallback only when no plan data exists for today.
   const typeName = isRest
     ? 'Rest'
+    : day.label
+    ? day.label
     : isToday
     ? capitalize(prescription.type.replace(/_/g, ' '))
-    : day.label || (day.isLong ? 'Long easy' : day.isQuality ? 'Quality' : 'Easy');
+    : day.isLong ? 'Long easy' : day.isQuality ? 'Quality' : 'Easy';
 
   // Future days always show plannedMi (what they'll run). Past days show
   // actualMi when logged. TODAY is special — `actualMi` may be 0 (no run
