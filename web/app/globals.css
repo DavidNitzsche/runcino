@@ -6,26 +6,26 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 @theme inline {
-  /* ── Core neutrals ────────────────────────────────────────────────── */
-  --color-bg:        #0B0F17;   /* deepest background */
-  --color-surface:   #141923;   /* card surface */
-  --color-surface-2: #1C2230;   /* elevated surface / hover */
-  --color-surface-3: #212B3A;   /* input backgrounds, nested cells */
-  --color-ink:       #F5F4EE;   /* primary text */
-  --color-mute:      #8B909C;   /* secondary / muted text */
-  --color-line:      #262C39;   /* borders */
-  --color-line-2:    #313B4F;   /* heavier strokes */
+  /* ── Core neutrals — light theme ─────────────────────────────────── */
+  --color-bg:        #EEECEA;   /* warm sand page background */
+  --color-surface:   #FFFFFF;   /* card surface */
+  --color-surface-2: #F5F3F0;   /* elevated surface / hover */
+  --color-surface-3: rgba(13,15,18,.05); /* input backgrounds, nested cells */
+  --color-ink:       #0D0F12;   /* primary text */
+  --color-mute:      rgba(13,15,18,.40); /* secondary / muted text */
+  --color-line:      rgba(13,15,18,.10); /* borders */
+  --color-line-2:    rgba(13,15,18,.16); /* heavier strokes */
 
   /* ── Semantic accents — each has one job ──────────────────────────── */
-  --color-race:      #FF5722;   /* brand, CTA, primary action, today */
-  --color-active:    #4F8FF7;   /* links, info, secondary action */
-  --color-recovery:  #14C08C;   /* success, on-plan, recovery */
+  --color-race:      #E85D26;   /* brand, CTA, primary action, today */
+  --color-active:    #2563EB;   /* links, info, secondary action */
+  --color-recovery:  #2CA82F;   /* success, on-plan, recovery */
   --color-warn:      #F43F5E;   /* alerts, errors, risk */
-  --color-milestone: #F5C518;   /* PRs, achievements */
+  --color-milestone: #D4900A;   /* PRs, achievements */
 
   /* ── Race gradient ────────────────────────────────────────────────── */
-  --color-race-light: #FF8A3D;
-  --color-race-deep:  #E03E00;
+  --color-race-light: #F07340;
+  --color-race-deep:  #C44A18;
 
   /* ── Course phase palette — elevation/legend only ─────────────────── */
   --color-phase-0: #4ade80;
@@ -43,9 +43,9 @@
   --color-l5: var(--color-line-2);
 
   --color-t0: var(--color-ink);
-  --color-t1: rgba(245, 244, 238, 0.75);
-  --color-t2: var(--color-mute);
-  --color-t3: rgba(139, 144, 156, 0.6);
+  --color-t1: rgba(13,15,18,.60);
+  --color-t2: rgba(13,15,18,.40);
+  --color-t3: rgba(13,15,18,.25);
 
   --color-attention: var(--color-race);
   --color-corporate: var(--color-active);
@@ -55,37 +55,38 @@
 
   /* ── Typography ───────────────────────────────────────────────────── */
   --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Bebas Neue', 'Inter', sans-serif;
   --font-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-data:    'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  --font-data:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* ── CSS custom properties for inline-style use ─────────────────────────── */
 :root {
-  --bg:        #0B0F17;
-  --surface:   #141923;
-  --surface-2: #1C2230;
-  --surface-3: #212B3A;
-  --ink:       #F5F4EE;
-  --mute:      #8B909C;
-  --line:      #262C39;
-  --line-2:    #313B4F;
+  /* ── Light theme neutrals ─────────────────────────────────────────── */
+  --bg:        #EEECEA;
+  --surface:   #FFFFFF;
+  --surface-2: #F5F3F0;
+  --surface-3: rgba(13,15,18,.05);
+  --ink:       #0D0F12;
+  --mute:      rgba(13,15,18,.40);
+  --line:      rgba(13,15,18,.10);
+  --line-2:    rgba(13,15,18,.16);
 
-  --race:      #FF5722;
-  --active:    #4F8FF7;
-  --recovery:  #14C08C;
+  --race:      #E85D26;
+  --active:    #2563EB;
+  --recovery:  #2CA82F;
   --warn:      #F43F5E;
-  --milestone: #F5C518;
+  --milestone: #D4900A;
 
-  --race-wash:      rgba(255, 87, 34, .12);
-  --active-wash:    rgba(79, 143, 247, .12);
-  --recovery-wash:  rgba(20, 192, 140, .12);
-  --warn-wash:      rgba(244, 63, 94, .12);
-  --milestone-wash: rgba(245, 197, 24, .12);
+  --race-wash:      rgba(232,93,38,.10);
+  --active-wash:    rgba(37,99,235,.10);
+  --recovery-wash:  rgba(44,168,47,.10);
+  --warn-wash:      rgba(244,63,94,.10);
+  --milestone-wash: rgba(212,144,10,.10);
 
-  --race-grad-light: #FF8A3D;
-  --race-grad:       #FF5722;
-  --race-grad-deep:  #E03E00;
+  --race-grad-light: #F07340;
+  --race-grad:       #E85D26;
+  --race-grad-deep:  #C44A18;
 
   /* Phase palette */
   --phase-0: #4ade80;
@@ -102,43 +103,40 @@
   --color-l4: var(--line);
   --color-l5: var(--line-2);
   --color-t0: var(--ink);
-  --color-t1: rgba(245, 244, 238, 0.75);
-  --color-t2: var(--mute);
-  --color-t3: rgba(139, 144, 156, 0.6);
+  --color-t1: rgba(13,15,18,.60);
+  --color-t2: rgba(13,15,18,.40);
+  --color-t3: rgba(13,15,18,.25);
   --color-attention: var(--race);
   --color-corporate: var(--active);
   --color-warning:   var(--warn);
   --color-success:   var(--recovery);
   --color-xp:        var(--race);
-  --color-text-dark: #080808;
+  --color-text-dark: #0D0F12;
 
   --gradient-hero: linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 55%, var(--race-grad-deep) 100%);
 
-  /* ── May 2026 mockup short-form tokens ──────────────────────────────
-     These mirror the locked May 9 designs which use shorter, more
-     consistent variable names. Both the legacy long-form (--color-*)
-     and these short forms point at the same hex values; new
-     component code should prefer the short forms below. */
-  --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F; --l5:#34405266;
-  --t0:#F4F6F8;
-  --t1:rgba(244,246,248,.78);
-  --t2:rgba(244,246,248,.52);
-  --t3:rgba(244,246,248,.32);
-  --t4:rgba(244,246,248,.18);
-  --corp:#008FEC;
-  --good:#3EBD41;
-  --att:#F3AD38;
-  --coach:#27B4E0;
-  --milestone:#F0DF47;
-  --aqua:#27E087;
+  /* ── Short-form tokens — light theme ─────────────────────────────── */
+  --l0:#EEECEA; --l1:#FFFFFF; --l2:#F5F3F0; --l3:rgba(13,15,18,.05); --l4:rgba(13,15,18,.10); --l5:rgba(13,15,18,.16);
+  --t0:#0D0F12;
+  --t1:rgba(13,15,18,.60);
+  --t2:rgba(13,15,18,.40);
+  --t3:rgba(13,15,18,.25);
+  --t4:rgba(13,15,18,.14);
+  --corp:#2563EB;
+  --good:#2CA82F;
+  --att:#D4900A;
+  --coach:#0891B2;
+  --milestone:#D4900A;
+  --aqua:#0D9488;
   --pink:#CD317C;
-  --xp:#9013FE;
-  /* --warn, --race already declared above; keep canonical values aligned
-     to the May 9 palette */
+  --xp:#7C3AED;
 
-  --f-display:'Oswald', 'Inter', sans-serif;
-  --f-body:'Jost', 'Inter', sans-serif;
-  --f-data:'JetBrains Mono', 'SF Mono', monospace;
+  /* Card shadow (replaces dark borders) */
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+
+  --f-display:'Bebas Neue', 'Inter', sans-serif;
+  --f-body:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --f-data:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -155,54 +153,63 @@
 .mono-sm   { font-family:var(--f-data);    font-size:10px;  font-weight:700; letter-spacing:.6px; }
 
 /* ── STAGE (top-level page container) ─────────────────────────────────── */
-.rc-stage { width:100%; padding:24px 26px 60px; }
+.rc-stage { width:100%; padding:24px 26px 60px; background:var(--bg); min-height:100vh; }
 
 /* ── TOP BAR ──────────────────────────────────────────────────────────── */
 .topbar {
-  display:flex; align-items:center; gap:18px;
-  padding:13px 18px;
-  background:var(--l1);
-  border:1px solid var(--l4);
-  border-radius:10px;
-  margin-bottom:14px;
+  display:flex; align-items:center; gap:36px;
+  padding:0 40px;
+  height:56px;
+  background:var(--bg);
+  border:none;
+  border-radius:0;
+  margin-bottom:0;
+  position:sticky;
+  top:0;
+  z-index:100;
 }
 .topbar .brand {
-  width:34px; height:34px;
-  border-radius:9px;
-  background:linear-gradient(135deg, var(--xp), var(--corp));
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--f-display); font-weight:700; font-size:18px;
-  color:#fff;
+  font-family:'Bebas Neue', sans-serif;
+  font-size:22px;
+  letter-spacing:3px;
+  color:var(--t0);
+  line-height:1;
+  background:none;
+  border-radius:0;
+  width:auto; height:auto;
+  text-decoration:none;
 }
 .topbar-tabs {
-  display:flex; gap:2px; align-items:center;
-  padding:3px;
-  border-radius:100px;
-  background:var(--l0);
-  border:1px solid var(--l4);
+  display:flex; gap:36px; align-items:center;
+  padding:0;
+  border-radius:0;
+  background:transparent;
+  border:none;
 }
 .topbar-tab {
-  padding:7px 14px;
-  border-radius:100px;
-  font-family:var(--f-body);
+  padding:0;
+  border-radius:0;
+  font-family:'Inter', sans-serif;
   font-size:12px;
-  font-weight:600;
+  font-weight:400;
   color:var(--t2);
-  letter-spacing:-.005em;
+  letter-spacing:2px;
+  text-transform:uppercase;
   cursor:pointer;
   background:transparent;
   border:none;
   text-decoration:none;
+  transition:color .12s;
 }
-.topbar-tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
-.topbar-tab:hover:not(.active) { color:var(--t0); }
+.topbar-tab.active { color:var(--t0); font-weight:500; }
+.topbar-tab:hover:not(.active) { color:var(--t1); }
 .clock {
   margin-left:auto;
-  font-family:var(--f-data);
+  font-family:'Inter', sans-serif;
   font-size:12px;
   letter-spacing:1.4px;
-  color:var(--t1);
-  font-weight:700;
+  color:var(--t2);
+  font-weight:400;
 }
 .clock b { color:var(--att); }
 .led { width:7px; height:7px; border-radius:50%; }
@@ -237,7 +244,7 @@
 .greet-id {
   display:flex; flex-direction:column; justify-content:center;
   padding:10px 22px 10px 0;
-  border-right:1px solid var(--l4);
+  border-right:1px solid rgba(13,15,18,.10);
   min-width:fit-content;
 }
 .greet-id .hi {
@@ -345,10 +352,11 @@
 
 /* ── CARD primitive ──────────────────────────────────────────────────── */
 .card {
-  background:var(--l1);
-  border:1px solid var(--l4);
-  border-radius:14px;
-  padding:18px 20px;
+  background:#FFFFFF;
+  border:none;
+  box-shadow:var(--card-shadow);
+  border-radius:20px;
+  padding:24px;
   display:flex; flex-direction:column;
   gap:10px;
   position:relative;
@@ -400,10 +408,10 @@
   font-size:10px;
   letter-spacing:1.2px;
   color:var(--t3);
-  font-weight:700;
+  font-weight:500;
   text-transform:uppercase;
   padding-top:8px;
-  border-top:1px solid var(--l4);
+  border-top:1px solid rgba(13,15,18,.08);
   margin-top:auto;
   display:flex; justify-content:space-between;
 }
@@ -425,14 +433,15 @@
   position:fixed; inset:0; z-index:2000;
   display:flex; align-items:center; justify-content:center;
   padding:24px;
-  background:rgba(16,19,26,.85);
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
+  background:rgba(13,15,18,.48);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
 }
 .modal {
-  background:var(--l1);
-  border:1px solid var(--l4);
-  border-radius:14px;
+  background:#FFFFFF;
+  border:none;
+  box-shadow:0 24px 80px rgba(0,0,0,.18);
+  border-radius:24px;
   width:100%;
   max-width:560px;
   max-height:90vh;
@@ -517,9 +526,9 @@
   line-height:1;
 }
 .btn-flat:hover { filter:brightness(1.1); }
-.btn-primary   { background:var(--corp);  color:var(--t0); border-color:var(--corp); }
-.btn-secondary { background:transparent;  color:var(--t1); border-color:var(--l4); }
-.btn-secondary:hover { border-color:var(--l5); background:var(--l2); }
+.btn-primary   { background:var(--t0);   color:#fff;      border-color:var(--t0); }
+.btn-secondary { background:transparent; color:var(--t1); border-color:rgba(13,15,18,.20); }
+.btn-secondary:hover { border-color:rgba(13,15,18,.35); background:rgba(13,15,18,.04); }
 .btn-danger    { background:var(--warn);  color:#fff; }
 .btn-danger:hover { filter:brightness(1.08); }
 .btn-coach     { background:var(--coach); color:var(--l0); }
