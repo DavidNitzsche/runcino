@@ -36,7 +36,6 @@ import {
 import { useActivities } from '@/lib/strava-activities';
 import { loadOverviewData, type OverviewData } from './data';
 import { CoachNarrativeLine } from './CoachNarrativeLine';
-import { CoachWatchingStrip } from './CoachWatchingStrip';
 import { PathToRaceCard } from './PathToRaceCard';
 import { NextPushCard } from './NextPushCard';
 import { WorkoutDetailPopup, type WorkoutPopupData } from './WorkoutDetailPopup';
@@ -89,15 +88,10 @@ export default function OverviewPage() {
           the layout stable. */}
       <OverviewGreet data={data} />
 
-      {/* Wave G · "Coach is watching" strip + quick check-in card in one grid row. */}
-      {data && (
-        <Row style={{ marginBottom: 16 }}>
-          <div className="span-8" style={{ minWidth: 0, alignSelf: 'start' }}>
-            <CoachWatchingStrip chips={data.aliveCoach.watching} />
-          </div>
-          <CheckinReadinessCard data={data} />
-        </Row>
-      )}
+      {/* Wave G · Coach Pulse — full-width unified card. Left: coaching statement
+          + live telemetry numbers + watching chips. Right: quick check-in.
+          Span-12 permanently eliminates the CoachWatchingStrip height-mismatch gap. */}
+      {data && <CoachPulseCard data={data} />}
 
       {loadError && (
         <Row>
@@ -1729,6 +1723,288 @@ function DotRow({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Coach Pulse Card — Option B Full-Width (Wave G)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * CoachPulseCard · span-12 unified card replacing the old CoachWatchingStrip
+ * (span-8) + CheckinReadinessCard (span-4) pair.
+ *
+ * Left 8-col: pulse dot + "COACH WATCHING" header + coaching statement
+ * (readiness message primary, narrative fallback) + 4 live telemetry cells
+ * (ACWR / Readiness / Race days / Easy%) + watching chips row.
+ *
+ * Right 4-col: exact same check-in quick-log wired to the same state logic.
+ *
+ * Height is always determined by the taller side, so the grid row is
+ * always clean — no empty-space gap.
+ */
+function CoachPulseCard({ data }: { data: OverviewData }) {
+  const r = data.coach.readiness.answer;
+  const c = data.checkinReadiness;
+  const chips = data.aliveCoach.watching;
+
+  // Coaching statement: readiness message is the most contextual single
+  // sentence from the coach. Narrative text surfaces priority signals (e.g.
+  // "race week" or "ACWR caution"); when both exist, combine them.
+  const narrativeText = data.narrative?.sentence ?? null;
+  const coachStatement = narrativeText
+    ? narrativeText
+    : r.message;
+
+  // Telemetry cells.
+  const acwr = r.acwr != null ? r.acwr.toFixed(2) : data.load?.value ?? '—';
+  const acwrNoData = acwr === '—';
+  const acwrColor = acwrNoData ? 'var(--t3)' : r.level === 'green' ? 'var(--good)' : r.level === 'yellow' ? 'var(--att)' : 'var(--warn)';
+  const readinessScore = r.level === 'green' ? 88 : r.level === 'yellow' ? 62 : 40;
+  const readinessColor = r.level === 'green' ? 'var(--good)' : r.level === 'yellow' ? 'var(--att)' : 'var(--warn)';
+  const raceDays = data.races.daysToNextA;
+  const easyPct = r.easyShare != null ? `${Math.round(r.easyShare * 100)}%` : '—';
+  const easyColor = r.easyShare == null ? 'var(--t3)' : r.easyShare >= 0.8 ? 'var(--good)' : 'var(--att)';
+  // Date label for the header — from data.today so it matches the rest of the page.
+  const todayLabel = formatFullDateLabel(data.today).toUpperCase();
+
+  // Alert state when ACWR is in caution or check-in is stale.
+  const acwrAlert = r.level !== 'green';
+  const checkinStaleDays = c ? (7 - c.rowsCount) : null;
+  const checkinStale = checkinStaleDays != null && checkinStaleDays >= 3;
+  const isAlert = acwrAlert || checkinStale;
+
+  // Check-in state (same logic as CheckinReadinessCard below).
+  const [energy, setEnergy] = useState<number | null>(null);
+  const [soreness, setSoreness] = useState<number | null>(null);
+  const [stress, setStress] = useState<number | null>(null);
+  const [savedToday, setSavedToday] = useState<{ energy: number; soreness: number; stress: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(c?.loggedToday ?? false);
+
+  useEffect(() => {
+    fetch('/api/health/checkin')
+      .then(r => r.json())
+      .then((d: { ok: boolean; checkin?: { energy: number; soreness: number; stress: number } | null }) => {
+        if (d.ok && d.checkin) { setSavedToday(d.checkin); setSaved(true); }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (energy == null || soreness == null || stress == null) return;
+    if (saving) return;
+    setSaving(true);
+    const toTen = (v: number) => Math.min(10, v * 2 - 1);
+    fetch('/api/health/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ energy: toTen(energy), soreness: toTen(soreness), stress: toTen(stress) }),
+    })
+      .then(r => r.json())
+      .then((d: { ok: boolean; checkin?: { energy: number; soreness: number; stress: number } }) => {
+        if (d.ok && d.checkin) { setSavedToday(d.checkin); setSaved(true); }
+        setSaving(false);
+      })
+      .catch(() => setSaving(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [energy, soreness, stress]);
+
+  const fromTen = (v: number) => Math.round((v - 1) / 2 + 1);
+
+  return (
+    <Row style={{ marginBottom: 16 }}>
+      <Card span={12} padding="0" style={{ overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', minHeight: 0 }}>
+
+          {/* ── LEFT · Coach statement + telemetry + chips ── */}
+          <div style={{ padding: '18px 22px', borderRight: '1px solid var(--l4)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-block',
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: isAlert ? 'var(--att)' : '#3EBD41',
+                  boxShadow: isAlert ? '0 0 0 0 rgba(243,173,56,.5)' : '0 0 0 0 rgba(62,189,65,.5)',
+                  animation: 'pulse-dot 2s infinite ease-out',
+                }}
+                aria-hidden
+              />
+              <span style={{
+                fontFamily: 'var(--f-data)',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '1.6px',
+                color: 'var(--t2)',
+                textTransform: 'uppercase',
+              }}>
+                Coach Watching
+              </span>
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, color: 'var(--t3)', fontWeight: 600 }}>
+                · {todayLabel}
+              </span>
+              {isAlert && (
+                <span style={{
+                  marginLeft: 'auto',
+                  fontFamily: 'var(--f-data)',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: '1.4px',
+                  color: 'var(--att)',
+                  background: 'rgba(243,173,56,.12)',
+                  border: '1px solid rgba(243,173,56,.28)',
+                  borderRadius: 5,
+                  padding: '3px 8px',
+                  textTransform: 'uppercase',
+                }}>
+                  ▲ SIGNAL GAP
+                </span>
+              )}
+            </div>
+
+            {/* Coaching statement */}
+            <div style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 20,
+              fontWeight: 700,
+              lineHeight: 1.25,
+              color: 'var(--t0)',
+              maxWidth: 640,
+            }}>
+              {coachStatement}
+            </div>
+
+            {/* 4 telemetry cells */}
+            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end', paddingTop: 2 }}>
+              <CoachTelCell label="ACWR" value={acwr} color={acwrColor} sub="LOAD RATIO" />
+              <CoachTelCell label="READINESS" value={String(readinessScore)} color={readinessColor} sub="/ 100" />
+              <CoachTelCell label="RACE" value={raceDays != null ? `${raceDays}D` : '—'} color="var(--race)" sub={data.races.nextA?.meta.name?.slice(0, 16).toUpperCase() ?? 'NO RACE SET'} />
+              <CoachTelCell label="EASY %" value={easyPct} color={easyColor} sub="14D SHARE" />
+            </div>
+
+            {/* Watching chips */}
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 2 }}>
+              {chips.map((chip) => {
+                const variantMap: Record<string, { bg: string; border: string; color: string; accent: string }> = {
+                  green:  { bg: 'rgba(62,189,65,.10)',    border: 'rgba(62,189,65,.32)',    color: '#7CD97F',        accent: '#3EBD41' },
+                  amber:  { bg: 'rgba(243,173,56,.10)',   border: 'rgba(243,173,56,.32)',   color: '#F3AD38',        accent: '#F3AD38' },
+                  warn:   { bg: 'rgba(252,77,100,.10)',   border: 'rgba(252,77,100,.32)',   color: '#FC4D64',        accent: '#FC4D64' },
+                  muted:  { bg: 'rgba(244,246,248,.04)',  border: 'rgba(244,246,248,.10)',  color: 'var(--t2)',      accent: 'var(--t2)' },
+                };
+                const vs = variantMap[chip.variant] ?? variantMap.muted;
+                return (
+                  <div key={chip.id} style={{
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                    padding: '7px 11px',
+                    minWidth: 86,
+                    background: vs.bg,
+                    border: `1px solid ${vs.border}`,
+                    borderRadius: 9,
+                    flexShrink: 0,
+                  }}>
+                    <span style={{ position: 'absolute', left: 0, top: 5, bottom: 5, width: chip.isFresh ? 3 : 2, background: vs.accent, borderRadius: 2, opacity: chip.isFresh ? 1 : 0.6 }} aria-hidden />
+                    <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1.5px', color: 'var(--t2)', textTransform: 'uppercase' }}>{chip.label}</span>
+                    <span style={{ fontFamily: 'var(--f-data)', fontSize: 11.5, fontWeight: 700, color: vs.color, letterSpacing: '0.5px' }}>{chip.value}</span>
+                    {chip.hint && <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, fontWeight: 500, color: 'var(--t3)', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.7 }}>{chip.hint}</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Alert strip — only when there's a signal gap */}
+            {isAlert && (
+              <div style={{
+                marginTop: 'auto',
+                padding: '7px 12px',
+                background: 'rgba(243,173,56,.07)',
+                border: '1px solid rgba(243,173,56,.22)',
+                borderRadius: 8,
+                fontFamily: 'var(--f-data)',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '1.2px',
+                color: 'var(--att)',
+                textTransform: 'uppercase',
+              }}>
+                {checkinStale
+                  ? `▲ CHECK-IN ${checkinStaleDays}D STALE — LOG BEFORE YOUR LONG RUN`
+                  : '▲ LOAD IN CAUTION ZONE — ACWR ABOVE 1.20'}
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT · Check-in quick-log ── */}
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--att)', textTransform: 'uppercase' }}>
+                Check-In
+              </span>
+              <span style={{
+                fontFamily: 'var(--f-data)', fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+                padding: '2px 7px', borderRadius: 4,
+                background: saved ? 'rgba(62,189,65,.14)' : 'rgba(244,246,248,.07)',
+                color: saved ? 'var(--good)' : 'var(--t3)',
+              }}>
+                {saving ? 'SAVING…' : saved ? 'LOGGED ✓' : c ? `${c.rowsCount}/7 DAYS` : 'LOG TODAY'}
+              </span>
+            </div>
+            {c && (
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: 'var(--t0)' }}>
+                {c.headline}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <DotRow label="ENERGY"   metric="energy"   value={energy}   saved={savedToday ? fromTen(savedToday.energy)   : null} onChange={setEnergy}   />
+              <DotRow label="SORENESS" metric="soreness" value={soreness} saved={savedToday ? fromTen(savedToday.soreness) : null} onChange={setSoreness} />
+              <DotRow label="STRESS"   metric="stress"   value={stress}   saved={savedToday ? fromTen(savedToday.stress)   : null} onChange={setStress}   />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid var(--l4)' }}>
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, color: 'var(--t3)', fontWeight: 600 }}>
+                {energy == null && soreness == null && stress == null ? 'TAP TO LOG' : energy != null && soreness != null && stress != null ? 'ALL SET' : 'KEEP GOING…'}
+              </span>
+              <a href="/health" style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, color: 'var(--coach)', fontWeight: 700, textDecoration: 'none' }}>
+                SEE HEALTH →
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Pulse dot keyframe — scoped here so no globals.css edit needed. */}
+        <style>{`
+          @keyframes pulse-dot {
+            0%   { box-shadow: 0 0 0 0 rgba(62,189,65,.55); }
+            70%  { box-shadow: 0 0 0 8px rgba(62,189,65,0); }
+            100% { box-shadow: 0 0 0 0 rgba(62,189,65,0); }
+          }
+        `}</style>
+      </Card>
+    </Row>
+  );
+}
+
+/** Single telemetry cell — big value, coloured, with label above and sub below. */
+function CoachTelCell({ label, value, color, sub }: { label: string; value: string; color: string; sub: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 60 }}>
+      <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 700, letterSpacing: '1.5px', color: 'var(--t3)', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+      <span style={{ fontFamily: 'var(--f-display)', fontSize: 32, fontWeight: 700, lineHeight: 1, color, fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </span>
+      <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, fontWeight: 600, letterSpacing: '1.2px', color: 'var(--t3)', textTransform: 'uppercase' }}>
+        {sub}
+      </span>
     </div>
   );
 }
