@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 16;
+export const BUILDER_VERSION = 17;
 
 export interface BuildPlanRace {
   id: string;
@@ -576,10 +576,9 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     }
 
     // ── Strength training annotations ────────────────────────────
-    // After all workouts are materialized, identify easy days that are
-    // safe for strength work (not adjacent to quality/long sessions)
-    // and append the recommendation. Rule: never the day before or after
-    // a quality session or long run. Max per STRENGTH_SCHEDULE doctrine.
+    // Adaptive placement: score each easy day by its circular distance from
+    // quality sessions and the long run. Pick the best N slots per phase.
+    // Research/07 §12.3, §13, §21 Rule 7 — "pair hard with hard."
     const ss = STRENGTH_SCHEDULE.value;
     const maxStr: number =
       phaseSlice.label === 'RACE_WEEK' ? ss.sessionsPerWeek.RACE_WEEK :
@@ -602,41 +601,14 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         ? '6/10 effort — strong but controlled.'
         : '7/10 effort — work hard, leave something in the tank.';
 
-    // Day-specific strength slots: Mon(1) = lower + core, Fri(5) = upper + core.
-    // These slots are FIXED per STRENGTH_SCHEDULE doctrine — no adjacency
-    // protection. Mon and Fri are specifically chosen to be safe: strength is
-    // after the run, 30 min, and doesn't compromise Tuesday quality or the
-    // weekend long run. The only reason to skip is if the day itself is a
-    // quality/long/race/rest day (wo.type === 'easy' check covers this).
-    const strSlots: Array<{ dow: number; focus: string; note: string }> = [
-      {
-        dow: 1,
-        focus: 'Lower + Core',
-        note: `Lower body + core — squats, deadlifts, single-leg work, planks. ${effortCue} Run first, always.`,
-      },
-      {
-        dow: 5,
-        focus: 'Upper + Core',
-        note: `Upper body + core — rows, presses, pull-ups, carries. ${effortCue} Keep it controlled — tomorrow is a rest day.`,
-      },
-    ];
-
-    const slottedDates = new Set<string>();
-    let strCount = 0;
+    const strSlots = selectStrengthSlots(workouts, maxStr);
     for (const slot of strSlots) {
-      if (strCount >= maxStr) break;
-      const target = workouts.find(
-        (wo) =>
-          new Date(wo.dateISO + 'T12:00:00Z').getUTCDay() === slot.dow &&
-          wo.type === 'easy' &&
-          !slottedDates.has(wo.dateISO) &&
-          wo.distanceMi > 0,
-      );
-      if (!target) continue;
-      target.notes += `\n\nStrength: ${slot.focus} — ${strDurMin} min Amp Fitness session after your run. ${slot.note}`;
-      target.hasStrength = true;
-      slottedDates.add(target.dateISO);
-      strCount++;
+      const focusLabel = slot.focus === 'lower' ? 'Lower + Core' : 'Upper + Core';
+      const focusNote  = slot.focus === 'lower'
+        ? `Lower body + core — squats, deadlifts, single-leg work, planks. ${effortCue} Run first, always.`
+        : `Upper body + core — rows, presses, pull-ups, carries. ${effortCue} Keep it controlled.`;
+      slot.workout.notes += `\n\nStrength: ${focusLabel} — ${strDurMin} min Amp Fitness session after your run. ${focusNote}`;
+      slot.workout.hasStrength = true;
     }
 
     weeks.push({
@@ -792,6 +764,70 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
 
     default: return '';
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Adaptive strength slot selection
+// Research/07 §12.3, §13, §21 Rule 7:
+//   "Pair hard with hard." Heavy strength on days with 48h+ clearance
+//   from both the preceding hard session and the next hard session.
+//   Lower body needs 48h before the next hard run (§13: Heavy lower-body
+//   → hard run → 24–48 h). Upper body needs only 4–12 h (§13: Heavy
+//   upper-body → hard run → 4–12 h), so it can sit 24h before quality.
+// ─────────────────────────────────────────────────────────────────
+
+interface StrengthSlot { workout: PlanWorkout; focus: 'lower' | 'upper' }
+
+/** Score an easy day for strength placement. Higher = better.
+ *  Returns days-after-hard and days-before-hard for focus assignment. */
+function strengthDayScore(
+  dow: number,
+  hardDows: Set<number>,
+): { score: number; daysAfterHard: number; daysBeforeHard: number } {
+  if (hardDows.size === 0) {
+    return { score: 50, daysAfterHard: 7, daysBeforeHard: 7 };
+  }
+  let daysAfterHard  = 7; // min circular days elapsed since last hard session
+  let daysBeforeHard = 7; // min circular days until next hard session
+  for (const hd of hardDows) {
+    const after  = (dow - hd + 7) % 7; // days since hd; 0 = same day (excluded)
+    const before = (hd - dow + 7) % 7;
+    if (after  > 0) daysAfterHard  = Math.min(daysAfterHard,  after);
+    if (before > 0) daysBeforeHard = Math.min(daysBeforeHard, before);
+  }
+  // Scoring (Research/07 §13):
+  //   48h+ after last hard  → heavy lifting cleared → +40
+  //   24h after last hard   → maintenance only       → +10
+  //   48h+ before next hard → lower body safe        → +40
+  //   24h before next hard  → upper body OK          → +20
+  const scoreAfter  = daysAfterHard  >= 2 ? 40 : daysAfterHard  === 1 ? 10 : 0;
+  const scoreBefore = daysBeforeHard >= 2 ? 40 : daysBeforeHard === 1 ? 20 : 0;
+  return { score: scoreAfter + scoreBefore, daysAfterHard, daysBeforeHard };
+}
+
+/** Pick up to maxSlots easy days per week, ranked by placement quality.
+ *  Focus: lower body when 48h+ before next hard run, upper body otherwise. */
+function selectStrengthSlots(workouts: PlanWorkout[], maxSlots: number): StrengthSlot[] {
+  if (maxSlots === 0) return [];
+
+  const hardDows = new Set(
+    workouts.filter(wo => wo.isQuality || wo.isLong).map(wo => wo.dow),
+  );
+  const eligible = workouts.filter(
+    wo => wo.type === 'easy' && wo.distanceMi > 0,
+  );
+
+  const scored = eligible.map(wo => {
+    const { score, daysAfterHard, daysBeforeHard } = strengthDayScore(wo.dow, hardDows);
+    // Lower body requires 48h before the next hard run to avoid interference.
+    // If the next hard session is only 24h away, use upper body instead.
+    const focus: 'lower' | 'upper' =
+      daysAfterHard >= 2 && daysBeforeHard >= 2 ? 'lower' : 'upper';
+    return { wo, score, focus };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxSlots).map(s => ({ workout: s.wo, focus: s.focus }));
 }
 
 function weekRationale(
