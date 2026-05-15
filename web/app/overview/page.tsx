@@ -1748,7 +1748,8 @@ function buildCoachBriefing(data: OverviewData): string {
   const days   = data.races.daysToNextA;
   const race   = data.races.nextA?.meta.name ?? null;
   const c      = data.checkinReadiness;
-  const stale  = c ? Math.max(0, 7 - c.rowsCount) : 7;
+  // loggedToday = not stale, full stop.
+  const stale  = (!c || c.loggedToday) ? 0 : Math.max(0, 7 - c.rowsCount);
   const acwr   = r.acwr;
   const easy   = r.easyShare != null ? Math.round(r.easyShare * 100) : null;
 
@@ -1820,8 +1821,8 @@ function buildCoachBriefing(data: OverviewData): string {
 function CoachPulseCard({ data }: { data: OverviewData }) {
   const c = data.checkinReadiness;
   const todayLabel = formatFullDateLabel(data.today).toUpperCase();
-  const checkinStaleDays = c ? (7 - c.rowsCount) : null;
-  const checkinStale = checkinStaleDays != null && checkinStaleDays >= 3;
+  const checkinStaleDays = (!c || c.loggedToday) ? 0 : Math.max(0, 7 - c.rowsCount);
+  const checkinStale = checkinStaleDays >= 3;
 
   // Check-in state (same logic as CheckinReadinessCard below).
   const [energy, setEnergy] = useState<number | null>(null);
