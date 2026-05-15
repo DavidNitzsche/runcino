@@ -71,6 +71,7 @@ interface PlanWorkoutRow {
   is_quality: boolean;
   is_long: boolean;
   notes: string;
+  sub_label: string | null;
   original_date_iso: string;
   original_type: WorkoutType;
   original_distance_mi: string | number;
@@ -140,12 +141,12 @@ export async function saveActivePlan(plan: Plan): Promise<void> {
           await client.query(
             `INSERT INTO plan_workouts
                (id, plan_id, week_id, date_iso, dow, type, distance_mi, pace_target_s_per_mi,
-                duration_min, is_quality, is_long, notes,
+                duration_min, is_quality, is_long, notes, sub_label,
                 original_date_iso, original_type, original_distance_mi)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
             [
               w.id, plan.id, wk.id, w.dateISO, w.dow, w.type, w.distanceMi, w.paceTargetSPerMi,
-              w.durationMin, w.isQuality, w.isLong, w.notes,
+              w.durationMin, w.isQuality, w.isLong, w.notes, w.subLabel ?? null,
               w.originalDateISO, w.originalType, w.originalDistanceMi,
             ],
           );
@@ -192,7 +193,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
   );
   const workoutRows = await query<PlanWorkoutRow>(
     `SELECT id, plan_id, week_id, date_iso, dow, type, distance_mi, pace_target_s_per_mi,
-            duration_min, is_quality, is_long, notes,
+            duration_min, is_quality, is_long, notes, sub_label,
             original_date_iso, original_type, original_distance_mi
      FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso ASC`,
     [planRow.id],
@@ -237,6 +238,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
       isLong: w.is_long,
       hasStrength: w.notes?.includes('\n\nStrength:') ?? false,
       notes: w.notes,
+      subLabel: w.sub_label ?? undefined,
       originalDateISO: w.original_date_iso,
       originalType: w.original_type,
       originalDistanceMi: toNum(w.original_distance_mi),

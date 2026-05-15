@@ -269,10 +269,15 @@ async function bootstrap(): Promise<void> {
         is_quality            BOOLEAN NOT NULL DEFAULT FALSE,
         is_long               BOOLEAN NOT NULL DEFAULT FALSE,
         notes                 TEXT NOT NULL DEFAULT '',
+        sub_label             TEXT,
         original_date_iso     TEXT NOT NULL,
         original_type         TEXT NOT NULL,
         original_distance_mi  NUMERIC NOT NULL
       );
+    `);
+    // Migration: add sub_label to existing plan_workouts tables.
+    await client.query(`
+      ALTER TABLE plan_workouts ADD COLUMN IF NOT EXISTS sub_label TEXT;
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS plan_workouts_date

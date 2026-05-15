@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 17;
+export const BUILDER_VERSION = 18;
 
 export interface BuildPlanRace {
   id: string;
