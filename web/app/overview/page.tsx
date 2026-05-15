@@ -1868,24 +1868,26 @@ function CoachPulseCard({ data }: { data: OverviewData }) {
               )}
             </div>
 
-            {/* Coaching statement */}
-            <div style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: 20,
-              fontWeight: 700,
-              lineHeight: 1.25,
-              color: 'var(--t0)',
-              maxWidth: 640,
-            }}>
-              {coachStatement}
-            </div>
-
-            {/* 4 telemetry cells */}
-            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end', paddingTop: 2 }}>
-              <CoachTelCell label="ACWR" value={acwr} color={acwrColor} sub="LOAD RATIO" />
-              <CoachTelCell label="READINESS" value={String(readinessScore)} color={readinessColor} sub="/ 100" />
-              <CoachTelCell label="RACE" value={raceDays != null ? `${raceDays}D` : '—'} color="var(--race)" sub={data.races.nextA?.meta.name?.slice(0, 16).toUpperCase() ?? 'NO RACE SET'} />
-              <CoachTelCell label="EASY %" value={easyPct} color={easyColor} sub="14D SHARE" />
+            {/* Statement + telemetry side by side — statement left, 4 big numbers right */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 28, minWidth: 0 }}>
+              <div style={{
+                fontFamily: 'var(--f-display)',
+                fontSize: 20,
+                fontWeight: 700,
+                lineHeight: 1.25,
+                color: 'var(--t0)',
+                flex: '1 1 0',
+                minWidth: 0,
+              }}>
+                {coachStatement}
+              </div>
+              {/* 4 telemetry cells — right-aligned within the left column */}
+              <div style={{ display: 'flex', gap: 28, flexShrink: 0, alignItems: 'flex-start' }}>
+                <CoachTelCell label="ACWR" value={acwr} color={acwrColor} sub="LOAD RATIO" />
+                <CoachTelCell label="READINESS" value={String(readinessScore)} color={readinessColor} sub="/ 100" />
+                <CoachTelCell label="RACE" value={raceDays != null ? `${raceDays}D` : '—'} color={raceDays != null ? 'var(--race)' : 'var(--t3)'} sub={data.races.nextA?.meta.name?.slice(0, 16).toUpperCase() ?? 'NO RACE SET'} />
+                <CoachTelCell label="EASY %" value={easyPct} color={easyColor} sub="14D SHARE" />
+              </div>
             </div>
 
             {/* Watching chips */}
