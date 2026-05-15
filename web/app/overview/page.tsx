@@ -1678,8 +1678,12 @@ function PlanAdaptedCard({ data }: { data: OverviewData }) {
 // CHECK-IN READINESS · last 7 days from daily_checkin + quick log widget
 // ─────────────────────────────────────────────────────────────────────
 
+// Dot colors per position (1–5).
+// Energy: higher = better. 1=bad, 2=low, 3=neutral, 4=good, 5=great.
+// Soreness/Stress: lower = better. 1=great, 2=fine, 3=watchable, 4=high, 5=bad.
+// Position 3 for energy is neutral/muted — "average" is not a warning.
 const CHECKIN_DOT_COLORS = {
-  energy:   ['#FC4D64','#F3AD38','#F3AD38','#7CD97F','#3EBD41'],
+  energy:   ['#FC4D64','#F3AD38','rgba(244,246,248,.40)','#7CD97F','#3EBD41'],
   soreness: ['#3EBD41','#7CD97F','#F3AD38','#F3AD38','#FC4D64'],
   stress:   ['#3EBD41','#7CD97F','#F3AD38','#F3AD38','#FC4D64'],
 } as const;
