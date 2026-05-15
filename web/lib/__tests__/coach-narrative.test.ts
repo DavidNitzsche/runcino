@@ -100,7 +100,7 @@ function makeBaseState(): CoachState {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,

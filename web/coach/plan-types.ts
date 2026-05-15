@@ -43,7 +43,11 @@ export type TriggerKind =
   | 'vdot-upgrade-dampening'
   | 'positive-drift'
   | 'quality-execution-advance'
-  | 'quality-execution-retreat';
+  | 'quality-execution-retreat'
+  /** Runner explicitly clicked "Skip Today" on the hero card. Ground
+   *  truth — not a fuzzy signal. Cite Research/00b §Decision Matrix
+   *  (a missed quality day is a recovery signal). */
+  | 'runner-skip';
 
 export interface SignalSnapshot {
   /** Minimal slice of the state at trigger time — used for audit. */

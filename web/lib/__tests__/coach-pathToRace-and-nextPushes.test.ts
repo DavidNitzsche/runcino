@@ -92,7 +92,7 @@ function makeTrainedState(overrides: Partial<CoachState> = {}): CoachState {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,
@@ -322,7 +322,7 @@ describe('coach.nextPushes', () => {
       flags: {
         heavyBlockSuspected: false,
         rebuildAfterBreak: false,
-        healthKitAvailable: false,
+        healthKitAvailable: false, recentSkips: [],
       },
       recoveryWindowEndsISO: '2026-05-20', // recovery window still open
     });

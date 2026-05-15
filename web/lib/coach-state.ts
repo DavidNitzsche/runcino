@@ -23,6 +23,7 @@ import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './s
 import { todayISO as todayLAISO, todayDate } from './dates';
 import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
 import { getUserPrefs, type PrefsRow } from './prefs-store';
+import { listRecentSkips, type SkippedWorkout } from './skip-store';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -122,6 +123,16 @@ export interface CoachState {
     rebuildAfterBreak: boolean;
     /** True once HealthKit data is flowing. Engine uses this to decide which rules to trust. */
     healthKitAvailable: boolean;
+    /** Runner-initiated skips in the last 14 days. Each row is one
+     *  explicit Skip Today click. Empty when no skips. Engine treats
+     *  this as ground truth, not a fuzzy signal — the runner said
+     *  "today didn't happen." adaptPlan fires a `runner-skip` trigger
+     *  when a skip lands on a planned quality day. */
+    recentSkips: Array<{
+      dateISO: string;
+      plannedWorkoutType: string | null;
+      plannedMi: number | null;
+    }>;
   };
 
   /** 7-day daily_checkin rollup (energy / soreness / stress, each 1-10).
@@ -228,7 +239,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   const today = todayDate();
   const todayISO = todayLAISO();
 
-  const [savedRaces, { activities }, checkinAgg, prefsRow] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
@@ -240,6 +251,11 @@ export async function gatherCoachState(): Promise<CoachState> {
     // Prefs are optional — when the user_prefs table is unreachable or
     // has no row, parsePrefsRow(null) returns the engine-wide defaults.
     getUserPrefs('me').catch(() => null),
+    // Skips are optional — empty list when the table is unreachable or
+    // when the runner hasn't ever clicked Skip Today.
+    listRecentSkips({ sinceISO: isoDateOffset(today, -14) }).catch(
+      () => [] as SkippedWorkout[],
+    ),
   ]);
 
   // Null `state.checkin` means "no rows in the last 7 days" — the
@@ -470,6 +486,11 @@ export async function gatherCoachState(): Promise<CoachState> {
       heavyBlockSuspected,
       rebuildAfterBreak,
       healthKitAvailable: false,
+      recentSkips: recentSkipsRaw.map((s) => ({
+        dateISO: s.dateISO,
+        plannedWorkoutType: s.plannedWorkoutType,
+        plannedMi: s.plannedMi,
+      })),
     },
     activities,
     checkin,

@@ -34,7 +34,7 @@ function makeState(overrides: Partial<CoachState> = {}): CoachState {
       hrv7dAvgMs: null, rhrBpm: null, sleep7dAvgHrs: null,
       strengthDaysThisWeek: null,
     },
-    flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false },
+    flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false, recentSkips: [] },
     checkin: null,
     recoveryWindowEndsISO: null,
     prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: null, isDefaults: true },
@@ -169,7 +169,7 @@ describe('adaptPlan — rebuild after break', () => {
   it('next 3-5 days suppress quality', async () => {
     const state = makeState({
       now: TODAY,
-      flags: { heavyBlockSuspected: false, rebuildAfterBreak: true, healthKitAvailable: false },
+      flags: { heavyBlockSuspected: false, rebuildAfterBreak: true, healthKitAvailable: false, recentSkips: [] },
     });
     const plan = await buildTestPlan(state);
     // Find a quality workout in the next 5 days. In BASE phase there is

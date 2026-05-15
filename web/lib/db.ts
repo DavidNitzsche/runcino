@@ -299,6 +299,34 @@ async function bootstrap(): Promise<void> {
       CREATE INDEX IF NOT EXISTS plan_mutations_by_ts
         ON plan_mutations (ts DESC);
     `);
+
+    // ── skipped_workouts ──────────────────────────────────────────
+    // Runner-initiated skips. Written by POST /api/plan/skip when the
+    // runner clicks Skip Today on the hero card. Read by:
+    //   • gatherCoachState (last 14 days roll into state.flags.recentSkips
+    //     + state.skipCounts so adaptPlan can react)
+    //   • /log page (surfaces skip rows alongside Strava runs)
+    //   • coach.adaptPlan (a skip on a planned quality day fires a
+    //     `runner-skip` mutation trigger per Research/00b §Decision Matrix)
+    //
+    // Uniqueness: (user_id, date) — re-clicking Skip on the same day
+    // updates the row instead of duplicating. Undo deletes the row.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS skipped_workouts (
+        id                    SERIAL PRIMARY KEY,
+        user_id               TEXT NOT NULL DEFAULT 'me',
+        date                  DATE NOT NULL,
+        planned_workout_type  TEXT,
+        planned_mi            NUMERIC,
+        reason                TEXT,
+        ts                    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, date)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS skipped_workouts_by_date
+        ON skipped_workouts (user_id, date DESC);
+    `);
   } finally {
     client.release();
   }

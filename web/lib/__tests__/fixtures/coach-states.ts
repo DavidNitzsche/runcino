@@ -148,7 +148,7 @@ export const STATE_POST_HALF_DAY_3: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     // race -3d + 14d HM recovery = +11d
@@ -206,7 +206,7 @@ export const STATE_MID_BUILD_WEEK_4: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,
@@ -264,7 +264,7 @@ export const STATE_PEAK_WEEK_MINUS_2: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,
@@ -321,7 +321,7 @@ export const STATE_TAPER_WEEK_MINUS_5: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,
@@ -378,7 +378,7 @@ export const STATE_EARLY_BASE_REBUILD: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,
@@ -457,7 +457,7 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
     flags: {
       heavyBlockSuspected: true,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     // Marathon was -15d ago + 26 day window = +11d from today
     checkin: null,
@@ -511,7 +511,7 @@ export const STATE_INJURY_RETURN: CoachState = (() => {
     flags: {
       heavyBlockSuspected: false,
       rebuildAfterBreak: true,     // last7 ≤ 30% of last28 avg, by definition
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     recoveryWindowEndsISO: null,

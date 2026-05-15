@@ -42,6 +42,7 @@ import { daysUntil } from '@/lib/dates';
 import type { FreshnessMap } from '@/lib/freshness-types';
 import { loadAliveCoachData, type AliveCoachData } from './_alive-coach';
 import type { NarrativeLine } from '@/coach/coach-narrative';
+import type { DailyBriefing } from '@/coach/coach-briefing';
 import type { PathToRaceResult, NextPushesReport } from '@/coach/coach';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -117,6 +118,9 @@ export interface OverviewData {
   /** Wave J — single sentence the coach says at the top of /overview.
    *  Null when no priority signal fires (steady state). */
   narrative: NarrativeLine | null;
+  /** v4 — multi-sentence coach briefing on the new /overview layout.
+   *  Always present; clauses inside compose only from real signals. */
+  briefing: DailyBriefing | null;
   /** Wave G — Coach-is-watching strip + PathToRace + NextPush payloads.
    *  Always present; surfaces render empty-state copy when data is
    *  thin. */
@@ -390,6 +394,7 @@ interface OverviewApiPayload {
   pathToRace?: CoachDecision<PathToRaceResult> | null;
   nextPushes?: CoachDecision<NextPushesReport>;
   narrative?: NarrativeLine | null;
+  briefing?: CoachDecision<DailyBriefing> | null;
   planWeekWorkouts?: Array<{
     dateISO: string;
     type: string;
@@ -483,6 +488,11 @@ export async function loadOverviewData(
   // Wave J · narrative line — computed server-side; client just renders.
   const narrative = api.narrative ?? null;
 
+  // v4 · daily briefing — composed server-side, ready to drop into the
+  // CoachStrip's left column. The decision wrapper exposes citations;
+  // the rendered text is `.answer.text` and the strip label is `.answer.label`.
+  const briefing = api.briefing?.answer ?? null;
+
   // Wave G · alive-coach payload. PathToRace + NextPushes + Readiness
   // were computed server-side and bundled into the API response so the
   // coach engine never enters the client bundle. The chip builder here
@@ -540,6 +550,7 @@ export async function loadOverviewData(
     longRunStrip,
     year,
     narrative,
+    briefing,
     aliveCoach,
     freshness,
     planWeekWorkouts: api.planWeekWorkouts ?? null,

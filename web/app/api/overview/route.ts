@@ -34,9 +34,11 @@ import { listRacesDB } from '../../../lib/race-store';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
+import { dailyBriefing, type DailyBriefing } from '../../../coach/coach-briefing';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
+import { greeting } from '../../../lib/dates';
 
 interface OverviewApiOk {
   ok: true;
@@ -64,6 +66,9 @@ interface OverviewApiOk {
   nextPushes: CoachDecision<NextPushesReport>;
   /** Wave J · one-sentence narrative line. Null when no signal fires. */
   narrative: NarrativeLine | null;
+  /** v4 · multi-sentence daily briefing the coach delivers at the top
+   *  of /overview. Always present — composed from real signals. */
+  briefing: CoachDecision<DailyBriefing>;
   /** Plan-artifact workouts for the current Mon→Sun week. */
   planWeekWorkouts: PlanWorkout[] | null;
   /** Current week's phase from the plan artifact (BASE/BUILD/PEAK/TAPER).
@@ -246,6 +251,34 @@ export async function GET(): Promise<Response> {
         : undefined,
     });
 
+    // v4 · multi-sentence briefing for the coach strip. Composed
+    // from greeting + body-state read + today + race countdown.
+    const todayDate = new Date(today + 'T12:00:00Z');
+    const dowNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const briefing = dailyBriefing(state, {
+      name: (profileRow?.full_name?.trim() || 'Runner'),
+      greeting: greeting(todayDate),
+      workout: workout.answer
+        ? {
+            label: workout.answer.label,
+            distanceMi: workout.answer.distanceMi,
+            isQuality: workout.answer.isQuality,
+            isLong: workout.answer.isLong,
+            paceTargetSPerMi:
+              typeof workout.answer.paceTargetSPerMi === 'number'
+                ? workout.answer.paceTargetSPerMi
+                : null,
+          }
+        : null,
+      phaseLabel: planCurrentPhase,
+      raceCountdown: stateNextA
+        ? { name: stateNextA.name, daysAway: stateNextA.daysAway }
+        : null,
+      todayDow: dowNames[todayDate.getUTCDay()],
+      todayMonthDay: `${monthNames[todayDate.getUTCMonth()]} ${todayDate.getUTCDate()}`,
+    });
+
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
     const planFutureLongRuns = (() => {
       const plan = planResult.plan;
@@ -286,6 +319,7 @@ export async function GET(): Promise<Response> {
       pathToRace,
       nextPushes,
       narrative,
+      briefing,
       planWeekWorkouts,
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,

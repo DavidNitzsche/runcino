@@ -79,7 +79,7 @@ function makePostRaceState(opts: { inWindow: boolean }): CoachState {
       // 2 races in 14 days + marathon in last 14 → heavy block fires.
       heavyBlockSuspected: true,
       rebuildAfterBreak: false,
-      healthKitAvailable: false,
+      healthKitAvailable: false, recentSkips: [],
     },
     checkin: null,
     // Marathon Apr 27 + 26 days = May 23.

@@ -106,7 +106,7 @@ function buildMidBuildBaseInternal(): CoachState {
       today: null,
       hrv7dAvgMs: null, rhrBpm: null, sleep7dAvgHrs: null, strengthDaysThisWeek: null,
     },
-    flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false },
+    flags: { heavyBlockSuspected: false, rebuildAfterBreak: false, healthKitAvailable: false, recentSkips: [] },
     checkin: null,
     recoveryWindowEndsISO: null,
     prefs: {
