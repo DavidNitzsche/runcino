@@ -1709,7 +1709,7 @@ function DotRow({
         {colors.map((color, i) => {
           const v = i + 1;
           const isSelected = value === v;
-          const isSaved = saved !== null && Math.round((saved - 1) / 2) === i;
+          const isSaved = saved !== null && saved === v;
           return (
             <button
               key={v}
