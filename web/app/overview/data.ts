@@ -446,7 +446,13 @@ export async function loadOverviewData(
   const renderedWorkout = adjustedAnswer?.changed
     ? adjustedAnswer.workout
     : api.workout.answer;
-  const workoutStructure = getWorkoutStructure(renderedWorkout);
+  // Plan-as-artifact structure takes precedence over engine simulation.
+  // When the plan has a workout for today, derive structure from its type/
+  // distance/pace. Engine structure is the fallback for dates with no plan.
+  const planTodayWorkout = (api.planWeekWorkouts ?? []).find(w => w.dateISO === today) ?? null;
+  const workoutStructure = planTodayWorkout
+    ? getPlanWorkoutStructure(planTodayWorkout)
+    : getWorkoutStructure(renderedWorkout);
   const planAdapted = getPlanAdapted(api.weekDeltas.answer, api.recentAdjustments ?? null);
   const checkinReadiness = getCheckinReadiness(coachState);
   const biometrics = getBiometricsSnapshot();
@@ -597,6 +603,109 @@ function getProfileSnapshot(today: string, profileName: string | null): ProfileS
 // ─────────────────────────────────────────────────────────────────────
 // Workout structure split
 // ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Derive a warm-up / main / cool-down structure from the plan artifact.
+ * Plan data is canonical — engine simulation is only a fallback when no
+ * plan workout exists for today.
+ */
+function getPlanWorkoutStructure(wo: {
+  type: string;
+  distanceMi: number;
+  paceTargetSPerMi: number | null;
+}): WorkoutStructureBlock[] {
+  const totalMi = wo.distanceMi;
+  const paceS   = wo.paceTargetSPerMi;
+
+  switch (wo.type) {
+    case 'easy':
+    case 'recovery':
+    case 'shakeout': {
+      const easyS  = paceS ?? 560;
+      const warmMi = Math.max(0.5, Math.round(totalMi * 0.15 * 10) / 10);
+      const coolMi = Math.max(0.5, Math.round(totalMi * 0.15 * 10) / 10);
+      const mainMi = Math.round((totalMi - warmMi - coolMi) * 10) / 10;
+      const warmS  = Math.round(warmMi * (easyS + 30));
+      const mainS  = Math.round(mainMi * easyS);
+      return [
+        { timeOffset: '0:00',           name: 'Warm-up · easy aerobic',   distance: `${warmMi.toFixed(1)} mi`, pace: fmtPace(easyS + 30) },
+        { timeOffset: fmtClock(warmS),  name: 'Main · easy',              distance: `${mainMi.toFixed(1)} mi`, pace: fmtPace(easyS), isMain: true },
+        { timeOffset: fmtClock(warmS + mainS), name: 'Cool-down · drop pace', distance: `${coolMi.toFixed(1)} mi`, pace: fmtPace(easyS + 30) },
+      ];
+    }
+
+    case 'long': {
+      const longS  = paceS ?? 570;
+      const warmMi = Math.min(1.5, Math.round(totalMi * 0.10 * 10) / 10);
+      const coolMi = Math.min(1.0, Math.round(totalMi * 0.08 * 10) / 10);
+      const mainMi = Math.round((totalMi - warmMi - coolMi) * 10) / 10;
+      const warmS  = Math.round(warmMi * (longS + 30));
+      const mainS  = Math.round(mainMi * longS);
+      return [
+        { timeOffset: '0:00',           name: 'Easy build · settle in',        distance: `${warmMi.toFixed(1)} mi`, pace: fmtPace(longS + 30) },
+        { timeOffset: fmtClock(warmS),  name: 'Main · long aerobic',           distance: `${mainMi.toFixed(1)} mi`, pace: fmtPace(longS), isMain: true },
+        { timeOffset: fmtClock(warmS + mainS), name: 'Cool-down · walk if needed', distance: `${coolMi.toFixed(1)} mi`, pace: fmtPace(longS + 30) },
+      ];
+    }
+
+    case 'threshold': {
+      const threshS = paceS ?? 450;
+      const easyS   = threshS + 75;
+      const warmMi  = Math.min(2.0, Math.round(totalMi * 0.25 * 10) / 10);
+      const coolMi  = Math.min(1.5, Math.round(totalMi * 0.18 * 10) / 10);
+      const mainMi  = Math.round((totalMi - warmMi - coolMi) * 10) / 10;
+      const warmS   = Math.round(warmMi * easyS);
+      const mainS   = Math.round(mainMi * threshS);
+      return [
+        { timeOffset: '0:00',           name: 'Warm-up · easy aerobic',   distance: `${warmMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+        { timeOffset: fmtClock(warmS),  name: 'Threshold blocks',         distance: `${mainMi.toFixed(1)} mi`, pace: fmtPace(threshS), isMain: true },
+        { timeOffset: fmtClock(warmS + mainS), name: 'Cool-down · jog easy', distance: `${coolMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+      ];
+    }
+
+    case 'interval': {
+      const intS   = paceS ?? 420;
+      const easyS  = intS + 105;
+      const warmMi = Math.min(2.0, Math.round(totalMi * 0.25 * 10) / 10);
+      const coolMi = Math.min(1.0, Math.round(totalMi * 0.12 * 10) / 10);
+      const mainMi = Math.round((totalMi - warmMi - coolMi) * 10) / 10;
+      const warmS  = Math.round(warmMi * easyS);
+      const mainS  = Math.round(mainMi * intS);
+      return [
+        { timeOffset: '0:00',           name: 'Warm-up + drills/strides', distance: `${warmMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+        { timeOffset: fmtClock(warmS),  name: 'VO₂ max intervals',        distance: `${mainMi.toFixed(1)} mi`, pace: fmtPace(intS), isMain: true },
+        { timeOffset: fmtClock(warmS + mainS), name: 'Cool-down · easy',  distance: `${coolMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+      ];
+    }
+
+    case 'mp': {
+      const mpS    = paceS ?? 480;
+      const easyS  = mpS + 75;
+      const warmMi = Math.min(2.0, Math.round(totalMi * 0.20 * 10) / 10);
+      const coolMi = Math.min(1.5, Math.round(totalMi * 0.12 * 10) / 10);
+      const mainMi = Math.round((totalMi - warmMi - coolMi) * 10) / 10;
+      const warmS  = Math.round(warmMi * easyS);
+      const mainS  = Math.round(mainMi * mpS);
+      return [
+        { timeOffset: '0:00',           name: 'Warm-up · easy aerobic',    distance: `${warmMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+        { timeOffset: fmtClock(warmS),  name: 'Marathon pace blocks',      distance: `${mainMi.toFixed(1)} mi`, pace: fmtPace(mpS), isMain: true },
+        { timeOffset: fmtClock(warmS + mainS), name: 'Cool-down · jog easy', distance: `${coolMi.toFixed(1)} mi`, pace: fmtPace(easyS) },
+      ];
+    }
+
+    case 'race': {
+      const raceS  = paceS ?? 450;
+      return [
+        { timeOffset: '0:00',                      name: 'Warm-up · easy jog',    distance: '1.0 mi', pace: fmtPace(raceS + 90) },
+        { timeOffset: fmtClock(Math.round(raceS + 90) * 1), name: 'Race', distance: `${(totalMi - 1.5).toFixed(1)} mi`, pace: fmtPace(raceS), isMain: true },
+        { timeOffset: fmtClock(Math.round((raceS + 90) + (totalMi - 1.5) * raceS)), name: 'Cool-down', distance: '0.5 mi', pace: fmtPace(raceS + 90) },
+      ];
+    }
+
+    default:
+      return [];
+  }
+}
 
 function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBlock[] {
   // The Coach prescription is one paragraph today; we synthesize the
