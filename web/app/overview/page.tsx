@@ -1736,6 +1736,75 @@ function DotRow({
 // ─────────────────────────────────────────────────────────────────────
 
 /**
+ * Synthesize a 2-3 sentence coach briefing from real signals.
+ * Priority: load/body status → today's plan → race context or check-in ask.
+ * Every sentence references a real number or scheduled workout — no filler.
+ */
+function buildCoachBriefing(data: OverviewData): string {
+  const r      = data.coach.readiness.answer;
+  const plan   = data.planWeekWorkouts ?? [];
+  const today  = data.today;
+  const wo     = plan.find(w => w.dateISO === today) ?? null;
+  const days   = data.races.daysToNextA;
+  const race   = data.races.nextA?.meta.name ?? null;
+  const c      = data.checkinReadiness;
+  const stale  = c ? Math.max(0, 7 - c.rowsCount) : 7;
+  const acwr   = r.acwr;
+  const easy   = r.easyShare != null ? Math.round(r.easyShare * 100) : null;
+
+  const parts: string[] = [];
+
+  // ── Sentence 1: body / load ──────────────────────────────────────────
+  if (r.level === 'green' && acwr != null && acwr >= 0.85 && acwr <= 1.15) {
+    parts.push(`Load is in the sweet spot — the body is absorbing training and responding well.`);
+  } else if (r.level === 'green' && acwr != null && acwr > 1.15) {
+    parts.push(`Readiness is green but load is nudging up — keep today genuinely easy and get the sleep.`);
+  } else if (r.level === 'green') {
+    parts.push(`Readiness is green — legs are ready, keep executing the plan.`);
+  } else if (r.level === 'yellow' && acwr != null && acwr > 1.2) {
+    parts.push(`Load is climbing${acwr != null ? ` — ACWR at ${acwr.toFixed(2)}` : ''}. Today needs to be easy; the adaptation window stays open when you don't dig deeper than the plan asks.`);
+  } else if (r.level === 'yellow') {
+    parts.push(`Body's flagging — check-in signals or load trend is asking for more recovery. Keep it easy.`);
+  } else {
+    parts.push(`Rest is the work right now. The adaptation happens when you back off, not when you push through.`);
+  }
+
+  // ── Sentence 2: today's plan ─────────────────────────────────────────
+  if (wo) {
+    const dist = wo.distanceMi.toFixed(1);
+    if (wo.isQuality) {
+      const lbl = wo.subLabel ?? planWorkoutTypeLabel(wo.type);
+      parts.push(
+        r.level === 'green'
+          ? `Quality on the schedule today — ${lbl}. You're set up well for it.`
+          : `Quality is scheduled (${lbl}) but readiness isn't full green — dial back if it's not there.`
+      );
+    } else if (wo.isLong) {
+      parts.push(`${dist}-mile long run today — this is where the aerobic engine gets built.`);
+    } else if (wo.type === 'rest') {
+      parts.push(`Rest day — it's in the plan deliberately. Protect it.`);
+    } else {
+      parts.push(`${dist} easy miles today — conversational pace, let the system absorb the week.`);
+    }
+  }
+
+  // ── Sentence 3: race context or check-in ask ─────────────────────────
+  if (days != null && days <= 14) {
+    parts.push(`${days} days to ${race ?? 'race'} — protect the legs, execute the structure, trust what you've built.`);
+  } else if (days != null && days <= 60) {
+    parts.push(`${days} days to ${race ?? 'race'} — every easy run in this window is paying it forward to race day.`);
+  } else if (stale >= 3) {
+    parts.push(`Check-in is ${stale} days stale — tap to log before you head out so the plan stays calibrated to how you're actually feeling.`);
+  } else if (easy != null && easy < 75) {
+    parts.push(`Easy share is ${easy}% over the last two weeks — the target is 80%+. The hard sessions need more easy underneath them.`);
+  } else if (days != null) {
+    parts.push(`${days} days to ${race ?? 'race'} — stay consistent and the fitness will be there.`);
+  }
+
+  return parts.join(' ');
+}
+
+/**
  * CoachPulseCard · span-12 unified card replacing the old CoachWatchingStrip
  * (span-8) + CheckinReadinessCard (span-4) pair.
  *
@@ -1749,35 +1818,10 @@ function DotRow({
  * always clean — no empty-space gap.
  */
 function CoachPulseCard({ data }: { data: OverviewData }) {
-  const r = data.coach.readiness.answer;
   const c = data.checkinReadiness;
-  const chips = data.aliveCoach.watching;
-
-  // Coaching statement: readiness message is the most contextual single
-  // sentence from the coach. Narrative text surfaces priority signals (e.g.
-  // "race week" or "ACWR caution"); when both exist, combine them.
-  const narrativeText = data.narrative?.sentence ?? null;
-  const coachStatement = narrativeText
-    ? narrativeText
-    : r.message;
-
-  // Telemetry cells.
-  const acwr = r.acwr != null ? r.acwr.toFixed(2) : data.load?.value ?? '—';
-  const acwrNoData = acwr === '—';
-  const acwrColor = acwrNoData ? 'var(--t3)' : r.level === 'green' ? 'var(--good)' : r.level === 'yellow' ? 'var(--att)' : 'var(--warn)';
-  const readinessScore = r.level === 'green' ? 88 : r.level === 'yellow' ? 62 : 40;
-  const readinessColor = r.level === 'green' ? 'var(--good)' : r.level === 'yellow' ? 'var(--att)' : 'var(--warn)';
-  const raceDays = data.races.daysToNextA;
-  const easyPct = r.easyShare != null ? `${Math.round(r.easyShare * 100)}%` : '—';
-  const easyColor = r.easyShare == null ? 'var(--t3)' : r.easyShare >= 0.8 ? 'var(--good)' : 'var(--att)';
-  // Date label for the header — from data.today so it matches the rest of the page.
   const todayLabel = formatFullDateLabel(data.today).toUpperCase();
-
-  // Alert state when ACWR is in caution or check-in is stale.
-  const acwrAlert = r.level !== 'green';
   const checkinStaleDays = c ? (7 - c.rowsCount) : null;
   const checkinStale = checkinStaleDays != null && checkinStaleDays >= 3;
-  const isAlert = acwrAlert || checkinStale;
 
   // Check-in state (same logic as CheckinReadinessCard below).
   const [energy, setEnergy] = useState<number | null>(null);
@@ -1822,130 +1866,32 @@ function CoachPulseCard({ data }: { data: OverviewData }) {
       <Card span={12} padding="0" style={{ overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', minHeight: 0 }}>
 
-          {/* ── LEFT · Coach statement + telemetry + chips ── */}
-          <div style={{ padding: '18px 22px', borderRight: '1px solid var(--l4)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* ── LEFT · Coach briefing — pure language, no chips or numbers ── */}
+          <div style={{ padding: '22px 28px', borderRight: '1px solid var(--l4)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
 
-            {/* Header row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span
                 style={{
                   flexShrink: 0,
                   display: 'inline-block',
-                  width: 8,
-                  height: 8,
+                  width: 7,
+                  height: 7,
                   borderRadius: '50%',
-                  background: isAlert ? 'var(--att)' : '#3EBD41',
-                  boxShadow: isAlert ? '0 0 0 0 rgba(243,173,56,.5)' : '0 0 0 0 rgba(62,189,65,.5)',
+                  background: checkinStale ? 'var(--att)' : '#3EBD41',
                   animation: 'pulse-dot 2s infinite ease-out',
                 }}
                 aria-hidden
               />
-              <span style={{
-                fontFamily: 'var(--f-data)',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '1.6px',
-                color: 'var(--t2)',
-                textTransform: 'uppercase',
-              }}>
-                Coach Watching
+              <span style={{ fontFamily: 'var(--f-data)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1.8px', color: 'var(--t3)', textTransform: 'uppercase' }}>
+                Coach · {todayLabel}
               </span>
-              <span style={{ fontFamily: 'var(--f-data)', fontSize: 9, color: 'var(--t3)', fontWeight: 600 }}>
-                · {todayLabel}
-              </span>
-              {isAlert && (
-                <span style={{
-                  marginLeft: 'auto',
-                  fontFamily: 'var(--f-data)',
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: '1.4px',
-                  color: 'var(--att)',
-                  background: 'rgba(243,173,56,.12)',
-                  border: '1px solid rgba(243,173,56,.28)',
-                  borderRadius: 5,
-                  padding: '3px 8px',
-                  textTransform: 'uppercase',
-                }}>
-                  ▲ SIGNAL GAP
-                </span>
-              )}
             </div>
 
-            {/* Statement + telemetry side by side — statement left, 4 big numbers right */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 28, minWidth: 0 }}>
-              <div style={{
-                fontFamily: 'var(--f-display)',
-                fontSize: 20,
-                fontWeight: 700,
-                lineHeight: 1.25,
-                color: 'var(--t0)',
-                flex: '1 1 0',
-                minWidth: 0,
-              }}>
-                {coachStatement}
-              </div>
-              {/* 4 telemetry cells — right-aligned within the left column */}
-              <div style={{ display: 'flex', gap: 28, flexShrink: 0, alignItems: 'flex-start' }}>
-                <CoachTelCell label="ACWR" value={acwr} color={acwrColor} sub="LOAD RATIO" />
-                <CoachTelCell label="READINESS" value={String(readinessScore)} color={readinessColor} sub="/ 100" />
-                <CoachTelCell label="RACE" value={raceDays != null ? `${raceDays}D` : '—'} color={raceDays != null ? 'var(--race)' : 'var(--t3)'} sub={data.races.nextA?.meta.name?.slice(0, 16).toUpperCase() ?? 'NO RACE SET'} />
-                <CoachTelCell label="EASY %" value={easyPct} color={easyColor} sub="14D SHARE" />
-              </div>
+            {/* Briefing — synthesized from today's plan + body status + race context */}
+            <div style={{ fontSize: 17, lineHeight: 1.6, color: 'var(--t1)', fontWeight: 400, maxWidth: 680 }}>
+              {buildCoachBriefing(data)}
             </div>
-
-            {/* Watching chips */}
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 2 }}>
-              {chips.map((chip) => {
-                const variantMap: Record<string, { bg: string; border: string; color: string; accent: string }> = {
-                  green:  { bg: 'rgba(62,189,65,.10)',    border: 'rgba(62,189,65,.32)',    color: '#7CD97F',        accent: '#3EBD41' },
-                  amber:  { bg: 'rgba(243,173,56,.10)',   border: 'rgba(243,173,56,.32)',   color: '#F3AD38',        accent: '#F3AD38' },
-                  warn:   { bg: 'rgba(252,77,100,.10)',   border: 'rgba(252,77,100,.32)',   color: '#FC4D64',        accent: '#FC4D64' },
-                  muted:  { bg: 'rgba(244,246,248,.04)',  border: 'rgba(244,246,248,.10)',  color: 'var(--t2)',      accent: 'var(--t2)' },
-                };
-                const vs = variantMap[chip.variant] ?? variantMap.muted;
-                return (
-                  <div key={chip.id} style={{
-                    position: 'relative',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    padding: '7px 11px',
-                    minWidth: 86,
-                    background: vs.bg,
-                    border: `1px solid ${vs.border}`,
-                    borderRadius: 9,
-                    flexShrink: 0,
-                  }}>
-                    <span style={{ position: 'absolute', left: 0, top: 5, bottom: 5, width: chip.isFresh ? 3 : 2, background: vs.accent, borderRadius: 2, opacity: chip.isFresh ? 1 : 0.6 }} aria-hidden />
-                    <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, fontWeight: 700, letterSpacing: '1.5px', color: 'var(--t2)', textTransform: 'uppercase' }}>{chip.label}</span>
-                    <span style={{ fontFamily: 'var(--f-data)', fontSize: 11.5, fontWeight: 700, color: vs.color, letterSpacing: '0.5px' }}>{chip.value}</span>
-                    {chip.hint && <span style={{ fontFamily: 'var(--f-data)', fontSize: 8.5, fontWeight: 500, color: 'var(--t3)', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.7 }}>{chip.hint}</span>}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Alert strip — only when there's a signal gap */}
-            {isAlert && (
-              <div style={{
-                marginTop: 'auto',
-                padding: '7px 12px',
-                background: 'rgba(243,173,56,.07)',
-                border: '1px solid rgba(243,173,56,.22)',
-                borderRadius: 8,
-                fontFamily: 'var(--f-data)',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '1.2px',
-                color: 'var(--att)',
-                textTransform: 'uppercase',
-              }}>
-                {checkinStale
-                  ? `▲ CHECK-IN ${checkinStaleDays}D STALE — LOG BEFORE YOUR LONG RUN`
-                  : '▲ LOAD IN CAUTION ZONE — ACWR ABOVE 1.20'}
-              </div>
-            )}
           </div>
 
           {/* ── RIGHT · Check-in quick-log ── */}
