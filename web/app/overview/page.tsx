@@ -307,19 +307,40 @@ function OverviewBody({ data }: { data: OverviewData }) {
 // ─────────────────────────────────────────────────────────────────────
 
 function TodayCard({ data }: { data: OverviewData }) {
-  const w = data.coach.workout.answer;
+  const w = data.coach.workout.answer; // engine — fallback only
   const structure = data.workoutStructure;
-  const dist = w.distanceMi.toFixed(1);
-  const pace =
-    w.paceTargetSPerMi != null
-      ? fmtPaceRange(w.paceTargetSPerMi)
-      : '—';
-  const hrCap = w.hrZone ? `Z${w.hrZone}` : '—';
-  const eyebrow = `TODAY · ${formatFullDateLabel(data.today)} · ${(w.phaseLabel || 'TRAINING').toUpperCase()}`;
-  // The Coach's voiceLead doubles as the "why this is light" body. It's
-  // a multi-sentence Coach-voice paragraph, perfect for this slot.
-  const why = w.voiceLead;
-  const duration = estimateDurationMin(w);
+
+  // ── Plan artifact is the canonical source of truth for today ───────────
+  // Everything reads from planToday first. Engine answer is the fallback
+  // for fields not yet on the plan artifact (hrZone, structure).
+  const planToday = data.planWeekWorkouts?.find((p) => p.dateISO === data.today) ?? null;
+
+  const distanceMi = planToday?.distanceMi ?? w.distanceMi;
+  const isQuality  = planToday?.isQuality  ?? w.isQuality;
+  const isLong     = planToday?.isLong     ?? w.isLong;
+  const phase      = (data.planCurrentPhase ?? w.phaseLabel ?? 'TRAINING').toUpperCase();
+  const label      = planToday
+    ? (planToday.subLabel ?? planWorkoutTypeLabel(planToday.type))
+    : w.label;
+  // Plan notes contain the full coaching voice. Strip the strength block for
+  // the Today card — strength lives in its own strip below.
+  const why = planToday
+    ? (planToday.notes.split('\n\nStrength:')[0].trim() || w.voiceLead)
+    : w.voiceLead;
+
+  // Pace: plan gives a single centre value in s/mi; format as mm:ss.
+  // Engine gives a {lower,upper} band — used when no plan pace is set.
+  const planPaceS  = planToday?.paceTargetSPerMi ?? null;
+  const pace       = planPaceS != null
+    ? fmtPaceLoose(planPaceS)
+    : (w.paceTargetSPerMi != null ? fmtPaceRange(w.paceTargetSPerMi) : '—');
+
+  const hrCap      = w.hrZone ? `Z${w.hrZone}` : '—';
+  const eyebrow    = `TODAY · ${formatFullDateLabel(data.today)} · ${phase}`;
+  const duration   = planPaceS != null && distanceMi > 0
+    ? Math.round((planPaceS * distanceMi) / 60)
+    : estimateDurationMin(w);
+  const dist       = distanceMi.toFixed(1);
 
   // Wave V · plan-as-artifact: when today's PlanWorkout has mutations,
   // surface COACH ADJUSTED + the most-recent mutation's reason.
@@ -360,7 +381,7 @@ function TodayCard({ data }: { data: OverviewData }) {
         {adjusted ? (
           <CardPin variant="coach">▾ COACH ADJUSTED</CardPin>
         ) : (
-          <CardPin variant="amber">{w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+          <CardPin variant="amber">{isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
         )}
       </CardHeader>
       <div
@@ -371,7 +392,7 @@ function TodayCard({ data }: { data: OverviewData }) {
           fontSize: 56,
         }}
       >
-        {w.label}
+        {label}
       </div>
       {adjusted && (
         <div
@@ -410,14 +431,14 @@ function TodayCard({ data }: { data: OverviewData }) {
           borderTop: '1px solid var(--l4)',
         }}
       >
-        <KpiCell label="DISTANCE" value={dist} unit="MI" sub={`FLOOR ${(w.distanceMi * 0.66).toFixed(1)} · CAP ${(w.distanceMi * 2).toFixed(1)}`} />
+        <KpiCell label="DISTANCE" value={dist} unit="MI" sub={`FLOOR ${(distanceMi * 0.66).toFixed(1)} · CAP ${(distanceMi * 2).toFixed(1)}`} />
         <KpiCell label="DURATION" value={duration.toString()} unit="MIN" sub="EST · CONVERSATIONAL" />
         <KpiCell
           label="PACE TARGET"
           value={pace}
           unit=""
           valueFontSize={26}
-          sub={`/MI · ${w.isLong ? 'LONG E' : 'DANIELS E'}`}
+          sub={`/MI · ${isLong ? 'LONG E' : 'DANIELS E'}`}
         />
         <KpiCell label={`HR CAP · ${hrCap}`} value="141" unit="BPM" sub="73% HRMAX · 187" />
       </div>
@@ -2850,6 +2871,22 @@ function KpiCell({
       </div>
     </div>
   );
+}
+
+/** Map a plan WorkoutType to its display label for the Today card heading. */
+function planWorkoutTypeLabel(type: string): string {
+  switch (type) {
+    case 'easy':      return 'Easy Run';
+    case 'long':      return 'Long Run';
+    case 'threshold': return 'Threshold Tempo';
+    case 'interval':  return 'VO₂ Max Intervals';
+    case 'mp':        return 'Marathon Pace';
+    case 'race':      return 'Race';
+    case 'shakeout':  return 'Shakeout';
+    case 'recovery':  return 'Recovery Run';
+    case 'rest':      return 'Rest';
+    default:          return 'Easy Run';
+  }
 }
 
 function fmtPaceRange(range: { lower: number; upper: number }): string {
