@@ -96,7 +96,19 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .vital-tile-value { font-family: 'Bebas Neue', sans-serif; font-size: 38px; line-height: 1; color: var(--t0); margin-top: 12px; letter-spacing: -0.5px; }
 .vital-tile.sample .vital-tile-value { color: var(--t1); }
 .vital-tile-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); font-weight: 500; margin-left: 4px; }
-.vital-tile-spark { width: 100%; height: 30px; margin-top: 12px; display: block; }
+/* Range bar — replaces abstract sparkline. Shows today's value as a
+   marker inside the 30-day min→max spread, with the 30-day average
+   as a tick line. Answers 'what is this showing' directly: today vs
+   your normal range. */
+.vital-tile-range { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.vital-tile-range-end { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t2); font-weight: 500; flex-shrink: 0; min-width: 22px; }
+.vital-tile-range-end.right { text-align: right; }
+.vital-tile-range-bar { flex: 1; height: 4px; background: rgba(13,15,18,.10); border-radius: 2px; position: relative; }
+.vital-tile-range-avg { position: absolute; top: -3px; bottom: -3px; width: 1.5px; background: rgba(13,15,18,.35); transform: translateX(-50%); }
+.vital-tile-range-marker { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--green); transform: translate(-50%, -50%); border: 2px solid white; box-shadow: 0 0 0 1px rgba(13,15,18,.20); }
+.vital-tile-range-marker.amber { background: var(--amber); }
+.vital-tile-range-marker.dim   { background: var(--t2); }
+.vital-tile-range-period { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t3); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 6px; text-align: right; }
 .vital-tile-status { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
 .vital-tile-status.green { color: var(--green); }
 .vital-tile-status.amber { color: var(--amber); }
@@ -336,49 +348,70 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
     <div class="vitals-grid">
-      <!-- Sleep -->
+      <!-- Sleep — today 7.4h, 30d range 6.5-8.2h, avg 7.0h. Marker at 53%, avg tick at 29% -->
       <div class="vital-tile">
-        <div class="vital-tile-header">
-          <span class="vital-tile-label">Sleep</span>
-        </div>
+        <div class="vital-tile-header"><span class="vital-tile-label">Sleep</span></div>
         <div class="vital-tile-value">7.4<span class="vital-tile-unit">h</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,18 14,16 28,20 42,14 56,12 70,18 84,16 98,14 112,22 126,16 140,12 154,10 168,14 182,10 196,8" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div class="vital-tile-status green">+0.4h vs 30d avg</div>
-      </div>
-      <!-- Resting HR -->
-      <div class="vital-tile">
-        <div class="vital-tile-header">
-          <span class="vital-tile-label">Resting HR</span>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">6.5h</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:29%;" title="30d avg 7.0h"></span>
+            <span class="vital-tile-range-marker" style="left:53%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">8.2h</span>
         </div>
+        <div class="vital-tile-range-period">30-day range · avg 7.0h</div>
+        <div class="vital-tile-status green">+0.4h vs avg · trending up</div>
+      </div>
+
+      <!-- Resting HR — today 48, range 46-52, avg 50. Marker at 33%, avg at 67% -->
+      <div class="vital-tile">
+        <div class="vital-tile-header"><span class="vital-tile-label">Resting HR</span></div>
         <div class="vital-tile-value">48<span class="vital-tile-unit">bpm</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,12 14,14 28,12 42,10 56,12 70,14 84,12 98,16 112,14 126,12 140,14 154,12 168,10 182,12 196,12" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div class="vital-tile-status green">−2 bpm vs 30d avg</div>
-      </div>
-      <!-- HRV -->
-      <div class="vital-tile">
-        <div class="vital-tile-header">
-          <span class="vital-tile-label">HRV</span>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">46</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:67%;" title="30d avg 50 bpm"></span>
+            <span class="vital-tile-range-marker" style="left:33%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">52</span>
         </div>
-        <div class="vital-tile-value">62<span class="vital-tile-unit">ms</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,16 14,18 28,14 42,12 56,16 70,18 84,14 98,10 112,12 126,16 140,12 154,10 168,8 182,12 196,10" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div class="vital-tile-status green">Trending up</div>
+        <div class="vital-tile-range-period">30-day range · avg 50 bpm</div>
+        <div class="vital-tile-status green">−2 bpm vs avg · steady</div>
       </div>
-      <!-- Body Mass -->
+
+      <!-- HRV — today 62, range 54-68, avg 58. Marker at 57%, avg at 29% -->
+      <div class="vital-tile">
+        <div class="vital-tile-header"><span class="vital-tile-label">HRV</span></div>
+        <div class="vital-tile-value">62<span class="vital-tile-unit">ms</span></div>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">54</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:29%;" title="30d avg 58 ms"></span>
+            <span class="vital-tile-range-marker" style="left:57%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">68</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 58 ms</div>
+        <div class="vital-tile-status green">+4 ms vs avg · trending up</div>
+      </div>
+
+      <!-- Body Mass — sample data -->
       <div class="vital-tile sample">
         <div class="vital-tile-header">
           <span class="vital-tile-label">Body Mass</span>
           <span class="vital-tile-badge sample">Sample</span>
         </div>
         <div class="vital-tile-value">165<span class="vital-tile-unit">lb</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,14 14,12 28,14 42,16 56,14 70,16 84,18 98,16 112,18 126,16 140,18 154,16 168,18 182,20 196,18" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
-        </svg>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">163</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:50%;"></span>
+            <span class="vital-tile-range-marker amber" style="left:50%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">167</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 165 lb</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
     </div>
@@ -395,62 +428,92 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
     <div class="vitals-grid five">
-      <!-- Average HR per run -->
+      <!-- Avg HR — today 152, range 145-162, avg 153. Marker at 41%, avg at 47% -->
       <div class="vital-tile">
-        <div class="vital-tile-header">
-          <span class="vital-tile-label">Avg HR</span>
-        </div>
+        <div class="vital-tile-header"><span class="vital-tile-label">Avg HR</span></div>
         <div class="vital-tile-value">152<span class="vital-tile-unit">bpm</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,16 14,18 28,14 42,16 56,12 70,18 84,16 98,14 112,16 126,14 140,12 154,14 168,12 182,14 196,12" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">145</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:47%;"></span>
+            <span class="vital-tile-range-marker" style="left:41%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">162</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 153 bpm</div>
         <div class="vital-tile-status green">Zone 2 most runs</div>
       </div>
-      <!-- Cadence -->
+
+      <!-- Cadence — today 178, range 172-182, avg 175. Marker at 60%, avg at 30% -->
       <div class="vital-tile">
-        <div class="vital-tile-header">
-          <span class="vital-tile-label">Cadence</span>
-        </div>
+        <div class="vital-tile-header"><span class="vital-tile-label">Cadence</span></div>
         <div class="vital-tile-value">178<span class="vital-tile-unit">spm</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,20 14,18 28,16 42,18 56,16 70,14 84,16 98,14 112,12 126,14 140,12 154,10 168,12 182,10 196,8" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div class="vital-tile-status green">+3 spm vs 30d</div>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">172</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:30%;"></span>
+            <span class="vital-tile-range-marker" style="left:60%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">182</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 175 spm</div>
+        <div class="vital-tile-status green">+3 spm vs avg</div>
       </div>
-      <!-- Vertical oscillation -->
+
+      <!-- Vert Osc — sample. Range 7.4-8.6, avg 8.0. Marker at 33% -->
       <div class="vital-tile sample">
         <div class="vital-tile-header">
           <span class="vital-tile-label">Vert. Osc.</span>
           <span class="vital-tile-badge sample">Sample</span>
         </div>
         <div class="vital-tile-value">7.8<span class="vital-tile-unit">cm</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,10 14,12 28,10 42,14 56,12 70,16 84,14 98,18 112,16 126,18 140,20 154,18 168,22 182,20 196,22" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
-        </svg>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">7.4</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:50%;"></span>
+            <span class="vital-tile-range-marker amber" style="left:33%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">8.6</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 8.0 cm</div>
         <div class="vital-tile-status amber">Needs Apple Watch S7+</div>
       </div>
-      <!-- Stride length -->
+
+      <!-- Stride — sample. Range 3.8-4.3, avg 4.0. Marker at 60% -->
       <div class="vital-tile sample">
         <div class="vital-tile-header">
           <span class="vital-tile-label">Stride</span>
           <span class="vital-tile-badge sample">Sample</span>
         </div>
         <div class="vital-tile-value">4.1<span class="vital-tile-unit">ft</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,20 14,22 28,18 42,20 56,18 70,16 84,18 98,16 112,14 126,16 140,14 154,12 168,14 182,12 196,10" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
-        </svg>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">3.8</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:40%;"></span>
+            <span class="vital-tile-range-marker amber" style="left:60%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">4.3</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 4.0 ft</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
-      <!-- Ground contact -->
+
+      <!-- GCT — sample. Range 240-270 ms, avg 258 ms. Marker at 27% -->
       <div class="vital-tile sample">
         <div class="vital-tile-header">
           <span class="vital-tile-label">GCT</span>
           <span class="vital-tile-badge sample">Sample</span>
         </div>
         <div class="vital-tile-value">248<span class="vital-tile-unit">ms</span></div>
-        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
-          <polyline points="0,12 14,14 28,12 42,16 56,14 70,18 84,16 98,18 112,20 126,18 140,20 154,22 168,20 182,22 196,24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
-        </svg>
+        <div class="vital-tile-range">
+          <span class="vital-tile-range-end">240</span>
+          <div class="vital-tile-range-bar">
+            <span class="vital-tile-range-avg" style="left:60%;"></span>
+            <span class="vital-tile-range-marker amber" style="left:27%;"></span>
+          </div>
+          <span class="vital-tile-range-end right">270</span>
+        </div>
+        <div class="vital-tile-range-period">30-day range · avg 258 ms</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
     </div>
@@ -658,13 +721,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
       <div class="source-pill">
         <span class="source-pill-dot amber"></span>
-        <span class="source-pill-name">HealthKit</span>
-        <span class="source-pill-state">Not connected · would unlock sleep, HRV, RHR, body mass, running form</span>
+        <span class="source-pill-name">HealthKit + Apple Workouts</span>
+        <span class="source-pill-state">Not connected · would unlock sleep, HRV, RHR, body mass, and Apple Watch running form (cadence, vert osc, GCT)</span>
       </div>
       <div class="source-pill">
         <span class="source-pill-dot dim"></span>
-        <span class="source-pill-name">Garmin / COROS</span>
-        <span class="source-pill-state">Optional · adds running power, GCT, vertical oscillation</span>
+        <span class="source-pill-name">Runcino iOS app</span>
+        <span class="source-pill-state">Coming soon · native workout capture + on-watch coaching</span>
       </div>
     </div>
   </div>
