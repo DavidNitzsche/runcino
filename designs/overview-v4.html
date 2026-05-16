@@ -1217,9 +1217,7 @@ body {
         <span class="dot-green"></span>
         COACH · <span data-today-label>FRI MAY 15</span> · BASE WEEK 1
       </div>
-      <p class="coach-briefing">
-        Good morning, David. <strong>You're closing out the first week clean</strong> — Mon through Thu all hit on plan and that recovery dose is already paying back. Today is 5.5 easy plus a strength session — bank the consistency, don't grind. Long run Sunday at 10.5 mi closes the week. <strong>93 days to AFC. Go get it.</strong>
-      </p>
+      <p class="coach-briefing" id="coach-briefing"></p>
     </div>
 
     <div class="coach-right">
@@ -1502,6 +1500,47 @@ body {
     RuncinoStore.subscribe(() => {
       applyOverviewCheckInState(RuncinoStore.todayCheckIn());
     });
+  }
+
+  // ── Coach briefing · day-aware narrative ──────────────────────────
+  function renderCoachBriefing() {
+    if (!window.RuncinoStore) return;
+    const el = document.getElementById('coach-briefing');
+    if (!el) return;
+    const day = RuncinoStore.todayWorkout();
+    const week = RuncinoStore.currentWeekPlan();
+    const state = RuncinoStore.getState();
+    const nextA = (state.races.upcoming || [])[0];
+    const daysAway = nextA ? nextA.daysAway : '—';
+    const raceName = nextA ? nextA.name.split(' ').slice(0,3).join(' ') : 'the next race';
+
+    // Find tomorrow's day in the week, if any
+    const todayIdx = week ? week.days.findIndex(d => d.date === state.today) : -1;
+    const tomorrow = (week && todayIdx >= 0 && todayIdx < week.days.length - 1)
+      ? week.days[todayIdx + 1]
+      : null;
+    const tomorrowDesc = tomorrow && !tomorrow.isRest
+      ? ` Tomorrow is ${tomorrow.label.toLowerCase()} at ${tomorrow.distanceMi} mi`
+      : '';
+
+    let text;
+    if (!day || day.isRest) {
+      text = `Good morning, David. <strong>Week 1 work is in the books</strong> — five sessions done, body absorbing well. Today is rest; use it.${tomorrowDesc} closes Week 1 strong. <strong>${daysAway} days to AFC.</strong>`;
+    } else if (day.type === 'long') {
+      text = `Today's the long: <strong>${day.distanceMi} mi at conversational pace</strong>. Don't push the finish — closing Week ${state.plan.currentWeek} on form, not on effort. <strong>${daysAway} days to AFC.</strong>`;
+    } else if (day.type === 'quality') {
+      text = `Today is quality: <strong>${day.label.toLowerCase()}</strong>, ${day.distanceMi} mi total. Earn the pace. Recovery has been clean; the body is ready for the dose. <strong>${daysAway} days to AFC.</strong>`;
+    } else {
+      // Easy / recovery
+      const strengthClause = day.hasStrength ? ' plus a strength session' : '';
+      text = `Today is ${day.distanceMi} ${day.label.toLowerCase()}${strengthClause} — conversational, no grinding.${tomorrowDesc}. <strong>${daysAway} days to AFC. Go get it.</strong>`;
+    }
+    el.innerHTML = text;
+  }
+
+  if (window.RuncinoStore) {
+    renderCoachBriefing();
+    RuncinoStore.subscribe(renderCoachBriefing);
   }
 
   // ── Hero · render from RuncinoStore.todayWorkout() ────────────────
