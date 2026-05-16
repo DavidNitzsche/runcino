@@ -3,10 +3,13 @@
  * overview-v4.html. Every page redesigned to the new doctrine should
  * compose from these primitives instead of inlining styles.
  *
- * Tokens (background, surface, ink, recovery, milestone, warn,
- * race) come from globals.css. Inline styles in each component
- * reference them via CSS variables.
+ * Design law: read `designs/V4_DESIGN_LAW.md`. The numeric values for
+ * spacing, sizing, typography, and color are enumerated in
+ * `./tokens.ts`. New components import tokens; existing ones get
+ * migrated to tokens organically as they're touched.
  */
+
+export { TOKENS, SPACING, SIZING, FONT, TYPE, COLOR, SHADOW, GRID } from './tokens';
 
 export { PrimaryButton, GhostButton } from './Buttons';
 export { StatPill } from './StatPill';
