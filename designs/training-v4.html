@@ -263,7 +263,7 @@ body {
 }
 .volume-bars {
   display: grid;
-  grid-template-columns: repeat(16, 1fr);
+  grid-template-columns: repeat(15, 1fr);
   gap: 6px;
   align-items: end;
   height: 120px;
@@ -302,7 +302,7 @@ body {
 .volume-bar.peakmark .volume-bar-value { color: var(--orange); }
 .volume-axis {
   display: grid;
-  grid-template-columns: repeat(16, 1fr);
+  grid-template-columns: repeat(15, 1fr);
   gap: 6px;
   margin-bottom: 4px;
 }
@@ -314,7 +314,7 @@ body {
 .volume-axis-week.current { color: var(--amber); font-weight: 600; }
 .volume-phase-band {
   display: grid;
-  grid-template-columns: repeat(16, 1fr);
+  grid-template-columns: repeat(15, 1fr);
   gap: 6px;
   margin-top: 4px;
 }
@@ -750,9 +750,8 @@ body {
         <div class="volume-bar taper future" style="height: 65%;"><span class="volume-bar-value">34</span></div>
         <!-- Week 14 TAPER 18 race week -->
         <div class="volume-bar taper future" style="height: 35%;"><span class="volume-bar-value">18</span></div>
-        <!-- Pad to 16 cols for visual balance (race + post) -->
-        <div></div>
-        <div></div>
+        <!-- RACE column — solid race color, full height -->
+        <div class="volume-bar future" style="background: var(--orange); opacity: .85; height: 28%;"><span class="volume-bar-value" style="display:block; color: var(--orange); font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px;">🏁</span></div>
       </div>
 
       <div class="volume-axis">
@@ -771,7 +770,6 @@ body {
         <span class="volume-axis-week">W13</span>
         <span class="volume-axis-week">W14</span>
         <span class="volume-axis-week" style="color: var(--orange); font-weight: 600;">RACE</span>
-        <span class="volume-axis-week"></span>
       </div>
 
       <div class="volume-phase-band">
@@ -790,7 +788,6 @@ body {
         <div class="volume-phase-cell taper"></div>
         <div class="volume-phase-cell taper"></div>
         <div class="volume-phase-cell race"></div>
-        <div></div>
       </div>
 
       <div class="volume-phase-legend">
