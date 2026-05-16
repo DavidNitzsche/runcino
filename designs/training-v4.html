@@ -292,9 +292,10 @@ body {
 }
 .volume-bar-value {
   position: absolute;
-  top: -18px; left: 50%; transform: translateX(-50%);
-  font-family: 'Bebas Neue', sans-serif; font-size: 13px;
+  top: -20px; left: 50%; transform: translateX(-50%);
+  font-family: 'Bebas Neue', sans-serif; font-size: 14px;
   color: var(--t0);
+  white-space: nowrap;
   display: none;
 }
 .volume-bar.current .volume-bar-value,
@@ -363,12 +364,13 @@ body {
   display: contents;
 }
 .cal-head-cell {
-  background: rgba(13,15,18,.02);
+  background: rgba(13,15,18,.06);
   font-family: 'Inter', sans-serif; font-size: 11px;
-  letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase;
-  font-weight: 500;
-  min-height: 32px;
-  padding: 8px;
+  letter-spacing: 1.5px; color: var(--t1); text-transform: uppercase;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(13,15,18,.10);
 }
 .cal-head-cell.cal-week-col { padding-left: 40px; }
 .cal-head-cell.cal-mileage-col { text-align: right; padding-right: 40px; }
@@ -377,7 +379,7 @@ body {
   padding-left: 40px;
   font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px;
   color: var(--t0);
-  background: rgba(13,15,18,.02);
+  background: rgba(13,15,18,.04);
 }
 .cal-week-cell-date {
   font-weight: 400; color: var(--t2); font-size: 11px;
@@ -422,7 +424,7 @@ body {
   text-align: right; padding-right: 40px;
   font-family: 'Bebas Neue', sans-serif; font-size: 20px;
   color: var(--t0); line-height: 1;
-  background: rgba(13,15,18,.02);
+  background: rgba(13,15,18,.04);
   display: flex; flex-direction: column;
   align-items: flex-end; justify-content: center;
 }
@@ -435,11 +437,12 @@ body {
 /* Phase row separators on the calendar */
 .cal-phase-row {
   grid-column: 1 / -1;
-  padding: 12px 40px 6px;
-  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
-  letter-spacing: 2.5px; text-transform: uppercase; color: var(--t2);
-  background: rgba(13,15,18,.02);
-  border-bottom: 1px solid var(--divider);
+  padding: 12px 40px 12px;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 2.5px; text-transform: uppercase; color: var(--t1);
+  background: rgba(13,15,18,.06);
+  border-top: 1px solid rgba(13,15,18,.10);
+  border-bottom: 1px solid rgba(13,15,18,.10);
 }
 
 /* ══════════════════════════
@@ -770,24 +773,6 @@ body {
         <span class="volume-axis-week">W13</span>
         <span class="volume-axis-week">W14</span>
         <span class="volume-axis-week" style="color: var(--orange); font-weight: 600;">RACE</span>
-      </div>
-
-      <div class="volume-phase-band">
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell base"></div>
-        <div class="volume-phase-cell build"></div>
-        <div class="volume-phase-cell build"></div>
-        <div class="volume-phase-cell build"></div>
-        <div class="volume-phase-cell peak"></div>
-        <div class="volume-phase-cell peak"></div>
-        <div class="volume-phase-cell peak"></div>
-        <div class="volume-phase-cell taper"></div>
-        <div class="volume-phase-cell taper"></div>
-        <div class="volume-phase-cell race"></div>
       </div>
 
       <div class="volume-phase-legend">
