@@ -30,7 +30,7 @@
   'use strict';
 
   const STORE_KEY = 'runcino_v4_state';
-  const SEED_VERSION = 4;
+  const SEED_VERSION = 5;
 
   // ── Plan builder ────────────────────────────────────────────────
   // Generates all 14 weeks of the AFC Half plan from a compact template.
@@ -202,6 +202,42 @@
     },
 
     vitals: { sleep7d: 7.4, rhr: 48, hrv: 62, strain7d: 11.4 },
+
+    // Shoe rotation. Each shoe has a baseline mileage (miles run before
+    // this app started tracking) + a color for visual ID. Per-run
+    // assignments live in shoes.byRun and add to the baseline at read
+    // time via shoeMileage(id).
+    shoes: {
+      list: [
+        { id: 'pegasus41', name: 'Nike Pegasus 41',  baselineMi: 234, color: '#E85D26', purpose: 'daily'    },
+        { id: 'vaporfly3', name: 'Nike Vaporfly 3',  baselineMi: 78,  color: '#FACC15', purpose: 'race'     },
+        { id: 'rincon4',   name: 'Hoka Rincon 4',    baselineMi: 412, color: '#2563EB', purpose: 'long run' },
+        { id: 'nimbus26',  name: 'Asics Nimbus 26',  baselineMi: 156, color: '#2CA82F', purpose: 'recovery' },
+      ],
+      byRun: {
+        // run-id → shoe-id assignments (seeded with reasonable defaults
+        // for the existing 20 recent runs)
+        'thu-may-14': 'pegasus41',
+        'tue-may-12': 'vaporfly3',
+        'mon-may-11': 'pegasus41',
+        'sun-may-3':  'vaporfly3',
+        'thu-may-1':  'nimbus26',
+        'sun-apr-26': 'vaporfly3',
+        'sun-apr-19': 'rincon4',
+        'fri-apr-18': 'rincon4',
+        'wed-apr-15': 'pegasus41',
+        'mon-apr-13': 'vaporfly3',
+        'sat-apr-11': 'rincon4',
+        'thu-apr-9':  'pegasus41',
+        'tue-apr-7':  'vaporfly3',
+        'sun-apr-5':  'rincon4',
+        'fri-apr-3':  'pegasus41',
+        'wed-apr-1':  'vaporfly3',
+        'sun-mar-29': 'rincon4',
+        'thu-mar-26': 'nimbus26',
+        'tue-mar-24': 'nimbus26',
+      },
+    },
   };
 
   const listeners = new Set();
@@ -293,6 +329,39 @@
     return getState();
   }
 
+  // ── Shoes ────────────────────────────────────────────────────────
+  function setShoeForRun(runId, shoeId) {
+    if (!runId) return;
+    return setState((s) => {
+      const byRun = { ...(s.shoes && s.shoes.byRun || {}) };
+      if (shoeId) byRun[runId] = shoeId; else delete byRun[runId];
+      return { ...s, shoes: { ...s.shoes, byRun } };
+    });
+  }
+
+  function getShoeForRun(runId) {
+    const s = getState();
+    return s.shoes?.byRun?.[runId] || null;
+  }
+
+  // Total mileage for a shoe = baseline + sum(distance of runs assigned).
+  // For the mockup we don't have per-run distance in shoes.byRun (just
+  // the runId), so callers can pass a lookup. For simplicity, we
+  // estimate by counting assigned runs × avg distance from the seed.
+  function shoeMileage(shoeId, runsList) {
+    const s = getState();
+    const shoe = (s.shoes?.list || []).find((sh) => sh.id === shoeId);
+    if (!shoe) return 0;
+    const byRun = s.shoes?.byRun || {};
+    let added = 0;
+    if (Array.isArray(runsList)) {
+      runsList.forEach((r) => {
+        if (byRun[r.id] === shoeId) added += (r.distanceMi || 0);
+      });
+    }
+    return Math.round((shoe.baselineMi + added) * 10) / 10;
+  }
+
   // ── Selectors ────────────────────────────────────────────────────
   function todayCheckIn() {
     const s = getState();
@@ -364,6 +433,9 @@
     getCurrentWeekContext,
     todayWorkout,
     fmtDayLabel,
+    setShoeForRun,
+    getShoeForRun,
+    shoeMileage,
     SEED_VERSION,
   };
 

@@ -97,14 +97,95 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 /* Recent runs */
 .run-row {
   display: grid;
-  /* date · type · name · miles · time */
-  grid-template-columns: 100px 100px 1fr 90px 90px;
+  /* date · type · name · miles · time · shoes */
+  grid-template-columns: 100px 100px 1fr 80px 90px 160px;
   align-items: center; gap: 16px;
   padding: 14px 40px;
   border-top: 1px solid var(--divider);
+  cursor: pointer;
+  transition: background .15s;
 }
+.run-row:hover { background: rgba(13,15,18,.025); }
 /* Extra breathing room between the type tag and the run name. */
 .run-row > :nth-child(3) { margin-left: 12px; }
+
+/* Inline shoe picker — native select styled to fit row layout */
+.run-shoe-picker {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t1);
+  background-color: rgba(13,15,18,.035);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 28px 8px 12px;
+  cursor: pointer;
+  width: 100%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color .15s, background-color .15s;
+}
+.run-shoe-picker:hover { border-color: var(--t3); background-color: rgba(13,15,18,.06); }
+.run-shoe-picker:focus { outline: none; border-color: var(--t1); }
+
+/* Run detail modal */
+.run-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(13,15,18,.45);
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 200;
+}
+.run-modal-overlay.active { display: flex; }
+.run-modal {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.25);
+  width: min(720px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 40px;
+  position: relative;
+}
+.run-modal-close {
+  position: absolute; top: 20px; right: 20px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(13,15,18,.06);
+  border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 16px; color: var(--t1);
+}
+.run-modal-close:hover { background: rgba(13,15,18,.10); }
+.run-modal-eyebrow { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); }
+.run-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; margin-top: 8px; }
+.run-modal-sub { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); margin-top: 6px; }
+.run-modal-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 24px; }
+.run-modal-stat { padding: 14px 16px; background: rgba(13,15,18,.03); border-radius: 12px; }
+.run-modal-stat-label { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--t2); font-weight: 600; }
+.run-modal-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 6px; }
+.run-modal-stat-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-left: 3px; }
+.run-modal-section-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; color: var(--t2); margin-top: 28px; margin-bottom: 12px; }
+.run-modal-map {
+  height: 200px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(44,168,47,.10), rgba(37,99,235,.10));
+  border: 1px dashed var(--divider);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 1px; text-transform: uppercase;
+}
+.run-modal-splits { width: 100%; border-collapse: collapse; }
+.run-modal-splits th, .run-modal-splits td {
+  text-align: left; padding: 10px 12px; font-family: 'Inter', sans-serif; font-size: 12px;
+  border-bottom: 1px solid var(--divider);
+}
+.run-modal-splits th { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--t2); font-weight: 600; }
+.run-modal-splits td.val { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--t0); }
+.run-modal-splits tr:last-child td { border-bottom: none; }
 /* Type label — full word in the type's color. No background pill; the
    color carries the meaning, no legend needed at the bottom of the card. */
 .run-tag {
@@ -315,13 +396,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="thu-may-14">
       <div class="run-date">Thu May 14</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Easy slow and boring</div>
         <div class="run-type">Easy · prescribed</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="thu-may-14">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">5.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:14/mi</div>
@@ -332,13 +423,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="tue-may-12">
       <div class="run-date">Tue May 12</div>
       <span class="run-tag quality">Threshold</span>
       <div>
         <div class="run-name">Working on better form</div>
         <div class="run-type">Threshold · 5×1K cruise</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="tue-may-12">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">7.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">7:18/mi avg</div>
@@ -349,13 +450,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="mon-may-11">
       <div class="run-date">Mon May 11</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Lunch Run</div>
         <div class="run-type">Easy · base mileage</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="mon-may-11">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:22/mi</div>
@@ -366,13 +477,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sun-may-3">
       <div class="run-date">Sun May 3</div>
       <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Sombrero Half Marathon</div>
         <div class="run-type">Race · passion run · anniversary</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sun-may-3">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">13.16<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">7:40/mi</div>
@@ -383,13 +504,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="thu-may-1">
       <div class="run-date">Thu May 1</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Omg I ran again</div>
         <div class="run-type">Easy · short shakeout</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="thu-may-1">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">3.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:50/mi</div>
@@ -400,13 +531,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sun-apr-26">
       <div class="run-date">Sun Apr 26</div>
       <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Big Sur Marathon</div>
         <div class="run-type">Race · adventure · hilly</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sun-apr-26">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">26.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">8:17/mi</div>
@@ -417,13 +558,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sun-apr-19">
       <div class="run-date">Sun Apr 19</div>
       <span class="run-tag long">Long</span>
       <div>
         <div class="run-name">Morning Run</div>
         <div class="run-type">Long · pre-Big Sur taper</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sun-apr-19">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">8.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:05/mi</div>
@@ -434,13 +585,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="fri-apr-18">
       <div class="run-date">Fri Apr 18</div>
       <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Point Magu Half Marathon</div>
         <div class="run-type">Race · trail · B-race</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="fri-apr-18">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">13.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:33/mi</div>
@@ -451,13 +612,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="wed-apr-15">
       <div class="run-date">Wed Apr 15</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Coffee shake-out</div>
         <div class="run-type">Easy · pre-race week</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="wed-apr-15">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">4.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:28/mi</div>
@@ -468,13 +639,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="mon-apr-13">
       <div class="run-date">Mon Apr 13</div>
       <span class="run-tag quality">Threshold</span>
       <div>
         <div class="run-name">Sharpening session</div>
         <div class="run-type">Threshold · 4×1mi cruise</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="mon-apr-13">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">7.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">7:24/mi avg</div>
@@ -485,13 +666,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sat-apr-11">
       <div class="run-date">Sat Apr 11</div>
       <span class="run-tag long">Long</span>
       <div>
         <div class="run-name">Rose Bowl loops</div>
         <div class="run-type">Long · pre-Point Magu</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sat-apr-11">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">12.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:12/mi</div>
@@ -502,13 +693,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="thu-apr-9">
       <div class="run-date">Thu Apr 9</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Easy with strides</div>
         <div class="run-type">Easy · 6×100m strides</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="thu-apr-9">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">5.4<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:18/mi</div>
@@ -519,13 +720,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="tue-apr-7">
       <div class="run-date">Tue Apr 7</div>
       <span class="run-tag quality">Threshold</span>
       <div>
         <div class="run-name">Cruise intervals</div>
         <div class="run-type">Threshold · 5×1K</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="tue-apr-7">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">6.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">7:32/mi avg</div>
@@ -536,13 +747,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sun-apr-5">
       <div class="run-date">Sun Apr 5</div>
       <span class="run-tag long">Long</span>
       <div>
         <div class="run-name">Griffith Park out-and-back</div>
         <div class="run-type">Long · marathon-recovery rebuild</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sun-apr-5">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">14.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:20/mi</div>
@@ -553,13 +774,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="fri-apr-3">
       <div class="run-date">Fri Apr 3</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Lunch run</div>
         <div class="run-type">Easy · base mileage</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="fri-apr-3">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:24/mi</div>
@@ -570,13 +801,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="wed-apr-1">
       <div class="run-date">Wed Apr 1</div>
       <span class="run-tag quality">Threshold</span>
       <div>
         <div class="run-name">First tempo back</div>
         <div class="run-type">Threshold · light dose</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="wed-apr-1">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">6.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">7:48/mi avg</div>
@@ -587,13 +828,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="sun-mar-29">
       <div class="run-date">Sun Mar 29</div>
       <span class="run-tag long">Long</span>
       <div>
         <div class="run-name">Slow long</div>
         <div class="run-type">Long · post-LA recovery build</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="sun-mar-29">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">10.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:38/mi</div>
@@ -604,13 +855,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="thu-mar-26">
       <div class="run-date">Thu Mar 26</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">First real run back</div>
         <div class="run-type">Easy · 11 days post-LA</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="thu-mar-26">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">5.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">9:42/mi</div>
@@ -621,13 +882,23 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="run-row">
+    <div class="run-row" data-run-id="tue-mar-24">
       <div class="run-date">Tue Mar 24</div>
       <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Shuffle around the block</div>
         <div class="run-type">Easy · marathon recovery</div>
+      
+      <div onclick="event.stopPropagation()">
+        <select class="run-shoe-picker" data-run-id="tue-mar-24">
+          <option value="">No shoe set</option>
+          <option value="pegasus41">Nike Pegasus 41</option>
+          <option value="vaporfly3">Nike Vaporfly 3</option>
+          <option value="rincon4">Hoka Rincon 4</option>
+          <option value="nimbus26">Asics Nimbus 26</option>
+        </select>
       </div>
+    </div>
       <div>
         <div class="run-num">3.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
         <div class="run-num-unit">10:14/mi</div>
@@ -640,5 +911,120 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
 </div>
+
+<!-- Run detail modal — populated on row click -->
+<div class="run-modal-overlay" id="run-modal-overlay">
+  <div class="run-modal">
+    <button class="run-modal-close" id="run-modal-close" aria-label="Close">✕</button>
+    <div class="run-modal-eyebrow" id="run-modal-eyebrow">RUN · DATE</div>
+    <div class="run-modal-title" id="run-modal-title">Run Name</div>
+    <div class="run-modal-sub" id="run-modal-sub">type · context</div>
+
+    <div class="run-modal-stats" id="run-modal-stats"></div>
+
+    <div class="run-modal-section-label">Route</div>
+    <div class="run-modal-map">GPX route would render here</div>
+
+    <div class="run-modal-section-label">Per-Mile Splits</div>
+    <table class="run-modal-splits">
+      <thead>
+        <tr><th>Mi</th><th>Pace</th><th>Avg HR</th><th>Elev Δ</th></tr>
+      </thead>
+      <tbody id="run-modal-splits-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="runcino-store.js"></script>
+<script>
+  // Wire shoe pickers — restore saved selection + persist on change.
+  // Stop propagation so clicking the picker doesn't open the run modal.
+  function wireShoePickers() {
+    if (!window.RuncinoStore) return;
+    document.querySelectorAll('.run-shoe-picker').forEach(function (sel) {
+      const runId = sel.dataset.runId;
+      const saved = RuncinoStore.getShoeForRun(runId);
+      if (saved) sel.value = saved;
+      sel.addEventListener('change', function (e) {
+        e.stopPropagation();
+        RuncinoStore.setShoeForRun(runId, e.target.value || null);
+      });
+      sel.addEventListener('click', function (e) { e.stopPropagation(); });
+    });
+  }
+
+  // Open the run detail modal when a row is clicked.
+  function openRunModal(row) {
+    const date = row.querySelector('.run-date')?.textContent.trim() || '';
+    const tag  = row.querySelector('.run-tag')?.textContent.trim() || '';
+    const name = row.querySelector('.run-name')?.textContent.trim() || '';
+    const sub  = row.querySelector('.run-type')?.textContent.trim() || '';
+    // Pull the four numeric blocks: mi, pace-or-pace-avg, time, avg HR
+    const nums = row.querySelectorAll('.run-num');
+    const subs = row.querySelectorAll('.run-num-unit');
+    const miText   = nums[0]?.textContent || '';
+    const paceText = subs[0]?.textContent || '';
+    const timeText = nums[1]?.textContent || '';
+    const hrText   = subs[1]?.textContent || '';
+
+    const miNum = parseFloat(miText) || 0;
+    const avgPaceSec = (function () {
+      const m = (subs[0]?.textContent || '').match(/(\d+):(\d+)/);
+      if (!m) return 540;
+      return parseInt(m[1],10)*60 + parseInt(m[2],10);
+    })();
+    const avgHr = parseInt((subs[1]?.textContent || '').replace(/[^\d]/g,''),10) || 140;
+
+    document.getElementById('run-modal-eyebrow').textContent = (tag || 'RUN') + ' · ' + date;
+    document.getElementById('run-modal-title').textContent = name;
+    document.getElementById('run-modal-sub').textContent = sub;
+
+    // Stats grid — Distance / Time / Avg Pace / Avg HR
+    const stats = document.getElementById('run-modal-stats');
+    stats.innerHTML =
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Distance</div><div class="run-modal-stat-val">' + miNum.toFixed(1).replace(/\.0$/, '') + '<span class="run-modal-stat-unit">mi</span></div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Time</div><div class="run-modal-stat-val">' + timeText + '<span class="run-modal-stat-unit">min</span></div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Avg Pace</div><div class="run-modal-stat-val">' + (paceText.split(' ')[0] || '—') + '</div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Avg HR</div><div class="run-modal-stat-val">' + avgHr + '<span class="run-modal-stat-unit">bpm</span></div></div>';
+
+    // Synthesize per-mile splits from avg pace + small variance
+    const wholeMiles = Math.max(1, Math.floor(miNum));
+    const body = document.getElementById('run-modal-splits-body');
+    let rows = '';
+    for (let i = 1; i <= wholeMiles; i++) {
+      const drift = ((i % 3) - 1) * 4; // -4, 0, +4 seconds
+      const sec = avgPaceSec + drift;
+      const mm = Math.floor(sec / 60), ss = sec % 60;
+      const pace = mm + ':' + String(ss).padStart(2, '0');
+      const hr = avgHr + ((i % 3) - 1) * 3;
+      const elev = ((i % 4) - 1) * 12; // -12, 0, +12, +24
+      const elevStr = (elev > 0 ? '+' : '') + elev + ' ft';
+      rows += '<tr><td class="val">' + i + '</td><td class="val">' + pace + '</td><td class="val">' + hr + '</td><td>' + elevStr + '</td></tr>';
+    }
+    body.innerHTML = rows;
+
+    document.getElementById('run-modal-overlay').classList.add('active');
+  }
+
+  function closeRunModal() {
+    document.getElementById('run-modal-overlay').classList.remove('active');
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    wireShoePickers();
+    document.querySelectorAll('.run-row').forEach(function (row) {
+      row.addEventListener('click', function () { openRunModal(row); });
+    });
+    document.getElementById('run-modal-close').addEventListener('click', closeRunModal);
+    document.getElementById('run-modal-overlay').addEventListener('click', function (e) {
+      if (e.target === this) closeRunModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeRunModal();
+    });
+  });
+</script>
+<script src="runcino-bind.js" defer></script>
+<script src="runcino-live.js" defer></script>
 </body>
 </html>
