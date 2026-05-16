@@ -78,23 +78,39 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .path-stat-value.orange { color: var(--orange); }
 .path-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
 
+/* Right side is a black panel — flips the whole color system inside. */
 .a-race-right {
-  background: rgba(232,93,38,.04); padding: 40px;
+  background: var(--t0);
+  padding: 40px;
   display: flex; flex-direction: column; justify-content: space-between;
+  color: rgba(255,255,255,.78);
 }
-.path-section-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+.a-race-right .path-section-label {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+  letter-spacing: 1.5px; color: rgba(255,255,255,.45);
+  text-transform: uppercase; margin-bottom: 14px;
+}
 
 .path-progress { margin-top: 4px; }
-.path-progress-bar { height: 8px; background: rgba(13,15,18,.07); border-radius: 4px; overflow: hidden; }
+.a-race-right .path-progress-bar { height: 8px; background: rgba(255,255,255,.10); border-radius: 4px; overflow: hidden; }
 .path-progress-fill { height: 100%; background: var(--orange); border-radius: 4px; }
-.path-progress-meta { display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 8px; }
-.path-progress-meta strong { color: var(--t1); font-weight: 600; }
+.a-race-right .path-progress-meta {
+  display: flex; justify-content: space-between; font-family: 'Inter', sans-serif;
+  font-size: 12px; color: rgba(255,255,255,.55); margin-top: 8px;
+}
+.a-race-right .path-progress-meta strong { color: #FFFFFF; font-weight: 600; }
+
+/* Inline paragraph (Coach's Next Move body) — light text on black. */
+.a-race-right p { color: rgba(255,255,255,.85); }
+.a-race-right p strong { color: #FFFFFF; font-weight: 700; }
 
 .coach-take {
-  font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55; color: var(--t1);
-  margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--divider);
+  font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55;
+  color: rgba(255,255,255,.65);
+  margin-top: 28px; padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,.12);
 }
-.coach-take strong { color: var(--t0); font-weight: 700; }
+.coach-take strong { color: #FFFFFF; font-weight: 700; }
 
 /* ── Card with title-first hierarchy (matches /training) ─── */
 .card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
@@ -245,7 +261,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
         <div style="margin-top: 28px;">
           <div class="path-section-label">Coach's Next Move</div>
-          <p style="font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55; color: var(--t0);">
+          <p style="font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55;">
             Build the aerobic base for four weeks. First real threshold dose lands in
             <strong>24 days</strong> when the Build phase opens. That's where the half-marathon
             pace starts to feel sustainable.
