@@ -446,22 +446,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="checkin-legend-item"><span class="checkin-legend-dot stress"></span>Stress</div>
     </div>
 
-    <div class="checkin-timeline">
-      <div class="timeline-day"><div class="timeline-day-date">5/3</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/4</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:40%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/5</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day missing"><div class="timeline-day-date">5/6</div><div class="timeline-day-stack"><div class="timeline-bar"></div><div class="timeline-bar"></div><div class="timeline-bar"></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/7</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/8</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/9</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/10</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/11</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/12</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/13</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/14</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
-      <div class="timeline-day"><div class="timeline-day-date">5/15</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
-      <div class="timeline-day today missing"><div class="timeline-day-date">5/16</div><div class="timeline-day-stack"><div class="timeline-bar"></div><div class="timeline-bar"></div><div class="timeline-bar"></div></div></div>
-    </div>
+    <!-- Rendered from RuncinoStore.recentCheckIns(14) by the inline script below. -->
+    <div class="checkin-timeline" id="checkin-timeline"></div>
   </div>
 
   <!-- ═══════════════════════════════════
@@ -831,11 +817,43 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     // applyCheckInState fires via subscribe below
   }
 
-  // On load — if today's check-in already exists, reflect it
+  // ── Render the full 14-day timeline from the store ──────────────
+  function renderTimeline() {
+    if (!window.RuncinoStore) return;
+    const container = document.getElementById('checkin-timeline');
+    if (!container) return;
+    const days = RuncinoStore.recentCheckIns(14);
+    const todayISO = RuncinoStore.getState().today;
+
+    container.innerHTML = days.map(function (d) {
+      const isToday = d.date === todayISO;
+      const log = d.log;
+      const dateLabel = `${parseInt(d.date.slice(5,7),10)}/${parseInt(d.date.slice(8,10),10)}`;
+      const classes = ['timeline-day']
+        .concat(isToday ? ['today'] : [])
+        .concat(log ? [] : ['missing'])
+        .join(' ');
+      const stack = log
+        ? '<div class="timeline-bar"><div class="timeline-bar-fill energy"   style="width:'+(log.energy*10)  +'%"></div></div>' +
+          '<div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:'+(log.soreness*10)+'%"></div></div>' +
+          '<div class="timeline-bar"><div class="timeline-bar-fill stress"   style="width:'+(log.stress*10)  +'%"></div></div>'
+        : '<div class="timeline-bar"></div><div class="timeline-bar"></div><div class="timeline-bar"></div>';
+      return (
+        '<div class="' + classes + '">' +
+          '<div class="timeline-day-date">' + dateLabel + '</div>' +
+          '<div class="timeline-day-stack">' + stack + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  // On load — render timeline + reflect today's check-in
   if (window.RuncinoStore) {
+    renderTimeline();
     applyCheckInState(RuncinoStore.todayCheckIn());
     // Subscribe: when another tab/page writes, update this page too
     RuncinoStore.subscribe(() => {
+      renderTimeline();
       applyCheckInState(RuncinoStore.todayCheckIn());
     });
   }
