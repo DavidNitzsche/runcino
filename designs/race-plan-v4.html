@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · AFC Half · Race Plan</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* v4 tokens — match training-v4 / races-v4 / overview-v4. */
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+/* Nav (shared, copied from races-v4.html) */
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* Crumb back to /races */
+.crumb { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); margin-bottom: 22px; }
+.crumb a { color: var(--t2); text-decoration: none; }
+.crumb a:hover { color: var(--t0); }
+.crumb-sep { color: var(--t3); }
+
+/* ── Coach strip ────────────────────────────────────────── */
+.coach-strip { display: flex; align-items: stretch; justify-content: space-between; min-height: 160px; margin-bottom: 16px; }
+.coach-left { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+.coach-label .dot-orange { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; max-width: 760px; }
+.coach-briefing strong { font-weight: 700; }
+
+/* Countdown card — same shape as /training Next Milestone. */
+.countdown-card {
+  flex-shrink: 0; margin-left: 48px; width: 300px;
+  display: flex; flex-direction: column;
+  background: var(--card); border-radius: 20px; padding: 22px 24px;
+  box-shadow: var(--card-shadow);
+}
+.countdown-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
+.countdown-row { display: flex; align-items: baseline; gap: 12px; margin-top: 14px; }
+.countdown-num { font-family: 'Bebas Neue', sans-serif; font-size: 88px; line-height: 0.86; color: var(--orange); letter-spacing: -2px; }
+.countdown-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; line-height: 1.3; }
+.countdown-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); margin-top: 18px; line-height: 1.55; }
+.countdown-meta strong { color: var(--t0); font-weight: 600; }
+.countdown-divider { height: 1px; background: var(--divider); margin: 14px 0; }
+
+/* ── A-race hero ────────────────────────────────────────── */
+.a-race-card {
+  background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow);
+  display: grid; grid-template-columns: 1fr 460px;
+  margin-top: 16px; overflow: hidden;
+}
+.a-race-left { padding: 40px; display: flex; flex-direction: column; }
+.a-race-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
+.a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: 220px; line-height: 0.86; letter-spacing: -6px; color: var(--t0); margin-left: -8px; }
+.a-race-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--orange); margin-top: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+.a-race-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 18px; max-width: 560px; }
+.a-race-explainer strong { color: var(--t0); font-weight: 700; }
+
+.path-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin-top: 28px;
+}
+.path-stat {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 16px 20px;
+}
+.path-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.path-stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; color: var(--t0); margin-top: 6px; }
+.path-stat-value.green { color: var(--green); }
+.path-stat-value.orange { color: var(--orange); }
+.path-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
+
+/* Right side: black panel — inverts colors. */
+.a-race-right {
+  background: var(--t0);
+  padding: 40px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  color: rgba(255,255,255,.78);
+}
+.a-race-right .path-section-label {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+  letter-spacing: 1.5px; color: rgba(255,255,255,.45);
+  text-transform: uppercase; margin-bottom: 14px;
+}
+.goal-breakdown-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.goal-breakdown-row:last-child { border-bottom: none; }
+.goal-breakdown-label { font-family: 'Inter', sans-serif; font-size: 13px; color: rgba(255,255,255,.65); }
+.goal-breakdown-val { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #fff; letter-spacing: -0.5px; }
+.goal-breakdown-val .sub { font-family: 'Inter', sans-serif; font-size: 11px; color: rgba(255,255,255,.45); margin-left: 6px; letter-spacing: 0.5px; }
+
+.strategy-clauses {
+  margin-top: 28px;
+  list-style: none;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.strategy-clauses li {
+  font-family: 'Inter', sans-serif; font-size: 13.5px; line-height: 1.5;
+  color: rgba(255,255,255,.82);
+  padding-left: 22px;
+  position: relative;
+}
+.strategy-clauses li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 8px;
+  width: 6px; height: 6px;
+  background: var(--orange);
+  border-radius: 50%;
+}
+.strategy-clauses li strong { color: #fff; font-weight: 700; }
+
+/* ── Generic v4 card ─────────────────────────────────────── */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-sub strong { color: var(--t1); font-weight: 600; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+
+/* ── Course profile chart ────────────────────────────────── */
+.profile-wrap { padding: 0 40px 28px; }
+.profile-svg-wrap { position: relative; width: 100%; }
+.profile-svg { display: block; width: 100%; height: auto; }
+.profile-axis-y { position: absolute; left: -4px; top: 0; bottom: 60px; display: flex; flex-direction: column; justify-content: space-between; }
+.profile-axis-y span { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t2); letter-spacing: 0.5px; }
+.profile-phase-labels { display: grid; grid-template-columns: 2fr 2.5fr 5.4fr 1fr 2.2fr; margin-top: 14px; }
+.profile-phase-cell {
+  font-family: 'Oswald', sans-serif; font-weight: 600;
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 10px 8px 0; border-top: 2px solid;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.profile-phase-cell .pcell-name { color: var(--t0); }
+.profile-phase-cell .pcell-mi { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 11px; color: var(--t2); letter-spacing: 0.3px; text-transform: none; }
+.profile-phase-cell.amber { border-color: var(--amber); }
+.profile-phase-cell.blue { border-color: var(--blue); }
+.profile-phase-cell.green { border-color: var(--green); }
+.profile-phase-cell.orange { border-color: var(--orange); }
+.profile-phase-cell .pcell-grade { font-family: 'Bebas Neue', sans-serif; font-size: 18px; line-height: 1; letter-spacing: 0; margin-top: 2px; }
+.profile-phase-cell.amber .pcell-grade { color: var(--amber); }
+.profile-phase-cell.blue  .pcell-grade { color: var(--blue); }
+.profile-phase-cell.green .pcell-grade { color: var(--green); }
+.profile-phase-cell.orange .pcell-grade { color: var(--orange); }
+
+.profile-legend { display: flex; gap: 18px; padding: 0 40px 24px; flex-wrap: wrap; }
+.profile-legend-item { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t1); letter-spacing: 0.5px; }
+.profile-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── Phase-by-phase rows (uses cal-phase-row pattern) ────── */
+.phase-list { padding: 8px 40px 32px; display: flex; flex-direction: column; gap: 12px; }
+.phase-card {
+  position: relative;
+  border-radius: 14px;
+  padding: 22px 26px 22px 30px;
+  display: grid;
+  grid-template-columns: 70px 1fr 130px 110px;
+  align-items: start;
+  gap: 24px;
+}
+.phase-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 4px; border-radius: 2px;
+}
+.phase-card.amber  { background: rgba(212,144,10,.08); }
+.phase-card.amber::before  { background: var(--amber); }
+.phase-card.blue   { background: rgba(37,99,235,.07); }
+.phase-card.blue::before   { background: var(--blue); }
+.phase-card.green  { background: rgba(44,168,47,.06); }
+.phase-card.green::before  { background: var(--green); }
+.phase-card.orange { background: rgba(232,93,38,.08); }
+.phase-card.orange::before { background: var(--orange); }
+
+.phase-num {
+  font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 0.86; letter-spacing: -1px;
+  color: var(--t0);
+}
+.phase-num small { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-weight: 600; letter-spacing: 1px; }
+
+.phase-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.phase-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--t0); }
+.phase-range {
+  font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 12px;
+  color: var(--t2); letter-spacing: 1.5px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.phase-range .grade-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: none;
+}
+.phase-range .grade-pill.amber { background: rgba(212,144,10,.14); color: var(--amber); }
+.phase-range .grade-pill.blue  { background: rgba(37,99,235,.12);  color: var(--blue); }
+.phase-range .grade-pill.green { background: rgba(44,168,47,.14);  color: var(--green); }
+.phase-range .grade-pill.orange { background: rgba(232,93,38,.14); color: var(--orange); }
+.phase-elev {
+  font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); letter-spacing: 0.3px;
+  margin-top: 2px;
+}
+.phase-elev .up   { color: var(--orange); font-weight: 600; }
+.phase-elev .down { color: var(--blue); font-weight: 600; }
+.phase-note { font-family: 'Inter', sans-serif; font-size: 13.5px; line-height: 1.55; color: var(--t1); margin-top: 8px; max-width: 720px; }
+.phase-note strong { color: var(--t0); font-weight: 700; }
+
+.phase-pace { text-align: right; }
+.phase-pace-num { font-family: 'Bebas Neue', sans-serif; font-size: 42px; line-height: 0.86; letter-spacing: -1px; color: var(--t0); }
+.phase-pace-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); letter-spacing: 1px; text-transform: uppercase; font-weight: 600; margin-top: 4px; }
+
+.phase-cum { text-align: right; }
+.phase-cum-label { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t2); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; }
+.phase-cum-time { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 6px; letter-spacing: -0.5px; }
+
+/* ── Fueling plan ────────────────────────────────────────── */
+.fuel-summary {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 0 40px 22px;
+}
+.fuel-cell {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 16px 20px;
+}
+.fuel-cell-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.fuel-cell-value { font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.fuel-cell-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
+
+.fuel-timeline { padding: 0 40px 32px; }
+.fuel-timeline-track {
+  position: relative; height: 88px; margin-top: 8px;
+}
+.fuel-timeline-line {
+  position: absolute; left: 0; right: 0; top: 40px; height: 2px;
+  background: linear-gradient(to right, rgba(13,15,18,.10), rgba(13,15,18,.20), rgba(13,15,18,.10));
+}
+.fuel-timeline-tick {
+  position: absolute; top: 32px;
+  width: 2px; height: 18px;
+  background: rgba(13,15,18,.10);
+  transform: translateX(-1px);
+}
+.fuel-marker {
+  position: absolute; top: 22px;
+  display: flex; flex-direction: column; align-items: center;
+  transform: translateX(-50%);
+}
+.fuel-marker-dot {
+  width: 38px; height: 38px;
+  background: var(--orange);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px;
+  box-shadow: 0 2px 8px rgba(232,93,38,.35);
+  border: 3px solid var(--card);
+}
+.fuel-marker-meta {
+  margin-top: 8px;
+  text-align: center;
+  font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t1);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.fuel-marker-meta strong { color: var(--t0); font-weight: 700; }
+.fuel-timeline-axis {
+  display: flex; justify-content: space-between;
+  margin-top: 10px;
+  font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t2); letter-spacing: 0.5px;
+}
+.fuel-note {
+  padding: 14px 40px 28px;
+  font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.55; color: var(--t1);
+  font-style: italic;
+}
+.fuel-note strong { color: var(--t0); font-style: normal; font-weight: 700; }
+
+/* ── Race-day brief (NO DATA YET state) ───────────────── */
+.brief-empty {
+  padding: 32px 40px 36px;
+  display: flex; gap: 18px; align-items: flex-start;
+  background: rgba(212,144,10,.05);
+  border-radius: 14px;
+  margin: 0 40px 32px;
+  border: 1px dashed rgba(212,144,10,.30);
+}
+.brief-empty-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); margin-top: 8px; flex-shrink: 0; }
+.brief-empty-body { flex: 1; }
+.brief-empty-title {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 2px; color: var(--amber); text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.brief-empty-text { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.55; color: var(--t1); }
+.brief-empty-text strong { color: var(--t0); font-weight: 700; }
+.brief-empty-when {
+  display: inline-block; margin-top: 12px;
+  font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; color: var(--amber); text-transform: uppercase;
+}
+
+/* Linked workouts under brief (the runs pointed at this race) */
+.linked-workouts { padding: 8px 40px 30px; }
+.linked-row {
+  display: grid;
+  grid-template-columns: 90px 130px 1fr 110px 90px;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--divider);
+}
+.linked-row:last-child { padding-bottom: 0; }
+.linked-week { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
+.linked-date { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); line-height: 1; }
+.linked-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
+.linked-name-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
+.linked-pace { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); text-align: right; line-height: 1; }
+.linked-pace-sub { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 3px; text-align: right; }
+.linked-tag {
+  font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 6px; text-align: center;
+}
+.linked-tag.threshold { background: rgba(212,144,10,.14); color: var(--amber); }
+.linked-tag.long      { background: rgba(44,168,47,.14);  color: var(--green); }
+.linked-tag.race-sim  { background: rgba(232,93,38,.14);  color: var(--orange); }
+
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link active" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link" href="log-v4.html">Log</a>
+      <a class="nav-link" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right"><div class="nav-avatar">DK</div></div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- Breadcrumb -->
+  <div class="crumb">
+    <a href="races-v4.html">Races</a>
+    <span class="crumb-sep">/</span>
+    <span>Americas Finest City</span>
+  </div>
+
+  <!-- ── COACH STRIP ────────────────────────── -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot-orange"></span>
+        COACH · RACE PLAN · A-RACE
+      </div>
+      <p class="coach-briefing">
+        <strong>Aug 16 in San Diego.</strong> You'll start uphill toward Cabrillo, drop hard off Point Loma,
+        then it's flat through Mission Bay until the Balboa climb at mile 11. Pace the climb
+        conservative — <strong>the work is won at mile 7, not mile 1.</strong> Heat is the wild card
+        in August; the Mission Bay stretch reflects off the pavement.
+      </p>
+    </div>
+
+    <div class="countdown-card">
+      <div class="countdown-label">Countdown</div>
+      <div class="countdown-row">
+        <span class="countdown-num">93</span>
+        <span class="countdown-unit">days<br>to go</span>
+      </div>
+      <div class="countdown-divider"></div>
+      <div class="countdown-meta">
+        <strong>Sun · Aug 16, 2026</strong><br>
+        Half Marathon · 13.24 mi<br>
+        San Diego, CA
+      </div>
+    </div>
+  </div>
+
+  <!-- ── A-RACE HERO ────────────────────────── -->
+  <div class="a-race-card">
+    <div class="a-race-left">
+      <div class="a-race-eyebrow">A-RACE · GOAL TIME 1:35:00</div>
+      <div class="a-race-title">AFC<br>HALF</div>
+      <div class="a-race-sub">Americas Finest City · Aug 16</div>
+      <p class="a-race-explainer">
+        The full 14-week build points to this start line. Goal of <strong>1:35:00</strong> averages
+        <strong>7:15/mi</strong> on the road but rides on a <strong>7:10/mi flat-equivalent effort</strong> —
+        the course gives you the descent at mile 2 and takes it back at mile 11. Pacing is
+        course-aware, not clock-aware. Trust the splits below.
+      </p>
+
+      <div class="path-stats">
+        <div class="path-stat">
+          <div class="path-stat-label">Goal Time</div>
+          <div class="path-stat-value">1:35:00</div>
+          <div class="path-stat-sub">7:10/mi flat-equiv</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Predicted</div>
+          <div class="path-stat-value orange">1:36:42</div>
+          <div class="path-stat-sub">VDOT 48.1 · Riegel</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Strategy</div>
+          <div class="path-stat-value green">Even</div>
+          <div class="path-stat-sub">effort, not pace</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="a-race-right">
+      <div>
+        <div class="path-section-label">Goal Pace Breakdown</div>
+        <div class="goal-breakdown-row">
+          <span class="goal-breakdown-label">Flat-equivalent pace</span>
+          <span class="goal-breakdown-val">7:10<span class="sub">/mi</span></span>
+        </div>
+        <div class="goal-breakdown-row">
+          <span class="goal-breakdown-label">Average road pace</span>
+          <span class="goal-breakdown-val">7:15<span class="sub">/mi</span></span>
+        </div>
+        <div class="goal-breakdown-row">
+          <span class="goal-breakdown-label">Total elevation</span>
+          <span class="goal-breakdown-val">+684<span class="sub">/ −795 ft</span></span>
+        </div>
+        <div class="goal-breakdown-row">
+          <span class="goal-breakdown-label">Pace tolerance</span>
+          <span class="goal-breakdown-val">±10<span class="sub">s/mi</span></span>
+        </div>
+
+        <div class="path-section-label" style="margin-top: 28px;">Even-Effort Strategy</div>
+        <ul class="strategy-clauses">
+          <li><strong>Climb conservative.</strong> Add 14s to goal pace through the Point Loma ridge — banked time is not banked.</li>
+          <li><strong>Brake the descent.</strong> 10-15s under goal pace on The Drop, no more. Quads at mile 11 want them fresh.</li>
+          <li><strong>Hold the line.</strong> Mission Bay is where the race is decided. Don't drift. Don't surge.</li>
+          <li><strong>Make your move at 11.</strong> If you've paced clean, the Balboa climb is yours to take.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── COURSE PROFILE ────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Course Profile</div>
+        <div class="card-sub"><strong>13.24 mi</strong> · +684 ft gain / −795 ft loss · net downhill, deceptive</div>
+      </div>
+      <div class="card-meta">From the GPX · <strong>5 phases</strong></div>
+    </div>
+
+    <div class="profile-wrap">
+      <!-- Y axis labels float over the SVG -->
+      <div class="profile-svg-wrap">
+        <svg class="profile-svg" viewBox="0 0 1180 280" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Layout:
+               13.1 mi maps to x ∈ [0, 1180]; that's 1180/13.1 = 90.08 px/mi.
+               Elevation range: 0 to ~250 ft above baseline (Cabrillo peak).
+               Cabrillo is ~250 ft; sea-level segments at ~0 ft.
+               y=0 (top) = 280 ft; y=240 (bottom of plot) = -20 ft. -->
+
+          <!-- Difficulty bands along the x-axis bottom strip -->
+          <!-- Phase 1: 0-2 mi → amber (climb) -->
+          <rect x="0"      y="245" width="180.16" height="20" fill="#D4900A" opacity=".22"/>
+          <!-- Phase 2: 2-4.5 mi → blue (downhill, must control) -->
+          <rect x="180.16" y="245" width="225.20" height="20" fill="#2563EB" opacity=".20"/>
+          <!-- Phase 3: 4.5-9.9 mi → green (flat / easy) -->
+          <rect x="405.36" y="245" width="486.43" height="20" fill="#2CA82F" opacity=".20"/>
+          <!-- Phase 4: 9.9-10.9 mi → green -->
+          <rect x="891.79" y="245" width="90.08"  height="20" fill="#2CA82F" opacity=".20"/>
+          <!-- Phase 5: 10.9-13.1 mi → orange (hard climb) -->
+          <rect x="981.87" y="245" width="198.13" height="20" fill="#E85D26" opacity=".24"/>
+
+          <!-- Phase divider verticals (faint) -->
+          <line x1="180.16" y1="20" x2="180.16" y2="245" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="405.36" y1="20" x2="405.36" y2="245" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="891.79" y1="20" x2="891.79" y2="245" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="981.87" y1="20" x2="981.87" y2="245" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+
+          <!-- Mile-marker dotted ticks (every mile) -->
+          <g stroke="rgba(13,15,18,.06)" stroke-width="1">
+            <line x1="90.08"  y1="240" x2="90.08"  y2="245"/>
+            <line x1="180.16" y1="240" x2="180.16" y2="245"/>
+            <line x1="270.24" y1="240" x2="270.24" y2="245"/>
+            <line x1="360.32" y1="240" x2="360.32" y2="245"/>
+            <line x1="450.40" y1="240" x2="450.40" y2="245"/>
+            <line x1="540.48" y1="240" x2="540.48" y2="245"/>
+            <line x1="630.56" y1="240" x2="630.56" y2="245"/>
+            <line x1="720.64" y1="240" x2="720.64" y2="245"/>
+            <line x1="810.72" y1="240" x2="810.72" y2="245"/>
+            <line x1="900.80" y1="240" x2="900.80" y2="245"/>
+            <line x1="990.88" y1="240" x2="990.88" y2="245"/>
+            <line x1="1080.96" y1="240" x2="1080.96" y2="245"/>
+          </g>
+
+          <!-- Elevation profile.
+               Synthesized from per-phase gain/loss with intra-phase shaping.
+               Reference points (mi, ft above 0-ish baseline):
+                 0    → 60   (start, sea level adjacent uphill begins)
+                 1.0  → 160  (mid-climb)
+                 2.0  → 220  (Cabrillo peak)
+                 2.7  → 170  (early descent)
+                 3.5  → 80   (mid descent, steep)
+                 4.5  → 20   (bottom of drop, near sea level)
+                 6.0  → 30   (slight rollers Mission Bay)
+                 7.5  → 25
+                 9.0  → 30
+                 9.9  → 25   (end Mission Bay)
+                 10.9 → 55   (Harbor approach bump)
+                 11.5 → 100
+                 12.3 → 180
+                 13.1 → 250  (Balboa park finish)
+
+               Y: 280 - elev (so higher elev = smaller y).
+               x = mi * 90.08 -->
+
+          <!-- Filled area under the curve -->
+          <path d="
+            M 0,220
+            L 90.08,120
+            L 180.16,60
+            L 243.22,110
+            L 315.28,200
+            L 405.36,260
+            L 540.48,250
+            L 675.60,255
+            L 810.72,250
+            L 891.79,255
+            L 981.87,225
+            L 1035.92,180
+            L 1107.98,100
+            L 1180,30
+            L 1180,240
+            L 0,240 Z
+          " fill="rgba(13,15,18,.05)"/>
+
+          <!-- The line itself, in ink. -->
+          <path d="
+            M 0,220
+            L 90.08,120
+            L 180.16,60
+            L 243.22,110
+            L 315.28,200
+            L 405.36,260
+            L 540.48,250
+            L 675.60,255
+            L 810.72,250
+            L 891.79,255
+            L 981.87,225
+            L 1035.92,180
+            L 1107.98,100
+            L 1180,30
+          " fill="none" stroke="#0D0F12" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+
+          <!-- Annotation dots at phase boundaries -->
+          <circle cx="180.16" cy="60"  r="4" fill="#D4900A"/>
+          <circle cx="405.36" cy="260" r="4" fill="#2563EB"/>
+          <circle cx="891.79" cy="255" r="4" fill="#2CA82F"/>
+          <circle cx="981.87" cy="225" r="4" fill="#2CA82F"/>
+          <circle cx="1180"   cy="30"  r="4" fill="#E85D26"/>
+
+          <!-- Peak callout -->
+          <text x="186" y="44" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#D4900A">CABRILLO 220 ft</text>
+          <!-- Finish callout -->
+          <text x="1120" y="20" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#E85D26" text-anchor="end">BALBOA +250 ft</text>
+          <!-- Bottom-of-drop -->
+          <text x="412" y="275" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#2563EB">−500 ft in 2.5 mi</text>
+        </svg>
+      </div>
+
+      <!-- Phase strip below the chart, widths proportional to mileage -->
+      <div class="profile-phase-labels">
+        <div class="profile-phase-cell amber">
+          <span class="pcell-name">Point Loma Climb</span>
+          <span class="pcell-mi">0.0 → 2.0 mi · 2.0 mi</span>
+          <span class="pcell-grade">+0.4%</span>
+        </div>
+        <div class="profile-phase-cell blue">
+          <span class="pcell-name">The Drop</span>
+          <span class="pcell-mi">2.0 → 4.5 mi · 2.5 mi</span>
+          <span class="pcell-grade">−3.0%</span>
+        </div>
+        <div class="profile-phase-cell green">
+          <span class="pcell-name">Mission Bay</span>
+          <span class="pcell-mi">4.5 → 9.9 mi · 5.4 mi</span>
+          <span class="pcell-grade">flat</span>
+        </div>
+        <div class="profile-phase-cell green">
+          <span class="pcell-name">Harbor</span>
+          <span class="pcell-mi">9.9 → 10.9 · 1.0 mi</span>
+          <span class="pcell-grade">+0.5%</span>
+        </div>
+        <div class="profile-phase-cell orange">
+          <span class="pcell-name">Balboa Finish</span>
+          <span class="pcell-mi">10.9 → 13.1 · 2.2 mi</span>
+          <span class="pcell-grade">+2.3%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-legend">
+      <div class="profile-legend-item">
+        <span class="profile-legend-swatch" style="background: rgba(212,144,10,.5);"></span>
+        Climb · pace conservative
+      </div>
+      <div class="profile-legend-item">
+        <span class="profile-legend-swatch" style="background: rgba(37,99,235,.5);"></span>
+        Downhill · brake the quads
+      </div>
+      <div class="profile-legend-item">
+        <span class="profile-legend-swatch" style="background: rgba(44,168,47,.5);"></span>
+        Flat · hold the line
+      </div>
+      <div class="profile-legend-item">
+        <span class="profile-legend-swatch" style="background: rgba(232,93,38,.5);"></span>
+        Hard climb · race-finish
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PHASE-BY-PHASE PLAN ────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Phase-by-Phase Plan</div>
+        <div class="card-sub"><strong>5 sections</strong> · pace tolerance ±10 s/mi · cumulative time builds to 1:35:00</div>
+      </div>
+      <div class="card-meta">Coach-computed from elevation + goal</div>
+    </div>
+
+    <div class="phase-list">
+
+      <!-- Phase 1 -->
+      <div class="phase-card amber">
+        <div class="phase-num">1<small>/5</small></div>
+        <div class="phase-body">
+          <div class="phase-name">Point Loma Climb</div>
+          <div class="phase-range">
+            Mile 0.0 → 2.0 · 2.0 mi
+            <span class="grade-pill amber">+0.4% climb</span>
+          </div>
+          <div class="phase-elev">
+            <span class="up">↑ 158 ft</span> &nbsp;·&nbsp; <span class="down">↓ 116 ft</span> &nbsp;·&nbsp; net +42 ft
+          </div>
+          <p class="phase-note">
+            The first 2 miles climb the Point Loma ridge toward the peak near Cabrillo National Monument.
+            <strong>Control effort here</strong> — the descent is coming and you'll want fresh legs.
+            Don't bank time on the uphills.
+          </p>
+        </div>
+        <div class="phase-pace">
+          <div class="phase-pace-num">7:24</div>
+          <div class="phase-pace-unit">target /mi</div>
+        </div>
+        <div class="phase-cum">
+          <div class="phase-cum-label">Cumulative</div>
+          <div class="phase-cum-time">0:14:48</div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="phase-card blue">
+        <div class="phase-num">2<small>/5</small></div>
+        <div class="phase-body">
+          <div class="phase-name">The Drop</div>
+          <div class="phase-range">
+            Mile 2.0 → 4.5 · 2.5 mi
+            <span class="grade-pill blue">−3.0% descent</span>
+          </div>
+          <div class="phase-elev">
+            <span class="up">↑ 111 ft</span> &nbsp;·&nbsp; <span class="down">↓ 499 ft</span> &nbsp;·&nbsp; net −388 ft
+          </div>
+          <p class="phase-note">
+            The signature descent off Point Loma — steep, fast, and <strong>quad-punishing</strong> if
+            you let yourself fly. Use gravity but brake with your cadence, not your quads.
+            Overspeed here costs you at mile 10. Target 10–15s faster than goal pace, no more.
+          </p>
+        </div>
+        <div class="phase-pace">
+          <div class="phase-pace-num">6:49</div>
+          <div class="phase-pace-unit">target /mi</div>
+        </div>
+        <div class="phase-cum">
+          <div class="phase-cum-label">Cumulative</div>
+          <div class="phase-cum-time">0:31:50</div>
+        </div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div class="phase-card green">
+        <div class="phase-num">3<small>/5</small></div>
+        <div class="phase-body">
+          <div class="phase-name">Mission Bay</div>
+          <div class="phase-range">
+            Mile 4.5 → 9.9 · 5.4 mi
+            <span class="grade-pill green">flat 0.0%</span>
+          </div>
+          <div class="phase-elev">
+            <span class="up">↑ 257 ft</span> &nbsp;·&nbsp; <span class="down">↓ 260 ft</span> &nbsp;·&nbsp; rolling
+          </div>
+          <p class="phase-note">
+            Long flat run through the Mission Bay and Midway districts. <strong>This is where
+            the race is won</strong> — hold goal pace precisely, don't drift, stay hydrated.
+            The August heat reflects hard off the pavement here. Shade is minimal.
+          </p>
+        </div>
+        <div class="phase-pace">
+          <div class="phase-pace-num">7:20</div>
+          <div class="phase-pace-unit">target /mi</div>
+        </div>
+        <div class="phase-cum">
+          <div class="phase-cum-label">Cumulative</div>
+          <div class="phase-cum-time">1:11:24</div>
+        </div>
+      </div>
+
+      <!-- Phase 4 -->
+      <div class="phase-card green">
+        <div class="phase-num">4<small>/5</small></div>
+        <div class="phase-body">
+          <div class="phase-name">Harbor Approach</div>
+          <div class="phase-range">
+            Mile 9.9 → 10.9 · 1.0 mi
+            <span class="grade-pill green">+0.5% gentle</span>
+          </div>
+          <div class="phase-elev">
+            <span class="up">↑ 75 ft</span> &nbsp;·&nbsp; <span class="down">↓ 50 ft</span> &nbsp;·&nbsp; net +25 ft
+          </div>
+          <p class="phase-note">
+            Transition section into downtown San Diego. Largely flat. <strong>This is the final
+            check-in</strong> — if you've been steady through Mission Bay, you have enough left.
+            If you've drifted, it's damage control time.
+          </p>
+        </div>
+        <div class="phase-pace">
+          <div class="phase-pace-num">7:23</div>
+          <div class="phase-pace-unit">target /mi</div>
+        </div>
+        <div class="phase-cum">
+          <div class="phase-cum-label">Cumulative</div>
+          <div class="phase-cum-time">1:18:48</div>
+        </div>
+      </div>
+
+      <!-- Phase 5 -->
+      <div class="phase-card orange">
+        <div class="phase-num">5<small>/5</small></div>
+        <div class="phase-body">
+          <div class="phase-name">Balboa Finish</div>
+          <div class="phase-range">
+            Mile 10.9 → 13.1 · 2.2 mi
+            <span class="grade-pill orange">+2.3% hard climb</span>
+          </div>
+          <div class="phase-elev">
+            <span class="up">↑ 306 ft</span> &nbsp;·&nbsp; <span class="down">↓ 64 ft</span> &nbsp;·&nbsp; net +242 ft
+          </div>
+          <p class="phase-note">
+            The sting in the tail — a gradual climb toward Balboa Park for the final 2.2 miles.
+            Many runners don't prep for this. <strong>If you've paced conservatively, this is
+            where you make your move.</strong> If not, dig in and hold form.
+          </p>
+        </div>
+        <div class="phase-pace">
+          <div class="phase-pace-num">7:22</div>
+          <div class="phase-pace-unit">target /mi</div>
+        </div>
+        <div class="phase-cum">
+          <div class="phase-cum-label">FINISH</div>
+          <div class="phase-cum-time" style="color: var(--orange);">1:35:00</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── FUELING PLAN ────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Fueling Plan</div>
+        <div class="card-sub"><strong>Maurten gels</strong> · anchored to phase boundaries, not the clock</div>
+      </div>
+      <div class="card-meta">Coach-tuned for 1:35 effort</div>
+    </div>
+
+    <div class="fuel-summary">
+      <div class="fuel-cell">
+        <div class="fuel-cell-label">Brand</div>
+        <div class="fuel-cell-value">Maurten</div>
+        <div class="fuel-cell-sub">Gel 100</div>
+      </div>
+      <div class="fuel-cell">
+        <div class="fuel-cell-label">Gels</div>
+        <div class="fuel-cell-value">3</div>
+        <div class="fuel-cell-sub">40 g each</div>
+      </div>
+      <div class="fuel-cell">
+        <div class="fuel-cell-label">Total Carbs</div>
+        <div class="fuel-cell-value">120 g</div>
+        <div class="fuel-cell-sub">across 1:35</div>
+      </div>
+      <div class="fuel-cell">
+        <div class="fuel-cell-label">Rate</div>
+        <div class="fuel-cell-value">75.8<span style="font-size:18px; color:var(--t2);">g/hr</span></div>
+        <div class="fuel-cell-sub">above 60 g/hr target</div>
+      </div>
+    </div>
+
+    <div class="fuel-timeline">
+      <div class="fuel-timeline-track">
+        <div class="fuel-timeline-line"></div>
+
+        <!-- Mile ticks at each phase boundary -->
+        <div class="fuel-timeline-tick" style="left: 0%;"></div>
+        <div class="fuel-timeline-tick" style="left: 15.27%;"></div>  <!-- 2.0 -->
+        <div class="fuel-timeline-tick" style="left: 34.35%;"></div>  <!-- 4.5 -->
+        <div class="fuel-timeline-tick" style="left: 75.57%;"></div>  <!-- 9.9 -->
+        <div class="fuel-timeline-tick" style="left: 83.21%;"></div>  <!-- 10.9 -->
+        <div class="fuel-timeline-tick" style="left: 100%;"></div>
+
+        <!-- Gel markers — fueling lines up with phase boundaries where the body can absorb -->
+        <!-- Gel 1: at start of Mission Bay (mile 4.5 / 31:50) — body has had the drop to settle. -->
+        <div class="fuel-marker" style="left: 34.35%;">
+          <div class="fuel-marker-dot">1</div>
+          <div class="fuel-marker-meta"><strong>Mile 4.5</strong><br>0:32 · 40 g</div>
+        </div>
+
+        <!-- Gel 2: mid-Mission Bay (mile 7.2 / ~52:00) — sustaining the long flat. -->
+        <div class="fuel-marker" style="left: 54.96%;">
+          <div class="fuel-marker-dot">2</div>
+          <div class="fuel-marker-meta"><strong>Mile 7.2</strong><br>0:52 · 40 g</div>
+        </div>
+
+        <!-- Gel 3: just before Harbor Approach into the climb (mile 9.9 / ~1:11) — sets up Balboa. -->
+        <div class="fuel-marker" style="left: 75.57%;">
+          <div class="fuel-marker-dot">3</div>
+          <div class="fuel-marker-meta"><strong>Mile 9.9</strong><br>1:11 · 40 g</div>
+        </div>
+      </div>
+
+      <div class="fuel-timeline-axis">
+        <span>Mi 0 · Start</span>
+        <span>Mi 2 · Cabrillo</span>
+        <span>Mi 4.5 · Drop ends</span>
+        <span>Mi 9.9</span>
+        <span>Mi 10.9</span>
+        <span>Mi 13.1 · Finish</span>
+      </div>
+    </div>
+
+    <div class="fuel-note">
+      <strong>Gels anchored to phase boundaries, not clock.</strong>
+      Take gel 1 at the bottom of The Drop — your stomach is calm. Gel 2 mid-Mission Bay before
+      the heat catches up. Gel 3 right before the Balboa climb so the carbs hit when you need them.
+    </div>
+  </div>
+
+  <!-- ── RACE-DAY EXECUTION / BRIEF ────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Race-Day Execution</div>
+        <div class="card-sub">Race-week brief · packing list · wake-up timing · pre-race fueling</div>
+      </div>
+      <div class="card-meta">Generates <strong>Aug 9</strong> (T−7d)</div>
+    </div>
+
+    <div class="brief-empty">
+      <div class="brief-empty-dot"></div>
+      <div class="brief-empty-body">
+        <div class="brief-empty-title">No data yet · honest empty state</div>
+        <div class="brief-empty-text">
+          The race-day brief — <strong>shakeout sequencing, kit layout, wake-up time, pre-race
+          fueling, and weather-adjusted pace tweaks</strong> — generates exactly 7 days out from
+          gun time. The coach needs the actual weather window and your taper-week readiness
+          metrics before writing it. Don't try to plan it now; trust the system.
+        </div>
+        <div class="brief-empty-when">Awaiting Sun · Aug 9, 2026 · 86 days from today</div>
+      </div>
+    </div>
+
+    <div class="card-header" style="padding-top: 0;">
+      <div class="card-title-group">
+        <div class="card-title" style="font-size: 16px;">Workouts pointed at this race</div>
+        <div class="card-sub">Key sessions in the 14-week plan that dial in AFC pacing</div>
+      </div>
+    </div>
+
+    <div class="linked-workouts">
+      <div class="linked-row">
+        <div class="linked-week">Week 7</div>
+        <div>
+          <div class="linked-date">Jun 28</div>
+        </div>
+        <div>
+          <div class="linked-name">5×1mi @ Threshold</div>
+          <div class="linked-name-sub">Rose Bowl loop · 6:55/mi target · simulates The Drop</div>
+        </div>
+        <div>
+          <div class="linked-pace">6:55</div>
+          <div class="linked-pace-sub">/mi target</div>
+        </div>
+        <div class="linked-tag threshold">Threshold</div>
+      </div>
+
+      <div class="linked-row">
+        <div class="linked-week">Week 9</div>
+        <div>
+          <div class="linked-date">Jul 12</div>
+        </div>
+        <div>
+          <div class="linked-name">14 mi long run w/ 6 mi @ goal</div>
+          <div class="linked-name-sub">Find the Mission Bay groove · steady 7:20/mi block</div>
+        </div>
+        <div>
+          <div class="linked-pace">7:20</div>
+          <div class="linked-pace-sub">/mi block</div>
+        </div>
+        <div class="linked-tag long">Long</div>
+      </div>
+
+      <div class="linked-row">
+        <div class="linked-week">Week 11</div>
+        <div>
+          <div class="linked-date">Jul 26</div>
+        </div>
+        <div>
+          <div class="linked-name">Race Sim · 10 mi at goal effort</div>
+          <div class="linked-name-sub">Point Loma route · practices the climb + drop opener</div>
+        </div>
+        <div>
+          <div class="linked-pace">7:15</div>
+          <div class="linked-pace-sub">/mi avg</div>
+        </div>
+        <div class="linked-tag race-sim">Race Sim</div>
+      </div>
+
+      <div class="linked-row">
+        <div class="linked-week">Week 13</div>
+        <div>
+          <div class="linked-date">Aug 9</div>
+        </div>
+        <div>
+          <div class="linked-name">Taper tune-up · 4 mi w/ strides</div>
+          <div class="linked-name-sub">Sharpen, don't strain · brief generates today</div>
+        </div>
+        <div>
+          <div class="linked-pace">easy</div>
+          <div class="linked-pace-sub">+ 4×100 m</div>
+        </div>
+        <div class="linked-tag long" style="background: rgba(13,15,18,.07); color: var(--t1);">Taper</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
