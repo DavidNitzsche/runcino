@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1500">
+<title>Runcino · Data Center · Design Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0a0c10; color:#F6F7F8; font-family:'Jost',sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; text-decoration:none; }
+
+  /* ── Deck nav + cover ──────────────────────── */
+  .deck-nav { position:sticky; top:0; z-index:1000; background:rgba(10,12,16,.94); backdrop-filter:blur(10px); padding:12px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,.08); }
+  .deck-brand { font-family:'Oswald',sans-serif; font-weight:700; letter-spacing:.04em; font-size:18px; color:#F3AD3B; }
+  .deck-links { display:flex; gap:6px; }
+  .deck-links a { padding:6px 12px; border-radius:6px; font-family:'JetBrains Mono'; font-size:10.5px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,.55); }
+  .deck-links a:hover { background:rgba(255,255,255,.08); color:#fff; }
+
+  .cover { min-height:80vh; padding:88px 60px 60px; display:flex; flex-direction:column; justify-content:space-between; gap:48px; background:radial-gradient(ellipse at 70% 30%, rgba(0,143,236,.08), transparent 50%), #0a0c10; }
+  .cover-kicker { font-family:'JetBrains Mono'; font-size:11px; letter-spacing:3.5px; font-weight:700; color:#F3AD3B; text-transform:uppercase; }
+  .cover-title { font-family:'Oswald',sans-serif; font-size:120px; line-height:.92; font-weight:700; letter-spacing:-.015em; text-transform:uppercase; max-width:18ch; }
+  .cover-title em { color:#008FEC; font-style:normal; }
+  .cover-meta { display:grid; grid-template-columns:repeat(3,1fr); gap:32px; max-width:1100px; padding-top:32px; border-top:1px solid rgba(255,255,255,.12); }
+  .cover-meta-l { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:2.6px; text-transform:uppercase; font-weight:700; color:rgba(255,255,255,.35); margin-bottom:8px; }
+  .cover-meta-v { font-size:14px; color:rgba(255,255,255,.85); line-height:1.55; }
+  .cover-thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .cover-thumb { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:24px; transition:all .15s; }
+  .cover-thumb:hover { background:rgba(255,255,255,.06); transform:translateY(-2px); }
+  .cover-thumb-letter { font-family:'Oswald',sans-serif; font-size:54px; font-weight:700; line-height:1; }
+  .cover-thumb-letter.a { color:#F3AD3B; }
+  .cover-thumb-letter.b { color:#27E087; }
+  .cover-thumb-letter.c { color:#008FEC; }
+  .cover-thumb-title { font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; letter-spacing:.01em; text-transform:uppercase; margin-top:14px; }
+  .cover-thumb-desc { font-size:12.5px; color:rgba(255,255,255,.55); line-height:1.55; margin-top:6px; }
+
+  /* ── Direction frames ──────────────────────── */
+  .dir { padding:48px 60px 80px; }
+  .dir-head { display:flex; align-items:baseline; gap:18px; margin-bottom:28px; padding-bottom:18px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .dir-letter { font-family:'Oswald',sans-serif; font-size:64px; font-weight:700; line-height:1; }
+  .dir-letter.a { color:#F3AD3B; } .dir-letter.b { color:#27E087; } .dir-letter.c { color:#008FEC; }
+  .dir-name { font-family:'Oswald',sans-serif; font-size:32px; font-weight:600; letter-spacing:.005em; text-transform:uppercase; }
+  .dir-tag { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,.4); margin-left:auto; font-weight:700; }
+  .dir-canvas { border-radius:16px; overflow:hidden; box-shadow:0 20px 80px rgba(0,0,0,.5); }
+
+  /* ════════════════════════════════════════════ */
+  /* A — RUNCINO COMMAND                          */
+  /* ════════════════════════════════════════════ */
+  .a {
+    --l0:#0d1116; --l1:#13181f; --l2:#1a212a; --l3:#202833; --l4:#2a3441; --l5:#374454;
+    --t0:#f6f7f8; --t1:rgba(246,247,248,.72); --t2:rgba(246,247,248,.48); --t3:rgba(246,247,248,.32);
+    --corp:#008FEC; --warn:#FC4D54; --good:#3EBD41; --att:#F3AD3B; --xp:#9013FE; --aqua:#27E087;
+    background:var(--l0); color:var(--t0); font-family:'Jost',sans-serif;
+  }
+  .a-stage { padding:24px; min-height:1080px; }
+  .a-topbar { display:flex; align-items:center; gap:20px; padding:14px 18px; background:var(--l1); border:1px solid var(--l4); border-radius:10px; margin-bottom:14px; }
+  .a-topbar-brand { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--xp),var(--corp)); display:flex; align-items:center; justify-content:center; font-family:'Oswald'; font-weight:700; font-size:18px; }
+  .a-topbar-status { display:flex; gap:14px; align-items:center; }
+  .a-topbar-status > div { display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; color:var(--t2); }
+  .a-led { width:8px; height:8px; border-radius:50%; }
+  .a-led.green { background:var(--good); box-shadow:0 0 6px rgba(62,189,65,.65); }
+  .a-led.amber { background:var(--att); box-shadow:0 0 6px rgba(243,173,59,.7); animation:pulse 2s infinite; }
+  .a-led.blue  { background:var(--corp); box-shadow:0 0 6px rgba(0,143,236,.6); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+  .a-clock { margin-left:auto; font-family:'JetBrains Mono'; font-size:13px; letter-spacing:1.4px; color:var(--t1); font-weight:700; }
+  .a-clock b { color:var(--att); }
+
+  /* HERO ROW */
+  .a-hero { display:grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
+  .a-hero-greet { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:22px 26px; display:flex; flex-direction:column; gap:10px; min-height:200px; justify-content:space-between; position:relative; overflow:hidden; }
+  .a-hero-greet::after { content:""; position:absolute; right:-60px; top:-60px; width:240px; height:240px; border-radius:50%; background:radial-gradient(circle, rgba(243,173,59,.13), transparent 65%); pointer-events:none; }
+  .a-hero-eyebrow { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2.4px; text-transform:uppercase; color:var(--att); font-weight:700; display:flex; align-items:center; gap:8px; position:relative; z-index:1; }
+  .a-hero-name { font-family:'Oswald'; font-weight:700; font-size:78px; letter-spacing:-.01em; line-height:.9; text-transform:uppercase; position:relative; z-index:1; }
+  .a-hero-sub { font-size:13.5px; color:var(--t1); font-weight:500; position:relative; z-index:1; }
+  .a-hero-sub b { color:var(--att); }
+  .a-hero-mode { display:inline-flex; align-items:center; gap:8px; padding:5px 11px; border-radius:5px; background:rgba(243,173,59,.16); border:1px solid rgba(243,173,59,.42); font-family:'JetBrains Mono'; font-size:10px; letter-spacing:1.6px; font-weight:700; text-transform:uppercase; color:var(--att); align-self:flex-start; position:relative; z-index:1; }
+
+  .a-hero-stat { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between; min-height:200px; position:relative; }
+  .a-hero-stat .lbl { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .a-hero-stat .num { font-family:'Oswald'; font-weight:700; font-size:60px; letter-spacing:-.015em; line-height:.95; font-variant-numeric:tabular-nums; }
+  .a-hero-stat .num small { font-size:.32em; color:var(--t3); font-weight:700; margin-left:4px; }
+  .a-hero-stat .meta { font-family:'JetBrains Mono'; font-size:11px; letter-spacing:.6px; color:var(--t1); font-weight:700; }
+  .a-hero-stat .delta { display:inline-flex; align-items:center; gap:5px; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; font-family:'JetBrains Mono'; letter-spacing:1px; }
+  .a-hero-stat .delta.up { background:rgba(62,189,65,.16); color:var(--good); }
+  .a-hero-stat .delta.dn { background:rgba(252,77,84,.18); color:var(--warn); }
+  .a-hero-stat .spark { height:34px; }
+  .a-hero-stat--gradient { background:linear-gradient(135deg, var(--xp) 0%, var(--corp) 100%); border:0; }
+  .a-hero-stat--gradient .lbl { color:rgba(255,255,255,.7); }
+  .a-hero-stat--gradient .meta { color:rgba(255,255,255,.85); }
+
+  /* RADIAL gauge */
+  .a-gauge { position:relative; width:120px; height:120px; }
+  .a-gauge .v { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; }
+  .a-gauge .v .num { font-family:'Oswald'; font-size:36px; font-weight:700; line-height:1; }
+  .a-gauge .v .lbl { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; margin-top:2px; }
+
+  /* MAIN GRID */
+  .a-main { display:grid; grid-template-columns: 2fr 1.4fr 1fr; gap:10px; margin-bottom:10px; }
+
+  /* TODAY card */
+  .a-today { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:24px 26px; display:flex; flex-direction:column; gap:18px; }
+  .a-today-head { display:flex; justify-content:space-between; align-items:flex-start; }
+  .a-today-head .l { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--corp); font-weight:700; }
+  .a-today-head .h { font-family:'Oswald'; font-weight:700; font-size:42px; letter-spacing:-.01em; line-height:.95; text-transform:uppercase; margin-top:6px; }
+  .a-today-head .desc { font-size:13.5px; color:var(--t1); font-weight:500; margin-top:8px; max-width:480px; line-height:1.5; }
+  .a-today-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding-top:18px; border-top:1px solid var(--l4); }
+  .a-today-k .l { font-family:'JetBrains Mono'; font-size:9.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .a-today-k .v { font-family:'Oswald'; font-weight:700; font-size:30px; letter-spacing:-.01em; line-height:1; margin-top:6px; font-variant-numeric:tabular-nums; }
+  .a-today-k .v small { font-size:.4em; opacity:.55; font-weight:700; margin-left:3px; }
+  .a-today-k .d { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:4px; }
+  .a-today-pace { background:var(--l2); border-radius:10px; padding:14px 16px; }
+  .a-today-pace-head { display:flex; justify-content:space-between; align-items:center; }
+  .a-today-pace-head .l { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .a-today-zones { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:10px; }
+  .a-zone { padding:8px 10px; border-radius:6px; }
+  .a-zone .n { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.4px; font-weight:700; }
+  .a-zone .v { font-family:'JetBrains Mono'; font-size:11px; font-weight:700; margin-top:3px; }
+  .a-zone.E { background:rgba(62,189,65,.12); }   .a-zone.E .n { color:var(--good); }
+  .a-zone.M { background:rgba(0,143,236,.14); }   .a-zone.M .n { color:var(--corp); }
+  .a-zone.T { background:rgba(243,173,59,.16); }  .a-zone.T .n { color:var(--att); }
+  .a-zone.I { background:rgba(252,77,84,.16); }   .a-zone.I .n { color:var(--warn); }
+  .a-zone.R { background:rgba(144,19,254,.18); }  .a-zone.R .n { color:var(--xp); }
+
+  /* WEEK strip */
+  .a-week { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:20px 22px; }
+  .a-week-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px; }
+  .a-week-head .l { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .a-week-head .v { font-family:'Oswald'; font-size:24px; font-weight:600; letter-spacing:-.005em; }
+  .a-week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .a-day { padding:10px 8px 12px; border-radius:8px; background:var(--l2); border:1px solid var(--l4); min-height:130px; display:flex; flex-direction:column; gap:4px; position:relative; }
+  .a-day.today { border:2px solid var(--att); background:linear-gradient(135deg, rgba(243,173,59,.16), var(--l2)); box-shadow:0 0 0 1px rgba(243,173,59,.3); }
+  .a-day.done { border-color:var(--l5); }
+  .a-day-dow { font-family:'JetBrains Mono'; font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; display:flex; justify-content:space-between; align-items:baseline; }
+  .a-day-dow .n { font-family:'Oswald'; font-size:14px; color:var(--t1); }
+  .a-day.today .a-day-dow { color:var(--att); }
+  .a-day.today .a-day-dow .n { color:var(--t0); }
+  .a-day-type { font-family:'Oswald'; font-size:13px; font-weight:600; line-height:1.1; text-transform:uppercase; }
+  .a-day-mi { font-family:'JetBrains Mono'; font-size:14px; font-weight:700; }
+  .a-day-mi small { font-size:.7em; opacity:.5; }
+  .a-day-pace { font-family:'JetBrains Mono'; font-size:9.5px; color:var(--t3); font-weight:600; letter-spacing:.4px; }
+  .a-day .chip { display:inline-block; padding:1px 5px; border-radius:3px; font-family:'JetBrains Mono'; font-size:8px; font-weight:700; letter-spacing:.8px; margin-top:auto; }
+  .a-day .chip.q { background:rgba(243,173,59,.2); color:var(--att); }
+  .a-day .chip.l { background:rgba(0,143,236,.2); color:var(--corp); }
+  .a-day .chip.r { background:rgba(252,77,84,.18); color:var(--warn); }
+  .a-day .chip.x { background:rgba(62,189,65,.18); color:var(--good); }
+  .a-day .check { position:absolute; top:6px; right:6px; color:var(--good); font-size:11px; font-weight:700; }
+  .a-day .actual { font-family:'JetBrains Mono'; font-size:9px; color:var(--good); font-weight:700; margin-top:2px; padding-top:4px; border-top:1px dashed var(--l5); }
+
+  /* ADAPTIVE signal */
+  .a-signal { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  .a-signal-head { display:flex; justify-content:space-between; align-items:baseline; }
+  .a-signal-head .l { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--good); font-weight:700; }
+  .a-signal-band { font-family:'Oswald'; font-size:32px; font-weight:700; letter-spacing:-.01em; text-transform:uppercase; }
+  .a-signal-score { font-family:'JetBrains Mono'; font-size:20px; font-weight:700; color:var(--good); }
+  .a-signal-meter { position:relative; height:6px; background:var(--l3); border-radius:3px; }
+  .a-signal-meter > i { position:absolute; top:0; bottom:0; left:0; right:35%; background:linear-gradient(90deg, var(--warn), var(--att), var(--good)); border-radius:3px; }
+  .a-signal-meter > .ix { position:absolute; top:-3px; left:65%; width:12px; height:12px; border-radius:6px; background:var(--good); border:2px solid var(--l0); }
+  .a-signal-list { display:flex; flex-direction:column; gap:8px; padding-top:8px; border-top:1px solid var(--l4); }
+  .a-signal-row { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; font-size:12.5px; }
+  .a-signal-row .v { font-family:'JetBrains Mono'; font-size:11px; font-weight:700; min-width:30px; }
+  .a-signal-row .v.up { color:var(--good); }
+  .a-signal-row .v.dn { color:var(--warn); }
+  .a-signal-row .v.flat { color:var(--t3); }
+  .a-signal-row .name { color:var(--t1); font-weight:600; }
+  .a-signal-row .bar { width:60px; height:4px; background:var(--l3); border-radius:2px; overflow:hidden; }
+  .a-signal-row .bar i { display:block; height:100%; background:var(--good); border-radius:2px; }
+  .a-signal-row .bar i.dn { background:var(--warn); }
+
+  /* SECONDARY ROW */
+  .a-row2 { display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
+  .a-tile { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; min-height:200px; }
+  .a-tile-head { display:flex; justify-content:space-between; align-items:baseline; }
+  .a-tile-head .l { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .a-tile-head .pill { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.2px; text-transform:uppercase; padding:2px 6px; border-radius:3px; background:var(--l3); color:var(--t1); font-weight:700; }
+
+  .a-vdot-num { font-family:'Oswald'; font-weight:700; font-size:80px; letter-spacing:-.02em; line-height:.95; color:var(--corp); }
+  .a-vdot-num small { font-size:.18em; opacity:.5; font-weight:700; }
+  .a-vdot-source { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:.5px; color:var(--t2); font-weight:600; }
+
+  .a-curve-svg { width:100%; height:90px; }
+  .a-curve-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:auto; padding-top:10px; border-top:1px solid var(--l4); }
+  .a-curve-stats .l { font-family:'JetBrains Mono'; font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .a-curve-stats .v { font-family:'Oswald'; font-size:18px; font-weight:700; }
+
+  .a-body { display:flex; flex-direction:column; gap:8px; }
+  .a-body-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--l3); font-size:12px; }
+  .a-body-row:last-child { border-bottom:0; }
+  .a-body-name { color:var(--t1); font-weight:600; }
+  .a-body-val { font-family:'JetBrains Mono'; font-size:11px; font-weight:700; color:var(--t0); }
+  .a-body-status { display:inline-flex; align-items:center; gap:4px; font-family:'JetBrains Mono'; font-size:9px; letter-spacing:.8px; font-weight:700; padding:2px 5px; border-radius:3px; text-transform:uppercase; }
+  .a-body-status.healed { background:rgba(62,189,65,.16); color:var(--good); }
+  .a-body-status.healing { background:rgba(243,173,59,.18); color:var(--att); }
+  .a-body-status.warn { background:rgba(252,77,84,.18); color:var(--warn); }
+
+  .a-race-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--l3); }
+  .a-race-row:last-child { border-bottom:0; }
+  .a-race-name { font-family:'Oswald'; font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:.005em; }
+  .a-race-d { font-family:'JetBrains Mono'; font-size:9.5px; color:var(--t3); margin-top:2px; letter-spacing:.5px; }
+  .a-race-pri { font-family:'Oswald'; font-size:18px; font-weight:700; }
+  .a-race-pri.A { color:var(--att); }
+  .a-race-pri.B { color:var(--corp); }
+  .a-race-pri.C { color:var(--t3); }
+  .a-race-cd { font-family:'JetBrains Mono'; font-size:13px; font-weight:700; color:var(--t1); }
+
+  /* RIBBON: build curve full width */
+  .a-ribbon { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:24px 26px; }
+  .a-ribbon-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px; }
+  .a-ribbon-head .l { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .a-ribbon-head .v { font-family:'Oswald'; font-size:26px; font-weight:600; }
+  .a-ribbon-head .race { font-family:'JetBrains Mono'; font-size:12px; font-weight:700; color:var(--att); }
+  .a-ribbon-curve { height:160px; width:100%; }
+  .a-ribbon-phases { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--l4); }
+  .a-phase { padding:10px 12px; border-radius:7px; background:var(--l2); border-left:3px solid; }
+  .a-phase.base   { border-color:var(--t3); }
+  .a-phase.build  { border-color:var(--good); }
+  .a-phase.peak   { border-color:var(--att); }
+  .a-phase.taper  { border-color:var(--warn); }
+  .a-phase.race   { border-color:var(--xp); background:rgba(144,19,254,.08); }
+  .a-phase .l { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .a-phase .h { font-family:'Oswald'; font-size:18px; font-weight:600; text-transform:uppercase; margin-top:3px; }
+  .a-phase .d { font-family:'JetBrains Mono'; font-size:9.5px; color:var(--t2); margin-top:4px; }
+
+  /* ════════════════════════════════════════════ */
+  /* B — RUNCINO TICKER                           */
+  /* ════════════════════════════════════════════ */
+  .b {
+    --bg:#0c0e12; --row:#13161c; --row2:#181c24; --line:#22272f;
+    --t0:#f0f3f7; --t1:rgba(240,243,247,.72); --t2:rgba(240,243,247,.45); --t3:rgba(240,243,247,.30);
+    --hot:#FC4D54; --warm:#F3AD3B; --cool:#00C2FF; --neutral:#7C8595; --pos:#27E087; --neg:#F46060; --pri:#9013FE;
+    background:var(--bg); color:var(--t0); font-family:'JetBrains Mono', monospace;
+  }
+  .b-stage { padding:18px 20px 28px; }
+  .b-band { display:flex; align-items:center; gap:14px; padding:9px 14px; background:#000; border:1px solid var(--line); border-radius:6px; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; margin-bottom:14px; overflow:hidden; white-space:nowrap; }
+  .b-band-tag { color:var(--warm); flex-shrink:0; }
+  .b-band-feed { color:var(--t1); display:flex; gap:24px; }
+  .b-band-feed b { color:var(--pos); }
+  .b-band-feed .neg { color:var(--neg); }
+  .b-band-clock { margin-left:auto; color:var(--t2); flex-shrink:0; }
+  .b-band-clock b { color:var(--t0); }
+
+  .b-master { display:grid; grid-template-columns:280px 1fr 320px; gap:10px; margin-bottom:10px; }
+
+  /* LEFT — runner card */
+  .b-id { background:var(--row); border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; gap:14px; min-height:540px; }
+  .b-id-name { font-family:'Oswald',sans-serif; font-size:42px; font-weight:700; line-height:.95; text-transform:uppercase; letter-spacing:-.005em; }
+  .b-id-meta { font-size:11px; color:var(--t2); letter-spacing:1.1px; }
+  .b-id-meta b { color:var(--t0); }
+  .b-id-vital { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding-top:14px; border-top:1px solid var(--line); }
+  .b-id-vital .v { background:var(--row2); border-radius:6px; padding:10px 12px; }
+  .b-id-vital .l { font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; }
+  .b-id-vital .n { font-family:'Oswald',sans-serif; font-size:28px; font-weight:700; line-height:1; margin-top:4px; }
+  .b-id-vital .n small { font-size:.4em; opacity:.5; }
+  .b-id-vital .d { font-size:9.5px; color:var(--t2); margin-top:3px; letter-spacing:.4px; }
+
+  .b-id-status { padding-top:14px; border-top:1px solid var(--line); }
+  .b-id-status .h { font-size:9.5px; letter-spacing:1.6px; color:var(--t3); font-weight:700; margin-bottom:8px; }
+  .b-id-status-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:11px; }
+  .b-id-status-row .lbl { color:var(--t1); }
+  .b-id-status-row .val { font-weight:700; }
+  .b-id-status-row .val.pos { color:var(--pos); }
+  .b-id-status-row .val.warn { color:var(--warm); }
+  .b-id-status-row .val.neg { color:var(--neg); }
+
+  /* CENTER — week board */
+  .b-board { background:var(--row); border:1px solid var(--line); border-radius:10px; padding:18px 20px; }
+  .b-board-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .b-board-h { font-family:'Oswald',sans-serif; font-size:24px; font-weight:600; text-transform:uppercase; }
+  .b-board-tag { font-size:10px; letter-spacing:1.4px; color:var(--t3); font-weight:700; }
+  .b-board-tag b { color:var(--warm); }
+
+  .b-tape { width:100%; border-collapse:collapse; }
+  .b-tape th { font-size:9px; letter-spacing:1.6px; color:var(--t3); font-weight:700; text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); text-transform:uppercase; }
+  .b-tape td { padding:9px 10px; border-bottom:1px solid var(--line); font-size:11.5px; vertical-align:middle; }
+  .b-tape tr.today { background:linear-gradient(90deg, rgba(243,173,59,.10), transparent); }
+  .b-tape tr.today td:first-child { border-left:3px solid var(--warm); padding-left:12px; }
+  .b-tape .dow { color:var(--t3); font-size:9.5px; letter-spacing:1.2px; font-weight:700; }
+  .b-tape .dow b { color:var(--t0); font-size:11px; }
+  .b-tape .type { font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; letter-spacing:.005em; text-transform:uppercase; color:var(--t0); }
+  .b-tape .num { color:var(--t0); font-weight:700; font-variant-numeric:tabular-nums; }
+  .b-tape .pace { color:var(--t1); }
+  .b-tape .hr { color:var(--t1); }
+  .b-tape .delta.pos { color:var(--pos); font-weight:700; }
+  .b-tape .delta.neg { color:var(--neg); font-weight:700; }
+  .b-tape .delta.neu { color:var(--t3); }
+  .b-tape .chip { display:inline-block; padding:1px 6px; border-radius:3px; font-size:8.5px; font-weight:700; letter-spacing:.7px; }
+  .b-tape .chip.q { background:rgba(243,173,59,.18); color:var(--warm); }
+  .b-tape .chip.l { background:rgba(0,194,255,.18); color:var(--cool); }
+  .b-tape .chip.r { background:rgba(252,77,84,.16); color:var(--hot); }
+
+  /* RIGHT — race deck */
+  .b-deck { background:var(--row); border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
+  .b-deck-head { font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; text-transform:uppercase; }
+  .b-race { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 12px; background:var(--row2); border-radius:6px; border-left:3px solid var(--neutral); }
+  .b-race.A { border-left-color:var(--warm); background:linear-gradient(90deg, rgba(243,173,59,.08), var(--row2)); }
+  .b-race.B { border-left-color:var(--cool); }
+  .b-race.C { border-left-color:var(--neutral); }
+  .b-race-pri { font-family:'Oswald',sans-serif; font-size:22px; font-weight:700; }
+  .b-race.A .b-race-pri { color:var(--warm); }
+  .b-race.B .b-race-pri { color:var(--cool); }
+  .b-race.C .b-race-pri { color:var(--neutral); }
+  .b-race-name { font-family:'Oswald',sans-serif; font-size:15px; font-weight:600; text-transform:uppercase; }
+  .b-race-meta { font-size:10px; color:var(--t2); letter-spacing:.5px; margin-top:2px; }
+  .b-race-cd { font-family:'Oswald',sans-serif; font-size:24px; font-weight:700; color:var(--t1); }
+  .b-race-cd small { font-size:.45em; color:var(--t3); display:block; text-align:right; letter-spacing:1.4px; }
+
+  /* BOTTOM ROW */
+  .b-bot { display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:10px; }
+  .b-pace { background:var(--row); border:1px solid var(--line); border-radius:10px; padding:18px 20px; }
+  .b-pace-head { font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; text-transform:uppercase; margin-bottom:14px; }
+  .b-pace-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .b-pace-cell { background:var(--row2); border-radius:6px; padding:12px 14px; }
+  .b-pace-cell .z { font-size:11px; letter-spacing:1.4px; font-weight:700; }
+  .b-pace-cell.E .z { color:var(--pos); }
+  .b-pace-cell.M .z { color:var(--cool); }
+  .b-pace-cell.T .z { color:var(--warm); }
+  .b-pace-cell.I .z { color:var(--hot); }
+  .b-pace-cell.R .z { color:var(--pri); }
+  .b-pace-cell .lab { font-size:9px; color:var(--t3); letter-spacing:1.2px; margin-top:3px; }
+  .b-pace-cell .v { font-family:'Oswald',sans-serif; font-size:24px; font-weight:700; line-height:1; margin-top:8px; font-variant-numeric:tabular-nums; }
+  .b-pace-cell .v small { font-size:.45em; opacity:.5; }
+  .b-pace-cell .src { font-size:9px; color:var(--t3); letter-spacing:.4px; margin-top:6px; }
+
+  .b-spark { background:var(--row); border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; }
+  .b-spark-head { font-size:10.5px; letter-spacing:1.6px; color:var(--t3); font-weight:700; }
+  .b-spark-num { font-family:'Oswald',sans-serif; font-size:38px; font-weight:700; letter-spacing:-.01em; line-height:1; }
+  .b-spark-num small { font-size:.35em; opacity:.5; font-weight:700; }
+  .b-spark-svg { height:56px; width:100%; }
+  .b-spark-foot { display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--t2); padding-top:8px; border-top:1px solid var(--line); }
+  .b-spark-foot .delta.pos { color:var(--pos); font-weight:700; }
+
+  /* ════════════════════════════════════════════ */
+  /* C — RUNCINO LAB                              */
+  /* ════════════════════════════════════════════ */
+  .c {
+    --bg:#0e1014; --paper:#161a21; --paper2:#1d222a; --line:#262d37; --hi:#374050;
+    --t0:#f4f6f8; --t1:rgba(244,246,248,.72); --t2:rgba(244,246,248,.45); --t3:rgba(244,246,248,.28);
+    --ink:#008FEC; --ink2:#27E087; --ink3:#F3AD3B; --ink4:#FC4D54; --ink5:#9013FE;
+    background:var(--bg); color:var(--t0); font-family:'Jost',sans-serif;
+  }
+  .c-stage { padding:24px 26px; }
+  .c-frame { padding:32px; background:var(--paper); border:1px solid var(--line); border-radius:14px; }
+
+  .c-head { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:24px; margin-bottom:24px; border-bottom:2px solid var(--line); }
+  .c-head .meta { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2.4px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:8px; }
+  .c-head .h { font-family:'Oswald',sans-serif; font-size:62px; font-weight:600; letter-spacing:-.005em; line-height:.95; text-transform:uppercase; }
+  .c-head .h em { color:var(--ink); font-style:normal; }
+  .c-head .ref { display:flex; gap:24px; padding:10px 14px; background:var(--paper2); border-radius:6px; }
+  .c-head .ref div .l { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .c-head .ref div .v { font-family:'JetBrains Mono'; font-size:13px; font-weight:700; color:var(--t0); margin-top:2px; }
+
+  .c-section-h { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2.6px; text-transform:uppercase; color:var(--ink); font-weight:700; margin-bottom:14px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+
+  .c-row { display:grid; gap:14px; margin-bottom:18px; }
+  .c-row.r4 { grid-template-columns:repeat(4,1fr); }
+  .c-row.r3 { grid-template-columns:repeat(3,1fr); }
+  .c-row.r2 { grid-template-columns:1.4fr 1fr; }
+
+  .c-instrument { background:var(--paper2); border:1px solid var(--line); border-radius:10px; padding:18px 20px; }
+  .c-i-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .c-i-l { font-family:'JetBrains Mono'; font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .c-i-pin { display:inline-flex; align-items:center; gap:5px; font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.2px; padding:2px 6px; border-radius:3px; font-weight:700; }
+  .c-i-pin::before { content:""; width:6px; height:6px; border-radius:50%; }
+  .c-i-pin.green { background:rgba(39,224,135,.14); color:var(--ink2); }
+  .c-i-pin.green::before { background:var(--ink2); }
+  .c-i-pin.amber { background:rgba(243,173,59,.16); color:var(--ink3); }
+  .c-i-pin.amber::before { background:var(--ink3); }
+  .c-i-num { font-family:'Oswald',sans-serif; font-weight:700; font-size:48px; letter-spacing:-.015em; line-height:1; font-variant-numeric:tabular-nums; }
+  .c-i-num small { font-size:.32em; opacity:.5; font-weight:700; }
+  .c-i-band { font-family:'JetBrains Mono'; font-size:10px; letter-spacing:.8px; color:var(--t2); font-weight:600; margin-top:6px; }
+  .c-i-foot { padding-top:12px; margin-top:12px; border-top:1px dashed var(--hi); font-size:11px; color:var(--t1); line-height:1.5; }
+  .c-i-foot b { color:var(--t0); }
+
+  /* Calibration scale strip */
+  .c-scale { position:relative; height:38px; background:linear-gradient(90deg, rgba(252,77,84,.14), rgba(243,173,59,.14), rgba(39,224,135,.14)); border-radius:6px; border:1px solid var(--line); margin-top:10px; }
+  .c-scale-needle { position:absolute; top:-5px; bottom:-5px; left:62%; width:2px; background:var(--ink); }
+  .c-scale-needle::before { content:""; position:absolute; top:-4px; left:-4px; width:10px; height:10px; border-radius:5px; background:var(--ink); }
+  .c-scale-ticks { position:absolute; left:0; right:0; bottom:-20px; display:flex; justify-content:space-between; padding:0 4px; font-family:'JetBrains Mono'; font-size:9px; color:var(--t3); font-weight:700; letter-spacing:1px; }
+
+  /* Hero stat */
+  .c-hero { background:var(--paper2); border:1px solid var(--line); border-radius:10px; padding:24px 28px; display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; }
+  .c-hero-eye { font-family:'JetBrains Mono'; font-size:10.5px; letter-spacing:2.4px; text-transform:uppercase; color:var(--ink); font-weight:700; }
+  .c-hero-h { font-family:'Oswald',sans-serif; font-size:36px; font-weight:600; letter-spacing:-.005em; text-transform:uppercase; line-height:1.05; margin-top:8px; }
+  .c-hero-desc { font-size:13.5px; color:var(--t1); line-height:1.55; margin-top:8px; max-width:540px; }
+  .c-hero-meta { display:flex; gap:18px; padding-top:14px; margin-top:14px; border-top:1px solid var(--line); }
+  .c-hero-meta div { }
+  .c-hero-meta .l { font-family:'JetBrains Mono'; font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .c-hero-meta .v { font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; margin-top:4px; }
+
+  .c-hero-ring { width:160px; height:160px; }
+
+  /* Body table */
+  .c-body { background:var(--paper2); border:1px solid var(--line); border-radius:10px; padding:18px 22px; }
+  .c-body-row { display:grid; grid-template-columns:1.5fr 1fr 80px 1fr; gap:14px; padding:11px 0; border-bottom:1px solid var(--line); align-items:center; }
+  .c-body-row:last-child { border-bottom:0; }
+  .c-body-row .name { font-size:13px; font-weight:600; color:var(--t1); }
+  .c-body-row .name b { color:var(--t0); }
+  .c-body-row .timeline { font-family:'JetBrains Mono'; font-size:10.5px; color:var(--t2); letter-spacing:.4px; }
+  .c-body-row .pin { display:flex; justify-content:center; }
+  .c-body-row .note { font-size:11px; color:var(--t1); line-height:1.4; }
+
+  .c-progress { width:100%; height:6px; background:var(--paper); border-radius:3px; position:relative; margin-top:6px; }
+  .c-progress > i { position:absolute; left:0; top:0; bottom:0; border-radius:3px; }
+
+  /* Build path */
+  .c-path { background:var(--paper2); border:1px solid var(--line); border-radius:10px; padding:20px 22px; }
+  .c-path-h { font-family:'Oswald',sans-serif; font-size:24px; font-weight:600; text-transform:uppercase; letter-spacing:-.005em; margin-bottom:14px; }
+  .c-path-svg { width:100%; height:170px; }
+  .c-path-blocks { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:14px; }
+  .c-path-block { background:var(--paper); border-radius:6px; padding:10px 12px; border-left:3px solid; }
+  .c-path-block .l { font-family:'JetBrains Mono'; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .c-path-block .h { font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; text-transform:uppercase; margin-top:3px; }
+  .c-path-block .d { font-family:'JetBrains Mono'; font-size:9.5px; color:var(--t2); margin-top:4px; }
+  .c-path-block.base  { border-color:var(--t3); }
+  .c-path-block.build { border-color:var(--ink2); }
+  .c-path-block.peak  { border-color:var(--ink3); }
+  .c-path-block.taper { border-color:var(--ink4); }
+  .c-path-block.race  { border-color:var(--ink5); background:linear-gradient(135deg, rgba(144,19,254,.10), var(--paper)); }
+
+  /* Closing notes */
+  .closer { padding:60px; text-align:center; background:#0a0c10; border-top:1px solid rgba(255,255,255,.08); }
+  .closer h2 { font-family:'Oswald',sans-serif; font-size:42px; font-weight:600; letter-spacing:-.005em; text-transform:uppercase; }
+  .closer p { font-size:14px; color:rgba(255,255,255,.55); margin-top:14px; max-width:680px; margin-left:auto; margin-right:auto; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<div class="deck-nav">
+  <div class="deck-brand">RUNCINO · DATA CENTER · v1</div>
+  <div class="deck-links">
+    <a href="#cover">COVER</a>
+    <a href="#dirA">A · COMMAND</a>
+    <a href="#dirB">B · TICKER</a>
+    <a href="#dirC">C · LAB</a>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- COVER                                        -->
+<!-- ════════════════════════════════════════════ -->
+<section id="cover" class="cover">
+  <div>
+    <div class="cover-kicker">DESIGN DECK · MAY 2026 · 3 DIRECTIONS</div>
+    <h1 class="cover-title">A data center<br>for the<br><em>athlete</em>.</h1>
+  </div>
+  <div>
+    <div class="cover-meta">
+      <div>
+        <div class="cover-meta-l">PRINCIPLE 01</div>
+        <div class="cover-meta-v">Maximize info per inch. Lean into the grid. Stats stack densely so every glance returns a verdict — paces, recovery, race countdown, body status, week shape — all readable without scrolling.</div>
+      </div>
+      <div>
+        <div class="cover-meta-l">PRINCIPLE 02</div>
+        <div class="cover-meta-v">Make everything visual that can be visual. Sparklines for trends, gauges for thresholds, status LEDs for systems, mini-charts for splits. Numbers speak; charts amplify.</div>
+      </div>
+      <div>
+        <div class="cover-meta-l">PRINCIPLE 03</div>
+        <div class="cover-meta-v">Read like instrumentation, not a journal. Mono for data, condensed display for headlines, semantic color for state. Mission-control density without losing readability.</div>
+      </div>
+    </div>
+    <div class="cover-thumbs" style="margin-top:36px;">
+      <a href="#dirA" class="cover-thumb">
+        <div class="cover-thumb-letter a">A</div>
+        <div class="cover-thumb-title">COMMAND</div>
+        <div class="cover-thumb-desc">Mission-control cockpit. Big greeting block, live status LEDs, multi-zone tile grid, ribbon build curve, glanceable everywhere.</div>
+      </a>
+      <a href="#dirB" class="cover-thumb">
+        <div class="cover-thumb-letter b">B</div>
+        <div class="cover-thumb-title">TICKER</div>
+        <div class="cover-thumb-desc">Bloomberg-style data terminal. Mono everywhere. Tape rows for week, ID card for the runner, race deck on the right rail. Streaming feel.</div>
+      </a>
+      <a href="#dirC" class="cover-thumb">
+        <div class="cover-thumb-letter c">C</div>
+        <div class="cover-thumb-title">LAB</div>
+        <div class="cover-thumb-desc">Scientific instrument panel. Calibration cards with measurement scales, body-system table, build-path with phase blocks. Cleanroom precision.</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- A · COMMAND                                  -->
+<!-- ════════════════════════════════════════════ -->
+<div id="dirA" class="dir">
+  <div class="dir-head">
+    <div class="dir-letter a">A</div>
+    <div class="dir-name">Command</div>
+    <div class="dir-tag">MISSION CONTROL · MAX DENSITY</div>
+  </div>
+  <div class="dir-canvas">
+    <section class="a">
+      <div class="a-stage">
+
+        <!-- Top bar with status LEDs -->
+        <div class="a-topbar">
+          <div class="a-topbar-brand">R</div>
+          <div class="a-topbar-status">
+            <div><span class="a-led green"></span>Engine OK</div>
+            <div><span class="a-led blue"></span>Strava synced</div>
+            <div><span class="a-led amber"></span>Recovery week</div>
+          </div>
+          <div class="a-clock">FRI · MAY 9 · <b>16:42 LA</b></div>
+        </div>
+
+        <!-- Hero row: greeting + 3 stat tiles -->
+        <div class="a-hero">
+          <div class="a-hero-greet">
+            <div class="a-hero-eyebrow"><span class="a-led amber"></span>GOOD AFTERNOON · DAY 6 POST-SOMBRERO</div>
+            <div class="a-hero-name">DAVID</div>
+            <div class="a-hero-mode">RECOVERY · WEEK 1 OF 2</div>
+            <div class="a-hero-sub">Half marathon recovery active. <b>9 days</b> until base maintenance resumes. <b>98 days</b> to Americas Finest City.</div>
+          </div>
+
+          <div class="a-hero-stat a-hero-stat--gradient">
+            <div>
+              <div class="lbl">VDOT · AGE-GRADED</div>
+              <div class="num" style="margin-top:8px;">49.2<small>↑</small></div>
+            </div>
+            <div>
+              <div class="meta" style="margin-bottom:8px;">DISNEY HALF · 1:32:00 · 6 MO AGO</div>
+              <svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none">
+                <polyline points="0,22 12,20 24,18 36,17 48,15 60,14 72,12 84,11 100,9" fill="none" stroke="#ffffff" stroke-width="1.5" opacity=".6"/>
+                <polyline points="0,22 12,20 24,18 36,17 48,15 60,14 72,12 84,11 100,9" fill="rgba(255,255,255,.10)" stroke="none" stroke-width="0"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="a-hero-stat">
+            <div>
+              <div class="lbl">RECOVERY SCORE</div>
+              <div class="num" style="color:var(--good);margin-top:8px;">88<small>/100</small></div>
+            </div>
+            <div>
+              <div class="meta">ENGINE BUMPING +12% VOLUME</div>
+              <div style="display:flex; gap:4px; margin-top:6px;">
+                <span class="delta up">RPE −0.4</span>
+                <span class="delta up">ACWR 1.05</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="a-hero-stat">
+            <div>
+              <div class="lbl">TIER · WEEKLY AVG</div>
+              <div class="num" style="margin-top:8px;">35<small>MI</small></div>
+            </div>
+            <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+              <div class="meta">LOW TIER · CLIMBING</div>
+              <svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" style="width:60px;">
+                <polyline points="0,24 14,22 28,20 42,21 56,18 70,16 84,14 100,12" fill="none" stroke="#3EBD41" stroke-width="1.5"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main grid: today + week + signals -->
+        <div class="a-main">
+          <!-- Today -->
+          <div class="a-today">
+            <div class="a-today-head">
+              <div>
+                <div class="l">TODAY · FRI MAY 9 · LIGHT RECOVERY</div>
+                <div class="h">RECOVERY RUN</div>
+                <div class="desc">3.0 mi very easy · circulation, not adaptation. Day 6 post-half — connective tissue still rebuilding (2-4 wk window). Heart rate cap Z1; stop if anything pulls.</div>
+              </div>
+              <div class="a-gauge">
+                <svg viewBox="0 0 120 120" style="width:120px; height:120px;">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#21303F" stroke-width="8"/>
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#3EBD41" stroke-width="8" stroke-dasharray="314" stroke-dashoffset="220" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+                </svg>
+                <div class="v">
+                  <div class="num">30%</div>
+                  <div class="lbl">EASY</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="a-today-kpis">
+              <div class="a-today-k">
+                <div class="l">DISTANCE</div>
+                <div class="v">3.0<small>MI</small></div>
+                <div class="d">FLOOR 2.0 · CAP 6.0</div>
+              </div>
+              <div class="a-today-k">
+                <div class="l">DURATION</div>
+                <div class="v">28<small>MIN</small></div>
+                <div class="d">EST · CONVERSATIONAL</div>
+              </div>
+              <div class="a-today-k">
+                <div class="l">PACE TARGET</div>
+                <div class="v" style="font-size:24px;">8:55–9:25</div>
+                <div class="d">/MI · DANIELS E ZONE</div>
+              </div>
+              <div class="a-today-k">
+                <div class="l">HR CAP</div>
+                <div class="v">141<small>BPM</small></div>
+                <div class="d">Z1 · MAX 73% HRMAX</div>
+              </div>
+            </div>
+
+            <div class="a-today-pace">
+              <div class="a-today-pace-head">
+                <div class="l">PACE ZONES · VDOT 49.2 · DANIELS</div>
+                <div style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:1px;color:var(--t3);">RACE PACE 7:00 (1:32 HALF)</div>
+              </div>
+              <div class="a-today-zones">
+                <div class="a-zone E"><div class="n">E</div><div class="v">8:55–9:25</div></div>
+                <div class="a-zone M"><div class="n">M</div><div class="v">7:18</div></div>
+                <div class="a-zone T"><div class="n">T</div><div class="v">7:00</div></div>
+                <div class="a-zone I"><div class="n">I</div><div class="v">6:30</div></div>
+                <div class="a-zone R"><div class="n">R</div><div class="v">5:55</div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Week strip -->
+          <div class="a-week">
+            <div class="a-week-head">
+              <div>
+                <div class="l">THIS WEEK · MAY 4–10</div>
+                <div class="v">14 MI · 0 QUALITY · 0 LONG</div>
+              </div>
+              <div style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:1.4px;color:var(--good);font-weight:700;">3/4 LOGGED ✓</div>
+            </div>
+            <div class="a-week-grid">
+              <div class="a-day done">
+                <div class="a-day-dow">MON <span class="n">4</span></div>
+                <div class="check">✓</div>
+                <div class="a-day-type">REST</div>
+                <div class="a-day-mi">—</div>
+                <div class="chip r">REST</div>
+              </div>
+              <div class="a-day done">
+                <div class="a-day-dow">TUE <span class="n">5</span></div>
+                <div class="check">✓</div>
+                <div class="a-day-type">REST</div>
+                <div class="a-day-mi">—</div>
+                <div class="chip r">REST</div>
+              </div>
+              <div class="a-day done">
+                <div class="a-day-dow">WED <span class="n">6</span></div>
+                <div class="check">✓</div>
+                <div class="a-day-type">RECOVERY</div>
+                <div class="a-day-mi">2.0<small>mi</small></div>
+                <div class="a-day-pace">8:50/MI</div>
+                <div class="actual">RAN 6.7 mi · +4.7</div>
+              </div>
+              <div class="a-day done">
+                <div class="a-day-dow">THU <span class="n">7</span></div>
+                <div class="check">✓</div>
+                <div class="a-day-type">REST</div>
+                <div class="a-day-mi">—</div>
+                <div class="chip r">REST</div>
+              </div>
+              <div class="a-day done">
+                <div class="a-day-dow">FRI <span class="n">8</span></div>
+                <div class="check">✓</div>
+                <div class="a-day-type">RECOVERY</div>
+                <div class="a-day-mi">2.0<small>mi</small></div>
+                <div class="a-day-pace">8:50/MI</div>
+                <div class="actual">RAN 7.4 mi · +5.4</div>
+              </div>
+              <div class="a-day today">
+                <div class="a-day-dow">TODAY · SAT <span class="n">9</span></div>
+                <div class="a-day-type">RECOVERY</div>
+                <div class="a-day-mi">3.0<small>mi</small></div>
+                <div class="a-day-pace">8:55–9:25</div>
+                <div class="chip x">ACTIVE</div>
+              </div>
+              <div class="a-day">
+                <div class="a-day-dow">SUN <span class="n">10</span></div>
+                <div class="a-day-type">EASY LONG</div>
+                <div class="a-day-mi">5.0<small>mi</small></div>
+                <div class="a-day-pace">8:55–9:25</div>
+                <div class="chip l">LONG</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Adaptive signal -->
+          <div class="a-signal">
+            <div class="a-signal-head">
+              <div class="l">ENGINE READOUT</div>
+              <div class="a-signal-score">+0.30</div>
+            </div>
+            <div class="a-signal-band" style="color:var(--good);">BUILDING</div>
+            <div class="a-signal-meter">
+              <i></i>
+              <div class="ix"></div>
+            </div>
+            <div class="a-signal-list">
+              <div class="a-signal-row">
+                <span class="v up">+0.25</span>
+                <span class="name">RPE drift</span>
+                <div class="bar"><i style="width:75%;"></i></div>
+              </div>
+              <div class="a-signal-row">
+                <span class="v up">+0.25</span>
+                <span class="name">ACWR (1.05)</span>
+                <div class="bar"><i style="width:70%;"></i></div>
+              </div>
+              <div class="a-signal-row">
+                <span class="v flat">0.00</span>
+                <span class="name">Volume trend</span>
+                <div class="bar"><i style="width:50%; background:var(--t3);"></i></div>
+              </div>
+              <div class="a-signal-row">
+                <span class="v up">+0.25</span>
+                <span class="name">Easy/hard mix</span>
+                <div class="bar"><i style="width:80%;"></i></div>
+              </div>
+              <div class="a-signal-row">
+                <span class="v dn">−0.25</span>
+                <span class="name">Heavy block</span>
+                <div class="bar"><i class="dn" style="width:65%;"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Secondary row -->
+        <div class="a-row2">
+          <!-- VDOT card -->
+          <div class="a-tile">
+            <div class="a-tile-head">
+              <div class="l">VDOT · DEMONSTRATED PEAK</div>
+              <div class="pill">FRESH</div>
+            </div>
+            <div class="a-vdot-num">49.2<small></small></div>
+            <div class="a-vdot-source">DISNEY HALF MARATHON · 1:32:00 · 6 MO</div>
+            <div style="font-size:11.5px;color:var(--t1);line-height:1.5;padding-top:10px;border-top:1px solid var(--l4);">Decayed −0.8 from 50.0 raw. Continuous training history holding the floor. Recent sentimental Sombrero (44.7 raw) ignored.</div>
+          </div>
+
+          <!-- Build curve mini -->
+          <div class="a-tile">
+            <div class="a-tile-head">
+              <div class="l">BUILD CURVE · 14 WK</div>
+              <div class="pill">98D TO RACE</div>
+            </div>
+            <svg class="a-curve-svg" viewBox="0 0 100 50" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="aPast" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#008FEC" stop-opacity=".5"/>
+                  <stop offset="100%" stop-color="#008FEC" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="aFuture" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#3EBD41" stop-opacity=".5"/>
+                  <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M 0 35 L 8 32 L 16 30 L 24 38 L 32 28 L 32 50 L 0 50 Z" fill="url(#aPast)"/>
+              <path d="M 0 35 L 8 32 L 16 30 L 24 38 L 32 28" fill="none" stroke="#008FEC" stroke-width="1"/>
+              <path d="M 32 28 L 40 22 L 48 18 L 56 14 L 64 10 L 72 8 L 80 12 L 88 18 L 96 28 L 100 32 L 100 50 L 32 50 Z" fill="url(#aFuture)"/>
+              <path d="M 32 28 L 40 22 L 48 18 L 56 14 L 64 10 L 72 8 L 80 12 L 88 18 L 96 28" fill="none" stroke="#3EBD41" stroke-width="1" stroke-dasharray="2 1"/>
+              <line x1="32" y1="0" x2="32" y2="50" stroke="#F3AD3B" stroke-width="0.5" stroke-dasharray="1.5 1.5"/>
+              <line x1="96" y1="0" x2="96" y2="50" stroke="#9013FE" stroke-width="0.5"/>
+            </svg>
+            <div class="a-curve-stats">
+              <div><div class="l">PEAK</div><div class="v">44<small style="font-size:.5em;opacity:.5;">MI</small></div></div>
+              <div><div class="l">LONG</div><div class="v">14<small style="font-size:.5em;opacity:.5;">MI</small></div></div>
+              <div><div class="l">PHASES</div><div class="v">5</div></div>
+            </div>
+          </div>
+
+          <!-- Body status -->
+          <div class="a-tile">
+            <div class="a-tile-head">
+              <div class="l">BODY · DAY 6 POST-HALF</div>
+              <div class="pill" style="color:var(--good);background:rgba(62,189,65,.18);">88</div>
+            </div>
+            <div class="a-body">
+              <div class="a-body-row">
+                <span class="a-body-name">Glycogen</span>
+                <span class="a-body-status healed">HEALED</span>
+              </div>
+              <div class="a-body-row">
+                <span class="a-body-name">Muscle fibers</span>
+                <span class="a-body-status healed">HEALED</span>
+              </div>
+              <div class="a-body-row">
+                <span class="a-body-name">Connective tissue</span>
+                <span class="a-body-status healing">HEALING</span>
+              </div>
+              <div class="a-body-row">
+                <span class="a-body-name">CNS / hormonal</span>
+                <span class="a-body-status healing">HEALING</span>
+              </div>
+              <div class="a-body-row">
+                <span class="a-body-name">Immune</span>
+                <span class="a-body-status healing">HEALING</span>
+              </div>
+            </div>
+            <div style="font-size:10.5px;color:var(--t3);font-family:'JetBrains Mono';letter-spacing:.4px;line-height:1.5;padding-top:10px;border-top:1px dashed var(--l4);">Heavy-block flagged · 3 races/30d. Stress fracture is the #1 risk at this load · bone remodeling lags muscle.</div>
+          </div>
+
+          <!-- Race deck -->
+          <div class="a-tile">
+            <div class="a-tile-head">
+              <div class="l">RACE DECK · NEXT 4</div>
+              <div class="pill">3 SCHEDULED</div>
+            </div>
+            <div>
+              <div class="a-race-row">
+                <div>
+                  <div class="a-race-name">Americas Finest City</div>
+                  <div class="a-race-d">AUG 16 · HALF · GOAL 1:35:00</div>
+                </div>
+                <div style="text-align:right;">
+                  <div class="a-race-pri A">A</div>
+                  <div class="a-race-cd">98D</div>
+                </div>
+              </div>
+              <div class="a-race-row">
+                <div>
+                  <div class="a-race-name">Mission Bay 10K</div>
+                  <div class="a-race-d">JUN 22 · 10K · TUNE-UP</div>
+                </div>
+                <div style="text-align:right;">
+                  <div class="a-race-pri B">B</div>
+                  <div class="a-race-cd">44D</div>
+                </div>
+              </div>
+              <div class="a-race-row">
+                <div>
+                  <div class="a-race-name">La Jolla Half</div>
+                  <div class="a-race-d">SEP 28 · HALF · BACK-UP</div>
+                </div>
+                <div style="text-align:right;">
+                  <div class="a-race-pri B">B</div>
+                  <div class="a-race-cd">141D</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ribbon: build curve + phases -->
+        <div class="a-ribbon">
+          <div class="a-ribbon-head">
+            <div>
+              <div class="l">PATH TO AMERICAS FINEST CITY</div>
+              <div class="v">98 DAYS · 5 PHASES · PEAK 44 MI</div>
+            </div>
+            <div class="race">RACE WK · AUG 16 · 1:35:00 GOAL</div>
+          </div>
+          <svg class="a-ribbon-curve" viewBox="0 0 100 50" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="aR" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#3EBD41" stop-opacity=".55"/>
+                <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="6" height="50" fill="rgba(120,120,120,.06)"/>
+            <rect x="6" y="0" width="14" height="50" fill="rgba(120,120,120,.04)"/>
+            <rect x="20" y="0" width="32" height="50" fill="rgba(62,189,65,.05)"/>
+            <rect x="52" y="0" width="22" height="50" fill="rgba(243,173,59,.06)"/>
+            <rect x="74" y="0" width="22" height="50" fill="rgba(252,77,84,.07)"/>
+            <rect x="96" y="0" width="4" height="50" fill="rgba(144,19,254,.10)"/>
+
+            <path d="M 0 36 L 6 38 L 12 36 L 20 30 L 28 24 L 36 20 L 44 16 L 52 12 L 60 10 L 68 9 L 74 14 L 82 22 L 90 32 L 96 38 L 100 38 L 100 50 L 0 50 Z" fill="url(#aR)"/>
+            <path d="M 0 36 L 6 38 L 12 36 L 20 30 L 28 24 L 36 20 L 44 16 L 52 12 L 60 10 L 68 9 L 74 14 L 82 22 L 90 32 L 96 38" fill="none" stroke="#3EBD41" stroke-width="0.7"/>
+
+            <line x1="6" y1="0" x2="6" y2="50" stroke="#F3AD3B" stroke-width="0.5" stroke-dasharray="1 1.5"/>
+            <text x="7" y="6" font-family="JetBrains Mono" font-size="3" fill="#F3AD3B" font-weight="700">TODAY</text>
+            <line x1="96" y1="0" x2="96" y2="50" stroke="#9013FE" stroke-width="0.6"/>
+            <rect x="95.4" y="0" width="1.2" height="3" fill="#9013FE"/>
+
+            <circle cx="0" cy="36" r=".7" fill="#008FEC"/>
+            <circle cx="6" cy="38" r=".9" fill="#F3AD3B"/>
+            <circle cx="68" cy="9" r="1.2" fill="#F3AD3B"/>
+          </svg>
+          <div class="a-ribbon-phases">
+            <div class="a-phase base"><div class="l">BASE MAINTENANCE · 14D</div><div class="h">Hold the floor</div><div class="d">Now → May 22 · 1Q/wk · easy</div></div>
+            <div class="a-phase build"><div class="l">BASE · 21D</div><div class="h">Aerobic + LT</div><div class="d">May 22 → Jun 12 · 1-2Q · 30mi</div></div>
+            <div class="a-phase build"><div class="l">BUILD · 32D</div><div class="h">Race-pace exposure</div><div class="d">Jun 12 → Jul 14 · 2Q · 35-42mi</div></div>
+            <div class="a-phase peak"><div class="l">PEAK · 21D</div><div class="h">Sharpening</div><div class="d">Jul 14 → Aug 4 · 2Q · 44mi</div></div>
+            <div class="a-phase taper"><div class="l">TAPER · 11D</div><div class="h">Bank fitness</div><div class="d">Aug 4 → Aug 16 · 1Q · 22→14mi</div></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- B · TICKER                                   -->
+<!-- ════════════════════════════════════════════ -->
+<div id="dirB" class="dir">
+  <div class="dir-head">
+    <div class="dir-letter b">B</div>
+    <div class="dir-name">Ticker</div>
+    <div class="dir-tag">DATA TERMINAL · MONO STREAM</div>
+  </div>
+  <div class="dir-canvas">
+    <section class="b">
+      <div class="b-stage">
+
+        <!-- Live band -->
+        <div class="b-band">
+          <span class="b-band-tag">▶ RUNCINO LIVE</span>
+          <div class="b-band-feed">
+            <span>VDOT <b>49.2 ↑0.3</b></span>
+            <span>RECOVERY <b>88</b></span>
+            <span>WK14 <b>14.0/35MI</b></span>
+            <span>RPE7D <b>4.2 ↓0.4</b></span>
+            <span>ACWR <b>1.05</b></span>
+            <span>EASY% <b>92</b></span>
+            <span>STREAK <b>3D</b></span>
+            <span class="neg">HEAVY BLOCK · 3 RACES/30D</span>
+          </div>
+          <div class="b-band-clock">FRI · MAY 9 · <b>16:42</b></div>
+        </div>
+
+        <!-- Master row -->
+        <div class="b-master">
+          <!-- Runner ID -->
+          <div class="b-id">
+            <div>
+              <div style="font-size:10px;letter-spacing:1.6px;color:var(--t3);font-weight:700;">RUNNER · ID-001</div>
+              <div class="b-id-name">DAVID<br>NITZSCHKE</div>
+              <div class="b-id-meta" style="margin-top:8px;">M · 38 · LA · LOW TIER · <b>30 MI/WK</b></div>
+            </div>
+
+            <div class="b-id-vital">
+              <div class="v"><div class="l">VDOT</div><div class="n">49.2</div><div class="d">DISNEY · 6MO</div></div>
+              <div class="v"><div class="l">HRMAX</div><div class="n">187<small>BPM</small></div><div class="d">MEASURED</div></div>
+              <div class="v"><div class="l">RHR</div><div class="n">52<small>BPM</small></div><div class="d">7D AVG</div></div>
+              <div class="v"><div class="l">WT4</div><div class="n">35<small>MI</small></div><div class="d">↑12% V8W</div></div>
+            </div>
+
+            <div class="b-id-status">
+              <div class="h">SYSTEM STATUS</div>
+              <div class="b-id-status-row"><span class="lbl">PHASE</span><span class="val pos">RECOVERY · WK1</span></div>
+              <div class="b-id-status-row"><span class="lbl">RECOVERY SCORE</span><span class="val pos">88/100</span></div>
+              <div class="b-id-status-row"><span class="lbl">TRAINING RESPONSE</span><span class="val pos">+0.30 · BUILDING</span></div>
+              <div class="b-id-status-row"><span class="lbl">HEAVY BLOCK</span><span class="val warn">ACTIVE · 9D LEFT</span></div>
+              <div class="b-id-status-row"><span class="lbl">CONNECTIVE TISSUE</span><span class="val warn">REBUILDING</span></div>
+              <div class="b-id-status-row"><span class="lbl">A-RACE LOCK</span><span class="val pos">98D · AFC HALF</span></div>
+            </div>
+
+            <div style="padding-top:14px;border-top:1px solid var(--line);">
+              <div style="font-size:9.5px;letter-spacing:1.6px;color:var(--t3);font-weight:700;margin-bottom:8px;">PEAK DEMONSTRATED</div>
+              <div style="display:flex;gap:10px;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--t1);">DISNEY HALF</span><span style="color:var(--t0);font-weight:700;">1:32:00</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--t1);">SF MARATHON 25</span><span style="color:var(--t0);font-weight:700;">3:18:42</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:var(--t1);">5K BEST EFFORT</span><span style="color:var(--t0);font-weight:700;">21:15</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Week board -->
+          <div class="b-board">
+            <div class="b-board-head">
+              <div class="b-board-h">WEEK BOARD · MAY 4–10</div>
+              <div class="b-board-tag">14 MI LOGGED · <b>234%</b> OF PLAN · 0Q · 0L</div>
+            </div>
+            <table class="b-tape">
+              <thead>
+                <tr>
+                  <th>DAY</th>
+                  <th>SESSION</th>
+                  <th>PLAN</th>
+                  <th>PACE TGT</th>
+                  <th>HR</th>
+                  <th>ACTUAL</th>
+                  <th>Δ</th>
+                  <th>FLAG</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><span class="dow">MON <b>4</b></span></td><td><span class="type">REST</span></td><td>—</td><td>—</td><td>—</td><td class="num">—</td><td class="delta neu">—</td><td><span class="chip r">REST</span></td></tr>
+                <tr><td><span class="dow">TUE <b>5</b></span></td><td><span class="type">REST</span></td><td>—</td><td>—</td><td>—</td><td class="num">—</td><td class="delta neu">—</td><td><span class="chip r">REST</span></td></tr>
+                <tr><td><span class="dow">WED <b>6</b></span></td><td><span class="type">RECOVERY</span></td><td class="num">2.0 MI</td><td class="pace">8:50</td><td class="hr">Z1 ≤141</td><td class="num">6.7 MI · 8:32</td><td class="delta pos">+4.7</td><td>OVER</td></tr>
+                <tr><td><span class="dow">THU <b>7</b></span></td><td><span class="type">REST</span></td><td>—</td><td>—</td><td>—</td><td class="num">—</td><td class="delta neu">—</td><td><span class="chip r">REST</span></td></tr>
+                <tr><td><span class="dow">FRI <b>8</b></span></td><td><span class="type">RECOVERY</span></td><td class="num">2.0 MI</td><td class="pace">8:50</td><td class="hr">Z1 ≤141</td><td class="num">7.4 MI · 8:42</td><td class="delta pos">+5.4</td><td>OVER</td></tr>
+                <tr class="today"><td><span class="dow">SAT <b>9 ◀ TODAY</b></span></td><td><span class="type">RECOVERY</span></td><td class="num">3.0 MI</td><td class="pace">8:55–9:25</td><td class="hr">Z1 ≤141</td><td class="num" style="color:var(--t3);">—</td><td class="delta neu">—</td><td><span class="chip" style="background:rgba(243,173,59,.18);color:var(--warm);">ACTIVE</span></td></tr>
+                <tr><td><span class="dow">SUN <b>10</b></span></td><td><span class="type">EASY LONG</span></td><td class="num">5.0 MI</td><td class="pace">8:55–9:25</td><td class="hr">Z2 ≤155</td><td class="num" style="color:var(--t3);">—</td><td class="delta neu">—</td><td><span class="chip l">LONG</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Race deck -->
+          <div class="b-deck">
+            <div class="b-deck-head">RACE QUEUE</div>
+            <div class="b-race A">
+              <div class="b-race-pri">A</div>
+              <div>
+                <div class="b-race-name">AMERICAS FINEST CITY</div>
+                <div class="b-race-meta">AUG 16 · HALF · 13.1 MI · GOAL 1:35:00</div>
+              </div>
+              <div class="b-race-cd">98<small>DAYS</small></div>
+            </div>
+            <div class="b-race B">
+              <div class="b-race-pri">B</div>
+              <div>
+                <div class="b-race-name">MISSION BAY 10K</div>
+                <div class="b-race-meta">JUN 22 · 10K · TUNE-UP</div>
+              </div>
+              <div class="b-race-cd">44<small>DAYS</small></div>
+            </div>
+            <div class="b-race B">
+              <div class="b-race-pri">B</div>
+              <div>
+                <div class="b-race-name">LA JOLLA HALF</div>
+                <div class="b-race-meta">SEP 28 · HALF · BACK-UP</div>
+              </div>
+              <div class="b-race-cd">141<small>DAYS</small></div>
+            </div>
+            <div class="b-race C">
+              <div class="b-race-pri">C</div>
+              <div>
+                <div class="b-race-name">SUMMER 5K SERIES</div>
+                <div class="b-race-meta">JUL 11 · 5K · C-EFFORT</div>
+              </div>
+              <div class="b-race-cd">63<small>DAYS</small></div>
+            </div>
+
+            <div style="padding-top:10px;border-top:1px solid var(--line);font-size:10px;color:var(--t3);letter-spacing:1.4px;">
+              <div style="display:flex;justify-content:space-between;"><span>A-RACE BUDGET</span><span style="color:var(--pos);font-weight:700;">1/2 USED</span></div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>SPACING</span><span style="color:var(--pos);font-weight:700;">CLEAN</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom row -->
+        <div class="b-bot">
+          <div class="b-pace">
+            <div class="b-pace-head">PACE CARD · DANIELS · VDOT 49.2</div>
+            <div class="b-pace-grid">
+              <div class="b-pace-cell E">
+                <div class="z">E</div><div class="lab">EASY</div>
+                <div class="v">8:55<small>–9:25</small></div>
+                <div class="src">M+75S CENTER</div>
+              </div>
+              <div class="b-pace-cell M">
+                <div class="z">M</div><div class="lab">MARATHON</div>
+                <div class="v">7:18</div>
+                <div class="src">3:11 GOAL EQUIV</div>
+              </div>
+              <div class="b-pace-cell T">
+                <div class="z">T</div><div class="lab">THRESHOLD</div>
+                <div class="v">7:00</div>
+                <div class="src">15K PACE · 60MIN</div>
+              </div>
+              <div class="b-pace-cell I">
+                <div class="z">I</div><div class="lab">INTERVAL</div>
+                <div class="v">6:30</div>
+                <div class="src">5K PACE · VO2MAX</div>
+              </div>
+              <div class="b-pace-cell R">
+                <div class="z">R</div><div class="lab">REP</div>
+                <div class="v">5:55</div>
+                <div class="src">MILE PACE · NEURO</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="b-spark">
+            <div class="b-spark-head">WEEKLY VOLUME · 8W</div>
+            <div class="b-spark-num">35.0<small>MI/W</small></div>
+            <svg class="b-spark-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+              <polyline points="0,22 14,18 28,16 42,20 56,14 70,12 84,10 100,8" fill="none" stroke="#27E087" stroke-width="1.5"/>
+              <polyline points="0,22 14,18 28,16 42,20 56,14 70,12 84,10 100,8 100,30 0,30" fill="rgba(39,224,135,.12)" stroke="none"/>
+            </svg>
+            <div class="b-spark-foot">
+              <span>8W BASELINE 31 MI</span>
+              <span class="delta pos">+12%</span>
+            </div>
+          </div>
+
+          <div class="b-spark">
+            <div class="b-spark-head">RPE 7D vs 7D</div>
+            <div class="b-spark-num" style="color:var(--pos);">4.2<small>↓0.4</small></div>
+            <svg class="b-spark-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+              <polyline points="0,8 14,10 28,12 42,11 56,14 70,16 84,18 100,20" fill="none" stroke="#27E087" stroke-width="1.5"/>
+              <polyline points="0,8 14,10 28,12 42,11 56,14 70,16 84,18 100,20 100,30 0,30" fill="rgba(39,224,135,.10)" stroke="none"/>
+            </svg>
+            <div class="b-spark-foot">
+              <span>EFFORT TRENDING EASIER</span>
+              <span class="delta pos">FITNESS UP</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ -->
+<!-- C · LAB                                      -->
+<!-- ════════════════════════════════════════════ -->
+<div id="dirC" class="dir">
+  <div class="dir-head">
+    <div class="dir-letter c">C</div>
+    <div class="dir-name">Lab</div>
+    <div class="dir-tag">SCIENTIFIC INSTRUMENT · CALIBRATION</div>
+  </div>
+  <div class="dir-canvas">
+    <section class="c">
+      <div class="c-stage">
+        <div class="c-frame">
+
+          <div class="c-head">
+            <div>
+              <div class="meta">RUNCINO · ATHLETE PANEL · CAL-1.0</div>
+              <h1 class="h">DAVID NITZSCHKE<br><em>RUNNING CALIBRATION</em></h1>
+            </div>
+            <div class="ref">
+              <div><div class="l">SAMPLE</div><div class="v">2026-05-09 16:42</div></div>
+              <div><div class="l">PHASE</div><div class="v">RECOVERY · DAY 6</div></div>
+              <div><div class="l">CONFIDENCE</div><div class="v">98% / 100</div></div>
+            </div>
+          </div>
+
+          <!-- Hero readout -->
+          <div class="c-hero" style="margin-bottom:24px;">
+            <div>
+              <div class="c-hero-eye">▶ READOUT · TRAINING RESPONSE</div>
+              <div class="c-hero-h">BUILDING<br>(Score +0.30)</div>
+              <div class="c-hero-desc">Aggregate of RPE drift, ACWR, volume momentum, easy-share, heavy-block status. Engine bumping <b>+12% volume</b> + <b>+10% long-run target</b> until signals shift. Connective-tissue rebuild caps quality work for ~9 more days.</div>
+              <div class="c-hero-meta">
+                <div><div class="l">BAND</div><div class="v" style="color:var(--ink2);">+0.20 → +0.50</div></div>
+                <div><div class="l">DOMINANT SIGNAL</div><div class="v">RPE DRIFT · −0.4</div></div>
+                <div><div class="l">CONSTRAINT</div><div class="v" style="color:var(--ink3);">HEAVY BLOCK</div></div>
+              </div>
+            </div>
+            <svg class="c-hero-ring" viewBox="0 0 160 160">
+              <defs>
+                <linearGradient id="cring" x1="0" x2="1" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#27E087"/>
+                  <stop offset="100%" stop-color="#008FEC"/>
+                </linearGradient>
+              </defs>
+              <circle cx="80" cy="80" r="64" fill="none" stroke="#262d37" stroke-width="14"/>
+              <circle cx="80" cy="80" r="64" fill="none" stroke="url(#cring)" stroke-width="14" stroke-dasharray="402" stroke-dashoffset="280" transform="rotate(-90 80 80)" stroke-linecap="round"/>
+              <text x="80" y="78" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="#f4f6f8">+0.30</text>
+              <text x="80" y="98" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="9" fill="#27E087" letter-spacing="2.5">BUILDING</text>
+            </svg>
+          </div>
+
+          <!-- Calibration row -->
+          <div class="c-section-h">CALIBRATION · 4 INSTRUMENTS</div>
+          <div class="c-row r4">
+            <div class="c-instrument">
+              <div class="c-i-head">
+                <div class="c-i-l">VDOT · DEMONSTRATED</div>
+                <div class="c-i-pin green">FRESH</div>
+              </div>
+              <div class="c-i-num">49.2</div>
+              <div class="c-i-band">PEAK 50.0 · DECAY −0.8 · DISNEY HALF · 6 MO</div>
+              <div class="c-scale" style="margin-top:14px;">
+                <div class="c-scale-needle"></div>
+                <div class="c-scale-ticks"><span>30</span><span>40</span><span>50</span><span>60</span><span>70</span></div>
+              </div>
+              <div class="c-i-foot" style="margin-top:24px;">Anchor: <b>Disney Half 1:32:00</b>. Time-decay 0.5 VDOT/quarter applied. Recent Sombrero 1:40:57 sub-effort ignored.</div>
+            </div>
+
+            <div class="c-instrument">
+              <div class="c-i-head">
+                <div class="c-i-l">RECOVERY · COMPOSITE</div>
+                <div class="c-i-pin green">88/100</div>
+              </div>
+              <div class="c-i-num" style="color:var(--ink2);">88</div>
+              <div class="c-i-band">RPE 4.2 · ACWR 1.05 · EASY 92% · RHR 52</div>
+              <div class="c-scale">
+                <div class="c-scale-needle" style="left:88%;"></div>
+                <div class="c-scale-ticks"><span>0</span><span>40</span><span>70</span><span>85</span><span>100</span></div>
+              </div>
+              <div class="c-i-foot" style="margin-top:24px;">Engine permission to scale up: <b>+12% volume</b>, <b>+10% long</b>. Connective-tissue rebuild keeps quality blackout active.</div>
+            </div>
+
+            <div class="c-instrument">
+              <div class="c-i-head">
+                <div class="c-i-l">TIER · MILEAGE BAND</div>
+                <div class="c-i-pin amber">LOW · CLIMBING</div>
+              </div>
+              <div class="c-i-num">35<small>MI/W</small></div>
+              <div class="c-i-band">4W AVG · 8W 31 MI · TIER LOW (20–40)</div>
+              <div class="c-progress" style="margin-top:14px;">
+                <i style="background:var(--ink3); width:75%;"></i>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:9px;color:var(--t3);font-weight:700;letter-spacing:1px;margin-top:6px;">
+                <span>20</span><span>30</span><span>40 MID</span>
+              </div>
+              <div class="c-i-foot" style="margin-top:18px;">Doctrine for tier: <b>1-2 rest/wk</b>, cutback every <b>3wk</b>, post-marathon return <b>4-5wk</b>. Climbing toward MID — engine adjusts as average crosses 40.</div>
+            </div>
+
+            <div class="c-instrument">
+              <div class="c-i-head">
+                <div class="c-i-l">LONG-RUN CEILING</div>
+                <div class="c-i-pin green">SAFE</div>
+              </div>
+              <div class="c-i-num">8.2<small>MI</small></div>
+              <div class="c-i-band">CAP · 110% × LONGEST 7.4 MI · TRAINING-ONLY</div>
+              <div class="c-progress" style="margin-top:14px;">
+                <i style="background:var(--ink2); width:60%;"></i>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:9px;color:var(--t3);font-weight:700;letter-spacing:1px;margin-top:6px;">
+                <span>NEXT TARGET 5.0</span><span>HARD CAP 8.2</span>
+              </div>
+              <div class="c-i-foot" style="margin-top:18px;">Daniels §13.1 single-session-spike. Races excluded from the longest-run input — Big Sur 26.2 doesn't license a 28mi long.</div>
+            </div>
+          </div>
+
+          <!-- Body system table -->
+          <div class="c-section-h" style="margin-top:24px;">BODY · 5 SYSTEMS · DAY 6 POST-HALF</div>
+          <div class="c-body">
+            <div class="c-body-row">
+              <div class="name"><b>Glycogen</b> · stores</div>
+              <div class="timeline">24–72h refill window · <b style="color:var(--ink2);">CLOSED</b></div>
+              <div class="pin"><div class="c-i-pin green">HEALED</div></div>
+              <div class="note">Carb intake adequate. Sub-distance bests inside training runs already PRing.</div>
+            </div>
+            <div class="c-body-row">
+              <div class="name"><b>Muscle fibers</b> · microdamage</div>
+              <div class="timeline">5–10 day window · <b style="color:var(--ink2);">DAY 6</b></div>
+              <div class="pin"><div class="c-i-pin green">NEAR HEALED</div></div>
+              <div class="note">CK + LDH biomarkers peaked 24-48h, returning to baseline. Recovery jogs OK.</div>
+            </div>
+            <div class="c-body-row">
+              <div class="name"><b>Connective tissue</b> · tendon, fascia</div>
+              <div class="timeline">2–4 week window · <b style="color:var(--ink3);">DAY 6 / 21+</b></div>
+              <div class="pin"><div class="c-i-pin amber">REBUILDING</div></div>
+              <div class="note">Slowest. Loading intensity now is the #1 path to a tendon strain — quality blackout in effect.</div>
+            </div>
+            <div class="c-body-row">
+              <div class="name"><b>CNS / hormonal</b> · cortisol, neuromuscular</div>
+              <div class="timeline">2–4 week window · <b style="color:var(--ink3);">DAY 6 / 21</b></div>
+              <div class="pin"><div class="c-i-pin amber">REBUILDING</div></div>
+              <div class="note">Cortisol elevated post-half. Sleep + easy aerobic accelerate reset; hard sessions delay it.</div>
+            </div>
+            <div class="c-body-row">
+              <div class="name"><b>Immune system</b></div>
+              <div class="timeline">1–3 week window · <b style="color:var(--ink2);">DAY 6 / 14</b></div>
+              <div class="pin"><div class="c-i-pin green">RECOVERING</div></div>
+              <div class="note">Suppression window closing. Sleep + carbohydrate restoration protective.</div>
+            </div>
+          </div>
+
+          <!-- Path -->
+          <div class="c-section-h" style="margin-top:24px;">PATH · 98 DAYS TO AMERICAS FINEST CITY</div>
+          <div class="c-path">
+            <div class="c-path-h">Build trajectory</div>
+            <svg class="c-path-svg" viewBox="0 0 100 50" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="cP" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#27E087" stop-opacity=".55"/>
+                  <stop offset="100%" stop-color="#27E087" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="6" height="50" fill="rgba(120,120,120,.05)"/>
+              <rect x="6" y="0" width="14" height="50" fill="rgba(120,120,120,.04)"/>
+              <rect x="20" y="0" width="32" height="50" fill="rgba(39,224,135,.06)"/>
+              <rect x="52" y="0" width="22" height="50" fill="rgba(243,173,59,.07)"/>
+              <rect x="74" y="0" width="22" height="50" fill="rgba(252,77,84,.07)"/>
+              <rect x="96" y="0" width="4" height="50" fill="rgba(144,19,254,.10)"/>
+
+              <path d="M 0 38 L 6 40 L 12 38 L 20 32 L 28 26 L 36 21 L 44 17 L 52 13 L 60 11 L 68 9 L 74 14 L 82 22 L 90 32 L 96 38 L 100 38 L 100 50 L 0 50 Z" fill="url(#cP)"/>
+              <path d="M 0 38 L 6 40 L 12 38 L 20 32 L 28 26 L 36 21 L 44 17 L 52 13 L 60 11 L 68 9 L 74 14 L 82 22 L 90 32 L 96 38" fill="none" stroke="#27E087" stroke-width="0.7"/>
+
+              <line x1="6" y1="0" x2="6" y2="50" stroke="#F3AD3B" stroke-width="0.6" stroke-dasharray="1.5 1.5"/>
+              <text x="7" y="6" font-family="JetBrains Mono" font-size="3" fill="#F3AD3B" font-weight="700">TODAY · 98D</text>
+              <line x1="68" y1="0" x2="68" y2="50" stroke="#F3AD3B" stroke-width="0.4" stroke-dasharray="1 1"/>
+              <text x="69" y="6" font-family="JetBrains Mono" font-size="2.5" fill="#F3AD3B" font-weight="700">PEAK 44</text>
+
+              <line x1="96" y1="0" x2="96" y2="50" stroke="#9013FE" stroke-width="0.6"/>
+              <text x="92" y="6" font-family="JetBrains Mono" font-size="3" fill="#9013FE" font-weight="700">RACE</text>
+
+              <circle cx="0" cy="38" r="0.7" fill="#008FEC"/>
+              <circle cx="68" cy="9" r="1.2" fill="#F3AD3B"/>
+              <circle cx="96" cy="38" r="0.7" fill="#9013FE"/>
+            </svg>
+            <div class="c-path-blocks">
+              <div class="c-path-block base">
+                <div class="l">Phase 01 · Base Maintenance</div>
+                <div class="h">Hold the floor</div>
+                <div class="d">14 days · 1Q/wk · 14-25 mi/wk</div>
+              </div>
+              <div class="c-path-block build">
+                <div class="l">Phase 02 · Base</div>
+                <div class="h">Re-introduce LT</div>
+                <div class="d">21 days · 1-2Q · 28-32 mi/wk</div>
+              </div>
+              <div class="c-path-block build">
+                <div class="l">Phase 03 · Build</div>
+                <div class="h">Race-pace exposure</div>
+                <div class="d">32 days · 2Q · 35-42 mi/wk</div>
+              </div>
+              <div class="c-path-block peak">
+                <div class="l">Phase 04 · Peak</div>
+                <div class="h">Sharpening</div>
+                <div class="d">21 days · 2Q · 44 mi peak</div>
+              </div>
+              <div class="c-path-block taper">
+                <div class="l">Phase 05 · Taper / Race</div>
+                <div class="h">Bank fitness</div>
+                <div class="d">11 days · 1Q · 22→14 mi · race day</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:18px;padding:14px 18px;background:var(--paper2);border:1px solid var(--line);border-radius:8px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.6px;color:var(--t2);line-height:1.6;">
+            <b style="color:var(--ink);">SOURCES:</b> Daniels VDOT (Research/01) · Pfitzinger half-marathon-intermediate template (Research/22) · Tissue Recovery Timelines (Research/00b) · Mileage Tier Recovery (Research/00b §Recovery Scaled to Weekly Mileage) · Plan Integrity Validator (12 declarative rules · 151 tests)
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Closer -->
+<section class="closer">
+  <h2>Pick a direction. Mix two.</h2>
+  <p>All three lean on the existing token system (Oswald display · Jost body · JetBrains Mono data) and the layered dark palette already in production. None require new component primitives — just denser composition. Command works as the dashboard. Ticker translates well to the training tab. Lab is the right home for /calibration + /health.</p>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,1975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overview v2 — 3 Layout Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0D0F12;
+    --l1: #13161B;
+    --l2: #191C23;
+    --l4: rgba(244,246,248,.10);
+    --t0: #F4F6F8;
+    --t1: rgba(244,246,248,.80);
+    --t2: rgba(244,246,248,.50);
+    --t3: rgba(244,246,248,.30);
+    --good: #3EBD41;
+    --att: #F3AD38;
+    --race: #E85D26;
+  }
+
+  body {
+    background: #0a0a0c;
+    color: var(--t0);
+    font-family: 'Inter', sans-serif;
+    padding: 0;
+  }
+
+  /* ── SECTION LABELS ── */
+  .section-label {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 56px 24px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .section-label .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    background: var(--l4);
+    border: 1px solid rgba(244,246,248,.08);
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .section-label h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--t2);
+    text-transform: uppercase;
+  }
+  .section-label .state-note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+    margin-left: auto;
+  }
+
+  .divider {
+    height: 1px;
+    background: rgba(244,246,248,.06);
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+
+  /* ════════════════════════════════════════
+     MOCKUP 1 — NUMBER BAR
+  ════════════════════════════════════════ */
+  .m1 {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 56px;
+  }
+
+  /* Number bar */
+  .m1-numbar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--l1);
+  }
+  .m1-numbar-cell {
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+  }
+  .m1-numbar-cell + .m1-numbar-cell::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 20%; bottom: 20%;
+    width: 1px;
+    background: rgba(244,246,248,.08);
+  }
+  .m1-numbar-cell .num {
+    font-family: 'Oswald', sans-serif;
+    font-size: 72px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -.02em;
+  }
+  .m1-numbar-cell .num.green { color: var(--good); }
+  .m1-numbar-cell .num.white { color: var(--t0); }
+  .m1-numbar-cell .num.orange { color: var(--race); }
+  .m1-numbar-cell .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .m1-numbar-cell .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    color: var(--t2);
+    text-transform: uppercase;
+  }
+  .m1-numbar-cell .sub.green { color: var(--good); }
+  .m1-numbar-cell .sub.orange { color: var(--race); }
+
+  /* Body 2-col */
+  .m1-body {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  /* Coach briefing */
+  .m1-brief {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    padding: 28px 32px;
+  }
+  .m1-brief .brief-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .m1-brief .brief-label::before {
+    content: '';
+    display: block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 6px var(--good);
+  }
+  .m1-brief p {
+    font-size: 18px;
+    line-height: 1.7;
+    color: var(--t1);
+    font-weight: 300;
+  }
+  .m1-brief p strong {
+    color: var(--t0);
+    font-weight: 500;
+  }
+
+  /* Week strip (used in m1 and m2) */
+  .week-strip-wrap {
+    margin-top: 16px;
+  }
+  .week-header {
+    background: var(--l2);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 10px 10px 0 0;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .week-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .week-header-left .phase {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    color: var(--t0);
+    text-transform: uppercase;
+  }
+  .week-header-left .prog-bar {
+    width: 80px;
+    height: 4px;
+    background: rgba(244,246,248,.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .week-header-left .prog-bar-fill {
+    height: 100%;
+    width: 43.75%;
+    background: var(--good);
+    border-radius: 2px;
+  }
+  .week-header-left .prog-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+  }
+  .week-header-right {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+    letter-spacing: .06em;
+  }
+  .week-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+  }
+  .day-col {
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    cursor: default;
+  }
+  .day-col + .day-col::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 12px; bottom: 12px;
+    width: 1px;
+    background: rgba(244,246,248,.05);
+  }
+  .day-col.today {
+    background: rgba(62,189,65,.04);
+  }
+  .day-col .day-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+  .day-col.today .day-name { color: var(--good); }
+  .day-col .day-date {
+    font-family: 'Oswald', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--t2);
+    line-height: 1;
+  }
+  .day-col.today .day-date { color: var(--t0); }
+  .day-col.done .day-date { color: var(--t3); }
+  .day-col .day-type {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t2);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    line-height: 1.4;
+  }
+  .day-col.today .day-type { color: var(--good); }
+  .day-col .day-dist {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--t1);
+    margin-top: 2px;
+  }
+  .day-col.done .day-dist { color: var(--t3); }
+  .day-col .done-check {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(62,189,65,.15);
+    border: 1px solid rgba(62,189,65,.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+  }
+  .day-col .done-check svg { width: 8px; height: 8px; }
+  .day-col .today-badge {
+    background: var(--good);
+    color: #0D0F12;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    width: fit-content;
+    margin-top: 2px;
+  }
+
+  /* Right column cards */
+  .m1-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    padding: 22px 24px;
+  }
+  .card-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  /* Check-in card */
+  .checkin-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .checkin-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .checkin-item .ci-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t2);
+    letter-spacing: .06em;
+  }
+  .dots-row {
+    display: flex;
+    gap: 5px;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(244,246,248,.12);
+    border: 1px solid rgba(244,246,248,.08);
+  }
+  .dot.active-good { background: var(--good); border-color: var(--good); box-shadow: 0 0 6px rgba(62,189,65,.4); }
+  .dot.active-mid { background: var(--att); border-color: var(--att); }
+
+  /* Effort ring card */
+  .effort-card-inner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .effort-ring-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .effort-ring-wrap svg {
+    transform: rotate(-90deg);
+  }
+  .effort-ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+  }
+  .effort-ring-center .ez {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--good);
+    text-transform: uppercase;
+  }
+  .effort-ring-center .z2 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--t0);
+    line-height: 1;
+  }
+  .effort-zone-info {
+    flex: 1;
+  }
+  .effort-zone-info .zone-name {
+    font-family: 'Oswald', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--t0);
+    letter-spacing: .02em;
+  }
+  .effort-zone-info .zone-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t2);
+    margin-top: 3px;
+  }
+  .effort-zone-info .hr-cap {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--good);
+    margin-top: 8px;
+  }
+
+  /* Segment rows card */
+  .seg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(244,246,248,.05);
+  }
+  .seg-row:last-child { border-bottom: none; }
+  .seg-row .seg-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t2);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .seg-row .seg-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--t0);
+  }
+  .seg-row .seg-val.green { color: var(--good); }
+
+
+  /* ════════════════════════════════════════
+     MOCKUP 2 — WORKOUT HERO
+  ════════════════════════════════════════ */
+  .m2 {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 56px;
+  }
+
+  .m2-hero {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .m2-hero-main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    min-height: 380px;
+  }
+  .m2-hero-left {
+    padding: 44px 48px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border-right: 1px solid rgba(244,246,248,.06);
+  }
+  .m2-workout-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 110px;
+    font-weight: 700;
+    line-height: .92;
+    color: var(--t0);
+    letter-spacing: -.02em;
+  }
+  .m2-hero-left .coaching-note {
+    font-family: 'Inter', sans-serif;
+    font-style: italic;
+    font-size: 15px;
+    color: var(--t2);
+    line-height: 1.6;
+    margin-top: 20px;
+    max-width: 480px;
+  }
+  .m2-stat-strip {
+    display: flex;
+    gap: 0;
+    margin-top: 32px;
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+  }
+  .m2-stat-strip .stat {
+    padding: 12px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .m2-stat-strip .stat + .stat {
+    border-left: 1px solid rgba(244,246,248,.08);
+  }
+  .m2-stat-strip .stat .sv {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--t0);
+  }
+  .m2-stat-strip .stat .sl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+
+  .m2-hero-right {
+    padding: 44px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  .readiness-ring-wrap {
+    position: relative;
+  }
+  .readiness-ring-wrap svg {
+    transform: rotate(-90deg);
+  }
+  .readiness-ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .readiness-ring-center .r-score {
+    font-family: 'Oswald', sans-serif;
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--good);
+    line-height: 1;
+  }
+  .readiness-ring-center .r-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: .1em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .readiness-label {
+    text-align: center;
+  }
+  .readiness-label .rl-main {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t2);
+    text-transform: uppercase;
+  }
+  .readiness-label .rl-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--good);
+    letter-spacing: .1em;
+    margin-top: 3px;
+    text-transform: uppercase;
+  }
+  .trend-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 32px;
+  }
+  .trend-bar {
+    width: 8px;
+    border-radius: 2px;
+    background: rgba(62,189,65,.3);
+  }
+  .trend-bar.active { background: var(--good); }
+
+  .m2-hero-brief {
+    padding: 16px 48px;
+    background: rgba(244,246,248,.03);
+    border-top: 1px solid rgba(244,246,248,.06);
+  }
+  .m2-hero-brief p {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    color: var(--t2);
+    line-height: 1.6;
+  }
+  .m2-hero-brief p strong { color: var(--t0); font-weight: 500; }
+
+  .m2-week-wrap { margin-top: 16px; }
+
+  .m2-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  /* Check-in card m2 */
+  .m2-checkin .checkin-cols {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .m2-checkin .ci2-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .m2-checkin .ci2-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t2);
+    width: 70px;
+    flex-shrink: 0;
+    letter-spacing: .04em;
+  }
+  .ci2-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(244,246,248,.08);
+    border-radius: 2px;
+    position: relative;
+  }
+  .ci2-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--good);
+  }
+  .ci2-fill.mid { background: var(--att); }
+  .ci2-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--t1);
+    width: 18px;
+    text-align: right;
+  }
+
+  /* Run feel card m2 */
+  .feel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .feel-cell {
+    background: rgba(244,246,248,.04);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .feel-cell .fc-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--t0);
+  }
+  .feel-cell .fc-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: .1em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+
+  /* Race countdown m2 */
+  .m2-race .race-big {
+    font-family: 'Oswald', sans-serif;
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--race);
+    line-height: 1;
+  }
+  .m2-race .race-days-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .m2-race .race-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--t1);
+    margin-top: 12px;
+  }
+  .m2-race .race-goal {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t2);
+    margin-top: 6px;
+  }
+  .m2-race .race-goal span {
+    color: var(--race);
+    font-weight: 600;
+  }
+
+
+  /* ════════════════════════════════════════
+     MOCKUP 3 — PURE GRID
+  ════════════════════════════════════════ */
+  .m3 {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Row 1 */
+  .m3-row1 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    min-height: 200px;
+  }
+
+  /* Readiness card */
+  .m3-readiness {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    position: relative;
+  }
+  .m3-readiness .ready-badge {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: rgba(62,189,65,.15);
+    border: 1px solid rgba(62,189,65,.3);
+    color: var(--good);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .m3-readiness .ring120-wrap {
+    position: relative;
+  }
+  .m3-readiness .ring120-wrap svg {
+    transform: rotate(-90deg);
+  }
+  .m3-readiness .ring120-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .m3-readiness .ring120-center .r3-score {
+    font-family: 'Oswald', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--good);
+    line-height: 1;
+  }
+  .m3-readiness .ring120-center .r3-denom {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+  }
+  .m3-readiness .building-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--good);
+    text-transform: uppercase;
+  }
+  .m3-readiness .trend-mini {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 24px;
+  }
+  .m3-readiness .tm-bar {
+    width: 6px;
+    border-radius: 2px;
+    background: rgba(62,189,65,.25);
+  }
+  .m3-readiness .tm-bar.hi { background: var(--good); }
+
+  /* Coach card m3 */
+  .m3-coach {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .m3-coach .coach-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .m3-coach .pulse-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 8px rgba(62,189,65,.6);
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .6; transform: scale(.85); }
+  }
+  .m3-coach .coach-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    color: var(--t2);
+    text-transform: uppercase;
+  }
+  .m3-coach .coach-brief-text {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--t1);
+    flex: 1;
+    font-weight: 300;
+  }
+  .m3-coach .coach-brief-text strong { font-weight: 500; color: var(--t0); }
+  .m3-coach .ci-compact {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(244,246,248,.06);
+    display: flex;
+    gap: 16px;
+  }
+  .m3-coach .ci-compact .cic {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .m3-coach .ci-compact .cic-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+    letter-spacing: .06em;
+  }
+  .m3-coach .ci-compact .cic-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .m3-coach .ci-compact .cic-dot.good { background: var(--good); }
+  .m3-coach .ci-compact .cic-dot.mid { background: var(--att); }
+
+  /* Race card m3 */
+  .m3-race {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+  }
+  .m3-race .r3-big {
+    font-family: 'Oswald', sans-serif;
+    font-size: 80px;
+    font-weight: 700;
+    color: var(--race);
+    line-height: 1;
+  }
+  .m3-race .r3-days {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-top: -4px;
+  }
+  .m3-race .r3-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--t1);
+    margin-top: 4px;
+  }
+  .m3-race .r3-goal {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t2);
+    margin-top: 2px;
+  }
+  .m3-race .r3-goal span { color: var(--race); font-weight: 600; }
+  .m3-race .r3-progress-wrap {
+    width: 100%;
+    margin-top: 8px;
+  }
+  .r3-progress-bar {
+    width: 100%;
+    height: 5px;
+    background: rgba(244,246,248,.08);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .r3-progress-fill {
+    height: 100%;
+    width: 43.75%; /* 7/16 weeks */
+    background: var(--race);
+    border-radius: 3px;
+  }
+  .r3-progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+  }
+  .r3-progress-label span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+  }
+
+  /* Row 2 — Workout card */
+  .m3-row2 {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 280px;
+  }
+  .m3-workout-inner {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    height: 100%;
+  }
+  .m3-workout-left {
+    padding: 32px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-right: 1px solid rgba(244,246,248,.06);
+  }
+  .m3-workout-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--t0);
+    line-height: .95;
+    letter-spacing: -.01em;
+  }
+  .m3-workout-note {
+    font-family: 'Inter', sans-serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--t2);
+    line-height: 1.6;
+    margin-top: 10px;
+    max-width: 420px;
+  }
+  .m3-data-cells {
+    display: flex;
+    gap: 0;
+    margin-top: 20px;
+    border: 1px solid rgba(244,246,248,.07);
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+  }
+  .m3-data-cell {
+    padding: 10px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .m3-data-cell + .m3-data-cell {
+    border-left: 1px solid rgba(244,246,248,.07);
+  }
+  .m3-data-cell .dcv {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--t0);
+  }
+  .m3-data-cell .dcl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+  .m3-segs {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid rgba(244,246,248,.06);
+    border-radius: 8px;
+    overflow: hidden;
+    width: fit-content;
+    min-width: 320px;
+  }
+  .m3-seg {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    gap: 40px;
+  }
+  .m3-seg + .m3-seg { border-top: 1px solid rgba(244,246,248,.05); }
+  .m3-seg:first-child { background: rgba(244,246,248,.02); }
+  .m3-seg .sn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .m3-seg .sv {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--t1);
+  }
+  .m3-workout-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .btn-primary {
+    background: var(--good);
+    color: #0D0F12;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    padding: 9px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--t2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    padding: 9px 18px;
+    border-radius: 6px;
+    border: 1px solid rgba(244,246,248,.12);
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  .m3-workout-right {
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  .effort-ring180 {
+    position: relative;
+  }
+  .effort-ring180 svg {
+    transform: rotate(-90deg);
+  }
+  .effort-ring180-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .effort-ring180-center .ez2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--good);
+    text-transform: uppercase;
+  }
+  .effort-ring180-center .zone-num {
+    font-family: 'Oswald', sans-serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--t0);
+    line-height: 1;
+  }
+  .effort-ring180-center .zone-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  /* Recovery→Max bar */
+  .recovery-bar-wrap {
+    width: 100%;
+  }
+  .recovery-bar-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+  .recovery-bar-label span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .recovery-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #3EBD41, #F3AD38, #E85D26);
+    position: relative;
+    overflow: visible;
+  }
+  .recovery-bar-marker {
+    position: absolute;
+    left: 22%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--t0);
+    border: 2px solid #0D0F12;
+    box-shadow: 0 0 8px rgba(62,189,65,.6);
+  }
+  .recovery-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .recovery-bar-labels span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--t3);
+  }
+
+  /* Row 3 — Week strip */
+  .m3-row3 {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .m3-week-header {
+    background: var(--l2);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(244,246,248,.06);
+  }
+  .m3-week-header .wh-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .m3-week-header .wh-phase {
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--t0);
+    letter-spacing: .02em;
+  }
+  .m3-week-header .wh-prog {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .m3-week-header .wh-bar {
+    width: 100px;
+    height: 4px;
+    background: rgba(244,246,248,.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .m3-week-header .wh-bar-fill {
+    height: 100%;
+    width: 43.75%;
+    background: var(--good);
+    border-radius: 2px;
+  }
+  .m3-week-header .wh-prog-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+  }
+  .m3-week-header .wh-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .m3-week-header .wh-proj {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t2);
+  }
+  .m3-week-header .wh-proj strong {
+    color: var(--att);
+    font-weight: 600;
+  }
+  .m3-week-header .wh-sessions {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+  }
+  .m3-week-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  /* shared util */
+  .mt-8 { margin-top: 8px; }
+  .mt-12 { margin-top: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+  /* page-level label strip */
+  .state-strip {
+    background: rgba(244,246,248,.03);
+    border-top: 1px solid rgba(244,246,248,.06);
+    border-bottom: 1px solid rgba(244,246,248,.06);
+  }
+  .state-strip-inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .state-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .08em;
+    color: var(--t3);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .state-pill span { color: var(--t1); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     MOCKUP 1 — NUMBER BAR
+══════════════════════════════════════════════════════ -->
+
+<div class="section-label">
+  <div class="badge">Mockup 1</div>
+  <h2>Number Bar</h2>
+  <div class="state-note">Easy Base Day · Thu May 15 · Base Week 3 · Readiness 88 BUILDING · Easy Run 5.5mi 9:15/mi 145bpm · 93d to race</div>
+</div>
+
+<div class="m1">
+  <!-- Number bar -->
+  <div class="m1-numbar">
+    <div class="m1-numbar-cell">
+      <div class="num green">88</div>
+      <div class="label">Readiness</div>
+      <div class="sub green">Building</div>
+    </div>
+    <div class="m1-numbar-cell">
+      <div class="num white">5.5 MI</div>
+      <div class="label">Today</div>
+      <div class="sub">Easy Run</div>
+    </div>
+    <div class="m1-numbar-cell">
+      <div class="num white">9:15</div>
+      <div class="label">Pace Target</div>
+      <div class="sub">Conversational</div>
+    </div>
+    <div class="m1-numbar-cell">
+      <div class="num orange">93</div>
+      <div class="label">Days to Race</div>
+      <div class="sub orange">Americas Finest City</div>
+    </div>
+  </div>
+
+  <!-- Body 2-col -->
+  <div class="m1-body">
+    <!-- Left column -->
+    <div>
+      <!-- Coach briefing -->
+      <div class="m1-brief">
+        <div class="brief-label">Coach Briefing</div>
+        <p>Load is in the sweet spot — <strong>body is absorbing training well.</strong> 5.5 easy miles today at conversational pace. Keep effort genuinely easy; this is where adaptation happens. <strong>93 days to Americas Finest City</strong> — you're exactly where you need to be.</p>
+      </div>
+
+      <!-- Week strip -->
+      <div class="week-strip-wrap mt-12">
+        <div class="week-header">
+          <div class="week-header-left">
+            <div class="phase">Base Phase · Week 3</div>
+            <div class="prog-bar"><div class="prog-bar-fill"></div></div>
+            <div class="prog-label">Wk 7/16</div>
+          </div>
+          <div class="week-header-right">28.5 mi projected · 4 sessions</div>
+        </div>
+        <div class="week-days">
+          <!-- MON done -->
+          <div class="day-col done">
+            <div class="day-name">Mon</div>
+            <div class="day-date">12</div>
+            <div class="day-type">Easy Run</div>
+            <div class="day-dist">6.0 mi</div>
+            <div class="done-check">
+              <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <!-- TUE done -->
+          <div class="day-col done">
+            <div class="day-name">Tue</div>
+            <div class="day-date">13</div>
+            <div class="day-type">Tempo</div>
+            <div class="day-dist">7.2 mi</div>
+            <div class="done-check">
+              <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <!-- WED done -->
+          <div class="day-col done">
+            <div class="day-name">Wed</div>
+            <div class="day-date">14</div>
+            <div class="day-type">Recovery</div>
+            <div class="day-dist">4.0 mi</div>
+            <div class="done-check">
+              <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <!-- THU today -->
+          <div class="day-col today">
+            <div class="day-name">Thu</div>
+            <div class="day-date">15</div>
+            <div class="day-type">Easy Run</div>
+            <div class="day-dist">5.5 mi</div>
+            <div class="today-badge">Today</div>
+          </div>
+          <!-- FRI -->
+          <div class="day-col">
+            <div class="day-name">Fri</div>
+            <div class="day-date">16</div>
+            <div class="day-type">Long Run</div>
+            <div class="day-dist">10.0 mi</div>
+          </div>
+          <!-- SAT -->
+          <div class="day-col">
+            <div class="day-name">Sat</div>
+            <div class="day-date">17</div>
+            <div class="day-type">Strides</div>
+            <div class="day-dist">5.0 mi</div>
+          </div>
+          <!-- SUN -->
+          <div class="day-col">
+            <div class="day-name">Sun</div>
+            <div class="day-date">18</div>
+            <div class="day-type">Rest</div>
+            <div class="day-dist">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div class="m1-right">
+      <!-- Check-in card -->
+      <div class="card">
+        <div class="card-label">Morning Check-in</div>
+        <div class="checkin-row">
+          <div class="checkin-item">
+            <div class="ci-label">Energy</div>
+            <div class="dots-row">
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot active-mid"></div>
+              <div class="dot"></div>
+            </div>
+          </div>
+          <div class="checkin-item">
+            <div class="ci-label">Soreness</div>
+            <div class="dots-row">
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
+            </div>
+          </div>
+          <div class="checkin-item">
+            <div class="ci-label">Stress</div>
+            <div class="dots-row">
+              <div class="dot active-mid"></div>
+              <div class="dot active-mid"></div>
+              <div class="dot active-mid"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
+            </div>
+          </div>
+          <div class="checkin-item">
+            <div class="ci-label">Sleep</div>
+            <div class="dots-row">
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot active-good"></div>
+              <div class="dot"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Effort card -->
+      <div class="card">
+        <div class="card-label">Target Effort</div>
+        <div class="effort-card-inner">
+          <div class="effort-ring-wrap">
+            <svg width="72" height="72" viewBox="0 0 72 72">
+              <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(244,246,248,.06)" stroke-width="6"/>
+              <circle cx="36" cy="36" r="30" fill="none" stroke="#3EBD41" stroke-width="6"
+                stroke-dasharray="188.4" stroke-dashoffset="150.7" stroke-linecap="round"/>
+            </svg>
+            <div class="effort-ring-center">
+              <div class="ez">Easy</div>
+              <div class="z2">Z2</div>
+            </div>
+          </div>
+          <div class="effort-zone-info">
+            <div class="zone-name">Zone 2</div>
+            <div class="zone-sub">Aerobic Base</div>
+            <div class="hr-cap">≤145 bpm HR cap</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Segments card -->
+      <div class="card">
+        <div class="card-label">Workout Segments</div>
+        <div class="seg-row">
+          <div class="seg-name">Warmup</div>
+          <div class="seg-val">0.5 mi · Easy</div>
+        </div>
+        <div class="seg-row">
+          <div class="seg-name">Main</div>
+          <div class="seg-val green">4.5 mi · 9:15/mi</div>
+        </div>
+        <div class="seg-row">
+          <div class="seg-name">Cooldown</div>
+          <div class="seg-val">0.5 mi · Walk</div>
+        </div>
+        <div class="seg-row">
+          <div class="seg-name">Est. Duration</div>
+          <div class="seg-val">~52 min</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     MOCKUP 2 — WORKOUT HERO
+══════════════════════════════════════════════════════ -->
+
+<div class="section-label">
+  <div class="badge">Mockup 2</div>
+  <h2>Workout Hero</h2>
+  <div class="state-note">Easy Base Day · Thu May 15 · Base Week 3 · Readiness 88 BUILDING · Easy Run 5.5mi 9:15/mi 145bpm · 93d to race</div>
+</div>
+
+<div class="m2">
+  <!-- Hero card -->
+  <div class="m2-hero">
+    <div class="m2-hero-main">
+      <!-- Left: workout info -->
+      <div class="m2-hero-left">
+        <div>
+          <div class="m2-workout-title">EASY<br>RUN</div>
+          <p class="coaching-note">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
+          <div class="m2-stat-strip mt-16">
+            <div class="stat">
+              <div class="sv">5.5 mi</div>
+              <div class="sl">Distance</div>
+            </div>
+            <div class="stat">
+              <div class="sv">9:15/mi</div>
+              <div class="sl">Pace</div>
+            </div>
+            <div class="stat">
+              <div class="sv">~52 min</div>
+              <div class="sl">Duration</div>
+            </div>
+            <div class="stat">
+              <div class="sv">≤145 bpm</div>
+              <div class="sl">HR Cap</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: readiness ring -->
+      <div class="m2-hero-right">
+        <div class="readiness-ring-wrap">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            <!-- Track -->
+            <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(244,246,248,.06)" stroke-width="8"/>
+            <!-- Fill: 88/100 = 88% = 426.9 of 427.26 -->
+            <circle cx="80" cy="80" r="68" fill="none" stroke="#3EBD41" stroke-width="8"
+              stroke-dasharray="427.26" stroke-dashoffset="51.27" stroke-linecap="round"/>
+          </svg>
+          <div class="readiness-ring-center">
+            <div class="r-score">88</div>
+            <div class="r-label">/ 100</div>
+          </div>
+        </div>
+        <div class="readiness-label">
+          <div class="rl-main">Readiness</div>
+          <div class="rl-sub">▲ Building</div>
+        </div>
+        <div class="trend-bars">
+          <div class="trend-bar" style="height:40%"></div>
+          <div class="trend-bar" style="height:55%"></div>
+          <div class="trend-bar" style="height:50%"></div>
+          <div class="trend-bar" style="height:65%"></div>
+          <div class="trend-bar active" style="height:75%"></div>
+          <div class="trend-bar active" style="height:82%"></div>
+          <div class="trend-bar active" style="height:88%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brief strip -->
+    <div class="m2-hero-brief">
+      <p><strong>Load is in the sweet spot</strong> — body is absorbing training well. 5.5 easy miles today at conversational pace. 93 days to Americas Finest City.</p>
+    </div>
+  </div>
+
+  <!-- Week strip -->
+  <div class="m2-week-wrap">
+    <div class="week-header">
+      <div class="week-header-left">
+        <div class="phase">Base Phase · Week 3</div>
+        <div class="prog-bar"><div class="prog-bar-fill"></div></div>
+        <div class="prog-label">Wk 7 / 16</div>
+      </div>
+      <div class="week-header-right">28.5 mi projected · 4 sessions</div>
+    </div>
+    <div class="week-days">
+      <div class="day-col done">
+        <div class="day-name">Mon</div>
+        <div class="day-date">12</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">6.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col done">
+        <div class="day-name">Tue</div>
+        <div class="day-date">13</div>
+        <div class="day-type">Tempo</div>
+        <div class="day-dist">7.2 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col done">
+        <div class="day-name">Wed</div>
+        <div class="day-date">14</div>
+        <div class="day-type">Recovery</div>
+        <div class="day-dist">4.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col today">
+        <div class="day-name">Thu</div>
+        <div class="day-date">15</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">5.5 mi</div>
+        <div class="today-badge">Today</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Fri</div>
+        <div class="day-date">16</div>
+        <div class="day-type">Long Run</div>
+        <div class="day-dist">10.0 mi</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Sat</div>
+        <div class="day-date">17</div>
+        <div class="day-type">Strides</div>
+        <div class="day-dist">5.0 mi</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Sun</div>
+        <div class="day-date">18</div>
+        <div class="day-type">Rest</div>
+        <div class="day-dist">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom 3 cards -->
+  <div class="m2-cards">
+    <!-- Check-in -->
+    <div class="card m2-checkin">
+      <div class="card-label">Morning Check-in</div>
+      <div class="checkin-cols">
+        <div class="ci2-row">
+          <div class="ci2-label">Energy</div>
+          <div class="ci2-track"><div class="ci2-fill" style="width:72%"></div></div>
+          <div class="ci2-val">7</div>
+        </div>
+        <div class="ci2-row">
+          <div class="ci2-label">Soreness</div>
+          <div class="ci2-track"><div class="ci2-fill" style="width:35%"></div></div>
+          <div class="ci2-val">3</div>
+        </div>
+        <div class="ci2-row">
+          <div class="ci2-label">Stress</div>
+          <div class="ci2-track"><div class="ci2-fill mid" style="width:55%"></div></div>
+          <div class="ci2-val">5</div>
+        </div>
+        <div class="ci2-row">
+          <div class="ci2-label">Sleep</div>
+          <div class="ci2-track"><div class="ci2-fill" style="width:80%"></div></div>
+          <div class="ci2-val">8h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run feel -->
+    <div class="card">
+      <div class="card-label">Run Feel</div>
+      <div class="feel-grid">
+        <div class="feel-cell">
+          <div class="fc-val" style="color: var(--good)">Zone 2</div>
+          <div class="fc-label">Effort Zone</div>
+        </div>
+        <div class="feel-cell">
+          <div class="fc-val">9:15</div>
+          <div class="fc-label">Pace / mi</div>
+        </div>
+        <div class="feel-cell">
+          <div class="fc-val">≤145</div>
+          <div class="fc-label">HR Cap bpm</div>
+        </div>
+        <div class="feel-cell">
+          <div class="fc-val">~52</div>
+          <div class="fc-label">Est. Min</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Race countdown -->
+    <div class="card m2-race">
+      <div class="r2-inner">
+        <div class="race-big">93</div>
+        <div class="race-days-label">Days to Race</div>
+        <div class="race-name">Americas Finest City Half</div>
+        <div class="race-goal">Goal pace <span>7:45/mi</span> · ~1:41:30</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     MOCKUP 3 — PURE GRID
+══════════════════════════════════════════════════════ -->
+
+<div class="section-label">
+  <div class="badge">Mockup 3</div>
+  <h2>Pure Grid</h2>
+  <div class="state-note">Easy Base Day · Thu May 15 · Base Week 3 · Readiness 88 BUILDING · Easy Run 5.5mi 9:15/mi 145bpm · 93d to race</div>
+</div>
+
+<div class="m3">
+  <!-- Row 1 -->
+  <div class="m3-row1">
+    <!-- Readiness card -->
+    <div class="m3-readiness">
+      <div class="ready-badge">Ready</div>
+      <div class="ring120-wrap">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(244,246,248,.06)" stroke-width="7"/>
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#3EBD41" stroke-width="7"
+            stroke-dasharray="314.16" stroke-dashoffset="37.7" stroke-linecap="round"/>
+        </svg>
+        <div class="ring120-center">
+          <div class="r3-score">88</div>
+          <div class="r3-denom">/ 100</div>
+        </div>
+      </div>
+      <div class="building-label">▲ Building</div>
+      <div class="trend-mini">
+        <div class="tm-bar" style="height: 35%"></div>
+        <div class="tm-bar" style="height: 50%"></div>
+        <div class="tm-bar" style="height: 55%"></div>
+        <div class="tm-bar" style="height: 65%"></div>
+        <div class="tm-bar hi" style="height: 75%"></div>
+        <div class="tm-bar hi" style="height: 82%"></div>
+        <div class="tm-bar hi" style="height: 88%"></div>
+      </div>
+    </div>
+
+    <!-- Coach card -->
+    <div class="m3-coach">
+      <div class="coach-header">
+        <div class="pulse-dot"></div>
+        <div class="coach-date">Thu · May 15 · Base Wk 3</div>
+      </div>
+      <div class="coach-brief-text">
+        <strong>Load is in the sweet spot</strong> — body is absorbing training well. 5.5 easy miles today at conversational pace. This is aerobic base building at its best. <strong>93 days to Americas Finest City</strong>.
+      </div>
+      <div class="ci-compact">
+        <div class="cic">
+          <div class="cic-dot good"></div>
+          <div class="cic-label">Energy 7/10</div>
+        </div>
+        <div class="cic">
+          <div class="cic-dot good"></div>
+          <div class="cic-label">Soreness Low</div>
+        </div>
+        <div class="cic">
+          <div class="cic-dot mid"></div>
+          <div class="cic-label">Stress Med</div>
+        </div>
+        <div class="cic">
+          <div class="cic-dot good"></div>
+          <div class="cic-label">Sleep 8h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Race card -->
+    <div class="m3-race">
+      <div class="r3-big">93</div>
+      <div class="r3-days">Days to Race</div>
+      <div class="r3-name">Americas Finest City Half</div>
+      <div class="r3-goal">Goal pace <span>7:45/mi</span> · ~1:41:30</div>
+      <div class="r3-progress-wrap">
+        <div class="r3-progress-bar">
+          <div class="r3-progress-fill"></div>
+        </div>
+        <div class="r3-progress-labels">
+          <span>Wk 7 / 16</span>
+          <span>43.75% complete</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2 — Workout card -->
+  <div class="m3-row2">
+    <div class="m3-workout-inner">
+      <!-- Left -->
+      <div class="m3-workout-left">
+        <div class="m3-workout-title">EASY RUN</div>
+        <div class="m3-workout-note">Conversational pace throughout. Body is absorbing load well — keep HR under 145 and let the aerobic system do the work.</div>
+        <div class="m3-data-cells">
+          <div class="m3-data-cell">
+            <div class="dcv">5.5 mi</div>
+            <div class="dcl">Distance</div>
+          </div>
+          <div class="m3-data-cell">
+            <div class="dcv">9:15/mi</div>
+            <div class="dcl">Pace</div>
+          </div>
+          <div class="m3-data-cell">
+            <div class="dcv">~52 min</div>
+            <div class="dcl">Duration</div>
+          </div>
+          <div class="m3-data-cell">
+            <div class="dcv" style="color:var(--good)">≤145 bpm</div>
+            <div class="dcl">HR Cap</div>
+          </div>
+        </div>
+        <div class="m3-segs">
+          <div class="m3-seg">
+            <div class="sn">Warmup</div>
+            <div class="sv">0.5 mi · Easy walk/jog</div>
+          </div>
+          <div class="m3-seg">
+            <div class="sn">Main</div>
+            <div class="sv" style="color:var(--good)">4.5 mi · 9:15/mi Z2</div>
+          </div>
+          <div class="m3-seg">
+            <div class="sn">Cooldown</div>
+            <div class="sv">0.5 mi · Walk</div>
+          </div>
+        </div>
+        <div class="m3-workout-btns">
+          <button class="btn-primary">Start Run</button>
+          <button class="btn-ghost">Adjust</button>
+          <button class="btn-ghost">Log Manual</button>
+        </div>
+      </div>
+
+      <!-- Right: effort ring + recovery bar -->
+      <div class="m3-workout-right">
+        <div class="effort-ring180">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <!-- background zones -->
+            <circle cx="90" cy="90" r="76" fill="none" stroke="rgba(244,246,248,.04)" stroke-width="14"/>
+            <!-- Z1 -->
+            <circle cx="90" cy="90" r="76" fill="none" stroke="rgba(62,189,65,.15)" stroke-width="14"
+              stroke-dasharray="477.52" stroke-dashoffset="382" stroke-linecap="butt"/>
+            <!-- Z2 active -->
+            <circle cx="90" cy="90" r="76" fill="none" stroke="#3EBD41" stroke-width="14"
+              stroke-dasharray="477.52" stroke-dashoffset="286" stroke-linecap="butt"
+              style="filter: drop-shadow(0 0 6px rgba(62,189,65,.5))"/>
+          </svg>
+          <div class="effort-ring180-center">
+            <div class="ez2">Easy</div>
+            <div class="zone-num">Z2</div>
+            <div class="zone-label">Aerobic</div>
+          </div>
+        </div>
+
+        <div class="recovery-bar-wrap" style="width: 180px">
+          <div class="recovery-bar-label">
+            <span>Recovery</span>
+            <span>Max</span>
+          </div>
+          <div class="recovery-bar">
+            <div class="recovery-bar-marker"></div>
+          </div>
+          <div class="recovery-bar-labels">
+            <span>Z1</span>
+            <span>Z2</span>
+            <span>Z3</span>
+            <span>Z4</span>
+            <span>Z5</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3 — Week strip -->
+  <div class="m3-row3">
+    <div class="m3-week-header">
+      <div class="wh-left">
+        <div class="wh-phase">Base Phase · Week 3</div>
+        <div class="wh-prog">
+          <div class="wh-bar"><div class="wh-bar-fill"></div></div>
+          <div class="wh-prog-label">Wk 7 of 16</div>
+        </div>
+      </div>
+      <div class="wh-right">
+        <div class="wh-proj">Projected <strong>28.5 mi</strong></div>
+        <div class="wh-sessions">4 sessions this week</div>
+      </div>
+    </div>
+    <div class="m3-week-days week-days">
+      <div class="day-col done">
+        <div class="day-name">Mon</div>
+        <div class="day-date">12</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">6.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col done">
+        <div class="day-name">Tue</div>
+        <div class="day-date">13</div>
+        <div class="day-type">Tempo</div>
+        <div class="day-dist">7.2 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col done">
+        <div class="day-name">Wed</div>
+        <div class="day-date">14</div>
+        <div class="day-type">Recovery</div>
+        <div class="day-dist">4.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="day-col today">
+        <div class="day-name">Thu</div>
+        <div class="day-date">15</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">5.5 mi</div>
+        <div class="today-badge">Today</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Fri</div>
+        <div class="day-date">16</div>
+        <div class="day-type">Long Run</div>
+        <div class="day-dist">10.0 mi</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Sat</div>
+        <div class="day-date">17</div>
+        <div class="day-type">Strides</div>
+        <div class="day-dist">5.0 mi</div>
+      </div>
+      <div class="day-col">
+        <div class="day-name">Sun</div>
+        <div class="day-date">18</div>
+        <div class="day-type">Rest</div>
+        <div class="day-dist">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- bottom pad -->
+<div style="height: 48px"></div>
+
+</body>
+</html>

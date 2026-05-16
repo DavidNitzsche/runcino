@@ -1,423 +1,1103 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=1400">
 <title>Runcino · Races</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="runcino.css">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
 <style>
-  /* ─── Races page ─────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
 
-  /* Next race hero — dark tattoo */
-  .race-hero { border-radius:20px; padding:38px 42px; margin-bottom:14px; position:relative; overflow:hidden; background:radial-gradient(ellipse at 75% 30%, rgba(252,77,84,.10) 0%, rgba(10,14,20,0) 55%), radial-gradient(ellipse at 20% 85%, rgba(62,189,65,.08) 0%, rgba(10,14,20,0) 55%), #0a0e14; border:1px solid rgba(246,247,248,.08); min-height:300px; display:grid; grid-template-columns:1.2fr 1fr; gap:40px; }
-  .race-hero::after { content:""; position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); pointer-events:none; }
-  .rh-bg { position:absolute; inset:0; z-index:0; opacity:.9; pointer-events:none; }
-  .rh-bg svg { width:100%; height:100%; display:block; }
-  .rh-l, .rh-r { position:relative; z-index:1; }
-  .rh-l { display:flex; flex-direction:column; justify-content:space-between; gap:20px; position:relative; z-index:1; }
-  .rh-r { display:flex; flex-direction:column; justify-content:space-between; gap:18px; position:relative; z-index:1; }
-  .rh-eye { font-family:var(--f-data); font-size:10.5px; letter-spacing:2.2px; text-transform:uppercase; color:var(--attention); font-weight:700; display:flex; align-items:center; gap:10px; }
-  .rh-eye::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--attention); box-shadow:0 0 0 3px rgba(243,173,59,.18); }
-  .rh-name { font-family:var(--f-display); font-size:88px; font-weight:700; letter-spacing:-.01em; line-height:.88; text-transform:uppercase; }
-  .rh-meta { display:grid; grid-template-columns:repeat(3,auto); gap:36px; }
-  .rh-meta .l { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; }
-  .rh-meta .v { font-family:var(--f-display); font-weight:800; font-size:28px; letter-spacing:-.02em; line-height:1; margin-top:6px; color:var(--t0); }
-  .rh-countdown { font-family:var(--f-display); font-weight:800; font-size:156px; letter-spacing:-.04em; line-height:.85; color:var(--attention); font-variant-numeric:tabular-nums; }
-  .rh-countdown small { font-family:var(--f-data); font-size:12px; letter-spacing:2.2px; text-transform:uppercase; color:var(--t2); font-weight:700; display:block; margin-top:8px; letter-spacing:2.2px; }
-  .rh-goal { display:flex; gap:20px; align-items:baseline; }
-  .rh-goal .glbl { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
-  .rh-goal .gval { font-family:var(--f-display); font-size:44px; font-weight:800; letter-spacing:-.02em; color:var(--attention); }
-  .rh-cta { display:flex; gap:10px; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* Upcoming grid */
-  .race-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .race-card { border-radius:14px; background:#0a0e14; border:1px solid rgba(246,247,248,.08); padding:22px 24px; display:flex; flex-direction:column; gap:12px; cursor:pointer; transition:border-color 120ms, transform 120ms; min-height:240px; text-decoration:none; color:inherit; position:relative; overflow:hidden; }
-  .race-card:hover { border-color:rgba(246,247,248,.2); }
-  .race-card .rc-bg { position:absolute; inset:0; z-index:0; opacity:.75; pointer-events:none; }
-  .race-card .rc-bg svg { width:100%; height:100%; display:block; }
-  .race-card > *:not(.rc-bg) { position:relative; z-index:1; }
-  .race-card .rc-ft { border-top:1px solid rgba(246,247,248,.08); }
-  .race-card .rc-top { display:flex; justify-content:space-between; align-items:flex-start; }
-  .race-card .rc-date { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; }
-  .race-card .rc-name { font-family:var(--f-display); font-weight:700; font-size:32px; letter-spacing:-.005em; line-height:.95; text-transform:uppercase; margin-top:8px; }
-  .race-card .rc-loc { font-family:var(--f-label); font-size:13px; color:var(--t2); font-weight:500; margin-top:4px; }
-  .race-card .rc-ft { display:flex; justify-content:space-between; align-items:flex-end; margin-top:auto; font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t3); padding-top:16px; border-top:1px solid var(--l4); }
-  .race-card .rc-ft b { font-family:var(--f-display); font-size:18px; letter-spacing:-.01em; color:var(--t0); font-weight:800; }
-  .race-card--add { border:1px dashed var(--l4); background:transparent; align-items:center; justify-content:center; color:var(--t2); text-align:center; min-height:220px; cursor:pointer; }
-  .race-card--add:hover { color:var(--t0); border-color:var(--l5); background:var(--l1); }
-  .race-card--add .plus { font-family:var(--f-display); font-size:56px; font-weight:500; line-height:1; color:var(--t2); }
-  .race-card--add .t { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:10px; }
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
 
-  /* Past races table */
-  .past-tbl { width:100%; border-collapse:collapse; }
-  .past-tbl th { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:left; padding:12px 18px; border-bottom:1px solid var(--l4); }
-  .past-tbl td { padding:18px; border-bottom:1px solid var(--l4); font-size:14px; color:var(--t1); vertical-align:middle; }
-  .past-tbl tr:last-child td { border-bottom:0; }
-  .past-tbl tr:hover td { background:var(--l2); cursor:pointer; }
-  .past-tbl .num { font-family:var(--f-data); font-variant-numeric:tabular-nums; color:var(--t0); font-weight:700; }
-  .past-tbl .race-n { font-family:var(--f-display); font-weight:700; font-size:20px; letter-spacing:-.005em; text-transform:uppercase; color:var(--t0); }
-  .past-tbl .pr { color:var(--attention); font-weight:700; }
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
 
-  .section-h { display:flex; justify-content:space-between; align-items:flex-end; margin:26px 4px 14px; }
-  .section-h h2 { font-family:var(--f-display); font-weight:700; font-size:28px; letter-spacing:-.01em; text-transform:uppercase; }
+/* ══════════════════════════
+   NAV BAR
+══════════════════════════ */
+.navbar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--divider);
+}
 
-  /* Stat strip */
-  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px; }
-  .stat-box { border-radius:14px; padding:22px 24px; background:var(--l1); border:1px solid var(--l4); }
-  .stat-box .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--t2); font-weight:700; }
-  .stat-box .v { font-family:var(--f-display); font-weight:800; font-size:46px; letter-spacing:-.025em; line-height:1; color:var(--t0); margin-top:14px; font-variant-numeric:tabular-nums; }
-  .stat-box .v small { font-size:.35em; opacity:.55; font-weight:700; margin-left:3px; }
-  .stat-box .c { font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; margin-top:10px; }
-  .stat-box .c b { color:var(--t1); font-weight:800; }
+.navbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: var(--t0);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.nav-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t1);
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 120ms;
+}
+
+.nav-link:hover { color: var(--t0); }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--t0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ══════════════════════════
+   PAGE LAYOUT
+══════════════════════════ */
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+/* ══════════════════════════
+   PAGE HEADER
+══════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.page-header-left .eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.page-header-left h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 64px;
+  color: var(--t0);
+  line-height: 0.9;
+  letter-spacing: 1px;
+}
+
+.btn-primary {
+  background: var(--t0);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: opacity 120ms;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-primary:hover { opacity: 0.82; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--t0);
+  border: 1.5px solid rgba(13,15,18,.2);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.btn-ghost:hover { border-color: rgba(13,15,18,.4); background: rgba(13,15,18,.04); }
+
+/* ══════════════════════════
+   SECTION LABELS
+══════════════════════════ */
+.section-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  margin-top: 40px;
+}
+
+/* ══════════════════════════
+   A-RACE HERO CARD
+══════════════════════════ */
+.hero-card {
+  background: var(--card);
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  box-shadow: var(--card-shadow);
+  margin-bottom: 16px;
+}
+
+.hero-left {
+  flex: 1;
+  padding: 44px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(44,168,47,.12);
+  border: 1px solid rgba(44,168,47,.25);
+  color: var(--green);
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 100px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+
+.hero-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.hero-race-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 56px;
+  color: var(--t0);
+  line-height: 0.92;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+
+.hero-meta-line {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--t1);
+  margin-bottom: 32px;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 36px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.hero-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hero-stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.hero-stat-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t0);
+}
+
+.hero-countdown-block {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+.hero-countdown-number {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 96px;
+  color: var(--green);
+  line-height: 0.9;
+  letter-spacing: 1px;
+}
+
+.hero-countdown-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  font-weight: 500;
+  padding-bottom: 8px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ══════════════════════════
+   HERO RIGHT — GPX PANEL
+══════════════════════════ */
+.hero-right {
+  width: 420px;
+  background: #0D0F12;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.gpx-panel-header {
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.gpx-panel-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,.4);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.gpx-panel-tag {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: rgba(255,255,255,.25);
+  text-transform: uppercase;
+  background: rgba(255,255,255,.07);
+  border-radius: 4px;
+  padding: 3px 7px;
+}
+
+.gpx-svg-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 60px 0 0;
+}
+
+.gpx-svg-wrap svg {
+  width: 100%;
+  display: block;
+}
+
+.gpx-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gpx-footer-stats {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  letter-spacing: 0.2px;
+}
+
+.gpx-upload-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: rgba(255,255,255,.2);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms;
+}
+.gpx-upload-hint:hover { color: rgba(255,255,255,.45); }
+
+/* Elevation markers */
+.gpx-markers {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 72px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.gpx-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.gpx-marker-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.5);
+  border: 1.5px solid rgba(255,255,255,.8);
+}
+
+.gpx-marker-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  color: rgba(255,255,255,.4);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════
+   UPCOMING RACE CARDS GRID
+══════════════════════════ */
+.race-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.race-card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  transition: transform 120ms, box-shadow 120ms;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+.race-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.07);
+}
+
+.race-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.race-pill {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 100px;
+}
+
+.race-pill--b {
+  background: rgba(212,144,10,.12);
+  color: var(--amber);
+  border: 1px solid rgba(212,144,10,.25);
+}
+
+.race-pill--c {
+  background: rgba(13,15,18,.07);
+  color: var(--t1);
+  border: 1px solid rgba(13,15,18,.12);
+}
+
+.race-pill--a {
+  background: rgba(44,168,47,.12);
+  color: var(--green);
+  border: 1px solid rgba(44,168,47,.25);
+}
+
+.race-card-date-loc {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+  margin-bottom: 6px;
+}
+
+.race-card-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t0);
+  margin-bottom: 14px;
+  line-height: 1.25;
+}
+
+.race-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.chip {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t1);
+  background: rgba(13,15,18,.05);
+  border-radius: 6px;
+  padding: 3px 8px;
+  letter-spacing: 0.2px;
+}
+
+.race-card-note {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--t2);
+  margin-bottom: 20px;
+  flex: 1;
+}
+
+.race-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--divider);
+}
+
+.race-card-countdown {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.race-card-countdown-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  color: var(--t0);
+  line-height: 1;
+}
+
+.race-card-countdown-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+  font-weight: 400;
+}
+
+.race-card-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t1);
+  text-decoration: none;
+  letter-spacing: 0.2px;
+  transition: color 120ms;
+}
+.race-card-link:hover { color: var(--t0); }
+
+/* ══════════════════════════
+   PAST RACES LIST
+══════════════════════════ */
+.past-races-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.past-race-row {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  box-shadow: var(--card-shadow);
+  transition: transform 100ms;
+  cursor: pointer;
+}
+.past-race-row:hover { transform: translateX(2px); }
+
+.past-race-info {
+  flex: 1;
+}
+
+.past-race-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t0);
+  margin-bottom: 4px;
+}
+
+.past-race-meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.past-race-type {
+  background: rgba(13,15,18,.06);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.past-race-results {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  margin: 0 40px;
+}
+
+.past-race-result-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.past-race-time {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  color: var(--t0);
+  line-height: 1;
+  letter-spacing: 0.5px;
+}
+
+.past-race-sublabel {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  text-align: center;
+}
+
+.past-race-place {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--t1);
+  text-align: center;
+}
+
+.past-race-pr {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--orange);
+  background: rgba(232,93,38,.1);
+  border: 1px solid rgba(232,93,38,.2);
+  border-radius: 100px;
+  padding: 2px 8px;
+  margin-top: 4px;
+}
+
+.past-race-action {
+  margin-left: auto;
+}
+
+.btn-view {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t2);
+  border: 1.5px solid rgba(13,15,18,.12);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  background: transparent;
+  transition: color 120ms, border-color 120ms;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-view:hover { color: var(--t0); border-color: rgba(13,15,18,.3); }
+
+/* ══════════════════════════
+   VERTICAL DIVIDER FOR STATS
+══════════════════════════ */
+.vdivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--divider);
+}
 </style>
 </head>
 <body>
 
-<div class="caption"><span>Runcino · races &amp; season plan</span><b>RACES · V.1 · 2026.04.21</b></div>
-
-<div class="stage">
-  <div class="nav">
-    <div class="nav-l">
-      <a class="brand" href="hub.html">R</a>
-      <div class="tabs">
-        <a class="tab" href="hub.html">Overview</a>
-        <a class="tab" href="training.html">Training</a>
-        <a class="tab active" href="races.html">Races</a>
-        <a class="tab" href="health.html">Health</a>
-        <a class="tab" href="log.html">Log</a>
-      </div>
+<!-- NAV -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training.html">Training</a>
+      <a class="nav-link active" href="races.html">Races</a>
+      <a class="nav-link" href="health.html">Health</a>
+      <a class="nav-link" href="log.html">Log</a>
+      <a class="nav-link" href="profile.html">Profile</a>
     </div>
-    <div class="nav-r">
-      <div class="nav-ic">⌕</div>
-      <div class="nav-ic">◎</div>
-      <div class="avatar"></div>
+    <div class="nav-right">
+      <div class="nav-avatar">DK</div>
     </div>
   </div>
+</nav>
 
-  <div class="body">
+<!-- PAGE -->
+<div class="page">
 
-    <div class="page-head">
-      <div>
-        <div class="eyebrow">Your season · 2026</div>
-        <h1>Races</h1>
-        <div class="sub"><b>Sombrero Half tomorrow.</b> Big Sur in the books last Sunday.</div>
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="eyebrow">Your Races</div>
+      <h1>Races</h1>
+    </div>
+    <button class="btn-primary" onclick="alert('Add Race')">+ Add Race</button>
+  </div>
+
+  <!-- A-RACE HERO -->
+  <div class="hero-card">
+
+    <!-- LEFT -->
+    <div class="hero-left">
+      <div class="hero-badge">A-Race</div>
+
+      <div class="hero-race-name">American Fork<br>Canyon 50K</div>
+
+      <div class="hero-meta-line">August 16, 2026 &nbsp;·&nbsp; American Fork, UT</div>
+
+      <div class="hero-stats">
+        <div class="hero-stat-item">
+          <span class="hero-stat-label">Distance</span>
+          <span class="hero-stat-value">50K / 31.2 mi</span>
+        </div>
+        <div class="hero-stat-item">
+          <span class="hero-stat-label">Elevation</span>
+          <span class="hero-stat-value">+8,400 ft</span>
+        </div>
+        <div class="hero-stat-item">
+          <span class="hero-stat-label">Start</span>
+          <span class="hero-stat-value">6:00 AM</span>
+        </div>
+        <div class="hero-stat-item">
+          <span class="hero-stat-label">Field</span>
+          <span class="hero-stat-value">340 runners</span>
+        </div>
       </div>
-      <div class="page-actions">
-        <label class="btn btn--ghost" for="racesGpxIn" style="cursor:pointer;">⇡ Upload GPX</label>
-        <input type="file" id="racesGpxIn" accept=".gpx,.tcx,.fit" style="display:none;" />
-        <button class="btn btn--ghost">Find a race</button>
-        <button class="btn btn--primary">+ Add race</button>
+
+      <div class="hero-countdown-block">
+        <div class="hero-countdown-number">93</div>
+        <div class="hero-countdown-label">Days to Race</div>
+      </div>
+
+      <div class="hero-actions">
+        <button class="btn-primary" onclick="alert('View Course')">View Course</button>
+        <button class="btn-ghost" onclick="alert('Race Plan')">Race Plan</button>
       </div>
     </div>
 
-    <div id="gpxStatus" style="font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; margin:-10px 4px 14px; padding:10px 14px; background:var(--l1); border:1px dashed var(--l4); border-radius:10px;">Drop a .gpx/.tcx/.fit file to attach course data — unlocks terrain-aware pacing + elevation profile for any race</div>
+    <!-- RIGHT — GPX COURSE VISUALIZATION -->
+    <div class="hero-right">
+      <div class="gpx-panel-header">
+        <span class="gpx-panel-label">Course Profile</span>
+        <span class="gpx-panel-tag">Simulated · GPX</span>
+      </div>
 
-    <!-- Next race hero -->
-    <div class="race-hero" data-tattoo-seed="sombrero">
-      <div class="rh-l">
+      <div class="gpx-svg-wrap">
+        <!-- Mountain 50K elevation profile simulation -->
+        <svg viewBox="0 0 420 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Main fill gradient -->
+            <linearGradient id="elev-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
+              <stop offset="70%" stop-color="rgba(255,255,255,0.05)"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+            </linearGradient>
+            <!-- Grid line -->
+            <pattern id="grid" x="0" y="0" width="42" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 42 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+            </pattern>
+          </defs>
+
+          <!-- Background grid -->
+          <rect width="420" height="220" fill="url(#grid)"/>
+
+          <!-- Elevation fill area: mountain 50K profile -->
+          <!-- Path: starts low, steep climb to ~40% at x=80, dip to 60% at x=140, major climb to 95% at x=220, long descent with small bump at x=300, finish low -->
+          <path d="
+            M 0,200
+            L 0,185
+            C 20,182 35,175 50,160
+            C 65,145 75,100 85,72
+            C 92,52 95,42 100,40
+            C 108,36 112,55 120,68
+            C 130,84 138,95 148,100
+            C 158,106 165,85 175,65
+            C 188,40 200,15 215,10
+            C 225,6 232,9 238,14
+            C 248,24 252,38 258,55
+            C 268,80 278,105 290,118
+            C 300,128 308,122 318,112
+            C 326,104 330,95 338,88
+            C 346,82 350,88 358,98
+            C 366,110 372,130 380,148
+            C 390,168 405,180 420,185
+            L 420,200
+            Z
+          " fill="url(#elev-fill)"/>
+
+          <!-- Stroke line (white, the actual elevation line) -->
+          <path d="
+            M 0,185
+            C 20,182 35,175 50,160
+            C 65,145 75,100 85,72
+            C 92,52 95,42 100,40
+            C 108,36 112,55 120,68
+            C 130,84 138,95 148,100
+            C 158,106 165,85 175,65
+            C 188,40 200,15 215,10
+            C 225,6 232,9 238,14
+            C 248,24 252,38 258,55
+            C 268,80 278,105 290,118
+            C 300,128 308,122 318,112
+            C 326,104 330,95 338,88
+            C 346,82 350,88 358,98
+            C 366,110 372,130 380,148
+            C 390,168 405,180 420,185
+          " fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+
+          <!-- Peak marker dot -->
+          <circle cx="215" cy="10" r="3" fill="rgba(255,255,255,0.9)"/>
+          <line x1="215" y1="10" x2="215" y2="190" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="3,4"/>
+
+          <!-- Baseline -->
+          <line x1="0" y1="200" x2="420" y2="200" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+
+          <!-- Distance tick marks -->
+          <line x1="84" y1="196" x2="84" y2="200" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+          <line x1="168" y1="196" x2="168" y2="200" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+          <line x1="252" y1="196" x2="252" y2="200" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+          <line x1="336" y1="196" x2="336" y2="200" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+
+          <!-- Tick labels -->
+          <text x="84" y="215" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="rgba(255,255,255,0.3)">~8mi</text>
+          <text x="168" y="215" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="rgba(255,255,255,0.3)">~16mi</text>
+          <text x="252" y="215" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="rgba(255,255,255,0.3)">~24mi</text>
+          <text x="336" y="215" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="rgba(255,255,255,0.3)">~31mi</text>
+
+          <!-- Peak elevation label -->
+          <text x="220" y="8" text-anchor="start" font-family="Inter,sans-serif" font-size="9" fill="rgba(255,255,255,0.55)" dx="5">~10,800 ft</text>
+        </svg>
+      </div>
+
+      <div class="gpx-footer">
+        <div class="gpx-footer-stats">+8,400 ft gain &nbsp;·&nbsp; 31.2 mi</div>
+        <label class="gpx-upload-hint" for="gpx-upload-hero">Upload GPX ↑</label>
+        <input type="file" id="gpx-upload-hero" accept=".gpx" style="display:none">
+      </div>
+    </div>
+
+  </div><!-- /hero-card -->
+
+
+  <!-- UPCOMING RACES -->
+  <div class="section-label" style="margin-top: 44px;">Upcoming</div>
+
+  <div class="race-grid">
+
+    <!-- Card 1: Wasatch Back Relay — B Race -->
+    <div class="race-card">
+      <div class="race-card-top">
         <div>
-          <div class="rh-eye">Next race · Sunday</div>
-          <div class="rh-name">Sombrero<br/>Half</div>
+          <div class="race-card-date-loc">June 7, 2026 &nbsp;·&nbsp; Logan, UT</div>
+          <div class="race-card-name">Wasatch Back Relay</div>
         </div>
-        <div class="rh-meta">
-          <div><div class="l">Date</div><div class="v">May 3</div></div>
-          <div><div class="l">Distance</div><div class="v">13.1 mi</div></div>
-          <div><div class="l">Start</div><div class="v">07:15</div></div>
-        </div>
-        <div class="rh-goal">
-          <div>
-            <div class="glbl">Goal time</div>
-            <div class="gval">1:32</div>
-          </div>
-          <div style="font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); font-weight:700; padding-bottom:6px;">
-            Predicted <b style="color:var(--t0);">1:32</b> · on goal
-          </div>
-        </div>
+        <span class="race-pill race-pill--b">B-Race</span>
       </div>
-      <div class="rh-r">
-        <div style="text-align:right;">
-          <div class="rh-countdown">1<small>Day to go</small></div>
+      <div class="race-card-chips">
+        <span class="chip">Road relay</span>
+        <span class="chip">~7 mi leg</span>
+      </div>
+      <div class="race-card-note">Team event, tempo effort</div>
+      <div class="race-card-footer">
+        <div class="race-card-countdown">
+          <span class="race-card-countdown-num">23</span>
+          <span class="race-card-countdown-unit">days away</span>
         </div>
-        <div style="background:rgba(243,173,59,.1); border:1px solid rgba(243,173,59,.25); border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
-          <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--attention); font-weight:700;">Race day focus</div>
-          <div style="font-size:13.5px; line-height:1.55; color:var(--t1);">Tune-up before A-races. Loop course out of Heritage Park — one real climb mi 7–9, descent home pays it back. Weather: 60°F · clear · light NE.</div>
-        </div>
-        <div class="rh-cta">
-          <a class="btn" href="race-detail-sombrero.html">View course</a>
-          <a class="btn btn--primary" href="race-detail-sombrero.html">Race plan →</a>
-        </div>
+        <a href="#" class="race-card-link">View Details →</a>
       </div>
     </div>
 
-    <!-- Past races section -->
-    <div class="section-h">
-      <div>
-        <div class="tile-sub" style="margin-bottom:4px;">Past results · 2026 season</div>
-        <h2>Completed</h2>
+    <!-- Card 2: Bountiful Trails 25K — C Race -->
+    <div class="race-card">
+      <div class="race-card-top">
+        <div>
+          <div class="race-card-date-loc">July 12, 2026 &nbsp;·&nbsp; Bountiful, UT</div>
+          <div class="race-card-name">Bountiful Trails 25K</div>
+        </div>
+        <span class="race-pill race-pill--c">C-Race</span>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn btn--ghost">This year</button>
-        <button class="btn btn--ghost">All time</button>
-        <button class="btn btn--ghost">PRs only</button>
+      <div class="race-card-chips">
+        <span class="chip">Trail</span>
+        <span class="chip">25K</span>
+        <span class="chip">+4,200 ft</span>
+      </div>
+      <div class="race-card-note" style="visibility:hidden;">—</div>
+      <div class="race-card-footer">
+        <div class="race-card-countdown">
+          <span class="race-card-countdown-num">58</span>
+          <span class="race-card-countdown-unit">days away</span>
+        </div>
+        <a href="#" class="race-card-link">View Details →</a>
       </div>
     </div>
 
-    <div class="tile" style="padding:0; overflow:hidden;">
-      <table class="past-tbl">
-        <thead>
-          <tr>
-            <th style="width:90px;">Date</th>
-            <th>Race</th>
-            <th style="width:110px;">Distance</th>
-            <th style="width:120px;">Finish</th>
-            <th style="width:120px;">Pace</th>
-            <th style="width:120px;">Place</th>
-            <th style="width:100px;">Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="num">Apr 26</td>
-            <td><a href="race-detail.html" style="text-decoration:none; color:inherit;"><span class="race-n">Big Sur Marathon</span><div style="font-size:11px; color:var(--t2); margin-top:2px;">Big Sur → Carmel · +2,182 ft</div></a></td>
-            <td class="num">26.2 mi</td>
-            <td class="num">3:41:00</td>
-            <td class="num">8:26 /mi</td>
-            <td class="num">—</td>
-            <td><span class="chip chip--success">FINISHER</span></td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Card 3: Timp Trail Run 10K — C Race -->
+    <div class="race-card">
+      <div class="race-card-top">
+        <div>
+          <div class="race-card-date-loc">July 26, 2026 &nbsp;·&nbsp; Provo, UT</div>
+          <div class="race-card-name">Timp Trail Run 10K</div>
+        </div>
+        <span class="race-pill race-pill--c">C-Race</span>
+      </div>
+      <div class="race-card-chips">
+        <span class="chip">Trail</span>
+        <span class="chip">10K</span>
+      </div>
+      <div class="race-card-note">Tune-up before A-race block</div>
+      <div class="race-card-footer">
+        <div class="race-card-countdown">
+          <span class="race-card-countdown-num">72</span>
+          <span class="race-card-countdown-unit">days away</span>
+        </div>
+        <a href="#" class="race-card-link">View Details →</a>
+      </div>
     </div>
 
-  </div>
-</div>
+  </div><!-- /race-grid -->
 
-<script>
-(function(){
-  function flash(txt, ok){
-    var s = document.getElementById('gpxStatus');
-    if (!s) return;
-    s.textContent = txt;
-    s.style.color = ok ? 'var(--success)' : 'var(--t3)';
-  }
-  function haversine(a, b){
-    var R = 3958.8; // miles
-    var toRad = function(x){ return x * Math.PI / 180; };
-    var dLat = toRad(b.lat - a.lat);
-    var dLon = toRad(b.lon - a.lon);
-    var la1 = toRad(a.lat), la2 = toRad(b.lat);
-    var x = Math.sin(dLat/2)*Math.sin(dLat/2) +
-            Math.sin(dLon/2)*Math.sin(dLon/2) * Math.cos(la1)*Math.cos(la2);
-    return 2 * R * Math.asin(Math.sqrt(x));
-  }
-  function parseGPX(text){
-    var doc = new DOMParser().parseFromString(text, 'text/xml');
-    var pts = [];
-    var nodes = doc.getElementsByTagName('trkpt');
-    if (!nodes.length) nodes = doc.getElementsByTagName('rtept');
-    for (var i=0; i<nodes.length; i++){
-      var n = nodes[i];
-      var lat = parseFloat(n.getAttribute('lat'));
-      var lon = parseFloat(n.getAttribute('lon'));
-      if (isNaN(lat) || isNaN(lon)) continue;
-      var eleNode = n.getElementsByTagName('ele')[0];
-      var ele = eleNode ? parseFloat(eleNode.textContent) : null;
-      pts.push({lat:lat, lon:lon, ele:ele});
-    }
-    return pts;
-  }
-  function stats(pts){
-    var dist = 0, gain = 0, loss = 0;
-    for (var i=1; i<pts.length; i++){
-      dist += haversine(pts[i-1], pts[i]);
-      if (pts[i].ele != null && pts[i-1].ele != null){
-        var d = pts[i].ele - pts[i-1].ele;
-        // ele is meters; convert diff to ft (1m = 3.28084 ft)
-        if (d > 0) gain += d * 3.28084;
-        else loss += -d * 3.28084;
-      }
-    }
-    return {dist:dist, gain:gain, loss:loss, points:pts.length};
-  }
-  var inp = document.getElementById('racesGpxIn');
-  if (!inp) return;
-  inp.addEventListener('change', function(){
-    var f = inp.files && inp.files[0];
-    if (!f) return;
-    flash('⏳ Parsing ' + f.name + '…', false);
-    var r = new FileReader();
-    r.onload = function(){
-      try {
-        var pts = parseGPX(r.result);
-        if (!pts.length) { flash('✗ ' + f.name + ' · no trackpoints found', false); return; }
-        var s = stats(pts);
-        var box = document.getElementById('gpxStatus');
-        box.style.color = 'var(--t1)';
-        box.style.borderStyle = 'solid';
-        box.style.borderColor = 'rgba(62,189,65,.35)';
-        box.style.background = 'linear-gradient(135deg, rgba(62,189,65,.06) 0%, var(--l1) 60%)';
-        box.innerHTML = '<span style="color:var(--success);">✓ ' + f.name + '</span>' +
-          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
-          '<span style="color:var(--t2);">DISTANCE</span> <b style="color:var(--t0); margin-left:6px;">' + s.dist.toFixed(2) + ' MI</b>' +
-          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
-          '<span style="color:var(--t2);">GAIN</span> <b style="color:var(--attention); margin-left:6px;">+' + Math.round(s.gain) + ' FT</b>' +
-          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
-          '<span style="color:var(--t2);">LOSS</span> <b style="color:var(--corporate); margin-left:6px;">−' + Math.round(s.loss) + ' FT</b>' +
-          '<span style="margin:0 14px; color:var(--l5);">│</span>' +
-          '<span style="color:var(--t2);">POINTS</span> <b style="color:var(--t0); margin-left:6px;">' + s.points.toLocaleString() + '</b>';
-      } catch(e){
-        flash('✗ ' + f.name + ' · parse error', false);
-      }
-    };
-    r.readAsText(f);
-  });
-})();
 
-// ===== Phase-colored elevation-profile thumbnails (no glow, no squiggle) =====
-(function(){
-  function hashSeed(str){ var h=2166136261; for (var i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0)||1; }
-  function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+  <!-- PAST RACES -->
+  <div class="section-label" style="margin-top: 44px;">Past Races</div>
 
-  var PHASES = [
-    { start:0.00, end:0.15, color:'#3EBD41' }, // Ease in
-    { start:0.15, end:0.38, color:'#F3AD3B' }, // Coast climb
-    { start:0.38, end:0.48, color:'#FC4D54' }, // Peak
-    { start:0.48, end:0.92, color:'#008FEC' }, // Cruise
-    { start:0.92, end:1.00, color:'#9013FE' }  // Finish
-  ];
+  <div class="past-races-list">
 
-  // Deterministic elevation profile: 0-1 x, 0-1 y (1=high)
-  // Each race gets a different peak position + height for variety without wobble.
-  function buildProfile(seed){
-    var rnd = mulberry32(hashSeed(seed));
-    var peakX = 0.30 + rnd()*0.40;   // 0.30–0.70 — where the high point sits
-    var peakY = 0.55 + rnd()*0.40;   // 0.55–0.95 — how tall
-    var startY = 0.05 + rnd()*0.15;
-    var endY   = 0.05 + rnd()*0.20;
-    var midDip = 0.55 + rnd()*0.25;  // a gentle dip between peak and end
-    var midX   = peakX + (1-peakX)*(0.45 + rnd()*0.20);
-    // Anchor points we'll cosine-interp between
-    return [
-      { x:0.00, y:startY },
-      { x:peakX*0.55, y:startY + (peakY-startY)*0.35 },
-      { x:peakX, y:peakY },
-      { x:(peakX+midX)/2, y:peakY*0.55 },
-      { x:midX, y:midDip*0.55 },
-      { x:0.90, y:endY*1.4 },
-      { x:1.00, y:endY }
-    ];
-  }
+    <!-- Row 1: Squaw Peak 25K -->
+    <div class="past-race-row">
+      <div class="past-race-info">
+        <div class="past-race-name">Squaw Peak 25K</div>
+        <div class="past-race-meta">
+          <span>May 3, 2026</span>
+          <span>·</span>
+          <span>Provo, UT</span>
+          <span class="past-race-type">Trail 25K</span>
+        </div>
+      </div>
+      <div class="past-race-results">
+        <div class="past-race-result-block">
+          <div class="past-race-time">2:41:08</div>
+          <div class="past-race-sublabel">Finish time</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">6:28 /mi</div>
+          <div class="past-race-sublabel">Avg pace</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">12th / 89</div>
+          <div class="past-race-sublabel">Overall</div>
+        </div>
+      </div>
+      <div class="past-race-action">
+        <a href="#" class="btn-view">View Report</a>
+      </div>
+    </div>
 
-  function eleAt(profile, t){
-    for (var i=0;i<profile.length-1;i++){
-      var a=profile[i], b=profile[i+1];
-      if (t>=a.x && t<=b.x){
-        var u=(t-a.x)/(b.x-a.x||1), s=0.5-0.5*Math.cos(u*Math.PI);
-        return a.y + (b.y-a.y)*s;
-      }
-    }
-    return profile[profile.length-1].y;
-  }
+    <!-- Row 2: Salt Lake Marathon -->
+    <div class="past-race-row">
+      <div class="past-race-info">
+        <div class="past-race-name">Salt Lake Marathon</div>
+        <div class="past-race-meta">
+          <span>April 19, 2026</span>
+          <span>·</span>
+          <span>Salt Lake City, UT</span>
+          <span class="past-race-type">Road marathon</span>
+        </div>
+      </div>
+      <div class="past-race-results">
+        <div class="past-race-result-block">
+          <div class="past-race-time">3:22:14</div>
+          <div class="past-race-sublabel">Finish time</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">7:43 /mi</div>
+          <div class="past-race-sublabel">Avg pace</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">234th / 1,847</div>
+          <div class="past-race-sublabel">Overall</div>
+        </div>
+      </div>
+      <div class="past-race-action">
+        <a href="#" class="btn-view">View Report</a>
+      </div>
+    </div>
 
-  // Build the SVG — clean phase-colored elevation strip.
-  function profileSVG(seed, W, H, opts){
-    opts = opts || {};
-    var padL = opts.padL||0, padR = opts.padR||0, padT = opts.padT||12, padB = opts.padB||0;
-    var baseline = H - padB;
-    var chartH  = H - padT - padB;
-    var profile = buildProfile(seed);
-    var gid = 'sp_'+hashSeed(seed).toString(36);
+    <!-- Row 3: Antelope Island Buffalo Run 50K -->
+    <div class="past-race-row">
+      <div class="past-race-info">
+        <div class="past-race-name">Antelope Island Buffalo Run 50K</div>
+        <div class="past-race-meta">
+          <span>Feb 28, 2026</span>
+          <span>·</span>
+          <span>Antelope Island, UT</span>
+          <span class="past-race-type">Trail 50K</span>
+        </div>
+      </div>
+      <div class="past-race-results">
+        <div class="past-race-result-block">
+          <div class="past-race-time">5:12:44</div>
+          <div class="past-race-sublabel">Finish time</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">10:04 /mi</div>
+          <div class="past-race-sublabel">Avg pace</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">38th / 201</div>
+          <div class="past-race-sublabel">Overall</div>
+        </div>
+      </div>
+      <div class="past-race-action">
+        <a href="#" class="btn-view">View Report</a>
+      </div>
+    </div>
 
-    function xFor(t){ return padL + t*(W-padL-padR); }
-    function yFor(v){ return padT + (1-v)*chartH; }
+    <!-- Row 4: St. George Marathon — PR -->
+    <div class="past-race-row">
+      <div class="past-race-info">
+        <div class="past-race-name">St. George Marathon</div>
+        <div class="past-race-meta">
+          <span>Oct 5, 2025</span>
+          <span>·</span>
+          <span>St. George, UT</span>
+          <span class="past-race-type">Road marathon</span>
+        </div>
+      </div>
+      <div class="past-race-results">
+        <div class="past-race-result-block">
+          <div class="past-race-time" style="color: var(--orange);">3:18:52</div>
+          <div class="past-race-sublabel">Finish time</div>
+          <div class="past-race-pr">PR</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">7:35 /mi</div>
+          <div class="past-race-sublabel">Avg pace</div>
+        </div>
+        <div class="vdivider" style="height:40px;"></div>
+        <div class="past-race-result-block">
+          <div class="past-race-place">189th / 2,341</div>
+          <div class="past-race-sublabel">Overall</div>
+        </div>
+      </div>
+      <div class="past-race-action">
+        <a href="#" class="btn-view">View Report</a>
+      </div>
+    </div>
 
-    var defs = '<defs>';
-    PHASES.forEach(function(ph,i){
-      defs += '<linearGradient id="'+gid+'_g'+i+'" x1="0" y1="0" x2="0" y2="1">'+
-              '<stop offset="0%" stop-color="'+ph.color+'" stop-opacity=".55"/>'+
-              '<stop offset="100%" stop-color="'+ph.color+'" stop-opacity=".03"/>'+
-              '</linearGradient>';
-    });
-    defs += '</defs>';
+  </div><!-- /past-races-list -->
 
-    var body = '';
-    var STEPS = 40;
-    PHASES.forEach(function(ph,i){
-      var d='';
-      var sX=xFor(ph.start), eX=xFor(ph.end);
-      for (var k=0;k<=STEPS;k++){
-        var t = ph.start + (k/STEPS)*(ph.end-ph.start);
-        var x=xFor(t), y=yFor(eleAt(profile,t));
-        d += (k===0?'M ':'L ')+x.toFixed(1)+' '+y.toFixed(1)+' ';
-      }
-      var fill = d + 'L '+eX.toFixed(1)+' '+baseline+' L '+sX.toFixed(1)+' '+baseline+' Z';
-      body += '<path d="'+fill+'" fill="url(#'+gid+'_g'+i+')"/>';
-      body += '<path d="'+d+'" fill="none" stroke="'+ph.color+'" stroke-width="'+(opts.strokeMain||1.8)+'" stroke-linejoin="round" stroke-linecap="round"/>';
-    });
-
-    // Baseline hairline
-    body += '<line x1="'+padL+'" y1="'+baseline+'" x2="'+(W-padR)+'" y2="'+baseline+'" stroke="rgba(255,255,255,.08)" stroke-width="1"/>';
-
-    return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'+defs+body+'</svg>';
-  }
-
-  // Elevation profile backdrops disabled — cluttered the hero + card layouts.
-  // (Kept profileSVG() above in case we want it elsewhere later.)
-})();
-
-// Page-wide button + card wiring
-(function(){
-  function flashMsg(txt){
-    var t = document.getElementById('rcFlash');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'rcFlash';
-      t.style.cssText = 'position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:9999; background:var(--l2); border:1px solid var(--l5); padding:10px 18px; border-radius:10px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:var(--t1); box-shadow:0 8px 24px rgba(0,0,0,.35); transition:opacity .3s;';
-      document.body.appendChild(t);
-    }
-    t.textContent = txt;
-    t.style.opacity = '1';
-    clearTimeout(t._to);
-    t._to = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
-  }
-  // Completed filter buttons: toggle active
-  var filterBtns = Array.prototype.filter.call(
-    document.querySelectorAll('.section-h + .tile + .section-h button, .section-h button'),
-    function(b){ return /This year|All time|PRs only/i.test(b.textContent); }
-  );
-  filterBtns.forEach(function(b){
-    b.addEventListener('click', function(){
-      filterBtns.forEach(function(x){ x.classList.remove('btn--primary'); });
-      b.classList.add('btn--primary');
-      flashMsg('Filter · ' + b.textContent.trim());
-    });
-  });
-  // Find a race / + Add race / Edit list etc
-  document.querySelectorAll('button.btn').forEach(function(btn){
-    if (!btn.getAttribute('onclick') && !filterBtns.includes(btn)) {
-      btn.addEventListener('click', function(e){
-        e.preventDefault();
-        flashMsg(btn.textContent.trim() + ' · queued');
-      });
-    }
-  });
-  // Upcoming + recommended race cards — flash on click (they keep href="#")
-  document.querySelectorAll('a.race-card').forEach(function(card){
-    if (card.getAttribute('href') === '#') {
-      card.addEventListener('click', function(e){
-        e.preventDefault();
-        var name = card.querySelector('.rc-name');
-        var t = card.querySelector('.t');
-        flashMsg('Open · ' + (name ? name.textContent.replace(/\s+/g,' ') : (t ? t.textContent : 'race')));
-      });
-    }
-  });
-})();
-</script>
+</div><!-- /page -->
 
 </body>
 </html>
-

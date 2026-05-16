@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Phase 1 · Token Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap">
+<style>
+:root {
+  --bg:        #0B0F17;
+  --surface:   #141923;
+  --surface-2: #1C2230;
+  --ink:       #F5F4EE;
+  --mute:      #8B909C;
+  --line:      #262C39;
+
+  --recovery:  #14C08C;
+  --active:    #4F8FF7;
+  --race:      #FF5722;
+  --warn:      #F43F5E;
+  --milestone: #F5C518;
+
+  --recovery-wash: rgba(20,192,140,.12);
+  --active-wash:   rgba(79,143,247,.12);
+  --race-wash:     rgba(255,87,34,.12);
+  --warn-wash:     rgba(244,63,94,.12);
+  --milestone-wash:rgba(245,197,24,.12);
+
+  --race-grad-light: #FF8A3D;
+  --race-grad:       #FF5722;
+  --race-grad-deep:  #E03E00;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01';
+  font-optical-sizing: auto;
+}
+
+.t-hero    { font-size: clamp(120px, 12vw, 160px); font-weight: 700; letter-spacing: -0.04em; line-height: 0.9; font-variant-numeric: tabular-nums; }
+.t-display { font-size: 72px;  font-weight: 700; letter-spacing: -0.03em; line-height: 0.95; }
+.t-section { font-size: 36px;  font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.t-stat    { font-size: 48px;  font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.t-body    { font-size: 15px;  font-weight: 400; line-height: 1.6; }
+.t-eyebrow { font-size: 11px;  font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; color: var(--mute); line-height: 1; }
+
+.card   { background: var(--surface);   border: 1px solid var(--line); border-radius: 20px; padding: 36px; }
+.divider { height: 1px; background: var(--line); }
+
+/* ── Pill primitive ─────────────────────────────────────────────────────────────
+   Base: surface-2 background, --line border, --mute text. Passive metadata.
+   Semantic variants: same surface-2 bg, full-saturation accent border + text.
+   Never use a tinted (wash) background on a pill — that flattens the color.
+   Never use accent as a fill on a pill — fills are reserved for the race surface.
+   ─────────────────────────────────────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  line-height: 1;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--line);
+  border-radius: 9999px;
+  background: var(--surface-2);
+  color: var(--mute);
+  outline: none;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.pill-active   { border-color: var(--active);    color: var(--active); }
+.pill-recovery { border-color: var(--recovery);  color: var(--recovery); }
+.pill-race     { border-color: var(--race);       color: var(--race); }
+.pill-warn     { border-color: var(--warn);       color: var(--warn); }
+.pill-milestone{ border-color: var(--milestone);  color: var(--milestone); }
+
+.page { max-width: 760px; margin: 0 auto; padding: 80px 40px 140px; }
+
+.section-rule {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.15em;
+  color: var(--line); border-bottom: 1px solid var(--line);
+  padding-bottom: 10px; margin-bottom: 28px;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div style="margin-bottom:72px;">
+    <div class="t-eyebrow" style="margin-bottom:14px;">Runcino · Phase 1 · Token Reference</div>
+    <div style="font-size:13px; color:var(--mute); line-height:1.7; max-width:50ch;">
+      Tokens and one reference component. Not a layout comp.
+      Sign off on visual direction here before Phase 2 moves.
+    </div>
+  </div>
+
+  <!-- ══ 1. COLOR ══════════════════════════════════════════════════════════════ -->
+  <div style="margin-bottom:72px;">
+    <div class="section-rule">1 · Color tokens</div>
+
+    <div class="t-eyebrow" style="margin-bottom:14px;">Core neutrals</div>
+    <div style="display:flex; gap:2px; border-radius:12px; overflow:hidden; margin-bottom:40px;">
+      <div style="flex:1; background:#0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#8B909C; margin-bottom:4px;">--bg</div>
+        <div style="font-size:10px; color:#8B909C; margin-bottom:4px;">#0B0F17</div>
+        <div style="font-size:10px; color:#262C39; line-height:1.4;">Primary bg</div>
+      </div>
+      <div style="flex:1; background:#141923; border-left:1px solid #0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#8B909C; margin-bottom:4px;">--surface</div>
+        <div style="font-size:10px; color:#8B909C; margin-bottom:4px;">#141923</div>
+        <div style="font-size:10px; color:#262C39; line-height:1.4;">Card surface</div>
+      </div>
+      <div style="flex:1; background:#1C2230; border-left:1px solid #0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#8B909C; margin-bottom:4px;">--surface-2</div>
+        <div style="font-size:10px; color:#8B909C; margin-bottom:4px;">#1C2230</div>
+        <div style="font-size:10px; color:#8B909C; line-height:1.4;">Elevated, hover</div>
+      </div>
+      <div style="flex:1; background:#262C39; border-left:1px solid #0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#8B909C; margin-bottom:4px;">--line</div>
+        <div style="font-size:10px; color:#8B909C; margin-bottom:4px;">#262C39</div>
+        <div style="font-size:10px; color:#8B909C; line-height:1.4;">Borders, dividers</div>
+      </div>
+      <div style="flex:1; background:#8B909C; border-left:1px solid #0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#1C2230; margin-bottom:4px;">--mute</div>
+        <div style="font-size:10px; color:#1C2230; margin-bottom:4px;">#8B909C</div>
+        <div style="font-size:10px; color:#1C2230; line-height:1.4;">Labels, eyebrows</div>
+      </div>
+      <div style="flex:1; background:#F5F4EE; border-left:1px solid #0B0F17; padding:20px 14px; min-width:0;">
+        <div style="font-size:10px; font-weight:600; letter-spacing:.08em; color:#141923; margin-bottom:4px;">--ink</div>
+        <div style="font-size:10px; color:#141923; margin-bottom:4px;">#F5F4EE</div>
+        <div style="font-size:10px; color:#141923; line-height:1.4;">Primary text</div>
+      </div>
+    </div>
+
+    <div class="t-eyebrow" style="margin-bottom:14px;">Semantic accents. Each has one job.</div>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <div style="flex:1; min-width:0; border-radius:12px; overflow:hidden;">
+        <div style="background:#14C08C; padding:28px 16px 20px;"></div>
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:.06em; color:#14C08C; margin-bottom:4px;">--recovery</div>
+          <div style="font-size:10px; color:var(--mute); margin-bottom:6px;">#14C08C</div>
+          <div style="font-size:10px; color:var(--mute); line-height:1.5;">Readiness, recovery, restoration</div>
+        </div>
+      </div>
+      <div style="flex:1; min-width:0; border-radius:12px; overflow:hidden;">
+        <div style="background:#4F8FF7; padding:28px 16px 20px;"></div>
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:.06em; color:#4F8FF7; margin-bottom:4px;">--active</div>
+          <div style="font-size:10px; color:var(--mute); margin-bottom:6px;">#4F8FF7</div>
+          <div style="font-size:10px; color:var(--mute); line-height:1.5;">Active training, current state, today</div>
+        </div>
+      </div>
+      <div style="flex:1; min-width:0; border-radius:12px; overflow:hidden;">
+        <div style="background:#FF5722; padding:28px 16px 20px;"></div>
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:.06em; color:#FF5722; margin-bottom:4px;">--race</div>
+          <div style="font-size:10px; color:var(--mute); margin-bottom:6px;">#FF5722</div>
+          <div style="font-size:10px; color:var(--mute); line-height:1.5;">Upcoming races, countdowns, race-day</div>
+        </div>
+      </div>
+      <div style="flex:1; min-width:0; border-radius:12px; overflow:hidden;">
+        <div style="background:#F43F5E; padding:28px 16px 20px;"></div>
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:.06em; color:#F43F5E; margin-bottom:4px;">--warn</div>
+          <div style="font-size:10px; color:var(--mute); margin-bottom:6px;">#F43F5E</div>
+          <div style="font-size:10px; color:var(--mute); line-height:1.5;">Risk alerts, illness, injury banners</div>
+        </div>
+      </div>
+      <div style="flex:1; min-width:0; border-radius:12px; overflow:hidden;">
+        <div style="background:#F5C518; padding:28px 16px 20px;"></div>
+        <div style="background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 12px 12px; padding:14px 16px;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:.06em; color:#F5C518; margin-bottom:4px;">--milestone</div>
+          <div style="font-size:10px; color:var(--mute); margin-bottom:6px;">#F5C518</div>
+          <div style="font-size:10px; color:var(--mute); line-height:1.5;">PRs, achievements only. One element max.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wash tokens -->
+    <div style="padding:16px 20px; background:var(--surface); border:1px solid var(--line); border-radius:12px; margin-bottom:32px;">
+      <div class="t-eyebrow" style="margin-bottom:12px;">Background washes. Specific use cases only.</div>
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:40px; height:20px; border-radius:4px; background:var(--recovery-wash); border:1px solid var(--line);"></div>
+          <span style="font-size:11px; color:var(--mute);">--recovery-wash</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:40px; height:20px; border-radius:4px; background:var(--active-wash); border:1px solid var(--line);"></div>
+          <span style="font-size:11px; color:var(--mute);">--active-wash</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:40px; height:20px; border-radius:4px; background:var(--race-wash); border:1px solid var(--line);"></div>
+          <span style="font-size:11px; color:var(--mute);">--race-wash</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:40px; height:20px; border-radius:4px; background:var(--warn-wash); border:1px solid var(--line);"></div>
+          <span style="font-size:11px; color:var(--mute);">--warn-wash</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:40px; height:20px; border-radius:4px; background:var(--milestone-wash); border:1px solid var(--line);"></div>
+          <span style="font-size:11px; color:var(--mute);">--milestone-wash</span>
+        </div>
+        <div style="flex:1; min-width:200px; font-size:11px; color:var(--mute); line-height:1.5;">Hover states, calendar cell tints, phase backgrounds behind coach blocks. Not the default rendering of an accent. Never on pills.</div>
+      </div>
+    </div>
+
+    <!-- Race gradient -->
+    <div class="t-eyebrow" style="margin-bottom:12px;">Race gradient. Fills one surface only.</div>
+    <div style="height:52px; border-radius:10px; background:linear-gradient(160deg, #FF8A3D 0%, #FF5722 55%, #E03E00 100%); margin-bottom:8px;"></div>
+    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--mute); padding:0 2px;">
+      <span>--race-grad-light  #FF8A3D</span>
+      <span>--race-grad  #FF5722</span>
+      <span>--race-grad-deep  #E03E00</span>
+    </div>
+
+    <!-- Phase palette -->
+    <div style="margin-top:32px;">
+      <div class="t-eyebrow" style="margin-bottom:6px;">Course phase palette. Categorical encoding only.</div>
+      <div style="font-size:11px; color:var(--mute); margin-bottom:16px; line-height:1.5; max-width:600px;">Used exclusively for terrain visualization: elevation chart fill, phase strip, phase cards. Each color identifies one course phase and appears consistently across every surface that references that phase. Never appears in pills, eyebrows, or semantic-accent contexts. Separate from the five semantic accents — a phase color is not active blue or recovery green.</div>
+      <div style="display:flex; gap:8px;">
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#4ade80;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-1</div>
+            <div style="font-size:10px; color:var(--mute);">#4ade80</div>
+          </div>
+        </div>
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#fbbf24;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-2</div>
+            <div style="font-size:10px; color:var(--mute);">#fbbf24</div>
+          </div>
+        </div>
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#f87171;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-3</div>
+            <div style="font-size:10px; color:var(--mute);">#f87171</div>
+          </div>
+        </div>
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#38bdf8;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-4</div>
+            <div style="font-size:10px; color:var(--mute);">#38bdf8</div>
+          </div>
+        </div>
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#a78bfa;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-5</div>
+            <div style="font-size:10px; color:var(--mute);">#a78bfa</div>
+          </div>
+        </div>
+        <div style="flex:1; border-radius:8px; overflow:hidden;">
+          <div style="height:36px; background:#f472b6;"></div>
+          <div style="background:var(--surface); padding:8px 10px;">
+            <div style="font-size:10px; font-weight:600; color:var(--ink); margin-bottom:2px;">--phase-6</div>
+            <div style="font-size:10px; color:var(--mute);">#f472b6</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px; font-size:11px; color:var(--mute); border-top:1px solid var(--line); padding-top:12px;">The test: does this color identify a named category that recurs in the same encoding on this page? If yes, categorical. If it varies for visual interest, it is ornamental. Ornamental multi-color is not allowed.</div>
+    </div>
+  </div>
+
+  <!-- ══ 2. TYPE SCALE ══════════════════════════════════════════════════════════ -->
+  <div style="margin-bottom:72px;">
+    <div class="section-rule">2 · Type scale. Six steps, no in-between.</div>
+
+    <div style="display:flex; gap:24px; border-bottom:1px solid var(--line); padding-bottom:32px; margin-bottom:32px; align-items:flex-end; overflow:hidden;">
+      <div style="width:100px; flex-shrink:0; padding-bottom:8px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Hero</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">120–160px · 700 · −0.04em · tabular</div>
+      </div>
+      <div class="t-hero" style="color:var(--ink); overflow:hidden;">3:45</div>
+    </div>
+
+    <div style="display:flex; gap:24px; border-bottom:1px solid var(--line); padding-bottom:28px; margin-bottom:28px; align-items:flex-end; overflow:hidden;">
+      <div style="width:100px; flex-shrink:0; padding-bottom:4px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Display</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">72px · 700 · −0.03em</div>
+      </div>
+      <div class="t-display" style="color:var(--ink); overflow:hidden;">Boston Marathon</div>
+    </div>
+
+    <div style="display:flex; gap:24px; border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; align-items:flex-end;">
+      <div style="width:100px; flex-shrink:0; padding-bottom:2px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Section</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">36px · 600 · −0.02em</div>
+      </div>
+      <div class="t-section" style="color:var(--ink);">Tempo run</div>
+    </div>
+
+    <div style="display:flex; gap:24px; border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; align-items:flex-end;">
+      <div style="width:100px; flex-shrink:0; padding-bottom:2px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Stat</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">48px · 700 · tabular</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <div class="t-eyebrow">Today's distance</div>
+        <div class="t-stat" style="color:var(--ink);">12 <span style="font-size:22px; font-weight:500; color:var(--mute); letter-spacing:0;">mi</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:24px; border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; align-items:flex-start;">
+      <div style="width:100px; flex-shrink:0; padding-top:2px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Body</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">15px · 400 · 1.6 leading</div>
+      </div>
+      <div class="t-body" style="color:var(--ink); max-width:52ch;">
+        Lactate threshold work. The 9 miles at effort extends your ability to sustain marathon pace when it starts to hurt. One quality block per week. This is it.
+      </div>
+    </div>
+
+    <div style="display:flex; gap:24px; align-items:flex-start;">
+      <div style="width:100px; flex-shrink:0; padding-top:2px;">
+        <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--mute); margin-bottom:4px;">Eyebrow</div>
+        <div style="font-size:10px; color:var(--line); line-height:1.7;">11px · 500 · 0.12em · always --mute</div>
+      </div>
+      <div>
+        <div class="t-eyebrow" style="margin-bottom:6px;">Tuesday · Week 8 of 18 · Build phase</div>
+        <div style="font-size:13px; color:var(--mute);">Eyebrow always sits above a number or heading. Color is always --mute. No exceptions.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 3. PILL PRIMITIVE ══════════════════════════════════════════════════════ -->
+  <div style="margin-bottom:72px;">
+    <div class="section-rule">3 · Pill primitive. Canonical component.</div>
+
+    <div style="font-size:13px; color:var(--mute); margin-bottom:28px; max-width:56ch; line-height:1.7;">
+      Surface-2 background. 1px solid accent border. Full-saturation accent text color.
+      Never a tinted fill. Never an accent fill. The border and text carry the color.
+    </div>
+
+    <!-- All five semantic pills -->
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:32px; align-items:center;">
+      <div class="pill">Neutral</div>
+      <div class="pill pill-active">
+        <span style="width:6px; height:6px; border-radius:50%; background:var(--active); flex-shrink:0;"></span>
+        Today
+      </div>
+      <div class="pill pill-recovery">Recovery 82</div>
+      <div class="pill pill-race">12 days</div>
+      <div class="pill pill-warn">HR elevated</div>
+      <div class="pill pill-milestone">New PR</div>
+    </div>
+
+    <!-- Usage rules -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:2px; border-radius:12px; overflow:hidden;">
+      <div style="background:var(--surface-2); padding:20px 24px; border:1px solid var(--line);">
+        <div style="font-size:11px; font-weight:600; color:var(--recovery); margin-bottom:10px; text-transform:uppercase; letter-spacing:.08em;">Use for</div>
+        <div style="font-size:13px; color:var(--mute); line-height:1.7;">State chips (Today, Race week). Pace labels inline with a stat. Status indicators on cards. Short labels that need semantic color without taking real estate.</div>
+      </div>
+      <div style="background:var(--surface-2); padding:20px 24px; border:1px solid var(--line); border-left:none;">
+        <div style="font-size:11px; font-weight:600; color:var(--warn); margin-bottom:10px; text-transform:uppercase; letter-spacing:.08em;">Not for</div>
+        <div style="font-size:13px; color:var(--mute); line-height:1.7;">Navigation tabs. Filter toggles that have selected state. Any pill where the fill needs to change. Anything that repeats information already in the surrounding type.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 4. REFERENCE COMPONENT ════════════════════════════════════════════════ -->
+  <div>
+    <div class="section-rule">4 · Reference component. Workout card, expanded.</div>
+
+    <div class="card">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px;">
+        <div class="t-eyebrow">Tuesday · Week 8 of 18 · Build</div>
+        <div class="pill pill-active">
+          <span style="width:6px; height:6px; border-radius:50%; background:var(--active); flex-shrink:0;"></span>
+          Today
+        </div>
+      </div>
+
+      <div style="margin-bottom:4px;">
+        <div class="t-section" style="color:var(--ink);">Tempo run</div>
+      </div>
+
+      <div style="display:flex; align-items:baseline; gap:16px; margin-bottom:32px; flex-wrap:wrap;">
+        <div class="t-stat" style="color:var(--ink);">12 <span style="font-size:22px; font-weight:500; color:var(--mute); letter-spacing:0;">mi</span></div>
+        <div class="pill pill-active">7:15<span style="color:var(--mute); font-weight:400;">/mi · threshold</span></div>
+      </div>
+
+      <div class="divider" style="margin-bottom:28px;"></div>
+
+      <div style="margin-bottom:32px;">
+        <div class="t-eyebrow" style="margin-bottom:16px;">Structure</div>
+        <div style="display:grid; grid-template-columns:1fr 60px 70px; align-items:center; gap:16px; padding:13px 16px; background:var(--surface-2); border-radius:10px 10px 2px 2px;">
+          <div style="font-size:14px; font-weight:500; color:var(--mute);">Warmup</div>
+          <div style="font-size:13px; color:var(--mute); font-variant-numeric:tabular-nums; text-align:right;">1.5 mi</div>
+          <div style="font-size:13px; color:var(--mute); font-variant-numeric:tabular-nums; text-align:right;">8:45/mi</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 60px 70px; align-items:center; gap:16px; padding:13px 16px; background:var(--surface-2); border:1px solid var(--line); border-left:3px solid var(--active); margin:2px 0;">
+          <div style="font-size:14px; font-weight:600; color:var(--ink);">Tempo</div>
+          <div style="font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums; font-weight:500; text-align:right;">9 mi</div>
+          <div style="font-size:13px; color:var(--active); font-variant-numeric:tabular-nums; font-weight:600; text-align:right;">7:15/mi</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 60px 70px; align-items:center; gap:16px; padding:13px 16px; background:var(--surface-2); border-radius:2px 2px 10px 10px;">
+          <div style="font-size:14px; font-weight:500; color:var(--mute);">Cooldown</div>
+          <div style="font-size:13px; color:var(--mute); font-variant-numeric:tabular-nums; text-align:right;">1.5 mi</div>
+          <div style="font-size:13px; color:var(--mute); font-variant-numeric:tabular-nums; text-align:right;">8:45/mi</div>
+        </div>
+      </div>
+
+      <div class="divider" style="margin-bottom:28px;"></div>
+
+      <div style="display:flex; flex-direction:column; gap:24px; margin-bottom:32px;">
+        <div>
+          <div class="t-eyebrow" style="margin-bottom:9px;">Why</div>
+          <div class="t-body" style="color:var(--ink);">Lactate threshold work. The 9 miles at effort extends your ability to sustain marathon pace when it starts to hurt. One quality block per week. This is it.</div>
+        </div>
+        <div>
+          <div class="t-eyebrow" style="margin-bottom:9px;">Focus</div>
+          <div class="t-body" style="color:var(--ink);">Stay even through mile 5. The back half of a tempo is where the work happens. Don't push the first three miles.</div>
+        </div>
+        <div>
+          <div class="t-eyebrow" style="margin-bottom:9px;">Back off if</div>
+          <div class="t-body" style="color:var(--ink);">Pace requires forcing. HR won't settle below 170 after mile 2. Heat above 70°F. Drop to easy and treat it as an aerobic day.</div>
+        </div>
+      </div>
+
+      <div class="divider" style="margin-bottom:24px;"></div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+        <div style="font-size:13px; color:var(--mute);">Sends as a structured workout</div>
+        <button style="display:inline-flex; align-items:center; gap:8px; padding:11px 22px; background:var(--ink); color:var(--bg); border:none; border-radius:999px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; letter-spacing:-0.01em; font-optical-sizing:auto;">
+          Send to Watch →
+        </button>
+      </div>
+
+    </div>
+
+    <div style="margin-top:48px; padding:24px 28px; background:var(--surface); border:1px solid var(--line); border-radius:14px;">
+      <div class="t-eyebrow" style="margin-bottom:16px;">Design decisions in this component</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; color:var(--mute); line-height:1.6;"><span style="color:var(--active); font-weight:600;">Active blue</span> at full saturation: "Today" pill border and text, interval left-border, interval pace text. All mark the same semantic job.</div>
+        <div style="font-size:13px; color:var(--mute); line-height:1.6;"><span style="color:var(--ink); font-weight:500;">Warmup and cooldown</span> rows render in --mute on --surface-2. Structural, not informational. The tempo row earns the accent because it is the key effort.</div>
+        <div style="font-size:13px; color:var(--mute); line-height:1.6;"><span style="color:var(--ink); font-weight:500;">No wash backgrounds</span> in this component. Wash tokens are documented but not used here. They belong on calendar cell hovers and phase coach blocks.</div>
+        <div style="font-size:13px; color:var(--mute); line-height:1.6;"><span style="color:var(--ink); font-weight:500;">CTA button</span> is --ink on --bg. The blue accent is doing work on the card. The action does not compete with it.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>
