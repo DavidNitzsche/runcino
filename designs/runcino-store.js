@@ -30,16 +30,78 @@
   'use strict';
 
   const STORE_KEY = 'runcino_v4_state';
-  const SEED_VERSION = 1;
+  const SEED_VERSION = 2;
 
-  const SEED = {
-    _version: SEED_VERSION,
-    today: '2026-05-16',
-    user: { name: 'David Nitzsche', initials: 'DN' },
+  // ── Plan builder ────────────────────────────────────────────────
+  // Generates all 14 weeks of the AFC Half plan from a compact template.
+  // Each week's days roll the date forward from a plan startDate. Day
+  // shape: { dow, date, type, label, distanceMi, hasStrength, isRest,
+  // paceMin, completed (computed elsewhere via date < today) }.
+  function buildPlan() {
+    const startDate = '2026-05-11';
+    const phaseFor = (wk) => {
+      if (wk <= 4) return 'BASE';
+      if (wk <= 8) return 'BUILD';
+      if (wk <= 12) return 'PEAK';
+      if (wk === 13) return 'TAPER';
+      return 'RACE_WEEK';
+    };
+    const dowList = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-    plan: {
+    // [type, label, distanceMi, hasStrength?]  ·  null = rest
+    const template = [
+      // BASE
+      [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5,true],null,['long','Long',10.5]],
+      [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7.5],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Hill Strides',5.5,true],null,['long','Long',11]],
+      [['recovery','Recovery',4.5],['quality','Threshold · Cruise Intervals',6],['easy','Easy + Strides',4.5],['easy','Easy',4.5,true],['easy','Easy',4.5,true],null,['long','Long',11.5]],
+      [['recovery','Recovery',6],['quality','Threshold · Cruise Intervals',8],['easy','Easy + Strides',6],['easy','Easy',6,true],['easy','Hill Strides',6,true],null,['long','Long',12]],
+      // BUILD
+      [['easy','Easy',6.5,true],['quality','Threshold · HM Threshold Blocks',7.5],['easy','Easy',6.5],['quality','Intervals',6],['easy','Easy',6.5,true],null,['long','Long Run · HM Finish',12.5]],
+      [['easy','Easy',5,true],['quality','Threshold · HM Cruise Intervals',6.5],['easy','Easy',5],['quality','Intervals',5],['easy','Easy',5,true],null,['long','Long',11.5]],
+      [['easy','Easy',7,true],['quality','Threshold · HM Threshold Blocks',8],['easy','Easy',7],['quality','Intervals',6],['easy','Easy',7,true],null,['long','Long Run · HM Finish',13]],
+      [['easy','Easy',7,true],['quality','Threshold · HM Cruise Intervals',8.5],['easy','Easy',7],['quality','Intervals',6.5],['easy','Easy',7,true],null,['long','Long Run · Progression',13.5]],
+      // PEAK
+      [['easy','Easy',6,true],['quality','Threshold · HM Continuous Tempo',7],['easy','Easy',6],['quality','Intervals',5.5],['easy','Easy',6,true],null,['long','Long',11.5]],
+      [['easy','Easy',7.5,true],['quality','Threshold · HM Continuous Tempo',9],['easy','Easy',7.5],['quality','Intervals',7],['easy','Easy',7.5,true],null,['long','Long Run · Progression',14]],
+      [['easy','Easy',7.5,true],['quality','Threshold · HM Continuous Tempo',9],['easy','Easy',7.5],['quality','Intervals',7],['easy','Easy',7.5,true],null,['long','Long Run · HM Finish',14.5]],
+      [['easy','Easy',8,true],['quality','Threshold · HM Continuous Tempo',9.5],['easy','Easy',8],['quality','Intervals',7],['easy','Easy',8,true],null,['long','Long Run · Progression',15]],
+      // TAPER
+      [['easy','Easy',5.5],['quality','Threshold Touch',5],['easy','Easy',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5],null,['long','Long Run · Taper',7.5]],
+      // RACE WEEK — Sun is race
+      [['easy','Easy',5],['quality','Threshold · Race Week Tune-Up',4],['easy','Easy',5],null,null,['easy','Shake-out',3],['race','AFC Half',13.1]],
+    ];
+
+    function isoAdd(start, days) {
+      const d = new Date(start + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+
+    const weeks = template.map((dayTpl, wIdx) => {
+      const weekNum = wIdx + 1;
+      const phase = phaseFor(weekNum);
+      const wkStart = isoAdd(startDate, wIdx * 7);
+      const days = dayTpl.map((t, dIdx) => {
+        const date = isoAdd(wkStart, dIdx);
+        const dow = dowList[dIdx];
+        if (!t) return { dow, date, type: 'rest', label: 'Rest', isRest: true };
+        const [type, label, distanceMi, hasStrength] = t;
+        const paceMin = type === 'easy' ? '9:15'
+                     : type === 'recovery' ? '10:00'
+                     : type === 'long' ? '9:30'
+                     : type === 'quality' ? '7:30'
+                     : type === 'race' ? '7:15'
+                     : '9:00';
+        return Object.assign({ dow, date, type, label, distanceMi, paceMin },
+                             hasStrength ? { hasStrength: true } : {});
+      });
+      const plannedMi = days.reduce((s, d) => s + (d.distanceMi || 0), 0);
+      return { weekNum, phase, startDate: wkStart, plannedMi: Math.round(plannedMi * 10) / 10, days };
+    });
+
+    return {
       name: 'Americas Finest City Half',
-      startDate: '2026-05-11',
+      startDate,
       raceDate: '2026-08-16',
       totalWeeks: 14,
       currentWeek: 1,
@@ -47,27 +109,22 @@
       currentPhaseWeek: 1,
       currentPhaseWeeks: 4,
       phases: [
-        { name: 'BASE',  weeks: [1, 2, 3, 4] },
-        { name: 'BUILD', weeks: [5, 6, 7, 8] },
-        { name: 'PEAK',  weeks: [9, 10, 11, 12] },
-        { name: 'TAPER', weeks: [13, 14] },
+        { name: 'BASE',       weeks: [1, 2, 3, 4] },
+        { name: 'BUILD',      weeks: [5, 6, 7, 8] },
+        { name: 'PEAK',       weeks: [9, 10, 11, 12] },
+        { name: 'TAPER',      weeks: [13] },
+        { name: 'RACE_WEEK',  weeks: [14] },
       ],
-      // Week 1 hand-curated; the engine generates the rest in production
-      weeks: [
-        {
-          weekNum: 1, phase: 'BASE', startDate: '2026-05-11', plannedMi: 39.5,
-          days: [
-            { dow: 'Mon', date: '2026-05-11', type: 'recovery', label: 'Recovery',           distanceMi: 5.5, paceMin: '10:00', completed: true },
-            { dow: 'Tue', date: '2026-05-12', type: 'quality',  label: 'Threshold · Cruise Intervals', distanceMi: 7.0, paceMin: '7:30',  completed: true },
-            { dow: 'Wed', date: '2026-05-13', type: 'easy',     label: 'Easy + Strides',     distanceMi: 5.5, paceMin: '9:15',  completed: true },
-            { dow: 'Thu', date: '2026-05-14', type: 'easy',     label: 'Easy',               distanceMi: 5.5, paceMin: '9:15',  completed: true,  hasStrength: true },
-            { dow: 'Fri', date: '2026-05-15', type: 'easy',     label: 'Easy',               distanceMi: 5.5, paceMin: '9:15',  completed: true,  hasStrength: true },
-            { dow: 'Sat', date: '2026-05-16', type: 'rest',     label: 'Rest',               isRest: true },
-            { dow: 'Sun', date: '2026-05-17', type: 'long',     label: 'Long',               distanceMi: 10.5, paceMin: '9:30' },
-          ],
-        },
-      ],
-    },
+      weeks,
+    };
+  }
+
+  const SEED = {
+    _version: SEED_VERSION,
+    today: '2026-05-16',
+    user: { name: 'David Nitzsche', initials: 'DN' },
+
+    plan: buildPlan(),
 
     races: {
       upcoming: [

@@ -1530,7 +1530,15 @@ body {
 
     let text;
     if (!day || day.isRest) {
-      text = `Good morning, David. <strong>Week 1 work is in the books</strong> — five sessions done, body absorbing well. Today is rest; use it.${tomorrowDesc} closes Week 1 strong. <strong>${daysAway} days to AFC.</strong>`;
+      // Count completed runs in this week
+      const doneCount = week ? week.days.filter(d => d.completed).length : 0;
+      const runCount = week ? week.days.filter(d => !d.isRest).length : 0;
+      const tomorrowText = tomorrow
+        ? (tomorrow.isRest
+            ? `Tomorrow is rest; Week ${state.plan.currentWeek} ends quiet.`
+            : `Tomorrow's ${tomorrow.label.toLowerCase()} at ${tomorrow.distanceMi} mi closes Week ${state.plan.currentWeek}.`)
+        : `Week ${state.plan.currentWeek} closes today.`;
+      text = `Good morning, David. <strong>${doneCount} of ${runCount} sessions down</strong>, body absorbing the load. Today is rest — use it. ${tomorrowText} <strong>${daysAway} days to AFC.</strong>`;
     } else if (day.type === 'long') {
       text = `Today's the long: <strong>${day.distanceMi} mi at conversational pace</strong>. Don't push the finish — closing Week ${state.plan.currentWeek} on form, not on effort. <strong>${daysAway} days to AFC.</strong>`;
     } else if (day.type === 'quality') {
