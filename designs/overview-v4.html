@@ -305,13 +305,26 @@ body {
 
 .hero-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 300px;
   line-height: 0.86;
-  letter-spacing: -4px;
   color: var(--t0);
   flex: 0 0 auto;
   margin-left: -6px; /* correct Bebas Neue side-bearing so ink aligns with eyebrow text */
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — sized for 'EASY RUN'-length workout names */
+  font-size: 300px;
+  letter-spacing: -4px;
 }
+/* Workout-title size buckets. Engine sets data-len based on the
+   character count of the workout name. Each bucket keeps the title
+   feeling hero-sized while preventing layout breakage on long titles.
+   Engine should also drop any hardcoded <br> for md+ since longer
+   titles wrap naturally at word boundaries. */
+.hero-title[data-len="xs"] { font-size: 320px; letter-spacing: -5px; } /* ≤6: REST, EASY */
+.hero-title[data-len="sm"] { font-size: 300px; letter-spacing: -4px; } /* 7-12: EASY RUN, LONG RUN, TEMPO */
+.hero-title[data-len="md"] { font-size: 180px; letter-spacing: -3px; } /* 13-20: EASY + STRIDES, LONG RUN · HM */
+.hero-title[data-len="lg"] { font-size: 120px; letter-spacing: -2px; } /* 21-30: THRESHOLD · CRUISE INTERVALS */
+.hero-title[data-len="xl"] { font-size: 80px;  letter-spacing: -1px; } /* 31+: fallback for novellas */
 
 .coach-note-inline {
   font-family: 'Inter', sans-serif;
@@ -933,12 +946,22 @@ body {
 }
 .modal-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 88px;
   line-height: 0.86;
   color: var(--t0);
   margin-left: -3px;
   margin-bottom: 4px;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — for 'EASY RUN'-length names */
+  font-size: 88px;
+  letter-spacing: -1px;
 }
+/* Same bucket convention as .hero-title, scaled down for the popup. */
+.modal-title[data-len="xs"] { font-size: 96px; letter-spacing: -1.5px; }
+.modal-title[data-len="sm"] { font-size: 88px; letter-spacing: -1px; }
+.modal-title[data-len="md"] { font-size: 64px; letter-spacing: -0.5px; }
+.modal-title[data-len="lg"] { font-size: 48px; letter-spacing: 0; }
+.modal-title[data-len="xl"] { font-size: 36px; letter-spacing: 0; }
 .modal-stats {
   display: flex;
   gap: 8px;
@@ -1233,7 +1256,8 @@ body {
     <div class="hero-left">
       <div class="hero-eyebrow">TODAY · BASE WEEK 1</div>
 
-      <div class="hero-title">EASY<br>RUN</div>
+      <!-- data-len bucket from engine: xs ≤6 / sm 7-12 / md 13-20 / lg 21-30 / xl 31+ chars -->
+      <div class="hero-title" data-len="sm">EASY<br>RUN</div>
 
       <div class="stats-row">
         <div class="stat-pill">
@@ -1488,7 +1512,7 @@ body {
   <div class="modal-card workout-modal-card">
     <button class="modal-close" onclick="closeModal('workout-modal')">✕</button>
     <div class="modal-eyebrow">Today · Base Week 1</div>
-    <div class="modal-title">EASY<br>RUN</div>
+    <div class="modal-title" data-len="sm">EASY<br>RUN</div>
     <div class="modal-stats">
       <div class="modal-stat">
         <div class="modal-stat-val">5.5<span class="modal-stat-unit">mi</span></div>
