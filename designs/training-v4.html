@@ -396,18 +396,25 @@ body {
   position: relative;
 }
 
-/* Strength badge — top-right of any cell with hasStrength. Overlays
-   the existing run info without crowding the run distance. */
+/* Strength badge — top-right of any cell with hasStrength. A small
+   amber-tinted circle with a dumbbell glyph. Designed badge, not raw
+   emoji — reads as app UI on every cell background. */
 .cal-cell-strength {
   position: absolute;
   top: 6px;
   right: 6px;
-  font-size: 12px;
-  line-height: 1;
-  opacity: 0.85;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(212,144,10,.14);
+  color: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   user-select: none;
 }
-/* Cells with strength are flagged solely by the 💪 corner badge —
+.cal-cell-strength svg { display: block; }
+/* Cells with strength are flagged solely by the <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg> corner badge —
    the inset left-edge bar version made it look like a cell divider,
    not a strength marker, so it's gone. */
 .cal-cell.has-str { /* no left-edge bar — corner emoji is enough */ }
@@ -597,15 +604,25 @@ body {
   padding: 28px 40px;
 }
 .paces-header {
-  display: flex; align-items: baseline; justify-content: space-between;
-  margin-bottom: 18px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 24px;
+}
+.paces-title-group {
+  display: flex; flex-direction: column; gap: 6px;
 }
 .paces-title {
-  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
-  color: var(--t0);
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px;
+  color: var(--t0); line-height: 1.1;
 }
+.paces-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  letter-spacing: 0.3px;
+}
+.paces-sub strong { color: var(--t1); font-weight: 600; }
 .paces-meta {
   font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  text-align: right;
 }
 .paces-meta strong { color: var(--t0); font-weight: 700; }
 
@@ -872,8 +889,8 @@ body {
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
-      <div class="cal-cell easy today has-str"><span class="cal-cell-type" style="color: var(--amber);">Easy · Today</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
+      <div class="cal-cell easy today has-str"><span class="cal-cell-type" style="color: var(--amber);">Easy · Today</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">39.5<span class="cal-mileage-cell-unit">MI</span></div>
@@ -883,8 +900,8 @@ body {
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">40.5<span class="cal-mileage-cell-unit">MI</span></div>
@@ -894,8 +911,8 @@ body {
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">35.5<span class="cal-mileage-cell-unit">MI</span></div>
@@ -905,8 +922,8 @@ body {
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">12<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">44<span class="cal-mileage-cell-unit">MI</span></div>
@@ -915,44 +932,44 @@ body {
 
       <!-- Week 5 -->
       <div class="cal-week-cell">Week 5<div class="cal-week-cell-date">Jun 8</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Threshold Blocks</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">12.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">45.5<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 6 -->
       <div class="cal-week-cell">Week 6<div class="cal-week-cell-date">Jun 15</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Cruise Intervals</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">38<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 7 -->
       <div class="cal-week-cell">Week 7<div class="cal-week-cell-date">Jun 22</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Threshold Blocks</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">13<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">48<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 8 -->
       <div class="cal-week-cell">Week 8<div class="cal-week-cell-date">Jun 29</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Cruise Intervals</span><span class="cal-cell-dist">8.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">13.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">49.5<span class="cal-mileage-cell-unit">MI</span></div>
@@ -961,44 +978,44 @@ body {
 
       <!-- Week 9 -->
       <div class="cal-week-cell">Week 9<div class="cal-week-cell-date">Jul 6</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">42<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 10 -->
       <div class="cal-week-cell">Week 10<div class="cal-week-cell-date">Jul 13</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">14<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">52.5<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 11 -->
       <div class="cal-week-cell">Week 11<div class="cal-week-cell-date">Jul 20</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">14.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">53<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 12 -->
       <div class="cal-week-cell">Week 12<div class="cal-week-cell-date">Jul 27</div></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">15<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">55.5<span class="cal-mileage-cell-unit">MI</span></div>
@@ -1010,7 +1027,7 @@ body {
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Threshold Touch</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><circle cx="2.5" cy="7" r="2"/><rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4"/><circle cx="11.5" cy="7" r="2"/></svg></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Taper</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
@@ -1096,9 +1113,11 @@ body {
   ══════════════════════════════════ -->
   <div class="paces-card">
     <div class="paces-header">
-      <div>
-        <div class="adapted-eyebrow">Your Paces · VDOT 49.2</div>
-        <div class="paces-title">Daniels training zones</div>
+      <div class="paces-title-group">
+        <div class="paces-title">Your Paces</div>
+        <div class="paces-sub">
+          <strong>VDOT 49.2</strong> · Daniels training zones
+        </div>
       </div>
       <div class="paces-meta">
         Source · <strong>Sombrero Half</strong> · 9 days ago

@@ -154,7 +154,7 @@ export function HeroCard(props: HeroCardProps) {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '5px',
+                gap: '6px',
                 background: 'rgba(212,144,10,.12)',
                 color: 'var(--milestone, #D4900A)',
                 fontFamily: 'Inter, sans-serif',
@@ -162,11 +162,16 @@ export function HeroCard(props: HeroCardProps) {
                 fontWeight: 600,
                 letterSpacing: '1.5px',
                 textTransform: 'uppercase',
-                padding: '3px 10px',
+                padding: '4px 12px 4px 8px',
                 borderRadius: '20px',
               }}
             >
-              💪 Strength after
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" style={{ display: 'block' }}>
+                <circle cx="2.5" cy="7" r="2" />
+                <rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4" />
+                <circle cx="11.5" cy="7" r="2" />
+              </svg>
+              Strength after
             </span>
           )}
         </div>

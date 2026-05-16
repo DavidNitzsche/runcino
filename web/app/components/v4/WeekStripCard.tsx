@@ -249,12 +249,22 @@ function DayColumn({
             position: 'absolute',
             top: '8px',
             right: '10px',
-            fontSize: '14px',
-            opacity: 0.85,
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            background: 'rgba(212,144,10,.14)',
+            color: 'var(--milestone, #D4900A)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             userSelect: 'none',
           }}
         >
-          💪
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor">
+            <circle cx="2.5" cy="7" r="2" />
+            <rect x="4.5" y="6.25" width="5" height="1.5" rx="0.4" />
+            <circle cx="11.5" cy="7" r="2" />
+          </svg>
         </span>
       )}
       <div
