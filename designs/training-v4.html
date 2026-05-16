@@ -643,11 +643,29 @@ body {
 }
 .adapted-item {
   display: grid;
-  grid-template-columns: 80px 1fr;
+  grid-template-columns: 28px 80px 1fr;
   gap: 16px;
-  padding: 12px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--divider);
+  align-items: start;
 }
+.adapted-direction {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  margin-top: 1px;
+}
+.adapted-direction.up   { background: rgba(44,168,47,.14);  color: var(--green); }
+.adapted-direction.down { background: rgba(212,144,10,.14); color: var(--amber); }
+.adapted-direction.flat { background: rgba(13,15,18,.07);   color: var(--t2); }
 .adapted-item:first-child { border-top: none; padding-top: 0; }
 .adapted-date {
   font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px;
@@ -782,7 +800,7 @@ body {
         <span class="cycle-next-days-unit">days out</span>
       </div>
       <div class="cycle-next-meta">
-        <strong>Build</strong> in 24d · <strong>Peak</strong> in 52d · <strong>Taper</strong> in 80d
+        Aug 16, 2026 · 13.1 mi
       </div>
     </div>
   </div>
@@ -1135,6 +1153,7 @@ body {
 
     <div class="adapted-items">
       <div class="adapted-item">
+        <span class="adapted-direction down" title="Coach softened the plan">↓</span>
         <div class="adapted-date">Wed May 14</div>
         <div>
           <div class="adapted-change">
@@ -1142,12 +1161,13 @@ body {
           </div>
           <div class="adapted-why">
             Three poor check-ins last week (energy 3 · soreness 8 · stress 8) — Decision Matrix
-            says suppress quality. Research/00b §Warning Signs of Incomplete Recovery.
+            says suppress quality.
           </div>
         </div>
       </div>
 
       <div class="adapted-item">
+        <span class="adapted-direction up" title="Coach stepped the plan up">↑</span>
         <div class="adapted-date">Mon May 12</div>
         <div>
           <div class="adapted-change">
@@ -1155,20 +1175,21 @@ body {
           </div>
           <div class="adapted-why">
             Last Saturday&rsquo;s 9mi felt comfortably aerobic at 9:15/mi — the engine is
-            absorbing volume. +10% rule allows the bump. Research/00a §Volume progression rules.
+            absorbing volume. +10% rule allows the bump.
           </div>
         </div>
       </div>
 
       <div class="adapted-item">
+        <span class="adapted-direction down" title="Coach added recovery">↓</span>
         <div class="adapted-date">Sun May 11</div>
         <div>
           <div class="adapted-change">
             Week 4 cutback depth deepened to <strong>−20%</strong>.
           </div>
           <div class="adapted-why">
-            Three consecutive weeks of climbing volume — the doctrine says deepen the cutback
-            past 15% to flush. Research/00a §Cutback Weeks.
+            Three consecutive weeks of climbing volume — doctrine says deepen the cutback
+            past 15% to flush.
           </div>
         </div>
       </div>
