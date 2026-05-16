@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Training</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ══════════════════════════
+   v4 DESIGN LAW — TOKENS
+   See designs/V4_DESIGN_LAW.md + web/app/components/v4/tokens.ts.
+   Every value here matches one of those tokens. Do not introduce
+   new spacing, sizing, or font-size values without updating tokens.ts.
+══════════════════════════ */
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* ══════════════════════════ NAV BAR (same as /overview) ══════════════════════════ */
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* ══════════════════════════
+   SECTION 1 — COACH STRIP (cycle voice, no check-in)
+══════════════════════════ */
+.coach-strip {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  min-height: 160px;
+  margin-bottom: 16px;
+}
+.coach-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.coach-label {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase; margin-bottom: 14px;
+}
+.coach-label .dot-green {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); flex-shrink: 0;
+}
+.coach-briefing {
+  font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5;
+  color: var(--t0); font-weight: 400;
+}
+.coach-briefing strong { font-weight: 700; }
+
+/* Right side of the strip — "next milestone" mini-card.
+   Same width as /overview's check-in (300px) so the rhythm holds. */
+.cycle-next {
+  flex-shrink: 0;
+  margin-left: 48px;
+  width: 300px;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+}
+.cycle-next-label {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
+}
+.cycle-next-race {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px;
+  color: var(--t0); margin-top: 8px;
+}
+.cycle-next-days-row {
+  display: flex; align-items: baseline; gap: 6px;
+  margin-top: 14px;
+}
+.cycle-next-days {
+  font-family: 'Bebas Neue', sans-serif; font-size: 56px; line-height: 1;
+  color: var(--t0);
+}
+.cycle-next-days-unit {
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+}
+.cycle-next-meta {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  margin-top: 14px;
+}
+.cycle-next-meta strong { color: var(--t0); font-weight: 600; }
+
+/* ══════════════════════════
+   SECTION 2 — PHASE HERO
+══════════════════════════ */
+.hero-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.hero-left { padding: 40px; display: flex; flex-direction: column; }
+.hero-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase; margin-bottom: 20px;
+}
+.hero-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 300px; line-height: 0.86;
+  letter-spacing: -4px; color: var(--t0); flex: 0 0 auto; margin-left: -6px;
+}
+.hero-sub {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px;
+  color: var(--t0); margin-top: 4px;
+}
+.hero-explainer {
+  font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6;
+  color: var(--t1); margin-top: 14px; max-width: 540px;
+}
+.hero-cite {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 1px; color: var(--t2); text-transform: uppercase;
+  margin-top: 10px;
+}
+.stats-row {
+  display: flex; flex-direction: row; gap: 10px;
+  margin-top: 28px; flex-wrap: wrap;
+}
+.stat-pill {
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+}
+.stat-value-row { display: flex; align-items: baseline; gap: 3px; }
+.stat-value {
+  font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1;
+  color: var(--t0);
+}
+.stat-unit {
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+  margin-left: 1px;
+}
+.stat-label {
+  font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 1.5px;
+  color: var(--t2); text-transform: uppercase;
+}
+
+/* Hero right — phase timeline. */
+.hero-right {
+  background: rgba(13,15,18,.02);
+  padding: 40px;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+}
+.timeline-label {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+  letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.timeline-list {
+  display: flex; flex-direction: column; gap: 0;
+}
+.timeline-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 60px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.timeline-row:last-child { border-bottom: none; }
+.timeline-row.current { background: rgba(232,93,38,.04); margin: 0 -16px; padding: 14px 16px; border-radius: 10px; border-bottom: none; }
+.timeline-phase {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
+  letter-spacing: 1px; color: var(--t1); text-transform: uppercase;
+}
+.timeline-row.current .timeline-phase { color: var(--amber); }
+.timeline-row.done .timeline-phase { color: var(--green); }
+.timeline-row.future .timeline-phase { color: var(--t2); }
+.timeline-dates {
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+}
+.timeline-row.future .timeline-dates { color: var(--t2); }
+.timeline-status {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; color: var(--t2); text-align: right;
+  text-transform: uppercase;
+}
+.timeline-row.current .timeline-status { color: var(--amber); }
+.timeline-row.done .timeline-status { color: var(--green); }
+
+.coach-note-inline {
+  font-family: 'Inter', sans-serif; font-size: 13px; font-style: italic;
+  color: var(--t2); line-height: 1.55; margin-top: 24px;
+}
+
+/* ══════════════════════════
+   SECTION 3 — FULL SCHEDULE (the meat — phase-grouped weeks)
+══════════════════════════ */
+.schedule-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  margin-top: 16px;
+  overflow: hidden;
+}
+.schedule-header {
+  padding: 28px 40px 20px;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.schedule-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
+}
+.schedule-title {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
+  color: var(--t0); margin-top: 2px;
+}
+.schedule-meta {
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+}
+.schedule-meta strong { color: var(--t0); font-weight: 700; }
+
+.schedule-phase-heading {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 2.5px; text-transform: uppercase; color: var(--t2);
+  padding: 14px 40px 6px;
+  border-bottom: 1px solid rgba(13,15,18,.07);
+}
+.schedule-week-row {
+  display: grid;
+  grid-template-columns: 80px 80px 80px 1fr 90px;
+  align-items: center;
+  padding: 13px 40px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(13,15,18,.05);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.schedule-week-row:hover { background: rgba(13,15,18,.02); }
+.schedule-week-row.current {
+  background: rgba(44,168,47,.05);
+  border-left: 3px solid var(--green);
+  padding-left: 37px;
+}
+.schedule-week-num {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px;
+  color: var(--t0);
+}
+.schedule-week-date {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+}
+.schedule-week-mi {
+  font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: var(--t0);
+  line-height: 1;
+}
+.schedule-week-mi span {
+  font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2);
+  margin-left: 3px;
+}
+.schedule-week-desc {
+  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+}
+.schedule-week-desc strong { color: var(--t0); font-weight: 600; }
+.schedule-week-status {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  text-align: right; color: var(--green);
+}
+.schedule-week-status.upcoming { color: var(--t2); font-weight: 400; }
+.schedule-week-status.current { color: var(--amber); }
+
+/* ══════════════════════════
+   SECTION 4 — PLAN ADAPTED FEED
+══════════════════════════ */
+.adapted-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  margin-top: 16px;
+  padding: 28px 40px;
+}
+.adapted-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.adapted-title {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
+  color: var(--t0);
+}
+.adapted-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
+}
+.adapted-pin {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  background: rgba(212,144,10,.12); color: var(--amber);
+  padding: 4px 12px; border-radius: 20px;
+}
+.adapted-items {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.adapted-item {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--divider);
+}
+.adapted-item:first-child { border-top: none; padding-top: 0; }
+.adapted-date {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px;
+  letter-spacing: 1px; color: var(--t2); text-transform: uppercase;
+}
+.adapted-change {
+  font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t0);
+  line-height: 1.5;
+}
+.adapted-change strong { font-weight: 600; }
+.adapted-why {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  margin-top: 4px;
+  font-style: italic;
+}
+.adapted-empty {
+  font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t2);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ══════════════════════════
+   SECTION 5 — YOUR PACES (VDOT-derived)
+══════════════════════════ */
+.paces-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  margin-top: 16px;
+  padding: 28px 40px;
+}
+.paces-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.paces-title {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
+  color: var(--t0);
+}
+.paces-meta {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+}
+.paces-meta strong { color: var(--t0); font-weight: 700; }
+
+.paces-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+.pace-cell {
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.pace-cell-zone {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px;
+  letter-spacing: 1.5px; color: var(--green); text-transform: uppercase;
+}
+.pace-cell.t .pace-cell-zone { color: var(--amber); }
+.pace-cell.i .pace-cell-zone { color: var(--orange); }
+.pace-cell.r .pace-cell-zone { color: var(--warn); }
+.pace-cell-pace {
+  font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1;
+  color: var(--t0); margin-top: 8px;
+}
+.pace-cell-pace-unit {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1);
+  margin-left: 2px;
+}
+.pace-cell-when {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  line-height: 1.45; margin-top: 8px;
+}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link active" href="training-v4.html">Training</a>
+      <a class="nav-link" href="races.html">Races</a>
+      <a class="nav-link" href="health.html">Health</a>
+      <a class="nav-link" href="log.html">Log</a>
+      <a class="nav-link" href="profile.html">Profile</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar">DK</div>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ══════════════════════════════════
+       SECTION 1 — COACH STRIP (cycle voice)
+  ══════════════════════════════════ -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot-green"></span>
+        COACH · THE ARC · BUILDING TOWARD AFC
+      </div>
+      <p class="coach-briefing">
+        You&rsquo;re three weeks into Base — <strong>the aerobic engine is taking
+        shape exactly when it should</strong>. The Build phase opens in eleven days
+        and brings the first real threshold dose; that&rsquo;s where the half-marathon
+        pace starts to feel sustainable. <strong>Trust the easy. The fast pays for
+        the patient.</strong>
+      </p>
+    </div>
+
+    <div class="cycle-next">
+      <div class="cycle-next-label">Next milestone</div>
+      <div class="cycle-next-race">Americas Finest City Half</div>
+      <div class="cycle-next-days-row">
+        <span class="cycle-next-days">93</span>
+        <span class="cycle-next-days-unit">days out</span>
+      </div>
+      <div class="cycle-next-meta">
+        <strong>Peak phase</strong> opens in 38 days · <strong>Taper</strong> in 79
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       SECTION 2 — PHASE HERO
+  ══════════════════════════════════ -->
+  <div class="hero-card">
+    <div class="hero-left">
+      <div class="hero-eyebrow">CURRENT PHASE · WEEK 3 OF 4</div>
+
+      <div class="hero-title">BASE</div>
+      <div class="hero-sub">Aerobic Foundation</div>
+
+      <p class="hero-explainer">
+        The Base phase builds the engine — frequency over intensity, easy miles over
+        fast ones. You&rsquo;re stacking weeks of consistent volume so the harder work
+        later has somewhere to land. One quality session per week (threshold tempo);
+        everything else stays conversational.
+      </p>
+      <div class="hero-cite">
+        DOCTRINE · RESEARCH/00A §AEROBIC BASE DEVELOPMENT
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-pill">
+          <div class="stat-value-row">
+            <span class="stat-value">38</span>
+            <span class="stat-unit">mi/wk</span>
+          </div>
+          <div class="stat-label">Peak Volume</div>
+        </div>
+        <div class="stat-pill">
+          <div class="stat-value-row">
+            <span class="stat-value">11</span>
+            <span class="stat-unit">mi</span>
+          </div>
+          <div class="stat-label">Peak Long Run</div>
+        </div>
+        <div class="stat-pill">
+          <div class="stat-value-row">
+            <span class="stat-value">21</span>
+            <span class="stat-unit">days</span>
+          </div>
+          <div class="stat-label">In Phase</div>
+        </div>
+        <div class="stat-pill">
+          <div class="stat-value-row">
+            <span class="stat-value">11</span>
+            <span class="stat-unit">days</span>
+          </div>
+          <div class="stat-label">Until Build</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div>
+        <div class="timeline-label">Plan Arc · 14 Weeks Total</div>
+        <div class="timeline-list">
+          <div class="timeline-row done">
+            <div class="timeline-phase">Base 1-2</div>
+            <div class="timeline-dates">Apr 28 — May 11</div>
+            <div class="timeline-status">✓ Done</div>
+          </div>
+          <div class="timeline-row current">
+            <div class="timeline-phase">Base 3-4</div>
+            <div class="timeline-dates">May 12 — May 25</div>
+            <div class="timeline-status">In Progress</div>
+          </div>
+          <div class="timeline-row future">
+            <div class="timeline-phase">Build</div>
+            <div class="timeline-dates">May 26 — Jun 22</div>
+            <div class="timeline-status">In 11 days</div>
+          </div>
+          <div class="timeline-row future">
+            <div class="timeline-phase">Peak</div>
+            <div class="timeline-dates">Jun 23 — Jul 27</div>
+            <div class="timeline-status">In 38 days</div>
+          </div>
+          <div class="timeline-row future">
+            <div class="timeline-phase">Taper</div>
+            <div class="timeline-dates">Aug 4 — Aug 16</div>
+            <div class="timeline-status">In 79 days</div>
+          </div>
+          <div class="timeline-row future">
+            <div class="timeline-phase">Race Day</div>
+            <div class="timeline-dates">Aug 17</div>
+            <div class="timeline-status" style="color: var(--orange);">🏁</div>
+          </div>
+        </div>
+      </div>
+
+      <p class="coach-note-inline">
+        Cycles trim by one week when reality says so — a missed week of running
+        shifts the build start, not the race date.
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       SECTION 3 — FULL SCHEDULE
+  ══════════════════════════════════ -->
+  <div class="schedule-card">
+    <div class="schedule-header">
+      <div>
+        <div class="schedule-eyebrow">Full Schedule</div>
+        <div class="schedule-title">16 weeks · Americas Finest City Half · Aug 17, 2026</div>
+      </div>
+      <div class="schedule-meta">
+        Total <strong>624</strong> mi · Peak week <strong>52</strong> mi
+      </div>
+    </div>
+
+    <div class="schedule-phase-heading">Base Phase</div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 1</div>
+      <div class="schedule-week-date">Apr 28</div>
+      <div class="schedule-week-mi">28<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Easy · Tempo 5mi · Easy · Long 8mi · Strides</div>
+      <div class="schedule-week-status">✓ Done</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 2</div>
+      <div class="schedule-week-date">May 5</div>
+      <div class="schedule-week-mi">33<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Tempo 6mi · Easy · Easy · Long 10mi · Strides</div>
+      <div class="schedule-week-status">✓ Done</div>
+    </div>
+    <div class="schedule-week-row current">
+      <div class="schedule-week-num">Week 3</div>
+      <div class="schedule-week-date">May 12</div>
+      <div class="schedule-week-mi">38<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Tempo 7mi · Recovery · <strong>Easy 5.5mi ←</strong> · Long 10mi · Strides</div>
+      <div class="schedule-week-status current">In Progress</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 4</div>
+      <div class="schedule-week-date">May 19</div>
+      <div class="schedule-week-mi">32<span>mi</span></div>
+      <div class="schedule-week-desc">Cutback · Easy · Tempo 5mi · Easy · Long 8mi · Rest</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 5</div>
+      <div class="schedule-week-date">May 26</div>
+      <div class="schedule-week-mi">40<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Tempo 8mi · Easy · Easy · Long 12mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 6</div>
+      <div class="schedule-week-date">Jun 2</div>
+      <div class="schedule-week-mi">42<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Tempo 8mi · Easy · Easy · Long 13mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+
+    <div class="schedule-phase-heading">Build Phase</div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 7</div>
+      <div class="schedule-week-date">Jun 9</div>
+      <div class="schedule-week-mi">36<span>mi</span></div>
+      <div class="schedule-week-desc">Cutback · Intervals · Easy · Easy · Long 10mi · Rest</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 8</div>
+      <div class="schedule-week-date">Jun 16</div>
+      <div class="schedule-week-mi">44<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Intervals 7mi · Easy · MP Tempo · Long 14mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 9</div>
+      <div class="schedule-week-date">Jun 23</div>
+      <div class="schedule-week-mi">46<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Intervals 8mi · Easy · MP Tempo 8mi · Long 15mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+
+    <div class="schedule-phase-heading">Peak Phase</div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 10</div>
+      <div class="schedule-week-date">Jun 30</div>
+      <div class="schedule-week-mi">38<span>mi</span></div>
+      <div class="schedule-week-desc">Cutback · Intervals · Easy · Easy · Long 11mi · Rest</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 11</div>
+      <div class="schedule-week-date">Jul 7</div>
+      <div class="schedule-week-mi">48<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Intervals 9mi · Easy · MP Tempo 9mi · Long 16mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 12</div>
+      <div class="schedule-week-date">Jul 14</div>
+      <div class="schedule-week-mi">52<span>mi</span></div>
+      <div class="schedule-week-desc">Peak · Intervals 10mi · Easy · MP Long 18mi · Strides · Rest</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+
+    <div class="schedule-phase-heading">Taper</div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 13</div>
+      <div class="schedule-week-date">Aug 4</div>
+      <div class="schedule-week-mi">34<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Tempo 5mi · Easy · Easy · Long 10mi · Strides</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+    <div class="schedule-week-row">
+      <div class="schedule-week-num">Week 14</div>
+      <div class="schedule-week-date">Aug 11</div>
+      <div class="schedule-week-mi">18<span>mi</span></div>
+      <div class="schedule-week-desc">Easy · Strides · Easy · Shake-out · 🏁 Race Day Aug 17</div>
+      <div class="schedule-week-status upcoming">Upcoming</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       SECTION 4 — PLAN ADAPTED FEED
+  ══════════════════════════════════ -->
+  <div class="adapted-card">
+    <div class="adapted-header">
+      <div>
+        <div class="adapted-eyebrow">Plan Adapted · Last 7 Days</div>
+        <div class="adapted-title">3 adjustments this week</div>
+      </div>
+      <span class="adapted-pin">Doctrine driven</span>
+    </div>
+
+    <div class="adapted-items">
+      <div class="adapted-item">
+        <div class="adapted-date">Wed May 14</div>
+        <div>
+          <div class="adapted-change">
+            Tuesday&rsquo;s tempo moved to <strong>Wednesday recovery</strong>.
+          </div>
+          <div class="adapted-why">
+            Three poor check-ins last week (energy 3 · soreness 8 · stress 8) — Decision Matrix
+            says suppress quality. Research/00b §Warning Signs of Incomplete Recovery.
+          </div>
+        </div>
+      </div>
+
+      <div class="adapted-item">
+        <div class="adapted-date">Mon May 12</div>
+        <div>
+          <div class="adapted-change">
+            Long-run cap lifted to <strong>10mi</strong>.
+          </div>
+          <div class="adapted-why">
+            Last Saturday&rsquo;s 9mi felt comfortably aerobic at 9:15/mi — the engine is
+            absorbing volume. +10% rule allows the bump. Research/00a §Volume progression rules.
+          </div>
+        </div>
+      </div>
+
+      <div class="adapted-item">
+        <div class="adapted-date">Sun May 11</div>
+        <div>
+          <div class="adapted-change">
+            Week 4 cutback depth deepened to <strong>−20%</strong>.
+          </div>
+          <div class="adapted-why">
+            Three consecutive weeks of climbing volume — the doctrine says deepen the cutback
+            past 15% to flush. Research/00a §Cutback Weeks.
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty-state copy when nothing fires:
+      <div class="adapted-empty">
+        Plan held steady — Coach didn&rsquo;t need to move anything this week.
+      </div>
+      -->
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       SECTION 5 — YOUR PACES (VDOT-derived)
+  ══════════════════════════════════ -->
+  <div class="paces-card">
+    <div class="paces-header">
+      <div>
+        <div class="adapted-eyebrow">Your Paces · VDOT 49.2</div>
+        <div class="paces-title">Daniels training zones</div>
+      </div>
+      <div class="paces-meta">
+        Source · <strong>Sombrero Half</strong> · 9 days ago
+      </div>
+    </div>
+
+    <div class="paces-grid">
+      <div class="pace-cell">
+        <div class="pace-cell-zone">E · Easy</div>
+        <div class="pace-cell-pace">9:15<span class="pace-cell-pace-unit">/mi</span></div>
+        <div class="pace-cell-when">Conversational. 75-90% of your weekly miles live here.</div>
+      </div>
+      <div class="pace-cell">
+        <div class="pace-cell-zone">M · Marathon</div>
+        <div class="pace-cell-pace">8:05<span class="pace-cell-pace-unit">/mi</span></div>
+        <div class="pace-cell-when">Marathon goal pace. Used in long runs with M segments.</div>
+      </div>
+      <div class="pace-cell t">
+        <div class="pace-cell-zone">T · Threshold</div>
+        <div class="pace-cell-pace">7:24<span class="pace-cell-pace-unit">/mi</span></div>
+        <div class="pace-cell-when">Comfortably hard. Tempo runs, cruise intervals.</div>
+      </div>
+      <div class="pace-cell i">
+        <div class="pace-cell-zone">I · Intervals</div>
+        <div class="pace-cell-pace">6:45<span class="pace-cell-pace-unit">/mi</span></div>
+        <div class="pace-cell-when">VO2max work. 3-5 min reps with equal-time recovery.</div>
+      </div>
+      <div class="pace-cell r">
+        <div class="pace-cell-zone">R · Repetition</div>
+        <div class="pace-cell-pace">6:10<span class="pace-cell-pace-unit">/mi</span></div>
+        <div class="pace-cell-when">Speed + economy. 200-400m reps with full recoveries.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
