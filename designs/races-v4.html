@@ -542,95 +542,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <!-- Sombrero — C -->
-    <div class="race-row">
-      <div class="race-row-date">May 3</div>
-      <span class="race-row-tag c">C</span>
-      <div>
-        <div class="race-row-name">Sombrero Half Marathon</div>
-        <div class="race-row-name-sub">Half Marathon</div>
-      </div>
-      <div>
-        <div class="race-row-time">1:40:57</div>
-        <div class="race-row-pace">7:40/mi</div>
-      </div>
-      <div class="race-row-status c">&nbsp;</div>
-    </div>
-
-    <!-- Big Sur — A -->
-    <div class="race-row">
-      <div class="race-row-date">Apr 26</div>
-      <span class="race-row-tag a">A</span>
-      <div>
-        <div class="race-row-name">Big Sur Marathon</div>
-        <div class="race-row-name-sub">Marathon · 2,140 ft climb</div>
-      </div>
-      <div>
-        <div class="race-row-time">3:36:55</div>
-        <div class="race-row-pace">8:17/mi</div>
-      </div>
-      <div class="race-row-status c">&nbsp;</div>
-    </div>
-
-    <!-- Point Magu — C -->
-    <div class="race-row">
-      <div class="race-row-date">Apr 18</div>
-      <span class="race-row-tag c">C</span>
-      <div>
-        <div class="race-row-name">Point Magu Half Marathon</div>
-        <div class="race-row-name-sub">Half Marathon · trail</div>
-      </div>
-      <div>
-        <div class="race-row-time">2:09:02</div>
-        <div class="race-row-pace">9:33/mi</div>
-      </div>
-      <div class="race-row-status c">&nbsp;</div>
-    </div>
-
-    <!-- LA Marathon 2026 — A marathon PR -->
-    <div class="race-row">
-      <div class="race-row-date">Mar 15</div>
-      <span class="race-row-tag a">A</span>
-      <div>
-        <div class="race-row-name">Los Angeles Marathon</div>
-        <div class="race-row-name-sub">Marathon</div>
-      </div>
-      <div>
-        <div class="race-row-time">3:31:00</div>
-        <div class="race-row-pace">8:03/mi</div>
-      </div>
-      <div class="race-row-status a">marathon PR</div>
-    </div>
-
-    <!-- Powered by the Mouse — A, current VDOT anchor -->
-    <div class="race-row a-race">
-      <div class="race-row-date">Feb 1</div>
-      <span class="race-row-tag a">A</span>
-      <div>
-        <div class="race-row-name">Powered by the Mouse for a PR</div>
-        <div class="race-row-name-sub">Half Marathon</div>
-      </div>
-      <div>
-        <div class="race-row-time">1:34:54</div>
-        <div class="race-row-pace">7:05/mi</div>
-      </div>
-      <div class="race-row-status a">VDOT 48.1<br><span style="font-weight:400; color:var(--t2);">current anchor</span></div>
-    </div>
-
-    <!-- Rose Bowl — A -->
-    <div class="race-row">
-      <div class="race-row-date">Jan 18</div>
-      <span class="race-row-tag a">A</span>
-      <div>
-        <div class="race-row-name">Rose Bowl Half Marathon</div>
-        <div class="race-row-name-sub">Half Marathon</div>
-      </div>
-      <div>
-        <div class="race-row-time">1:38:38</div>
-        <div class="race-row-pace">7:24/mi</div>
-      </div>
-      <div class="race-row-status a">VDOT 46<br><span style="font-weight:400; color:var(--t2);">&nbsp;</span></div>
-    </div>
+    <!-- Rendered from RuncinoStore.getState().races.recent by inline script below -->
+    <div id="recent-races"></div>
 
   </div>
 
@@ -657,6 +570,51 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
 </div>
+<script>
+  // ── Recent Races · render from RuncinoStore.races.recent ──────────
+  function renderRecentRaces() {
+    if (!window.RuncinoStore) return;
+    const container = document.getElementById('recent-races');
+    if (!container) return;
+    const races = (RuncinoStore.getState().races || {}).recent || [];
+
+    function fmtDate(iso) {
+      const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(iso.slice(5,7),10)-1];
+      return `${month} ${parseInt(iso.slice(8,10),10)}`;
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    container.innerHTML = races.map(function (r) {
+      const tag = (r.priority || 'C').toLowerCase();
+      const rowClass = 'race-row' + (r.currentAnchor ? ' a-race' : '');
+      const statusInner = r.note
+        ? (r.currentAnchor
+            ? r.note.split('·')[0].trim() + '<br><span style="font-weight:400; color:var(--t2);">' + (r.note.split('·')[1]||'').trim() + '</span>'
+            : esc(r.note))
+        : '&nbsp;';
+      return (
+        '<div class="' + rowClass + '">' +
+          '<div class="race-row-date">' + fmtDate(r.date) + '</div>' +
+          '<span class="race-row-tag ' + tag + '">' + tag.toUpperCase() + '</span>' +
+          '<div>' +
+            '<div class="race-row-name">' + esc(r.name) + '</div>' +
+            '<div class="race-row-name-sub">' + esc(r.distanceLabel) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div class="race-row-time">' + esc(r.finish) + '</div>' +
+            '<div class="race-row-pace">' + esc(r.pace) + '</div>' +
+          '</div>' +
+          '<div class="race-row-status ' + tag + '">' + statusInner + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  if (window.RuncinoStore) {
+    renderRecentRaces();
+    RuncinoStore.subscribe(renderRecentRaces);
+  }
+</script>
 <script src="runcino-bind.js" defer></script>
 <script src="runcino-live.js" defer></script>
 </body>
