@@ -237,6 +237,7 @@ interface HeroProps {
   intensityPct: number;
   intensityZone: string;
   intensityNote?: string;
+  hasStrength: boolean;
 }
 
 interface HeroStatPills {
@@ -305,6 +306,7 @@ function composeHero(data: OverviewData): HeroProps {
     intensityPct,
     intensityZone,
     intensityNote,
+    hasStrength: planToday?.hasStrength === true,
   };
 }
 
@@ -388,6 +390,7 @@ function composeWeek(data: OverviewData, onOpenSchedule: () => void) {
       workoutName: workoutDisplayName(w.type),
       distance: isRest ? '' : `${w.distanceMi.toFixed(1)} mi`,
       status,
+      hasStrength: w.hasStrength === true,
     };
   });
 

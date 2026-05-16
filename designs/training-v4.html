@@ -282,7 +282,7 @@ body {
 }
 .volume-bars {
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
+  grid-template-columns: repeat(14, 1fr);
   gap: 6px;
   align-items: end;
   height: 120px;
@@ -322,7 +322,7 @@ body {
 .volume-bar.peakmark .volume-bar-value { color: var(--orange); }
 .volume-axis {
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
+  grid-template-columns: repeat(14, 1fr);
   gap: 6px;
   margin-bottom: 4px;
 }
@@ -357,7 +357,7 @@ body {
    on top of each label connects it visually to the weeks above. */
 .volume-phase-labels {
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
+  grid-template-columns: repeat(14, 1fr);
   gap: 6px;
   margin-top: 12px;
 }
@@ -392,6 +392,24 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  position: relative;
+}
+
+/* Strength badge — top-right of any cell with hasStrength. Overlays
+   the existing run info without crowding the run distance. */
+.cal-cell-strength {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.85;
+  user-select: none;
+}
+/* Cells that have strength get a subtle left-border accent so the
+   week's strength days are scannable in the row. */
+.cal-cell.has-str {
+  box-shadow: inset 3px 0 0 rgba(212,144,10,.45);
 }
 .cal-head-cell:last-child, .cal-cell:last-child { border-right: none; }
 .cal-head {
@@ -775,49 +793,34 @@ body {
         <div class="schedule-title">14 weeks · Americas Finest City Half · Aug 17, 2026</div>
       </div>
       <div class="schedule-meta">
-        Total <strong>508</strong> mi · Peak week <strong>52</strong> mi
+        Total <strong>608</strong> mi · Peak week <strong>56</strong> mi
       </div>
     </div>
 
     <!-- ── Volume curve ─────────────────────────────────────────── -->
     <div class="volume-curve">
       <div class="volume-bars">
-        <!-- Week 1 BASE 28mi -->
-        <div class="volume-bar base done" style="height: 54%;"><span class="volume-bar-value">28</span></div>
-        <!-- Week 2 BASE 33mi -->
-        <div class="volume-bar base done" style="height: 63%;"><span class="volume-bar-value">33</span></div>
-        <!-- Week 3 BASE 38mi current -->
-        <div class="volume-bar base current" style="height: 73%;"><span class="volume-bar-value">38</span></div>
-        <!-- Week 4 BASE 32mi cutback -->
-        <div class="volume-bar base future" style="height: 62%;"><span class="volume-bar-value">32</span></div>
-        <!-- Week 5 BASE 40mi -->
-        <div class="volume-bar base future" style="height: 77%;"><span class="volume-bar-value">40</span></div>
-        <!-- Week 6 BASE 42mi -->
-        <div class="volume-bar base future" style="height: 81%;"><span class="volume-bar-value">42</span></div>
-        <!-- Week 7 BUILD 36 cutback -->
-        <div class="volume-bar build future" style="height: 69%;"><span class="volume-bar-value">36</span></div>
-        <!-- Week 8 BUILD 44 -->
-        <div class="volume-bar build future" style="height: 85%;"><span class="volume-bar-value">44</span></div>
-        <!-- Week 9 BUILD 46 -->
-        <div class="volume-bar build future" style="height: 88%;"><span class="volume-bar-value">46</span></div>
-        <!-- Week 10 PEAK 38 cutback -->
-        <div class="volume-bar peak future" style="height: 73%;"><span class="volume-bar-value">38</span></div>
-        <!-- Week 11 PEAK 48 -->
-        <div class="volume-bar peak future" style="height: 92%;"><span class="volume-bar-value">48</span></div>
-        <!-- Week 12 PEAK 52 peakmark -->
-        <div class="volume-bar peak future peakmark" style="height: 100%;"><span class="volume-bar-value">52 ↑ PEAK</span></div>
-        <!-- Week 13 TAPER 34 -->
-        <div class="volume-bar taper future" style="height: 65%;"><span class="volume-bar-value">34</span></div>
-        <!-- Week 14 TAPER 18 race week -->
-        <div class="volume-bar taper future" style="height: 35%;"><span class="volume-bar-value">18</span></div>
-        <!-- RACE column — solid race color, full height -->
-        <div class="volume-bar future" style="background: var(--orange); opacity: .85; height: 28%;"><span class="volume-bar-value" style="display:block; color: var(--orange); font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px;">🏁</span></div>
+        <!-- 14 bars · real plan data from /api/plan/active · authored 2026-05-15 -->
+        <div class="volume-bar base future current" style="height: 71.2%;"><span class="volume-bar-value">39.5</span></div>
+        <div class="volume-bar base future" style="height: 73.0%;"><span class="volume-bar-value">40.5</span></div>
+        <div class="volume-bar base future" style="height: 64.0%;"><span class="volume-bar-value">35.5</span></div>
+        <div class="volume-bar base future" style="height: 79.3%;"><span class="volume-bar-value">44</span></div>
+        <div class="volume-bar build future" style="height: 82.0%;"><span class="volume-bar-value">45.5</span></div>
+        <div class="volume-bar build future" style="height: 68.5%;"><span class="volume-bar-value">38</span></div>
+        <div class="volume-bar build future" style="height: 86.5%;"><span class="volume-bar-value">48</span></div>
+        <div class="volume-bar build future" style="height: 89.2%;"><span class="volume-bar-value">49.5</span></div>
+        <div class="volume-bar peak future" style="height: 75.7%;"><span class="volume-bar-value">42</span></div>
+        <div class="volume-bar peak future" style="height: 94.6%;"><span class="volume-bar-value">52.5</span></div>
+        <div class="volume-bar peak future" style="height: 95.5%;"><span class="volume-bar-value">53</span></div>
+        <div class="volume-bar peak future peakmark" style="height: 100.0%;"><span class="volume-bar-value">55.5 ↑ PEAK</span></div>
+        <div class="volume-bar taper future" style="height: 62.2%;"><span class="volume-bar-value">34.5</span></div>
+        <div class="volume-bar taper future" style="height: 54.2%;"><span class="volume-bar-value">🏁 30</span></div>
       </div>
 
       <div class="volume-axis">
-        <span class="volume-axis-week">W1</span>
+        <span class="volume-axis-week current">W1</span>
         <span class="volume-axis-week">W2</span>
-        <span class="volume-axis-week current">W3</span>
+        <span class="volume-axis-week">W3</span>
         <span class="volume-axis-week">W4</span>
         <span class="volume-axis-week">W5</span>
         <span class="volume-axis-week">W6</span>
@@ -828,17 +831,16 @@ body {
         <span class="volume-axis-week">W11</span>
         <span class="volume-axis-week">W12</span>
         <span class="volume-axis-week">W13</span>
-        <span class="volume-axis-week">W14</span>
         <span class="volume-axis-week" style="color: var(--orange); font-weight: 600;">RACE</span>
       </div>
 
       <!-- Phase labels under the week axis — replaces the corner legend. -->
       <div class="volume-phase-labels">
-        <div class="volume-phase-label base">Base</div>
-        <div class="volume-phase-label build">Build</div>
-        <div class="volume-phase-label peak">Peak</div>
-        <div class="volume-phase-label taper">Taper</div>
-        <div class="volume-phase-label race">🏁</div>
+        <div class="volume-phase-label base" style="grid-column: span 4;">Base</div>
+        <div class="volume-phase-label build" style="grid-column: span 4;">Build</div>
+        <div class="volume-phase-label peak" style="grid-column: span 4;">Peak</div>
+        <div class="volume-phase-label taper" style="grid-column: span 1;">Taper</div>
+        <div class="volume-phase-label race" style="grid-column: span 1;">🏁</div>
       </div>
     </div>
 
@@ -857,171 +859,170 @@ body {
         <div class="cal-head-cell cal-mileage-col">Total</div>
       </div>
 
-      <!-- BASE PHASE HEADER -->
-      <div class="cal-phase-row base">Base Phase <span class="cal-phase-row-meta">Weeks 1 – 6 · Apr 28 → Jun 8</span></div>
+      <!-- BASE -->
+      <div class="cal-phase-row base">Base Phase <span class="cal-phase-row-meta">Weeks 1 – 4</span></div>
 
       <!-- Week 1 -->
-      <div class="cal-week-cell">Week 1<div class="cal-week-cell-date">Apr 28</div></div>
+      <div class="cal-week-cell">Week 1<div class="cal-week-cell-date">May 11</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy today has-str"><span class="cal-cell-type" style="color: var(--amber);">Easy · Today</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">2<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">28<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">39.5<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 2 -->
-      <div class="cal-week-cell">Week 2<div class="cal-week-cell-date">May 5</div></div>
+      <div class="cal-week-cell">Week 2<div class="cal-week-cell-date">May 18</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">33<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">40.5<span class="cal-mileage-cell-unit">MI</span></div>
 
-      <!-- Week 3 — current -->
-      <div class="cal-week-cell">Week 3<div class="cal-week-cell-date">May 12</div></div>
+      <!-- Week 3 -->
+      <div class="cal-week-cell">Week 3<div class="cal-week-cell-date">May 25</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell recovery"><span class="cal-cell-type">Recovery</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy today"><span class="cal-cell-type" style="color: var(--amber);">Easy · Today</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">2.5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">38<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">35.5<span class="cal-mileage-cell-unit">MI</span></div>
 
-      <!-- Week 4 — cutback -->
-      <div class="cal-week-cell">Week 4<div class="cal-week-cell-date">May 19</div></div>
+      <!-- Week 4 -->
+      <div class="cal-week-cell">Week 4<div class="cal-week-cell-date">Jun 1</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Cruise Intervals</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-mileage-cell">24<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">12<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">44<span class="cal-mileage-cell-unit">MI</span></div>
+      <!-- BUILD -->
+      <div class="cal-phase-row build">Build Phase <span class="cal-phase-row-meta">Weeks 5 – 8</span></div>
 
       <!-- Week 5 -->
-      <div class="cal-week-cell">Week 5<div class="cal-week-cell-date">May 26</div></div>
+      <div class="cal-week-cell">Week 5<div class="cal-week-cell-date">Jun 8</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Threshold Blocks</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">12<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">40<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">12.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">45.5<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- Week 6 -->
-      <div class="cal-week-cell">Week 6<div class="cal-week-cell-date">Jun 2</div></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-week-cell">Week 6<div class="cal-week-cell-date">Jun 15</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Cruise Intervals</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">13<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">42<span class="cal-mileage-cell-unit">MI</span></div>
-
-      <!-- BUILD PHASE HEADER -->
-      <div class="cal-phase-row build">Build Phase <span class="cal-phase-row-meta">Weeks 7 – 9 · Jun 9 → Jun 29</span></div>
-
-      <!-- Week 7 — cutback into build -->
-      <div class="cal-week-cell">Week 7<div class="cal-week-cell-date">Jun 9</div></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">38<span class="cal-mileage-cell-unit">MI</span></div>
+
+      <!-- Week 7 -->
+      <div class="cal-week-cell">Week 7<div class="cal-week-cell-date">Jun 22</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Threshold Blocks</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-mileage-cell">30<span class="cal-mileage-cell-unit">MI</span></div>
-
-      <!-- Week 8 -->
-      <div class="cal-week-cell">Week 8<div class="cal-week-cell-date">Jun 16</div></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">MP Tempo</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">14<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">42<span class="cal-mileage-cell-unit">MI</span></div>
-
-      <!-- Week 9 -->
-      <div class="cal-week-cell">Week 9<div class="cal-week-cell-date">Jun 23</div></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">MP Tempo</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">15<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">46<span class="cal-mileage-cell-unit">MI</span></div>
-
-      <!-- PEAK PHASE HEADER -->
-      <div class="cal-phase-row peak">Peak Phase <span class="cal-phase-row-meta">Weeks 10 – 12 · Jun 30 → Jul 20</span></div>
-
-      <!-- Week 10 — cutback -->
-      <div class="cal-week-cell">Week 10<div class="cal-week-cell-date">Jun 30</div></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-mileage-cell">32<span class="cal-mileage-cell-unit">MI</span></div>
-
-      <!-- Week 11 -->
-      <div class="cal-week-cell">Week 11<div class="cal-week-cell-date">Jul 7</div></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">MP Tempo</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">16<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">13<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">48<span class="cal-mileage-cell-unit">MI</span></div>
 
-      <!-- Week 12 — peak week -->
-      <div class="cal-week-cell">Week 12<div class="cal-week-cell-date">Jul 14</div></div>
+      <!-- Week 8 -->
+      <div class="cal-week-cell">Week 8<div class="cal-week-cell-date">Jun 29</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Cruise Intervals</span><span class="cal-cell-dist">8.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">6.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">10<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">MP Long</span><span class="cal-cell-dist">18<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-mileage-cell">52<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">13.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">49.5<span class="cal-mileage-cell-unit">MI</span></div>
+      <!-- PEAK -->
+      <div class="cal-phase-row peak">Peak Phase <span class="cal-phase-row-meta">Weeks 9 – 12</span></div>
 
-      <!-- TAPER PHASE HEADER -->
-      <div class="cal-phase-row taper">Taper · Race Week <span class="cal-phase-row-meta">Weeks 13 – 14 · Aug 4 → Aug 17 🏁</span></div>
+      <!-- Week 9 -->
+      <div class="cal-week-cell">Week 9<div class="cal-week-cell-date">Jul 6</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">6<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">11.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">42<span class="cal-mileage-cell-unit">MI</span></div>
+
+      <!-- Week 10 -->
+      <div class="cal-week-cell">Week 10<div class="cal-week-cell-date">Jul 13</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">14<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">52.5<span class="cal-mileage-cell-unit">MI</span></div>
+
+      <!-- Week 11 -->
+      <div class="cal-week-cell">Week 11<div class="cal-week-cell-date">Jul 20</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · HM Finish</span><span class="cal-cell-dist">14.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">53<span class="cal-mileage-cell-unit">MI</span></div>
+
+      <!-- Week 12 -->
+      <div class="cal-week-cell">Week 12<div class="cal-week-cell-date">Jul 27</div></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · HM Continuous Tempo</span><span class="cal-cell-dist">9.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Intervals</span><span class="cal-cell-dist">7<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">8<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Progression</span><span class="cal-cell-dist">15<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">55.5<span class="cal-mileage-cell-unit">MI</span></div>
+      <!-- TAPER -->
+      <div class="cal-phase-row taper">Taper Phase <span class="cal-phase-row-meta">Week 13</span></div>
 
       <!-- Week 13 -->
-      <div class="cal-week-cell">Week 13<div class="cal-week-cell-date">Aug 4</div></div>
+      <div class="cal-week-cell">Week 13<div class="cal-week-cell-date">Aug 3</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Threshold Touch</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy has-str"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span><span class="cal-cell-strength" title="Strength training">💪</span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5.5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell quality"><span class="cal-cell-type">Tempo</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell long"><span class="cal-cell-type">Long</span><span class="cal-cell-dist">10<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-mileage-cell">31<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-cell long"><span class="cal-cell-type">Long · Long Run · Taper</span><span class="cal-cell-dist">7.5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-mileage-cell">34.5<span class="cal-mileage-cell-unit">MI</span></div>
+      <!-- RACE_WEEK -->
+      <div class="cal-phase-row race-week">Race Week <span class="cal-phase-row-meta">Week 14</span></div>
 
-      <!-- Week 14 — race week -->
-      <div class="cal-week-cell">Week 14<div class="cal-week-cell-date">Aug 11</div></div>
+      <!-- Week 14 -->
+      <div class="cal-week-cell">Week 14<div class="cal-week-cell-date">Aug 10</div></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell quality"><span class="cal-cell-type">Threshold · Race Week Tune-Up</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">5<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">4<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Strides</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Easy</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell easy"><span class="cal-cell-type">Shake-out</span><span class="cal-cell-dist">2<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
+      <div class="cal-cell easy"><span class="cal-cell-type">Shake-out</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-cell race"><span class="cal-cell-type">🏁 Race</span><span class="cal-cell-dist">13.1<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell rest"><span class="cal-cell-type">Recover</span><span class="cal-cell-rest-dash">—</span></div>
-      <div class="cal-mileage-cell">25<span class="cal-mileage-cell-unit">MI</span></div>
+      <div class="cal-mileage-cell">30.1<span class="cal-mileage-cell-unit">MI</span></div>
     </div>
   </div>
 

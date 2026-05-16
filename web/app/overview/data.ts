@@ -401,6 +401,7 @@ interface OverviewApiPayload {
     distanceMi: number;
     isQuality: boolean;
     isLong: boolean;
+    hasStrength?: boolean;
     paceTargetSPerMi: number | null;
     notes: string;
     subLabel?: string | null;

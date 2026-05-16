@@ -75,6 +75,10 @@ export interface HeroCardProps {
   /** Externally-controlled "skipped" state — survives a page reload via
    *  the skip-store. When undefined, the card manages it internally. */
   skipped?: boolean;
+  /** True when today's planned workout includes strength training.
+   *  Renders a small chip near the eyebrow so the runner sees it
+   *  without scanning the calendar. */
+  hasStrength?: boolean;
 }
 
 export function HeroCard(props: HeroCardProps) {
@@ -94,6 +98,7 @@ export function HeroCard(props: HeroCardProps) {
     onOpenWorkout,
     onSkipToggle,
     skipped: skippedProp,
+    hasStrength,
   } = props;
 
   const [skippedLocal, setSkippedLocal] = useState(false);
@@ -126,15 +131,44 @@ export function HeroCard(props: HeroCardProps) {
       >
         <div
           style={{
-            fontFamily: 'Inter, sans-serif',
-            fontSize: '12px',
-            letterSpacing: '2.5px',
-            color: 'rgba(13,15,18,.35)',
-            textTransform: 'uppercase',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
             marginBottom: '20px',
           }}
         >
-          {eyebrow}
+          <span
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '12px',
+              letterSpacing: '2.5px',
+              color: 'rgba(13,15,18,.35)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {eyebrow}
+          </span>
+          {hasStrength && (
+            <span
+              title="Strength training scheduled after the run"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(212,144,10,.12)',
+                color: 'var(--milestone, #D4900A)',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '11px',
+                fontWeight: 600,
+                letterSpacing: '1.5px',
+                textTransform: 'uppercase',
+                padding: '3px 10px',
+                borderRadius: '20px',
+              }}
+            >
+              💪 Strength after
+            </span>
+          )}
         </div>
 
         <h1

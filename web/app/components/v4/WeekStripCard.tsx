@@ -29,6 +29,9 @@ export interface WeekDay {
   /** Distance display ("5.5 mi"). Empty string when rest day. */
   distance: string;
   status: DayStatus;
+  /** True when this day also has a strength session scheduled. Shown
+   *  as a small 💪 marker in the corner of the day cell. */
+  hasStrength?: boolean;
 }
 
 export interface WeekStripCardProps {
@@ -236,8 +239,24 @@ function DayColumn({
         gap: '6px',
         background: isToday ? 'rgba(232,93,38,.04)' : 'transparent',
         borderTop: isToday ? '2px solid var(--milestone, #D4900A)' : 'none',
+        position: 'relative',
       }}
     >
+      {day.hasStrength && (
+        <span
+          title="Strength training scheduled"
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '10px',
+            fontSize: '14px',
+            opacity: 0.85,
+            userSelect: 'none',
+          }}
+        >
+          💪
+        </span>
+      )}
       <div
         style={{
           fontFamily: 'Inter, sans-serif',
