@@ -458,78 +458,12 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
+    <!-- Stations rendered from RuncinoStore.races.upcoming by inline script below.
+         Positions computed proportional to daysAway with the rightmost race at 100%.
+         Placement alternates ABOVE/BELOW the line to prevent label collisions. -->
     <div class="races-timeline">
-      <div class="races-timeline-track-area">
+      <div class="races-timeline-track-area" id="upcoming-timeline">
         <div class="races-timeline-track-line"></div>
-
-        <!-- Today (anchored left, label below) -->
-        <div class="races-timeline-now" style="left: 0%;">
-          <div class="races-timeline-now-dot"></div>
-          <div class="races-timeline-now-info">
-            <div class="races-timeline-now-label">Today</div>
-            <div class="races-timeline-now-date">May 15</div>
-          </div>
-        </div>
-
-        <!-- AFC Half — A, 93d, ABOVE -->
-        <div class="races-timeline-station priority-a placement-above" style="left: 31.4%;">
-          <div class="races-timeline-tag a">A</div>
-          <div class="races-timeline-station-info">
-            <div class="races-timeline-date">Aug 16</div>
-            <div class="races-timeline-name">Americas Finest City</div>
-            <div class="races-timeline-goal">1:35:00</div>
-            <div class="races-timeline-pace">goal · 7:15/mi</div>
-            <div class="races-timeline-away">93d away</div>
-          </div>
-        </div>
-
-        <!-- Dodgers — C, 134d, BELOW -->
-        <div class="races-timeline-station priority-c placement-below" style="left: 45.3%;">
-          <div class="races-timeline-tag c">C</div>
-          <div class="races-timeline-station-info">
-            <div class="races-timeline-date">Sep 26</div>
-            <div class="races-timeline-name">Dodgers 10K</div>
-            <div class="races-timeline-goal">45:00</div>
-            <div class="races-timeline-pace">goal · 7:18/mi</div>
-            <div class="races-timeline-away">134d away</div>
-          </div>
-        </div>
-
-        <!-- Run Malibu — B tune-up, 177d, ABOVE -->
-        <div class="races-timeline-station priority-b placement-above" style="left: 59.8%;">
-          <div class="races-timeline-tag b">B</div>
-          <div class="races-timeline-station-info">
-            <div class="races-timeline-date">Nov 8</div>
-            <div class="races-timeline-name">Run Malibu</div>
-            <div class="races-timeline-goal">1:30:00</div>
-            <div class="races-timeline-pace">goal · 6:52/mi</div>
-            <div class="races-timeline-away">177d away</div>
-          </div>
-        </div>
-
-        <!-- CIM — A marathon, 205d, BELOW (alternates with Malibu, no collision) -->
-        <div class="races-timeline-station priority-a placement-below" style="left: 69.3%;">
-          <div class="races-timeline-tag a">A</div>
-          <div class="races-timeline-station-info">
-            <div class="races-timeline-date">Dec 6</div>
-            <div class="races-timeline-name">CIM</div>
-            <div class="races-timeline-goal">3:00:00</div>
-            <div class="races-timeline-pace">goal · 6:52/mi</div>
-            <div class="races-timeline-away">205d away</div>
-          </div>
-        </div>
-
-        <!-- LA Marathon — A, 296d, ABOVE -->
-        <div class="races-timeline-station priority-a placement-above is-last" style="left: 100%;">
-          <div class="races-timeline-tag a">A</div>
-          <div class="races-timeline-station-info">
-            <div class="races-timeline-date">Mar 7</div>
-            <div class="races-timeline-name">LA Marathon</div>
-            <div class="races-timeline-goal">3:31:00</div>
-            <div class="races-timeline-pace">goal · 8:00/mi</div>
-            <div class="races-timeline-away">296d away</div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -610,9 +544,74 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     }).join('');
   }
 
+  // ── Upcoming Races · render horizontal timeline from store ──────────
+  function renderUpcomingTimeline() {
+    if (!window.RuncinoStore) return;
+    const area = document.getElementById('upcoming-timeline');
+    if (!area) return;
+
+    const state = RuncinoStore.getState();
+    const races = (state.races || {}).upcoming || [];
+    if (!races.length) { area.innerHTML = '<div class="races-timeline-track-line"></div>'; return; }
+
+    // Position each race proportional to daysAway, rightmost = 100%
+    const maxDays = Math.max(...races.map(r => r.daysAway));
+
+    function fmtShortDate(iso) {
+      const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(iso.slice(5,7),10)-1];
+      return `${month} ${parseInt(iso.slice(8,10),10)}`;
+    }
+    function fmtTodayShort(iso) {
+      return fmtShortDate(iso);
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    const todayISO = state.today;
+    const todayHTML =
+      '<div class="races-timeline-now" style="left: 0%;">' +
+        '<div class="races-timeline-now-dot"></div>' +
+        '<div class="races-timeline-now-info">' +
+          '<div class="races-timeline-now-label">Today</div>' +
+          '<div class="races-timeline-now-date">' + fmtTodayShort(todayISO) + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // Alternate placement starting with 'above' for the first race
+    const stationsHTML = races.map(function (r, i) {
+      const pct = (r.daysAway / maxDays) * 100;
+      const placement = (i % 2 === 0) ? 'placement-above' : 'placement-below';
+      const isLast = (i === races.length - 1);
+      const tag = (r.priority || 'C').toLowerCase();
+      const classes = [
+        'races-timeline-station',
+        'priority-' + tag,
+        placement,
+        isLast ? 'is-last' : '',
+      ].filter(Boolean).join(' ');
+      return (
+        '<div class="' + classes + '" style="left: ' + pct.toFixed(1) + '%;">' +
+          '<div class="races-timeline-tag ' + tag + '">' + tag.toUpperCase() + '</div>' +
+          '<div class="races-timeline-station-info">' +
+            '<div class="races-timeline-date">' + fmtShortDate(r.date) + '</div>' +
+            '<div class="races-timeline-name">' + esc(r.name) + '</div>' +
+            '<div class="races-timeline-goal">' + esc(r.goal) + '</div>' +
+            '<div class="races-timeline-pace">goal · ' + esc(r.goalPace) + '</div>' +
+            '<div class="races-timeline-away">' + r.daysAway + 'd away</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    area.innerHTML = '<div class="races-timeline-track-line"></div>' + todayHTML + stationsHTML;
+  }
+
   if (window.RuncinoStore) {
     renderRecentRaces();
-    RuncinoStore.subscribe(renderRecentRaces);
+    renderUpcomingTimeline();
+    RuncinoStore.subscribe(function () {
+      renderRecentRaces();
+      renderUpcomingTimeline();
+    });
   }
 </script>
 <script src="runcino-bind.js" defer></script>
