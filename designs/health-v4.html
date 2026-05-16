@@ -263,7 +263,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <span class="health-checkin-row-val">2</span>
         </div>
       </div>
-      <button class="health-checkin-mini-btn">Log Check-In</button>
+      <button class="health-checkin-mini-btn" onclick="logCheckIn()">Log Check-In</button>
     </div>
   </div>
 
@@ -275,25 +275,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="health-hero-left">
       <div class="health-hero-eyebrow">TODAY · SAT MAY 16 · HEALTH</div>
       <div class="health-hero-title">READY</div>
-
-      <div class="health-hero-stats">
-        <div class="health-hero-stat">
-          <div class="health-hero-stat-row"><span class="health-hero-stat-val">7.4</span><span class="health-hero-stat-unit">h</span></div>
-          <div class="health-hero-stat-label">Sleep 7d</div>
-        </div>
-        <div class="health-hero-stat">
-          <div class="health-hero-stat-row"><span class="health-hero-stat-val">48</span><span class="health-hero-stat-unit">bpm</span></div>
-          <div class="health-hero-stat-label">Resting HR</div>
-        </div>
-        <div class="health-hero-stat">
-          <div class="health-hero-stat-row"><span class="health-hero-stat-val">62</span><span class="health-hero-stat-unit">ms</span></div>
-          <div class="health-hero-stat-label">HRV</div>
-        </div>
-        <div class="health-hero-stat">
-          <div class="health-hero-stat-row"><span class="health-hero-stat-val">11.4</span></div>
-          <div class="health-hero-stat-label">Strain 7d</div>
-        </div>
-      </div>
 
       <p class="health-hero-coach-take">
         Body is taking the load well. <strong>Strain dipped Tue → Thu</strong> as the
@@ -725,6 +706,54 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
 </div>
+
+<script>
+  // Today's Check-In · log handler.
+  // Disables the sliders, flips the button to 'logged' state, fills
+  // today's column in the timeline below, and flips the readiness
+  // 'Check-In: Not logged' trend bar to green.
+  function logCheckIn() {
+    const mini = document.querySelector('.health-checkin-mini');
+    if (!mini) return;
+    const sliders = mini.querySelectorAll('.checkin-range');
+    if (sliders.length < 3) return;
+    const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
+
+    // Lock sliders
+    sliders.forEach(s => s.disabled = true);
+
+    // Flip button
+    const btn = mini.querySelector('.health-checkin-mini-btn');
+    btn.textContent = '✓ Logged for today';
+    btn.style.background = 'var(--green)';
+    btn.style.cursor = 'default';
+    btn.onclick = null;
+
+    // Fill today's column in the timeline
+    const todayCol = document.querySelector('.timeline-day.today');
+    if (todayCol) {
+      todayCol.classList.remove('missing');
+      const stack = todayCol.querySelector('.timeline-day-stack');
+      stack.innerHTML =
+        '<div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:' + (energy * 10) + '%"></div></div>' +
+        '<div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:' + (soreness * 10) + '%"></div></div>' +
+        '<div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:' + (stress * 10) + '%"></div></div>';
+    }
+
+    // Update the Check-In row on the readiness hero
+    document.querySelectorAll('.health-trend-row').forEach(row => {
+      const label = row.querySelector('.health-trend-row-label');
+      if (label && label.textContent.trim() === 'Check-In') {
+        const val = row.querySelector('.health-trend-row-value');
+        val.className = 'health-trend-row-value green';
+        val.textContent = 'E' + energy + ' · S' + soreness + ' · St' + stress;
+        const fill = row.querySelector('.health-trend-bar-fill');
+        fill.className = 'health-trend-bar-fill green';
+        fill.style.width = '100%';
+      }
+    });
+  }
+</script>
 
 </body>
 </html>
