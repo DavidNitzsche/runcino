@@ -17,9 +17,10 @@
 }
 body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
 
+/* ── Nav ─────────────────────────────────────────── */
 .navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
 .navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; text-decoration: none; }
 .nav-links { display: flex; align-items: center; gap: 36px; }
 .nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
 .nav-link.active { color: var(--t0); font-weight: 500; }
@@ -28,65 +29,14 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 .page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
 
-/* Coach strip */
-.coach-strip { display: flex; align-items: stretch; justify-content: space-between; min-height: 160px; margin-bottom: 16px; }
-.coach-left { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+/* ── Coach strip ─────────────────────────────────── */
+.coach-strip { padding: 0 0 32px; }
 .coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
 .coach-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.coach-label .dot.amber { background: var(--amber); }
-.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; max-width: 900px; }
 .coach-briefing strong { font-weight: 700; }
 
-/* Right-side mini-card: status check-in */
-.status-card { flex-shrink: 0; margin-left: 48px; width: 300px; background: var(--card); border-radius: 20px; padding: 22px 24px; box-shadow: var(--card-shadow); }
-.status-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
-.status-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 16px; color: var(--t0); margin-top: 8px; }
-.status-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
-.status-row { display: flex; align-items: center; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); }
-.status-row strong { color: var(--t0); font-weight: 600; }
-.status-row .dot { width: 8px; height: 8px; border-radius: 50%; }
-.status-row .dot.green { background: var(--green); }
-.status-row .dot.amber { background: var(--amber); }
-.status-row .dot.mute { background: rgba(13,15,18,.18); }
-.status-row .right { display: flex; align-items: center; gap: 8px; }
-
-/* Hero — readiness composite */
-.hero-card { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); display: grid; grid-template-columns: 1fr 460px; margin-top: 16px; overflow: hidden; }
-.hero-left { padding: 40px; display: flex; flex-direction: column; }
-.hero-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 220px; line-height: 0.86; letter-spacing: -4px; color: var(--green); margin-left: -6px; }
-.hero-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--t0); margin-top: 8px; }
-.hero-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 14px; max-width: 540px; }
-
-.factor-bars { display: flex; flex-direction: column; gap: 14px; margin-top: 26px; }
-.factor-row { display: flex; flex-direction: column; gap: 7px; }
-.factor-top { display: flex; align-items: baseline; justify-content: space-between; }
-.factor-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
-.factor-value { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700; color: var(--t0); }
-.factor-value.muted { color: var(--t3); font-weight: 400; }
-.factor-value.green { color: var(--green); }
-.factor-value.amber { color: var(--amber); }
-.factor-track { width: 100%; height: 8px; background: rgba(13,15,18,.07); border-radius: 4px; overflow: hidden; }
-.factor-fill { height: 100%; border-radius: 4px; }
-.factor-fill.green { background: var(--green); }
-.factor-fill.amber { background: var(--amber); }
-.factor-fill.warn { background: var(--warn); }
-.factor-fill.muted { background: rgba(13,15,18,.18); }
-
-/* Hero right — load section */
-.hero-right { background: rgba(13,15,18,.02); padding: 40px; display: flex; flex-direction: column; gap: 32px; }
-.section-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
-
-.load-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.load-stat { background: var(--card); border: 1px solid var(--divider); border-radius: 10px; padding: 14px 16px; }
-.load-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
-.load-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; line-height: 1; color: var(--t0); margin-top: 6px; }
-.load-stat-sub { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; }
-
-.acwr-bar { position: relative; height: 14px; background: linear-gradient(to right, rgba(212,144,10,.3) 0%, var(--green) 20%, var(--green) 60%, rgba(232,93,38,.5) 90%, var(--warn) 100%); border-radius: 7px; margin-top: 8px; }
-.acwr-tick { position: absolute; top: -4px; bottom: -4px; left: 50%; width: 3px; background: var(--t0); border-radius: 2px; transform: translateX(-50%); }
-
-/* Cards (title-first hierarchy) */
+/* ── Cards ────────────────────────────────────────── */
 .card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
 .card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .card-title-group { display: flex; flex-direction: column; gap: 6px; }
@@ -96,36 +46,108 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
 .card-meta strong { color: var(--t0); font-weight: 700; }
 
-/* Body systems grid */
-/* Post-race recovery — compact pill strip. Card auto-hides via engine
-   when no systems are still rebuilding (i.e. >30 days post-race). */
+/* ── FORM CURVE HERO (training load chart) ───────── */
+.form-curve-card { padding-bottom: 24px; }
+.form-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 0 40px 20px; }
+.form-stat { padding: 18px 22px; background: rgba(13,15,18,.025); border-radius: 12px; }
+.form-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
+.form-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 1; color: var(--t0); margin-top: 8px; letter-spacing: -1px; }
+.form-stat-val.green { color: var(--green); }
+.form-stat-val.orange { color: var(--orange); }
+.form-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
+.form-chart-wrap { padding: 0 40px; }
+.form-chart-legend { display: flex; gap: 28px; padding: 0 40px 12px; }
+.form-chart-legend-item { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t1); font-weight: 600; letter-spacing: 0.5px; }
+.form-chart-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+.form-chart-legend-dot.green { background: var(--green); }
+.form-chart-legend-dot.orange { background: var(--orange); }
+.form-chart-legend-dot.race { background: transparent; border: 1.5px dashed var(--orange); }
+
+/* ── Readiness section ───────────────────────────── */
+.readiness-card { display: grid; grid-template-columns: 360px 1fr; gap: 0; padding: 0; overflow: hidden; }
+.readiness-ring-section { padding: 40px; border-right: 1px solid var(--divider); display: flex; flex-direction: column; }
+.readiness-ring-header { display: flex; align-items: center; gap: 10px; }
+.readiness-ring-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
+.readiness-ring-badge { padding: 4px 12px; border-radius: 20px; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; background: rgba(44,168,47,.12); color: var(--green); }
+.readiness-ring-wrap { display: flex; justify-content: center; margin-top: 8px; }
+.readiness-ring-state { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 2.5px; color: var(--green); text-align: center; text-transform: uppercase; margin-top: 4px; }
+.readiness-coach-take { font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.55; color: var(--t1); margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--divider); font-style: italic; }
+.readiness-coach-take strong { color: var(--t0); font-weight: 700; font-style: normal; }
+.readiness-factors-section { padding: 40px; }
+.readiness-factors-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 18px; }
+.readiness-factors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.factor-tile { padding: 16px 14px; background: rgba(13,15,18,.025); border-radius: 10px; text-align: center; }
+.factor-tile-label { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
+.factor-tile-val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; line-height: 1; color: var(--t0); margin-top: 8px; letter-spacing: -0.5px; }
+.factor-tile-state { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 8px; }
+.factor-tile-state.green { color: var(--green); }
+.factor-tile-state.amber { color: var(--amber); }
+.factor-tile-state.dim { color: var(--t3); }
+
+/* ── Vitals grid (sparkline tiles) ───────────────── */
+.vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 40px 32px; }
+.vitals-grid.five { grid-template-columns: repeat(5, 1fr); }
+.vital-tile { padding: 18px 20px; background: rgba(13,15,18,.025); border-radius: 12px; }
+.vital-tile.sample { border: 1px dashed rgba(212,144,10,.35); background: rgba(212,144,10,.04); }
+.vital-tile-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vital-tile-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
+.vital-tile-badge { font-family: 'Inter', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+.vital-tile-badge.sample { background: rgba(212,144,10,.14); color: var(--amber); }
+.vital-tile-value { font-family: 'Bebas Neue', sans-serif; font-size: 38px; line-height: 1; color: var(--t0); margin-top: 12px; letter-spacing: -0.5px; }
+.vital-tile.sample .vital-tile-value { color: var(--t1); }
+.vital-tile-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); font-weight: 500; margin-left: 4px; }
+.vital-tile-spark { width: 100%; height: 30px; margin-top: 12px; display: block; }
+.vital-tile-status { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
+.vital-tile-status.green { color: var(--green); }
+.vital-tile-status.amber { color: var(--amber); }
+.vital-tile-status.dim { color: var(--t2); }
+
+/* ── Check-in timeline (14-day) ──────────────────── */
+.checkin-timeline { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; padding: 0 40px 32px; }
+.timeline-day { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+.timeline-day-date { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; color: var(--t2); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; }
+.timeline-day.today .timeline-day-date { color: var(--amber); }
+.timeline-day-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.timeline-bar { height: 14px; border-radius: 3px; background: rgba(13,15,18,.06); position: relative; overflow: hidden; }
+.timeline-bar-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px; }
+.timeline-bar-fill.energy { background: var(--green); }
+.timeline-bar-fill.soreness { background: var(--orange); }
+.timeline-bar-fill.stress { background: var(--amber); }
+.timeline-day.missing .timeline-bar { background: rgba(13,15,18,.04); }
+.checkin-legend { display: flex; gap: 24px; padding: 0 40px 24px; }
+.checkin-legend-item { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t1); font-weight: 600; letter-spacing: 0.5px; }
+.checkin-legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+.checkin-legend-dot.energy { background: var(--green); }
+.checkin-legend-dot.soreness { background: var(--orange); }
+.checkin-legend-dot.stress { background: var(--amber); }
+
+/* ── Post-race recovery (compact) ────────────────── */
 .recovery-pills { display: flex; gap: 10px; padding: 0 40px 28px; flex-wrap: wrap; }
 .recovery-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; background: rgba(212,144,10,.10); }
 .recovery-pill-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px; color: var(--amber); }
 .recovery-pill-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
 
-/* Empty state — HealthKit awaiting */
-.empty-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0 40px 28px; }
-.empty-cell { background: rgba(13,15,18,.025); border: 1px dashed rgba(13,15,18,.14); border-radius: 10px; padding: 22px 20px; text-align: center; }
-.empty-cell-icon { font-family: 'Inter', sans-serif; font-size: 22px; color: var(--t3); }
-.empty-cell-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-top: 8px; }
-.empty-cell-state { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--amber); margin-top: 6px; font-weight: 600; text-transform: uppercase; }
+/* ── Insights ────────────────────────────────────── */
+.insights-list { padding: 0 40px 28px; display: flex; flex-direction: column; gap: 0; }
+.insight-row { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--divider); }
+.insight-row:first-child { border-top: none; padding-top: 4px; }
+.insight-icon { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; }
+.insight-icon.green { background: rgba(44,168,47,.12); color: var(--green); }
+.insight-icon.amber { background: rgba(212,144,10,.12); color: var(--amber); }
+.insight-icon.blue  { background: rgba(37,99,235,.12); color: var(--blue); }
+.insight-body { flex: 1; }
+.insight-title { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700; color: var(--t0); line-height: 1.4; }
+.insight-detail { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); line-height: 1.5; margin-top: 4px; }
 
-/* Check-in history */
-.checkin-row { display: grid; grid-template-columns: 100px repeat(3, 1fr) 100px; gap: 16px; align-items: center; padding: 14px 40px; border-top: 1px solid var(--divider); }
-.checkin-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
-.checkin-bar-wrap { display: flex; align-items: center; gap: 12px; }
-.checkin-bar-label { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); width: 60px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
-.checkin-bar { flex: 1; height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; position: relative; }
-.checkin-bar-fill { height: 100%; border-radius: 3px; }
-.checkin-bar-fill.energy { background: var(--green); }
-.checkin-bar-fill.soreness { background: var(--orange); }
-.checkin-bar-fill.stress { background: var(--amber); }
-.checkin-bar-val { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--t1); width: 20px; text-align: right; }
-.checkin-verdict { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; text-align: right; }
-.checkin-verdict.green { color: var(--green); }
-.checkin-verdict.amber { color: var(--amber); }
-.checkin-verdict.warn { color: var(--warn); }
+/* ── Data sources footer ─────────────────────────── */
+.sources-strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 40px 32px; }
+.source-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(13,15,18,.025); border-radius: 10px; }
+.source-pill-dot { width: 8px; height: 8px; border-radius: 50%; }
+.source-pill-dot.green { background: var(--green); }
+.source-pill-dot.amber { background: var(--amber); }
+.source-pill-dot.dim { background: var(--t3); }
+.source-pill-name { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--t0); }
+.source-pill-state { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
 </style>
 </head>
 <body>
@@ -141,136 +163,427 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <a class="nav-link" href="log-v4.html">Log</a>
       <a class="nav-link" href="profile-v4.html">Profile</a>
     </div>
-    <div class="nav-right"><div class="nav-avatar">DK</div></div>
+    <div class="nav-right"><div class="nav-avatar">DN</div></div>
   </div>
 </nav>
 
 <div class="page">
 
-  <!-- COACH STRIP -->
+  <!-- ═══════════════════════════════════
+       COACH STRIP — top-of-page narrative
+  ═══════════════════════════════════ -->
   <div class="coach-strip">
-    <div class="coach-left">
-      <div class="coach-label">
-        <span class="dot"></span>
-        COACH · YOUR BODY · 12 DAYS POST-PEAK
+    <div class="coach-label">
+      <span class="dot"></span>
+      COACH · SAT MAY 16 · HEALTH READOUT
+    </div>
+    <p class="coach-briefing">
+      <strong>Fitness is climbing, fatigue is back near baseline.</strong> CTL up 4 points
+      over the last 30 days, TSB sitting at +12 — productive zone, good place to start
+      Build phase. Sleep and RHR are clean. <strong>Watch:</strong> aerobic markers still
+      rebuilding from Big Sur — give threshold sessions another 10 days before pushing pace.
+    </p>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 1 — FORM CURVE (hero chart)
+  ═══════════════════════════════════ -->
+  <div class="card form-curve-card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Form Curve</div>
+        <div class="card-sub">Last 90 days · CTL · ATL · TSB · race markers</div>
       </div>
-      <p class="coach-briefing">
-        Glycogen and muscle fibers have caught up; <strong>tendons and aerobic
-        markers are still climbing back</strong>. Your check-ins from last week flagged
-        rising soreness — the load reset is doing what it should. <strong>Trust the
-        rebuild before chasing intensity.</strong>
+      <div class="card-meta"><strong style="color: var(--green);">+12 TSB · Fresh</strong></div>
+    </div>
+
+    <div class="form-stats">
+      <div class="form-stat">
+        <div class="form-stat-label">CTL · Fitness</div>
+        <div class="form-stat-val green">52</div>
+        <div class="form-stat-sub">28-day load · +4 vs 30 days ago</div>
+      </div>
+      <div class="form-stat">
+        <div class="form-stat-label">ATL · Fatigue</div>
+        <div class="form-stat-val orange">40</div>
+        <div class="form-stat-sub">7-day load · back near baseline</div>
+      </div>
+      <div class="form-stat">
+        <div class="form-stat-label">TSB · Form</div>
+        <div class="form-stat-val green">+12</div>
+        <div class="form-stat-sub">Productive zone · ready to push</div>
+      </div>
+    </div>
+
+    <div class="form-chart-legend">
+      <div class="form-chart-legend-item"><span class="form-chart-legend-dot green"></span>CTL Fitness</div>
+      <div class="form-chart-legend-item"><span class="form-chart-legend-dot orange"></span>ATL Fatigue</div>
+      <div class="form-chart-legend-item"><span class="form-chart-legend-dot race"></span>Race</div>
+    </div>
+
+    <div class="form-chart-wrap">
+      <svg viewBox="0 0 1200 320" width="100%" preserveAspectRatio="none" style="display:block;">
+        <!-- Grid: horizontal lines at load=20, 40, 60, 80 -->
+        <line x1="40" y1="40"  x2="1200" y2="40"  stroke="rgba(13,15,18,.05)" stroke-width="1"/>
+        <line x1="40" y1="100" x2="1200" y2="100" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
+        <line x1="40" y1="160" x2="1200" y2="160" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
+        <line x1="40" y1="220" x2="1200" y2="220" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
+        <line x1="40" y1="280" x2="1200" y2="280" stroke="rgba(13,15,18,.12)" stroke-width="1"/>
+
+        <!-- Y-axis labels -->
+        <text x="32" y="43"  font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">80</text>
+        <text x="32" y="103" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">60</text>
+        <text x="32" y="163" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">40</text>
+        <text x="32" y="223" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">20</text>
+
+        <!-- Race markers — vertical dashed lines.
+             Mar 15 LA Marathon (day 27 of 89): x = 40 + 27/89 * 1160 = 392
+             Apr 26 Big Sur (day 69 of 89):    x = 40 + 69/89 * 1160 = 939 -->
+        <line x1="392" y1="36" x2="392" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="392" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">LA MAR</text>
+
+        <line x1="939" y1="36" x2="939" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="939" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">BIG SUR</text>
+
+        <!-- ATL line (orange, jagged — reacts to hard sessions) -->
+        <polyline points="40,220 92,214 144,210 196,212 248,208 300,204 352,202 392,124 432,170 484,196 536,206 588,208 640,202 692,200 744,196 796,192 848,188 884,176 939,118 980,160 1032,184 1084,194 1136,198 1200,220"
+          fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+
+        <!-- CTL line (green, smooth slow climb 38 → 52) -->
+        <polyline points="40,166 144,164 248,162 352,158 456,154 560,150 664,146 768,140 872,136 976,134 1080,132 1200,124"
+          fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <!-- Today marker — bold vertical -->
+        <line x1="1200" y1="36" x2="1200" y2="280" stroke="var(--t0)" stroke-width="2"/>
+        <text x="1196" y="28" font-family="Inter" font-size="9" fill="var(--t0)" text-anchor="end" font-weight="700" letter-spacing="1">TODAY</text>
+
+        <!-- Today dots — current CTL and ATL values -->
+        <circle cx="1200" cy="124" r="5" fill="var(--green)" stroke="white" stroke-width="2"/>
+        <circle cx="1200" cy="220" r="5" fill="var(--orange)" stroke="white" stroke-width="2"/>
+
+        <!-- X-axis date labels -->
+        <text x="40"   y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)">Feb 16</text>
+        <text x="260"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Mar 1</text>
+        <text x="640"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Apr 1</text>
+        <text x="1020" y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">May 1</text>
+        <text x="1200" y="302" font-family="Inter" font-size="10" fill="var(--t0)" font-weight="600" text-anchor="end">May 16</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 2 — TODAY'S READINESS
+  ═══════════════════════════════════ -->
+  <div class="card readiness-card">
+    <!-- Ring + coach take -->
+    <div class="readiness-ring-section">
+      <div class="readiness-ring-header">
+        <span class="readiness-ring-label">Readiness</span>
+        <span class="readiness-ring-badge">Ready</span>
+      </div>
+      <div class="readiness-ring-wrap">
+        <svg width="240" height="240" viewBox="0 0 300 300">
+          <!-- 270° arc, r=130, full circ=816.8, track=612.6, gap=204.2 -->
+          <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="16" stroke-dasharray="612.61 204.20" stroke-linecap="round" transform="rotate(135 150 150)"/>
+          <circle cx="150" cy="150" r="130" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="539.10 277.70" stroke-linecap="round" transform="rotate(135 150 150)"/>
+          <text x="150" y="166" font-family="Bebas Neue" font-size="96" fill="var(--t0)" text-anchor="middle">88</text>
+          <text x="150" y="188" font-family="Inter" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
+        </svg>
+      </div>
+      <div class="readiness-ring-state">Building</div>
+      <p class="readiness-coach-take">
+        Body is taking the load well. <strong>Strain dipped Tue → Thu</strong> as the
+        threshold session settled — sleep covered the deficit. Ready for Sunday's long.
       </p>
     </div>
 
-    <div class="status-card">
-      <div class="status-label">Today's signals</div>
-      <div class="status-title">Holding steady</div>
-      <div class="status-rows">
-        <div class="status-row">
-          <span>Check-in</span>
-          <span class="right"><span class="dot mute"></span><strong>Not logged</strong></span>
+    <!-- Factor tiles -->
+    <div class="readiness-factors-section">
+      <div class="readiness-factors-label">What's Driving It</div>
+      <div class="readiness-factors">
+        <div class="factor-tile">
+          <div class="factor-tile-label">Sleep 7d</div>
+          <div class="factor-tile-val">7.4<span style="font-size:13px; color:var(--t2);">h</span></div>
+          <div class="factor-tile-state green">On baseline</div>
         </div>
-        <div class="status-row">
-          <span>Body systems</span>
-          <span class="right"><span class="dot amber"></span><strong>Rebuilding</strong></span>
+        <div class="factor-tile">
+          <div class="factor-tile-label">RHR</div>
+          <div class="factor-tile-val">48<span style="font-size:13px; color:var(--t2);">bpm</span></div>
+          <div class="factor-tile-state green">Steady</div>
         </div>
-        <div class="status-row">
-          <span>Acute load (ACWR)</span>
-          <span class="right"><span class="dot green"></span><strong>1.01</strong></span>
+        <div class="factor-tile">
+          <div class="factor-tile-label">HRV</div>
+          <div class="factor-tile-val">62<span style="font-size:13px; color:var(--t2);">ms</span></div>
+          <div class="factor-tile-state green">In range</div>
         </div>
-        <div class="status-row">
-          <span>HealthKit</span>
-          <span class="right"><span class="dot mute"></span><strong style="color: var(--amber);">Awaiting</strong></span>
+        <div class="factor-tile">
+          <div class="factor-tile-label">Strain 7d</div>
+          <div class="factor-tile-val">11.4</div>
+          <div class="factor-tile-state amber">Moderate</div>
+        </div>
+        <div class="factor-tile">
+          <div class="factor-tile-label">Check-In</div>
+          <div class="factor-tile-val">—</div>
+          <div class="factor-tile-state dim">Not logged</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- READINESS HERO -->
-  <div class="hero-card">
-    <div class="hero-left">
-      <div class="hero-eyebrow">READINESS · COMPOSITE</div>
-      <div class="hero-title">82</div>
-      <div class="hero-sub">Building back · clear for moderate work</div>
-      <p class="hero-explainer">
-        Your readiness is composed from training-load balance, recent recovery
-        signals, body-system status, and subjective check-ins when you log them.
-        Today's score is held back by tendon recovery still in window and one
-        missing check-in.
-      </p>
-
-      <div class="factor-bars">
-        <div class="factor-row">
-          <div class="factor-top">
-            <span class="factor-label">Training load (ACWR)</span>
-            <span class="factor-value green">1.01 · in zone</span>
-          </div>
-          <div class="factor-track"><div class="factor-fill green" style="width: 55%;"></div></div>
-        </div>
-        <div class="factor-row">
-          <div class="factor-top">
-            <span class="factor-label">Body systems</span>
-            <span class="factor-value amber">3 of 5 healed</span>
-          </div>
-          <div class="factor-track"><div class="factor-fill amber" style="width: 60%;"></div></div>
-        </div>
-        <div class="factor-row">
-          <div class="factor-top">
-            <span class="factor-label">Check-in (7d)</span>
-            <span class="factor-value green">avg 7.2 energy</span>
-          </div>
-          <div class="factor-track"><div class="factor-fill green" style="width: 72%;"></div></div>
-        </div>
-        <div class="factor-row">
-          <div class="factor-top">
-            <span class="factor-label">HRV / RHR / Sleep</span>
-            <span class="factor-value muted">Awaiting HealthKit</span>
-          </div>
-          <div class="factor-track"><div class="factor-fill muted" style="width: 0%;"></div></div>
-        </div>
+  <!-- ═══════════════════════════════════
+       SECTION 3 — RECOVERY VITALS
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Recovery Vitals</div>
+        <div class="card-sub">Last 30 days · daily readings from HealthKit + watch</div>
       </div>
     </div>
-
-    <div class="hero-right">
-      <div>
-        <div class="section-label">Training Load · Form Report</div>
-        <div class="load-stats">
-          <div class="load-stat">
-            <div class="load-stat-label">CTL · Fitness</div>
-            <div class="load-stat-val">42.3</div>
-            <div class="load-stat-sub">6-wk avg load</div>
-          </div>
-          <div class="load-stat">
-            <div class="load-stat-label">ATL · Fatigue</div>
-            <div class="load-stat-val">41.8</div>
-            <div class="load-stat-sub">7-day rolling</div>
-          </div>
-          <div class="load-stat">
-            <div class="load-stat-label">TSB · Form</div>
-            <div class="load-stat-val" style="color: var(--green);">+0.5</div>
-            <div class="load-stat-sub">Fresh enough</div>
-          </div>
+    <div class="vitals-grid">
+      <!-- Sleep -->
+      <div class="vital-tile">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Sleep</span>
         </div>
-
-        <div style="margin-top: 24px;">
-          <div class="section-label">Acute / Chronic Ratio</div>
-          <div class="acwr-bar"><div class="acwr-tick" style="left: 50%;"></div></div>
-          <div style="display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 6px;">
-            <span>Undertraining (&lt;0.8)</span>
-            <span style="color: var(--t0); font-weight: 600;">Sweet spot · 0.8–1.3</span>
-            <span>Spiked (&gt;1.5)</span>
-          </div>
-        </div>
+        <div class="vital-tile-value">7.4<span class="vital-tile-unit">h</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,18 14,16 28,20 42,14 56,12 70,18 84,16 98,14 112,22 126,16 140,12 154,10 168,14 182,10 196,8" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="vital-tile-status green">+0.4h vs 30d avg</div>
       </div>
-
-      <p style="font-family: 'Inter', sans-serif; font-size: 14px; font-style: italic; line-height: 1.55; color: var(--t1); padding-top: 20px; border-top: 1px solid var(--divider);">
-        Load is balanced and form is neutral. The plan can absorb the planned threshold
-        Tuesday without pushing you into spike territory.
-      </p>
+      <!-- Resting HR -->
+      <div class="vital-tile">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Resting HR</span>
+        </div>
+        <div class="vital-tile-value">48<span class="vital-tile-unit">bpm</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,12 14,14 28,12 42,10 56,12 70,14 84,12 98,16 112,14 126,12 140,14 154,12 168,10 182,12 196,12" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="vital-tile-status green">−2 bpm vs 30d avg</div>
+      </div>
+      <!-- HRV -->
+      <div class="vital-tile">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">HRV</span>
+        </div>
+        <div class="vital-tile-value">62<span class="vital-tile-unit">ms</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,16 14,18 28,14 42,12 56,16 70,18 84,14 98,10 112,12 126,16 140,12 154,10 168,8 182,12 196,10" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="vital-tile-status green">Trending up</div>
+      </div>
+      <!-- Body Mass -->
+      <div class="vital-tile sample">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Body Mass</span>
+          <span class="vital-tile-badge sample">Sample</span>
+        </div>
+        <div class="vital-tile-value">165<span class="vital-tile-unit">lb</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,14 14,12 28,14 42,16 56,14 70,16 84,18 98,16 112,18 126,16 140,18 154,16 168,18 182,20 196,18" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
+        </svg>
+        <div class="vital-tile-status amber">Connect HealthKit</div>
+      </div>
     </div>
   </div>
 
-  <!-- POST-RACE RECOVERY — compact strip · only renders when systems are still rebuilding -->
+  <!-- ═══════════════════════════════════
+       SECTION 4 — RUNNING FORM
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Running Form</div>
+        <div class="card-sub">Last 30 days · pulled from your watch on each run</div>
+      </div>
+    </div>
+    <div class="vitals-grid five">
+      <!-- Average HR per run -->
+      <div class="vital-tile">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Avg HR</span>
+        </div>
+        <div class="vital-tile-value">152<span class="vital-tile-unit">bpm</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,16 14,18 28,14 42,16 56,12 70,18 84,16 98,14 112,16 126,14 140,12 154,14 168,12 182,14 196,12" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="vital-tile-status green">Zone 2 most runs</div>
+      </div>
+      <!-- Cadence -->
+      <div class="vital-tile">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Cadence</span>
+        </div>
+        <div class="vital-tile-value">178<span class="vital-tile-unit">spm</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,20 14,18 28,16 42,18 56,16 70,14 84,16 98,14 112,12 126,14 140,12 154,10 168,12 182,10 196,8" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="vital-tile-status green">+3 spm vs 30d</div>
+      </div>
+      <!-- Vertical oscillation -->
+      <div class="vital-tile sample">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Vert. Osc.</span>
+          <span class="vital-tile-badge sample">Sample</span>
+        </div>
+        <div class="vital-tile-value">7.8<span class="vital-tile-unit">cm</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,10 14,12 28,10 42,14 56,12 70,16 84,14 98,18 112,16 126,18 140,20 154,18 168,22 182,20 196,22" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
+        </svg>
+        <div class="vital-tile-status amber">Needs Apple Watch S7+</div>
+      </div>
+      <!-- Stride length -->
+      <div class="vital-tile sample">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">Stride</span>
+          <span class="vital-tile-badge sample">Sample</span>
+        </div>
+        <div class="vital-tile-value">4.1<span class="vital-tile-unit">ft</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,20 14,22 28,18 42,20 56,18 70,16 84,18 98,16 112,14 126,16 140,14 154,12 168,14 182,12 196,10" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
+        </svg>
+        <div class="vital-tile-status amber">Connect HealthKit</div>
+      </div>
+      <!-- Ground contact -->
+      <div class="vital-tile sample">
+        <div class="vital-tile-header">
+          <span class="vital-tile-label">GCT</span>
+          <span class="vital-tile-badge sample">Sample</span>
+        </div>
+        <div class="vital-tile-value">248<span class="vital-tile-unit">ms</span></div>
+        <svg class="vital-tile-spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,12 14,14 28,12 42,16 56,14 70,18 84,16 98,18 112,20 126,18 140,20 154,22 168,20 182,22 196,24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4,2"/>
+        </svg>
+        <div class="vital-tile-status amber">Connect HealthKit</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 5 — CHECK-IN TIMELINE (14d)
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Check-In Timeline</div>
+        <div class="card-sub">Last 14 days · Energy · Soreness · Stress (1–10) · log today on /overview</div>
+      </div>
+    </div>
+
+    <div class="checkin-legend">
+      <div class="checkin-legend-item"><span class="checkin-legend-dot energy"></span>Energy</div>
+      <div class="checkin-legend-item"><span class="checkin-legend-dot soreness"></span>Soreness</div>
+      <div class="checkin-legend-item"><span class="checkin-legend-dot stress"></span>Stress</div>
+    </div>
+
+    <div class="checkin-timeline">
+      <!-- 14 days, oldest left → today right. Bar widths represent 1-10 score, dimmed bar = missing log. -->
+      <div class="timeline-day"><div class="timeline-day-date">5/3</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:80%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/4</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:50%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:40%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/5</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day missing"><div class="timeline-day-date">5/6</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"></div>
+          <div class="timeline-bar"></div>
+          <div class="timeline-bar"></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/7</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/8</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/9</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/10</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/11</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/12</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/13</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/14</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day"><div class="timeline-day-date">5/15</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
+          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
+        </div>
+      </div>
+      <div class="timeline-day today missing"><div class="timeline-day-date">5/16</div>
+        <div class="timeline-day-stack">
+          <div class="timeline-bar"></div>
+          <div class="timeline-bar"></div>
+          <div class="timeline-bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 6 — POST-RACE RECOVERY (compact, auto-hides 30d post-race)
+  ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
       <div class="card-title-group">
@@ -290,155 +603,78 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     </div>
   </div>
 
-  <!-- CHECK-IN HISTORY -->
+  <!-- ═══════════════════════════════════
+       SECTION 7 — INSIGHTS
+  ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
       <div class="card-title-group">
-        <div class="card-title">Daily Check-Ins</div>
-        <div class="card-sub"><strong>5 of 7</strong> logged this week · log today on /overview</div>
+        <div class="card-title">Insights</div>
+        <div class="card-sub">Pattern reads from the last 14 days</div>
       </div>
-      <div class="card-meta">Energy · soreness · stress, 1–10</div>
     </div>
-
-    <div class="checkin-row">
-      <div class="checkin-date">Wed May 14</div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Energy</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill energy" style="width: 70%;"></div></div>
-        <span class="checkin-bar-val">7</span>
+    <div class="insights-list">
+      <div class="insight-row">
+        <div class="insight-icon green">↑</div>
+        <div class="insight-body">
+          <div class="insight-title">Sleep is doing real work</div>
+          <div class="insight-detail">7.4h avg over the last 7 days, +24min vs your 30-day baseline. RHR followed it down 2 bpm. This is the cleanest recovery window since Big Sur.</div>
+        </div>
       </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Soreness</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill soreness" style="width: 40%;"></div></div>
-        <span class="checkin-bar-val">4</span>
+      <div class="insight-row">
+        <div class="insight-icon amber">!</div>
+        <div class="insight-body">
+          <div class="insight-title">Strain accumulated mid-week, recovered by Friday</div>
+          <div class="insight-detail">Tuesday threshold pushed strain to 14.2. By Friday it was back to 9. Sleep covered it — that's the pattern you want. If strain stays elevated past 72h, that's the call to back off.</div>
+        </div>
       </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Stress</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill stress" style="width: 30%;"></div></div>
-        <span class="checkin-bar-val">3</span>
+      <div class="insight-row">
+        <div class="insight-icon blue">i</div>
+        <div class="insight-body">
+          <div class="insight-title">Aerobic markers still rebuilding from Big Sur</div>
+          <div class="insight-detail">It's been 20 days. The 2–6 week window for mitochondrial recovery means quality threshold work won't feel fully normal for another ~14 days. Don't read soft tempo paces as a fitness drop — read them as the body finishing the marathon.</div>
+        </div>
       </div>
-      <div class="checkin-verdict green">Steady</div>
-    </div>
-
-    <div class="checkin-row">
-      <div class="checkin-date">Tue May 13</div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Energy</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill energy" style="width: 60%;"></div></div>
-        <span class="checkin-bar-val">6</span>
+      <div class="insight-row">
+        <div class="insight-icon amber">!</div>
+        <div class="insight-body">
+          <div class="insight-title">Check-in logging gap on May 6</div>
+          <div class="insight-detail">Missed one day. Two missed in a row would dim the strain/recovery signal — daily logs are how the engine learns your normal.</div>
+        </div>
       </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Soreness</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill soreness" style="width: 50%;"></div></div>
-        <span class="checkin-bar-val">5</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Stress</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill stress" style="width: 40%;"></div></div>
-        <span class="checkin-bar-val">4</span>
-      </div>
-      <div class="checkin-verdict green">Steady</div>
-    </div>
-
-    <div class="checkin-row">
-      <div class="checkin-date">Mon May 12</div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Energy</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill energy" style="width: 40%;"></div></div>
-        <span class="checkin-bar-val">4</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Soreness</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill soreness" style="width: 70%;"></div></div>
-        <span class="checkin-bar-val">7</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Stress</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill stress" style="width: 60%;"></div></div>
-        <span class="checkin-bar-val">6</span>
-      </div>
-      <div class="checkin-verdict amber">Poor day</div>
-    </div>
-
-    <div class="checkin-row">
-      <div class="checkin-date">Sun May 11</div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Energy</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill energy" style="width: 80%;"></div></div>
-        <span class="checkin-bar-val">8</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Soreness</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill soreness" style="width: 30%;"></div></div>
-        <span class="checkin-bar-val">3</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Stress</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill stress" style="width: 20%;"></div></div>
-        <span class="checkin-bar-val">2</span>
-      </div>
-      <div class="checkin-verdict green">Steady</div>
-    </div>
-
-    <div class="checkin-row">
-      <div class="checkin-date">Sat May 10</div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Energy</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill energy" style="width: 70%;"></div></div>
-        <span class="checkin-bar-val">7</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Soreness</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill soreness" style="width: 50%;"></div></div>
-        <span class="checkin-bar-val">5</span>
-      </div>
-      <div class="checkin-bar-wrap">
-        <span class="checkin-bar-label">Stress</span>
-        <div class="checkin-bar"><div class="checkin-bar-fill stress" style="width: 30%;"></div></div>
-        <span class="checkin-bar-val">3</span>
-      </div>
-      <div class="checkin-verdict green">Steady</div>
-    </div>
-
-    <div style="padding: 18px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
-      Decision Matrix: 1 poor day in 7 — coach holds the plan steady. Threshold ≥ 3 poor days → suppress quality.
     </div>
   </div>
 
-  <!-- HEALTHKIT AWAITING -->
+  <!-- ═══════════════════════════════════
+       SECTION 8 — DATA SOURCES (footer)
+  ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
       <div class="card-title-group">
-        <div class="card-title">Wearable Signals</div>
-        <div class="card-sub">HealthKit integration pending · these surfaces light up the moment data flows</div>
+        <div class="card-title">Connected Data</div>
+        <div class="card-sub">Which streams are feeding the engine</div>
       </div>
-      <div class="card-meta">M2 deliverable</div>
     </div>
-
-    <div class="empty-grid">
-      <div class="empty-cell">
-        <div class="empty-cell-icon">💓</div>
-        <div class="empty-cell-label">HRV</div>
-        <div class="empty-cell-state">Awaiting HealthKit</div>
+    <div class="sources-strip">
+      <div class="source-pill">
+        <span class="source-pill-dot green"></span>
+        <span class="source-pill-name">Strava</span>
+        <span class="source-pill-state">Workouts, HR, pace, cadence</span>
       </div>
-      <div class="empty-cell">
-        <div class="empty-cell-icon">💤</div>
-        <div class="empty-cell-label">Sleep</div>
-        <div class="empty-cell-state">Awaiting HealthKit</div>
+      <div class="source-pill">
+        <span class="source-pill-dot amber"></span>
+        <span class="source-pill-name">HealthKit</span>
+        <span class="source-pill-state">Not connected · would unlock sleep, HRV, RHR, body mass, running form</span>
       </div>
-      <div class="empty-cell">
-        <div class="empty-cell-icon">🫀</div>
-        <div class="empty-cell-label">Resting HR</div>
-        <div class="empty-cell-state">Awaiting HealthKit</div>
-      </div>
-      <div class="empty-cell">
-        <div class="empty-cell-icon">🫁</div>
-        <div class="empty-cell-label">VO₂max</div>
-        <div class="empty-cell-state">Awaiting HealthKit</div>
+      <div class="source-pill">
+        <span class="source-pill-dot dim"></span>
+        <span class="source-pill-name">Garmin / COROS</span>
+        <span class="source-pill-state">Optional · adds running power, GCT, vertical oscillation</span>
       </div>
     </div>
   </div>
 
 </div>
+
 </body>
 </html>
