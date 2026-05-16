@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Races</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* v4 tokens — match training-v4 / overview-v4. */
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+/* Nav (shared) */
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* ── Coach strip ────────────────────────────────────────── */
+.coach-strip { display: flex; align-items: stretch; justify-content: space-between; min-height: 160px; margin-bottom: 16px; }
+.coach-left { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+.coach-label .dot-green { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; }
+.coach-briefing strong { font-weight: 700; }
+
+/* Right side: next-race countdown card */
+.race-next-card {
+  flex-shrink: 0; margin-left: 48px; width: 300px;
+  display: flex; flex-direction: column;
+  background: var(--card); border-radius: 20px; padding: 22px 24px;
+  box-shadow: var(--card-shadow);
+}
+.race-next-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
+.race-next-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 16px; color: var(--t0); margin-top: 8px; line-height: 1.2; }
+.race-next-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 3px; }
+.race-next-days-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.race-next-days { font-family: 'Bebas Neue', sans-serif; font-size: 72px; line-height: 0.86; color: var(--orange); letter-spacing: -1px; }
+.race-next-days-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; line-height: 1.3; }
+
+/* ── A-race hero ────────────────────────────────────────── */
+.a-race-card {
+  background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow);
+  display: grid; grid-template-columns: 1fr 460px;
+  margin-top: 16px; overflow: hidden;
+}
+.a-race-left { padding: 40px; display: flex; flex-direction: column; }
+.a-race-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
+.a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: 110px; line-height: 0.86; letter-spacing: -3px; color: var(--t0); flex: 0 0 auto; margin-left: -6px; }
+.a-race-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--orange); margin-top: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
+.a-race-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 16px; max-width: 540px; }
+
+.path-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin-top: 28px;
+}
+.path-stat {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 16px 20px;
+}
+.path-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.path-stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; color: var(--t0); margin-top: 6px; }
+.path-stat-value.green { color: var(--green); }
+.path-stat-value.orange { color: var(--orange); }
+.path-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
+
+.a-race-right {
+  background: rgba(232,93,38,.04); padding: 40px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.path-section-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+
+.path-progress { margin-top: 4px; }
+.path-progress-bar { height: 8px; background: rgba(13,15,18,.07); border-radius: 4px; overflow: hidden; }
+.path-progress-fill { height: 100%; background: var(--orange); border-radius: 4px; }
+.path-progress-meta { display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 8px; }
+.path-progress-meta strong { color: var(--t1); font-weight: 600; }
+
+.coach-take {
+  font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55; color: var(--t1);
+  margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--divider);
+}
+.coach-take strong { color: var(--t0); font-weight: 700; }
+
+/* ── Card with title-first hierarchy (matches /training) ─── */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-sub strong { color: var(--t1); font-weight: 600; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+
+/* ── Race history rows ───────────────────────────────────── */
+.race-row {
+  display: grid;
+  grid-template-columns: 28px 100px 1fr 100px 110px;
+  align-items: center;
+  padding: 16px 40px;
+  gap: 16px;
+  border-top: 1px solid var(--divider);
+}
+.race-row:first-of-type { border-top: 1px solid var(--divider); }
+.race-row.vdot-anchor { background: rgba(44,168,47,.04); }
+.race-row-tag {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+  background: rgba(13,15,18,.07); color: var(--t2);
+}
+.race-row-tag.vdot { background: rgba(44,168,47,.18); color: var(--green); }
+.race-row-tag.passion { background: rgba(212,144,10,.18); color: var(--amber); }
+.race-row-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
+.race-row-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
+.race-row-name-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
+.race-row-time { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: var(--t0); line-height: 1; text-align: right; }
+.race-row-pace { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 3px; text-align: right; }
+.race-row-status {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase; text-align: right;
+  color: var(--t2);
+}
+.race-row-status.vdot { color: var(--green); }
+.race-row-status.passion { color: var(--amber); }
+.race-row-status.training { color: var(--t2); }
+
+/* ── PRs grid ─────────────────────────────────────────────── */
+.prs-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 0 40px 28px;
+}
+.pr-cell {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 18px 20px;
+}
+.pr-distance { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; color: var(--t1); text-transform: uppercase; }
+.pr-time { font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.pr-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
+.pr-meta strong { color: var(--t1); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link active" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link" href="log-v4.html">Log</a>
+      <a class="nav-link" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right"><div class="nav-avatar">DK</div></div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- COACH STRIP -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot-green"></span>
+        COACH · RACE CALENDAR · 93 DAYS TO THE TEST
+      </div>
+      <p class="coach-briefing">
+        Three races in the last thirty days, and the engine learned from all three.
+        <strong>Powered by the Mouse</strong> in February is still your best VDOT signal —
+        a sharp, well-paced effort in winter. Big Sur and Sombrero were rich miles but not
+        sharpening miles. <strong>AFC Half is where it counts.</strong>
+      </p>
+    </div>
+
+    <div class="race-next-card">
+      <div class="race-next-label">Next A-Race</div>
+      <div class="race-next-name">Americas Finest City Half</div>
+      <div class="race-next-meta">Aug 16, 2026 · San Diego · 13.1 mi</div>
+      <div class="race-next-days-row">
+        <span class="race-next-days">93</span>
+        <span class="race-next-days-unit">days<br>to race</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- A-RACE HERO -->
+  <div class="a-race-card">
+    <div class="a-race-left">
+      <div class="a-race-eyebrow">A-RACE · GOAL TIME 1:35:00</div>
+      <div class="a-race-title">AFC<br>HALF</div>
+      <div class="a-race-sub">Americas Finest City · Aug 16</div>
+      <p class="a-race-explainer">
+        Your test race. The full 14-week plan points here. Goal of <strong>1:35:00</strong>
+        is at 7:15/mi — about 8 seconds per mile faster than your current threshold pace.
+        Closeable with disciplined work.
+      </p>
+
+      <div class="path-stats">
+        <div class="path-stat">
+          <div class="path-stat-label">Current Fitness</div>
+          <div class="path-stat-value">1:36:42</div>
+          <div class="path-stat-sub">VDOT 48.1 · Riegel to 13.1</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Gap to Goal</div>
+          <div class="path-stat-value orange">−8<span style="font-size:18px; color:var(--t2);">s/mi</span></div>
+          <div class="path-stat-sub">≈ 1:42 over the half</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Feasibility</div>
+          <div class="path-stat-value green">On track</div>
+          <div class="path-stat-sub">~0.5 VDOT/wk closes it</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="a-race-right">
+      <div>
+        <div class="path-section-label">Path to the Line</div>
+        <div class="path-progress">
+          <div class="path-progress-bar">
+            <div class="path-progress-fill" style="width: 7%;"></div>
+          </div>
+          <div class="path-progress-meta">
+            <span><strong>Week 1</strong> of 14 · Base phase</span>
+            <span>7%</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+          <div class="path-section-label">Coach's Next Move</div>
+          <p style="font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55; color: var(--t0);">
+            Build the aerobic base for four weeks. First real threshold dose lands in
+            <strong>24 days</strong> when the Build phase opens. That's where the half-marathon
+            pace starts to feel sustainable.
+          </p>
+        </div>
+      </div>
+
+      <p class="coach-take">
+        <strong>Trust the easy.</strong> The race is won in the workouts you didn't try to win.
+      </p>
+    </div>
+  </div>
+
+  <!-- RACE HISTORY -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Recent Races</div>
+        <div class="card-sub"><strong>5 races</strong> in the last 4 months · ranked by VDOT contribution</div>
+      </div>
+      <div class="card-meta">Auto-classified by the coach</div>
+    </div>
+
+    <!-- Powered by the Mouse — VDOT anchor -->
+    <div class="race-row vdot-anchor">
+      <span class="race-row-tag vdot">★</span>
+      <div class="race-row-date">Feb 1</div>
+      <div>
+        <div class="race-row-name">Powered by the Mouse for a PR</div>
+        <div class="race-row-name-sub">Half Marathon · 13.38 mi · Disneyland</div>
+      </div>
+      <div>
+        <div class="race-row-time">1:34:54</div>
+        <div class="race-row-pace">7:05/mi</div>
+      </div>
+      <div class="race-row-status vdot">VDOT anchor<br><span style="font-weight:400; color:var(--t2);">48.1 · 3 mo ago</span></div>
+    </div>
+
+    <!-- Sombrero -->
+    <div class="race-row">
+      <span class="race-row-tag passion">♥</span>
+      <div class="race-row-date">May 3</div>
+      <div>
+        <div class="race-row-name">Sombrero Half Marathon</div>
+        <div class="race-row-name-sub">Half Marathon · 13.16 mi · anniversary run</div>
+      </div>
+      <div>
+        <div class="race-row-time">1:40:57</div>
+        <div class="race-row-pace">7:40/mi</div>
+      </div>
+      <div class="race-row-status passion">Passion run<br><span style="font-weight:400; color:var(--t2);">VDOT 45 · 12d ago</span></div>
+    </div>
+
+    <!-- Big Sur -->
+    <div class="race-row">
+      <span class="race-row-tag">M</span>
+      <div class="race-row-date">Apr 26</div>
+      <div>
+        <div class="race-row-name">Big Sur Marathon</div>
+        <div class="race-row-name-sub">Marathon · 26.2 mi · hilly · early-season</div>
+      </div>
+      <div>
+        <div class="race-row-time">3:36:55</div>
+        <div class="race-row-pace">8:17/mi</div>
+      </div>
+      <div class="race-row-status training">Adventure race<br><span style="font-weight:400; color:var(--t2);">course-discounted</span></div>
+    </div>
+
+    <!-- Point Magu -->
+    <div class="race-row">
+      <span class="race-row-tag">B</span>
+      <div class="race-row-date">Apr 18</div>
+      <div>
+        <div class="race-row-name">Point Magu Half Marathon</div>
+        <div class="race-row-name-sub">Half Marathon · 13.5 mi · trail</div>
+      </div>
+      <div>
+        <div class="race-row-time">2:09:02</div>
+        <div class="race-row-pace">9:33/mi</div>
+      </div>
+      <div class="race-row-status training">B-race<br><span style="font-weight:400; color:var(--t2);">VDOT 38 · trail-discounted</span></div>
+    </div>
+
+    <!-- Rose Bowl -->
+    <div class="race-row">
+      <span class="race-row-tag">B</span>
+      <div class="race-row-date">Jan 18</div>
+      <div>
+        <div class="race-row-name">Rose Bowl Half Marathon</div>
+        <div class="race-row-name-sub">Half Marathon · 13.33 mi</div>
+      </div>
+      <div>
+        <div class="race-row-time">1:38:38</div>
+        <div class="race-row-pace">7:24/mi</div>
+      </div>
+      <div class="race-row-status training">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 46 · 4 mo ago</span></div>
+    </div>
+
+    <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
+      ★ VDOT anchor — best comparable effort · ♥ Passion run — not weighted as a fitness test · B-races and adventure runs course-discount where needed.
+    </div>
+  </div>
+
+  <!-- PRs by distance -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Personal Records</div>
+        <div class="card-sub">All time bests · validated efforts only</div>
+      </div>
+      <div class="card-meta">From <strong>87</strong> logged runs</div>
+    </div>
+
+    <div class="prs-grid">
+      <div class="pr-cell">
+        <div class="pr-distance">5K</div>
+        <div class="pr-time">19:28</div>
+        <div class="pr-meta"><strong>Pasadena 5K</strong> · 2 yr ago</div>
+      </div>
+      <div class="pr-cell">
+        <div class="pr-distance">10K</div>
+        <div class="pr-time">41:12</div>
+        <div class="pr-meta"><strong>Carlsbad 10K</strong> · 14 mo ago</div>
+      </div>
+      <div class="pr-cell">
+        <div class="pr-distance">Half</div>
+        <div class="pr-time">1:32:08</div>
+        <div class="pr-meta"><strong>Long Beach Half</strong> · 18 mo ago</div>
+      </div>
+      <div class="pr-cell">
+        <div class="pr-distance">Marathon</div>
+        <div class="pr-time">3:18:42</div>
+        <div class="pr-meta"><strong>CIM</strong> · 6 mo ago</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
