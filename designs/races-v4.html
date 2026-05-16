@@ -133,7 +133,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 /* ── Race history rows ───────────────────────────────────── */
 .race-row {
   display: grid;
-  grid-template-columns: 80px 28px 1fr 100px 110px;
+  grid-template-columns: auto 28px 1fr 100px 110px;
   align-items: center;
   padding: 16px 40px;
   gap: 20px;
@@ -326,6 +326,14 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 }
 .races-timeline-station.priority-a .races-timeline-away { color: var(--orange); }
 .races-timeline-station.priority-b .races-timeline-away { color: var(--amber); }
+
+/* Above-placement: read top-down as days-away → goal → pace → name → date,
+   so the date sits closest to the badge (mirrors the below layout's date-at-top). */
+.races-timeline-station.placement-above .races-timeline-away { order: 1; margin-top: 0; }
+.races-timeline-station.placement-above .races-timeline-goal { order: 2; margin-top: 8px; }
+.races-timeline-station.placement-above .races-timeline-pace { order: 3; margin-top: 2px; }
+.races-timeline-station.placement-above .races-timeline-name { order: 4; margin-top: 8px; }
+.races-timeline-station.placement-above .races-timeline-date { order: 5; margin-top: 6px; }
 </style>
 </head>
 <body>
