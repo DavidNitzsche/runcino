@@ -63,26 +63,42 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .form-chart-legend-dot.orange { background: var(--orange); }
 .form-chart-legend-dot.race { background: transparent; border: 1.5px dashed var(--orange); }
 
-/* ── Readiness section ───────────────────────────── */
-.readiness-card { display: grid; grid-template-columns: 360px 1fr; gap: 0; padding: 0; overflow: hidden; }
-.readiness-ring-section { padding: 40px; border-right: 1px solid var(--divider); display: flex; flex-direction: column; }
-.readiness-ring-header { display: flex; align-items: center; gap: 10px; }
-.readiness-ring-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
-.readiness-ring-badge { padding: 4px 12px; border-radius: 20px; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; background: rgba(44,168,47,.12); color: var(--green); }
-.readiness-ring-wrap { display: flex; justify-content: center; margin-top: 8px; }
-.readiness-ring-state { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 2.5px; color: var(--green); text-align: center; text-transform: uppercase; margin-top: 4px; }
-.readiness-coach-take { font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.55; color: var(--t1); margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--divider); font-style: italic; }
-.readiness-coach-take strong { color: var(--t0); font-weight: 700; font-style: normal; }
-.readiness-factors-section { padding: 40px; }
-.readiness-factors-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 18px; }
-.readiness-factors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-.factor-tile { padding: 16px 14px; background: rgba(13,15,18,.025); border-radius: 10px; text-align: center; }
-.factor-tile-label { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
-.factor-tile-val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; line-height: 1; color: var(--t0); margin-top: 8px; letter-spacing: -0.5px; }
-.factor-tile-state { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 8px; }
-.factor-tile-state.green { color: var(--green); }
-.factor-tile-state.amber { color: var(--amber); }
-.factor-tile-state.dim { color: var(--t3); }
+/* ── Health hero — 2-column big-title pattern matching /overview · /races ── */
+.health-hero { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); display: grid; grid-template-columns: 1fr 460px; margin-top: 16px; overflow: hidden; }
+
+/* Left column — eyebrow, huge Bebas title, stat pills, coach take */
+.health-hero-left { padding: 40px; display: flex; flex-direction: column; }
+.health-hero-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
+.health-hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 280px; line-height: 0.86; letter-spacing: -4px; color: var(--t0); margin-left: -6px; text-transform: uppercase; }
+.health-hero-stats { display: flex; gap: 10px; margin-top: 28px; }
+.health-hero-stat { padding: 14px 18px; background: rgba(13,15,18,.025); border-radius: 12px; flex: 1; }
+.health-hero-stat-row { display: flex; align-items: baseline; gap: 4px; }
+.health-hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; }
+.health-hero-stat-unit { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-weight: 500; }
+.health-hero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); margin-top: 6px; text-transform: uppercase; font-weight: 600; }
+.health-hero-coach-take { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); margin-top: 24px; font-style: italic; }
+.health-hero-coach-take strong { color: var(--t0); font-weight: 700; font-style: normal; }
+
+/* Right column — readiness ring + 5 trend bars (matches /overview hero right) */
+.health-hero-right { background: rgba(13,15,18,.02); padding: 40px; display: flex; flex-direction: column; }
+.health-hero-right-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.health-hero-right-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
+.health-hero-right-badge { background: rgba(44,168,47,.12); color: var(--green); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+.health-hero-ring { display: flex; justify-content: center; }
+.health-hero-state { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 3px; color: var(--green); text-align: center; text-transform: uppercase; margin-top: 16px; margin-bottom: 24px; }
+.health-trend-rows { display: flex; flex-direction: column; gap: 14px; }
+.health-trend-row { display: flex; flex-direction: column; gap: 6px; }
+.health-trend-row-top { display: flex; align-items: baseline; justify-content: space-between; }
+.health-trend-row-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
+.health-trend-row-value { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; color: var(--t0); }
+.health-trend-row-value.green { color: var(--green); }
+.health-trend-row-value.amber { color: var(--amber); }
+.health-trend-row-value.dim { color: var(--t2); }
+.health-trend-bar-track { width: 100%; height: 8px; background: rgba(13,15,18,.07); border-radius: 4px; position: relative; overflow: hidden; }
+.health-trend-bar-fill { height: 100%; border-radius: 4px; position: absolute; left: 0; top: 0; }
+.health-trend-bar-fill.green { background: var(--green); }
+.health-trend-bar-fill.amber { background: var(--amber); }
+.health-trend-bar-fill.dim { background: rgba(13,15,18,.25); }
 
 /* ── Vitals grid (sparkline tiles) ───────────────── */
 .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 40px 32px; }
@@ -108,7 +124,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .vital-tile-range-marker { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--green); transform: translate(-50%, -50%); border: 2px solid white; box-shadow: 0 0 0 1px rgba(13,15,18,.20); }
 .vital-tile-range-marker.amber { background: var(--amber); }
 .vital-tile-range-marker.dim   { background: var(--t2); }
-.vital-tile-range-period { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t3); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 6px; text-align: right; }
 .vital-tile-status { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
 .vital-tile-status.green { color: var(--green); }
 .vital-tile-status.amber { color: var(--amber); }
@@ -200,57 +215,88 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   <!-- ═══════════════════════════════════
        SECTION 1 — TODAY'S READINESS (hero)
   ═══════════════════════════════════ -->
-  <div class="card readiness-card">
-    <!-- Ring + coach take -->
-    <div class="readiness-ring-section">
-      <div class="readiness-ring-header">
-        <span class="readiness-ring-label">Readiness</span>
-        <span class="readiness-ring-badge">Ready</span>
+  <div class="health-hero">
+    <!-- LEFT — eyebrow + huge title + stat pills + coach take -->
+    <div class="health-hero-left">
+      <div class="health-hero-eyebrow">TODAY · SAT MAY 16 · HEALTH</div>
+      <div class="health-hero-title">READY</div>
+
+      <div class="health-hero-stats">
+        <div class="health-hero-stat">
+          <div class="health-hero-stat-row"><span class="health-hero-stat-val">7.4</span><span class="health-hero-stat-unit">h</span></div>
+          <div class="health-hero-stat-label">Sleep 7d</div>
+        </div>
+        <div class="health-hero-stat">
+          <div class="health-hero-stat-row"><span class="health-hero-stat-val">48</span><span class="health-hero-stat-unit">bpm</span></div>
+          <div class="health-hero-stat-label">Resting HR</div>
+        </div>
+        <div class="health-hero-stat">
+          <div class="health-hero-stat-row"><span class="health-hero-stat-val">62</span><span class="health-hero-stat-unit">ms</span></div>
+          <div class="health-hero-stat-label">HRV</div>
+        </div>
+        <div class="health-hero-stat">
+          <div class="health-hero-stat-row"><span class="health-hero-stat-val">11.4</span></div>
+          <div class="health-hero-stat-label">Strain 7d</div>
+        </div>
       </div>
-      <div class="readiness-ring-wrap">
+
+      <p class="health-hero-coach-take">
+        Body is taking the load well. <strong>Strain dipped Tue → Thu</strong> as the
+        threshold session settled — sleep covered the deficit. Ready for Sunday's long.
+      </p>
+    </div>
+
+    <!-- RIGHT — readiness ring + 5 trend bars -->
+    <div class="health-hero-right">
+      <div class="health-hero-right-header">
+        <span class="health-hero-right-label">Readiness</span>
+        <span class="health-hero-right-badge">Ready</span>
+      </div>
+      <div class="health-hero-ring">
         <svg width="280" height="280" viewBox="0 0 300 300">
-          <!-- 270° arc, r=130, full circ=816.8, track=612.6, gap=204.2 -->
           <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="16" stroke-dasharray="612.61 204.20" stroke-linecap="round" transform="rotate(135 150 150)"/>
           <circle cx="150" cy="150" r="130" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="539.10 277.70" stroke-linecap="round" transform="rotate(135 150 150)"/>
           <text x="150" y="166" font-family="Bebas Neue" font-size="96" fill="var(--t0)" text-anchor="middle">88</text>
           <text x="150" y="188" font-family="Inter" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
         </svg>
       </div>
-      <div class="readiness-ring-state">Building</div>
-      <p class="readiness-coach-take">
-        Body is taking the load well. <strong>Strain dipped Tue → Thu</strong> as the
-        threshold session settled — sleep covered the deficit. Ready for Sunday's long.
-      </p>
-    </div>
+      <div class="health-hero-state">Building</div>
 
-    <!-- Factor tiles -->
-    <div class="readiness-factors-section">
-      <div class="readiness-factors-label">What's Driving It</div>
-      <div class="readiness-factors">
-        <div class="factor-tile">
-          <div class="factor-tile-label">Sleep 7d</div>
-          <div class="factor-tile-val">7.4<span style="font-size:13px; color:var(--t2);">h</span></div>
-          <div class="factor-tile-state green">On baseline</div>
+      <div class="health-trend-rows">
+        <div class="health-trend-row">
+          <div class="health-trend-row-top">
+            <span class="health-trend-row-label">Sleep 7d</span>
+            <span class="health-trend-row-value green">+0.4h</span>
+          </div>
+          <div class="health-trend-bar-track"><div class="health-trend-bar-fill green" style="width:68%;"></div></div>
         </div>
-        <div class="factor-tile">
-          <div class="factor-tile-label">RHR</div>
-          <div class="factor-tile-val">48<span style="font-size:13px; color:var(--t2);">bpm</span></div>
-          <div class="factor-tile-state green">Steady</div>
+        <div class="health-trend-row">
+          <div class="health-trend-row-top">
+            <span class="health-trend-row-label">Resting HR</span>
+            <span class="health-trend-row-value green">−2 bpm</span>
+          </div>
+          <div class="health-trend-bar-track"><div class="health-trend-bar-fill green" style="width:55%;"></div></div>
         </div>
-        <div class="factor-tile">
-          <div class="factor-tile-label">HRV</div>
-          <div class="factor-tile-val">62<span style="font-size:13px; color:var(--t2);">ms</span></div>
-          <div class="factor-tile-state green">In range</div>
+        <div class="health-trend-row">
+          <div class="health-trend-row-top">
+            <span class="health-trend-row-label">HRV</span>
+            <span class="health-trend-row-value green">+4 ms</span>
+          </div>
+          <div class="health-trend-bar-track"><div class="health-trend-bar-fill green" style="width:62%;"></div></div>
         </div>
-        <div class="factor-tile">
-          <div class="factor-tile-label">Strain 7d</div>
-          <div class="factor-tile-val">11.4</div>
-          <div class="factor-tile-state amber">Moderate</div>
+        <div class="health-trend-row">
+          <div class="health-trend-row-top">
+            <span class="health-trend-row-label">Strain 7d</span>
+            <span class="health-trend-row-value amber">11.4 · Moderate</span>
+          </div>
+          <div class="health-trend-bar-track"><div class="health-trend-bar-fill amber" style="width:45%;"></div></div>
         </div>
-        <div class="factor-tile">
-          <div class="factor-tile-label">Check-In</div>
-          <div class="factor-tile-val">—</div>
-          <div class="factor-tile-state dim">Not logged</div>
+        <div class="health-trend-row">
+          <div class="health-trend-row-top">
+            <span class="health-trend-row-label">Check-In</span>
+            <span class="health-trend-row-value dim">Not logged</span>
+          </div>
+          <div class="health-trend-bar-track"><div class="health-trend-bar-fill dim" style="width:0%;"></div></div>
         </div>
       </div>
     </div>
@@ -360,8 +406,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">8.2h</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 7.0h</div>
-        <div class="vital-tile-status green">+0.4h vs avg · trending up</div>
+        <div class="vital-tile-status green">+0.4h vs avg · 30d</div>
       </div>
 
       <!-- Resting HR — today 48, range 46-52, avg 50. Marker at 33%, avg at 67% -->
@@ -376,7 +421,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">52</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 50 bpm</div>
         <div class="vital-tile-status green">−2 bpm vs avg · steady</div>
       </div>
 
@@ -392,7 +436,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">68</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 58 ms</div>
         <div class="vital-tile-status green">+4 ms vs avg · trending up</div>
       </div>
 
@@ -411,7 +454,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">167</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 165 lb</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
     </div>
@@ -440,7 +482,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">162</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 153 bpm</div>
         <div class="vital-tile-status green">Zone 2 most runs</div>
       </div>
 
@@ -456,7 +497,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">182</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 175 spm</div>
         <div class="vital-tile-status green">+3 spm vs avg</div>
       </div>
 
@@ -475,7 +515,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">8.6</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 8.0 cm</div>
         <div class="vital-tile-status amber">Needs Apple Watch S7+</div>
       </div>
 
@@ -494,7 +533,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">4.3</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 4.0 ft</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
 
@@ -513,7 +551,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
           <span class="vital-tile-range-end right">270</span>
         </div>
-        <div class="vital-tile-range-period">30-day range · avg 258 ms</div>
         <div class="vital-tile-status amber">Connect HealthKit</div>
       </div>
     </div>
