@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Log</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* Coach strip */
+.coach-strip { display: flex; align-items: stretch; justify-content: space-between; min-height: 160px; margin-bottom: 16px; }
+.coach-left { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+.coach-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; }
+.coach-briefing strong { font-weight: 700; }
+
+/* Connect-Strava status (right-side mini-card) */
+.strava-card { flex-shrink: 0; margin-left: 48px; width: 300px; background: var(--card); border-radius: 20px; padding: 22px 24px; box-shadow: var(--card-shadow); display: flex; flex-direction: column; gap: 8px; }
+.strava-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
+.strava-status { display: flex; align-items: center; gap: 10px; }
+.strava-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
+.strava-text { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px; color: var(--t0); }
+.strava-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
+.strava-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.strava-stat { background: rgba(13,15,18,.04); border-radius: 8px; padding: 10px 12px; }
+.strava-stat-label { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.strava-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; line-height: 1; color: var(--t0); margin-top: 4px; }
+
+/* YTD hero */
+.hero-card { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); padding: 40px; margin-top: 16px; }
+.hero-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 18px; }
+.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; font-weight: 400; color: var(--t0); margin-bottom: 6px; letter-spacing: 0.5px; text-transform: none; }
+.hero-title-line { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.hero-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; letter-spacing: 0.3px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 28px; }
+.hero-stat { background: rgba(13,15,18,.03); border: 1px solid var(--divider); border-radius: 12px; padding: 22px 22px; }
+.hero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 0.86; color: var(--t0); margin-top: 10px; letter-spacing: -1px; }
+.hero-stat-val .unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); letter-spacing: 1px; margin-left: 4px; text-transform: uppercase; font-weight: 600; }
+.hero-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 8px; }
+.hero-stat-sub strong { color: var(--t1); font-weight: 600; }
+
+/* Card pattern */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-sub strong { color: var(--t1); font-weight: 600; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+
+/* Monthly bars */
+.monthly-bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: end; height: 140px; padding: 0 40px; }
+.month-bar { position: relative; border-radius: 4px 4px 0 0; min-height: 8px; }
+.month-bar.cool { background: rgba(44,168,47,.50); }
+.month-bar.peak { background: rgba(232,93,38,.60); }
+.month-bar.current { outline: 2px solid var(--amber); outline-offset: 1px; }
+.month-bar-val { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-family: 'Bebas Neue', sans-serif; font-size: 13px; color: var(--t0); display: none; white-space: nowrap; }
+.month-bar.peak .month-bar-val, .month-bar.current .month-bar-val { display: block; }
+.month-bar.peak .month-bar-val { color: var(--orange); }
+.month-axis { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; padding: 8px 40px 0; }
+.month-tick { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); text-align: center; letter-spacing: 0.5px; }
+.month-tick.current { color: var(--amber); font-weight: 600; }
+
+/* Year heatmap */
+.year-heat { padding: 0 40px 28px; }
+.heat-row { display: grid; grid-template-columns: 50px 1fr; gap: 12px; align-items: center; margin-top: 4px; }
+.heat-month { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.heat-cells { display: grid; grid-template-columns: repeat(31, 1fr); gap: 2px; }
+.heat-cell { aspect-ratio: 1; border-radius: 2px; background: rgba(13,15,18,.04); }
+.heat-cell.l1 { background: rgba(44,168,47,.20); }
+.heat-cell.l2 { background: rgba(44,168,47,.45); }
+.heat-cell.l3 { background: rgba(44,168,47,.70); }
+.heat-cell.l4 { background: rgba(232,93,38,.75); }
+
+/* Recent runs */
+.run-row {
+  display: grid;
+  grid-template-columns: 28px 100px 1fr 90px 90px 90px;
+  align-items: center; gap: 16px;
+  padding: 14px 40px;
+  border-top: 1px solid var(--divider);
+}
+.run-tag { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; }
+.run-tag.easy { background: rgba(13,15,18,.07); color: var(--t1); }
+.run-tag.quality { background: rgba(212,144,10,.18); color: var(--amber); }
+.run-tag.long { background: rgba(44,168,47,.18); color: var(--green); }
+.run-tag.race { background: rgba(232,93,38,.22); color: var(--orange); }
+.run-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
+.run-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
+.run-type { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
+.run-num { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); line-height: 1; text-align: right; }
+.run-num-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 3px; text-align: right; }
+.run-strength { width: 18px; height: 18px; border-radius: 50%; background: var(--t0); color: #FACC15; display: inline-flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; line-height: 1; margin-left: auto; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link active" href="log-v4.html">Log</a>
+      <a class="nav-link" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right"><div class="nav-avatar">DK</div></div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- COACH STRIP -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot"></span>
+        COACH · YEAR TO DATE · STRAVA SYNCED 2M AGO
+      </div>
+      <p class="coach-briefing">
+        <strong>83 runs into 2026</strong> · February was your biggest month at 158 mi when
+        you were sharpening for the Mouse Half. The shape since then has been
+        <strong>peak → race → recover → rebuild</strong>. The coach is reading every one of
+        these for next month's plan.
+      </p>
+    </div>
+
+    <div class="strava-card">
+      <div class="strava-label">Sync</div>
+      <div class="strava-status">
+        <span class="strava-dot"></span>
+        <span class="strava-text">Strava connected</span>
+      </div>
+      <div class="strava-sub">Synced 2 minutes ago</div>
+      <div class="strava-stats">
+        <div class="strava-stat">
+          <div class="strava-stat-label">YTD Runs</div>
+          <div class="strava-stat-val">83</div>
+        </div>
+        <div class="strava-stat">
+          <div class="strava-stat-label">YTD Miles</div>
+          <div class="strava-stat-val">624</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- YTD HERO -->
+  <div class="hero-card">
+    <div class="hero-eyebrow">2026 · Year to Date</div>
+    <div class="hero-title-line">The Year So Far</div>
+    <div class="hero-sub">Through May 15 · 19 of 52 weeks in</div>
+
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-label">Total Runs</div>
+        <div class="hero-stat-val">83</div>
+        <div class="hero-stat-sub"><strong>4.4</strong> per week avg</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-label">Total Miles</div>
+        <div class="hero-stat-val">624<span class="unit">mi</span></div>
+        <div class="hero-stat-sub">On pace for <strong>1,705 mi</strong></div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-label">Longest Run</div>
+        <div class="hero-stat-val">26.8<span class="unit">mi</span></div>
+        <div class="hero-stat-sub"><strong>Big Sur Marathon</strong> · Apr 26</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-label">Peak Month</div>
+        <div class="hero-stat-val">158<span class="unit">mi</span></div>
+        <div class="hero-stat-sub"><strong>February</strong> · Mouse Half buildup</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONTHLY VOLUME CHART -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Monthly Volume</div>
+        <div class="card-sub">Real Strava history · current month outlined in amber</div>
+      </div>
+      <div class="card-meta">Peak <strong>FEB · 158 mi</strong></div>
+    </div>
+
+    <div class="monthly-bars">
+      <div class="month-bar cool" style="height: 70%;"><span class="month-bar-val">142</span></div>
+      <div class="month-bar peak" style="height: 100%;"><span class="month-bar-val">158 ↑</span></div>
+      <div class="month-bar cool" style="height: 65%;"><span class="month-bar-val">132</span></div>
+      <div class="month-bar cool" style="height: 50%;"><span class="month-bar-val">101</span></div>
+      <div class="month-bar cool current" style="height: 22%;"><span class="month-bar-val">45</span></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+      <div class="month-bar" style="height: 8%; background: rgba(13,15,18,.05);"></div>
+    </div>
+    <div class="month-axis">
+      <span class="month-tick">JAN</span>
+      <span class="month-tick">FEB</span>
+      <span class="month-tick">MAR</span>
+      <span class="month-tick">APR</span>
+      <span class="month-tick current">MAY</span>
+      <span class="month-tick">JUN</span>
+      <span class="month-tick">JUL</span>
+      <span class="month-tick">AUG</span>
+      <span class="month-tick">SEP</span>
+      <span class="month-tick">OCT</span>
+      <span class="month-tick">NOV</span>
+      <span class="month-tick">DEC</span>
+    </div>
+    <div style="height: 28px;"></div>
+  </div>
+
+  <!-- YEAR HEATMAP -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Year in Running</div>
+        <div class="card-sub">Each square is a calendar day · color = miles run</div>
+      </div>
+      <div class="card-meta">
+        <span style="display: inline-flex; align-items: center; gap: 4px;">
+          <span style="width: 10px; height: 10px; border-radius: 2px; background: rgba(44,168,47,.20);"></span> 1–4 mi
+          <span style="width: 10px; height: 10px; border-radius: 2px; background: rgba(44,168,47,.45); margin-left: 8px;"></span> 4–8
+          <span style="width: 10px; height: 10px; border-radius: 2px; background: rgba(44,168,47,.70); margin-left: 8px;"></span> 8–14
+          <span style="width: 10px; height: 10px; border-radius: 2px; background: rgba(232,93,38,.75); margin-left: 8px;"></span> 14+
+        </span>
+      </div>
+    </div>
+    <div class="year-heat">
+      <!-- Simplified visual — 5 months × 31 cells with light/medium/heavy randomized -->
+      <div class="heat-row"><div class="heat-month">JAN</div><div class="heat-cells">
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div>
+      </div></div>
+      <div class="heat-row"><div class="heat-month">FEB</div><div class="heat-cells">
+        <div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l4"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+      </div></div>
+      <div class="heat-row"><div class="heat-month">MAR</div><div class="heat-cells">
+        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div>
+        <div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div>
+        <div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div><div class="heat-cell"></div>
+        <div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div>
+      </div></div>
+      <div class="heat-row"><div class="heat-month">APR</div><div class="heat-cells">
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l3"></div><div class="heat-cell"></div><div class="heat-cell l1"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+      </div></div>
+      <div class="heat-row"><div class="heat-month">MAY</div><div class="heat-cells">
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div>
+        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div>
+        <div class="heat-cell l1" style="outline: 2px solid var(--amber); outline-offset: -1px;"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- RECENT RUNS -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Recent Runs</div>
+        <div class="card-sub"><strong>Last 8 activities</strong> · pulled from Strava</div>
+      </div>
+      <div class="card-meta">→ See full log</div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag easy">E</span>
+      <div class="run-date">Thu May 14</div>
+      <div>
+        <div class="run-name">Easy slow and boring</div>
+        <div class="run-type">Easy · prescribed</div>
+      </div>
+      <div>
+        <div class="run-num">5.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:14/mi</div>
+      </div>
+      <div>
+        <div class="run-num">47<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 138 HR</div>
+      </div>
+      <div style="display: flex; justify-content: flex-end;">
+        <span class="run-strength" title="Strength training logged">S</span>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag quality">T</span>
+      <div class="run-date">Tue May 12</div>
+      <div>
+        <div class="run-name">Working on better form</div>
+        <div class="run-type">Threshold · 5×1K cruise</div>
+      </div>
+      <div>
+        <div class="run-num">7.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">7:18/mi avg</div>
+      </div>
+      <div>
+        <div class="run-num">52<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 162 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag easy">E</span>
+      <div class="run-date">Mon May 11</div>
+      <div>
+        <div class="run-name">Lunch Run</div>
+        <div class="run-type">Easy · base mileage</div>
+      </div>
+      <div>
+        <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:22/mi</div>
+      </div>
+      <div>
+        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 134 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag race">R</span>
+      <div class="run-date">Sun May 3</div>
+      <div>
+        <div class="run-name">Sombrero Half Marathon</div>
+        <div class="run-type">Race · passion run · anniversary</div>
+      </div>
+      <div>
+        <div class="run-num">13.16<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">7:40/mi</div>
+      </div>
+      <div>
+        <div class="run-num">1:40<span style="font-size: 12px; color: var(--t2);">:57</span></div>
+        <div class="run-num-unit">avg 168 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag easy">E</span>
+      <div class="run-date">Thu May 1</div>
+      <div>
+        <div class="run-name">Omg I ran again</div>
+        <div class="run-type">Easy · short shakeout</div>
+      </div>
+      <div>
+        <div class="run-num">3.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:50/mi</div>
+      </div>
+      <div>
+        <div class="run-num">31<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 128 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag race">R</span>
+      <div class="run-date">Sun Apr 26</div>
+      <div>
+        <div class="run-name">Big Sur Marathon</div>
+        <div class="run-type">Race · adventure · hilly</div>
+      </div>
+      <div>
+        <div class="run-num">26.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">8:17/mi</div>
+      </div>
+      <div>
+        <div class="run-num">3:36<span style="font-size: 12px; color: var(--t2);">:55</span></div>
+        <div class="run-num-unit">avg 154 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag long">L</span>
+      <div class="run-date">Sun Apr 19</div>
+      <div>
+        <div class="run-name">Morning Run</div>
+        <div class="run-type">Long · pre-Big Sur taper</div>
+      </div>
+      <div>
+        <div class="run-num">8.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:05/mi</div>
+      </div>
+      <div>
+        <div class="run-num">73<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 142 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="run-row">
+      <span class="run-tag race">R</span>
+      <div class="run-date">Fri Apr 18</div>
+      <div>
+        <div class="run-name">Point Magu Half Marathon</div>
+        <div class="run-type">Race · trail · B-race</div>
+      </div>
+      <div>
+        <div class="run-num">13.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:33/mi</div>
+      </div>
+      <div>
+        <div class="run-num">2:09<span style="font-size: 12px; color: var(--t2);">:02</span></div>
+        <div class="run-num-unit">avg 158 HR</div>
+      </div>
+      <div></div>
+    </div>
+
+    <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
+      E = easy · T = threshold/quality · L = long · R = race · the "S" badge marks runs with strength logged the same day.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
