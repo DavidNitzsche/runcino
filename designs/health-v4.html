@@ -244,7 +244,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="coach-strip-text">
       <div class="coach-label">
         <span class="dot"></span>
-        COACH · SAT MAY 16 · HEALTH READOUT
+        COACH · <span data-today-label>SAT MAY 16</span> · HEALTH READOUT
       </div>
       <p class="coach-briefing">
         <strong>Fitness is climbing, fatigue has settled.</strong> The four-point lift over
@@ -287,7 +287,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   <div class="health-hero">
     <!-- LEFT — eyebrow + huge title + stat pills + coach take -->
     <div class="health-hero-left">
-      <div class="health-hero-eyebrow">TODAY · SAT MAY 16 · HEALTH</div>
+      <div class="health-hero-eyebrow">TODAY · <span data-today-label>SAT MAY 16</span> · HEALTH</div>
       <div class="health-hero-title">READY</div>
 
       <div class="brief-sections">
@@ -841,6 +841,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   }
 </script>
 
+<script src="runcino-bind.js" defer></script>
 <script src="runcino-live.js" defer></script>
 </body>
 </html>
