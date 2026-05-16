@@ -186,93 +186,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 1 — FORM CURVE (hero chart)
-  ═══════════════════════════════════ -->
-  <div class="card form-curve-card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Form Curve</div>
-        <div class="card-sub">Last 90 days · CTL · ATL · TSB · race markers</div>
-      </div>
-      <div class="card-meta"><strong style="color: var(--green);">+12 TSB · Fresh</strong></div>
-    </div>
-
-    <div class="form-stats">
-      <div class="form-stat">
-        <div class="form-stat-label">CTL · Fitness</div>
-        <div class="form-stat-val green">52</div>
-        <div class="form-stat-sub">28-day load · +4 vs 30 days ago</div>
-      </div>
-      <div class="form-stat">
-        <div class="form-stat-label">ATL · Fatigue</div>
-        <div class="form-stat-val orange">40</div>
-        <div class="form-stat-sub">7-day load · back near baseline</div>
-      </div>
-      <div class="form-stat">
-        <div class="form-stat-label">TSB · Form</div>
-        <div class="form-stat-val green">+12</div>
-        <div class="form-stat-sub">Productive zone · ready to push</div>
-      </div>
-    </div>
-
-    <div class="form-chart-legend">
-      <div class="form-chart-legend-item"><span class="form-chart-legend-dot green"></span>CTL Fitness</div>
-      <div class="form-chart-legend-item"><span class="form-chart-legend-dot orange"></span>ATL Fatigue</div>
-      <div class="form-chart-legend-item"><span class="form-chart-legend-dot race"></span>Race</div>
-    </div>
-
-    <div class="form-chart-wrap">
-      <svg viewBox="0 0 1200 320" width="100%" preserveAspectRatio="none" style="display:block;">
-        <!-- Grid: horizontal lines at load=20, 40, 60, 80 -->
-        <line x1="40" y1="40"  x2="1200" y2="40"  stroke="rgba(13,15,18,.05)" stroke-width="1"/>
-        <line x1="40" y1="100" x2="1200" y2="100" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
-        <line x1="40" y1="160" x2="1200" y2="160" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
-        <line x1="40" y1="220" x2="1200" y2="220" stroke="rgba(13,15,18,.05)" stroke-width="1"/>
-        <line x1="40" y1="280" x2="1200" y2="280" stroke="rgba(13,15,18,.12)" stroke-width="1"/>
-
-        <!-- Y-axis labels -->
-        <text x="32" y="43"  font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">80</text>
-        <text x="32" y="103" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">60</text>
-        <text x="32" y="163" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">40</text>
-        <text x="32" y="223" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="end">20</text>
-
-        <!-- Race markers — vertical dashed lines.
-             Mar 15 LA Marathon (day 27 of 89): x = 40 + 27/89 * 1160 = 392
-             Apr 26 Big Sur (day 69 of 89):    x = 40 + 69/89 * 1160 = 939 -->
-        <line x1="392" y1="36" x2="392" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
-        <text x="392" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">LA MAR</text>
-
-        <line x1="939" y1="36" x2="939" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
-        <text x="939" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">BIG SUR</text>
-
-        <!-- ATL line (orange, jagged — reacts to hard sessions) -->
-        <polyline points="40,220 92,214 144,210 196,212 248,208 300,204 352,202 392,124 432,170 484,196 536,206 588,208 640,202 692,200 744,196 796,192 848,188 884,176 939,118 980,160 1032,184 1084,194 1136,198 1200,220"
-          fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-
-        <!-- CTL line (green, smooth slow climb 38 → 52) -->
-        <polyline points="40,166 144,164 248,162 352,158 456,154 560,150 664,146 768,140 872,136 976,134 1080,132 1200,124"
-          fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-
-        <!-- Today marker — bold vertical -->
-        <line x1="1200" y1="36" x2="1200" y2="280" stroke="var(--t0)" stroke-width="2"/>
-        <text x="1196" y="28" font-family="Inter" font-size="9" fill="var(--t0)" text-anchor="end" font-weight="700" letter-spacing="1">TODAY</text>
-
-        <!-- Today dots — current CTL and ATL values -->
-        <circle cx="1200" cy="124" r="5" fill="var(--green)" stroke="white" stroke-width="2"/>
-        <circle cx="1200" cy="220" r="5" fill="var(--orange)" stroke="white" stroke-width="2"/>
-
-        <!-- X-axis date labels -->
-        <text x="40"   y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)">Feb 16</text>
-        <text x="260"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Mar 1</text>
-        <text x="640"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Apr 1</text>
-        <text x="1020" y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">May 1</text>
-        <text x="1200" y="302" font-family="Inter" font-size="10" fill="var(--t0)" font-weight="600" text-anchor="end">May 16</text>
-      </svg>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════
-       SECTION 2 — TODAY'S READINESS
+       SECTION 1 — TODAY'S READINESS (hero)
   ═══════════════════════════════════ -->
   <div class="card readiness-card">
     <!-- Ring + coach take -->
@@ -282,7 +196,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <span class="readiness-ring-badge">Ready</span>
       </div>
       <div class="readiness-ring-wrap">
-        <svg width="240" height="240" viewBox="0 0 300 300">
+        <svg width="280" height="280" viewBox="0 0 300 300">
           <!-- 270° arc, r=130, full circ=816.8, track=612.6, gap=204.2 -->
           <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="16" stroke-dasharray="612.61 204.20" stroke-linecap="round" transform="rotate(135 150 150)"/>
           <circle cx="150" cy="150" r="130" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="539.10 277.70" stroke-linecap="round" transform="rotate(135 150 150)"/>
@@ -328,6 +242,87 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 2 — TRAINING LOAD (chart)
+  ═══════════════════════════════════ -->
+  <div class="card form-curve-card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Training Load</div>
+        <div class="card-sub">Last 90 days · fitness building, fatigue back to baseline · race markers shown</div>
+      </div>
+      <div class="card-meta"><strong style="color: var(--green);">FRESH · ready to push</strong></div>
+    </div>
+
+    <div class="form-stats">
+      <div class="form-stat">
+        <div class="form-stat-label">Fitness</div>
+        <div class="form-stat-val green">52</div>
+        <div class="form-stat-sub">+4 vs 30 days ago · climbing</div>
+      </div>
+      <div class="form-stat">
+        <div class="form-stat-label">Fatigue</div>
+        <div class="form-stat-val orange">40</div>
+        <div class="form-stat-sub">Back near baseline after Big Sur</div>
+      </div>
+      <div class="form-stat">
+        <div class="form-stat-label">Form</div>
+        <div class="form-stat-val green">+12</div>
+        <div class="form-stat-sub">Productive zone · room to push</div>
+      </div>
+    </div>
+
+    <div class="form-chart-wrap">
+      <svg viewBox="0 0 1280 320" width="100%" preserveAspectRatio="none" style="display:block;">
+        <!-- Grid lines (no numeric labels — abstract load values aren't meaningful here) -->
+        <line x1="40" y1="40"  x2="1200" y2="40"  stroke="rgba(13,15,18,.04)" stroke-width="1"/>
+        <line x1="40" y1="100" x2="1200" y2="100" stroke="rgba(13,15,18,.04)" stroke-width="1"/>
+        <line x1="40" y1="160" x2="1200" y2="160" stroke="rgba(13,15,18,.04)" stroke-width="1"/>
+        <line x1="40" y1="220" x2="1200" y2="220" stroke="rgba(13,15,18,.04)" stroke-width="1"/>
+        <line x1="40" y1="280" x2="1200" y2="280" stroke="rgba(13,15,18,.12)" stroke-width="1"/>
+
+        <!-- Race markers — vertical dashed lines.
+             Mar 15 LA Marathon: x=392, Apr 26 Big Sur: x=939 -->
+        <line x1="392" y1="36" x2="392" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="392" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">LA MARATHON</text>
+
+        <line x1="939" y1="36" x2="939" y2="280" stroke="rgba(232,93,38,.45)" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="939" y="28" font-family="Inter" font-size="9" fill="var(--orange)" text-anchor="middle" font-weight="700" letter-spacing="1">BIG SUR</text>
+
+        <!-- ATL (fatigue) line — orange, jagged, spikes at race dates -->
+        <polyline points="40,220 92,214 144,210 196,212 248,208 300,204 352,202 392,124 432,170 484,196 536,206 588,208 640,202 692,200 744,196 796,192 848,188 884,176 939,118 980,160 1032,184 1084,194 1136,198 1200,220"
+          fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+
+        <!-- CTL (fitness) line — green, slow climb 38 → 52 -->
+        <polyline points="40,166 144,164 248,162 352,158 456,154 560,150 664,146 768,140 872,136 976,134 1080,132 1200,124"
+          fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <!-- Today marker — bold vertical -->
+        <line x1="1200" y1="36" x2="1200" y2="280" stroke="var(--t0)" stroke-width="2"/>
+        <text x="1196" y="28" font-family="Inter" font-size="9" fill="var(--t0)" text-anchor="end" font-weight="700" letter-spacing="1">TODAY</text>
+
+        <!-- Today dots + inline labels at right edge -->
+        <circle cx="1200" cy="124" r="5" fill="var(--green)" stroke="white" stroke-width="2"/>
+        <text x="1212" y="128" font-family="Inter" font-size="12" fill="var(--green)" font-weight="700">Fitness</text>
+        <circle cx="1200" cy="220" r="5" fill="var(--orange)" stroke="white" stroke-width="2"/>
+        <text x="1212" y="224" font-family="Inter" font-size="12" fill="var(--orange)" font-weight="700">Fatigue</text>
+
+        <!-- X-axis date labels -->
+        <text x="40"   y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)">Feb 16</text>
+        <text x="260"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Mar 1</text>
+        <text x="640"  y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">Apr 1</text>
+        <text x="1020" y="302" font-family="Inter" font-size="10" fill="rgba(13,15,18,.4)" text-anchor="middle">May 1</text>
+        <text x="1200" y="302" font-family="Inter" font-size="10" fill="var(--t0)" font-weight="600" text-anchor="end">May 16</text>
+      </svg>
+    </div>
+
+    <p style="font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.55; color: var(--t1); padding: 8px 40px 24px; font-style: italic;">
+      Read it like this: <strong>green is fitness building over months</strong>, orange is
+      fatigue reacting to hard sessions. The two race spikes show your body absorbed the
+      effort and bounced back. Where green is above orange, you're fresh.
+    </p>
   </div>
 
   <!-- ═══════════════════════════════════
