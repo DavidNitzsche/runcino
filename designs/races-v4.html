@@ -133,13 +133,18 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 /* ── Race history rows ───────────────────────────────────── */
 .race-row {
   display: grid;
-  grid-template-columns: 72px 28px 1fr 100px 110px;
+  grid-template-columns: auto 28px auto 1fr auto;
   align-items: center;
   padding: 16px 40px;
   gap: 28px;
   border-top: 1px solid var(--divider);
 }
-.race-row-date { text-align: right; }
+.race-row-date { text-align: left; }
+/* Swap visual order of last two columns: status (notes) → col 4, time → col 5 */
+.race-row > :nth-child(4) { order: 5; }
+.race-row > :nth-child(5) { order: 4; }
+/* Extra breathing room between the A/B/C tag and the race name */
+.race-row > :nth-child(3) { margin-left: 12px; }
 .race-row:first-of-type { border-top: 1px solid var(--divider); }
 .race-row.a-race { background: rgba(232,93,38,.04); }
 .race-row-tag {
