@@ -29,12 +29,24 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 .page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
 
-/* ── Coach strip ─────────────────────────────────── */
-.coach-strip { padding: 0 0 32px; }
+/* ── Coach strip ─ 2-column flex: briefing left, mini check-in card right ── */
+.coach-strip { padding: 0 0 32px; display: flex; align-items: stretch; justify-content: space-between; gap: 48px; }
+.coach-strip-text { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 .coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
 .coach-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; max-width: 900px; }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; }
 .coach-briefing strong { font-weight: 700; }
+
+/* Top-right mini check-in — compact 3-slider widget; same 300px slot
+   as the milestone/cycle cards on other pages. Mirrors /overview's
+   coach-right check-in widget. */
+.health-checkin-mini { flex-shrink: 0; width: 300px; background: var(--card); border-radius: 16px; padding: 22px 24px; box-shadow: var(--card-shadow); display: flex; flex-direction: column; gap: 14px; }
+.health-checkin-mini-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
+.health-checkin-mini-sliders { display: flex; flex-direction: column; gap: 12px; }
+.health-checkin-row { display: grid; grid-template-columns: 64px 1fr 22px; align-items: center; gap: 12px; }
+.health-checkin-row-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); text-align: right; }
+.health-checkin-row-val { font-family: 'Bebas Neue', sans-serif; font-size: 20px; line-height: 1; color: var(--t1); text-align: right; }
+.health-checkin-mini-btn { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; color: #fff; background: var(--t0); border: none; border-radius: 8px; padding: 10px 20px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; align-self: flex-end; }
 
 /* ── Cards ────────────────────────────────────────── */
 .card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
@@ -76,7 +88,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .health-hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; }
 .health-hero-stat-unit { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-weight: 500; }
 .health-hero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); margin-top: 6px; text-transform: uppercase; font-weight: 600; }
-.health-hero-coach-take { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); margin-top: 24px; font-style: italic; }
+.health-hero-coach-take { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); margin-top: auto; padding-top: 32px; font-style: italic; }
 .health-hero-coach-take strong { color: var(--t0); font-weight: 700; font-style: normal; }
 
 /* Right column — readiness ring + 5 trend bars (matches /overview hero right) */
@@ -215,16 +227,44 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
        COACH STRIP — top-of-page narrative
   ═══════════════════════════════════ -->
   <div class="coach-strip">
-    <div class="coach-label">
-      <span class="dot"></span>
-      COACH · SAT MAY 16 · HEALTH READOUT
+    <div class="coach-strip-text">
+      <div class="coach-label">
+        <span class="dot"></span>
+        COACH · SAT MAY 16 · HEALTH READOUT
+      </div>
+      <p class="coach-briefing">
+        <strong>Fitness is climbing, fatigue has settled.</strong> The four-point lift over
+        the last month puts you in a productive window — good place to start Build phase.
+        Sleep and resting HR are clean. <strong>Watch:</strong> aerobic markers still
+        rebuilding from Big Sur. Give threshold sessions another 10 days before pushing pace.
+      </p>
     </div>
-    <p class="coach-briefing">
-      <strong>Fitness is climbing, fatigue has settled.</strong> The four-point lift over
-      the last month puts you in a productive window — good place to start Build phase.
-      Sleep and resting HR are clean. <strong>Watch:</strong> aerobic markers still
-      rebuilding from Big Sur. Give threshold sessions another 10 days before pushing pace.
-    </p>
+
+    <!-- Compact top-right check-in widget (replaces the standalone Today's Check-In card) -->
+    <div class="health-checkin-mini">
+      <div class="health-checkin-mini-label">Today's Check-In</div>
+      <div class="health-checkin-mini-sliders">
+        <div class="health-checkin-row">
+          <span class="health-checkin-row-label">Energy</span>
+          <input type="range" class="checkin-range energy" min="1" max="10" value="7"
+            oninput="this.nextElementSibling.textContent=this.value">
+          <span class="health-checkin-row-val">7</span>
+        </div>
+        <div class="health-checkin-row">
+          <span class="health-checkin-row-label">Soreness</span>
+          <input type="range" class="checkin-range soreness" min="1" max="10" value="3"
+            oninput="this.nextElementSibling.textContent=this.value">
+          <span class="health-checkin-row-val">3</span>
+        </div>
+        <div class="health-checkin-row">
+          <span class="health-checkin-row-label">Stress</span>
+          <input type="range" class="checkin-range stress" min="1" max="10" value="2"
+            oninput="this.nextElementSibling.textContent=this.value">
+          <span class="health-checkin-row-val">2</span>
+        </div>
+      </div>
+      <button class="health-checkin-mini-btn">Log Check-In</button>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════
@@ -344,8 +384,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="insight-row">
         <div class="insight-icon blue">i</div>
         <div class="insight-body">
-          <div class="insight-title">Aerobic markers still rebuilding from Big Sur</div>
-          <div class="insight-detail">It's been 20 days. The two-to-six-week recovery window for that kind of effort means quality threshold work won't feel fully normal for another two weeks. Don't read soft tempo paces as a fitness drop — read them as the body finishing the marathon.</div>
+          <div class="insight-title">Big Sur recovery — 2 systems still rebuilding</div>
+          <div class="insight-detail">20 days in. Tendons need another ~8 days, aerobic markers ~14. Keep volume conservative and don't read soft tempo paces as a fitness drop — that's the body finishing the marathon. This insight clears when both systems are back.</div>
         </div>
       </div>
       <div class="insight-row">
@@ -359,40 +399,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 3 — TODAY'S CHECK-IN (form, mirror of /overview)
-  ═══════════════════════════════════ -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Today's Check-In</div>
-        <div class="card-sub">How you're feeling · 1 = rough, 10 = great</div>
-      </div>
-    </div>
-    <div class="checkin-form">
-      <div class="checkin-slider-row">
-        <span class="checkin-slider-label">Energy</span>
-        <input type="range" class="checkin-range energy" min="1" max="10" value="7"
-          oninput="this.nextElementSibling.textContent=this.value">
-        <span class="checkin-slider-val">7</span>
-      </div>
-      <div class="checkin-slider-row">
-        <span class="checkin-slider-label">Soreness</span>
-        <input type="range" class="checkin-range soreness" min="1" max="10" value="3"
-          oninput="this.nextElementSibling.textContent=this.value">
-        <span class="checkin-slider-val">3</span>
-      </div>
-      <div class="checkin-slider-row">
-        <span class="checkin-slider-label">Stress</span>
-        <input type="range" class="checkin-range stress" min="1" max="10" value="2"
-          oninput="this.nextElementSibling.textContent=this.value">
-        <span class="checkin-slider-val">2</span>
-      </div>
-      <button class="checkin-btn">Log Check-In</button>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════
-       SECTION 4 — CHECK-IN TIMELINE (14d)
+       SECTION 3 — CHECK-IN TIMELINE (14d)
+       (Today's Check-In form lives in the top-right coach-strip card.)
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -427,7 +435,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 5 — TRAINING LOAD (chart)
+       SECTION 4 — TRAINING LOAD (chart)
   ═══════════════════════════════════ -->
   <div class="card form-curve-card">
     <div class="card-header">
@@ -512,7 +520,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 6 — RECOVERY VITALS
+       SECTION 5 — RECOVERY VITALS
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -588,7 +596,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 7 — RUNNING FORM
+       SECTION 6 — RUNNING FORM
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -685,30 +693,10 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
 
-  <!-- ═══════════════════════════════════
-       SECTION 8 — POST-RACE RECOVERY (compact, auto-hides 30d post-race)
-  ═══════════════════════════════════ -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Post-Race Recovery</div>
-        <div class="card-sub">Big Sur · 20 days ago · <strong>2 systems</strong> still rebuilding</div>
-      </div>
-    </div>
-    <div class="recovery-pills">
-      <div class="recovery-pill">
-        <span class="recovery-pill-name">Tendons</span>
-        <span class="recovery-pill-meta">~8 days left</span>
-      </div>
-      <div class="recovery-pill">
-        <span class="recovery-pill-name">Aerobic markers</span>
-        <span class="recovery-pill-meta">~14 days left</span>
-      </div>
-    </div>
-  </div>
+  <!-- (Post-Race Recovery removed — now surfaced as an Insight when systems are still rebuilding.) -->
 
   <!-- ═══════════════════════════════════
-       SECTION 9 — DATA SOURCES (footer)
+       SECTION 7 — DATA SOURCES (footer)
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
