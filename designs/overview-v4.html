@@ -127,6 +127,10 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* Align coach text with the hero card content below it. Hero-left has
+     padding: 40px, so its content sits 40px in from the card's left edge.
+     Adding 40px left padding here matches that horizontal start position. */
+  padding-left: 40px;
 }
 
 .coach-label {
@@ -612,13 +616,14 @@ body {
 
 .intensity-tick {
   position: absolute;
-  top: -5px;
-  bottom: -5px;
+  top: 0;
+  bottom: 0;
   left: 22%;
   width: 3px;
   background: #0D0F12;
   border-radius: 2px;
   transform: translateX(-50%);
+  z-index: 2;
 }
 
 .intensity-fade {
