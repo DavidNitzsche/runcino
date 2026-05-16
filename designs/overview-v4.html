@@ -454,13 +454,35 @@ body {
   cursor: pointer;
 }
 
-/* Hero Right */
+/* Hero Right — black panel (matches A-race hero on /races) */
 .hero-right {
-  background: rgba(13,15,18,.02);
+  background: var(--t0);
   padding: 40px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  color: rgba(255,255,255,.78);
+}
+.hero-right .readiness-label-text { color: rgba(255,255,255,.5); }
+.hero-right .badge-ready {
+  background: rgba(44,168,47,.20);
+  color: #4DD950;
+}
+.hero-right .readiness-building { color: #4DD950; }
+.hero-right .trend-row-label { color: rgba(255,255,255,.45); }
+.hero-right .trend-row-value { color: #FFFFFF; }
+.hero-right .trend-row-value.green { color: #4DD950; }
+.hero-right .trend-row-value.amber { color: #F3AD38; }
+.hero-right .trend-row-value.dim { color: rgba(255,255,255,.55); }
+.hero-right .trend-bar-track { background: rgba(255,255,255,.12); }
+.hero-right .trend-bar-fill.dim { background: rgba(255,255,255,.30); }
+.hero-right .intensity-heading { color: rgba(255,255,255,.5); }
+.hero-right .intensity-fade { background: rgba(0,0,0,.55); }
+.hero-right .intensity-tick { background: #FFFFFF; }
+.hero-right .intensity-zone-name { color: #4DD950; }
+/* Readiness ring track — lighter on black */
+.hero-right .readiness-ring-wrap circle[stroke="rgba(13,15,18,.08)"] {
+  stroke: rgba(255,255,255,.10);
 }
 
 .readiness-header {
@@ -1316,7 +1338,7 @@ body {
             <!-- full circ=816.8, track=612.6, gap=204.2, dashoffset=-51.05 -->
             <circle cx="150" cy="150" r="130"
               fill="none"
-              stroke="rgba(13,15,18,.08)"
+              stroke="rgba(255,255,255,.12)"
               stroke-width="16"
               stroke-dasharray="612.61 204.20"
               stroke-linecap="round"
@@ -1330,8 +1352,8 @@ body {
               stroke-linecap="round"
               transform="rotate(135 150 150)"
             />
-            <text x="150" y="166" font-family="'Bebas Neue', sans-serif" font-size="96" fill="#0D0F12" text-anchor="middle">88</text>
-            <text x="150" y="188" font-family="'Inter', sans-serif" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
+            <text x="150" y="166" font-family="'Bebas Neue', sans-serif" font-size="96" fill="#FFFFFF" text-anchor="middle">88</text>
+            <text x="150" y="188" font-family="'Inter', sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,.55)" text-anchor="middle" letter-spacing="1">/ 100</text>
           </svg>
         </div>
 
@@ -1487,7 +1509,7 @@ body {
 <div id="workout-modal" class="modal-overlay">
   <div class="modal-card workout-modal-card">
     <button class="modal-close" onclick="closeModal('workout-modal')">✕</button>
-    <div class="modal-eyebrow">Today · Base Week 3</div>
+    <div class="modal-eyebrow">Today · Base Week 1</div>
     <div class="modal-title">EASY<br>RUN</div>
     <div class="modal-stats">
       <div class="modal-stat">
@@ -1521,6 +1543,14 @@ body {
         <span>10 min</span><span>1.0 mi</span><span>10:00/mi</span>
       </div>
     </div>
+    <!-- Strength session callout — secondary component of today's workout -->
+    <div class="strength-callout" style="margin-top: 18px;">
+      <div class="strength-callout-badge">S</div>
+      <div>
+        <div class="strength-callout-title">Plus · Strength Session</div>
+        <div class="strength-callout-meta">45 min · Lower body + core · after the run</div>
+      </div>
+    </div>
     <div class="modal-intensity-wrap">
       <div class="modal-intensity-lbl">Today's Intensity</div>
       <div class="modal-ibar-wrap">
@@ -1538,40 +1568,7 @@ body {
   </div>
 </div>
 
-<!-- ══════════════════════════════════
-     SCHEDULE MODAL
-══════════════════════════════════ -->
-<div id="schedule-modal" class="modal-overlay">
-  <div class="modal-card schedule-modal-card">
-    <button class="modal-close" onclick="closeModal('schedule-modal')">✕</button>
-    <div class="modal-eyebrow">Americas Finest City Half · Aug 17, 2026</div>
-    <div class="schedule-modal-title">Full Schedule</div>
-
-    <div class="schedule-phase-heading">Base Phase</div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 1</div><div class="schedule-week-date">Apr 28</div><div class="schedule-week-mi">28<span> mi</span></div><div class="schedule-week-desc">Easy · Easy · Tempo 5mi · Easy · Long 8mi · Strides</div><div class="schedule-week-status">✓ Done</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 2</div><div class="schedule-week-date">May 5</div><div class="schedule-week-mi">33<span> mi</span></div><div class="schedule-week-desc">Easy · Tempo 6mi · Easy · Easy · Long 10mi · Strides</div><div class="schedule-week-status">✓ Done</div></div>
-    <div class="schedule-week-row current"><div class="schedule-week-num">Week 3</div><div class="schedule-week-date">May 12</div><div class="schedule-week-mi">38<span> mi</span></div><div class="schedule-week-desc">Easy · Tempo 7mi · Recovery · <strong>Easy 5.5mi ←</strong> · Long 10mi · Strides</div><div class="schedule-week-status current">In Progress</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 4</div><div class="schedule-week-date">May 19</div><div class="schedule-week-mi">32<span> mi</span></div><div class="schedule-week-desc">Cutback · Easy · Tempo 5mi · Easy · Long 8mi · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 5</div><div class="schedule-week-date">May 26</div><div class="schedule-week-mi">40<span> mi</span></div><div class="schedule-week-desc">Easy · Tempo 8mi · Easy · Easy · Long 12mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 6</div><div class="schedule-week-date">Jun 2</div><div class="schedule-week-mi">42<span> mi</span></div><div class="schedule-week-desc">Easy · Tempo 8mi · Easy · Easy · Long 13mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-
-    <div class="schedule-phase-heading">Build Phase</div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 7</div><div class="schedule-week-date">Jun 9</div><div class="schedule-week-mi">36<span> mi</span></div><div class="schedule-week-desc">Cutback · Intervals · Easy · Easy · Long 10mi · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 8</div><div class="schedule-week-date">Jun 16</div><div class="schedule-week-mi">44<span> mi</span></div><div class="schedule-week-desc">Easy · Intervals 7mi · Easy · MP Tempo · Long 14mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 9</div><div class="schedule-week-date">Jun 23</div><div class="schedule-week-mi">46<span> mi</span></div><div class="schedule-week-desc">Easy · Intervals 8mi · Easy · MP Tempo 8mi · Long 15mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 10</div><div class="schedule-week-date">Jun 30</div><div class="schedule-week-mi">38<span> mi</span></div><div class="schedule-week-desc">Cutback · Intervals · Easy · Easy · Long 11mi · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 11</div><div class="schedule-week-date">Jul 7</div><div class="schedule-week-mi">48<span> mi</span></div><div class="schedule-week-desc">Easy · Intervals 9mi · Easy · MP Tempo 9mi · Long 16mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-
-    <div class="schedule-phase-heading">Peak Phase</div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 12</div><div class="schedule-week-date">Jul 14</div><div class="schedule-week-mi">50<span> mi</span></div><div class="schedule-week-desc">Easy · Intervals 10mi · Easy · MP Long 18mi · Strides · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 13</div><div class="schedule-week-date">Jul 21</div><div class="schedule-week-mi">42<span> mi</span></div><div class="schedule-week-desc">Cutback · Tempo · Easy · Easy · Long 12mi · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 14</div><div class="schedule-week-date">Jul 28</div><div class="schedule-week-mi">52<span> mi</span></div><div class="schedule-week-desc">Easy · Intervals 10mi · Easy · Race Pace 10mi · Long 18mi · Rest</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-
-    <div class="schedule-phase-heading">Taper</div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 15</div><div class="schedule-week-date">Aug 4</div><div class="schedule-week-mi">34<span> mi</span></div><div class="schedule-week-desc">Easy · Tempo 5mi · Easy · Easy · Long 10mi · Strides</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-    <div class="schedule-week-row"><div class="schedule-week-num">Week 16</div><div class="schedule-week-date">Aug 11</div><div class="schedule-week-mi">18<span> mi</span></div><div class="schedule-week-desc">Easy · Strides · Easy · Shake-out · 🏁 Race Day Aug 17</div><div class="schedule-week-status upcoming">Upcoming</div></div>
-  </div>
-</div>
+<!-- (Schedule modal removed — VIEW FULL SCHEDULE now navigates to training-v4.html) -->
 
 <script>
   function closeModal(id) {
