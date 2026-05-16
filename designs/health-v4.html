@@ -100,13 +100,17 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .brief-section-body { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); }
 .brief-section-body strong { color: var(--t0); font-weight: 700; }
 
-/* Right column — readiness ring + 5 trend bars (matches /overview hero right) */
+/* Right column — readiness ring + 5 trend bars. Ring + state live in a
+   flex-grow middle section so the ring expands when the left brief is
+   tall; the trend bars stay anchored to the bottom regardless. */
 .health-hero-right { background: rgba(13,15,18,.02); padding: 40px; display: flex; flex-direction: column; }
 .health-hero-right-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .health-hero-right-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
 .health-hero-right-badge { background: rgba(44,168,47,.12); color: var(--green); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
-.health-hero-ring { display: flex; justify-content: center; }
-.health-hero-state { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 3px; color: var(--green); text-align: center; text-transform: uppercase; margin-top: 16px; margin-bottom: 24px; }
+.health-hero-ring-section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 240px; padding: 16px 0 24px; gap: 14px; }
+.health-hero-ring { display: flex; justify-content: center; width: 100%; }
+.health-hero-ring svg { width: 100%; max-width: 340px; height: auto; }
+.health-hero-state { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 3px; color: var(--green); text-align: center; text-transform: uppercase; }
 .health-trend-rows { display: flex; flex-direction: column; gap: 14px; }
 .health-trend-row { display: flex; flex-direction: column; gap: 6px; }
 .health-trend-row-top { display: flex; align-items: baseline; justify-content: space-between; }
@@ -329,15 +333,17 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="health-hero-right-header">
         <span class="health-hero-right-label">What's Driving It</span>
       </div>
-      <div class="health-hero-ring">
-        <svg width="280" height="280" viewBox="0 0 300 300">
-          <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="16" stroke-dasharray="612.61 204.20" stroke-linecap="round" transform="rotate(135 150 150)"/>
-          <circle cx="150" cy="150" r="130" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="539.10 277.70" stroke-linecap="round" transform="rotate(135 150 150)"/>
-          <text x="150" y="166" font-family="Bebas Neue" font-size="96" fill="var(--t0)" text-anchor="middle">88</text>
-          <text x="150" y="188" font-family="Inter" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
-        </svg>
+      <div class="health-hero-ring-section">
+        <div class="health-hero-ring">
+          <svg viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
+            <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="16" stroke-dasharray="612.61 204.20" stroke-linecap="round" transform="rotate(135 150 150)"/>
+            <circle cx="150" cy="150" r="130" fill="none" stroke="var(--green)" stroke-width="16" stroke-dasharray="539.10 277.70" stroke-linecap="round" transform="rotate(135 150 150)"/>
+            <text x="150" y="166" font-family="Bebas Neue" font-size="96" fill="var(--t0)" text-anchor="middle">88</text>
+            <text x="150" y="188" font-family="Inter" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
+          </svg>
+        </div>
+        <div class="health-hero-state">Building</div>
       </div>
-      <div class="health-hero-state">Building</div>
 
       <div class="health-trend-rows">
         <div class="health-trend-row">
