@@ -857,7 +857,22 @@ body {
   letter-spacing: 1px;
   color: var(--green);
   text-transform: uppercase;
-  margin-top: 4px;
+  /* Pin to the bottom of the day-col regardless of how much workout-name
+     text wraps above. All 7 cols share the same row height (grid stretch),
+     so this lines up the DONE labels in a single horizontal row. */
+  margin-top: auto;
+  padding-top: 12px;
+}
+/* Push the bottom element of each col to the bottom edge. CSS auto margins
+   resolve to whichever child comes first in the flex flow, so done cols
+   anchor on DONE, future cols anchor on distance, today's rest col anchors
+   on the dash. All sit at the same y-coordinate across the row. */
+.day-distance, .day-rest {
+  margin-top: auto;
+}
+.day-col:has(.day-status-done) .day-distance,
+.day-col:has(.day-status-done) .day-rest {
+  margin-top: 0;
 }
 
 .day-status-today {
@@ -1707,9 +1722,18 @@ body {
       const dateClass = 'day-date' + (isToday ? ' amber' : '');
       const strengthBadge = (d.hasStrength && !isDone) ? '<span class="day-strength" title="Strength training">S</span>' : '';
       const restMode = d.isRest;
+      // Distance display: when day is completed and we have actual mileage,
+      // show 'actual / plan mi' if they differ; if identical, show single value.
+      // Today and future days show plan only.
+      function distanceText(d) {
+        if (typeof d.actualMi === 'number' && d.actualMi !== d.distanceMi) {
+          return d.actualMi + ' / ' + d.distanceMi + ' mi';
+        }
+        return (d.actualMi != null ? d.actualMi : d.distanceMi) + ' mi';
+      }
       const distanceBlock = restMode
         ? '<div class="day-workout-name" style="color:var(--t2);">Rest</div><div class="day-rest">—</div>'
-        : '<div class="day-workout-name">' + escapeHtml(d.label) + '</div><div class="day-distance">' + d.distanceMi + ' mi</div>';
+        : '<div class="day-workout-name">' + escapeHtml(d.label) + '</div><div class="day-distance">' + distanceText(d) + '</div>';
       const statusBlock = isDone ? '<div class="day-status-done">✓ Done</div>' : '';
       return (
         '<div class="' + colClass + '">' +

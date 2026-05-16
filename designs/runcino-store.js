@@ -30,7 +30,7 @@
   'use strict';
 
   const STORE_KEY = 'runcino_v4_state';
-  const SEED_VERSION = 2;
+  const SEED_VERSION = 3;
 
   // ── Plan builder ────────────────────────────────────────────────
   // Generates all 14 weeks of the AFC Half plan from a compact template.
@@ -77,6 +77,11 @@
       return d.toISOString().slice(0, 10);
     }
 
+    // Slight per-day variance so 'actual vs plan' looks realistic in the
+    // mockup. In production this would come from Strava activity matching.
+    const variance = [-0.2, 0, 0.2, 0.5, -0.1, 0, 0.1, 0, -0.3, 0.2, 0, 0, -0.1, 0];
+    const today = '2026-05-16';
+
     const weeks = template.map((dayTpl, wIdx) => {
       const weekNum = wIdx + 1;
       const phase = phaseFor(weekNum);
@@ -92,8 +97,15 @@
                      : type === 'quality' ? '7:30'
                      : type === 'race' ? '7:15'
                      : '9:00';
-        return Object.assign({ dow, date, type, label, distanceMi, paceMin },
-                             hasStrength ? { hasStrength: true } : {});
+        const day = { dow, date, type, label, distanceMi, paceMin };
+        if (hasStrength) day.hasStrength = true;
+        // Past completed days get an actualMi (simulating Strava match)
+        if (date < today && type !== 'rest') {
+          const vIdx = (wIdx * 7 + dIdx) % variance.length;
+          const actual = Math.max(0, Math.round((distanceMi + variance[vIdx]) * 10) / 10);
+          day.actualMi = actual;
+        }
+        return day;
       });
       const plannedMi = days.reduce((s, d) => s + (d.distanceMi || 0), 0);
       return { weekNum, phase, startDate: wkStart, plannedMi: Math.round(plannedMi * 10) / 10, days };
