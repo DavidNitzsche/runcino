@@ -454,35 +454,13 @@ body {
   cursor: pointer;
 }
 
-/* Hero Right — black panel (matches A-race hero on /races) */
+/* Hero Right */
 .hero-right {
-  background: var(--t0);
+  background: rgba(13,15,18,.02);
   padding: 40px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  color: rgba(255,255,255,.78);
-}
-.hero-right .readiness-label-text { color: rgba(255,255,255,.5); }
-.hero-right .badge-ready {
-  background: rgba(44,168,47,.20);
-  color: #4DD950;
-}
-.hero-right .readiness-building { color: #4DD950; }
-.hero-right .trend-row-label { color: rgba(255,255,255,.45); }
-.hero-right .trend-row-value { color: #FFFFFF; }
-.hero-right .trend-row-value.green { color: #4DD950; }
-.hero-right .trend-row-value.amber { color: #F3AD38; }
-.hero-right .trend-row-value.dim { color: rgba(255,255,255,.55); }
-.hero-right .trend-bar-track { background: rgba(255,255,255,.12); }
-.hero-right .trend-bar-fill.dim { background: rgba(255,255,255,.30); }
-.hero-right .intensity-heading { color: rgba(255,255,255,.5); }
-.hero-right .intensity-fade { background: rgba(0,0,0,.55); }
-.hero-right .intensity-tick { background: #FFFFFF; }
-.hero-right .intensity-zone-name { color: #4DD950; }
-/* Readiness ring track — lighter on black */
-.hero-right .readiness-ring-wrap circle[stroke="rgba(13,15,18,.08)"] {
-  stroke: rgba(255,255,255,.10);
 }
 
 .readiness-header {
@@ -1314,7 +1292,7 @@ body {
         <div class="strength-callout-badge">S</div>
         <div>
           <div class="strength-callout-title">Plus · Strength Session</div>
-          <div class="strength-callout-meta">45 min · Lower body + core · after the run</div>
+          <div class="strength-callout-meta">30 min · Amp workout · after the run</div>
         </div>
       </div>
 
@@ -1338,7 +1316,7 @@ body {
             <!-- full circ=816.8, track=612.6, gap=204.2, dashoffset=-51.05 -->
             <circle cx="150" cy="150" r="130"
               fill="none"
-              stroke="rgba(255,255,255,.12)"
+              stroke="rgba(13,15,18,.08)"
               stroke-width="16"
               stroke-dasharray="612.61 204.20"
               stroke-linecap="round"
@@ -1352,8 +1330,8 @@ body {
               stroke-linecap="round"
               transform="rotate(135 150 150)"
             />
-            <text x="150" y="166" font-family="'Bebas Neue', sans-serif" font-size="96" fill="#FFFFFF" text-anchor="middle">88</text>
-            <text x="150" y="188" font-family="'Inter', sans-serif" font-size="13" font-weight="600" fill="rgba(255,255,255,.55)" text-anchor="middle" letter-spacing="1">/ 100</text>
+            <text x="150" y="166" font-family="'Bebas Neue', sans-serif" font-size="96" fill="#0D0F12" text-anchor="middle">88</text>
+            <text x="150" y="188" font-family="'Inter', sans-serif" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
           </svg>
         </div>
 
