@@ -57,7 +57,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   border-radius: 8px;
 }
 .vdot-anchor-fresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.vdot-anchor-fresh-text { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--green); font-weight: 600; letter-spacing: 0.3px; }
+.vdot-anchor-fresh-text { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--green); font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
 .vdot-anchor-fresh-text strong { font-weight: 700; }
 
 /* ── A-race hero ────────────────────────────────────────── */
@@ -221,7 +221,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
       <div class="vdot-anchor-fresh">
         <span class="vdot-anchor-fresh-dot"></span>
-        <span class="vdot-anchor-fresh-text"><strong>Fresh</strong> · refresh window 26d</span>
+        <span class="vdot-anchor-fresh-text"><strong>Fresh</strong> · 26d to refresh</span>
       </div>
     </div>
   </div>
@@ -293,42 +293,41 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="card-title">Recent Races</div>
         <div class="card-sub"><strong>5 races</strong> in the last 4 months · newest first</div>
       </div>
-      <div class="card-meta">A · B · C auto-classified</div>
     </div>
 
-    <!-- Sombrero — C passion run -->
+    <!-- Sombrero — C -->
     <div class="race-row">
       <span class="race-row-tag c">C</span>
       <div class="race-row-date">May 3</div>
       <div>
         <div class="race-row-name">Sombrero Half Marathon</div>
-        <div class="race-row-name-sub">Half Marathon · 13.16 mi · anniversary run</div>
+        <div class="race-row-name-sub">Half Marathon · 13.16 mi</div>
       </div>
       <div>
         <div class="race-row-time">1:40:57</div>
         <div class="race-row-pace">7:40/mi</div>
       </div>
-      <div class="race-row-status c">Passion run<br><span style="font-weight:400; color:var(--t2);">not a fitness test</span></div>
+      <div class="race-row-status c">&nbsp;</div>
     </div>
 
-    <!-- Big Sur — C passion run -->
+    <!-- Big Sur — A -->
     <div class="race-row">
-      <span class="race-row-tag c">C</span>
+      <span class="race-row-tag a">A</span>
       <div class="race-row-date">Apr 26</div>
       <div>
         <div class="race-row-name">Big Sur Marathon</div>
-        <div class="race-row-name-sub">Marathon · 26.2 mi · hilly · early-season</div>
+        <div class="race-row-name-sub">Marathon · 26.2 mi · 2,140 ft climb</div>
       </div>
       <div>
         <div class="race-row-time">3:36:55</div>
         <div class="race-row-pace">8:17/mi</div>
       </div>
-      <div class="race-row-status c">Passion run<br><span style="font-weight:400; color:var(--t2);">course-discounted</span></div>
+      <div class="race-row-status c">&nbsp;</div>
     </div>
 
-    <!-- Point Magu — B tune-up -->
+    <!-- Point Magu — C -->
     <div class="race-row">
-      <span class="race-row-tag b">B</span>
+      <span class="race-row-tag c">C</span>
       <div class="race-row-date">Apr 18</div>
       <div>
         <div class="race-row-name">Point Magu Half Marathon</div>
@@ -338,27 +337,27 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">2:09:02</div>
         <div class="race-row-pace">9:33/mi</div>
       </div>
-      <div class="race-row-status b">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 38 · trail-discounted</span></div>
+      <div class="race-row-status c">&nbsp;</div>
     </div>
 
-    <!-- Powered by the Mouse — A race, current VDOT anchor -->
+    <!-- Powered by the Mouse — A, current VDOT anchor -->
     <div class="race-row a-race">
       <span class="race-row-tag a">A</span>
       <div class="race-row-date">Feb 1</div>
       <div>
         <div class="race-row-name">Powered by the Mouse for a PR</div>
-        <div class="race-row-name-sub">Half Marathon · 13.38 mi · Disneyland</div>
+        <div class="race-row-name-sub">Half Marathon · 13.38 mi</div>
       </div>
       <div>
         <div class="race-row-time">1:34:54</div>
         <div class="race-row-pace">7:05/mi</div>
       </div>
-      <div class="race-row-status a">Goal race<br><span style="font-weight:400; color:var(--t2);">VDOT 48.1 · current anchor</span></div>
+      <div class="race-row-status a">VDOT 48.1<br><span style="font-weight:400; color:var(--t2);">current anchor</span></div>
     </div>
 
-    <!-- Rose Bowl — B tune-up -->
+    <!-- Rose Bowl — A -->
     <div class="race-row">
-      <span class="race-row-tag b">B</span>
+      <span class="race-row-tag a">A</span>
       <div class="race-row-date">Jan 18</div>
       <div>
         <div class="race-row-name">Rose Bowl Half Marathon</div>
@@ -368,13 +367,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">1:38:38</div>
         <div class="race-row-pace">7:24/mi</div>
       </div>
-      <div class="race-row-status b">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 46 · 4 mo ago</span></div>
+      <div class="race-row-status a">VDOT 46<br><span style="font-weight:400; color:var(--t2);">&nbsp;</span></div>
     </div>
 
     <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
       <strong style="color: var(--orange);">A</strong> goal race ·
-      <strong style="color: var(--amber);">B</strong> tune-up — sharpens fitness ·
-      <strong style="color: var(--t2);">C</strong> passion run — doesn't count unless it's exceptional.
+      <strong style="color: var(--amber);">B</strong> tune-up ·
+      <strong style="color: var(--t2);">C</strong> passion run
     </div>
   </div>
 
@@ -383,31 +382,20 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Personal Records</div>
-        <div class="card-sub">All time bests · validated efforts only</div>
+        <div class="card-sub">From your logged races</div>
       </div>
-      <div class="card-meta">From <strong>87</strong> logged runs</div>
     </div>
 
     <div class="prs-grid">
       <div class="pr-cell">
-        <div class="pr-distance">5K</div>
-        <div class="pr-time">19:28</div>
-        <div class="pr-meta"><strong>Pasadena 5K</strong> · 2 yr ago</div>
-      </div>
-      <div class="pr-cell">
-        <div class="pr-distance">10K</div>
-        <div class="pr-time">41:12</div>
-        <div class="pr-meta"><strong>Carlsbad 10K</strong> · 14 mo ago</div>
-      </div>
-      <div class="pr-cell">
         <div class="pr-distance">Half</div>
-        <div class="pr-time">1:32:08</div>
-        <div class="pr-meta"><strong>Long Beach Half</strong> · 18 mo ago</div>
+        <div class="pr-time">1:34:54</div>
+        <div class="pr-meta"><strong>Powered by the Mouse</strong> · Feb 1</div>
       </div>
       <div class="pr-cell">
         <div class="pr-distance">Marathon</div>
-        <div class="pr-time">3:18:42</div>
-        <div class="pr-meta"><strong>CIM</strong> · 6 mo ago</div>
+        <div class="pr-time">3:36:55</div>
+        <div class="pr-meta"><strong>Big Sur</strong> · Apr 26</div>
       </div>
     </div>
   </div>
