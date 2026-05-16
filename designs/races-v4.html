@@ -185,7 +185,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .races-timeline-track-area {
   position: relative;
   margin: 0 40px;
-  height: 200px;
+  height: 280px;
 }
 .races-timeline-track-line {
   position: absolute;
@@ -257,8 +257,21 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   box-shadow: 0 0 0 5px rgba(212,144,10,.12);
 }
 .races-timeline-tag.c {
-  background: rgba(13,15,18,.10); color: var(--t1);
+  background: #E6E5E1; color: var(--t1);
   box-shadow: 0 0 0 5px rgba(13,15,18,.05);
+}
+/* Stagger: push label down so the dot stays on the line but the
+   info block clears its neighbor's labels. */
+.races-timeline-station.is-stagger-down .races-timeline-station-info {
+  margin-top: 84px;
+  position: relative;
+}
+.races-timeline-station.is-stagger-down .races-timeline-station-info::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: -70px;
+  width: 1px; height: 60px;
+  background: var(--divider);
 }
 .races-timeline-station-info {
   margin-top: 14px;
@@ -463,6 +476,18 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
         </div>
 
+        <!-- CIM — A marathon, 205d (clusters with Malibu, label staggered down) -->
+        <div class="races-timeline-station priority-a is-stagger-down" style="left: 69.3%;">
+          <div class="races-timeline-tag a">A</div>
+          <div class="races-timeline-station-info">
+            <div class="races-timeline-date">Dec 6</div>
+            <div class="races-timeline-name">CIM</div>
+            <div class="races-timeline-goal">3:00:00</div>
+            <div class="races-timeline-pace">goal · 6:52/mi</div>
+            <div class="races-timeline-away">205d away</div>
+          </div>
+        </div>
+
         <!-- LA Marathon — A, 296d -->
         <div class="races-timeline-station priority-a is-last" style="left: 100%;">
           <div class="races-timeline-tag a">A</div>
@@ -576,11 +601,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="race-row-status a">VDOT 46<br><span style="font-weight:400; color:var(--t2);">&nbsp;</span></div>
     </div>
 
-    <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
-      <strong style="color: var(--orange);">A</strong> goal race ·
-      <strong style="color: var(--amber);">B</strong> tune-up ·
-      <strong style="color: var(--t2);">C</strong> passion run
-    </div>
   </div>
 
   <!-- PRs by distance -->
