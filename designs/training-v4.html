@@ -242,7 +242,8 @@ body {
 }
 .schedule-header {
   padding: 28px 40px 20px;
-  display: flex; align-items: baseline; justify-content: space-between;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 32px;
 }
 .schedule-eyebrow {
   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
@@ -254,12 +255,30 @@ body {
 }
 .schedule-meta {
   font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+  text-align: right;
 }
 .schedule-meta strong { color: var(--t0); font-weight: 700; }
+.schedule-meta-row {
+  display: flex; align-items: center; gap: 12px;
+  justify-content: flex-end;
+}
+.schedule-header-legend {
+  display: flex; gap: 14px;
+  font-family: 'Inter', sans-serif; font-size: 10.5px;
+  letter-spacing: 1.2px; color: var(--t2); text-transform: uppercase;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+.schedule-header-legend-item { display: flex; align-items: center; gap: 5px; }
+.schedule-header-legend-swatch {
+  width: 9px; height: 9px; border-radius: 2px;
+}
 
 /* ── Volume curve at top of the schedule ──────────────────── */
 .volume-curve {
-  padding: 0 40px 28px;
+  padding: 0 40px 40px;
+  border-bottom: 1px solid var(--divider);
+  margin-bottom: 0;
 }
 .volume-bars {
   display: grid;
@@ -328,23 +347,15 @@ body {
 .volume-phase-cell.peak   { background: rgba(232,93,38,.70); }
 .volume-phase-cell.taper  { background: rgba(13,15,18,.40); }
 .volume-phase-cell.race   { background: var(--orange); }
-.volume-phase-legend {
-  display: flex; gap: 18px; margin-top: 14px;
-  font-family: 'Inter', sans-serif; font-size: 11px;
-  letter-spacing: 1px; color: var(--t2); text-transform: uppercase;
-}
-.volume-phase-legend-item {
-  display: flex; align-items: center; gap: 6px;
-}
-.volume-phase-legend-swatch {
-  width: 10px; height: 10px; border-radius: 2px;
-}
+/* Old in-curve legend — kept for backwards compat but unused now;
+   the legend lives in the schedule header. */
+.volume-phase-legend { display: none; }
+.volume-phase-legend-item, .volume-phase-legend-swatch { display: none; }
 
 /* ── Calendar grid — weeks × Mon-Sun ──────────────────────── */
 .cal-grid {
   display: grid;
   grid-template-columns: 110px repeat(7, 1fr) 70px;
-  border-top: 1px solid var(--divider);
 }
 .cal-head-cell, .cal-cell {
   padding: 10px 8px;
@@ -363,14 +374,17 @@ body {
 .cal-head {
   display: contents;
 }
+/* Header row: proper table-header treatment — taller, stronger
+   typography, top + bottom borders to clearly delimit. */
 .cal-head-cell {
-  background: rgba(13,15,18,.06);
+  background: rgba(13,15,18,.04);
   font-family: 'Inter', sans-serif; font-size: 11px;
-  letter-spacing: 1.5px; color: var(--t1); text-transform: uppercase;
-  font-weight: 600;
-  min-height: 36px;
-  padding: 10px 8px;
-  border-bottom: 1px solid rgba(13,15,18,.10);
+  letter-spacing: 2px; color: var(--t1); text-transform: uppercase;
+  font-weight: 700;
+  min-height: 48px;
+  padding: 14px 8px;
+  border-top: 2px solid rgba(13,15,18,.12);
+  border-bottom: 1px solid rgba(13,15,18,.12);
 }
 .cal-head-cell.cal-week-col { padding-left: 40px; }
 .cal-head-cell.cal-mileage-col { text-align: right; padding-right: 40px; }
@@ -440,15 +454,32 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* Phase row separators on the calendar */
+/* Phase row separators on the calendar — proper section bands,
+   colored to match the phase, with breath above and below. */
 .cal-phase-row {
   grid-column: 1 / -1;
-  padding: 12px 40px 12px;
+  padding: 18px 40px;
   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
-  letter-spacing: 2.5px; text-transform: uppercase; color: var(--t1);
-  background: rgba(13,15,18,.06);
-  border-top: 1px solid rgba(13,15,18,.10);
-  border-bottom: 1px solid rgba(13,15,18,.10);
+  letter-spacing: 2.5px; text-transform: uppercase;
+  border-bottom: 1px solid var(--divider);
+  display: flex; align-items: center; gap: 12px;
+}
+.cal-phase-row::before {
+  content: '';
+  width: 4px; height: 16px; border-radius: 2px;
+}
+.cal-phase-row.base   { background: rgba(44,168,47,.06);  color: var(--green); }
+.cal-phase-row.build  { background: rgba(212,144,10,.07); color: var(--amber); }
+.cal-phase-row.peak   { background: rgba(232,93,38,.07);  color: var(--orange); }
+.cal-phase-row.taper  { background: rgba(13,15,18,.05);   color: var(--t1); }
+.cal-phase-row.base::before   { background: var(--green); }
+.cal-phase-row.build::before  { background: var(--amber); }
+.cal-phase-row.peak::before   { background: var(--orange); }
+.cal-phase-row.taper::before  { background: var(--t1); }
+.cal-phase-row-meta {
+  margin-left: auto;
+  font-weight: 400; font-size: 11px; letter-spacing: 1px;
+  color: var(--t2);
 }
 
 /* ══════════════════════════
@@ -723,8 +754,29 @@ body {
         <div class="schedule-eyebrow">Full Schedule</div>
         <div class="schedule-title">14 weeks · Americas Finest City Half · Aug 17, 2026</div>
       </div>
-      <div class="schedule-meta">
-        Total <strong>508</strong> mi · Peak week <strong>52</strong> mi
+      <div>
+        <div class="schedule-meta-row">
+          <div class="schedule-meta">
+            Total <strong>508</strong> mi · Peak week <strong>52</strong> mi
+          </div>
+        </div>
+        <div class="schedule-header-legend">
+          <div class="schedule-header-legend-item">
+            <span class="schedule-header-legend-swatch" style="background: rgba(44,168,47,.50);"></span> Base
+          </div>
+          <div class="schedule-header-legend-item">
+            <span class="schedule-header-legend-swatch" style="background: rgba(212,144,10,.65);"></span> Build
+          </div>
+          <div class="schedule-header-legend-item">
+            <span class="schedule-header-legend-swatch" style="background: rgba(232,93,38,.70);"></span> Peak
+          </div>
+          <div class="schedule-header-legend-item">
+            <span class="schedule-header-legend-swatch" style="background: rgba(13,15,18,.40);"></span> Taper
+          </div>
+          <div class="schedule-header-legend-item">
+            <span class="schedule-header-legend-swatch" style="background: var(--orange);"></span> Race
+          </div>
+        </div>
       </div>
     </div>
 
@@ -816,7 +868,7 @@ body {
       </div>
 
       <!-- BASE PHASE HEADER -->
-      <div class="cal-phase-row">Base Phase</div>
+      <div class="cal-phase-row base">Base Phase <span class="cal-phase-row-meta">Weeks 1 – 6 · Apr 28 → Jun 8</span></div>
 
       <!-- Week 1 -->
       <div class="cal-week-cell">Week 1<div class="cal-week-cell-date">Apr 28</div></div>
@@ -885,7 +937,7 @@ body {
       <div class="cal-mileage-cell">42<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- BUILD PHASE HEADER -->
-      <div class="cal-phase-row">Build Phase</div>
+      <div class="cal-phase-row build">Build Phase <span class="cal-phase-row-meta">Weeks 7 – 9 · Jun 9 → Jun 29</span></div>
 
       <!-- Week 7 — cutback into build -->
       <div class="cal-week-cell">Week 7<div class="cal-week-cell-date">Jun 9</div></div>
@@ -921,7 +973,7 @@ body {
       <div class="cal-mileage-cell">46<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- PEAK PHASE HEADER -->
-      <div class="cal-phase-row">Peak Phase</div>
+      <div class="cal-phase-row peak">Peak Phase <span class="cal-phase-row-meta">Weeks 10 – 12 · Jun 30 → Jul 20</span></div>
 
       <!-- Week 10 — cutback -->
       <div class="cal-week-cell">Week 10<div class="cal-week-cell-date">Jun 30</div></div>
@@ -957,7 +1009,7 @@ body {
       <div class="cal-mileage-cell">52<span class="cal-mileage-cell-unit">MI</span></div>
 
       <!-- TAPER PHASE HEADER -->
-      <div class="cal-phase-row">Taper</div>
+      <div class="cal-phase-row taper">Taper · Race Week <span class="cal-phase-row-meta">Weeks 13 – 14 · Aug 4 → Aug 17 🏁</span></div>
 
       <!-- Week 13 -->
       <div class="cal-week-cell">Week 13<div class="cal-week-cell-date">Aug 4</div></div>
