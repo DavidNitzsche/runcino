@@ -30,7 +30,7 @@
   'use strict';
 
   const STORE_KEY = 'runcino_v4_state';
-  const SEED_VERSION = 3;
+  const SEED_VERSION = 4;
 
   // ── Plan builder ────────────────────────────────────────────────
   // Generates all 14 weeks of the AFC Half plan from a compact template.
@@ -99,11 +99,20 @@
                      : '9:00';
         const day = { dow, date, type, label, distanceMi, paceMin };
         if (hasStrength) day.hasStrength = true;
-        // Past completed days get an actualMi (simulating Strava match)
+        // Past completed days get an actualMi (simulating Strava match).
+        // Thursday May 14 is a known double-run day — user ran twice; total
+        // is plan 5.5 + extra 3.2 = 8.7. In production this would come from
+        // summing Strava activities on the same calendar date.
         if (date < today && type !== 'rest') {
-          const vIdx = (wIdx * 7 + dIdx) % variance.length;
-          const actual = Math.max(0, Math.round((distanceMi + variance[vIdx]) * 10) / 10);
-          day.actualMi = actual;
+          if (date === '2026-05-14') {
+            day.actualMi = 8.7;
+            day.activitiesCount = 2;
+          } else {
+            const vIdx = (wIdx * 7 + dIdx) % variance.length;
+            const actual = Math.max(0, Math.round((distanceMi + variance[vIdx]) * 10) / 10);
+            day.actualMi = actual;
+            day.activitiesCount = 1;
+          }
         }
         return day;
       });

@@ -657,7 +657,7 @@ body {
 
 .week-header-top {
   display: flex;
-  align-items: center;
+  align-items: baseline;          /* align stats + link to the 'Base Week 1' baseline */
   gap: 40px;
   margin-bottom: 14px;
 }
@@ -1370,12 +1370,8 @@ body {
           <span class="week-header-sublabel">This Week</span>
           <span class="week-header-title">Base Week 1</span>
         </div>
-        <div class="week-meta">
-          <span class="week-meta-stat"><strong>23.5</strong> / 39.5 mi</span>
-          <span class="week-meta-dot">·</span>
-          <span class="week-meta-stat">4 / 6 workouts</span>
-        </div>
-        <a class="week-view-link" href="training-v4.html">View Full Schedule →</a>
+        <div class="week-meta" id="week-meta"></div>
+        <a class="week-view-link" href="training-v4.html#current-week">View Full Schedule →</a>
       </div>
       <div class="week-progress-bar">
         <div class="week-progress-fill"></div>
@@ -1748,9 +1744,47 @@ body {
   }
   function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+  // ── Week meta line · totals + 'on track for X mi this week' ──────
+  function renderWeekMeta() {
+    if (!window.RuncinoStore) return;
+    const el = document.getElementById('week-meta');
+    if (!el) return;
+    const week = RuncinoStore.currentWeekPlan();
+    if (!week) return;
+    const today = RuncinoStore.getState().today;
+    let doneMi = 0, plannedSoFarMi = 0, doneRuns = 0, totalRuns = 0;
+    week.days.forEach(d => {
+      if (d.isRest) return;
+      totalRuns++;
+      if (d.date < today) {
+        plannedSoFarMi += d.distanceMi || 0;
+        doneMi += (typeof d.actualMi === 'number') ? d.actualMi : (d.distanceMi || 0);
+        doneRuns++;
+      }
+    });
+    const planned = week.plannedMi;
+    // Project: actual rate per planned mile × planned total
+    const rate = plannedSoFarMi > 0 ? (doneMi / plannedSoFarMi) : 1;
+    const projected = Math.round(rate * planned * 10) / 10;
+    const drift = projected - planned;
+    const driftLabel = Math.abs(drift) < 0.5
+      ? 'On track for ' + planned + ' mi this week'
+      : (drift > 0
+          ? 'Trending +' + drift.toFixed(1) + ' mi over plan'
+          : 'Trending ' + drift.toFixed(1) + ' mi under plan');
+
+    el.innerHTML =
+      '<span class="week-meta-stat"><strong>' + doneMi.toFixed(1).replace(/\.0$/,'') + '</strong> / ' + planned + ' mi</span>' +
+      '<span class="week-meta-dot">·</span>' +
+      '<span class="week-meta-stat">' + doneRuns + ' / ' + totalRuns + ' workouts</span>' +
+      '<span class="week-meta-dot">·</span>' +
+      '<span class="week-meta-stat green">' + driftLabel + '</span>';
+  }
+
   if (window.RuncinoStore) {
     renderDayGrid();
-    RuncinoStore.subscribe(renderDayGrid);
+    renderWeekMeta();
+    RuncinoStore.subscribe(() => { renderDayGrid(); renderWeekMeta(); });
   }
 
   // OPEN WORKOUT / SKIP TODAY handlers now live in the event-delegation

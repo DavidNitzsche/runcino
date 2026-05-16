@@ -1150,8 +1150,11 @@ body {
         html += '<div class="cal-phase-row ' + ph.cls + '">' + ph.label + ' <span class="cal-phase-row-meta">' + ph.meta + '</span></div>';
         lastPhase = w.phase;
       }
-      // Week-label cell
-      html += '<div class="cal-week-cell">Week ' + w.weekNum + '<div class="cal-week-cell-date">' + fmtShortDate(w.startDate) + '</div></div>';
+      // Week-label cell — mark current week with id="current-week" so
+      // /overview's 'View Full Schedule' deep-link can scroll us here.
+      const isCurrentWeek = w.days.some(d => d.date === today);
+      const idAttr = isCurrentWeek ? ' id="current-week"' : '';
+      html += '<div class="cal-week-cell"' + idAttr + '>Week ' + w.weekNum + '<div class="cal-week-cell-date">' + fmtShortDate(w.startDate) + '</div></div>';
       // 7 day cells
       w.days.forEach(function (d) {
         const isToday = d.date === today;
@@ -1188,6 +1191,19 @@ body {
   if (window.RuncinoStore) {
     renderCalendar();
     RuncinoStore.subscribe(renderCalendar);
+    // Honor #current-week hash from /overview's 'View Full Schedule' link.
+    // After render, scroll the current week into view with a small offset
+    // so it sits below the sticky nav.
+    if (location.hash === '#current-week') {
+      requestAnimationFrame(function () {
+        const target = document.getElementById('current-week');
+        if (target) {
+          const rect = target.getBoundingClientRect();
+          const y = rect.top + window.scrollY - 100;  // 100px breathing room
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        }
+      });
+    }
   }
 </script>
 <script src="runcino-bind.js" defer></script>
