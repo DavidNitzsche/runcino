@@ -1253,79 +1253,10 @@ body {
   ══════════════════════════════════ -->
   <div class="hero-card">
 
-    <!-- Left column -->
-    <div class="hero-left">
-      <div class="hero-eyebrow">TODAY · BASE WEEK 1</div>
-
-      <!-- data-len bucket from engine: xs ≤6 / sm 7-12 / md 13-20 / lg 21-30 / xl 31+ chars -->
-      <div class="hero-title" data-len="sm">EASY<br>RUN</div>
-
-      <div class="stats-row">
-        <div class="stat-pill">
-          <div class="stat-value-row">
-            <span class="stat-value">5.5</span>
-            <span class="stat-unit">mi</span>
-          </div>
-          <div class="stat-label">Distance</div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-value-row">
-            <span class="stat-value">9:15</span>
-            <span class="stat-unit">/mi</span>
-          </div>
-          <div class="stat-label">Pace</div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-value-row">
-            <span class="stat-value">~52</span>
-            <span class="stat-unit">min</span>
-          </div>
-          <div class="stat-label">Duration</div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-value-row">
-            <span class="stat-value">≤145</span>
-            <span class="stat-unit">bpm</span>
-          </div>
-          <div class="stat-label">Heart Rate</div>
-        </div>
-      </div>
-
-      <div class="segments-table">
-        <div class="segment-row">
-          <span class="segment-label">Warmup</span>
-          <span class="segment-dim">10 min</span>
-          <span class="segment-data">1.0 mi</span>
-          <span class="segment-data">10:00/mi</span>
-        </div>
-        <div class="segment-row main">
-          <span class="segment-label">Main</span>
-          <span class="segment-dim">32 min</span>
-          <span class="segment-data">3.5 mi</span>
-          <span class="segment-data segment-pace">9:09/mi avg</span>
-        </div>
-        <div class="segment-row">
-          <span class="segment-label">Cooldown</span>
-          <span class="segment-dim">10 min</span>
-          <span class="segment-data">1.0 mi</span>
-          <span class="segment-data">10:00/mi</span>
-        </div>
-      </div>
-
-      <!-- Strength session — secondary component of today's workout -->
-      <div class="strength-callout">
-        <div class="strength-callout-badge">S</div>
-        <div>
-          <div class="strength-callout-title">Plus · Strength Session</div>
-          <div class="strength-callout-meta">30 min · Amp workout · after the run</div>
-        </div>
-      </div>
-
-      <div class="hero-buttons">
-        <button class="btn-primary">▶&nbsp;&nbsp;OPEN WORKOUT</button>
-        <button class="btn-ghost">SKIP TODAY</button>
-      </div>
-    </div>
+    <!-- Left column · rendered from RuncinoStore.todayWorkout() by inline script.
+         Two modes: workout day (title + stats + segments + buttons) and rest day
+         (title + short note). -->
+    <div class="hero-left" id="hero-left"></div>
 
     <!-- Right column -->
     <div class="hero-right">
@@ -1573,6 +1504,139 @@ body {
     });
   }
 
+  // ── Hero · render from RuncinoStore.todayWorkout() ────────────────
+  // Two modes: workout day (title + stats + segments + strength + buttons)
+  // and rest day (title + recovery note). Buttons use event delegation
+  // since they're recreated on every render.
+  function renderHero() {
+    if (!window.RuncinoStore) return;
+    const host = document.getElementById('hero-left');
+    if (!host) return;
+    const day = RuncinoStore.todayWorkout();
+    const state = RuncinoStore.getState();
+    const phaseLabel = (state.plan.currentPhase || 'BASE') + ' WEEK ' + state.plan.currentPhaseWeek;
+    const eyebrow = 'TODAY · ' + phaseLabel;
+
+    // Choose data-len bucket from the label length
+    function lenBucket(label) {
+      const n = (label || '').length;
+      if (n <= 6) return 'xs';
+      if (n <= 12) return 'sm';
+      if (n <= 20) return 'md';
+      if (n <= 30) return 'lg';
+      return 'xl';
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    if (!day || day.isRest) {
+      // Rest day mode
+      const restLabel = day ? (day.label || 'Rest').toUpperCase() : 'REST';
+      const strengthBlock = day && day.hasStrength
+        ? '<div class="strength-callout" style="margin-top:32px;">' +
+            '<div class="strength-callout-badge">S</div>' +
+            '<div>' +
+              '<div class="strength-callout-title">Plus · Strength Session</div>' +
+              '<div class="strength-callout-meta">30 min · Amp workout</div>' +
+            '</div>' +
+          '</div>'
+        : '';
+      host.innerHTML =
+        '<div class="hero-eyebrow">' + eyebrow + '</div>' +
+        '<div class="hero-title" data-len="' + lenBucket(restLabel) + '">' + esc(restLabel) + '</div>' +
+        '<p style="font-family:\'Inter\',sans-serif; font-size:16px; line-height:1.6; color:var(--t1); margin-top:24px; max-width:540px;">' +
+          'No run on the schedule today. <strong style="color:var(--t0);">Recovery is part of training</strong> — let the body absorb the work from this week and come into Sunday\'s long run fresh.' +
+        '</p>' +
+        strengthBlock;
+      return;
+    }
+
+    // Workout day mode
+    // Compute a rough duration from distance + pace (paceMin is m:ss like "9:15")
+    const pace = day.paceMin || '9:00';
+    const paceParts = pace.split(':');
+    const paceSec = parseInt(paceParts[0],10)*60 + parseInt(paceParts[1]||'0',10);
+    const durSec = Math.round(paceSec * day.distanceMi);
+    const durMin = Math.round(durSec / 60);
+
+    // For Easy runs, also show segments. For quality/long, simpler.
+    const showSegments = day.type === 'easy' || day.type === 'recovery';
+    const segmentsHTML = showSegments
+      ? (function () {
+          const total = day.distanceMi;
+          const wuMi = 1.0, cdMi = 1.0;
+          const mainMi = Math.max(total - wuMi - cdMi, 0);
+          const mainPace = day.paceMin || '9:00';
+          return (
+            '<div class="segments-table">' +
+              '<div class="segment-row">' +
+                '<span class="segment-label">Warmup</span>' +
+                '<span class="segment-dim">10 min</span>' +
+                '<span class="segment-data">' + wuMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data">10:00/mi</span>' +
+              '</div>' +
+              '<div class="segment-row main">' +
+                '<span class="segment-label">Main</span>' +
+                '<span class="segment-dim">' + (durMin - 20) + ' min</span>' +
+                '<span class="segment-data">' + mainMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data segment-pace">' + mainPace + '/mi avg</span>' +
+              '</div>' +
+              '<div class="segment-row">' +
+                '<span class="segment-label">Cooldown</span>' +
+                '<span class="segment-dim">10 min</span>' +
+                '<span class="segment-data">' + cdMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data">10:00/mi</span>' +
+              '</div>' +
+            '</div>'
+          );
+        })()
+      : '';
+
+    const strengthBlock = day.hasStrength
+      ? '<div class="strength-callout">' +
+          '<div class="strength-callout-badge">S</div>' +
+          '<div>' +
+            '<div class="strength-callout-title">Plus · Strength Session</div>' +
+            '<div class="strength-callout-meta">30 min · Amp workout · after the run</div>' +
+          '</div>' +
+        '</div>'
+      : '';
+
+    const titleLabel = (day.label || 'Run').toUpperCase().replace(' + ', ' + '); // keep
+    host.innerHTML =
+      '<div class="hero-eyebrow">' + eyebrow + '</div>' +
+      '<div class="hero-title" data-len="' + lenBucket(titleLabel) + '">' + esc(titleLabel) + '</div>' +
+      '<div class="stats-row">' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">' + day.distanceMi + '</span><span class="stat-unit">mi</span></div><div class="stat-label">Distance</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">' + pace + '</span><span class="stat-unit">/mi</span></div><div class="stat-label">Pace</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">~' + durMin + '</span><span class="stat-unit">min</span></div><div class="stat-label">Duration</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">≤145</span><span class="stat-unit">bpm</span></div><div class="stat-label">Heart Rate</div></div>' +
+      '</div>' +
+      segmentsHTML +
+      strengthBlock +
+      '<div class="hero-buttons">' +
+        '<button class="btn-primary">▶&nbsp;&nbsp;OPEN WORKOUT</button>' +
+        '<button class="btn-ghost">SKIP TODAY</button>' +
+      '</div>';
+  }
+
+  // Buttons inside the hero are recreated on each render — use event delegation.
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('#hero-left .btn-primary')) {
+      const m = document.getElementById('workout-modal');
+      if (m) m.classList.add('active');
+    } else if (e.target.closest('#hero-left .btn-ghost')) {
+      const left = document.getElementById('hero-left');
+      const skipped = left.classList.toggle('skipped');
+      const btn = e.target.closest('#hero-left .btn-ghost');
+      btn.textContent = skipped ? '↩ Undo Skip' : 'SKIP TODAY';
+    }
+  });
+
+  if (window.RuncinoStore) {
+    renderHero();
+    RuncinoStore.subscribe(renderHero);
+  }
+
   // ── This Week strip · render from RuncinoStore.currentWeekPlan() ──
   // Each day-col is a function of plan day + whether it's today.
   // Rest days render with a dim 'Rest' label and a long dash.
@@ -1613,17 +1677,9 @@ body {
     RuncinoStore.subscribe(renderDayGrid);
   }
 
-  // OPEN WORKOUT — popup
-  document.querySelector('.btn-primary').addEventListener('click', function() {
-    document.getElementById('workout-modal').classList.add('active');
-  });
-
-  // SKIP TODAY — state change (togglable)
-  document.querySelector('.btn-ghost').addEventListener('click', function() {
-    const left = document.querySelector('.hero-left');
-    const skipped = left.classList.toggle('skipped');
-    this.textContent = skipped ? '↩ Undo Skip' : 'Skip Today';
-  });
+  // OPEN WORKOUT / SKIP TODAY handlers now live in the event-delegation
+  // listener earlier in this script (the hero buttons are recreated on
+  // every renderHero() call so direct addEventListener wouldn't survive).
 
   // VIEW FULL SCHEDULE — link navigates to training-v4.html (no modal intercept)
 
