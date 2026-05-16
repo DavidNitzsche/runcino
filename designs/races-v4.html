@@ -140,15 +140,16 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   border-top: 1px solid var(--divider);
 }
 .race-row:first-of-type { border-top: 1px solid var(--divider); }
-.race-row.vdot-anchor { background: rgba(44,168,47,.04); }
+.race-row.a-race { background: rgba(232,93,38,.04); }
 .race-row-tag {
   width: 22px; height: 22px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
   background: rgba(13,15,18,.07); color: var(--t2);
 }
-.race-row-tag.vdot { background: rgba(44,168,47,.18); color: var(--green); }
-.race-row-tag.passion { background: rgba(212,144,10,.18); color: var(--amber); }
+.race-row-tag.a { background: rgba(232,93,38,.16); color: var(--orange); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
+.race-row-tag.b { background: rgba(212,144,10,.16); color: var(--amber); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
+.race-row-tag.c { background: rgba(13,15,18,.06); color: var(--t2); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
 .race-row-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
 .race-row-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
 .race-row-name-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
@@ -159,9 +160,9 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   letter-spacing: 1px; text-transform: uppercase; text-align: right;
   color: var(--t2);
 }
-.race-row-status.vdot { color: var(--green); }
-.race-row-status.passion { color: var(--amber); }
-.race-row-status.training { color: var(--t2); }
+.race-row-status.a { color: var(--orange); }
+.race-row-status.b { color: var(--amber); }
+.race-row-status.c { color: var(--t2); }
 
 /* ── PRs grid ─────────────────────────────────────────────── */
 .prs-grid {
@@ -202,13 +203,14 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="coach-left">
       <div class="coach-label">
         <span class="dot-green"></span>
-        COACH · RACE CALENDAR · 93 DAYS TO THE TEST
+        COACH · RACE CALENDAR · WHAT'S NEXT
       </div>
       <p class="coach-briefing">
-        Three races in the last thirty days, and the engine learned from all three.
-        <strong>Powered by the Mouse</strong> in February is still your best VDOT signal —
-        a sharp, well-paced effort in winter. Big Sur and Sombrero were rich miles but not
-        sharpening miles. <strong>AFC Half is where it counts.</strong>
+        <strong>AFC Half is 93 days out</strong> — your A-race for this cycle and the only one
+        that counts on the fitness ledger. You're in week 1 of 14, banking base miles.
+        First half-pace work lands at week 5 — that's where the <strong>1:35 starts to feel
+        real</strong>. No tune-up B-race on the calendar yet; we'll slot one around week 10
+        if you want a dress rehearsal.
       </p>
     </div>
 
@@ -289,29 +291,14 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Recent Races</div>
-        <div class="card-sub"><strong>5 races</strong> in the last 4 months · ranked by VDOT contribution</div>
+        <div class="card-sub"><strong>5 races</strong> in the last 4 months · newest first</div>
       </div>
-      <div class="card-meta">Auto-classified by the coach</div>
+      <div class="card-meta">A · B · C auto-classified</div>
     </div>
 
-    <!-- Powered by the Mouse — VDOT anchor -->
-    <div class="race-row vdot-anchor">
-      <span class="race-row-tag vdot">★</span>
-      <div class="race-row-date">Feb 1</div>
-      <div>
-        <div class="race-row-name">Powered by the Mouse for a PR</div>
-        <div class="race-row-name-sub">Half Marathon · 13.38 mi · Disneyland</div>
-      </div>
-      <div>
-        <div class="race-row-time">1:34:54</div>
-        <div class="race-row-pace">7:05/mi</div>
-      </div>
-      <div class="race-row-status vdot">VDOT anchor<br><span style="font-weight:400; color:var(--t2);">48.1 · 3 mo ago</span></div>
-    </div>
-
-    <!-- Sombrero -->
+    <!-- Sombrero — C passion run -->
     <div class="race-row">
-      <span class="race-row-tag passion">♥</span>
+      <span class="race-row-tag c">C</span>
       <div class="race-row-date">May 3</div>
       <div>
         <div class="race-row-name">Sombrero Half Marathon</div>
@@ -321,12 +308,12 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">1:40:57</div>
         <div class="race-row-pace">7:40/mi</div>
       </div>
-      <div class="race-row-status passion">Passion run<br><span style="font-weight:400; color:var(--t2);">VDOT 45 · 12d ago</span></div>
+      <div class="race-row-status c">Passion run<br><span style="font-weight:400; color:var(--t2);">not a fitness test</span></div>
     </div>
 
-    <!-- Big Sur -->
+    <!-- Big Sur — C passion run -->
     <div class="race-row">
-      <span class="race-row-tag">M</span>
+      <span class="race-row-tag c">C</span>
       <div class="race-row-date">Apr 26</div>
       <div>
         <div class="race-row-name">Big Sur Marathon</div>
@@ -336,12 +323,12 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">3:36:55</div>
         <div class="race-row-pace">8:17/mi</div>
       </div>
-      <div class="race-row-status training">Adventure race<br><span style="font-weight:400; color:var(--t2);">course-discounted</span></div>
+      <div class="race-row-status c">Passion run<br><span style="font-weight:400; color:var(--t2);">course-discounted</span></div>
     </div>
 
-    <!-- Point Magu -->
+    <!-- Point Magu — B tune-up -->
     <div class="race-row">
-      <span class="race-row-tag">B</span>
+      <span class="race-row-tag b">B</span>
       <div class="race-row-date">Apr 18</div>
       <div>
         <div class="race-row-name">Point Magu Half Marathon</div>
@@ -351,12 +338,27 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">2:09:02</div>
         <div class="race-row-pace">9:33/mi</div>
       </div>
-      <div class="race-row-status training">B-race<br><span style="font-weight:400; color:var(--t2);">VDOT 38 · trail-discounted</span></div>
+      <div class="race-row-status b">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 38 · trail-discounted</span></div>
     </div>
 
-    <!-- Rose Bowl -->
+    <!-- Powered by the Mouse — A race, current VDOT anchor -->
+    <div class="race-row a-race">
+      <span class="race-row-tag a">A</span>
+      <div class="race-row-date">Feb 1</div>
+      <div>
+        <div class="race-row-name">Powered by the Mouse for a PR</div>
+        <div class="race-row-name-sub">Half Marathon · 13.38 mi · Disneyland</div>
+      </div>
+      <div>
+        <div class="race-row-time">1:34:54</div>
+        <div class="race-row-pace">7:05/mi</div>
+      </div>
+      <div class="race-row-status a">Goal race<br><span style="font-weight:400; color:var(--t2);">VDOT 48.1 · current anchor</span></div>
+    </div>
+
+    <!-- Rose Bowl — B tune-up -->
     <div class="race-row">
-      <span class="race-row-tag">B</span>
+      <span class="race-row-tag b">B</span>
       <div class="race-row-date">Jan 18</div>
       <div>
         <div class="race-row-name">Rose Bowl Half Marathon</div>
@@ -366,11 +368,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <div class="race-row-time">1:38:38</div>
         <div class="race-row-pace">7:24/mi</div>
       </div>
-      <div class="race-row-status training">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 46 · 4 mo ago</span></div>
+      <div class="race-row-status b">Tune-up<br><span style="font-weight:400; color:var(--t2);">VDOT 46 · 4 mo ago</span></div>
     </div>
 
     <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
-      ★ VDOT anchor — best comparable effort · ♥ Passion run — not weighted as a fitness test · B-races and adventure runs course-discount where needed.
+      <strong style="color: var(--orange);">A</strong> goal race ·
+      <strong style="color: var(--amber);">B</strong> tune-up — sharpens fitness ·
+      <strong style="color: var(--t2);">C</strong> passion run — doesn't count unless it's exceptional.
     </div>
   </div>
 
