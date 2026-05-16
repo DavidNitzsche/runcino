@@ -1528,8 +1528,8 @@ body {
 
     let text;
     if (!day || day.isRest) {
-      // Count completed runs in this week
-      const doneCount = week ? week.days.filter(d => d.completed).length : 0;
+      // Count completed runs in this week (date < today AND not rest)
+      const doneCount = week ? week.days.filter(d => !d.isRest && d.date < state.today).length : 0;
       const runCount = week ? week.days.filter(d => !d.isRest).length : 0;
       const tomorrowText = tomorrow
         ? (tomorrow.isRest
@@ -1701,15 +1701,16 @@ body {
 
     grid.innerHTML = week.days.map(function (d) {
       const isToday = d.date === today;
+      const isDone  = !isToday && d.date < today && !d.isRest;
       const dateNum = parseInt(d.date.slice(-2), 10);
       const colClass = 'day-col' + (isToday ? ' today' : '');
       const dateClass = 'day-date' + (isToday ? ' amber' : '');
-      const strengthBadge = d.hasStrength ? '<span class="day-strength" title="Strength training">S</span>' : '';
+      const strengthBadge = (d.hasStrength && !isDone) ? '<span class="day-strength" title="Strength training">S</span>' : '';
       const restMode = d.isRest;
       const distanceBlock = restMode
         ? '<div class="day-workout-name" style="color:var(--t2);">Rest</div><div class="day-rest">—</div>'
         : '<div class="day-workout-name">' + escapeHtml(d.label) + '</div><div class="day-distance">' + d.distanceMi + ' mi</div>';
-      const statusBlock = (d.completed && !isToday) ? '<div class="day-status-done">✓ Done</div>' : '';
+      const statusBlock = isDone ? '<div class="day-status-done">✓ Done</div>' : '';
       return (
         '<div class="' + colClass + '">' +
           strengthBadge +

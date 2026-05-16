@@ -205,9 +205,15 @@
 
   function getState() {
     const existing = read();
-    if (existing) return existing;
-    write(SEED);
-    return SEED;
+    const base = existing || SEED;
+    if (!existing) write(SEED);
+    // Derive daysAway on every read so race countdowns track today.
+    if (base.races && base.races.upcoming) {
+      base.races.upcoming.forEach((r) => {
+        if (r.date) r.daysAway = daysBetween(base.today, r.date);
+      });
+    }
+    return base;
   }
 
   function setState(updater) {
@@ -283,6 +289,12 @@
       out.push({ date: iso, log: s.checkins[iso] || null });
     }
     return out;
+  }
+
+  function daysBetween(fromISO, toISO) {
+    const a = new Date(fromISO + 'T00:00:00Z');
+    const b = new Date(toISO + 'T00:00:00Z');
+    return Math.round((b - a) / 86400000);
   }
 
   function getCurrentWeekContext() {
