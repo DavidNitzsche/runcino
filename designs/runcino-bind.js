@@ -24,6 +24,7 @@
   function format(state) {
     const today = state.today;
     const todayLabel = RuncinoStore.fmtDayLabel(today).toUpperCase();
+    const ctx = RuncinoStore.getCurrentWeekContext();
     const plan = state.plan;
     const nextRace = state.races?.upcoming?.[0];
     const vdot = state.vdot;
@@ -31,9 +32,9 @@
     return {
       'data-today-label': todayLabel,
       'data-today-date': today,
-      'data-plan-week': `Week ${plan.currentWeek} of ${plan.totalWeeks}`,
-      'data-plan-phase': plan.currentPhase,
-      'data-plan-phase-week': `${capitalize(plan.currentPhase)} Week ${plan.currentPhaseWeek}`,
+      'data-plan-week': `Week ${ctx.weekNum} of ${plan.totalWeeks}`,
+      'data-plan-phase': ctx.phase,
+      'data-plan-phase-week': `${capitalize(ctx.phase)} Week ${ctx.phaseWeekNum}`,
       'data-plan-race-days-away': nextRace ? String(nextRace.daysAway) : '—',
       'data-plan-race-name': nextRace?.name || '',
       'data-vdot-anchor': vdot ? vdot.anchor.toFixed(1) : '—',

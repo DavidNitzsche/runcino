@@ -285,9 +285,22 @@
     return out;
   }
 
-  function currentWeekPlan() {
+  function getCurrentWeekContext() {
     const s = getState();
-    return s.plan.weeks.find((w) => w.weekNum === s.plan.currentWeek) || null;
+    const start = new Date(s.plan.startDate + 'T00:00:00Z');
+    const today = new Date(s.today + 'T00:00:00Z');
+    const diffDays = Math.floor((today - start) / 86400000);
+    const weekNum = Math.max(1, Math.min(s.plan.totalWeeks, Math.floor(diffDays / 7) + 1));
+    const week = s.plan.weeks.find((w) => w.weekNum === weekNum);
+    const phase = week ? week.phase : 'BASE';
+    const phaseSpec = s.plan.phases.find((p) => p.name === phase);
+    const phaseWeekNum = phaseSpec ? (phaseSpec.weeks.indexOf(weekNum) + 1) : 1;
+    const phaseWeeksTotal = phaseSpec ? phaseSpec.weeks.length : 0;
+    return { weekNum, week, phase, phaseWeekNum, phaseWeeksTotal };
+  }
+
+  function currentWeekPlan() {
+    return getCurrentWeekContext().week || null;
   }
 
   function todayWorkout() {
@@ -315,6 +328,7 @@
     todayCheckIn,
     recentCheckIns,
     currentWeekPlan,
+    getCurrentWeekContext,
     todayWorkout,
     fmtDayLabel,
     SEED_VERSION,
