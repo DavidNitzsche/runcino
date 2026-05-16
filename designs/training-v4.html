@@ -88,36 +88,61 @@ body {
   margin-left: 48px;
   width: 300px;
   display: flex; flex-direction: column;
-  justify-content: space-between;
   background: var(--card);
   border-radius: 20px;
-  padding: 24px;
+  padding: 22px 24px;
   box-shadow: var(--card-shadow);
+  position: relative;
+  overflow: hidden;
 }
 .cycle-next-label {
   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
   letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
 }
 .cycle-next-race {
-  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px;
-  color: var(--t0); margin-top: 8px;
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 16px;
+  color: var(--t0); margin-top: 8px; line-height: 1.2;
+}
+.cycle-next-race-meta {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  margin-top: 3px;
 }
 .cycle-next-days-row {
-  display: flex; align-items: baseline; gap: 6px;
-  margin-top: 14px;
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 18px;
 }
 .cycle-next-days {
-  font-family: 'Bebas Neue', sans-serif; font-size: 56px; line-height: 1;
-  color: var(--t0);
+  font-family: 'Bebas Neue', sans-serif; font-size: 72px; line-height: 0.86;
+  color: var(--orange);
+  letter-spacing: -1px;
 }
 .cycle-next-days-unit {
-  font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+  font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2);
+  letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
 }
-.cycle-next-meta {
-  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
-  margin-top: 14px;
+/* Progress strip at the bottom of the card showing how far through the
+   plan we are. 1 of 14 weeks today → ~7% filled. */
+.cycle-next-progress {
+  margin-top: 18px;
+  display: flex; flex-direction: column; gap: 7px;
 }
-.cycle-next-meta strong { color: var(--t0); font-weight: 600; }
+.cycle-next-progress-bar {
+  height: 4px;
+  background: rgba(13,15,18,.07);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.cycle-next-progress-fill {
+  height: 100%;
+  background: var(--orange);
+  border-radius: 2px;
+}
+.cycle-next-progress-meta {
+  display: flex; justify-content: space-between;
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 0.5px; color: var(--t2);
+}
+.cycle-next-progress-meta strong { color: var(--t1); font-weight: 600; }
 
 /* ══════════════════════════
    SECTION 2 — PHASE HERO
@@ -795,12 +820,19 @@ body {
     <div class="cycle-next">
       <div class="cycle-next-label">Next milestone</div>
       <div class="cycle-next-race">Americas Finest City Half</div>
+      <div class="cycle-next-race-meta">Aug 16, 2026 · 13.1 mi</div>
       <div class="cycle-next-days-row">
         <span class="cycle-next-days">93</span>
-        <span class="cycle-next-days-unit">days out</span>
+        <span class="cycle-next-days-unit">days<br>to race</span>
       </div>
-      <div class="cycle-next-meta">
-        Aug 16, 2026 · 13.1 mi
+      <div class="cycle-next-progress">
+        <div class="cycle-next-progress-bar">
+          <div class="cycle-next-progress-fill" style="width: 7%;"></div>
+        </div>
+        <div class="cycle-next-progress-meta">
+          <span><strong>Week 1</strong> of 14</span>
+          <span>7%</span>
+        </div>
       </div>
     </div>
   </div>
@@ -886,10 +918,6 @@ body {
         </div>
       </div>
 
-      <p class="coach-note-inline">
-        Cycles trim by one week when reality says so — a missed week of running
-        shifts the build start, not the race date.
-      </p>
     </div>
   </div>
 
