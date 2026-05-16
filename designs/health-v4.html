@@ -216,6 +216,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .source-pill-name { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--t0); }
 .source-pill-state { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
 </style>
+<script src="runcino-store.js"></script>
 </head>
 <body>
 
@@ -756,49 +757,86 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 </div>
 
 <script>
-  // Today's Check-In · log handler.
-  // Disables the sliders, flips the button to 'logged' state, fills
-  // today's column in the timeline below, and flips the readiness
-  // 'Check-In: Not logged' trend bar to green.
-  function logCheckIn() {
+  // ── Check-in: central state via RuncinoStore ──────────────────────
+  // Reads any existing check-in for today from the store and reflects
+  // it in the UI (form locked + timeline today-column filled + Check-In
+  // trend row green). On Log click, writes to the store; subscribes for
+  // cross-tab updates.
+
+  function applyCheckInState(checkin) {
     const mini = document.querySelector('.health-checkin-mini');
     if (!mini) return;
-    const sliders = mini.querySelectorAll('.checkin-range');
-    if (sliders.length < 3) return;
-    const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
 
-    // Lock sliders
-    sliders.forEach(s => s.disabled = true);
+    if (checkin) {
+      // Sliders reflect the logged values + locked
+      const sliders = mini.querySelectorAll('.checkin-range');
+      sliders[0].value = checkin.energy;
+      sliders[1].value = checkin.soreness;
+      sliders[2].value = checkin.stress;
+      sliders.forEach(s => s.disabled = true);
+      const vals = mini.querySelectorAll('.health-checkin-row-val');
+      vals[0].textContent = checkin.energy;
+      vals[1].textContent = checkin.soreness;
+      vals[2].textContent = checkin.stress;
 
-    // Flip button
-    const btn = mini.querySelector('.health-checkin-mini-btn');
-    btn.textContent = '✓ Logged for today';
-    btn.style.background = 'var(--green)';
-    btn.style.cursor = 'default';
-    btn.onclick = null;
-
-    // Fill today's column in the timeline
-    const todayCol = document.querySelector('.timeline-day.today');
-    if (todayCol) {
-      todayCol.classList.remove('missing');
-      const stack = todayCol.querySelector('.timeline-day-stack');
-      stack.innerHTML =
-        '<div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:' + (energy * 10) + '%"></div></div>' +
-        '<div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:' + (soreness * 10) + '%"></div></div>' +
-        '<div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:' + (stress * 10) + '%"></div></div>';
+      // Button → logged state
+      const btn = mini.querySelector('.health-checkin-mini-btn');
+      btn.textContent = '✓ Logged for today';
+      btn.style.background = 'var(--green)';
+      btn.style.cursor = 'default';
+      btn.onclick = null;
     }
 
-    // Update the Check-In row on the readiness hero
+    // Timeline today column
+    const todayCol = document.querySelector('.timeline-day.today');
+    if (todayCol) {
+      const stack = todayCol.querySelector('.timeline-day-stack');
+      if (checkin) {
+        todayCol.classList.remove('missing');
+        stack.innerHTML =
+          '<div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:' + (checkin.energy * 10) + '%"></div></div>' +
+          '<div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:' + (checkin.soreness * 10) + '%"></div></div>' +
+          '<div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:' + (checkin.stress * 10) + '%"></div></div>';
+      }
+    }
+
+    // Hero Check-In trend row
     document.querySelectorAll('.health-trend-row').forEach(row => {
       const label = row.querySelector('.health-trend-row-label');
       if (label && label.textContent.trim() === 'Check-In') {
         const val = row.querySelector('.health-trend-row-value');
-        val.className = 'health-trend-row-value green';
-        val.textContent = 'E' + energy + ' · S' + soreness + ' · St' + stress;
         const fill = row.querySelector('.health-trend-bar-fill');
-        fill.className = 'health-trend-bar-fill green';
-        fill.style.width = '100%';
+        if (checkin) {
+          val.className = 'health-trend-row-value green';
+          val.textContent = 'E' + checkin.energy + ' · S' + checkin.soreness + ' · St' + checkin.stress;
+          fill.className = 'health-trend-bar-fill green';
+          fill.style.width = '100%';
+        } else {
+          val.className = 'health-trend-row-value dim';
+          val.textContent = 'Not logged';
+          fill.className = 'health-trend-bar-fill dim';
+          fill.style.width = '0%';
+        }
       }
+    });
+  }
+
+  function logCheckIn() {
+    const mini = document.querySelector('.health-checkin-mini');
+    if (!mini || !window.RuncinoStore) return;
+    const sliders = mini.querySelectorAll('.checkin-range');
+    if (sliders.length < 3) return;
+    const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
+    RuncinoStore.logCheckIn({ energy, soreness, stress });
+    // applyCheckInState fires via subscribe below
+  }
+
+  // On load — if today's check-in already exists, reflect it
+  if (window.RuncinoStore) {
+    applyCheckInState(RuncinoStore.todayCheckIn());
+    // Subscribe: when another tab/page writes, update this page too
+    RuncinoStore.subscribe(() => {
+      applyCheckInState(RuncinoStore.todayCheckIn());
     });
   }
 </script>

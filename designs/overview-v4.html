@@ -1185,6 +1185,7 @@ body {
   pointer-events: none;
 }
 </style>
+<script src="runcino-store.js"></script>
 </head>
 <body>
 
@@ -1586,14 +1587,51 @@ body {
       document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
   });
 
-  // LOG CHECK-IN — state change
+  // LOG CHECK-IN — writes to the central RuncinoStore so the same
+  // log persists to /health and to any other page reading the store.
+  function applyOverviewCheckInState(checkin) {
+    const btn = document.querySelector('.checkin-btn');
+    const sliders = document.querySelectorAll('.checkin-range');
+    const vals = {
+      energy: document.getElementById('val-energy'),
+      soreness: document.getElementById('val-soreness'),
+      stress: document.getElementById('val-stress'),
+    };
+    if (checkin) {
+      document.querySelector('.coach-right').classList.add('checkin-logged');
+      btn.classList.add('logged');
+      btn.textContent = '✓ Logged';
+      sliders[0].value = checkin.energy;
+      sliders[1].value = checkin.soreness;
+      sliders[2].value = checkin.stress;
+      if (vals.energy)   vals.energy.textContent = checkin.energy;
+      if (vals.soreness) vals.soreness.textContent = checkin.soreness;
+      if (vals.stress)   vals.stress.textContent = checkin.stress;
+      sliders.forEach(r => r.disabled = true);
+    } else {
+      document.querySelector('.coach-right').classList.remove('checkin-logged');
+      btn.classList.remove('logged');
+      btn.textContent = 'Log Check-In';
+      sliders.forEach(r => r.disabled = false);
+    }
+  }
+
   document.querySelector('.checkin-btn').addEventListener('click', function() {
     if (this.classList.contains('logged')) return;
-    document.querySelector('.coach-right').classList.add('checkin-logged');
-    this.classList.add('logged');
-    this.textContent = '✓ Logged';
-    document.querySelectorAll('.checkin-range').forEach(r => r.disabled = true);
+    if (!window.RuncinoStore) return;
+    const sliders = document.querySelectorAll('.checkin-range');
+    const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
+    RuncinoStore.logCheckIn({ energy, soreness, stress });
+    // applyOverviewCheckInState fires via the subscribe handler below
   });
+
+  // On load — reflect any existing check-in for today
+  if (window.RuncinoStore) {
+    applyOverviewCheckInState(RuncinoStore.todayCheckIn());
+    RuncinoStore.subscribe(() => {
+      applyOverviewCheckInState(RuncinoStore.todayCheckIn());
+    });
+  }
 
   // OPEN WORKOUT — popup
   document.querySelector('.btn-primary').addEventListener('click', function() {
