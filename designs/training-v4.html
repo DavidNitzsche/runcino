@@ -242,17 +242,22 @@ body {
 }
 .schedule-header {
   padding: 28px 40px 20px;
-  display: flex; align-items: flex-start; justify-content: space-between;
+  display: flex; align-items: flex-end; justify-content: space-between;
   gap: 32px;
 }
-.schedule-eyebrow {
-  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
-  letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
+.schedule-title-group {
+  display: flex; flex-direction: column; gap: 6px;
 }
+.schedule-eyebrow { display: none; }
 .schedule-title {
-  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
-  color: var(--t0); margin-top: 2px;
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px;
+  color: var(--t0); line-height: 1.1;
 }
+.schedule-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  letter-spacing: 0.3px;
+}
+.schedule-sub strong { color: var(--t1); font-weight: 600; }
 .schedule-meta {
   font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
   text-align: right;
@@ -419,17 +424,23 @@ body {
   user-select: none;
 }
 
-/* Completed cell — small green checkmark badge in the top-left, plus
-   slightly dimmed cell text so completed workouts read as past
-   without using strikethrough or heavy treatment. */
+/* Completed cell — the whole cell greys out, a single green check
+   sits centered, and all workout text + strength badge fade away.
+   Reads as "done, move on" at a glance without crowding the row. */
+.cal-cell.done {
+  background: rgba(13,15,18,.04) !important;
+}
 .cal-cell.done .cal-cell-type,
-.cal-cell.done .cal-cell-dist { opacity: 0.55; }
+.cal-cell.done .cal-cell-dist,
+.cal-cell.done .cal-cell-rest-dash { display: none; }
+.cal-cell.done .cal-cell-strength { display: none; }
 .cal-cell-done {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 18px;
-  height: 18px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--green);
   color: #FFFFFF;
@@ -437,7 +448,7 @@ body {
   align-items: center;
   justify-content: center;
   font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1;
   user-select: none;
@@ -573,17 +584,23 @@ body {
   padding: 28px 40px;
 }
 .adapted-header {
-  display: flex; align-items: baseline; justify-content: space-between;
-  margin-bottom: 14px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 24px;
+}
+.adapted-title-group {
+  display: flex; flex-direction: column; gap: 6px;
 }
 .adapted-title {
-  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px;
-  color: var(--t0);
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px;
+  color: var(--t0); line-height: 1.1;
 }
-.adapted-eyebrow {
-  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
-  letter-spacing: 2px; color: var(--t2); text-transform: uppercase;
+.adapted-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
+  letter-spacing: 0.3px;
 }
+.adapted-sub strong { color: var(--t1); font-weight: 600; }
+.adapted-eyebrow { display: none; }
 .adapted-pin {
   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
   letter-spacing: 1.5px; text-transform: uppercase;
@@ -838,9 +855,11 @@ body {
   ══════════════════════════════════ -->
   <div class="schedule-card">
     <div class="schedule-header">
-      <div>
-        <div class="schedule-eyebrow">Full Schedule</div>
-        <div class="schedule-title">14 weeks · Americas Finest City Half · Aug 17, 2026</div>
+      <div class="schedule-title-group">
+        <div class="schedule-title">Full Schedule</div>
+        <div class="schedule-sub">
+          <strong>14 weeks</strong> · Americas Finest City Half · Aug 17, 2026
+        </div>
       </div>
       <div class="schedule-meta">
         Total <strong>608</strong> mi · Peak week <strong>56</strong> mi
@@ -1081,9 +1100,9 @@ body {
   ══════════════════════════════════ -->
   <div class="adapted-card">
     <div class="adapted-header">
-      <div>
-        <div class="adapted-eyebrow">Plan Adapted · Last 7 Days</div>
+      <div class="adapted-title-group">
         <div class="adapted-title">3 adjustments this week</div>
+        <div class="adapted-sub">Plan adapted · Last 7 days</div>
       </div>
       <span class="adapted-pin">Doctrine driven</span>
     </div>
