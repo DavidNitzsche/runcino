@@ -98,20 +98,26 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .run-row {
   display: grid;
   /* date · type · name · miles · time */
-  grid-template-columns: 100px 28px 1fr 90px 90px;
+  grid-template-columns: 100px 100px 1fr 90px 90px;
   align-items: center; gap: 16px;
   padding: 14px 40px;
   border-top: 1px solid var(--divider);
 }
-/* Extra breathing room between the type tag and the run name (the 3rd grid
-   item is the wrapper div holding name + sub-type). Matches the /races
-   Recent Races spacing. */
+/* Extra breathing room between the type tag and the run name. */
 .run-row > :nth-child(3) { margin-left: 12px; }
-.run-tag { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; }
-.run-tag.easy { background: rgba(13,15,18,.07); color: var(--t1); }
-.run-tag.quality { background: rgba(212,144,10,.18); color: var(--amber); }
-.run-tag.long { background: rgba(44,168,47,.18); color: var(--green); }
-.run-tag.race { background: rgba(232,93,38,.22); color: var(--orange); }
+/* Type label — full word in the type's color. No background pill; the
+   color carries the meaning, no legend needed at the bottom of the card. */
+.run-tag {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.run-tag.easy    { color: var(--t2); }
+.run-tag.quality { color: var(--amber); }
+.run-tag.long    { color: var(--green); }
+.run-tag.race    { color: var(--orange); }
 .run-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
 .run-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
 .run-type { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
@@ -305,14 +311,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Recent Runs</div>
-        <div class="card-sub"><strong>Last 8 activities</strong> · pulled from Strava</div>
+        <div class="card-sub"><strong>Last 20 activities</strong> · pulled from Strava</div>
       </div>
-      <div class="card-meta">→ See full log</div>
     </div>
 
     <div class="run-row">
       <div class="run-date">Thu May 14</div>
-      <span class="run-tag easy">E</span>
+      <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Easy slow and boring</div>
         <div class="run-type">Easy · prescribed</div>
@@ -329,7 +334,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Tue May 12</div>
-      <span class="run-tag quality">T</span>
+      <span class="run-tag quality">Threshold</span>
       <div>
         <div class="run-name">Working on better form</div>
         <div class="run-type">Threshold · 5×1K cruise</div>
@@ -346,7 +351,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Mon May 11</div>
-      <span class="run-tag easy">E</span>
+      <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Lunch Run</div>
         <div class="run-type">Easy · base mileage</div>
@@ -363,7 +368,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Sun May 3</div>
-      <span class="run-tag race">R</span>
+      <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Sombrero Half Marathon</div>
         <div class="run-type">Race · passion run · anniversary</div>
@@ -380,7 +385,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Thu May 1</div>
-      <span class="run-tag easy">E</span>
+      <span class="run-tag easy">Easy</span>
       <div>
         <div class="run-name">Omg I ran again</div>
         <div class="run-type">Easy · short shakeout</div>
@@ -397,7 +402,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Sun Apr 26</div>
-      <span class="run-tag race">R</span>
+      <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Big Sur Marathon</div>
         <div class="run-type">Race · adventure · hilly</div>
@@ -414,7 +419,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Sun Apr 19</div>
-      <span class="run-tag long">L</span>
+      <span class="run-tag long">Long</span>
       <div>
         <div class="run-name">Morning Run</div>
         <div class="run-type">Long · pre-Big Sur taper</div>
@@ -431,7 +436,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
     <div class="run-row">
       <div class="run-date">Fri Apr 18</div>
-      <span class="run-tag race">R</span>
+      <span class="run-tag race">Race</span>
       <div>
         <div class="run-name">Point Magu Half Marathon</div>
         <div class="run-type">Race · trail · B-race</div>
@@ -446,8 +451,191 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div style="padding: 16px 40px 24px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-style: italic; border-top: 1px solid var(--divider);">
-      E = easy · T = threshold/quality · L = long · R = race
+    <div class="run-row">
+      <div class="run-date">Wed Apr 15</div>
+      <span class="run-tag easy">Easy</span>
+      <div>
+        <div class="run-name">Coffee shake-out</div>
+        <div class="run-type">Easy · pre-race week</div>
+      </div>
+      <div>
+        <div class="run-num">4.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:28/mi</div>
+      </div>
+      <div>
+        <div class="run-num">40<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 132 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Mon Apr 13</div>
+      <span class="run-tag quality">Threshold</span>
+      <div>
+        <div class="run-name">Sharpening session</div>
+        <div class="run-type">Threshold · 4×1mi cruise</div>
+      </div>
+      <div>
+        <div class="run-num">7.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">7:24/mi avg</div>
+      </div>
+      <div>
+        <div class="run-num">52<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 161 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Sat Apr 11</div>
+      <span class="run-tag long">Long</span>
+      <div>
+        <div class="run-name">Rose Bowl loops</div>
+        <div class="run-type">Long · pre-Point Magu</div>
+      </div>
+      <div>
+        <div class="run-num">12.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:12/mi</div>
+      </div>
+      <div>
+        <div class="run-num">1:50<span style="font-size: 12px; color: var(--t2);">:24</span></div>
+        <div class="run-num-unit">avg 144 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Thu Apr 9</div>
+      <span class="run-tag easy">Easy</span>
+      <div>
+        <div class="run-name">Easy with strides</div>
+        <div class="run-type">Easy · 6×100m strides</div>
+      </div>
+      <div>
+        <div class="run-num">5.4<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:18/mi</div>
+      </div>
+      <div>
+        <div class="run-num">50<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 136 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Tue Apr 7</div>
+      <span class="run-tag quality">Threshold</span>
+      <div>
+        <div class="run-name">Cruise intervals</div>
+        <div class="run-type">Threshold · 5×1K</div>
+      </div>
+      <div>
+        <div class="run-num">6.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">7:32/mi avg</div>
+      </div>
+      <div>
+        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 159 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Sun Apr 5</div>
+      <span class="run-tag long">Long</span>
+      <div>
+        <div class="run-name">Griffith Park out-and-back</div>
+        <div class="run-type">Long · marathon-recovery rebuild</div>
+      </div>
+      <div>
+        <div class="run-num">14.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:20/mi</div>
+      </div>
+      <div>
+        <div class="run-num">2:10<span style="font-size: 12px; color: var(--t2);">:48</span></div>
+        <div class="run-num-unit">avg 145 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Fri Apr 3</div>
+      <span class="run-tag easy">Easy</span>
+      <div>
+        <div class="run-name">Lunch run</div>
+        <div class="run-type">Easy · base mileage</div>
+      </div>
+      <div>
+        <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:24/mi</div>
+      </div>
+      <div>
+        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 134 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Wed Apr 1</div>
+      <span class="run-tag quality">Threshold</span>
+      <div>
+        <div class="run-name">First tempo back</div>
+        <div class="run-type">Threshold · light dose</div>
+      </div>
+      <div>
+        <div class="run-num">6.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">7:48/mi avg</div>
+      </div>
+      <div>
+        <div class="run-num">47<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 156 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Sun Mar 29</div>
+      <span class="run-tag long">Long</span>
+      <div>
+        <div class="run-name">Slow long</div>
+        <div class="run-type">Long · post-LA recovery build</div>
+      </div>
+      <div>
+        <div class="run-num">10.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:38/mi</div>
+      </div>
+      <div>
+        <div class="run-num">1:36<span style="font-size: 12px; color: var(--t2);">:20</span></div>
+        <div class="run-num-unit">avg 142 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Thu Mar 26</div>
+      <span class="run-tag easy">Easy</span>
+      <div>
+        <div class="run-name">First real run back</div>
+        <div class="run-type">Easy · 11 days post-LA</div>
+      </div>
+      <div>
+        <div class="run-num">5.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">9:42/mi</div>
+      </div>
+      <div>
+        <div class="run-num">48<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 138 HR</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <div class="run-date">Tue Mar 24</div>
+      <span class="run-tag easy">Easy</span>
+      <div>
+        <div class="run-name">Shuffle around the block</div>
+        <div class="run-type">Easy · marathon recovery</div>
+      </div>
+      <div>
+        <div class="run-num">3.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
+        <div class="run-num-unit">10:14/mi</div>
+      </div>
+      <div>
+        <div class="run-num">31<span style="font-size: 12px; color: var(--t2);">min</span></div>
+        <div class="run-num-unit">avg 128 HR</div>
+      </div>
     </div>
   </div>
 
