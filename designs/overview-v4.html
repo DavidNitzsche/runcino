@@ -1437,69 +1437,9 @@ body {
       </div>
     </div>
 
-    <div class="day-grid">
-      <!-- MON 11 -->
-      <div class="day-col">
-        <div class="day-name">Mon</div>
-        <div class="day-date">11</div>
-        <div class="day-workout-name">Recovery</div>
-        <div class="day-distance">5.5 mi</div>
-        <div class="day-status-done">✓ Done</div>
-      </div>
-
-      <!-- TUE 12 -->
-      <div class="day-col">
-        <div class="day-name">Tue</div>
-        <div class="day-date">12</div>
-        <div class="day-workout-name">Threshold</div>
-        <div class="day-distance">7.0 mi</div>
-        <div class="day-status-done">✓ Done</div>
-      </div>
-
-      <!-- WED 13 -->
-      <div class="day-col">
-        <div class="day-name">Wed</div>
-        <div class="day-date">13</div>
-        <div class="day-workout-name">Easy + Strides</div>
-        <div class="day-distance">5.5 mi</div>
-        <div class="day-status-done">✓ Done</div>
-      </div>
-
-      <!-- THU 14 — strength -->
-      <div class="day-col">
-        <span class="day-strength" title="Strength training">S</span>
-        <div class="day-name">Thu</div>
-        <div class="day-date">14</div>
-        <div class="day-workout-name">Easy Run</div>
-        <div class="day-distance">5.5 mi</div>
-        <div class="day-status-done">✓ Done</div>
-      </div>
-
-      <!-- FRI 15 — TODAY · strength -->
-      <div class="day-col today">
-        <span class="day-strength" title="Strength training">S</span>
-        <div class="day-name">Fri</div>
-        <div class="day-date amber">15</div>
-        <div class="day-workout-name">Easy Run</div>
-        <div class="day-distance">5.5 mi</div>
-      </div>
-
-      <!-- SAT 16 — REST -->
-      <div class="day-col">
-        <div class="day-name">Sat</div>
-        <div class="day-date">16</div>
-        <div class="day-workout-name" style="color:var(--t2);">Rest</div>
-        <div class="day-rest">—</div>
-      </div>
-
-      <!-- SUN 17 -->
-      <div class="day-col">
-        <div class="day-name">Sun</div>
-        <div class="day-date">17</div>
-        <div class="day-workout-name">Long Run</div>
-        <div class="day-distance">10.5 mi</div>
-      </div>
-    </div>
+    <!-- The 7 day-cols are rendered from RuncinoStore.currentWeekPlan() by the
+         inline render script at the bottom of the page. -->
+    <div class="day-grid" id="day-grid"></div>
   </div>
 
 </div>
@@ -1631,6 +1571,46 @@ body {
     RuncinoStore.subscribe(() => {
       applyOverviewCheckInState(RuncinoStore.todayCheckIn());
     });
+  }
+
+  // ── This Week strip · render from RuncinoStore.currentWeekPlan() ──
+  // Each day-col is a function of plan day + whether it's today.
+  // Rest days render with a dim 'Rest' label and a long dash.
+  function renderDayGrid() {
+    if (!window.RuncinoStore) return;
+    const grid = document.getElementById('day-grid');
+    if (!grid) return;
+    const week = RuncinoStore.currentWeekPlan();
+    if (!week) return;
+    const today = RuncinoStore.getState().today;
+
+    grid.innerHTML = week.days.map(function (d) {
+      const isToday = d.date === today;
+      const dateNum = parseInt(d.date.slice(-2), 10);
+      const colClass = 'day-col' + (isToday ? ' today' : '');
+      const dateClass = 'day-date' + (isToday ? ' amber' : '');
+      const strengthBadge = d.hasStrength ? '<span class="day-strength" title="Strength training">S</span>' : '';
+      const restMode = d.isRest;
+      const distanceBlock = restMode
+        ? '<div class="day-workout-name" style="color:var(--t2);">Rest</div><div class="day-rest">—</div>'
+        : '<div class="day-workout-name">' + escapeHtml(d.label) + '</div><div class="day-distance">' + d.distanceMi + ' mi</div>';
+      const statusBlock = (d.completed && !isToday) ? '<div class="day-status-done">✓ Done</div>' : '';
+      return (
+        '<div class="' + colClass + '">' +
+          strengthBadge +
+          '<div class="day-name">' + d.dow + '</div>' +
+          '<div class="' + dateClass + '">' + dateNum + '</div>' +
+          distanceBlock +
+          statusBlock +
+        '</div>'
+      );
+    }).join('');
+  }
+  function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  if (window.RuncinoStore) {
+    renderDayGrid();
+    RuncinoStore.subscribe(renderDayGrid);
   }
 
   // OPEN WORKOUT — popup
