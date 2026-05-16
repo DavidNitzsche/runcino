@@ -195,30 +195,39 @@ body {
 }
 .timeline-row {
   display: grid;
-  grid-template-columns: 80px 1fr 60px;
+  grid-template-columns: 80px 1fr 50px;
   align-items: center;
-  padding: 14px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--divider);
+  gap: 12px;
 }
 .timeline-row:last-child { border-bottom: none; }
-.timeline-row.current { background: rgba(232,93,38,.04); margin: 0 -16px; padding: 14px 16px; border-radius: 10px; border-bottom: none; }
+.timeline-row.current {
+  background: rgba(232,93,38,.05);
+  margin: 0 -14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border-bottom: none;
+}
 .timeline-phase {
   font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px;
   letter-spacing: 1px; color: var(--t1); text-transform: uppercase;
+  white-space: nowrap;
 }
-.timeline-row.current .timeline-phase { color: var(--amber); }
+.timeline-row.current .timeline-phase { color: var(--orange); }
 .timeline-row.done .timeline-phase { color: var(--green); }
 .timeline-row.future .timeline-phase { color: var(--t2); }
 .timeline-dates {
   font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1);
+  white-space: nowrap;
 }
 .timeline-row.future .timeline-dates { color: var(--t2); }
 .timeline-status {
-  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
-  letter-spacing: 1px; color: var(--t2); text-align: right;
-  text-transform: uppercase;
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--t2); text-align: right;
+  white-space: nowrap;
 }
-.timeline-row.current .timeline-status { color: var(--amber); }
+.timeline-row.current .timeline-status { color: var(--orange); }
 .timeline-row.done .timeline-status { color: var(--green); }
 
 .coach-note-inline {
@@ -832,28 +841,28 @@ body {
         <div class="timeline-label">Plan Arc · 14 Weeks Total</div>
         <div class="timeline-list">
           <div class="timeline-row current">
-            <div class="timeline-phase">Base · W1-4</div>
-            <div class="timeline-dates">May 11 — Jun 7</div>
-            <div class="timeline-status">In Progress</div>
+            <div class="timeline-phase">Base</div>
+            <div class="timeline-dates">May 11 → Jun 7</div>
+            <div class="timeline-status">Now</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Build · W5-8</div>
-            <div class="timeline-dates">Jun 8 — Jul 5</div>
-            <div class="timeline-status">In 24 days</div>
+            <div class="timeline-phase">Build</div>
+            <div class="timeline-dates">Jun 8 → Jul 5</div>
+            <div class="timeline-status">24d</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Peak · W9-12</div>
-            <div class="timeline-dates">Jul 6 — Aug 2</div>
-            <div class="timeline-status">In 52 days</div>
+            <div class="timeline-phase">Peak</div>
+            <div class="timeline-dates">Jul 6 → Aug 2</div>
+            <div class="timeline-status">52d</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Taper · W13</div>
-            <div class="timeline-dates">Aug 3 — Aug 9</div>
-            <div class="timeline-status">In 80 days</div>
+            <div class="timeline-phase">Taper</div>
+            <div class="timeline-dates">Aug 3 → Aug 9</div>
+            <div class="timeline-status">80d</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Race Week · W14</div>
-            <div class="timeline-dates">Aug 10 — Aug 16</div>
+            <div class="timeline-phase">Race</div>
+            <div class="timeline-dates">Aug 10 → Aug 16</div>
             <div class="timeline-status" style="color: var(--orange);">🏁 87d</div>
           </div>
         </div>
