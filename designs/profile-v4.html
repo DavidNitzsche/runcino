@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · Profile</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* Identity hero — wider than usual since the profile IS the identity */
+.identity-card { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); padding: 40px; display: grid; grid-template-columns: auto 1fr auto; gap: 40px; align-items: center; }
+.identity-avatar { width: 120px; height: 120px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 52px; color: #fff; letter-spacing: 0.5px; flex-shrink: 0; }
+.identity-info { display: flex; flex-direction: column; }
+.identity-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 8px; font-weight: 500; }
+.identity-name { font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 0.9; letter-spacing: -1px; color: var(--t0); }
+.identity-bio { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t1); margin-top: 10px; letter-spacing: 0.5px; }
+.identity-edit { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t0); background: transparent; border: 1.5px solid rgba(13,15,18,.2); padding: 10px 20px; border-radius: 10px; cursor: pointer; align-self: start; white-space: nowrap; }
+
+/* KPIs strip below the identity hero */
+.kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+.kpi-cell { background: var(--card); border-radius: 12px; box-shadow: var(--card-shadow); padding: 22px 24px; }
+.kpi-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.kpi-value-row { display: flex; align-items: baseline; gap: 4px; margin-top: 8px; }
+.kpi-value { font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: var(--t0); }
+.kpi-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); }
+.kpi-sub { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.2px; color: var(--t2); margin-top: 6px; text-transform: uppercase; font-weight: 500; }
+
+/* Standard card */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-sub strong { color: var(--t1); font-weight: 600; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+.card-action { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t1); background: transparent; border: 1px solid rgba(13,15,18,.16); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+
+/* Prefs / engine inputs grid */
+.prefs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0 40px 28px; }
+.pref-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
+.pref-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.pref-value { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.pref-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
+
+/* Goals list */
+.goal-row { display: grid; grid-template-columns: 100px 1fr 130px 70px; align-items: center; gap: 20px; padding: 16px 40px; border-top: 1px solid var(--divider); }
+.goal-type { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; color: var(--t1); text-transform: uppercase; background: rgba(13,15,18,.05); padding: 6px 10px; border-radius: 6px; text-align: center; }
+.goal-type.speed { color: var(--orange); background: rgba(232,93,38,.08); }
+.goal-type.volume { color: var(--green); background: rgba(44,168,47,.08); }
+.goal-type.habit { color: var(--amber); background: rgba(212,144,10,.10); }
+.goal-target { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t0); font-weight: 600; }
+.goal-current { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 3px; }
+.goal-progress-bar { height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; }
+.goal-progress-fill { height: 100%; border-radius: 3px; }
+.goal-progress-fill.green { background: var(--green); }
+.goal-progress-fill.amber { background: var(--amber); }
+.goal-progress-meta { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 5px; }
+.goal-pct { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); text-align: right; line-height: 1; }
+.goal-pct .unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-left: 2px; }
+
+/* HR zones grid (since the API has hr:null, render an empty state too) */
+.hr-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 0 40px 28px; }
+.hr-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
+.hr-zone { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+.hr-zone.z1 { color: var(--green); }
+.hr-zone.z2 { color: var(--green); }
+.hr-zone.z3 { color: var(--blue); }
+.hr-zone.z4 { color: var(--amber); }
+.hr-zone.z5 { color: var(--orange); }
+.hr-range { font-family: 'Bebas Neue', sans-serif; font-size: 26px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.hr-range .unit { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); margin-left: 2px; }
+.hr-pct { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 6px; }
+.hr-source { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); padding: 0 40px 18px; font-style: italic; }
+
+/* Shoes grid */
+.shoes-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 40px 28px; }
+.shoe-row { background: rgba(13,15,18,.03); border: 1px solid rgba(13,15,18,.08); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; }
+.shoe-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
+.shoe-role { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-top: 4px; }
+.shoe-mileage-bar { width: 100%; height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.shoe-mileage-fill { height: 100%; background: var(--green); border-radius: 3px; }
+.shoe-mileage-fill.warn { background: var(--amber); }
+.shoe-mileage-fill.over { background: var(--warn); }
+.shoe-mileage-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
+.shoe-mileage-meta strong { color: var(--t1); font-weight: 600; }
+.shoe-status { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--green); }
+.shoe-status.amber { color: var(--amber); }
+.shoe-status.warn { color: var(--warn); }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link" href="log-v4.html">Log</a>
+      <a class="nav-link active" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right"><div class="nav-avatar">DN</div></div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- IDENTITY HERO -->
+  <div class="identity-card">
+    <div class="identity-avatar">DN</div>
+    <div class="identity-info">
+      <div class="identity-eyebrow">Runner · Advanced level</div>
+      <div class="identity-name">David Nitzsche</div>
+      <div class="identity-bio">M · 40 · Los Angeles · running since 2019</div>
+    </div>
+    <button class="identity-edit">Edit Profile</button>
+  </div>
+
+  <!-- LIFETIME KPIs -->
+  <div class="kpi-strip">
+    <div class="kpi-cell">
+      <div class="kpi-label">Lifetime mi</div>
+      <div class="kpi-value-row"><span class="kpi-value">638</span><span class="kpi-unit">mi</span></div>
+      <div class="kpi-sub">All time</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Races</div>
+      <div class="kpi-value-row"><span class="kpi-value">6</span></div>
+      <div class="kpi-sub">2 × marathon · 4 × half</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Days run</div>
+      <div class="kpi-value-row"><span class="kpi-value">79</span></div>
+      <div class="kpi-sub">79 unique days</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Peak year</div>
+      <div class="kpi-value-row"><span class="kpi-value">638</span><span class="kpi-unit">mi</span></div>
+      <div class="kpi-sub">2026 · on track</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Lifetime elev</div>
+      <div class="kpi-value-row"><span class="kpi-value">16K</span><span class="kpi-unit">ft</span></div>
+      <div class="kpi-sub">0.54× Everest</div>
+    </div>
+  </div>
+
+  <!-- TRAINING PROFILE (what the engine reads) -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Training Profile</div>
+        <div class="card-sub">What the coach reads to build your plan</div>
+      </div>
+      <button class="card-action">Edit Prefs</button>
+    </div>
+
+    <div class="prefs-grid">
+      <div class="pref-cell">
+        <div class="pref-label">Level</div>
+        <div class="pref-value" style="font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700;">Advanced</div>
+        <div class="pref-meta">25+ mi/wk base · 6 races logged</div>
+      </div>
+      <div class="pref-cell">
+        <div class="pref-label">Long Run Day</div>
+        <div class="pref-value">Sun</div>
+        <div class="pref-meta">Your set preference</div>
+      </div>
+      <div class="pref-cell">
+        <div class="pref-label">Quality Days</div>
+        <div class="pref-value" style="font-size: 24px;">Tue / Thu</div>
+        <div class="pref-meta">Threshold + interval slots</div>
+      </div>
+      <div class="pref-cell">
+        <div class="pref-label">Rest Day</div>
+        <div class="pref-value">Sat</div>
+        <div class="pref-meta">Day before the long run</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VDOT + HR ZONES -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Heart Rate Zones</div>
+        <div class="card-sub">
+          <strong>VDOT 48.1</strong> · derived from your Powered by the Mouse Half (3 mo ago)
+        </div>
+      </div>
+      <div class="card-meta">Max HR · <strong>185</strong> est · age-based</div>
+    </div>
+
+    <div class="hr-grid">
+      <div class="hr-cell">
+        <div class="hr-zone z1">Z1 · Recovery</div>
+        <div class="hr-range">93–111<span class="unit">bpm</span></div>
+        <div class="hr-pct">50–60% max</div>
+      </div>
+      <div class="hr-cell">
+        <div class="hr-zone z2">Z2 · Easy</div>
+        <div class="hr-range">112–129<span class="unit">bpm</span></div>
+        <div class="hr-pct">60–70% max</div>
+      </div>
+      <div class="hr-cell">
+        <div class="hr-zone z3">Z3 · Steady</div>
+        <div class="hr-range">130–148<span class="unit">bpm</span></div>
+        <div class="hr-pct">70–80% max</div>
+      </div>
+      <div class="hr-cell">
+        <div class="hr-zone z4">Z4 · Threshold</div>
+        <div class="hr-range">149–167<span class="unit">bpm</span></div>
+        <div class="hr-pct">80–90% max</div>
+      </div>
+      <div class="hr-cell">
+        <div class="hr-zone z5">Z5 · VO₂max</div>
+        <div class="hr-range">168–185<span class="unit">bpm</span></div>
+        <div class="hr-pct">90–100% max</div>
+      </div>
+    </div>
+
+    <div class="hr-source">
+      Max HR is estimated (208 − 0.7 × age = 180 baseline, lifted to 185 from your race-day peaks).
+      Set a measured value any time — it overrides the estimate.
+    </div>
+  </div>
+
+  <!-- GOALS -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Personal Goals</div>
+        <div class="card-sub"><strong>3 active</strong> · coach reads these when building the plan</div>
+      </div>
+      <button class="card-action">+ Add Goal</button>
+    </div>
+
+    <div class="goal-row">
+      <span class="goal-type speed">Speed</span>
+      <div>
+        <div class="goal-target">Sub-1:35 Half Marathon</div>
+        <div class="goal-current">Current: 1:34:54 · AFC Half is the test</div>
+      </div>
+      <div>
+        <div class="goal-progress-bar"><div class="goal-progress-fill green" style="width: 92%;"></div></div>
+        <div class="goal-progress-meta">Within range · 6 sec margin</div>
+      </div>
+      <div class="goal-pct">92<span class="unit">%</span></div>
+    </div>
+
+    <div class="goal-row">
+      <span class="goal-type volume">Volume</span>
+      <div>
+        <div class="goal-target">1,000 mi in 2026</div>
+        <div class="goal-current">Current: 624 mi · on pace for 1,705 mi</div>
+      </div>
+      <div>
+        <div class="goal-progress-bar"><div class="goal-progress-fill green" style="width: 62%;"></div></div>
+        <div class="goal-progress-meta">On track · projecting +70%</div>
+      </div>
+      <div class="goal-pct">62<span class="unit">%</span></div>
+    </div>
+
+    <div class="goal-row">
+      <span class="goal-type habit">Habit</span>
+      <div>
+        <div class="goal-target">Strength 2× per week</div>
+        <div class="goal-current">This month: 7 sessions across 4 weeks</div>
+      </div>
+      <div>
+        <div class="goal-progress-bar"><div class="goal-progress-fill amber" style="width: 70%;"></div></div>
+        <div class="goal-progress-meta">Light week ago · catch up Sat</div>
+      </div>
+      <div class="goal-pct">88<span class="unit">%</span></div>
+    </div>
+  </div>
+
+  <!-- SHOES -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Shoe Rotation</div>
+        <div class="card-sub"><strong>4 active</strong> · coach watches mileage to flag retire-soon</div>
+      </div>
+      <button class="card-action">+ Add Shoe</button>
+    </div>
+
+    <div class="shoes-grid">
+      <div class="shoe-row">
+        <div>
+          <div class="shoe-name">New Balance SC Trainer v3</div>
+          <div class="shoe-role">Race · Long · Tempo · Intervals</div>
+          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill" style="width: 13%;"></div></div>
+          <div class="shoe-mileage-meta"><strong>40</strong> / 300 mi · 260 left</div>
+        </div>
+        <div class="shoe-status">Fresh</div>
+      </div>
+
+      <div class="shoe-row">
+        <div>
+          <div class="shoe-name">Hoka Mach 6</div>
+          <div class="shoe-role">Easy · Recovery · Daily</div>
+          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill" style="width: 62%;"></div></div>
+          <div class="shoe-mileage-meta"><strong>185</strong> / 300 mi · 115 left</div>
+        </div>
+        <div class="shoe-status">Healthy</div>
+      </div>
+
+      <div class="shoe-row">
+        <div>
+          <div class="shoe-name">Saucony Endorphin Speed 4</div>
+          <div class="shoe-role">Threshold · Race · Tempo</div>
+          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill warn" style="width: 78%;"></div></div>
+          <div class="shoe-mileage-meta"><strong>235</strong> / 300 mi · 65 left</div>
+        </div>
+        <div class="shoe-status amber">Aging</div>
+      </div>
+
+      <div class="shoe-row">
+        <div>
+          <div class="shoe-name">Brooks Cascadia 17</div>
+          <div class="shoe-role">Trail · Adventure · Hilly Long</div>
+          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill warn" style="width: 92%;"></div></div>
+          <div class="shoe-mileage-meta"><strong>275</strong> / 300 mi · 25 left</div>
+        </div>
+        <div class="shoe-status warn">Retire soon</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
