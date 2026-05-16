@@ -347,10 +347,33 @@ body {
 .volume-phase-cell.peak   { background: rgba(232,93,38,.70); }
 .volume-phase-cell.taper  { background: rgba(13,15,18,.40); }
 .volume-phase-cell.race   { background: var(--orange); }
-/* Old in-curve legend — kept for backwards compat but unused now;
-   the legend lives in the schedule header. */
+/* Old in-curve legend — replaced by the labeled phase axis below
+   the week labels. Kept hidden for backwards compat. */
 .volume-phase-legend { display: none; }
 .volume-phase-legend-item, .volume-phase-legend-swatch { display: none; }
+
+/* Phase labels under the week axis — replaces the legend. Each
+   span sits under the weeks belonging to its phase. A 1px hairline
+   on top of each label connects it visually to the weeks above. */
+.volume-phase-labels {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+.volume-phase-label {
+  text-align: center;
+  padding: 6px 4px 0;
+  font-family: 'Inter', sans-serif; font-size: 10.5px;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  font-weight: 700;
+  border-top: 2px solid;
+}
+.volume-phase-label.base   { grid-column: span 6;  border-color: rgba(44,168,47,.50);  color: var(--green); }
+.volume-phase-label.build  { grid-column: span 3;  border-color: rgba(212,144,10,.65); color: var(--amber); }
+.volume-phase-label.peak   { grid-column: span 3;  border-color: rgba(232,93,38,.70);  color: var(--orange); }
+.volume-phase-label.taper  { grid-column: span 2;  border-color: rgba(13,15,18,.40);   color: var(--t1); }
+.volume-phase-label.race   { grid-column: span 1;  border-color: var(--orange);        color: var(--orange); }
 
 /* ── Calendar grid — weeks × Mon-Sun ──────────────────────── */
 .cal-grid {
@@ -664,9 +687,6 @@ body {
         later has somewhere to land. One quality session per week (threshold tempo);
         everything else stays conversational.
       </p>
-      <div class="hero-cite">
-        DOCTRINE · RESEARCH/00A §AEROBIC BASE DEVELOPMENT
-      </div>
 
       <div class="stats-row">
         <div class="stat-pill">
@@ -754,29 +774,8 @@ body {
         <div class="schedule-eyebrow">Full Schedule</div>
         <div class="schedule-title">14 weeks · Americas Finest City Half · Aug 17, 2026</div>
       </div>
-      <div>
-        <div class="schedule-meta-row">
-          <div class="schedule-meta">
-            Total <strong>508</strong> mi · Peak week <strong>52</strong> mi
-          </div>
-        </div>
-        <div class="schedule-header-legend">
-          <div class="schedule-header-legend-item">
-            <span class="schedule-header-legend-swatch" style="background: rgba(44,168,47,.50);"></span> Base
-          </div>
-          <div class="schedule-header-legend-item">
-            <span class="schedule-header-legend-swatch" style="background: rgba(212,144,10,.65);"></span> Build
-          </div>
-          <div class="schedule-header-legend-item">
-            <span class="schedule-header-legend-swatch" style="background: rgba(232,93,38,.70);"></span> Peak
-          </div>
-          <div class="schedule-header-legend-item">
-            <span class="schedule-header-legend-swatch" style="background: rgba(13,15,18,.40);"></span> Taper
-          </div>
-          <div class="schedule-header-legend-item">
-            <span class="schedule-header-legend-swatch" style="background: var(--orange);"></span> Race
-          </div>
-        </div>
+      <div class="schedule-meta">
+        Total <strong>508</strong> mi · Peak week <strong>52</strong> mi
       </div>
     </div>
 
@@ -833,22 +832,13 @@ body {
         <span class="volume-axis-week" style="color: var(--orange); font-weight: 600;">RACE</span>
       </div>
 
-      <div class="volume-phase-legend">
-        <div class="volume-phase-legend-item">
-          <span class="volume-phase-legend-swatch" style="background: rgba(44,168,47,.50);"></span> Base
-        </div>
-        <div class="volume-phase-legend-item">
-          <span class="volume-phase-legend-swatch" style="background: rgba(212,144,10,.65);"></span> Build
-        </div>
-        <div class="volume-phase-legend-item">
-          <span class="volume-phase-legend-swatch" style="background: rgba(232,93,38,.70);"></span> Peak
-        </div>
-        <div class="volume-phase-legend-item">
-          <span class="volume-phase-legend-swatch" style="background: rgba(13,15,18,.40);"></span> Taper
-        </div>
-        <div class="volume-phase-legend-item">
-          <span class="volume-phase-legend-swatch" style="background: var(--orange);"></span> Race
-        </div>
+      <!-- Phase labels under the week axis — replaces the corner legend. -->
+      <div class="volume-phase-labels">
+        <div class="volume-phase-label base">Base</div>
+        <div class="volume-phase-label build">Build</div>
+        <div class="volume-phase-label peak">Peak</div>
+        <div class="volume-phase-label taper">Taper</div>
+        <div class="volume-phase-label race">🏁</div>
       </div>
     </div>
 
