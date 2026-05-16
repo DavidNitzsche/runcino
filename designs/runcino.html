@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runcino · v4 Local Build</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #EEECEA;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  /* Full-viewport iframe shows the v4 app. The internal nav inside each
+     page navigates between overview / training / races / health by
+     updating this iframe's src naturally via the existing <a href> tags. */
+  iframe.app {
+    display: block;
+    border: none;
+    width: 100vw;
+    height: 100vh;
+    background: #EEECEA;
+  }
+  /* Loading shimmer while the first page boots — disappears once iframe loads */
+  .boot {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #EEECEA;
+    z-index: 10;
+    transition: opacity .3s ease-out;
+    pointer-events: none;
+  }
+  .boot.hidden { opacity: 0; }
+  .boot-logo {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 56px;
+    letter-spacing: 6px;
+    color: #0D0F12;
+  }
+  .boot-sub {
+    margin-top: 16px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(13, 15, 18, 0.45);
+    text-align: center;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+</style>
+</head>
+<body>
+
+<!-- Boot splash — fades away on first iframe load -->
+<div class="boot" id="boot">
+  <div>
+    <div class="boot-logo">RUNCINO</div>
+    <div class="boot-sub">v4 · local build</div>
+  </div>
+</div>
+
+<!-- The v4 app. Default landing = overview. Navigation between
+     overview / training / races / health happens natively inside this
+     iframe via the existing <a href> tags in each page's nav bar. -->
+<iframe class="app" id="app" src="overview-v4.html"></iframe>
+
+<script>
+  // Hide the boot splash once the iframe has loaded its first page.
+  document.getElementById('app').addEventListener('load', function () {
+    setTimeout(function () {
+      document.getElementById('boot').classList.add('hidden');
+    }, 100);
+  });
+</script>
+
+</body>
+</html>
