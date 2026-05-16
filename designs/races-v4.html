@@ -180,11 +180,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 /* ── Upcoming Races timeline ─────────────────────────────── */
 .races-timeline {
-  padding: 56px 40px 56px;
+  padding: 56px 0;
 }
 .races-timeline-track-area {
   position: relative;
-  margin: 0 80px;
+  margin: 0 40px;
   height: 200px;
 }
 .races-timeline-track-line {
@@ -193,13 +193,28 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   height: 2px;
   background: var(--divider);
 }
-.races-timeline-now,
+/* Middle stations: centered on their position */
 .races-timeline-station {
   position: absolute;
   top: 0;
   width: 160px;
   margin-left: -80px;
   display: flex; flex-direction: column; align-items: center;
+}
+/* Today: anchored at left, dot's visual center aligns to left:0% */
+.races-timeline-now {
+  position: absolute;
+  top: 0;
+  margin-left: -8px;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+/* Last station: anchored at right, badge's visual center aligns to left:100% */
+.races-timeline-station.is-last {
+  margin-left: -138px;
+  align-items: flex-end;
+}
+.races-timeline-station.is-last .races-timeline-station-info {
+  align-items: flex-end;
 }
 .races-timeline-now-dot {
   width: 16px; height: 16px;
@@ -449,7 +464,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         </div>
 
         <!-- LA Marathon — A, 296d -->
-        <div class="races-timeline-station priority-a" style="left: 100%;">
+        <div class="races-timeline-station priority-a is-last" style="left: 100%;">
           <div class="races-timeline-tag a">A</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Mar 7</div>
