@@ -129,6 +129,21 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .vital-tile-status.amber { color: var(--amber); }
 .vital-tile-status.dim { color: var(--t2); }
 
+/* ── Check-in form (sliders, mirror of /overview check-in) ─── */
+.checkin-form { padding: 0 40px 28px; display: flex; flex-direction: column; gap: 14px; }
+.checkin-slider-row { display: grid; grid-template-columns: 90px 1fr 32px; align-items: center; gap: 16px; }
+.checkin-slider-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); }
+.checkin-range { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 4px; outline: none; cursor: pointer; border: none; display: block; }
+.checkin-range.energy   { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #2CA82F 100%); }
+.checkin-range.soreness { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #E85D26 100%); }
+.checkin-range.stress   { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #D4900A 100%); }
+.checkin-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; }
+.checkin-range::-moz-range-track            { height: 8px; border-radius: 4px; }
+.checkin-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(13,15,18,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; margin-top: -6px; }
+.checkin-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(13,15,18,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; }
+.checkin-slider-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; line-height: 1; color: var(--t1); text-align: right; }
+.checkin-btn { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; color: #fff; background: var(--t0); border: none; border-radius: 8px; padding: 12px 24px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; white-space: nowrap; align-self: flex-start; margin-top: 6px; }
+
 /* ── Check-in timeline (14-day) ──────────────────── */
 .checkin-timeline { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; padding: 0 40px 32px; }
 .timeline-day { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
@@ -344,7 +359,75 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 3 — TRAINING LOAD (chart)
+       SECTION 3 — TODAY'S CHECK-IN (form, mirror of /overview)
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Today's Check-In</div>
+        <div class="card-sub">How you're feeling · 1 = rough, 10 = great</div>
+      </div>
+    </div>
+    <div class="checkin-form">
+      <div class="checkin-slider-row">
+        <span class="checkin-slider-label">Energy</span>
+        <input type="range" class="checkin-range energy" min="1" max="10" value="7"
+          oninput="this.nextElementSibling.textContent=this.value">
+        <span class="checkin-slider-val">7</span>
+      </div>
+      <div class="checkin-slider-row">
+        <span class="checkin-slider-label">Soreness</span>
+        <input type="range" class="checkin-range soreness" min="1" max="10" value="3"
+          oninput="this.nextElementSibling.textContent=this.value">
+        <span class="checkin-slider-val">3</span>
+      </div>
+      <div class="checkin-slider-row">
+        <span class="checkin-slider-label">Stress</span>
+        <input type="range" class="checkin-range stress" min="1" max="10" value="2"
+          oninput="this.nextElementSibling.textContent=this.value">
+        <span class="checkin-slider-val">2</span>
+      </div>
+      <button class="checkin-btn">Log Check-In</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 4 — CHECK-IN TIMELINE (14d)
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Check-In Timeline</div>
+        <div class="card-sub">Last 14 days · pattern reads jump out</div>
+      </div>
+    </div>
+
+    <div class="checkin-legend">
+      <div class="checkin-legend-item"><span class="checkin-legend-dot energy"></span>Energy</div>
+      <div class="checkin-legend-item"><span class="checkin-legend-dot soreness"></span>Soreness</div>
+      <div class="checkin-legend-item"><span class="checkin-legend-dot stress"></span>Stress</div>
+    </div>
+
+    <div class="checkin-timeline">
+      <div class="timeline-day"><div class="timeline-day-date">5/3</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/4</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:40%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/5</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day missing"><div class="timeline-day-date">5/6</div><div class="timeline-day-stack"><div class="timeline-bar"></div><div class="timeline-bar"></div><div class="timeline-bar"></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/7</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/8</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/9</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/10</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/11</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/12</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/13</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/14</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div></div></div>
+      <div class="timeline-day"><div class="timeline-day-date">5/15</div><div class="timeline-day-stack"><div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div><div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div></div></div>
+      <div class="timeline-day today missing"><div class="timeline-day-date">5/16</div><div class="timeline-day-stack"><div class="timeline-bar"></div><div class="timeline-bar"></div><div class="timeline-bar"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 5 — TRAINING LOAD (chart)
   ═══════════════════════════════════ -->
   <div class="card form-curve-card">
     <div class="card-header">
@@ -385,8 +468,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         <!-- Fatigue baseline — the level your body settles to when not under load.
              When the orange line touches it, you're fully recovered. -->
         <line x1="40" y1="215" x2="1200" y2="215" stroke="rgba(232,93,38,.45)" stroke-width="1.5" stroke-dasharray="2,4"/>
-        <rect x="40" y="206" width="120" height="14" fill="white" opacity="0.95"/>
-        <text x="48" y="216" font-family="Inter" font-size="9" fill="var(--orange)" font-weight="700" letter-spacing="1.5">FATIGUE BASELINE</text>
 
         <!-- Race markers — vertical dashed lines.
              Mar 15 LA Marathon: x=392, Apr 26 Big Sur: x=939 -->
@@ -431,7 +512,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 3 — RECOVERY VITALS
+       SECTION 6 — RECOVERY VITALS
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -507,7 +588,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 4 — RUNNING FORM
+       SECTION 7 — RUNNING FORM
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -603,128 +684,9 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════
-       SECTION 5 — CHECK-IN TIMELINE (14d)
-  ═══════════════════════════════════ -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Check-In Timeline</div>
-        <div class="card-sub">Last 14 days · Energy · Soreness · Stress (1–10) · log today on /overview</div>
-      </div>
-    </div>
-
-    <div class="checkin-legend">
-      <div class="checkin-legend-item"><span class="checkin-legend-dot energy"></span>Energy</div>
-      <div class="checkin-legend-item"><span class="checkin-legend-dot soreness"></span>Soreness</div>
-      <div class="checkin-legend-item"><span class="checkin-legend-dot stress"></span>Stress</div>
-    </div>
-
-    <div class="checkin-timeline">
-      <!-- 14 days, oldest left → today right. Bar widths represent 1-10 score, dimmed bar = missing log. -->
-      <div class="timeline-day"><div class="timeline-day-date">5/3</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:80%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/4</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:50%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:40%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/5</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day missing"><div class="timeline-day-date">5/6</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"></div>
-          <div class="timeline-bar"></div>
-          <div class="timeline-bar"></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/7</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/8</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/9</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/10</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:80%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/11</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/12</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/13</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:60%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:50%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/14</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:40%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:30%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day"><div class="timeline-day-date">5/15</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"><div class="timeline-bar-fill energy" style="width:70%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill soreness" style="width:30%"></div></div>
-          <div class="timeline-bar"><div class="timeline-bar-fill stress" style="width:20%"></div></div>
-        </div>
-      </div>
-      <div class="timeline-day today missing"><div class="timeline-day-date">5/16</div>
-        <div class="timeline-day-stack">
-          <div class="timeline-bar"></div>
-          <div class="timeline-bar"></div>
-          <div class="timeline-bar"></div>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 6 — POST-RACE RECOVERY (compact, auto-hides 30d post-race)
+       SECTION 8 — POST-RACE RECOVERY (compact, auto-hides 30d post-race)
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
@@ -746,7 +708,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 8 — DATA SOURCES (footer)
+       SECTION 9 — DATA SOURCES (footer)
   ═══════════════════════════════════ -->
   <div class="card">
     <div class="card-header">
