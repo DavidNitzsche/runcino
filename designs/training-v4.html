@@ -424,23 +424,22 @@ body {
   user-select: none;
 }
 
-/* Completed cell — the whole cell greys out, a single green check
-   sits centered, and all workout text + strength badge fade away.
-   Reads as "done, move on" at a glance without crowding the row. */
-.cal-cell.done {
-  background: rgba(13,15,18,.04) !important;
-}
+/* Completed cell — keeps the workout type + distance visible but
+   faded, so the runner can still scan what they did. A small green
+   ✓ badge in the top-right corner marks completion. Cell keeps its
+   original workout-type wash (easy/quality/long etc.) so the
+   "history" of what kind of work that day was is preserved at a
+   glance. Strength badge hides on completed cells — it's past info. */
 .cal-cell.done .cal-cell-type,
 .cal-cell.done .cal-cell-dist,
-.cal-cell.done .cal-cell-rest-dash { display: none; }
+.cal-cell.done .cal-cell-rest-dash { opacity: 0.45; }
 .cal-cell.done .cal-cell-strength { display: none; }
 .cal-cell-done {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 28px;
-  height: 28px;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--green);
   color: #FFFFFF;
@@ -448,7 +447,7 @@ body {
   align-items: center;
   justify-content: center;
   font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
   user-select: none;
