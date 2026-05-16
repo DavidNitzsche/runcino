@@ -88,8 +88,17 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .health-hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; }
 .health-hero-stat-unit { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-weight: 500; }
 .health-hero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); margin-top: 6px; text-transform: uppercase; font-weight: 600; }
-.health-hero-coach-take { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); margin-top: auto; padding-top: 32px; font-style: italic; }
-.health-hero-coach-take strong { color: var(--t0); font-weight: 700; font-style: normal; }
+/* Coach brief — multi-section memo style instead of a single paragraph.
+   Each section gets a colored eyebrow label and a short paragraph. */
+.brief-sections { margin-top: 36px; display: flex; flex-direction: column; gap: 22px; }
+.brief-section { display: flex; flex-direction: column; gap: 6px; }
+.brief-section-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.brief-section-label.read   { color: var(--t1); }
+.brief-section-label.work   { color: var(--green); }
+.brief-section-label.watch  { color: var(--amber); }
+.brief-section-label.frame  { color: var(--t0); }
+.brief-section-body { font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--t1); }
+.brief-section-body strong { color: var(--t0); font-weight: 700; }
 
 /* Right column — readiness ring + 5 trend bars (matches /overview hero right) */
 .health-hero-right { background: rgba(13,15,18,.02); padding: 40px; display: flex; flex-direction: column; }
@@ -276,10 +285,43 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="health-hero-eyebrow">TODAY · SAT MAY 16 · HEALTH</div>
       <div class="health-hero-title">READY</div>
 
-      <p class="health-hero-coach-take">
-        Body is taking the load well. <strong>Strain dipped Tue → Thu</strong> as the
-        threshold session settled — sleep covered the deficit. Ready for Sunday's long.
-      </p>
+      <div class="brief-sections">
+        <div class="brief-section">
+          <div class="brief-section-label read">The Read</div>
+          <p class="brief-section-body">
+            HRV climbing 4ms over the week, resting HR down 2 bpm, sleep duration 24 min above your baseline.
+            Three independent signals pointing the same direction — <strong>the body has cleared the marathon
+            and rebuilt past where it started</strong>. Quiet, real progress.
+          </p>
+        </div>
+
+        <div class="brief-section">
+          <div class="brief-section-label work">What's Working</div>
+          <p class="brief-section-body">
+            Tuesday's threshold pushed strain to 14.2. By Friday it was back to 9 — dose, absorb, baseline,
+            inside 72 hours. That's the arc of a body that's <strong>adapting, not surviving</strong>.
+            Sleep is doing the heavy lifting here; protect it like part of the plan.
+          </p>
+        </div>
+
+        <div class="brief-section">
+          <div class="brief-section-label watch">The Watch</div>
+          <p class="brief-section-body">
+            Tendons are day 12 of a 14–28 day window — <strong>Sunday's long sits at conversational pace
+            the whole way</strong>, no hot finish. Tempo paces this week will feel softer than memory says
+            they should. That's recovery, not a fitness regression. Don't push.
+          </p>
+        </div>
+
+        <div class="brief-section">
+          <div class="brief-section-label frame">The Frame</div>
+          <p class="brief-section-body">
+            Build opens in 24 days with the first hard threshold session. Until then every Tuesday is
+            rehearsal — finding the rhythm so when the real work arrives, the body answers without
+            negotiation. <strong>Patience compounds. The fast pays for the patient.</strong>
+          </p>
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT — readiness ring + 5 trend bars -->
