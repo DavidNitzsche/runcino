@@ -497,7 +497,30 @@ body {
 .cal-cell.quality  { background: rgba(212,144,10,.10); }
 .cal-cell.long     { background: rgba(44,168,47,.12); }
 .cal-cell.rest     { background: transparent; }
-.cal-cell.race     { background: rgba(232,93,38,.18); }
+.cal-cell.race {
+  background: rgba(232,93,38,.20);
+  box-shadow: inset 0 0 0 2px rgba(232,93,38,.45);
+}
+.cal-cell.race .cal-cell-type {
+  color: var(--orange);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.cal-cell.race .cal-cell-dist {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--orange);
+  margin-top: 4px;
+}
+.cal-cell.race .cal-cell-dist-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--orange);
+  opacity: 0.7;
+  margin-left: 2px;
+}
 .cal-cell.recovery { background: rgba(13,15,18,.04); }
 .cal-cell.today {
   outline: 2px solid var(--amber);
@@ -761,7 +784,7 @@ body {
   ══════════════════════════════════ -->
   <div class="hero-card">
     <div class="hero-left">
-      <div class="hero-eyebrow">CURRENT PHASE · WEEK 3 OF 4</div>
+      <div class="hero-eyebrow">CURRENT PHASE · WEEK 1 OF 4</div>
 
       <div class="hero-title">BASE</div>
       <div class="hero-sub">Aerobic Foundation</div>
@@ -776,28 +799,28 @@ body {
       <div class="stats-row">
         <div class="stat-pill">
           <div class="stat-value-row">
-            <span class="stat-value">38</span>
+            <span class="stat-value">44</span>
             <span class="stat-unit">mi/wk</span>
           </div>
           <div class="stat-label">Peak Volume</div>
         </div>
         <div class="stat-pill">
           <div class="stat-value-row">
-            <span class="stat-value">11</span>
+            <span class="stat-value">12</span>
             <span class="stat-unit">mi</span>
           </div>
           <div class="stat-label">Peak Long Run</div>
         </div>
         <div class="stat-pill">
           <div class="stat-value-row">
-            <span class="stat-value">21</span>
+            <span class="stat-value">4</span>
             <span class="stat-unit">days</span>
           </div>
           <div class="stat-label">In Phase</div>
         </div>
         <div class="stat-pill">
           <div class="stat-value-row">
-            <span class="stat-value">11</span>
+            <span class="stat-value">24</span>
             <span class="stat-unit">days</span>
           </div>
           <div class="stat-label">Until Build</div>
@@ -809,35 +832,30 @@ body {
       <div>
         <div class="timeline-label">Plan Arc · 14 Weeks Total</div>
         <div class="timeline-list">
-          <div class="timeline-row done">
-            <div class="timeline-phase">Base 1-2</div>
-            <div class="timeline-dates">Apr 28 — May 11</div>
-            <div class="timeline-status">✓ Done</div>
-          </div>
           <div class="timeline-row current">
-            <div class="timeline-phase">Base 3-4</div>
-            <div class="timeline-dates">May 12 — May 25</div>
+            <div class="timeline-phase">Base · W1-4</div>
+            <div class="timeline-dates">May 11 — Jun 7</div>
             <div class="timeline-status">In Progress</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Build</div>
-            <div class="timeline-dates">May 26 — Jun 22</div>
-            <div class="timeline-status">In 11 days</div>
+            <div class="timeline-phase">Build · W5-8</div>
+            <div class="timeline-dates">Jun 8 — Jul 5</div>
+            <div class="timeline-status">In 24 days</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Peak</div>
-            <div class="timeline-dates">Jun 23 — Jul 27</div>
-            <div class="timeline-status">In 38 days</div>
+            <div class="timeline-phase">Peak · W9-12</div>
+            <div class="timeline-dates">Jul 6 — Aug 2</div>
+            <div class="timeline-status">In 52 days</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Taper</div>
-            <div class="timeline-dates">Aug 4 — Aug 16</div>
-            <div class="timeline-status">In 79 days</div>
+            <div class="timeline-phase">Taper · W13</div>
+            <div class="timeline-dates">Aug 3 — Aug 9</div>
+            <div class="timeline-status">In 80 days</div>
           </div>
           <div class="timeline-row future">
-            <div class="timeline-phase">Race Day</div>
-            <div class="timeline-dates">Aug 17</div>
-            <div class="timeline-status" style="color: var(--orange);">🏁</div>
+            <div class="timeline-phase">Race Week · W14</div>
+            <div class="timeline-dates">Aug 10 — Aug 16</div>
+            <div class="timeline-status" style="color: var(--orange);">🏁 87d</div>
           </div>
         </div>
       </div>
@@ -858,7 +876,7 @@ body {
       <div class="schedule-title-group">
         <div class="schedule-title">Full Schedule</div>
         <div class="schedule-sub">
-          <strong>14 weeks</strong> · Americas Finest City Half · Aug 17, 2026
+          <strong>14 weeks</strong> · Americas Finest City Half · Aug 16, 2026
         </div>
       </div>
       <div class="schedule-meta">
@@ -1090,7 +1108,7 @@ body {
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell rest"><span class="cal-cell-type">Rest</span><span class="cal-cell-rest-dash">—</span></div>
       <div class="cal-cell easy"><span class="cal-cell-type">Shake-out</span><span class="cal-cell-dist">3<span class="cal-cell-dist-unit">mi</span></span></div>
-      <div class="cal-cell race"><span class="cal-cell-type">🏁 Race</span><span class="cal-cell-dist">13.1<span class="cal-cell-dist-unit">mi</span></span></div>
+      <div class="cal-cell race"><span class="cal-cell-type">🏁 AFC Half</span><span class="cal-cell-dist">13.1<span class="cal-cell-dist-unit">mi</span></span></div>
       <div class="cal-mileage-cell">30.1<span class="cal-mileage-cell-unit">MI</span></div>
     </div>
   </div>
