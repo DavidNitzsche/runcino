@@ -302,7 +302,49 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 
   <!-- ═══════════════════════════════════
-       SECTION 2 — TRAINING LOAD (chart)
+       SECTION 2 — INSIGHTS
+  ═══════════════════════════════════ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Insights</div>
+        <div class="card-sub">Pattern reads from the last 14 days</div>
+      </div>
+    </div>
+    <div class="insights-list">
+      <div class="insight-row">
+        <div class="insight-icon green">↑</div>
+        <div class="insight-body">
+          <div class="insight-title">Sleep is doing real work</div>
+          <div class="insight-detail">7.4h avg over the last 7 days, +24min vs your 30-day baseline. Resting HR followed it down 2 bpm. This is the cleanest recovery window since Big Sur.</div>
+        </div>
+      </div>
+      <div class="insight-row">
+        <div class="insight-icon amber">!</div>
+        <div class="insight-body">
+          <div class="insight-title">Strain accumulated mid-week, recovered by Friday</div>
+          <div class="insight-detail">Tuesday threshold pushed strain to 14.2. By Friday it was back to 9. Sleep covered it — that's the pattern you want. If strain stays elevated past 72h, that's the call to back off.</div>
+        </div>
+      </div>
+      <div class="insight-row">
+        <div class="insight-icon blue">i</div>
+        <div class="insight-body">
+          <div class="insight-title">Aerobic markers still rebuilding from Big Sur</div>
+          <div class="insight-detail">It's been 20 days. The two-to-six-week recovery window for that kind of effort means quality threshold work won't feel fully normal for another two weeks. Don't read soft tempo paces as a fitness drop — read them as the body finishing the marathon.</div>
+        </div>
+      </div>
+      <div class="insight-row">
+        <div class="insight-icon amber">!</div>
+        <div class="insight-body">
+          <div class="insight-title">Check-in logging gap on May 6</div>
+          <div class="insight-detail">Missed one day. Two missed in a row would dim the strain/recovery signal — daily logs are how the engine learns your normal.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       SECTION 3 — TRAINING LOAD (chart)
   ═══════════════════════════════════ -->
   <div class="card form-curve-card">
     <div class="card-header">
@@ -699,48 +741,6 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="recovery-pill">
         <span class="recovery-pill-name">Aerobic markers</span>
         <span class="recovery-pill-meta">~14 days left</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════
-       SECTION 7 — INSIGHTS
-  ═══════════════════════════════════ -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Insights</div>
-        <div class="card-sub">Pattern reads from the last 14 days</div>
-      </div>
-    </div>
-    <div class="insights-list">
-      <div class="insight-row">
-        <div class="insight-icon green">↑</div>
-        <div class="insight-body">
-          <div class="insight-title">Sleep is doing real work</div>
-          <div class="insight-detail">7.4h avg over the last 7 days, +24min vs your 30-day baseline. RHR followed it down 2 bpm. This is the cleanest recovery window since Big Sur.</div>
-        </div>
-      </div>
-      <div class="insight-row">
-        <div class="insight-icon amber">!</div>
-        <div class="insight-body">
-          <div class="insight-title">Strain accumulated mid-week, recovered by Friday</div>
-          <div class="insight-detail">Tuesday threshold pushed strain to 14.2. By Friday it was back to 9. Sleep covered it — that's the pattern you want. If strain stays elevated past 72h, that's the call to back off.</div>
-        </div>
-      </div>
-      <div class="insight-row">
-        <div class="insight-icon blue">i</div>
-        <div class="insight-body">
-          <div class="insight-title">Aerobic markers still rebuilding from Big Sur</div>
-          <div class="insight-detail">It's been 20 days. The 2–6 week window for mitochondrial recovery means quality threshold work won't feel fully normal for another ~14 days. Don't read soft tempo paces as a fitness drop — read them as the body finishing the marathon.</div>
-        </div>
-      </div>
-      <div class="insight-row">
-        <div class="insight-icon amber">!</div>
-        <div class="insight-body">
-          <div class="insight-title">Check-in logging gap on May 6</div>
-          <div class="insight-detail">Missed one day. Two missed in a row would dim the strain/recovery signal — daily logs are how the engine learns your normal.</div>
-        </div>
       </div>
     </div>
   </div>
