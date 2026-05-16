@@ -185,68 +185,52 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .races-timeline-track-area {
   position: relative;
   margin: 0 40px;
-  height: 280px;
+  height: 320px;
 }
 .races-timeline-track-line {
   position: absolute;
-  left: 0; right: 0; top: 22px;
+  left: 0; right: 0; top: 50%;
   height: 2px;
   background: var(--divider);
+  transform: translateY(-50%);
 }
-/* Middle stations: centered on their position */
+
+/* Each station spans the full vertical height; badge floats in the
+   middle, info block floats above or below per placement class. */
 .races-timeline-station {
   position: absolute;
-  top: 0;
+  top: 0; bottom: 0;
   width: 160px;
   margin-left: -80px;
-  display: flex; flex-direction: column; align-items: center;
 }
-/* Today: anchored at left, dot's visual center aligns to left:0% */
+/* Today is special: small dot, left-anchored */
 .races-timeline-now {
   position: absolute;
-  top: 0;
-  margin-left: -8px;
-  display: flex; flex-direction: column; align-items: flex-start;
+  top: 0; bottom: 0;
+  margin-left: 0;
+  width: 100px;
 }
-/* Last station: anchored at right, badge's visual center aligns to left:100% */
+/* Last station anchored to right edge of track */
 .races-timeline-station.is-last {
-  margin-left: -138px;
-  align-items: flex-end;
+  margin-left: -160px;
 }
-.races-timeline-station.is-last .races-timeline-station-info {
-  align-items: flex-end;
-}
-.races-timeline-now-dot {
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 5px rgba(44,168,47,.16);
-  margin-top: 14px;
-  z-index: 2;
-  position: relative;
-}
-.races-timeline-now-label {
-  margin-top: 16px;
-  font-family: 'Oswald', sans-serif;
-  font-size: 11px; letter-spacing: 1.5px;
-  color: var(--green); font-weight: 700;
-  text-transform: uppercase;
-}
-.races-timeline-now-date {
-  margin-top: 4px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: var(--t2);
-}
+
+/* The badge / dot sits on the line */
 .races-timeline-tag {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
   width: 44px; height: 44px;
   border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   font-family: 'Inter', sans-serif;
   font-size: 16px; font-weight: 700;
   z-index: 2;
-  position: relative;
   border: 3px solid var(--card);
+}
+.races-timeline-station.is-last .races-timeline-tag {
+  left: auto; right: 0;
+  transform: translate(50%, -50%);
 }
 .races-timeline-tag.a {
   background: var(--orange); color: white;
@@ -260,23 +244,53 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   background: #E6E5E1; color: var(--t1);
   box-shadow: 0 0 0 5px rgba(13,15,18,.05);
 }
-/* Stagger: push label down so the dot stays on the line but the
-   info block clears its neighbor's labels. */
-.races-timeline-station.is-stagger-down .races-timeline-station-info {
-  margin-top: 84px;
-  position: relative;
-}
-.races-timeline-station.is-stagger-down .races-timeline-station-info::before {
-  content: '';
+.races-timeline-now-dot {
   position: absolute;
-  left: 50%; top: -70px;
-  width: 1px; height: 60px;
-  background: var(--divider);
+  top: 50%; left: 0;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(44,168,47,.16);
+  z-index: 2;
 }
+
+/* Info block: absolutely above or below the line */
 .races-timeline-station-info {
-  margin-top: 14px;
+  position: absolute;
+  left: 0; right: 0;
   display: flex; flex-direction: column; align-items: center;
   text-align: center;
+}
+.races-timeline-station.placement-above .races-timeline-station-info {
+  bottom: calc(50% + 36px);
+}
+.races-timeline-station.placement-below .races-timeline-station-info {
+  top: calc(50% + 36px);
+}
+.races-timeline-station.is-last .races-timeline-station-info {
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Today info block (sits below the line, left-aligned) */
+.races-timeline-now-info {
+  position: absolute;
+  top: calc(50% + 22px);
+  left: 0;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+.races-timeline-now-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--green); font-weight: 700;
+  text-transform: uppercase;
+}
+.races-timeline-now-date {
+  margin-top: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
 }
 .races-timeline-date {
   font-family: 'Oswald', sans-serif;
@@ -433,15 +447,17 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="races-timeline-track-area">
         <div class="races-timeline-track-line"></div>
 
-        <!-- Today -->
+        <!-- Today (anchored left, label below) -->
         <div class="races-timeline-now" style="left: 0%;">
           <div class="races-timeline-now-dot"></div>
-          <div class="races-timeline-now-label">Today</div>
-          <div class="races-timeline-now-date">May 15</div>
+          <div class="races-timeline-now-info">
+            <div class="races-timeline-now-label">Today</div>
+            <div class="races-timeline-now-date">May 15</div>
+          </div>
         </div>
 
-        <!-- AFC Half — A, 93d -->
-        <div class="races-timeline-station priority-a" style="left: 31.4%;">
+        <!-- AFC Half — A, 93d, ABOVE -->
+        <div class="races-timeline-station priority-a placement-above" style="left: 31.4%;">
           <div class="races-timeline-tag a">A</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Aug 16</div>
@@ -452,8 +468,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
         </div>
 
-        <!-- Dodgers — C, 134d -->
-        <div class="races-timeline-station priority-c" style="left: 45.3%;">
+        <!-- Dodgers — C, 134d, BELOW -->
+        <div class="races-timeline-station priority-c placement-below" style="left: 45.3%;">
           <div class="races-timeline-tag c">C</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Sep 26</div>
@@ -464,8 +480,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
         </div>
 
-        <!-- Run Malibu — B tune-up, 177d -->
-        <div class="races-timeline-station priority-b" style="left: 59.8%;">
+        <!-- Run Malibu — B tune-up, 177d, ABOVE -->
+        <div class="races-timeline-station priority-b placement-above" style="left: 59.8%;">
           <div class="races-timeline-tag b">B</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Nov 8</div>
@@ -476,8 +492,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
         </div>
 
-        <!-- CIM — A marathon, 205d (clusters with Malibu, label staggered down) -->
-        <div class="races-timeline-station priority-a is-stagger-down" style="left: 69.3%;">
+        <!-- CIM — A marathon, 205d, BELOW (alternates with Malibu, no collision) -->
+        <div class="races-timeline-station priority-a placement-below" style="left: 69.3%;">
           <div class="races-timeline-tag a">A</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Dec 6</div>
@@ -488,8 +504,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           </div>
         </div>
 
-        <!-- LA Marathon — A, 296d -->
-        <div class="races-timeline-station priority-a is-last" style="left: 100%;">
+        <!-- LA Marathon — A, 296d, ABOVE -->
+        <div class="races-timeline-station priority-a placement-above is-last" style="left: 100%;">
           <div class="races-timeline-tag a">A</div>
           <div class="races-timeline-station-info">
             <div class="races-timeline-date">Mar 7</div>
