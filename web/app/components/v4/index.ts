@@ -34,3 +34,6 @@ export { WorkoutDetailModal } from './WorkoutDetailModal';
 export type { WorkoutDetailModalProps } from './WorkoutDetailModal';
 export { ScheduleModal } from './ScheduleModal';
 export type { ScheduleModalProps, ScheduleWeek, SchedulePhase, ScheduleWeekStatus } from './ScheduleModal';
+
+export { ConnectBanner } from './ConnectBanner';
+export { EmptyZone, EmptyZoneButton } from './EmptyZone';
