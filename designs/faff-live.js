@@ -11,7 +11,10 @@
  *   <script src="faff-live.js" defer></script>
  */
 (function () {
-  const API_BASE = 'https://__KEEP_FAFF.RUN_PROD__.up.railway.app';
+  // Production API base. Update this when the Railway/faff.run hostname
+  // is finalized. The rebrand sweep left a placeholder here — set the
+  // real value once the live deploy URL is confirmed.
+  const API_BASE = 'https://runcino-production.up.railway.app';
   const TIMEOUT_MS = 4000;
 
   function withTimeout(promise, ms) {
