@@ -6,7 +6,7 @@ Read this first. Everything below is what landed overnight on this worktree's br
 
 ## TL;DR — three changes you can poke at in 5 min
 
-1. **The user-facing flagship loop ships.** `web/` is now a working Next.js app where you type a race name + drop a GPX → get a full pacing plan (5 phases, 13 mile splits, fueling schedule, exportable `__KEEP_DOT_FAFF.RUN_JSON__`). Persists to `localStorage` so the race shows up on the index across reloads.
+1. **The user-facing flagship loop ships.** `web/` is now a working Next.js app where you type a race name + drop a GPX → get a full pacing plan (5 phases, 13 mile splits, fueling schedule, exportable `.runcino.json`). Persists to `localStorage` so the race shows up on the index across reloads.
 2. **The dark faff.run design language is now in `web/`.** `app/globals.css` was fully rewritten as a port of `designs/faff.css` — Oswald + Jost + JetBrains Mono, layer scale, chip system, semantic palette. Every new page inherits it.
 3. **iPhone prototype exists.** `designs/iphone-app.html` shows 4 screens in iPhone frames using the same design language: races index, race detail, live race-day, watch sync. **All static** — for design alignment, not real iOS code.
 
@@ -35,7 +35,7 @@ Hit **Build race plan →**. You'll land at `/races/sombrero-half` with:
 - 5 phase cards (label, mile range, target pace, terrain note, cumulative time)
 - Mile splits table (per-mile target pace + cumulative + gel markers)
 - Fueling tile (gels with mile anchors)
-- **↓ Export __KEEP_DOT_FAFF.RUN_JSON__** button — produces the file the iOS app will import
+- **↓ Export .runcino.json** button — produces the file the iOS app will import
 
 Reload — race is still there. Open a new tab to `/races` — it's listed. Delete it from the detail page if you want.
 

@@ -35,7 +35,7 @@ file is M1 or later.
 - Fueling plan — gel timings as 30-sec IntervalSteps with haptic cues
 - Landmark cues — hand-curated Big Sur dictionary, rendered as short
   IntervalSteps with haptic alerts
-- `__KEEP_DOT_FAFF.RUN_JSON__` export from web, import on iOS
+- `.runcino.json` export from web, import on iOS
 - iOS app that renders the plan and pushes `CustomWorkout` to the Watch
 
 **Deferred (post-race, M1–M2):**
@@ -80,7 +80,7 @@ file is M1 or later.
       lookup for Big Sur
 - [ ] `lib/fueling.ts` — gel timing anchored to phase boundaries,
       60 g/hr target
-- [ ] `lib/export.ts` — emit `__KEEP_DOT_FAFF.RUN_JSON__` v1.1.0 (intervals array)
+- [ ] `lib/export.ts` — emit `.runcino.json` v1.1.0 (intervals array)
 - [ ] Unit tests for all five lib modules — pipeline green
 - [ ] Download Big Sur GPX into `public/sample-bigsur.gpx`
 - [ ] CLI smoke: `npm run smoke` runs full pipeline, prints plan
@@ -99,13 +99,13 @@ this sprint; the mockups in `mockups/web-*.html` are M2 targets.
   - Fitness summary form (LA time, weekly mi, long run, resting HR)
   - "Ask Claude for a goal" button → server action hits `/api/goal`
   - Goal display (prose + time)
-  - "Build plan" button → runs full pipeline, downloads `__KEEP_DOT_FAFF.RUN_JSON__`
+  - "Build plan" button → runs full pipeline, downloads `.runcino.json`
 - [ ] `app/api/goal/route.ts` — Claude call, cached prompt, returns
       goal + rationale
 - [ ] `app/api/brief/route.ts` — paste forecast, Claude writes brief,
       returns JSON fragment to merge into plan
 - [ ] Stub fallback — if no `ANTHROPIC_API_KEY`, use fixture responses
-- [ ] **GATE — upload GPX, get a valid `__KEEP_DOT_FAFF.RUN_JSON__` back**
+- [ ] **GATE — upload GPX, get a valid `.runcino.json` back**
 
 ---
 
@@ -115,7 +115,7 @@ this sprint; the mockups in `mockups/web-*.html` are M2 targets.
       `npm run build-plan -- --gpx bigsur.gpx --goal 3:50:00`
 - [ ] Error states — bad GPX, unrealistic goal, API failure
 - [ ] Schema v1.1.0 freeze — no changes after today without bump
-- [ ] Regenerate `docs/example__KEEP_DOT_FAFF.RUN_JSON__` from real pipeline
+- [ ] Regenerate `docs/example.runcino.json` from real pipeline
 - [ ] **GATE — web ships. Move fully to iOS.**
 
 ---
@@ -124,7 +124,7 @@ this sprint; the mockups in `mockups/web-*.html` are M2 targets.
 
 - [ ] Xcode → new iOS app, SwiftUI, iOS 17, bundle
       `com.davidnitzsche.faff`
-- [ ] Declare `__KEEP_DOT_FAFF.RUN_JSON__` UTType in `Info.plist` (conforms to
+- [ ] Declare `.runcino.json` UTType in `Info.plist` (conforms to
       `public.json`, exported type)
 - [ ] Add WorkoutKit + HealthKit entitlements (Health is placeholder
       for M1 — not read yet)

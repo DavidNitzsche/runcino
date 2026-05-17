@@ -70,7 +70,7 @@ In the target's **Signing & Capabilities** tab, hit `+ Capability`:
 ## Import a plan
 
 1. On your Mac, run the web app: `cd web && npm run dev`
-2. Build a plan on http://localhost:3000, download the `__KEEP_DOT_FAFF.RUN_JSON__`
+2. Build a plan on http://localhost:3000, download the `.runcino.json`
 3. AirDrop it to your iPhone
 4. Tap the AirDrop notification → "Open in faff.run" should appear
 5. The plan renders — phases, fueling, landmarks
@@ -80,7 +80,7 @@ In the target's **Signing & Capabilities** tab, hit `+ Capability`:
 
 ## What's implemented (M0)
 
-- [x] Codable model for `__KEEP_DOT_FAFF.RUN_JSON__` v1.1.0
+- [x] Codable model for `.runcino.json` v1.1.0
 - [x] `.fileImporter` import flow
 - [x] Plan view: phases, fueling, landmarks, race-morning brief
 - [x] `WorkoutBuilder` maps intervals to `CustomWorkout` with pace alerts

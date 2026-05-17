@@ -11,9 +11,9 @@ faff/
 ├── docs/                        ← specs & planning
 │   ├── PROJECT_MAP.md           ← this file                  [DONE]
 │   ├── CHECKLIST.md             ← day-by-day plan            [DONE]
-│   ├── SCHEMA.md                ← __KEEP_DOT_FAFF.RUN_JSON__ contract     [DONE]
+│   ├── SCHEMA.md                ← .runcino.json contract     [DONE]
 │   ├── ALGORITHM.md             ← Minetti GAP math           [DONE]
-│   └── example__KEEP_DOT_FAFF.RUN_JSON__     ← Big Sur 3:50 example       [DONE]
+│   └── example.runcino.json     ← Big Sur 3:50 example       [DONE]
 │
 ├── mockups/                     ← HTML pitch-deck mockups
 │   ├── index.html               ← pitch deck / landing       [DONE]
@@ -41,7 +41,7 @@ faff/
 │   │   ├── minetti.ts           ← GAP cost curve
 │   │   ├── pacing.ts            ← segment → phase logic
 │   │   ├── grouping.ts          ← auto-group into 6–8 phases
-│   │   └── export.ts            ← emit __KEEP_DOT_FAFF.RUN_JSON__
+│   │   └── export.ts            ← emit .runcino.json
 │   ├── lib/__tests__/
 │   │   ├── minetti.test.ts
 │   │   ├── pacing.test.ts
@@ -59,7 +59,7 @@ faff/
     │   └── project.pbxproj
     ├── faff.run/
     │   ├── faff.runApp.swift     ← @main, WindowGroup
-    │   ├── Info.plist           ← UTTypes for __KEEP_DOT_FAFF.RUN_JSON__
+    │   ├── Info.plist           ← UTTypes for .runcino.json
     │   ├── Assets.xcassets/
     │   ├── Views/
     │   │   ├── ImportView.swift ← .fileImporter
@@ -78,7 +78,7 @@ faff/
 ## File ownership by phase
 
 **Phase 1 (web) touches:** `web/*`, `docs/SCHEMA.md`,
-`docs/example__KEEP_DOT_FAFF.RUN_JSON__`.
+`docs/example.runcino.json`.
 
 **Phase 2 (iOS) touches:** `ios/*`. Consumes `docs/SCHEMA.md` as
 the contract. Does not modify the schema.

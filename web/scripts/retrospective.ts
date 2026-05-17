@@ -6,7 +6,7 @@
  *   npm run retrospective -- [--plan path] [--actual path]
  *
  * Defaults:
- *   --plan    public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__
+ *   --plan    public/big-sur-3-50.runcino.json
  *   --actual  fixtures/bigsur-actual.json
  */
 
@@ -25,7 +25,7 @@ function arg(name: string, args: string[]): string | undefined {
 async function main() {
   const args = process.argv.slice(2);
   const here = dirname(fileURLToPath(import.meta.url));
-  const planPath = resolve(here, '..', arg('plan', args) ?? 'public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__');
+  const planPath = resolve(here, '..', arg('plan', args) ?? 'public/big-sur-3-50.runcino.json');
   const actualPath = resolve(here, '..', arg('actual', args) ?? 'fixtures/bigsur-actual.json');
 
   const plan: FaffPlan = JSON.parse(readFileSync(planPath, 'utf8'));

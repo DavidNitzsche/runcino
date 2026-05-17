@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Build a __KEEP_DOT_FAFF.RUN_JSON__ plan from a GPX, goal time, and fitness summary.
+ * Build a .runcino.json plan from a GPX, goal time, and fitness summary.
  *
  * Usage:
  *   npm run build-plan -- [--gpx path] [--goal 3:50:00] [--out path]
@@ -10,7 +10,7 @@
  * Defaults:
  *   --gpx       public/sample-bigsur.gpx
  *   --goal      3:50:00
- *   --out       public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__
+ *   --out       public/big-sur-3-50.runcino.json
  *   --strategy  even_effort
  *   --course    big-sur-marathon
  *
@@ -53,7 +53,7 @@ async function main() {
   const strategy =
     (arg('strategy', args) as 'even_effort' | 'even_split' | 'negative_split') ?? 'even_effort';
   const courseSlug = (arg('course', args) ?? 'big-sur-marathon') as 'big-sur-marathon';
-  const outPath = resolve(here, '..', arg('out', args) ?? 'public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__');
+  const outPath = resolve(here, '..', arg('out', args) ?? 'public/big-sur-3-50.runcino.json');
 
   const goalS = parseHMS(goalStr);
   if (!goalS) bail(`Invalid --goal "${goalStr}", expected h:mm:ss`);

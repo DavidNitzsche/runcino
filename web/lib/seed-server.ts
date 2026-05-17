@@ -3,7 +3,7 @@
  * Sombrero 2026-05-03). Replaces the old client-side localStorage
  * seed.
  *
- * On first /api/races call, reads the bundled __KEEP_DOT_FAFF.RUN_JSON__ + GPX
+ * On first /api/races call, reads the bundled .runcino.json + GPX
  * pairs out of web/public/, upserts the race plan into Postgres
  * without touching actual_result. Idempotent — a tracking row in
  * `strava_sync_state` keys off SEED_VERSION so re-deploys don't
@@ -35,7 +35,7 @@ interface SeedSpec {
 const SEEDS: SeedSpec[] = [
   {
     slug: 'big-sur-marathon',
-    planFile: 'big-sur-3-40__KEEP_DOT_FAFF.RUN_JSON__',
+    planFile: 'big-sur-3-40.runcino.json',
     gpxFile:  'sample-bigsur.gpx',
     meta: {
       name: 'Big Sur Marathon',
@@ -47,7 +47,7 @@ const SEEDS: SeedSpec[] = [
   },
   {
     slug: 'sombrero-half',
-    planFile: 'sombrero-half-1-32__KEEP_DOT_FAFF.RUN_JSON__',
+    planFile: 'sombrero-half-1-32.runcino.json',
     gpxFile:  'sample-sombrero.gpx',
     meta: {
       name: 'Sombrero Half Marathon',

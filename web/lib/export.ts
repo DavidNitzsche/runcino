@@ -1,5 +1,5 @@
 /**
- * Assemble the full `__KEEP_DOT_FAFF.RUN_JSON__` (v1.1.0) from pipeline outputs.
+ * Assemble the full `.runcino.json` (v1.1.0) from pipeline outputs.
  *
  * Takes: parsed GPX track, pacing input, phase list, fueling plan,
  *        optional Claude rationale, optional fitness summary.

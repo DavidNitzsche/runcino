@@ -6,7 +6,7 @@
  * Reads the saved race from localStorage by slug, then renders the full
  * pacing experience: hero, course map, elevation profile, five-phase
  * strategy cards, mile splits, fueling, and a one-click export of the
- * __KEEP_DOT_FAFF.RUN_JSON__ (the file the iOS app imports).
+ * .runcino.json (the file the iOS app imports).
  *
  * Single source of truth: every numeric value displayed on this page
  * derives from `analyzeGpx(race.gpxText)` (the StravaGPX-calibrated
@@ -200,7 +200,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${race.slug}__KEEP_DOT_FAFF.RUN_JSON__`;
+    a.download = `${race.slug}.runcino.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -222,7 +222,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn btn--ghost" onClick={() => setConfirmingDelete(true)}>Delete</button>
-              <button className="btn btn--primary" onClick={downloadJson}>↓ Export __KEEP_DOT_FAFF.RUN_JSON__</button>
+              <button className="btn btn--primary" onClick={downloadJson}>↓ Export .runcino.json</button>
             </div>
           </div>
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
@@ -233,7 +233,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             body={
               <>
                 This removes the race plan, GPX trace, and any logged result from
-                your library. You can&apos;t undo this — re-import the __KEEP_DOT_FAFF.RUN_JSON__
+                your library. You can&apos;t undo this — re-import the .runcino.json
                 if you change your mind.
               </>
             }
@@ -1692,14 +1692,14 @@ function ExportFooter({ race, onDownload }: { race: SavedRace; onDownload: () =>
       <div>
         <div className="eyebrow">Ship it to the watch</div>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, marginTop: 4, textTransform: 'uppercase' }}>
-          __KEEP_DOT_FAFF.RUN_JSON__ · {race.plan.intervals.length} intervals
+          .runcino.json · {race.plan.intervals.length} intervals
         </div>
         <div style={{ color: 'var(--color-t2)', fontSize: 13, marginTop: 4 }}>
           AirDrop to your phone → open in faff.run → push to Watch via WorkoutKit.
         </div>
       </div>
       <button className="btn btn--primary" onClick={onDownload} style={{ padding: '14px 24px' }}>
-        ↓ Download __KEEP_DOT_FAFF.RUN_JSON__
+        ↓ Download .runcino.json
       </button>
     </div>
   );

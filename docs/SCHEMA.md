@@ -1,4 +1,4 @@
-# `__KEEP_DOT_FAFF.RUN_JSON__` Schema — v1.1.0
+# `.runcino.json` Schema — v1.1.0
 
 > **FROZEN 2026-04-19.** No field additions, renames, or removals without
 > bumping `schema_version`. A major-version bump breaks the iOS decoder.
@@ -22,7 +22,7 @@ The contract between the web app (producer) and the iOS app
 
 ## Why a file, not an API
 
-One runner, one race. No server. A `__KEEP_DOT_FAFF.RUN_JSON__` file travels
+One runner, one race. No server. A `.runcino.json` file travels
 from the laptop to the iPhone via AirDrop / iCloud Drive / Files app.
 Zero infrastructure. Zero privacy surface.
 
@@ -213,7 +213,7 @@ Race-morning narrative. `null` until generated.
 
 ## Example
 
-See [`example__KEEP_DOT_FAFF.RUN_JSON__`](example__KEEP_DOT_FAFF.RUN_JSON__) — a full Big Sur
+See [`example.runcino.json`](example.runcino.json) — a full Big Sur
 3:50:00 plan.
 
 ---

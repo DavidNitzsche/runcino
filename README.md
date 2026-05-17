@@ -24,8 +24,8 @@ no "social." One runner, one race, one plan.
 
 | Phase | Surface | What it does |
 |-------|---------|--------------|
-| **1** | Web (Next.js 15, local only) | Parse GPX, compute grade-adjusted pace per ~500m segment, export `__KEEP_DOT_FAFF.RUN_JSON__` workout spec |
-| **2** | iOS / watchOS (SwiftUI + WorkoutKit) | Import `__KEEP_DOT_FAFF.RUN_JSON__`, render the plan, build a `CustomWorkout` with `IntervalStep.pace` goals, scheduled via `WorkoutScheduler.preview()` |
+| **1** | Web (Next.js 15, local only) | Parse GPX, compute grade-adjusted pace per ~500m segment, export `.runcino.json` workout spec |
+| **2** | iOS / watchOS (SwiftUI + WorkoutKit) | Import `.runcino.json`, render the plan, build a `CustomWorkout` with `IntervalStep.pace` goals, scheduled via `WorkoutScheduler.preview()` |
 
 ## Repo layout
 
@@ -52,7 +52,7 @@ model is the same cost-of-running curve Strava uses for GAP — a
 2002 paper by Minetti et al., well-validated for grades in
 [-0.45, +0.45]. No training data required.
 
-**Ship the JSON spec, then build twice.** The `__KEEP_DOT_FAFF.RUN_JSON__`
+**Ship the JSON spec, then build twice.** The `.runcino.json`
 workout spec is the contract between web and iOS. Freeze it first,
 build both sides against it. See [`docs/SCHEMA.md`](docs/SCHEMA.md).
 

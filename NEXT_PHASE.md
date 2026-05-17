@@ -16,7 +16,7 @@ The decisions that need to be made before more code lands:
 
 **Where we are:** `web/lib/storage.ts` writes a single key `faff:races:v1` to localStorage. Works for one machine, one browser. Gone if you clear site data.
 
-**The right next step (per master plan):** `__KEEP_DOT_FAFF.RUN_JSON__` files live on iCloud Drive. iOS reads/writes them via the app's shared container. Web reads them by pointing at `~/Library/Mobile Documents/iCloud~com~davidnitzsche~faff/Documents` directly (Mac-only) or via a small dev-only file picker.
+**The right next step (per master plan):** `.runcino.json` files live on iCloud Drive. iOS reads/writes them via the app's shared container. Web reads them by pointing at `~/Library/Mobile Documents/iCloud~com~davidnitzsche~faff/Documents` directly (Mac-only) or via a small dev-only file picker.
 
 **Implementation sketch:**
 
@@ -36,7 +36,7 @@ interface RaceStore {
 **Tradeoff:** iCloud Drive on the web is awkward. We can't write to it from a browser. Options:
 - (a) Web stays read-only after M2; iOS owns writes. Web can build new plans but they only persist after AirDrop → iPhone → save.
 - (b) Web writes to a known local directory; a small Mac helper app watches it and forwards to iCloud Drive.
-- (c) Drop the web write path entirely; web becomes a viewer for iOS-managed plans + a one-shot plan generator that downloads `__KEEP_DOT_FAFF.RUN_JSON__` (no autosave).
+- (c) Drop the web write path entirely; web becomes a viewer for iOS-managed plans + a one-shot plan generator that downloads `.runcino.json` (no autosave).
 
 **Recommendation:** (c). Cleaner contract. Web's job is "build a plan and download the file." iOS's job is "import + render + push to Watch." localStorage stays as a convenience cache so the web preview keeps working between sessions, but iOS is the source of truth.
 
@@ -75,14 +75,14 @@ The `_REFRESH_TOKEN` comes from running the OAuth flow once — I can build a `/
 ```
 iOS app (HealthKit) ──┐
                       ├──→ writes fitness_summary block in
-Strava sync           ──┘   the next-built __KEEP_DOT_FAFF.RUN_JSON__
+Strava sync           ──┘   the next-built .runcino.json
                                        │
                                        ├──→ pushed to iCloud Drive
                                        │
                                        └──→ web reads on next session
 ```
 
-**Schema implication:** The existing `fitness_summary` block in `__KEEP_DOT_FAFF.RUN_JSON__` (see `docs/SCHEMA.md`) already has a `source: 'manual' | 'healthkit' | 'strava'` discriminator. Nothing to change in the contract — iOS just sets `source: 'healthkit'` and fills in the numbers from HKQuery. Web continues to *read* this block but can't *populate* it.
+**Schema implication:** The existing `fitness_summary` block in `.runcino.json` (see `docs/SCHEMA.md`) already has a `source: 'manual' | 'healthkit' | 'strava'` discriminator. Nothing to change in the contract — iOS just sets `source: 'healthkit'` and fills in the numbers from HKQuery. Web continues to *read* this block but can't *populate* it.
 
 **What this means for the web add-race flow:** The fitness summary section in the form can become optional (or hidden behind "Manual entry"). Default behavior post-M1 is "use the latest HealthKit-derived summary on file." iOS writes a `latest-fitness.json` to iCloud; web reads it on form load.
 
@@ -100,7 +100,7 @@ Strava sync           ──┘   the next-built __KEEP_DOT_FAFF.RUN_JSON__
 
 | Order | Feature | Why |
 |---|---|---|
-| 1 | Import (FileImporter for `__KEEP_DOT_FAFF.RUN_JSON__` + `faff://` URL scheme) | The "AirDrop → open" loop is the simplest, most-impactful end-to-end test |
+| 1 | Import (FileImporter for `.runcino.json` + `faff://` URL scheme) | The "AirDrop → open" loop is the simplest, most-impactful end-to-end test |
 | 2 | Plan view (read-only render of phases + intervals + fueling) | Mirrors the iPhone prototype Screen 2; verifies the schema is faithful enough to produce a usable display |
 | 3 | Watch sync via WorkoutScheduler.preview() | The whole point — IntervalSteps with `pace` goal, fuel/landmark steps as work intervals with haptic cues |
 | 4 | Live race-day view (Screen 3 in the prototype) | Reads from the running workout; surfaces target vs actual + next-up phase |

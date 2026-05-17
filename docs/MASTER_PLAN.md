@@ -21,7 +21,7 @@ app, years of use.
 ## One app, phased capability
 
 **It's one app: faff.run.** One iOS bundle, one Watch surface, one
-`__KEEP_DOT_FAFF.RUN_JSON__` schema, one Claude layer, one data store. What ships
+`.runcino.json` schema, one Claude layer, one data store. What ships
 over time is more capability — not more apps.
 
 The unifying concept is **a workout is a workout**. Your Tuesday
@@ -54,7 +54,7 @@ of the same planning loop — not a separate feature set.
 |---|---|:---:|:---:|
 | 1 | GPX parser + Minetti GAP + 6-phase grouping | ✓ | |
 | 2 | Pace plan scaled to goal time | ✓ | |
-| 3 | `__KEEP_DOT_FAFF.RUN_JSON__` export | ✓ | |
+| 3 | `.runcino.json` export | ✓ | |
 | 4 | iOS import → CustomWorkout with pace-goal IntervalSteps | ✓ | |
 | 5 | Fueling plan (gel timings anchored to phases + haptic cues on Watch) | ✓ | |
 | 6 | Landmark cues (hand-curated for Big Sur: Bixby, Hurricane Point, Carmel) | ✓ | |
@@ -136,7 +136,7 @@ These came up in scoping and got cut. Not forgotten, just not urgent.
      │              CustomWorkouts       │
      └──┬──────────────────────────┬─────┘
         │                          │
-        │ __KEEP_DOT_FAFF.RUN_JSON__            │ WorkoutScheduler.preview()
+        │ .runcino.json            │ WorkoutScheduler.preview()
         │ (iCloud sync)            │
         ▼                          ▼
   ┌─────────────┐           ┌──────────────┐
@@ -150,7 +150,7 @@ These came up in scoping and got cut. Not forgotten, just not urgent.
 ```
 
 **iOS app is the hub.** Web is a big-screen dashboard that reads
-the same iCloud-synced `__KEEP_DOT_FAFF.RUN_JSON__` files. Watch is Apple's
+the same iCloud-synced `.runcino.json` files. Watch is Apple's
 native Workout app running custom workouts we built.
 
 For Big Sur 2026 (7 days), we cut:

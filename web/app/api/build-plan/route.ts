@@ -1,5 +1,5 @@
 /**
- * /api/build-plan — run the full pacing pipeline and return a __KEEP_DOT_FAFF.RUN_JSON__
+ * /api/build-plan — run the full pacing pipeline and return a .runcino.json
  * payload plus a summary for UI display.
  */
 

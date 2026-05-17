@@ -5,7 +5,7 @@ import { computeRetrospective, type ActualRace } from '../retrospective';
 import type { FaffPlan } from '../types';
 
 const plan: FaffPlan = JSON.parse(
-  readFileSync(resolve(__dirname, '..', '..', 'public', 'big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__'), 'utf8')
+  readFileSync(resolve(__dirname, '..', '..', 'public', 'big-sur-3-50.runcino.json'), 'utf8')
 );
 const actual: ActualRace = JSON.parse(
   readFileSync(resolve(__dirname, '..', '..', 'fixtures', 'bigsur-actual.json'), 'utf8')
