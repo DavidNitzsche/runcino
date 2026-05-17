@@ -1,798 +1,443 @@
-'use client';
-
 /**
- * /log · Run-history scanner (May 2026 port).
+ * /log — fresh React port of designs/log-v4.html.
  *
- * Mockup: designs/log-2026-05-09.html — locked.
+ * Five sections matching approved mockup:
+ *   1. Coach strip — YTD recap (left) + Strava-sync card (right)
+ *   2. YTD Hero — "The Year So Far" + 4 hero stats
+ *   3. Monthly Volume Chart — 12 bars, current month outlined in amber
+ *   4. Year in Running heatmap — 5 rows (Jan-May), variable days
+ *   5. Recent Runs — custom shoe-picker column, ordered: date · type ·
+ *      name · shoes · time · miles
  *
- * Architecture mirrors /overview, /training, /races, /health:
- *   - Single useEffect loads via /api/log (server-side coach bundle).
- *   - Skeleton + error fallback via <EmptyState>.
- *   - Cards composed from @/app/components primitives.
- *   - Run rows link to /runs/[id] (existing legacy detail route; the
- *     locked Run Detail template will replace that surface later).
- *
- * Row plan (1:1 with mockup):
- *   1 · YearInRunningCard  (span 12) — 53-week heatmap + KPI strip
- *   2 · MonthlyVolumeCard  (span 6)  — 2026 vs 2025 bar chart
- *   2 · PersonalBestsCard  (span 6)  — 6-card PR shelf
- *   3 · RecentRunsCard     (span 12) — last-7 runs feed
+ * Replaces the 786-line May-2026 implementation.
  */
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import {
-  Topbar,
-  Stage,
-  Row,
-  Card,
-  CardHeader,
-  CardLabel,
-  CardPin,
-  CardFoot,
-  Greet,
-  GreetId,
-  GreetState,
-  GreetTile,
-  EmptyState,
-  Skeleton,
-} from '@/app/components';
-import {
-  loadLogData,
-  formatTopbarClock,
-  formatTime,
-  formatPace,
-  type LogData,
-  type HeatCell,
-  type MonthBar,
-  type PrCard,
-  type RunRow,
-} from './data';
-import { ConnectBanner } from '@/app/components/v4';
+import { redirect } from 'next/navigation';
+import { Topbar } from '@/app/components';
+import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
+import { LogRunShoePicker } from './LogRunShoePicker';
+import { getCurrentUser } from '@/lib/auth';
+import { query } from '@/lib/db';
+import { todayISO } from '@/lib/synthetic-plan';
+import './log-v4.css';
 
-export default function LogPage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [data, setData] = useState<LogData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [hasSource, setHasSource] = useState<boolean | null>(null);
+const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-  useEffect(() => {
-    setNow(new Date());
-  }, []);
+interface RunRow {
+  id: string;
+  date: string;
+  dateLabel: string;
+  tag: 'easy' | 'quality' | 'long' | 'race';
+  tagLabel: string;
+  name: string;
+  sub: string;
+  mi: number;
+  min: number;
+  pace: string;
+  avgHr: number;
+  shoeId: number | null;
+}
 
-  // Connector status — banner only shows when zero activity sources active.
-  useEffect(() => {
-    fetch('/api/connectors').then((r) => r.json()).then((j) => {
-      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
-      setHasSource((j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider)));
-    }).catch(() => setHasSource(false));
-  }, []);
+interface ShoeOption {
+  id: number;
+  name: string;
+  purposes: string[];
+  color: string;
+  retired: boolean;
+}
 
-  useEffect(() => {
-    if (!now) return;
-    let cancelled = false;
-    setLoadError(null);
-    loadLogData()
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : String(err));
-        }
+async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
+  recentRuns: RunRow[];
+  shoes: ShoeOption[];
+  totalRuns: number;
+  totalMiles: number;
+  longestRun: { mi: number; name: string; date: string } | null;
+  peakMonth: { miles: number; month: string } | null;
+  monthlyMi: number[];
+  heatmapByDate: Record<string, number>;
+  syncMeta: { connected: boolean; lastSyncAt: Date | null };
+}> {
+  // Connector status
+  let syncMeta: { connected: boolean; lastSyncAt: Date | null } = { connected: false, lastSyncAt: null };
+  try {
+    const rows = await query<{ last_sync_at: Date | null }>(
+      `SELECT last_sync_at FROM connector_tokens
+       WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+       LIMIT 1`,
+      [userId],
+    );
+    if (rows[0]) {
+      syncMeta = { connected: true, lastSyncAt: rows[0].last_sync_at };
+    }
+  } catch {}
+
+  // Shoes (legacy schema)
+  let shoes: ShoeOption[] = [];
+  try {
+    const rows = await query<{ id: number; brand: string; model: string; run_types: string[]; color: string | null; retired: boolean }>(
+      `SELECT id, brand, model, run_types, color, retired
+       FROM shoes
+       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+       ORDER BY retired ASC, id ASC`,
+      [userId],
+    );
+    shoes = rows.map((r) => ({
+      id: r.id, name: `${r.brand} ${r.model}`,
+      purposes: r.run_types || [], color: r.color || '#2CA82F', retired: !!r.retired,
+    }));
+  } catch {}
+
+  // Strava activities — pulled into the unified run feed
+  let recentRuns: RunRow[] = [];
+  let totalRuns = 0;
+  let totalMiles = 0;
+  let longestRun: { mi: number; name: string; date: string } | null = null;
+  const monthlyMi = new Array(12).fill(0);
+  const heatmapByDate: Record<string, number> = {};
+
+  if (isLegacy) {
+    try {
+      const acts = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
+        `SELECT id, data, shoe_id FROM strava_activities ORDER BY (data->>'date') DESC LIMIT 19`,
+      );
+      recentRuns = acts.map((a) => {
+        const d = a.data as { name?: string; date?: string; distance_mi?: number; moving_time_sec?: number; type?: string; description?: string; avg_hr?: number };
+        const mi = Number(d.distance_mi) || 0;
+        const moving = Number(d.moving_time_sec) || 0;
+        const paceSec = mi > 0 ? Math.round(moving / mi) : 0;
+        const paceM = Math.floor(paceSec / 60);
+        const paceS = paceSec % 60;
+        const dateStr = d.date ?? '';
+        const dt = dateStr ? new Date(dateStr + 'T00:00:00Z') : null;
+        const dateLabel = dt
+          ? dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+          : '';
+        // Classify
+        const isRace = (d.type || '').toLowerCase() === 'race';
+        const tag: RunRow['tag'] = isRace ? 'race' : mi >= 12 ? 'long' : 'easy';
+        const tagLabel = tag === 'race' ? 'Race' : tag === 'long' ? 'Long' : 'Easy';
+        return {
+          id: String(a.id), date: dateStr, dateLabel,
+          tag, tagLabel,
+          name: d.name || 'Untitled run',
+          sub: tag === 'easy' ? 'Easy · base mileage' : tag === 'long' ? 'Long' : 'Race',
+          mi: Math.round(mi * 10) / 10,
+          min: Math.round(moving / 60),
+          pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '—',
+          avgHr: Number(d.avg_hr) || 0,
+          shoeId: a.shoe_id,
+        };
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [now]);
 
-  const clock = now ? formatTopbarClock(now) : null;
+      // Aggregate YTD
+      const ytdRows = await query<{ count: string; total_mi: string; max_mi: string }>(
+        `SELECT COUNT(*) AS count, COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS total_mi,
+                COALESCE(MAX((data->>'distance_mi')::NUMERIC), 0) AS max_mi
+         FROM strava_activities
+         WHERE (data->>'date') LIKE '2026-%'`,
+      );
+      totalRuns = parseInt(ytdRows[0]?.count ?? '0', 10);
+      totalMiles = Math.round(Number(ytdRows[0]?.total_mi ?? 0));
+      const maxMi = Number(ytdRows[0]?.max_mi ?? 0);
+      if (maxMi > 0) {
+        const longRow = await query<{ data: Record<string, unknown> }>(
+          `SELECT data FROM strava_activities
+           WHERE (data->>'date') LIKE '2026-%' AND (data->>'distance_mi')::NUMERIC = $1
+           LIMIT 1`,
+          [maxMi],
+        );
+        const ld = longRow[0]?.data as { name?: string; date?: string } | undefined;
+        longestRun = { mi: Math.round(maxMi * 10) / 10, name: ld?.name || 'Longest run', date: ld?.date || '' };
+      }
 
-  return (
-    <Stage>
-      <Topbar
-        activeTab="log"
-        clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
-      />
+      // Monthly volume aggregation
+      const monthRows = await query<{ month: string; mi: string }>(
+        `SELECT SUBSTRING((data->>'date') FROM 6 FOR 2) AS month,
+                COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS mi
+         FROM strava_activities
+         WHERE (data->>'date') LIKE '2026-%'
+         GROUP BY month`,
+      );
+      monthRows.forEach((r) => {
+        const m = parseInt(r.month, 10) - 1;
+        if (m >= 0 && m < 12) monthlyMi[m] = Math.round(Number(r.mi));
+      });
 
-      {hasSource === false && <ConnectBanner />}
-
-      <LogGreet data={data} />
-
-      {loadError && (
-        <Row>
-          <Card span={12}>
-            <EmptyState
-              variant="error"
-              title="Couldn't load Log"
-              body={loadError}
-            />
-          </Card>
-        </Row>
-      )}
-
-      {data ? (
-        <LogBody data={data} />
-      ) : (
-        !loadError && <LogSkeleton />
-      )}
-    </Stage>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Greet band — eyebrow KPIs + 4 GreetTiles for TOTAL/WEEK/LAST/LONGEST
-// ─────────────────────────────────────────────────────────────────────
-
-function LogGreet({ data }: { data: LogData | null }) {
-  if (!data) {
-    return (
-      <Greet>
-        <GreetId
-          eyebrow={<Skeleton width={300} height={11} />}
-          title={<Skeleton width={120} height={48} />}
-        />
-        <GreetState>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <GreetTile key={i} eyebrow="—" value={<Skeleton width={56} height={20} />} />
-          ))}
-        </GreetState>
-      </Greet>
-    );
+      // Heatmap — sum per date
+      const heatRows = await query<{ date: string; mi: string }>(
+        `SELECT (data->>'date') AS date,
+                COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS mi
+         FROM strava_activities
+         WHERE (data->>'date') LIKE '2026-%'
+         GROUP BY (data->>'date')`,
+      );
+      heatRows.forEach((r) => { if (r.date) heatmapByDate[r.date] = Number(r.mi); });
+    } catch (e) {
+      console.error('[/log] data load failed', e);
+    }
   }
 
-  const y = data.yearSummary;
-  const totalsTone = y.vsLastYearMi >= 0 ? 'good' : 'amber';
-  const eoyTone = y.eoyProjMiles >= 1500 ? 'good' : 'coach';
+  const peakMonthIdx = monthlyMi.indexOf(Math.max(...monthlyMi));
+  const peakMonth = monthlyMi[peakMonthIdx] > 0
+    ? { miles: monthlyMi[peakMonthIdx], month: MONTHS[peakMonthIdx] }
+    : null;
 
-  return (
-    <Greet>
-      <GreetId eyebrow={data.greetEyebrow} title="LOG" />
-      <GreetState>
-        <GreetTile
-          variant={totalsTone}
-          eyebrow="YTD TOTAL"
-          value={String(y.ytdMiles)}
-          unit="MI"
-          delta={`${y.vsLastYearMi >= 0 ? '+' : ''}${y.vsLastYearMi} vs ${y.year - 1}`}
-          deltaColor={y.vsLastYearMi >= 0 ? 'var(--good)' : 'var(--warn)'}
-        />
-        <GreetTile
-          variant="coach"
-          eyebrow="YTD RUNS"
-          value={String(y.ytdRuns)}
-          unit={`/${y.dayOfYear}d`}
-          delta={`${y.ytdDaysRun} unique days`}
-          deltaColor="var(--coach)"
-        />
-        <GreetTile
-          variant={eoyTone}
-          eyebrow="EOY PROJ"
-          value={String(y.eoyProjMiles)}
-          unit="MI"
-          delta={`DAY ${y.dayOfYear}/365`}
-          deltaColor="var(--coach)"
-        />
-        <GreetTile
-          variant="race"
-          eyebrow="LONGEST"
-          value={data.longestRunMi.toFixed(1)}
-          unit="MI"
-          delta={data.longestRunName?.toUpperCase() ?? ''}
-          deltaColor="var(--race)"
-        />
-        {/* 5th tile · weekly volume pace · pulls from same ytd numbers, gives
-            a fresh angle (planning baseline) not duplicated by YTD TOTAL or
-            EOY PROJ. */}
-        <GreetTile
-          variant="amber"
-          eyebrow="AVG / WEEK"
-          value={((y.ytdMiles / Math.max(1, y.dayOfYear / 7))).toFixed(1)}
-          unit="MI"
-          delta={`${y.ytdRuns} RUNS · ${(y.ytdRuns / Math.max(1, y.dayOfYear / 7)).toFixed(1)}/WK`}
-          deltaColor="var(--att)"
-        />
-      </GreetState>
-    </Greet>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Body
-// ─────────────────────────────────────────────────────────────────────
-
-function LogBody({ data }: { data: LogData }) {
-  return (
-    <>
-      <Row>
-        <YearInRunningCard data={data} />
-      </Row>
-      <Row>
-        <MonthlyVolumeCard data={data} />
-        <PersonalBestsCard data={data} />
-      </Row>
-      <Row>
-        <RecentRunsCard data={data} />
-      </Row>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 1 · YearInRunningCard (span 12)
-// 53-week heatmap + EOY/YTD/vs-prior-year stats.
-// ─────────────────────────────────────────────────────────────────────
-
-function YearInRunningCard({ data }: { data: LogData }) {
-  const y = data.yearSummary;
-  return (
-    <Card span={12} padding="18px 22px">
-      <CardHeader>
-        <CardLabel>YEAR IN RUNNING · {y.year} · DAY {y.dayOfYear}/365</CardLabel>
-        <div
-          style={{
-            display: 'flex',
-            gap: 14,
-            fontFamily: 'var(--f-data)',
-            fontSize: 11,
-            letterSpacing: '1.4px',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-          }}
-        >
-          <span>
-            <b style={{ color: 'var(--good)' }}>{y.eoyProjMiles.toLocaleString()}</b>{' '}
-            <span style={{ color: 'var(--t3)' }}>EOY PROJ</span>
-          </span>
-          <span>
-            <b style={{ color: 'var(--corp)' }}>{y.ytdMiles.toLocaleString()}</b>{' '}
-            <span style={{ color: 'var(--t3)' }}>YTD</span>
-          </span>
-          <span>
-            <b style={{ color: y.vsLastYearMi >= 0 ? 'var(--good)' : 'var(--warn)' }}>
-              {y.vsLastYearMi >= 0 ? '+' : ''}{y.vsLastYearMi}
-            </b>{' '}
-            <span style={{ color: 'var(--t3)' }}>vs {y.year - 1}</span>
-          </span>
-        </div>
-      </CardHeader>
-
-      <YearHeatStrip cells={data.yearHeat} />
-
-      <MonthAxis months={data.months} />
-
-      <CardFoot
-        left="A year in cells. Each square is a week — color and intensity track your mileage; red marks race weeks."
-      />
-    </Card>
-  );
-}
-
-function YearHeatStrip({ cells }: { cells: HeatCell[] }) {
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${Math.max(53, cells.length)}, 1fr)`,
-        gap: 2,
-        marginTop: 14,
-      }}
-    >
-      {cells.map((c, i) => {
-        const baseGreen = `rgba(62,189,65, ${Math.max(0.10, c.intensity * 0.9)})`;
-        const bg = c.tone === 'race'
-          ? '#FF5722'
-          : c.tone === 'amber'
-          ? `rgba(243,173,56, ${Math.max(0.35, c.intensity * 0.9)})`
-          : c.tone === 'rest'
-          ? 'var(--l3)'
-          : baseGreen;
-        return (
-          <div
-            key={i}
-            title={`${c.weekStartISO} · ${c.miles.toFixed(1)} mi${c.hasRace ? ' · race' : ''}`}
-            style={{
-              aspectRatio: '1',
-              background: bg,
-              borderRadius: 2,
-              outline: c.isCurrent ? '2px solid var(--att)' : undefined,
-              outlineOffset: c.isCurrent ? -1 : undefined,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function MonthAxis({ months }: { months: MonthBar[] }) {
-  // 12 evenly-spaced month labels under the 53-week strip.
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontFamily: 'var(--f-data)',
-        fontSize: 9,
-        letterSpacing: '1.2px',
-        color: 'var(--t3)',
-        fontWeight: 700,
-        marginTop: 8,
-      }}
-    >
-      {months.map((m) => {
-        const color = m.isCurrent ? 'var(--corp)' : m.isPeak ? 'var(--att)' : m.isFuture ? 'var(--t4)' : 'var(--t3)';
-        const suffix = m.isCurrent ? ' ▶' : m.isPeak ? ' ★' : '';
-        return (
-          <span key={m.monthIdx} style={{ color }}>
-            {m.label}{suffix}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 2A · MonthlyVolumeCard (span 6)
-// 2026 vs 2025 bar chart — SVG, mirrors the mockup.
-// ─────────────────────────────────────────────────────────────────────
-
-function MonthlyVolumeCard({ data }: { data: LogData }) {
-  const months = data.months;
-  // Compute the max across all bars so y-scale is shared.
-  const maxMi = Math.max(
-    1,
-    ...months.flatMap((m) => [m.milesThisYear, m.milesPriorYear]),
-  );
-  const W = 720;
-  const H = 200;
-  const colWidth = W / 12; // 60px each
-  const barWidth = 20;
-  const valid = months.some((m) => m.milesThisYear > 0);
-
-  return (
-    <Card span={6} padding="18px 20px">
-      <CardHeader>
-        <CardLabel>MONTHLY VOLUME · {data.yearSummary.year} vs {data.yearSummary.year - 1}</CardLabel>
-        <CardPin variant={data.yearSummary.vsLastYearMi >= 0 ? 'green' : 'amber'}>
-          {data.yearSummary.vsLastYearMi >= 0 ? '+' : ''}{data.yearSummary.vsLastYearMi} YTD
-        </CardPin>
-      </CardHeader>
-
-      {valid ? (
-        <svg
-          style={{ width: '100%', height: 200, marginTop: 10 }}
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-        >
-          {/* Reference grid lines */}
-          {[50, 100, 150].map((y) => (
-            <line
-              key={y}
-              x1="0"
-              y1={y}
-              x2={W}
-              y2={y}
-              stroke="rgba(244,246,248,.06)"
-              strokeDasharray="3 3"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
-          {months.map((m) => {
-            const cx = m.monthIdx * colWidth + colWidth / 2;
-            const thisH = (m.milesThisYear / maxMi) * (H - 30);
-            const priorH = (m.milesPriorYear / maxMi) * (H - 30);
-            const thisY = H - thisH - 10;
-            const priorY = H - priorH - 10;
-            const thisX = cx - barWidth - 2;
-            const priorX = cx + 2;
-            const isPeakCurr = m.isPeak;
-            const isCurrent = m.isCurrent;
-            const fillThis = m.isFuture
-              ? 'var(--l3)'
-              : isPeakCurr
-              ? 'var(--good)'
-              : isCurrent
-              ? 'rgba(0,143,236,.7)'
-              : 'rgba(62,189,65,.7)';
-            return (
-              <g key={m.monthIdx}>
-                {/* prior year — shaded gray */}
-                {m.milesPriorYear > 0 && (
-                  <rect
-                    x={priorX}
-                    y={priorY}
-                    width={barWidth}
-                    height={priorH}
-                    fill="var(--t3)"
-                    opacity="0.4"
-                    rx="2"
-                  />
-                )}
-                {/* this year — solid */}
-                <rect
-                  x={thisX}
-                  y={thisY}
-                  width={barWidth}
-                  height={m.isFuture ? 10 : Math.max(10, thisH)}
-                  fill={fillThis}
-                  rx="2"
-                />
-                {/* value label on top of this-year bar */}
-                {!m.isFuture && m.milesThisYear > 0 && (
-                  <text
-                    x={thisX + barWidth / 2}
-                    y={thisY - 6}
-                    textAnchor="middle"
-                    fontFamily="JetBrains Mono"
-                    fontSize="11"
-                    fontWeight="700"
-                    fill={isPeakCurr ? '#F3AD38' : isCurrent ? '#008FEC' : '#F4F6F8'}
-                  >
-                    {m.milesThisYear}{isPeakCurr ? '★' : ''}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      ) : (
-        <div
-          style={{
-            height: 200,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--t3)',
-            fontFamily: 'var(--f-data)',
-            fontSize: 11,
-            letterSpacing: '1.4px',
-          }}
-        >
-          NO ACTIVITY YET THIS YEAR
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(12, 1fr)',
-          gap: 3,
-          marginTop: 6,
-        }}
-      >
-        {months.map((m) => {
-          const color = m.isCurrent ? 'var(--corp)' : m.isFuture ? 'var(--t3)' : 'var(--t2)';
-          const suffix = m.isCurrent ? ' ▶' : '';
-          return (
-            <div
-              key={m.monthIdx}
-              style={{
-                textAlign: 'center',
-                fontFamily: 'var(--f-data)',
-                fontSize: 9,
-                color,
-                fontWeight: 700,
-              }}
-            >
-              {m.label}{suffix}
-            </div>
-          );
-        })}
-      </div>
-
-      <CardFoot
-        left={`This year vs last year, side by side. Shaded bars are ${data.yearSummary.year - 1}; solid bars are ${data.yearSummary.year}.`}
-      />
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 2B · PersonalBestsCard (span 6)
-// 6 PR cards (5K · 10K · Half · Marathon · 1 mi · Longest).
-// ─────────────────────────────────────────────────────────────────────
-
-function PersonalBestsCard({ data }: { data: LogData }) {
-  return (
-    <Card span={6} padding="18px 20px">
-      <CardHeader>
-        <CardLabel>PERSONAL BESTS · {data.yearSummary.year}</CardLabel>
-        <CardPin variant={data.newPrCount > 0 ? 'green' : 'muted'}>
-          {data.newPrCount > 0 ? `${data.newPrCount} NEW PRs` : 'NO NEW PRs'}
-        </CardPin>
-      </CardHeader>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
-          marginTop: 6,
-        }}
-      >
-        {data.prs.map((p) => <PrTile key={p.label} pr={p} />)}
-      </div>
-
-      <CardFoot
-        left="Your fastest times across canonical distances. NEW = set this year. Tap a card to jump to the run."
-      />
-    </Card>
-  );
-}
-
-function PrTile({ pr }: { pr: PrCard }) {
-  const has = pr.timeDisplay != null;
-  const isLongest = pr.label === 'LONGEST';
-
-  // Style — NEW PRs get a left accent in good color; old PRs are quieter.
-  const accentColor = pr.isNew ? 'var(--good)' : 'transparent';
-  const tile = (
-    <div
-      style={{
-        padding: '14px 16px',
-        background: 'var(--l2)',
-        borderRadius: 6,
-        borderLeft: pr.isNew ? '3px solid var(--good)' : 'none',
-        opacity: has ? 1 : 0.55,
-        cursor: has && pr.activityId ? 'pointer' : 'default',
-        textDecoration: 'none',
-        color: 'inherit',
-        display: 'block',
-      }}
-    >
-      <div
-        className="mono-sm"
-        style={{
-          color: pr.isNew ? 'var(--good)' : 'var(--t2)',
-          fontSize: 10,
-          letterSpacing: '1.4px',
-        }}
-      >
-        {pr.isNew ? '★ ' : ''}{pr.label}
-        {pr.isNew ? ' · NEW' : pr.yearLabel ? ` · ${pr.yearLabel}` : ''}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          fontSize: 30,
-          marginTop: 4,
-          letterSpacing: '-.015em',
-          lineHeight: 0.95,
-          fontVariantNumeric: 'tabular-nums',
-          color: has ? 'var(--t0)' : 'var(--t3)',
-        }}
-      >
-        {has ? pr.timeDisplay : '—'}
-        {isLongest && has && (
-          <small style={{ fontSize: '.4em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>
-            mi
-          </small>
-        )}
-      </div>
-      <div
-        className="mono-sm"
-        style={{
-          color: 'var(--t2)',
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: '.4px',
-          marginTop: 6,
-        }}
-      >
-        {has && pr.sourceName && pr.dateISO
-          ? `${pr.sourceName.toUpperCase().slice(0, 26)}${pr.sourceName.length > 26 ? '…' : ''} · ${formatShortMonth(pr.dateISO)}${pr.paceDisplay && !isLongest ? ` · ${pr.paceDisplay}` : ''}`
-          : has
-          ? 'IN YOUR LOG'
-          : 'NOT YET SET'}
-      </div>
-    </div>
-  );
-
-  if (has && pr.activityId) {
-    return (
-      <Link href={`/runs/${pr.activityId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-        {tile}
-      </Link>
-    );
-  }
-  // accentColor is consumed via borderLeft above; reference to avoid lint
-  void accentColor;
-  return tile;
-}
-
-function formatShortMonth(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return iso;
-  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 3 · RecentRunsCard (span 12)
-// Last-7 runs feed — tabular layout with date / workout / dist / time /
-// pace / hr / rpe columns. Each row links to /runs/[id].
-// ─────────────────────────────────────────────────────────────────────
-
-function RecentRunsCard({ data }: { data: LogData }) {
-  const runs = data.recentRuns;
-  return (
-    <Card span={12} padding="18px 22px">
-      <CardHeader>
-        <CardLabel>RECENT RUNS · LAST {runs.length}</CardLabel>
-        <CardPin variant="muted">
-          {data.totalRunsYtd} YTD · VIEW ALL →
-        </CardPin>
-      </CardHeader>
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          marginTop: 6,
-        }}
-      >
-        {/* Header row */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '90px 1fr 90px 90px 90px 90px 70px',
-            gap: 14,
-            padding: '6px 10px',
-            fontFamily: 'var(--f-data)',
-            fontSize: 9,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            borderBottom: '1px solid var(--l4)',
-          }}
-        >
-          <span>DATE</span>
-          <span>WORKOUT</span>
-          <span style={{ textAlign: 'right' }}>DIST</span>
-          <span style={{ textAlign: 'right' }}>TIME</span>
-          <span style={{ textAlign: 'right' }}>PACE</span>
-          <span style={{ textAlign: 'right' }}>HR</span>
-          <span style={{ textAlign: 'right' }}>RPE</span>
-        </div>
-
-        {runs.length === 0 ? (
-          <EmptyState
-            title="No runs yet"
-            body="Once Strava syncs your first run, every workout lands here with splits, HR, and pace breakdowns."
-            cta={
-              <Link href="/profile#strava" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-                ▸ CONNECT STRAVA
-              </Link>
-            }
-          />
-        ) : (
-          runs.map((r) => <RunFeedRow key={r.id} run={r} />)
-        )}
-      </div>
-
-      <CardFoot
-        left="Every run, scanned at a glance. Tap a row to open the per-run detail with map, splits, and heart-rate trace."
-      />
-    </Card>
-  );
-}
-
-function RunFeedRow({ run }: { run: RunRow }) {
-  const dateColor = run.kind === 'race' ? 'var(--good)' : 'var(--t1)';
-  const paceColor =
-    run.paceTone === 'good' ? 'var(--good)'
-    : run.paceTone === 'corp' ? 'var(--corp)'
-    : run.paceTone === 'warn' ? 'var(--warn)'
-    : 'var(--t1)';
-  const rpeColor =
-    run.rpe == null ? 'var(--t3)'
-    : run.rpe <= 3 ? 'var(--good)'
-    : run.rpe <= 6 ? 'var(--t1)'
-    : 'var(--warn)';
-  const timeColor = run.kind === 'race' ? 'var(--good)' : 'var(--t1)';
-  const dateLabel = run.isStar ? `${run.dateLabel} ★` : run.dateLabel;
-
-  return (
-    <Link
-      href={`/runs/${run.id}`}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '90px 1fr 90px 90px 90px 90px 70px',
-        gap: 14,
-        padding: '12px 10px',
-        borderBottom: '1px solid var(--l3)',
-        alignItems: 'center',
-        textDecoration: 'none',
-        color: 'inherit',
-      }}
-    >
-      <span
-        className="mono-sm"
-        style={{
-          color: dateColor,
-          fontSize: 10,
-          letterSpacing: '1.4px',
-        }}
-      >
-        {dateLabel}
-      </span>
-      <div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontWeight: 600,
-            fontSize: 14,
-            lineHeight: 1.05,
-            textTransform: 'uppercase',
-            letterSpacing: '-.005em',
-            color: 'var(--t0)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            maxWidth: 420,
-          }}
-        >
-          {run.name}
-        </div>
-        <div
-          className="mono-sm"
-          style={{
-            color: 'var(--t3)',
-            fontSize: 9,
-            marginTop: 2,
-          }}
-        >
-          {run.subLabel}
-        </div>
-      </div>
-      <span style={cellStyle('var(--t1)', 'right')}>{run.distanceMi.toFixed(1)} mi</span>
-      <span style={cellStyle(timeColor, 'right')}>{formatTime(run.movingTimeS)}</span>
-      <span style={cellStyle(paceColor, 'right')}>{run.paceSPerMi > 0 ? `${formatPace(run.paceSPerMi)}/mi` : '—'}</span>
-      <span style={cellStyle(run.avgHr == null ? 'var(--t3)' : 'var(--t1)', 'right')}>
-        {run.avgHr != null ? `${Math.round(run.avgHr)} avg` : '—'}
-      </span>
-      <span style={cellStyle(rpeColor, 'right')}>{run.rpe ?? '—'}</span>
-    </Link>
-  );
-}
-
-function cellStyle(color: string, textAlign: 'left' | 'right' | 'center'): React.CSSProperties {
   return {
-    fontFamily: 'var(--f-data)',
-    fontSize: 11.5,
-    color,
-    fontWeight: 600,
-    fontVariantNumeric: 'tabular-nums',
-    letterSpacing: '.6px',
-    textAlign,
+    recentRuns, shoes, totalRuns, totalMiles, longestRun, peakMonth,
+    monthlyMi, heatmapByDate, syncMeta,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Skeleton
-// ─────────────────────────────────────────────────────────────────────
+function timeAgo(d: Date | null): string {
+  if (!d) return '—';
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
+}
 
-function LogSkeleton() {
+function fmtDateShort(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function heatBucket(mi: number): string {
+  if (mi <= 0)  return '';
+  if (mi < 4)   return 'l1';
+  if (mi < 8)   return 'l2';
+  if (mi < 14)  return 'l3';
+  return 'l4';
+}
+
+function daysInMonth(year: number, monthIdx: number): number {
+  return new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
+}
+
+export default async function LogPage() {
+  const auth = await getCurrentUser();
+  if (!auth) redirect('/login?next=/log');
+
+  const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+  const today = todayISO();
+  const todayMonthIdx = parseInt(today.slice(5, 7), 10) - 1;
+  const data = await loadLogPageData(auth.id, isLegacy);
+
+  const onPace = data.totalRuns > 0
+    ? Math.round((data.totalMiles / Math.max(1, todayMonthIdx + 1)) * 12)
+    : 0;
+
   return (
-    <>
-      <Row>
-        <Card span={12} style={{ minHeight: 200 }}>
-          <Skeleton height={160} />
-        </Card>
-      </Row>
-      <Row>
-        <Card span={6}><Skeleton height={260} /></Card>
-        <Card span={6}><Skeleton height={260} /></Card>
-      </Row>
-      <Row>
-        <Card span={12}><Skeleton height={320} /></Card>
-      </Row>
-    </>
+    <div className="log-v4-page">
+      <Topbar activeTab="log" />
+      <ConnectBannerIsland />
+
+      <div className="page">
+
+        {/* ── COACH STRIP ── */}
+        <div className="coach-strip">
+          <div className="coach-left">
+            <div className="coach-label">
+              <span className="dot"></span>
+              YEAR TO DATE · {data.syncMeta.connected ? `STRAVA SYNCED ${timeAgo(data.syncMeta.lastSyncAt)}` : 'NO ACTIVITY SOURCE'}
+            </div>
+            <p className="coach-briefing">
+              {data.totalRuns > 0 ? (
+                <>
+                  <strong>{data.totalRuns} runs · {data.totalMiles} mi</strong> through 2026 so far.{' '}
+                  {data.peakMonth && <><strong>{data.peakMonth.month} peaked at {data.peakMonth.miles} mi</strong>.</>}{' '}
+                  {data.longestRun && <>Longest run was <strong>{data.longestRun.name}</strong> at {data.longestRun.mi} mi.</>}
+                </>
+              ) : (
+                <>No runs logged yet. Connect Strava or log a run manually to start building your year.</>
+              )}
+            </p>
+          </div>
+
+          <div className="strava-card">
+            <div className="strava-label">Sync</div>
+            <div className="strava-status">
+              <span className="strava-dot" style={{ background: data.syncMeta.connected ? 'var(--green)' : 'var(--t3)' }}></span>
+              <span className="strava-text">{data.syncMeta.connected ? 'Strava connected' : 'Not connected'}</span>
+            </div>
+            <div className="strava-sub">{data.syncMeta.connected ? `Synced ${timeAgo(data.syncMeta.lastSyncAt)}` : 'Connect to sync runs'}</div>
+            <div className="strava-stats">
+              <div className="strava-stat">
+                <div className="strava-stat-label">YTD Runs</div>
+                <div className="strava-stat-val">{data.totalRuns}</div>
+              </div>
+              <div className="strava-stat">
+                <div className="strava-stat-label">YTD Miles</div>
+                <div className="strava-stat-val">{data.totalMiles}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── YTD HERO ── */}
+        <div className="hero-card">
+          <div className="hero-eyebrow">2026 · Year to Date</div>
+          <div className="hero-title-line">The Year So Far</div>
+          <div className="hero-sub">Through {fmtDateShort(today)} · {Math.ceil((todayMonthIdx + 1) * 52 / 12)} of 52 weeks in</div>
+          <div className="hero-stats">
+            <div className="hero-stat">
+              <div className="hero-stat-label">Total Runs</div>
+              <div className="hero-stat-val">{data.totalRuns}</div>
+              <div className="hero-stat-sub">
+                {data.totalRuns > 0 ? <><strong>{(data.totalRuns / Math.max(1, todayMonthIdx + 1) * 12 / 52).toFixed(1)}</strong> per week avg</> : 'No runs yet'}
+              </div>
+            </div>
+            <div className="hero-stat">
+              <div className="hero-stat-label">Total Miles</div>
+              <div className="hero-stat-val">{data.totalMiles}<span className="unit">mi</span></div>
+              <div className="hero-stat-sub">
+                {data.totalRuns > 0 ? <>On pace for <strong>{onPace.toLocaleString()} mi</strong></> : '—'}
+              </div>
+            </div>
+            <div className="hero-stat">
+              <div className="hero-stat-label">Longest Run</div>
+              <div className="hero-stat-val">{data.longestRun?.mi ?? '—'}{data.longestRun && <span className="unit">mi</span>}</div>
+              <div className="hero-stat-sub">{data.longestRun ? <><strong>{data.longestRun.name}</strong> · {fmtDateShort(data.longestRun.date)}</> : '—'}</div>
+            </div>
+            <div className="hero-stat">
+              <div className="hero-stat-label">Peak Month</div>
+              <div className="hero-stat-val">{data.peakMonth?.miles ?? '—'}{data.peakMonth && <span className="unit">mi</span>}</div>
+              <div className="hero-stat-sub">{data.peakMonth ? <><strong>{data.peakMonth.month}</strong></> : '—'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── MONTHLY VOLUME ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Monthly Volume</div>
+              <div className="card-sub">{data.totalRuns > 0 ? 'Real Strava history · current month outlined in amber' : 'Connect Strava to see monthly totals'}</div>
+            </div>
+            {data.peakMonth && (
+              <div className="card-meta">Peak <strong>{data.peakMonth.month} · {data.peakMonth.miles} mi</strong></div>
+            )}
+          </div>
+          <div className="monthly-bars">
+            {data.monthlyMi.map((mi, i) => {
+              const maxMi = Math.max(...data.monthlyMi, 1);
+              const height = mi > 0 ? Math.max(8, (mi / maxMi) * 100) : 8;
+              const isPeak = data.peakMonth && i === MONTHS.indexOf(data.peakMonth.month);
+              const isCurrent = i === todayMonthIdx;
+              const cls = `month-bar ${isPeak ? 'peak' : 'cool'} ${isCurrent ? 'current' : ''}`;
+              return (
+                <div key={i} className={cls} style={mi > 0 ? { height: `${height}%` } : { height: '8%', background: 'rgba(13,15,18,.05)' }}>
+                  {mi > 0 && (
+                    <span className="month-bar-val">
+                      {mi}{isPeak ? ' ↑' : ''}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="month-axis">
+            {MONTHS.map((m, i) => (
+              <span key={m} className={`month-tick ${i === todayMonthIdx ? 'current' : ''}`}>{m}</span>
+            ))}
+          </div>
+          <div style={{ height: 28 }}></div>
+        </div>
+
+        {/* ── YEAR HEATMAP ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Year in Running</div>
+              <div className="card-sub">Each square is a calendar day · color = miles run</div>
+            </div>
+            <div className="card-meta">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.20)' }}></span> 1–4 mi
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.45)', marginLeft: 8 }}></span> 4–8
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.70)', marginLeft: 8 }}></span> 8–14
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(232,93,38,.75)', marginLeft: 8 }}></span> 14+
+              </span>
+            </div>
+          </div>
+          <div className="year-heat">
+            {Array.from({ length: 5 }, (_, m) => {
+              const dim = daysInMonth(2026, m);
+              return (
+                <div key={m} className="heat-row">
+                  <div className="heat-month">{MONTHS[m]}</div>
+                  <div className="heat-cells" style={{ gridTemplateColumns: `repeat(${dim}, var(--heat-cell))` }}>
+                    {Array.from({ length: dim }, (_, d) => {
+                      const iso = `2026-${String(m + 1).padStart(2, '0')}-${String(d + 1).padStart(2, '0')}`;
+                      const isFuture = iso > today;
+                      const isToday = iso === today;
+                      const mi = data.heatmapByDate[iso] || 0;
+                      const classes = ['heat-cell'];
+                      if (isFuture) classes.push('future');
+                      else { const b = heatBucket(mi); if (b) classes.push(b); }
+                      if (isToday) classes.push('is-today');
+                      return (
+                        <div
+                          key={d}
+                          className={classes.join(' ')}
+                          title={isToday && mi <= 0 ? 'Today · no run logged' : iso + (mi > 0 ? ` · ${mi} mi` : isFuture ? ' · upcoming' : ' · rest')}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── RECENT RUNS ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Recent Runs</div>
+              <div className="card-sub">
+                <strong>Last {data.recentRuns.length} activities</strong> · pulled from Strava · shoes read from /profile
+              </div>
+            </div>
+          </div>
+          <div>
+            {data.recentRuns.length === 0 ? (
+              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+                No runs logged yet. Connect Strava or log manually to start your feed.
+              </div>
+            ) : (
+              data.recentRuns.map((r) => (
+                <div key={r.id} className="run-row" data-run-id={r.id}>
+                  <div className="run-date">{r.dateLabel}</div>
+                  <span className={`run-tag ${r.tag}`}>{r.tagLabel}</span>
+                  <div>
+                    <div className="run-name">{r.name}</div>
+                    <div className="run-type">{r.sub}</div>
+                  </div>
+                  <div className="run-shoe-wrap" data-run-id={r.id}>
+                    <LogRunShoePicker
+                      runId={r.id}
+                      currentShoeId={r.shoeId}
+                      shoes={data.shoes.filter((s) => !s.retired)}
+                    />
+                  </div>
+                  <div>
+                    <div className="run-num">{r.min}<span style={{ fontSize: 12, color: 'var(--t2)' }}>min</span></div>
+                    <div className="run-num-unit">avg {r.avgHr || '—'} HR</div>
+                  </div>
+                  <div>
+                    <div className="run-num">{r.mi}<span style={{ fontSize: 12, color: 'var(--t2)' }}>mi</span></div>
+                    <div className="run-num-unit">{r.pace}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
   );
 }
