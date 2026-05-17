@@ -44,6 +44,7 @@ import {
 } from '@/app/components';
 import { AddGoalModal } from '@/app/components/AddGoalModal';
 import { EditProfileModal } from '@/app/components/EditProfileModal';
+import { ConnectorsCard } from './ConnectorsCard';
 import {
   loadProfileData,
   formatTopbarClock,
@@ -204,9 +205,20 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
         <IdentityHeroCard data={data} onRefresh={onRefresh} />
         <LifetimePrsCard data={data} />
       </Row>
+
+      {/* Personal Goals card removed per designs/profile-v4.html.
+          Race-time goals already live on each race in /races (goal +
+          goalPace); a standalone goals section was just decoration that
+          didn't influence anything. */}
+
+      {/* Connectors card — full-width, replaces the old ConnectionsCard.
+          Source-of-truth for what activity sources / coach platforms /
+          recovery wearables the user has connected. Source spec:
+          designs/profile-v4.html §CONNECTORS. */}
       <Row>
-        <PersonalGoalsCard data={data} onRefresh={onRefresh} />
+        <ConnectorsCard />
       </Row>
+
       <Row>
         <VdotCard data={data} />
         <HrCard data={data} />
@@ -214,7 +226,6 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
         <PrefsCard data={data} />
       </Row>
       <Row>
-        <ConnectionsCard data={data} />
         <ShoeRotationCard data={data} />
       </Row>
       <Row>
