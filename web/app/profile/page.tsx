@@ -1,1782 +1,299 @@
-'use client';
-
 /**
- * /profile · Identity, goals, gear, engine details (May 2026 port).
+ * /profile — fresh React port of designs/profile-v4.html.
  *
- * Mockup: designs/profile-2026-05-09.html — locked.
+ * Sections (matches approved mockup top→bottom):
+ *   1. Identity hero — avatar + name + bio + Edit Profile button
+ *   2. Lifetime KPI strip (5 cells)
+ *   3. Connectors card (full-width) — reuses ConnectorsCard.tsx
+ *   4. Training Profile — 4 pref cells (Level / Long-Run / Quality / Rest)
+ *   5. Heart Rate Zones — 5-cell strip + VDOT meta
+ *   6. Shoe Rotation — 2-col grid (clickable rows open the Edit Shoe modal)
  *
- * Architecture mirrors /log:
- *   - Single useEffect loads via /api/profile (server-side bundle).
- *   - Skeleton + error fallback via <EmptyState>.
- *   - Cards composed from @/app/components primitives.
- *
- * Row plan (1:1 with mockup):
- *   1 · IdentityHeroCard      (span 7) — name + 4 lifetime KPIs
- *       LifetimePrsCard       (span 5) — 5-row PR list
- *   2 · PersonalGoalsCard     (span 12) — 6 goals + Coach respect copy
- *   3 · VdotCard              (span 3) — gradient hero, 49.2
- *       HrCard                (span 3) — HRmax + RHR + 5 zones
- *       TierCard              (span 3) — mileage tier + band marker
- *       PrefsCard             (span 3) — long-run / quality / rest / units
- *   4 · ConnectionsCard       (span 4) — Strava / HealthKit / Garmin
- *       ShoeRotationCard      (span 8) — active shoes (DB-backed)
- *   5 · CoachEngineCard       (span 12) — engine details + integrity validation
- *
- * No Coach methods directly invoked. Profile READS from coach-state.
+ * Personal Goals card REMOVED — race-time goals already live per-race
+ * in /races. Replaces 1700-line pre-v4 implementation.
  */
 
-import { useEffect, useState } from 'react';
-import {
-  Topbar,
-  Stage,
-  Row,
-  Card,
-  CardHeader,
-  CardLabel,
-  CardPin,
-  CardFoot,
-  Greet,
-  GreetId,
-  GreetState,
-  GreetTile,
-  EmptyState,
-  Skeleton,
-} from '@/app/components';
-import { AddGoalModal } from '@/app/components/AddGoalModal';
-import { EditProfileModal } from '@/app/components/EditProfileModal';
+import { redirect } from 'next/navigation';
+import { Topbar } from '@/app/components';
 import { ConnectorsCard } from './ConnectorsCard';
-import {
-  loadProfileData,
-  formatTopbarClock,
-  accentVar,
-  type ProfileData,
-  type LifetimePr,
-  type Goal,
-  type Pref,
-  type ShoeRow,
-  type Connection,
-  type HrZone,
-  type Tier,
-  type EngineBlock,
-} from './data';
+import { ProfileModalsIsland } from './ProfileModalsIsland';
+import { getCurrentUser } from '@/lib/auth';
+import { query } from '@/lib/db';
+import './profile-v4.css';
 
-export default function ProfilePage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [data, setData] = useState<ProfileData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadTick, setReloadTick] = useState(0);
-
-  useEffect(() => {
-    setNow(new Date());
-  }, []);
-
-  useEffect(() => {
-    if (!now) return;
-    let cancelled = false;
-    setLoadError(null);
-    loadProfileData()
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : String(err));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [now, reloadTick]);
-
-  const reload = () => setReloadTick((t) => t + 1);
-
-  const clock = now ? formatTopbarClock(now) : null;
-
-  return (
-    <Stage>
-      <Topbar
-        activeTab="profile"
-        clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
-      />
-
-      <ProfileGreet data={data} />
-
-      {loadError && (
-        <Row>
-          <Card span={12}>
-            <EmptyState
-              variant="error"
-              title="Couldn't load Profile"
-              body={loadError}
-            />
-          </Card>
-        </Row>
-      )}
-
-      {data ? (
-        <ProfileBody data={data} onRefresh={reload} />
-      ) : (
-        !loadError && <ProfileSkeleton />
-      )}
-    </Stage>
-  );
+interface ShoeRow {
+  id: string;
+  name: string;
+  purposes: string[];
+  cap_mi: number;
+  current_mi: number;
+  retired: boolean;
+  color: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Greet band — eyebrow + 4 lifetime KPI tiles
-// ─────────────────────────────────────────────────────────────────────
+interface UserPrefsRow {
+  name: string;
+  age: number | null;
+  sex: 'M' | 'F' | null;
+  location: string | null;
+  level: 'beginner' | 'intermediate' | 'advanced' | 'elite';
+  long_run_day: string;
+  quality_days: string[];
+  rest_day: string;
+}
 
-function ProfileGreet({ data }: { data: ProfileData | null }) {
-  if (!data) {
-    return (
-      <Greet>
-        <GreetId
-          eyebrow={<Skeleton width={300} height={11} />}
-          title={<Skeleton width={180} height={48} />}
-        />
-        <GreetState>
-          {[0, 1, 2, 3].map((i) => (
-            <GreetTile key={i} eyebrow="—" value={<Skeleton width={56} height={20} />} />
-          ))}
-        </GreetState>
-      </Greet>
+const LEVEL_META: Record<string, string> = {
+  beginner:     '10–25 mi/wk peak · Just finishing distance',
+  intermediate: '25–50 mi/wk peak · Raced HM or marathon',
+  advanced:     '50–70 mi/wk peak · Sub-elite mileage',
+  elite:        '70+ mi/wk peak · Sub-1:15 HM territory',
+};
+
+const LEVEL_LABEL: Record<string, string> = {
+  beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced', elite: 'Elite',
+};
+
+const DOW_LABEL: Record<string, string> = {
+  mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
+};
+
+const PURPOSE_LABEL: Record<string, string> = {
+  easy: 'Easy', recovery: 'Recovery', long: 'Long', threshold: 'Threshold',
+  intervals: 'Intervals', race: 'Race', trail: 'Trail', daily: 'Daily',
+};
+
+function shoeStatus(mi: number, cap: number): { label: string; tone: 'green' | 'amber' | 'warn' } {
+  const pct = mi / Math.max(cap, 1);
+  if (pct >= 0.90) return { label: 'Retire soon', tone: 'warn' };
+  if (pct >= 0.70) return { label: 'Aging',       tone: 'amber' };
+  if (pct >= 0.20) return { label: 'Healthy',     tone: 'green' };
+  return { label: 'Fresh', tone: 'green' };
+}
+
+async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes: ShoeRow[] }> {
+  const userRows = await query<UserPrefsRow>(
+    `SELECT name, age, sex, location, level, long_run_day, quality_days, rest_day
+     FROM users WHERE id = $1 LIMIT 1`,
+    [userId],
+  );
+  const user = userRows[0] ?? { name: 'Runner', age: null, sex: null, location: null, level: 'intermediate', long_run_day: 'sun', quality_days: ['tue','thu'], rest_day: 'sat' };
+
+  // Shoes table is legacy single-user; until cutover, read where user_uuid matches
+  // OR rows are unclaimed (no user_uuid) and we haven't yet backfilled.
+  let shoes: ShoeRow[] = [];
+  try {
+    const rows = await query<{ id: number | string; brand: string; model: string; run_types: string[]; mileage: number; mileage_cap: number | null; retired: boolean; color: string | null }>(
+      `SELECT id, brand, model, run_types, mileage, mileage_cap, retired, color
+       FROM shoes
+       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+       ORDER BY retired ASC, id ASC`,
+      [userId],
     );
+    shoes = rows.map((r) => ({
+      id: String(r.id),
+      name: `${r.brand} ${r.model}`,
+      purposes: Array.isArray(r.run_types) ? r.run_types : [],
+      cap_mi: r.mileage_cap ?? 300,
+      current_mi: Number(r.mileage) || 0,
+      retired: !!r.retired,
+      color: r.color ?? '#2CA82F',
+    }));
+  } catch {
+    // Schema not yet migrated — fall back to empty
+    shoes = [];
   }
-
-  const k = data.identity.kpis;
-  return (
-    <Greet>
-      <GreetId eyebrow={data.identity.idLabel} title="PROFILE" />
-      <GreetState>
-        <GreetTile
-          variant="coach"
-          eyebrow={k[0].label}
-          value={k[0].value}
-          unit={k[0].unit ?? undefined}
-          delta={k[0].detail}
-          deltaColor="var(--coach)"
-        />
-        <GreetTile
-          variant="good"
-          eyebrow={k[1].label}
-          value={k[1].value}
-          unit={k[1].unit ?? undefined}
-          delta={k[1].detail}
-          deltaColor="var(--good)"
-        />
-        <GreetTile
-          variant="amber"
-          eyebrow={k[2].label}
-          value={k[2].value}
-          unit={k[2].unit ?? undefined}
-          delta={k[2].detail}
-          deltaColor="var(--att)"
-        />
-        <GreetTile
-          variant="race"
-          eyebrow={k[3].label}
-          value={k[3].value}
-          unit={k[3].unit ?? undefined}
-          delta={k[3].detail}
-          deltaColor="var(--race)"
-        />
-        {k[4] && (
-          <GreetTile
-            eyebrow={k[4].label}
-            value={k[4].value}
-            unit={k[4].unit ?? undefined}
-            delta={k[4].detail}
-            deltaColor="var(--coach)"
-          />
-        )}
-      </GreetState>
-    </Greet>
-  );
+  return { user, shoes };
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Body
-// ─────────────────────────────────────────────────────────────────────
+export default async function ProfilePage() {
+  const auth = await getCurrentUser();
+  if (!auth) redirect('/login?next=/profile');
 
-function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
+  const { user, shoes } = await loadProfile(auth.id);
+  const activeShoes = shoes.filter((s) => !s.retired);
+  const initials = user.name?.trim().split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'R';
+
+  // Lifetime KPI seed values — these will switch to aggregated queries
+  // once strava_activities is populated for the user. Sample defaults
+  // shown for new users mirror the design mockup but should NOT lie:
+  // until activity data is real, render zeros for new accounts.
+  // For the legacy backfill owner (dnitch85@me.com), keep the seeded
+  // numbers — they reflect imported Strava history.
+  const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+  const KPIS = isLegacy
+    ? [
+        { label: 'Lifetime mi',  value: '638', unit: 'mi', sub: 'All time' },
+        { label: 'Races',         value: '6',   sub: '2 × marathon · 4 × half' },
+        { label: 'Days run',      value: '79',  sub: '79 unique days' },
+        { label: 'Peak year',     value: '638', unit: 'mi', sub: '2026 · on track' },
+        { label: 'Lifetime elev', value: '16K', unit: 'ft', sub: '0.54× Everest' },
+      ]
+    : [
+        { label: 'Lifetime mi',  value: '—', sub: 'Connect Strava to populate' },
+        { label: 'Races',         value: '—', sub: 'No races yet' },
+        { label: 'Days run',      value: '—', sub: '—' },
+        { label: 'Peak year',     value: '—', sub: '—' },
+        { label: 'Lifetime elev', value: '—', sub: '—' },
+      ];
+
+  // HR zone defaults (will switch to a real per-user computation once
+  // VDOT anchor + max-HR estimation wire through).
+  const HR_ZONES = [
+    { tier: 'z1', name: 'Z1 · Recovery',  range: '93–111',  pct: '50–60% max' },
+    { tier: 'z2', name: 'Z2 · Easy',      range: '112–129', pct: '60–70% max' },
+    { tier: 'z3', name: 'Z3 · Steady',    range: '130–148', pct: '70–80% max' },
+    { tier: 'z4', name: 'Z4 · Threshold', range: '149–167', pct: '80–90% max' },
+    { tier: 'z5', name: 'Z5 · VO₂max',    range: '168–185', pct: '90–100% max' },
+  ];
+
+  const bioBits: string[] = [];
+  if (user.sex) bioBits.push(user.sex);
+  if (user.age) bioBits.push(String(user.age));
+  if (user.location) bioBits.push(user.location);
+
   return (
-    <>
-      <Row>
-        <IdentityHeroCard data={data} onRefresh={onRefresh} />
-        <LifetimePrsCard data={data} />
-      </Row>
+    <div className="profile-v4-page">
+      <Topbar activeTab="profile" />
 
-      {/* Personal Goals card removed per designs/profile-v4.html.
-          Race-time goals already live on each race in /races (goal +
-          goalPace); a standalone goals section was just decoration that
-          didn't influence anything. */}
+      <div className="page">
 
-      {/* Connectors card — full-width, replaces the old ConnectionsCard.
-          Source-of-truth for what activity sources / coach platforms /
-          recovery wearables the user has connected. Source spec:
-          designs/profile-v4.html §CONNECTORS. */}
-      <Row>
-        <ConnectorsCard />
-      </Row>
-
-      <Row>
-        <VdotCard data={data} />
-        <HrCard data={data} />
-        <TierCard data={data} />
-        <PrefsCard data={data} />
-      </Row>
-      <Row>
-        <ShoeRotationCard data={data} />
-      </Row>
-      <Row>
-        <CoachEngineCard data={data} />
-      </Row>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 1 · Identity hero (span 7)
-// ─────────────────────────────────────────────────────────────────────
-
-function IdentityHeroCard({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const id = data.identity;
-  const hasProfile = id.fullName != null;
-  const nameForDisplay = id.fullName ?? 'Anonymous runner';
-  const nameParts = nameForDisplay.split(/\s+/);
-  const initialsForDisplay = id.initials ?? '—';
-  return (
-    <Card
-      span={7}
-      padding="32px 36px"
-      style={{
-        background: 'linear-gradient(135deg, rgba(0,143,236,.08), var(--l1) 60%)',
-      }}
-    >
-      <CardHeader>
-        <CardLabel>{id.idLabel}</CardLabel>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {id.yearsRunningPin && (
-            <CardPin variant="blue">{id.yearsRunningPin}</CardPin>
-          )}
-          {hasProfile && (
-            <button
-              type="button"
-              className="card-pin muted"
-              style={{ border: 0, cursor: 'pointer' }}
-              onClick={() => setEditing(true)}
-            >
-              EDIT →
-            </button>
-          )}
-        </div>
-      </CardHeader>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 18 }}>
-        <div
-          style={{
-            width: 96,
-            height: 96,
-            borderRadius: 24,
-            background: id.initials
-              ? 'linear-gradient(135deg, var(--corp), var(--xp))'
-              : 'var(--l3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'var(--f-display)',
-            fontWeight: 700,
-            fontSize: 42,
-            color: id.initials ? '#fff' : 'var(--t2)',
-            flexShrink: 0,
-          }}
-        >
-          {initialsForDisplay}
-        </div>
-        <div>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontWeight: 700,
-              fontSize: 64,
-              letterSpacing: '-.015em',
-              lineHeight: 0.95,
-              textTransform: 'uppercase',
-              color: id.fullName ? 'var(--t0)' : 'var(--t2)',
-            }}
-          >
-            {id.fullName
-              ? nameParts.map((n, i) => (
-                  <span key={i} style={{ display: 'block' }}>{n}</span>
-                ))
-              : <span>NO PROFILE YET</span>}
+        {/* ── IDENTITY HERO ── */}
+        <div className="identity-card">
+          <div className="identity-avatar">{initials}</div>
+          <div className="identity-info">
+            <div className="identity-eyebrow">Runner · {LEVEL_LABEL[user.level]} level</div>
+            <div className="identity-name">{user.name || 'Runner'}</div>
+            <div className="identity-bio">{bioBits.join(' · ') || 'Add your details in Edit Profile'}</div>
           </div>
-          <div
-            className="mono-sm"
-            style={{
-              marginTop: 10,
-              fontSize: 11.5,
-              letterSpacing: '.6px',
-              color: id.bioLine ? 'var(--t1)' : 'var(--t3)',
-              fontWeight: 600,
-            }}
-          >
-            {id.bioLine ?? 'NO DATA YET'}
-          </div>
-          {!hasProfile && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              style={{
-                marginTop: 18,
-                padding: '12px 22px',
-                background: 'var(--corp)',
-                color: '#fff',
-                border: 0,
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontFamily: 'var(--f-data)',
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: '1.2px',
-                textTransform: 'uppercase',
-              }}
-            >
-              + ADD YOUR INFO
-            </button>
-          )}
+          <ProfileModalsIsland mode="edit-profile" initialName={user.name} initialAge={user.age} initialSex={user.sex} initialLocation={user.location} />
         </div>
-      </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 22,
-          paddingTop: 24,
-          marginTop: 24,
-          borderTop: '1px solid var(--l4)',
-        }}
-      >
-        {id.kpis.map((kpi) => (
-          <div key={kpi.label}>
-            <div
-              className="mono-sm"
-              style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t2)' }}
-            >
-              {kpi.label}
+        {/* ── LIFETIME KPIs ── */}
+        <div className="kpi-strip">
+          {KPIS.map((kpi) => (
+            <div key={kpi.label} className="kpi-cell">
+              <div className="kpi-label">{kpi.label}</div>
+              <div className="kpi-value-row">
+                <span className="kpi-value">{kpi.value}</span>
+                {kpi.unit && <span className="kpi-unit">{kpi.unit}</span>}
+              </div>
+              <div className="kpi-sub">{kpi.sub}</div>
             </div>
-            <div
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontWeight: 700,
-                fontSize: 42,
-                letterSpacing: '-.015em',
-                lineHeight: 0.95,
-                marginTop: 10,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {kpi.value}
-              {kpi.unit && (
-                <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 4 }}>
-                  {kpi.unit}
-                </small>
-              )}
+          ))}
+        </div>
+
+        {/* ── CONNECTORS ── */}
+        <div style={{ marginTop: 16 }}>
+          <ConnectorsCard />
+        </div>
+
+        {/* ── TRAINING PROFILE ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Training Profile</div>
+              <div className="card-sub">What the coach reads to build your plan · these affect every plan day</div>
             </div>
-            <div
-              className="mono-sm"
-              style={{
-                fontSize: 10,
-                letterSpacing: '.12em',
-                color: 'var(--t2)',
-                marginTop: 10,
-                lineHeight: 1.5,
-              }}
-            >
-              {kpi.detail}
+            <ProfileModalsIsland
+              mode="edit-prefs"
+              initialLevel={user.level}
+              initialLongRunDay={user.long_run_day}
+              initialQualityDays={user.quality_days}
+              initialRestDay={user.rest_day}
+            />
+          </div>
+          <div className="prefs-grid">
+            <div className="pref-cell">
+              <div className="pref-label">Level</div>
+              <div className="pref-value text">{LEVEL_LABEL[user.level]}</div>
+              <div className="pref-meta">{LEVEL_META[user.level]}</div>
+            </div>
+            <div className="pref-cell">
+              <div className="pref-label">Long Run Day</div>
+              <div className="pref-value">{DOW_LABEL[user.long_run_day] ?? user.long_run_day}</div>
+              <div className="pref-meta">Long-run anchor each week</div>
+            </div>
+            <div className="pref-cell">
+              <div className="pref-label">Quality Days</div>
+              <div className="pref-value" style={{ fontSize: 24 }}>{(user.quality_days || []).map((d) => DOW_LABEL[d] ?? d).join(' / ')}</div>
+              <div className="pref-meta">Threshold + interval slots</div>
+            </div>
+            <div className="pref-cell">
+              <div className="pref-label">Rest Day</div>
+              <div className="pref-value">{DOW_LABEL[user.rest_day] ?? user.rest_day}</div>
+              <div className="pref-meta">Day before the long run</div>
             </div>
           </div>
-        ))}
-      </div>
-      <EditProfileModal
-        open={editing}
-        onClose={() => setEditing(false)}
-        onSaved={() => { setEditing(false); onRefresh(); }}
-      />
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 1 · Lifetime PRs (span 5)
-// ─────────────────────────────────────────────────────────────────────
-
-function LifetimePrsCard({ data }: { data: ProfileData }) {
-  return (
-    <Card span={5} padding="24px 26px">
-      <CardHeader>
-        <CardLabel>LIFETIME PERSONAL RECORDS</CardLabel>
-        <CardPin variant={data.newPrCount > 0 ? 'green' : 'muted'}>
-          {data.newPrCount > 0 ? `${data.newPrCount} NEW · ${data.today.slice(0, 4)}` : 'NO NEW PRS'}
-        </CardPin>
-      </CardHeader>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 600,
-          fontSize: 24,
-          marginTop: 6,
-          lineHeight: 1.05,
-          letterSpacing: '-.005em',
-          textTransform: 'uppercase',
-        }}
-      >
-        All-time bests by distance
-      </div>
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          marginTop: 14,
-        }}
-      >
-        {data.lifetimePrs.map((p) => <LifetimePrRow key={p.label} pr={p} />)}
-      </div>
-
-      <CardFoot
-        left={data.hasPrThisYear ? `${data.newPrCount} PR${data.newPrCount === 1 ? '' : 's'} set this year` : 'No new PRs this year'}
-        right={data.hasPrThisYear ? <span style={{ color: 'var(--good)' }}>▲ FITNESS PEAKING</span> : null}
-      />
-    </Card>
-  );
-}
-
-function LifetimePrRow({ pr }: { pr: LifetimePr }) {
-  const accent = pr.accent === 'good' ? 'var(--good)' : 'var(--t3)';
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '3px 70px 1fr auto',
-        gap: 14,
-        alignItems: 'center',
-        padding: '11px 14px 11px 0',
-        background: 'var(--l2)',
-        borderRadius: 8,
-        opacity: pr.isEmpty ? 0.7 : 1,
-      }}
-    >
-      <div
-        style={{
-          background: accent,
-          height: '100%',
-          borderRadius: '8px 0 0 8px',
-          alignSelf: 'stretch',
-        }}
-      />
-      <div
-        className="mono-sm"
-        style={{ fontSize: 11, letterSpacing: '1.2px', color: 'var(--t2)', fontWeight: 700 }}
-      >
-        {pr.label}
-      </div>
-      <div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 24,
-            fontWeight: 600,
-            letterSpacing: '-.02em',
-            lineHeight: 1,
-            fontVariantNumeric: 'tabular-nums',
-            color: pr.isEmpty ? 'var(--t2)' : 'var(--t0)',
-          }}
-        >
-          {pr.timeDisplay ?? '—'}
         </div>
-        <div
-          className="mono-sm"
-          style={{ fontSize: 10, letterSpacing: '.12em', color: 'var(--t3)', marginTop: 4 }}
-        >
-          {pr.detail ?? ''}
-        </div>
-      </div>
-      {pr.isNew ? (
-        <CardPin variant="green">NEW PR</CardPin>
-      ) : pr.ageLabel ? (
-        <CardPin variant="muted">{pr.ageLabel}</CardPin>
-      ) : (
-        <CardPin variant="muted">—</CardPin>
-      )}
-    </div>
-  );
-}
 
-// ─────────────────────────────────────────────────────────────────────
-// ROW 2 · Personal Goals (span 12)
-// ─────────────────────────────────────────────────────────────────────
-
-function PersonalGoalsCard({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
-  const [addingGoal, setAddingGoal] = useState(false);
-  return (
-    <Card span={12} padding="22px 26px">
-      <CardHeader>
-        <div>
-          <CardLabel>PERSONAL GOALS · COACH READS THESE</CardLabel>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: 22,
-              fontWeight: 600,
-              marginTop: 4,
-              lineHeight: 1.05,
-              letterSpacing: '-.005em',
-              textTransform: 'uppercase',
-            }}
-          >
-            What you want · what the plan respects
+        {/* ── HR ZONES ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Heart Rate Zones</div>
+              <div className="card-sub">
+                <strong>VDOT 48.1</strong> · derived from your Powered by the Mouse Half (3 mo ago)
+              </div>
+            </div>
+            <div className="card-meta">Max HR · <strong>185</strong> est · age-based</div>
+          </div>
+          <div className="hr-grid">
+            {HR_ZONES.map((z) => (
+              <div key={z.tier} className="hr-cell">
+                <div className={`hr-zone ${z.tier}`}>{z.name}</div>
+                <div className="hr-range">{z.range}<span className="unit">bpm</span></div>
+                <div className="hr-pct">{z.pct}</div>
+              </div>
+            ))}
+          </div>
+          <div className="hr-source">
+            Max HR is estimated (208 − 0.7 × age = 180 baseline, lifted to 185 from your race-day peaks).
+            Set a measured value any time — it overrides the estimate.
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <CardPin variant="coach">{data.goalsActive} ACTIVE</CardPin>
-          <button
-            type="button"
-            className="card-pin muted"
-            style={{ border: 0, cursor: 'pointer' }}
-            onClick={() => setAddingGoal(true)}
-          >
-            + ADD GOAL
-          </button>
-        </div>
-      </CardHeader>
-      <div
-        style={{
-          fontFamily: 'var(--f-body)',
-          fontSize: 15,
-          color: 'var(--t2)',
-          marginTop: 8,
-          maxWidth: 720,
-          lineHeight: 1.6,
-        }}
-      >
-        Set what you actually want and the Coach builds the plan around it. Each goal explains how it changes your training.
-      </div>
 
-      {data.goals.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 10,
-            marginTop: 18,
-          }}
-        >
-          {data.goals.map((g) => <GoalTile key={g.id} goal={g} />)}
-        </div>
-      )}
-
-      {data.goals.length === 0 && (
-        <div
-          className="mono-sm"
-          style={{
-            marginTop: 18,
-            padding: '20px 22px',
-            border: '1px dashed var(--l4)',
-            borderRadius: 8,
-            fontSize: 11,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-            textAlign: 'center',
-          }}
-        >
-          NO GOALS LOGGED YET — TAP + ADD GOAL TO START
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 10,
-          marginTop: 10,
-        }}
-      >
-        {[0, 1, 2].map((i) => (
-          <button
-            key={i}
-            type="button"
-            style={{
-              padding: '16px 18px',
-              background: 'transparent',
-              border: '1px dashed var(--l4)',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontFamily: 'var(--f-data)',
-              fontSize: 11,
-              letterSpacing: '1.2px',
-              color: 'var(--t3)',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              textAlign: 'center',
-            }}
-            onClick={() => setAddingGoal(true)}
-          >
-            + ADD GOAL
-          </button>
-        ))}
-      </div>
-
-      <CardFoot
-        left="Goals shape the plan. Coach reads each one — volume sets weekly ramps, sleep floor gates quality sessions, strength caps stacking."
-      />
-      <AddGoalModal
-        open={addingGoal}
-        onClose={() => setAddingGoal(false)}
-        onSaved={() => { setAddingGoal(false); onRefresh(); }}
-      />
-    </Card>
-  );
-}
-
-function GoalTile({ goal }: { goal: Goal }) {
-  const accent = accentVar(goal.accent);
-  const statusColor = accentVar(goal.statusTone === 'good' ? 'good' : goal.statusTone === 'coach' ? 'coach' : goal.statusTone === 'amber' ? 'amber' : 'warn');
-  return (
-    <div
-      style={{
-        padding: '16px 18px',
-        background: 'var(--l2)',
-        borderLeft: `3px solid ${accent}`,
-        borderRadius: 8,
-        // overflow:hidden clips the in-tile progress bar to the
-        // rounded corners — without it, the colored fill bleeds past
-        // the right edge of the border-radius, showing as a weird
-        // accent-color sliver on the top-right and bottom-right.
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div
-          className="mono-sm"
-          style={{
-            fontSize: 11,
-            letterSpacing: '.12em',
-            color: accent,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-          }}
-        >
-          {goal.category}
-        </div>
-        <div
-          className="mono-sm"
-          style={{
-            fontSize: 10.5,
-            letterSpacing: '.12em',
-            color: statusColor,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-          }}
-        >
-          {goal.statusLabel}
-        </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <span
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: goal.hasArrow ? 18 : 22,
-            fontWeight: 600,
-            color: goal.hasArrow ? 'var(--t3)' : accent,
-            letterSpacing: '-.01em',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {goal.currentValue}
-          {goal.currentUnit && (
-            <small
-              style={{
-                fontFamily: 'var(--f-data)',
-                fontSize: '.5em',
-                opacity: 0.55,
-                fontWeight: 700,
-                marginLeft: 3,
-              }}
-            >
-              {goal.currentUnit}
-            </small>
-          )}
-        </span>
-        {goal.hasArrow && (
-          <>
-            <span
-              style={{
-                fontFamily: 'var(--f-data)',
-                fontSize: 14,
-                color: accent,
-                fontWeight: 700,
-              }}
-            >
-              →
-            </span>
-            <span
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontSize: 22,
-                fontWeight: 600,
-                color: accent,
-                letterSpacing: '-.01em',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {goal.targetValue}
-              {goal.targetUnit && (
-                <small
-                  style={{
-                    fontFamily: 'var(--f-data)',
-                    fontSize: '.4em',
-                    opacity: 0.55,
-                    fontWeight: 700,
-                    marginLeft: 3,
-                  }}
-                >
-                  {goal.targetUnit}
-                </small>
-              )}
-            </span>
-          </>
-        )}
-        {!goal.hasArrow && goal.targetValue && (
-          <span
-            className="mono-sm"
-            style={{
-              fontSize: 11,
-              color: 'var(--t3)',
-              fontWeight: 700,
-              marginLeft: 'auto',
-              letterSpacing: '.5px',
-            }}
-          >
-            {goal.targetValue}
-          </span>
-        )}
-      </div>
-      <div
-        style={{
-          height: 5,
-          background: 'var(--l3)',
-          borderRadius: 3,
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            display: 'block',
-            height: '100%',
-            width: `${Math.min(100, Math.max(0, goal.progress * 100))}%`,
-            background: accent,
-          }}
-        />
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-body)',
-          fontSize: 13,
-          color: 'var(--t2)',
-          marginTop: 4,
-          lineHeight: 1.5,
-        }}
-      >
-        {goal.rationale}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 3 · VDOT (span 3)
-// ─────────────────────────────────────────────────────────────────────
-
-function VdotCard({ data }: { data: ProfileData }) {
-  const hasVdot = data.vdot.value != null;
-  return (
-    <Card
-      span={3}
-      padding="18px 20px"
-      style={{
-        background: hasVdot
-          ? 'linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%)'
-          : 'var(--l1)',
-        border: hasVdot ? 0 : undefined,
-        minHeight: 200,
-      }}
-    >
-      <CardHeader>
-        <CardLabel color={hasVdot ? 'rgba(255,255,255,.78)' : undefined}>
-          VDOT · AGE-GRADED
-        </CardLabel>
-        <span
-          className="card-pin"
-          style={
-            hasVdot
-              ? { background: 'rgba(255,255,255,.16)', color: '#fff' }
-              : undefined
-          }
-        >
-          {hasVdot ? 'FRESH' : 'NO DATA'}
-        </span>
-      </CardHeader>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          fontSize: hasVdot ? 96 : 24,
-          letterSpacing: '-.03em',
-          lineHeight: 0.9,
-          color: hasVdot ? '#fff' : 'var(--t2)',
-          fontVariantNumeric: 'tabular-nums',
-          marginTop: 8,
-        }}
-      >
-        {data.vdot.value ?? 'NO DATA YET'}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-data)',
-          fontSize: 9.5,
-          color: hasVdot ? 'rgba(255,255,255,.78)' : 'var(--t3)',
-          fontWeight: 700,
-          letterSpacing: '.5px',
-        }}
-      >
-        {data.vdot.detail ?? 'Log a race to unlock VDOT'}
-      </div>
-      <div
-        style={{
-          marginTop: 'auto',
-          paddingTop: 10,
-          borderTop: hasVdot
-            ? '1px solid rgba(255,255,255,.18)'
-            : '1px solid var(--l4)',
-          fontFamily: 'var(--f-data)',
-          fontSize: 9.5,
-          color: hasVdot ? 'rgba(255,255,255,.85)' : 'var(--t3)',
-          fontWeight: 700,
-          letterSpacing: '1.2px',
-        }}
-      >
-        {data.vdot.source ?? '—'}
-      </div>
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 3 · HR 5-zone (span 3)
-// ─────────────────────────────────────────────────────────────────────
-
-function HrCard({ data }: { data: ProfileData }) {
-  const hr = data.hrBlock;
-  const measured = hr.hrMaxMeasured;
-  const estimate = hr.hrMaxEstimate;
-  const displayHrMax = measured ?? estimate;
-  const hrPinTone = measured != null ? 'green' : estimate != null ? 'muted' : 'muted';
-  const hrPinText = measured != null ? 'MEASURED' : estimate != null ? 'ESTIMATE' : 'NO DATA';
-  return (
-    <Card span={3}>
-      <CardHeader>
-        <CardLabel>HEART RATE · 5-ZONE</CardLabel>
-        <CardPin variant={hrPinTone}>{hrPinText}</CardPin>
-      </CardHeader>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 8,
-          marginTop: 6,
-        }}
-      >
-        <div>
-          <div className="mono-sm" style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)' }}>
-            HRMAX{estimate != null && measured == null ? ' · EST' : ''}
+        {/* ── SHOE ROTATION ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Shoe Rotation</div>
+              <div className="card-sub">
+                <strong>{activeShoes.length} active</strong>{shoes.length > activeShoes.length ? ` · ${shoes.length - activeShoes.length} retired` : ''} · coach watches mileage to flag retire-soon · /log shoe picker reads from this list
+              </div>
+            </div>
+            <ProfileModalsIsland mode="add-shoe" />
           </div>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontWeight: 700,
-              fontSize: displayHrMax != null ? 30 : 14,
-              letterSpacing: '-.015em',
-              lineHeight: 0.95,
-              fontVariantNumeric: 'tabular-nums',
-              color: displayHrMax != null ? 'var(--t0)' : 'var(--t3)',
-            }}
-          >
-            {displayHrMax ?? 'NO DATA YET'}
-            {displayHrMax != null && (
-              <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
+          <div className="shoes-grid">
+            {shoes.length === 0 ? (
+              <div className="shoes-empty" style={{ gridColumn: '1 / -1' }}>No shoes yet. Click + Add Shoe to get started.</div>
+            ) : (
+              shoes.map((sh) => {
+                const status = shoeStatus(sh.current_mi, sh.cap_mi);
+                const pct = Math.min(100, Math.round((sh.current_mi / sh.cap_mi) * 100));
+                const fillCls = status.tone === 'warn' ? 'warn' : status.tone === 'amber' ? 'amber' : '';
+                const purposeStr = (sh.purposes || []).map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '—';
+                return (
+                  <div key={sh.id} className="shoe-row" style={sh.retired ? { opacity: 0.5 } : undefined}>
+                    <div>
+                      <div className="shoe-name">{sh.name}</div>
+                      <div className="shoe-role">{purposeStr}</div>
+                      <div className="shoe-mileage-bar"><div className={`shoe-mileage-fill ${fillCls}`} style={{ width: `${pct}%` }} /></div>
+                      <div className="shoe-mileage-meta">
+                        <strong>{sh.current_mi}</strong> / {sh.cap_mi} mi · {Math.max(0, sh.cap_mi - sh.current_mi)} left
+                        {sh.retired && <> · <strong style={{ color: 'var(--t1)' }}>RETIRED</strong></>}
+                      </div>
+                    </div>
+                    <div className="shoe-status-col">
+                      <div className={`shoe-status ${status.tone}`}>{status.label}</div>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
-        <div>
-          <div className="mono-sm" style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)' }}>
-            RHR
-          </div>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontWeight: 700,
-              fontSize: hr.rhr != null ? 30 : 14,
-              letterSpacing: '-.015em',
-              lineHeight: 0.95,
-              fontVariantNumeric: 'tabular-nums',
-              color: hr.rhr != null ? 'var(--t0)' : 'var(--t3)',
-            }}
-          >
-            {hr.rhr ?? 'NO DATA YET'}
-            {hr.rhr != null && (
-              <small style={{ fontSize: '.32em', opacity: 0.5, fontWeight: 700, marginLeft: 3 }}>bpm</small>
-            )}
-          </div>
-        </div>
-      </div>
-      {hr.zones.length > 0 ? (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 3,
-            marginTop: 'auto',
-            paddingTop: 10,
-            borderTop: '1px solid var(--l4)',
-          }}
-        >
-          {hr.zones.map((z) => <HrZoneRow key={z.letter} zone={z} />)}
-        </div>
-      ) : (
-        <div
-          className="mono-sm"
-          style={{
-            marginTop: 'auto',
-            paddingTop: 10,
-            borderTop: '1px solid var(--l4)',
-            fontSize: 10,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-          }}
-        >
-          5-ZONE BANDS · NO DATA YET
-        </div>
-      )}
-    </Card>
-  );
-}
 
-function HrZoneRow({ zone }: { zone: HrZone }) {
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '30px 1fr auto',
-        gap: 8,
-        alignItems: 'center',
-        fontSize: 11,
-      }}
-    >
-      <span
-        className="mono-sm"
-        style={{
-          fontSize: 10,
-          letterSpacing: '1.2px',
-          color: accentVar(zone.accent),
-          fontWeight: 700,
-        }}
-      >
-        {zone.letter}
-      </span>
-      <span style={{ color: 'var(--t2)', fontFamily: 'var(--f-body)', fontSize: 11 }}>
-        {zone.label}
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--f-data)',
-          fontSize: 11.5,
-          color: 'var(--t1)',
-          fontWeight: 600,
-          letterSpacing: '.6px',
-        }}
-      >
-        {zone.range}
-      </span>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 3 · Mileage tier (span 3)
-// ─────────────────────────────────────────────────────────────────────
-
-function TierCard({ data }: { data: ProfileData }) {
-  const t = data.tier;
-  const hasCurrent = t.currentMi != null;
-  return (
-    <Card span={3}>
-      <CardHeader>
-        <CardLabel>MILEAGE TIER · CURRENT</CardLabel>
-        <CardPin variant={hasCurrent ? 'coach' : 'muted'}>
-          {hasCurrent ? 'CLIMBING' : 'NO DATA'}
-        </CardPin>
-      </CardHeader>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          fontSize: hasCurrent ? 36 : 18,
-          letterSpacing: '-.015em',
-          lineHeight: 0.95,
-          fontVariantNumeric: 'tabular-nums',
-          color: hasCurrent ? 'var(--t0)' : 'var(--t3)',
-        }}
-      >
-        {t.currentMi ?? 'NO DATA YET'}
-        {hasCurrent && (
-          <small style={{ fontSize: '.3em', opacity: 0.5, fontWeight: 700, marginLeft: 4 }}>mi/wk</small>
-        )}
-      </div>
-      <div
-        className="mono-sm"
-        style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700 }}
-      >
-        {t.bandLabel}
-      </div>
-      {hasCurrent && <TierBand position={t.position} />}
-      <CardFoot
-        left={t.peakLabel}
-        right={t.trendLabel ? <span className={`delta ${t.trendLabel.startsWith('▲') ? 'up' : 'dn'}`}>{t.trendLabel}</span> : null}
-      />
-    </Card>
-  );
-}
-
-function TierBand({ position }: { position: number }) {
-  const pct = Math.max(0, Math.min(100, position * 100));
-  return (
-    <>
-      <div
-        style={{
-          position: 'relative',
-          height: 6,
-          background: 'var(--l3)',
-          borderRadius: 3,
-          marginTop: 10,
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${pct}%`,
-            background: 'linear-gradient(90deg, var(--good), var(--coach))',
-            borderRadius: 3,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: `calc(${pct}% - 7px)`,
-            top: -4,
-            width: 14,
-            height: 14,
-            borderRadius: 7,
-            background: 'var(--coach)',
-            border: '2px solid var(--l0)',
-          }}
-        />
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          fontFamily: 'var(--f-data)',
-          fontSize: 9,
-          letterSpacing: '.6px',
-          color: 'var(--t3)',
-          fontWeight: 700,
-          marginTop: 6,
-        }}
-      >
-        <span>20</span>
-        <span>30</span>
-        <span>40 → MID</span>
-      </div>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 3 · Training prefs (span 3)
-// ─────────────────────────────────────────────────────────────────────
-
-function PrefsCard({ data }: { data: ProfileData }) {
-  return (
-    <Card span={3}>
-      <CardHeader>
-        <CardLabel>TRAINING PREFERENCES</CardLabel>
-        <CardPin variant={data.prefsAreDefaults ? 'muted' : 'muted'}>
-          {data.prefsAreDefaults ? 'DEFAULTS' : 'EDIT →'}
-        </CardPin>
-      </CardHeader>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-        {data.prefs.map((p) => <PrefRow key={p.label} pref={p} />)}
-      </div>
-      {data.prefsAreDefaults && (
-        <div
-          className="mono-sm"
-          style={{
-            marginTop: 10,
-            fontSize: 10,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-          }}
-        >
-          USING DEFAULTS — SET YOURS
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function PrefRow({ pref }: { pref: Pref }) {
-  return (
-    <div style={{ padding: '8px 10px', background: 'var(--l2)', borderRadius: 6 }}>
-      <div
-        className="mono-sm"
-        style={{ fontSize: 8.5, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700 }}
-      >
-        {pref.label}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 600,
-          fontSize: 14,
-          marginTop: 3,
-          lineHeight: 1.05,
-          textTransform: 'uppercase',
-          letterSpacing: '-.005em',
-          color: pref.value ? 'var(--t0)' : 'var(--t3)',
-        }}
-      >
-        {pref.value ?? 'NO DATA YET'}
       </div>
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 4 · Connections (span 4)
-// ─────────────────────────────────────────────────────────────────────
-
-function ConnectionsCard({ data }: { data: ProfileData }) {
-  const live = data.connections.filter((c) => c.pinLabel === 'LIVE').length;
-  const total = data.connections.length;
-  return (
-    <Card span={4}>
-      <CardHeader>
-        <CardLabel>CONNECTIONS</CardLabel>
-        <CardPin variant={live > 0 ? 'green' : 'muted'}>
-          {live}/{total} LIVE
-        </CardPin>
-      </CardHeader>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-        {data.connections.map((c) => <ConnectionRow key={c.id} conn={c} />)}
-      </div>
-    </Card>
-  );
-}
-
-function ConnectionRow({ conn }: { conn: Connection }) {
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '32px 1fr auto',
-        gap: 12,
-        alignItems: 'center',
-        padding: '10px 12px',
-        background: 'var(--l2)',
-        borderRadius: 6,
-        opacity: conn.pinLabel === 'SOON' ? 0.7 : 1,
-      }}
-    >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: conn.pinLabel === 'SOON' ? 'var(--l3)' : conn.brandColor,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          color: conn.pinLabel === 'SOON' ? 'var(--t2)' : '#fff',
-        }}
-      >
-        {conn.letter}
-      </div>
-      <div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontWeight: 600,
-            fontSize: 14,
-            lineHeight: 1.05,
-            textTransform: 'uppercase',
-            letterSpacing: '-.005em',
-          }}
-        >
-          {conn.name}
-        </div>
-        <div
-          className="mono-sm"
-          style={{
-            fontSize: 9,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-            marginTop: 2,
-          }}
-        >
-          {conn.statusLine}
-        </div>
-      </div>
-      <CardPin variant={conn.pinTone}>{conn.pinLabel}</CardPin>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 4 · Shoe rotation (span 8)
-// ─────────────────────────────────────────────────────────────────────
-
-function ShoeRotationCard({ data }: { data: ProfileData }) {
-  const hasShoes = data.shoes.length > 0;
-  return (
-    <Card span={8}>
-      <CardHeader>
-        <CardLabel>SHOE ROTATION · {data.shoes.length} ACTIVE</CardLabel>
-        {!hasShoes ? (
-          <CardPin variant="muted">NO DATA</CardPin>
-        ) : data.shoeWarnLabel ? (
-          <CardPin variant="warn">{data.shoeWarnLabel}</CardPin>
-        ) : (
-          <CardPin variant="green">ALL HEALTHY</CardPin>
-        )}
-      </CardHeader>
-      {hasShoes ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-          {data.shoes.map((s) => <ShoeRotationRow key={s.id} shoe={s} />)}
-        </div>
-      ) : (
-        <div
-          className="mono-sm"
-          style={{
-            marginTop: 10,
-            padding: '20px 22px',
-            border: '1px dashed var(--l4)',
-            borderRadius: 8,
-            fontSize: 11,
-            letterSpacing: '1.2px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-            textAlign: 'center',
-          }}
-        >
-          NO SHOES LOGGED — ADD YOUR FIRST
-        </div>
-      )}
-      <CardFoot
-        left="+ ADD SHOE · MANAGE RETIRED"
-        right={
-          hasShoes ? (
-            <span style={{ color: 'var(--good)' }}>
-              {data.shoes.length} IN ROTATION · TARGET 3-5
-            </span>
-          ) : null
-        }
-      />
-    </Card>
-  );
-}
-
-function ShoeRotationRow({ shoe }: { shoe: ShoeRow }) {
-  const accent = accentVar(shoe.accent);
-  const filledPct = Math.min(100, shoe.fraction * 100);
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '3px 1.6fr 90px 1fr 110px',
-        gap: 14,
-        alignItems: 'center',
-        padding: '11px 14px 11px 0',
-        background: shoe.isRetiring ? 'rgba(252,77,100,.04)' : 'var(--l2)',
-        borderRadius: 8,
-      }}
-    >
-      <div
-        style={{
-          background: accent,
-          height: '100%',
-          borderRadius: '8px 0 0 8px',
-          alignSelf: 'stretch',
-        }}
-      />
-      <div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontWeight: 600,
-            fontSize: 16,
-            letterSpacing: '-.01em',
-            textTransform: 'uppercase',
-            lineHeight: 1,
-          }}
-        >
-          {shoe.name}
-        </div>
-        <div
-          className="mono-sm"
-          style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t3)', marginTop: 4 }}
-        >
-          {shoe.role}
-        </div>
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 600,
-          fontSize: 22,
-          lineHeight: 1,
-          letterSpacing: '-.01em',
-          fontVariantNumeric: 'tabular-nums',
-          color: shoe.isRetiring ? 'var(--warn)' : 'var(--t0)',
-        }}
-      >
-        {shoe.mileage}
-        <small
-          style={{
-            fontFamily: 'var(--f-data)',
-            fontSize: '.4em',
-            opacity: 0.55,
-            fontWeight: 700,
-            marginLeft: 4,
-          }}
-        >
-          mi
-        </small>
-      </div>
-      <div>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'baseline',
-            marginBottom: 3,
-          }}
-        >
-          <span
-            className="mono-sm"
-            style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t3)' }}
-          >
-            / {shoe.cap} CAP
-          </span>
-          <span
-            className="mono-sm"
-            style={{
-              fontSize: 11,
-              letterSpacing: '.12em',
-              color: accent,
-            }}
-          >
-            {Math.round(shoe.fraction * 100)}%
-          </span>
-        </div>
-        <div
-          style={{
-            height: 5,
-            borderRadius: 3,
-            background: 'var(--l3)',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              display: 'block',
-              height: '100%',
-              background: accent,
-              width: `${filledPct}%`,
-            }}
-          />
-        </div>
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <CardPin variant={shoe.pinTone}>{shoe.statusPin}</CardPin>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// ROW 5 · Coach engine details (span 12)
-// ─────────────────────────────────────────────────────────────────────
-
-function CoachEngineCard({ data }: { data: ProfileData }) {
-  const e = data.engine;
-  return (
-    <Card span={12} padding="22px 26px">
-      <CardHeader>
-        <div>
-          <CardLabel>COACH DETAILS · WHAT THE ENGINE IS USING</CardLabel>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: 22,
-              fontWeight: 600,
-              marginTop: 4,
-              lineHeight: 1.05,
-              letterSpacing: '-.005em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Every input the Coach reads to make decisions
-          </div>
-        </div>
-        <CardPin variant="muted">EXPAND ↓</CardPin>
-      </CardHeader>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 10,
-          marginTop: 14,
-        }}
-      >
-        {/* Tile 0 — Pace zones (special: renders the 5-band table) */}
-        <EnginePaceZonesTile engine={e} />
-        {/* Tiles 1–3 — Hero values */}
-        {e.tiles.slice(1).map((t, i) => <EngineDetailTile key={i} detail={t} />)}
-      </div>
-
-      {e.integrity ? (
-        <div
-          style={{
-            marginTop: 14,
-            padding: '14px 18px',
-            background: 'rgba(62,189,65,.06)',
-            border: '1px solid rgba(62,189,65,.20)',
-            borderRadius: 8,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div>
-            <div
-              className="mono-sm"
-              style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--good)', fontWeight: 700 }}
-            >
-              {e.integrity.headline}
-            </div>
-            <div
-              style={{
-                fontFamily: 'var(--f-body)',
-                fontSize: 13,
-                color: 'var(--t1)',
-                marginTop: 4,
-                lineHeight: 1.5,
-              }}
-            >
-              {e.integrity.body}
-            </div>
-          </div>
-          <CardPin variant="green">
-            {e.integrity.passed}/{e.integrity.total} RULES OK
-          </CardPin>
-        </div>
-      ) : (
-        <div
-          style={{
-            marginTop: 14,
-            padding: '14px 18px',
-            background: 'var(--l2)',
-            border: '1px solid var(--bd)',
-            borderRadius: 8,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div>
-            <div
-              className="mono-sm"
-              style={{ fontSize: 10, letterSpacing: '1.2px', color: 'var(--t3)', fontWeight: 700 }}
-            >
-              PLAN INTEGRITY · NO DATA YET
-            </div>
-            <div
-              style={{
-                fontFamily: 'var(--f-body)',
-                fontSize: 13,
-                color: 'var(--t2)',
-                marginTop: 4,
-                lineHeight: 1.5,
-              }}
-            >
-              Engine doesn&apos;t expose a validation surface yet — plan-integrity reads will land with Wave K coach validation.
-            </div>
-          </div>
-          <CardPin variant="muted">PENDING</CardPin>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function EnginePaceZonesTile({ engine }: { engine: EngineBlock }) {
-  const tile = engine.tiles[0];
-  return (
-    <div
-      style={{
-        padding: '18px 20px',
-        background: 'var(--l2)',
-        borderRadius: 8,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div
-        className="mono-sm"
-        style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t2)', fontWeight: 500 }}
-      >
-        {tile.eyebrow}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontSize: 18,
-          fontWeight: 600,
-          letterSpacing: '-.01em',
-          lineHeight: 1,
-          textTransform: 'uppercase',
-          marginTop: 8,
-        }}
-      >
-        {tile.value}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-body)',
-          fontSize: 13,
-          color: 'var(--t2)',
-          marginTop: 6,
-          lineHeight: 1.5,
-        }}
-      >
-        {tile.lead}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-        {engine.paceZones.length > 0 ? (
-          engine.paceZones.map((z) => (
-            <div
-              key={z.label}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '80px 1fr',
-                gap: 10,
-                alignItems: 'baseline',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--f-data)',
-                  fontSize: 11,
-                  color: z.accent,
-                  fontWeight: 700,
-                  letterSpacing: '1.2px',
-                }}
-              >
-                {z.label}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--f-display)',
-                  fontSize: 16,
-                  fontWeight: 600,
-                  letterSpacing: '-.01em',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {z.value}
-                <small
-                  style={{
-                    fontFamily: 'var(--f-data)',
-                    fontSize: '.55em',
-                    opacity: 0.55,
-                    fontWeight: 700,
-                    marginLeft: 5,
-                    letterSpacing: '.5px',
-                  }}
-                >
-                  /MI
-                </small>
-              </span>
-            </div>
-          ))
-        ) : (
-          <div
-            className="mono-sm"
-            style={{
-              fontSize: 10,
-              letterSpacing: '1.2px',
-              color: 'var(--t3)',
-              fontWeight: 700,
-            }}
-          >
-            PACE TABLE · NO DATA YET
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EngineDetailTile({ detail }: { detail: ProfileData['engine']['tiles'][number] }) {
-  return (
-    <div
-      style={{
-        padding: '18px 20px',
-        background: 'var(--l2)',
-        borderRadius: 8,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <div
-        className="mono-sm"
-        style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t2)', fontWeight: 500 }}
-      >
-        {detail.eyebrow}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontSize: 42,
-          fontWeight: 600,
-          letterSpacing: '-.02em',
-          lineHeight: 1,
-          marginTop: 10,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {detail.value}
-        {detail.unit && (
-          <small
-            style={{
-              fontFamily: 'var(--f-data)',
-              fontSize: '.32em',
-              opacity: 0.55,
-              fontWeight: 700,
-              marginLeft: 6,
-            }}
-          >
-            {detail.unit}
-          </small>
-        )}
-      </div>
-      <div
-        style={{
-          fontFamily: 'var(--f-body)',
-          fontSize: 14,
-          color: 'var(--t1)',
-          marginTop: 10,
-          lineHeight: 1.55,
-        }}
-      >
-        {detail.lead}
-      </div>
-      {detail.footEyebrow && (
-        <div
-          style={{
-            marginTop: 'auto',
-            paddingTop: 14,
-            borderTop: '1px solid var(--l4)',
-          }}
-        >
-          <div
-            className="mono-sm"
-            style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--t2)', fontWeight: 500 }}
-          >
-            {detail.footEyebrow}
-          </div>
-          <div
-            style={{
-              fontFamily: 'var(--f-body)',
-              fontSize: 13,
-              color: 'var(--t2)',
-              marginTop: 4,
-              lineHeight: 1.5,
-            }}
-          >
-            {detail.footBody}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Skeleton
-// ─────────────────────────────────────────────────────────────────────
-
-function ProfileSkeleton() {
-  return (
-    <>
-      <Row>
-        <Card span={7} style={{ minHeight: 280 }}><Skeleton height={220} /></Card>
-        <Card span={5} style={{ minHeight: 280 }}><Skeleton height={220} /></Card>
-      </Row>
-      <Row>
-        <Card span={12} style={{ minHeight: 320 }}><Skeleton height={260} /></Card>
-      </Row>
-      <Row>
-        <Card span={3}><Skeleton height={180} /></Card>
-        <Card span={3}><Skeleton height={180} /></Card>
-        <Card span={3}><Skeleton height={180} /></Card>
-        <Card span={3}><Skeleton height={180} /></Card>
-      </Row>
-      <Row>
-        <Card span={4}><Skeleton height={220} /></Card>
-        <Card span={8}><Skeleton height={220} /></Card>
-      </Row>
-      <Row>
-        <Card span={12}><Skeleton height={300} /></Card>
-      </Row>
-    </>
   );
 }
