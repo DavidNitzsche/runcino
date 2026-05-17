@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Empty States · v4</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --strava: #FC4C02;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body {
+  background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif;
+  min-height: 100vh; -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility; font-kerning: normal;
+}
+
+/* Catalog-page chrome */
+.catalog-header { background: var(--t0); color: #fff; padding: 24px 40px; }
+.catalog-title { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: -0.5px; line-height: 1; font-style: italic; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.catalog-sub { font-family: 'Inter', sans-serif; font-size: 13px; color: rgba(255,255,255,.55); margin-top: 6px; letter-spacing: 0.3px; }
+.catalog-nav { display: flex; gap: 16px; margin-top: 20px; flex-wrap: wrap; }
+.catalog-nav a { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 1.5px; color: rgba(255,255,255,.55); text-decoration: none; text-transform: uppercase; font-weight: 600; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.catalog-nav a:hover { color: #fff; background: rgba(255,255,255,.14); }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 40px 40px 80px; }
+
+.section-block {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--divider);
+}
+.section-block:first-of-type { margin-top: 0; border-top: none; padding-top: 0; }
+
+.section-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.section-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px; line-height: 0.95;
+  color: var(--t0);
+  margin-bottom: 8px;
+}
+.section-prose {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; line-height: 1.6;
+  color: var(--t1);
+  max-width: 720px;
+  margin-bottom: 24px;
+}
+.section-prose strong { color: var(--t0); font-weight: 600; }
+
+/* ═════════════════════════════════════════
+   SHARED · Connect-Strava banner
+   Rides at the top of every page when no
+   activity-source connectors are active.
+   ═════════════════════════════════════════ */
+.connect-banner {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 20px;
+  align-items: center;
+  padding: 18px 24px;
+  background: linear-gradient(90deg, rgba(252,76,2,.06) 0%, rgba(252,76,2,.02) 100%);
+  border: 1px solid rgba(252,76,2,.18);
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+.connect-banner-icon {
+  width: 44px; height: 44px;
+  border-radius: 11px;
+  background: var(--strava);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+}
+.connect-banner-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700; font-size: 14px;
+  color: var(--t0);
+}
+.connect-banner-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; color: var(--t1);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.connect-banner-sub strong { color: var(--t0); font-weight: 600; }
+.connect-banner-actions { display: flex; gap: 8px; }
+.btn-connect {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600; font-size: 11px;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+  background: var(--strava); color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-connect:hover { background: #E04400; }
+.btn-secondary {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600; font-size: 11px;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--t3);
+  background: transparent; color: var(--t1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-secondary:hover { background: rgba(13,15,18,.04); color: var(--t0); }
+
+/* ═════════════════════════════════════════
+   GENERIC empty-zone treatment
+   Used inside cards where a data-driven region
+   would normally render (charts, lists, trend bars).
+   ═════════════════════════════════════════ */
+.empty-zone {
+  padding: 36px 28px;
+  background: rgba(13,15,18,.025);
+  border: 1.5px dashed var(--divider);
+  border-radius: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.empty-zone-icon {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: rgba(13,15,18,.04);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--t2);
+  font-family: 'Inter', sans-serif;
+  font-size: 20px;
+}
+.empty-zone-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700; font-size: 15px;
+  color: var(--t0);
+}
+.empty-zone-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; color: var(--t1);
+  line-height: 1.55;
+  max-width: 480px;
+}
+.empty-zone-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+/* ═════════════════════════════════════════
+   v4 card shell (reused so the catalog
+   matches what the in-app pages look like)
+   ═════════════════════════════════════════ */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+.card-body-pad { padding: 0 40px 28px; }
+
+/* ─ /overview specific: hero left + right column layout ─ */
+.overview-hero {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  overflow: hidden;
+}
+.overview-hero-left { padding: 40px; display: flex; flex-direction: column; gap: 16px; }
+.overview-hero-right { background: rgba(13,15,18,.02); padding: 32px 36px; display: flex; flex-direction: column; gap: 16px; }
+.eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+}
+.hero-big-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 132px; line-height: 0.92; color: var(--t0);
+  letter-spacing: -2px;
+  text-transform: uppercase;
+}
+.hero-info-line {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px; color: var(--t1); line-height: 1.55;
+  max-width: 460px;
+}
+.hero-info-line strong { color: var(--t0); font-weight: 600; }
+.hero-buttons { display: flex; gap: 10px; margin-top: 16px; }
+.btn-primary {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600; font-size: 13px;
+  color: #fff; background: var(--t0);
+  border: none; border-radius: 9px;
+  padding: 12px 22px; cursor: pointer;
+  letter-spacing: 0.4px;
+}
+.btn-ghost {
+  font-family: 'Inter', sans-serif;
+  font-weight: 500; font-size: 13px;
+  color: var(--t1); background: transparent;
+  border: none; border-radius: 9px;
+  padding: 12px 16px; cursor: pointer;
+}
+
+/* Trend-row look (placeholder bars, no data) */
+.trend-row { display: flex; flex-direction: column; gap: 6px; }
+.trend-label {
+  display: flex; justify-content: space-between;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+}
+.trend-label-name { color: var(--t2); font-weight: 500; letter-spacing: 0.2px; }
+.trend-label-val  { color: var(--t3); font-style: italic; }
+.trend-track { height: 6px; background: rgba(13,15,18,.05); border-radius: 3px; overflow: hidden; }
+.trend-track .fill { height: 100%; background: rgba(13,15,18,.10); width: 0; border-radius: 3px; }
+
+/* /log empty hero stats */
+.zero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
+.zero-stat { background: rgba(13,15,18,.03); border: 1px solid var(--divider); border-radius: 12px; padding: 20px 22px; }
+.zero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.zero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 56px; line-height: 0.9; color: var(--t3); margin-top: 10px; letter-spacing: -1px; }
+.zero-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 8px; font-style: italic; }
+
+/* /health Form chart empty */
+.form-chart-empty {
+  height: 220px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(13,15,18,.025);
+  border: 1.5px dashed var(--divider);
+  border-radius: 14px;
+  position: relative;
+}
+.form-chart-empty::before {
+  /* faint axis line implying where the chart would draw */
+  content: '';
+  position: absolute;
+  left: 24px; right: 24px;
+  top: 50%;
+  border-top: 1px dashed var(--t3);
+  opacity: 0.5;
+}
+</style>
+</head>
+<body>
+
+<div class="catalog-header">
+  <div class="catalog-title">EMPTY STATES · v4</div>
+  <div class="catalog-sub">What every page shows when a brand-new user has just signed up + onboarded but hasn't connected any source or logged any runs.</div>
+  <div class="catalog-nav">
+    <a href="#shared">Shared banner</a>
+    <a href="#overview">/overview</a>
+    <a href="#log">/log</a>
+    <a href="#training">/training</a>
+    <a href="#races">/races</a>
+    <a href="#health">/health</a>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- ══ SHARED · Connect-Strava banner ══════════════════════════ -->
+  <div class="section-block" id="shared">
+    <div class="section-name">Shared component</div>
+    <h2 class="section-headline">The Connect Strava banner</h2>
+    <p class="section-prose">
+      Rides at the top of every in-app page when the user has zero activity-source connectors active.
+      Dismisses with "Maybe later" but reappears on every page load until a source is connected.
+      <strong>Single source of truth</strong> for the "you should connect something" prompt — pages
+      don't reinvent it.
+    </p>
+
+    <div class="connect-banner">
+      <div class="connect-banner-icon">S</div>
+      <div>
+        <div class="connect-banner-title">Connect Strava to start tracking</div>
+        <div class="connect-banner-sub">
+          Your plan is set. Pull in your runs to see <strong>readiness, form, and load</strong>.
+          We backfill your full activity history on connect — usually under a minute.
+        </div>
+      </div>
+      <div class="connect-banner-actions">
+        <a class="btn-connect" href="#">Connect Strava</a>
+        <a class="btn-secondary" href="#">Maybe later</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ /overview ═══════════════════════════════════════════════ -->
+  <div class="section-block" id="overview">
+    <div class="section-name">/overview · empty state</div>
+    <h2 class="section-headline">Plan exists, data doesn't yet.</h2>
+    <p class="section-prose">
+      Onboarding produces the plan, so <strong>today's workout still renders</strong> from the plan
+      template. What's empty is the data side: trend bars (Effort/Load/Mileage/Easy Pace/Strain),
+      readiness ring, "5 of 6 sessions down" coach line. Coach speaks from the plan, not the history.
+    </p>
+
+    <div class="overview-hero">
+      <div class="overview-hero-left">
+        <div class="eyebrow">Today · Base Week 1</div>
+        <div class="hero-big-title">Easy<br>Run</div>
+        <div class="hero-info-line">
+          <strong>5.5 mi · 9:15/mi · ~51 min · Z2.</strong>
+          Conversational pace throughout. <em>This is from your plan, not your data — connect a
+          source and we'll start watching whether you actually hit it.</em>
+        </div>
+        <div class="hero-buttons">
+          <button class="btn-primary">▶ Open Workout</button>
+          <button class="btn-ghost">Skip Today</button>
+        </div>
+      </div>
+
+      <div class="overview-hero-right">
+        <div class="eyebrow">Trend · last 7d</div>
+        <div class="trend-row">
+          <div class="trend-label"><span class="trend-label-name">Effort</span><span class="trend-label-val">no data</span></div>
+          <div class="trend-track"><div class="fill"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-label"><span class="trend-label-name">Load</span><span class="trend-label-val">no data</span></div>
+          <div class="trend-track"><div class="fill"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-label"><span class="trend-label-name">Mileage</span><span class="trend-label-val">no data</span></div>
+          <div class="trend-track"><div class="fill"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-label"><span class="trend-label-name">Easy Pace</span><span class="trend-label-val">no data</span></div>
+          <div class="trend-track"><div class="fill"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-label"><span class="trend-label-name">Strain</span><span class="trend-label-val">no data</span></div>
+          <div class="trend-track"><div class="fill"></div></div>
+        </div>
+        <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); font-style: italic; margin-top: 4px; line-height: 1.5;">
+          Trend bars populate as runs come in. ~7 days of data needed before the load + form models stabilize.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ /log ════════════════════════════════════════════════════ -->
+  <div class="section-block" id="log">
+    <div class="section-name">/log · empty state</div>
+    <h2 class="section-headline">Zeros, not fakes.</h2>
+    <p class="section-prose">
+      The most data-dependent page. YTD hero stats show actual zeros (not fake numbers). Monthly volume
+      chart hides. Year heatmap renders flat. Recent Runs surfaces the
+      <strong>"connect or log manually"</strong> empty zone as the page's primary action.
+    </p>
+
+    <!-- Empty YTD hero -->
+    <div class="card" style="margin-top: 0;">
+      <div class="card-body-pad" style="padding: 40px;">
+        <div class="eyebrow">2026 · Year to Date</div>
+        <div style="font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); margin-top: 6px;">The Year So Far</div>
+        <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; font-style: italic;">No runs logged yet — your stats will populate as data comes in.</div>
+
+        <div class="zero-stats">
+          <div class="zero-stat">
+            <div class="zero-stat-label">Total Runs</div>
+            <div class="zero-stat-val">0</div>
+            <div class="zero-stat-sub">awaiting data</div>
+          </div>
+          <div class="zero-stat">
+            <div class="zero-stat-label">Total Miles</div>
+            <div class="zero-stat-val">0</div>
+            <div class="zero-stat-sub">awaiting data</div>
+          </div>
+          <div class="zero-stat">
+            <div class="zero-stat-label">Longest Run</div>
+            <div class="zero-stat-val">—</div>
+            <div class="zero-stat-sub">awaiting data</div>
+          </div>
+          <div class="zero-stat">
+            <div class="zero-stat-label">Peak Month</div>
+            <div class="zero-stat-val">—</div>
+            <div class="zero-stat-sub">awaiting data</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Runs empty -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">Recent Runs</div>
+          <div class="card-sub">Pulled from Strava once connected · or log manually any time</div>
+        </div>
+      </div>
+      <div class="card-body-pad">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">●</div>
+          <div class="empty-zone-title">No runs logged yet</div>
+          <div class="empty-zone-sub">
+            Connect Strava to pull your full activity history (we backfill all-time on first connect),
+            or log a run manually from your watch / a route you ran today.
+          </div>
+          <div class="empty-zone-actions">
+            <a class="btn-connect" href="#">Connect Strava</a>
+            <a class="btn-secondary" href="#">Log a run manually</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ /training ═══════════════════════════════════════════════ -->
+  <div class="section-block" id="training">
+    <div class="section-name">/training · empty state</div>
+    <h2 class="section-headline">Plan renders. Adaptation waits.</h2>
+    <p class="section-prose">
+      The plan calendar renders <strong>fully populated from onboarding</strong> — 14 weeks of
+      prescriptions, no adaptation needed for that. What's empty: the "Coach Adapted · Last 7 Days"
+      blue card has no data to show until runs land. Path-to-AFC chart shows projected only, no past
+      curve.
+    </p>
+
+    <!-- Coach adaptation empty -->
+    <div class="card" style="background: linear-gradient(135deg, rgba(39,180,224,.06) 0%, var(--card) 70%);">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title" style="color: #27B4E0;">▲ COACH ADAPTED · LAST 7 DAYS</div>
+          <div class="card-sub">Adaptation engine reads your actual runs vs. plan and adjusts weekly volume + caps</div>
+        </div>
+        <div class="card-meta" style="font-style: italic;">Waiting for first runs</div>
+      </div>
+      <div class="card-body-pad">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">▲</div>
+          <div class="empty-zone-title">Adaptation hasn't started yet</div>
+          <div class="empty-zone-sub">
+            Once you've logged <strong>3–5 runs</strong> the coach starts reading your actual effort vs.
+            target and adjusting next week's caps. Until then the plan runs on the doctrine defaults
+            from your level.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ /races ══════════════════════════════════════════════════ -->
+  <div class="section-block" id="races">
+    <div class="section-name">/races · empty state</div>
+    <h2 class="section-headline">A-race shows, history doesn't.</h2>
+    <p class="section-prose">
+      The race entered in onboarding shows up immediately in the timeline + as the A-race hero.
+      "Recent Races" is the empty zone — past races seed the VDOT anchor + show PR history.
+      Optional, but valuable.
+    </p>
+
+    <!-- Recent Races empty -->
+    <div class="card" style="margin-top: 0;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">Recent Races</div>
+          <div class="card-sub">Past finish times seed your VDOT anchor and show PR history</div>
+        </div>
+      </div>
+      <div class="card-body-pad">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">◷</div>
+          <div class="empty-zone-title">No past races logged</div>
+          <div class="empty-zone-sub">
+            Add a recent race finish manually (e.g. a Half from this year) and we'll set your VDOT
+            anchor from it — that's what drives every pace zone. Strava activities tagged as races
+            also auto-detect once you connect.
+          </div>
+          <div class="empty-zone-actions">
+            <a class="btn-connect" href="#">Connect Strava</a>
+            <a class="btn-secondary" href="#">Add a race manually</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ /health ═════════════════════════════════════════════════ -->
+  <div class="section-block" id="health">
+    <div class="section-name">/health · empty state</div>
+    <h2 class="section-headline">Check-in works. Trend needs runway.</h2>
+    <p class="section-prose">
+      The daily check-in form runs from day one — readiness model boots off energy/soreness/stress
+      inputs. What's empty is the <strong>Form / Fitness / Fatigue trend chart</strong> — needs ~4-6
+      weeks of training-load data to mean anything. And the Vitals tiles (RHR/HRV/sleep) wait for
+      a watch or wearable to connect.
+    </p>
+
+    <!-- Form chart empty -->
+    <div class="card" style="margin-top: 0;">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">Form Curve</div>
+          <div class="card-sub">CTL · ATL · TSB · the long-term fitness / freshness model</div>
+        </div>
+        <div class="card-meta" style="font-style: italic;">Needs 28+ days of data</div>
+      </div>
+      <div class="card-body-pad">
+        <div class="form-chart-empty">
+          <div style="text-align: center; padding: 16px; position: relative; z-index: 1;">
+            <div class="empty-zone-title">Form curve is building</div>
+            <div class="empty-zone-sub" style="margin-top: 8px;">
+              The fitness + fatigue model needs <strong>28 days</strong> of training-load history before
+              the trend stabilizes. Until then the coach uses simpler readiness signals (check-in +
+              recent runs).
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vitals empty -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">Vitals</div>
+          <div class="card-sub">Resting HR · HRV · Sleep · 7-day strain — read from a connected wearable</div>
+        </div>
+      </div>
+      <div class="card-body-pad">
+        <div class="empty-zone">
+          <div class="empty-zone-icon">♥</div>
+          <div class="empty-zone-title">No wearable connected</div>
+          <div class="empty-zone-sub">
+            Vitals come from Strava (basic HR/sleep), Apple Health, Whoop, or Oura. Without one,
+            the readiness model still works from your daily check-in — vitals just sharpen it.
+          </div>
+          <div class="empty-zone-actions">
+            <a class="btn-connect" href="profile-v4.html">Manage connectors →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Notes ═══════════════════════════════════════════════════ -->
+  <div class="section-block">
+    <div class="section-name">Notes for the /web/ port</div>
+    <h2 class="section-headline">How this plugs in</h2>
+    <p class="section-prose">
+      Every page reads a <code>userHasAnyConnector</code> and <code>userHasAnyRun</code> derived
+      flag from the store. When false: the Connect banner shows at the page top, and any
+      data-dependent card swaps its body for the matching <code>&lt;EmptyZone /&gt;</code>
+      component (different icon + copy + CTAs per page). When true: normal render.
+    </p>
+    <p class="section-prose">
+      The <strong>Plan, Race, Check-in form, and Coach narrative</strong> are NOT
+      data-dependent — they come from onboarding inputs + the plan template + research doctrine.
+      Those render in full from day one. This is what keeps the empty state from feeling like
+      a broken app.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
