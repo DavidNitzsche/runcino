@@ -1,1503 +1,275 @@
-'use client';
-
 /**
- * /races · Phase-3 port of the May 2026 mockup.
+ * /races — fresh React port of designs/races-v4.html.
  *
- * Source mockup: designs/races-2026-05-09.html
+ * Sections:
+ *   1. Coach strip — race calendar narrative + VDOT anchor card
+ *   2. A-race hero — AFC Half wordmark + 3 stats + Path to the Line
+ *      + Coach's next move + coach take
+ *   3. Upcoming Races — horizontal timeline (race stations)
+ *   4. Recent Races — past finishes
+ *   5. PRs by distance — 6 PR cards
  *
- * Architecture mirrors /overview/page.tsx and /training/page.tsx:
- *   - Single useEffect loads data via /api/races-page (server-side
- *     Coach bundle that wraps raceFitnessPrediction · taperDepth ·
- *     bodySystems · trajectory14wk plus the saved-race calendar).
- *   - Skeleton + error fallback via <EmptyState>.
- *   - Every coaching judgment threads through data.predictions /
- *     data.aRaceHero / data.latestRecap or a clearly-marked stub in
- *     data.ts.
- *
- * Sections (mapped 1:1 to the mockup):
- *   1. TopBar + Greet band (5 KPI tiles)
- *   2. A-RACE hero (span-8, race wash, gradient) + LATEST RESULT recap
- *      (span-4)
- *   3. 2026 SEASON · full-width year timeline with race markers
- *   4. UPCOMING list (span-6) + 2026 RESULTS list (span-6)
- *
- * Sub-routes /races/new + /races/[slug] are NOT touched — they ship as
- * their own page.tsx files and continue to serve the existing race-plan
- * creation + detail experience.
+ * Seed data mirrors designs/races-v4.html for the legacy owner. Real
+ * race CRUD wiring is a follow-up.
  */
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { ConnectBanner } from '@/app/components/v4';
-import {
-  Topbar,
-  Stage,
-  Row,
-  Card,
-  CardHeader,
-  CardLabel,
-  CardPin,
-  CardFoot,
-  Greet,
-  GreetId,
-  GreetState,
-  GreetTile,
-  EmptyState,
-  Skeleton,
-} from '@/app/components';
-import { useActivities } from '@/lib/strava-activities';
-import type { SavedRace } from '@/lib/storage-types';
-import { loadRacesData, type RacesData, type SeasonMarker, formatShortDate } from './data';
+import { redirect } from 'next/navigation';
+import { Topbar } from '@/app/components';
+import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
+import { getCurrentUser } from '@/lib/auth';
+import './races-v4.css';
 
-export default function RacesPage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [data, setData] = useState<RacesData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const { activities } = useActivities();
-  const [hasSource, setHasSource] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    setNow(new Date());
-  }, []);
-
-  useEffect(() => {
-    fetch('/api/connectors').then((r) => r.json()).then((j) => {
-      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
-      setHasSource((j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider)));
-    }).catch(() => setHasSource(false));
-  }, []);
-
-  useEffect(() => {
-    if (!now) return;
-    let cancelled = false;
-    setLoadError(null);
-    loadRacesData(activities)
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : String(err));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [now, activities]);
-
-  const clock = now ? formatTopbarClock(now) : null;
-
-  return (
-    <Stage>
-      <Topbar
-        activeTab="races"
-        clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
-      />
-
-      {hasSource === false && <ConnectBanner />}
-
-      <RacesGreet data={data} />
-
-      {loadError && (
-        <Row>
-          <Card span={12}>
-            <EmptyState
-              variant="error"
-              title="Couldn't load Races"
-              body={loadError}
-            />
-          </Card>
-        </Row>
-      )}
-
-      {data ? (
-        <RacesBody data={data} />
-      ) : (
-        !loadError && <RacesSkeleton />
-      )}
-    </Stage>
-  );
+interface UpcomingRace {
+  name: string;
+  date: string;
+  daysAway: number;
+  distanceLabel: string;
+  goal: string;
+  priority: 'A' | 'B' | 'C';
+  slug?: string;
+}
+interface RecentRace {
+  date: string;
+  name: string;
+  distanceLabel: string;
+  finish: string;
+  pace: string;
+  priority: 'A' | 'B' | 'C';
+  note?: string;
+  currentAnchor?: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Greet band — 5 KPI tiles oriented around the race calendar
-// ─────────────────────────────────────────────────────────────────────
+export default async function RacesPage() {
+  const auth = await getCurrentUser();
+  if (!auth) redirect('/login?next=/races');
 
-function RacesGreet({ data }: { data: RacesData | null }) {
-  if (!data) {
-    return (
-      <Greet>
-        <GreetId
-          eyebrow={<Skeleton width={260} height={11} />}
-          title={<Skeleton width={160} height={48} />}
-        />
-        <GreetState>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <GreetTile key={i} eyebrow="—" value={<Skeleton width={56} height={20} />} />
-          ))}
-        </GreetState>
-      </Greet>
-    );
-  }
+  const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
 
-  const { races, aRaceHero, latestRecap } = data;
-  const nextAName = races.nextA?.meta.name ?? null;
-  const daysToA = races.daysToNextA;
-  const daysToB = races.daysToNextB;
-  const totalRun = races.past.length;
-  const totalAhead = races.upcoming.length;
-  const prCount = races.past.filter((r) => r.actualResult?.isPR).length;
+  // Seed values from designs/faff-store.js for the legacy owner.
+  // New users get empty lists with helpful prompts.
+  const upcoming: UpcomingRace[] = isLegacy ? [
+    { name: 'Americas Finest City', date: 'Aug 16, 2026',  daysAway: 91,  distanceLabel: 'Half Marathon · 13.24 mi · San Diego', goal: '1:35:00', priority: 'A', slug: 'afc-2026' },
+    { name: 'Dodgers 10K',           date: 'Sep 26, 2026',  daysAway: 132, distanceLabel: '10K · 6.17 mi · Los Angeles',          goal: '45:00',   priority: 'C' },
+    { name: 'Run Malibu',            date: 'Nov 8, 2026',   daysAway: 175, distanceLabel: 'Half Marathon · 13.12 mi · Malibu',    goal: '1:30:00', priority: 'B' },
+    { name: 'CIM',                   date: 'Dec 6, 2026',   daysAway: 203, distanceLabel: 'Marathon',                              goal: '3:00:00', priority: 'A' },
+    { name: 'LA Marathon',           date: 'Mar 7, 2027',   daysAway: 294, distanceLabel: 'Marathon · 26.41 mi · Los Angeles',    goal: '3:31:00', priority: 'A' },
+  ] : [];
 
-  // Eyebrow surfaces just the season-position anchor — short form. VDOT belongs
-  // on /training (the page that uses it to set pace zones), not /races.
-  // Race name is abbreviated (e.g. "AFC HALF") to match the timeline.
-  const eyebrowParts: string[] = ['2026 SEASON'];
-  if (nextAName && daysToA != null) {
-    eyebrowParts.push(`${daysToA} DAYS TO ${shortRaceName(nextAName)}`);
-  }
+  const recent: RecentRace[] = isLegacy ? [
+    { date: '2026-05-03', name: 'Sombrero Half Marathon',         distanceLabel: 'Half Marathon',                    finish: '1:40:57', pace: '7:40/mi', priority: 'C' },
+    { date: '2026-04-26', name: 'Big Sur Marathon',                distanceLabel: 'Marathon · 2,140 ft climb',        finish: '3:36:55', pace: '8:17/mi', priority: 'A' },
+    { date: '2026-04-18', name: 'Point Magu Half Marathon',        distanceLabel: 'Half Marathon · trail',            finish: '2:09:02', pace: '9:33/mi', priority: 'C' },
+    { date: '2026-03-15', name: 'Los Angeles Marathon',            distanceLabel: 'Marathon',                          finish: '3:31:00', pace: '8:03/mi', priority: 'A', note: 'marathon PR' },
+    { date: '2026-02-01', name: 'Powered by the Mouse for a PR',   distanceLabel: 'Half Marathon',                    finish: '1:34:54', pace: '7:05/mi', priority: 'A', note: 'VDOT 48.1 · current anchor', currentAnchor: true },
+    { date: '2026-01-18', name: 'Rose Bowl Half Marathon',         distanceLabel: 'Half Marathon',                    finish: '1:38:38', pace: '7:24/mi', priority: 'A', note: 'VDOT 46' },
+  ] : [];
+
+  const aRace = upcoming.find((r) => r.priority === 'A');
+  const PRs = isLegacy ? [
+    { distance: '5K',          time: '21:34',   when: 'Burbank Track · Nov 2025' },
+    { distance: '10K',         time: '45:12',   when: 'Long Beach · Oct 2025' },
+    { distance: '13.1 (HM)',   time: '1:34:54', when: 'Mouse Half · Feb 2026', current: true },
+    { distance: '26.2',        time: '3:31:00', when: 'LA Marathon · Mar 2026', current: true },
+    { distance: '20-mile run', time: '2:48:30', when: 'Apr 2026 (training)' },
+    { distance: '50K',         time: '—',       when: 'Not yet attempted' },
+  ] : [];
 
   return (
-    <Greet>
-      <GreetId
-        eyebrow={eyebrowParts.join(' · ')}
-        title="RACES"
-      />
-      <GreetState>
-        <GreetTile
-          variant="race"
-          eyebrow="NEXT A-RACE"
-          value={daysToA != null ? String(daysToA) : '—'}
-          unit={daysToA != null ? 'D' : undefined}
-          delta={nextAName ? nextAName.toUpperCase() : 'NONE SET'}
-          deltaColor="var(--race)"
-        />
-        <GreetTile
-          variant={daysToB != null ? 'coach' : 'default'}
-          eyebrow="UP NEXT · B"
-          value={daysToB != null ? String(daysToB) : '—'}
-          unit={daysToB != null ? 'D' : undefined}
-          delta={races.nextB?.meta.name?.toUpperCase() ?? 'NO TUNE-UP'}
-        />
-        <GreetTile
-          eyebrow="UPCOMING"
-          value={String(totalAhead)}
-          unit="RACES"
-          delta={races.upcoming.length > 0 ? upcomingRangeLabel(races.upcoming) : '—'}
-        />
-        <GreetTile
-          variant="good"
-          eyebrow="RUN THIS YEAR"
-          value={String(totalRun)}
-          unit="RACES"
-          delta={`${prCount} PR${prCount === 1 ? '' : 'S'} · ${data.season.summary.countRun}/${data.season.summary.countRun + data.season.summary.countAhead}`}
-          deltaColor="var(--good)"
-        />
-        <GreetTile
-          variant="amber"
-          eyebrow="LATEST RESULT"
-          value={latestRecap?.finishDisplay ?? '—'}
-          delta={latestRecap ? `${latestRecap.name.toUpperCase()} · ${latestRecap.shortDate}` : 'NO RESULTS YET'}
-        />
-      </GreetState>
-    </Greet>
-  );
-}
+    <div className="races-v4-page">
+      <Topbar activeTab="races" />
+      <ConnectBannerIsland />
 
-// ─────────────────────────────────────────────────────────────────────
-// Body
-// ─────────────────────────────────────────────────────────────────────
+      <div className="page">
 
-function RacesBody({ data }: { data: RacesData }) {
-  return (
-    <>
-      {/* ROW 1 — A-RACE hero (8) + LATEST RESULT recap (4) */}
-      <Row>
-        <ARaceHeroCard data={data} />
-        <LatestRecapCard data={data} />
-      </Row>
-
-      {/* ROW 2 — 2026 SEASON full-width timeline */}
-      <Row>
-        <SeasonTimelineCard data={data} />
-      </Row>
-
-      {/* ROW 3 — UPCOMING (6) + RESULTS (6) */}
-      <Row>
-        <UpcomingListCard data={data} />
-        <ResultsListCard data={data} />
-      </Row>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// A-RACE hero (race wash, gradient · race-imminent feel)
-// ─────────────────────────────────────────────────────────────────────
-
-function ARaceHeroCard({ data }: { data: RacesData }) {
-  const hero = data.aRaceHero;
-
-  if (!hero) {
-    return (
-      <Card span={8} padding="32px 36px" wash="race" style={{ minHeight: 380 }}>
-        <CardHeader>
-          <CardLabel color="var(--race)">GOAL · A-RACE</CardLabel>
-          <CardPin variant="muted">NO A-RACE SET</CardPin>
-        </CardHeader>
-        <div className="t-display" style={{ marginTop: 14, textTransform: 'uppercase', fontSize: 56 }}>
-          Pick your<br />goal race
-        </div>
-        <div className="t-body" style={{ color: 'var(--t1)', marginTop: 8, maxWidth: 540 }}>
-          Add an A-race to anchor the macrocycle. The Coach builds every
-          workout toward the date you set.
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 18 }}>
-          <Link href="/races/new" className="btn-flat btn-primary">+ ADD RACE</Link>
-        </div>
-      </Card>
-    );
-  }
-
-  // Pace toward — color-code by confidence.
-  const headroomColor = hero.headroomSPerMi >= 10
-    ? 'var(--good)'
-    : hero.headroomSPerMi >= 0
-    ? 'var(--milestone)'
-    : 'var(--warn)';
-  const headroomSign = hero.headroomSPerMi >= 0 ? '+' : '−';
-
-  return (
-    <Card
-      span={8}
-      wash="race"
-      padding="32px 36px"
-      style={{ minHeight: 380 }}
-    >
-      <CardHeader>
-        <div
-          style={{
-            fontFamily: 'var(--f-data)',
-            fontSize: 11,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-            color: 'var(--race)',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <span
-            style={{
-              width: 9,
-              height: 9,
-              borderRadius: '50%',
-              background: 'var(--race)',
-              boxShadow: '0 0 0 3px rgba(255,87,34,.22)',
-            }}
-          />
-          GOAL · A-RACE
-        </div>
-        <CardPin variant="race">{hero.daysToRace} DAYS</CardPin>
-      </CardHeader>
-
-      <h2
-        className="t-display"
-        style={{
-          textTransform: 'uppercase',
-          marginTop: 14,
-          color: 'var(--t0)',
-          fontSize: 64,
-        }}
-      >
-        {hero.name}
-      </h2>
-
-      <div
-        style={{
-          fontFamily: 'var(--f-data)',
-          fontSize: 11,
-          letterSpacing: '.12em',
-          color: 'var(--t1)',
-          fontWeight: 500,
-          textTransform: 'uppercase',
-          marginTop: 14,
-        }}
-      >
-        {hero.longDateLine}
-      </div>
-
-      {/* Quad — GOAL / FITNESS / HEADROOM / BUILD STARTS */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 20,
-          paddingTop: 20,
-          marginTop: 20,
-          borderTop: '1px solid var(--l4)',
-        }}
-      >
-        <HeroStat
-          label="GOAL TIME"
-          value={hero.goalTime}
-          valueColor="var(--race)"
-          sub={hero.goalPace}
-        />
-        <HeroStat
-          label="FITNESS PREDICTS"
-          value={hero.fitnessPredicts}
-          valueColor="var(--good)"
-          sub={`${hero.fitnessPace} · ${hero.vdotLabel ?? 'NO VDOT YET'}`}
-        />
-        <HeroStat
-          label="HEADROOM"
-          value={`${headroomSign}${Math.abs(Math.round(hero.headroomSPerMi))}`}
-          valueColor={headroomColor}
-          unit="s/mi"
-          sub={`CONFIDENCE ${hero.confidenceLabel}`}
-        />
-        <HeroStat
-          label="BUILD STARTS"
-          value={hero.buildStartsInDays > 0 ? String(hero.buildStartsInDays) : 'NOW'}
-          unit={hero.buildStartsInDays > 0 ? 'd' : ''}
-          sub={hero.buildStartsInDays > 0 ? `${hero.buildStartsDateLabel} · BASE PHASE` : 'IN BUILD PHASE'}
-        />
-      </div>
-
-      {/* UP NEXT B-race inset · only renders when a sooner B-race exists */}
-      {hero.upNext && (
-        <div
-          style={{
-            marginTop: 18,
-            padding: '12px 14px',
-            background: 'rgba(255,87,34,.06)',
-            border: '1px solid rgba(255,87,34,.30)',
-            borderLeft: '3px solid var(--race)',
-            borderRadius: 8,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <div
-              style={{
-                fontFamily: 'var(--f-data)',
-                fontSize: 10,
-                letterSpacing: '.12em',
-                color: 'var(--race)',
-                fontWeight: 500,
-                textTransform: 'uppercase',
-              }}
-            >
-              ▶ UP NEXT · B-RACE · SOONER
+        {/* ── COACH STRIP ── */}
+        <div className="coach-strip">
+          <div className="coach-left">
+            <div className="coach-label">
+              <span className="dot-green"></span>
+              COACH · RACE CALENDAR · WHAT&apos;S NEXT
             </div>
-            <div className="t-eyebrow" style={{ color: 'var(--t3)' }}>
-              {hero.upNext.shortDate}
-            </div>
+            <p className="coach-briefing">
+              {aRace ? (
+                <>
+                  <strong>{aRace.name} is {aRace.daysAway} days out</strong> — your A-race for this cycle and the only one that counts on the fitness ledger. You&apos;re in week 1 of 14, banking base miles. First half-pace work lands at week 5 — that&apos;s where the <strong>{aRace.goal} starts to feel real</strong>. No tune-up B-race on the calendar yet; we&apos;ll slot one around week 10 if you want a dress rehearsal.
+                </>
+              ) : (
+                <>No upcoming races yet. Add your A-race in onboarding or from this page to start the race-pointed plan.</>
+              )}
+            </p>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              gap: 10,
-              marginTop: 6,
-            }}
-          >
-            <div
-              style={{
-                fontFamily: 'var(--f-display)',
-                fontWeight: 600,
-                fontSize: 22,
-                letterSpacing: '-.02em',
-                lineHeight: 1,
-                textTransform: 'uppercase',
-              }}
-            >
-              {hero.upNext.name} · {hero.upNext.tuneupTag}
+
+          <div className="vdot-anchor-card">
+            <div className="vdot-anchor-label">Your VDOT</div>
+            <div className="vdot-anchor-row">
+              <span className="vdot-anchor-num">{isLegacy ? '48.1' : '—'}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span
-                style={{
-                  fontFamily: 'var(--f-display)',
-                  fontWeight: 700,
-                  fontSize: 30,
-                  letterSpacing: '-.02em',
-                  lineHeight: 1,
-                  color: 'var(--race)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {hero.upNext.daysToRace}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--f-data)',
-                  fontSize: 10,
-                  letterSpacing: '1.4px',
-                  color: 'var(--race)',
-                  fontWeight: 700,
-                }}
-              >
-                D
+            <div className="vdot-anchor-fresh">
+              <span className="vdot-anchor-fresh-dot"></span>
+              <span className="vdot-anchor-fresh-text">
+                {isLegacy ? <><strong>Fresh</strong> · 26d to refresh</> : 'Log a race to set'}
               </span>
             </div>
           </div>
         </div>
-      )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 18 }}>
-        <Link href={`/races/${hero.slug}`} className="btn-flat btn-primary">
-          ▶ OPEN RACE PLAN
-        </Link>
-        <Link href={`/races/${hero.slug}`} className="btn-flat btn-secondary">
-          EDIT GOAL
-        </Link>
-      </div>
-    </Card>
-  );
-}
+        {/* ── A-RACE HERO ── */}
+        {aRace && (
+          <div className="a-race-card">
+            <div className="a-race-left">
+              <div className="a-race-eyebrow">A-RACE · GOAL TIME {aRace.goal}</div>
+              <div className="a-race-title">AFC<br />HALF</div>
+              <div className="a-race-sub">{aRace.name} · {aRace.date.replace(', 2026', '')}</div>
+              <p className="a-race-explainer">
+                The full 14-week plan points here. Goal of <strong>{aRace.goal}</strong> is at 7:15/mi —
+                about 8 seconds per mile faster than your current threshold pace. Closeable with
+                disciplined work.
+              </p>
 
-function HeroStat({
-  label,
-  value,
-  valueColor,
-  unit,
-  sub,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  unit?: string;
-  sub: string;
-}) {
-  return (
-    <div>
-      <div className="t-eyebrow">{label}</div>
-      <div
-        className="t-section"
-        style={{
-          color: valueColor,
-          marginTop: 6,
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {value}
-        {unit && (
-          <small
-            style={{
-              fontSize: '.32em',
-              fontWeight: 700,
-              opacity: 0.6,
-              marginLeft: 6,
-            }}
-          >
-            {unit}
-          </small>
-        )}
-      </div>
-      <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 5 }}>
-        {sub}
-      </div>
-    </div>
-  );
-}
+              <div className="path-stats">
+                <div className="path-stat">
+                  <div className="path-stat-label">Current Fitness</div>
+                  <div className="path-stat-value">1:36:42</div>
+                  <div className="path-stat-sub">VDOT 48.1 · Riegel to 13.1</div>
+                </div>
+                <div className="path-stat">
+                  <div className="path-stat-label">Gap to Goal</div>
+                  <div className="path-stat-value orange">−8<span style={{ fontSize: 18, color: 'var(--t2)', marginLeft: 6 }}>s/mi</span></div>
+                  <div className="path-stat-sub">≈ 1:42 over the half</div>
+                </div>
+                <div className="path-stat">
+                  <div className="path-stat-label">Feasibility</div>
+                  <div className="path-stat-value green">On track</div>
+                  <div className="path-stat-sub">~0.5 VDOT/wk closes it</div>
+                </div>
+              </div>
+            </div>
 
-// ─────────────────────────────────────────────────────────────────────
-// LATEST RESULT recap (right column of row 1)
-// ─────────────────────────────────────────────────────────────────────
+            <div className="a-race-right">
+              <div>
+                <div className="path-section-label">Path to the Line</div>
+                <div className="path-progress">
+                  <div className="path-progress-bar">
+                    <div className="path-progress-fill" style={{ width: '7%' }}></div>
+                  </div>
+                  <div className="path-progress-meta">
+                    <span><strong>Week 1</strong> of 14 · Base phase</span>
+                    <span>7%</span>
+                  </div>
+                </div>
 
-function LatestRecapCard({ data }: { data: RacesData }) {
-  const recap = data.latestRecap;
+                <div style={{ marginTop: 28 }}>
+                  <div className="path-section-label">Coach&apos;s Next Move</div>
+                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, lineHeight: 1.55 }}>
+                    Build the aerobic base for four weeks. First real threshold dose lands in
+                    <strong> 24 days</strong> when the Build phase opens. That&apos;s where the half-marathon
+                    pace starts to feel sustainable.
+                  </p>
+                </div>
+              </div>
 
-  if (!recap) {
-    return (
-      <Card span={4}>
-        <CardHeader>
-          <CardLabel>LATEST RESULT</CardLabel>
-          <CardPin variant="muted">—</CardPin>
-        </CardHeader>
-        <EmptyState
-          title="No race results yet"
-          body="When you finish your first race, the recap surfaces here with the Coach Read, splits, conditions, and HR breakdown."
-        />
-      </Card>
-    );
-  }
-
-  return (
-    <Card span={4} style={{ display: 'flex', flexDirection: 'column' }}>
-      <CardHeader>
-        <CardLabel>LATEST RESULT · {recap.daysAgo} DAYS AGO</CardLabel>
-        {recap.pinLabel && (
-          <CardPin variant={recap.pinVariant}>{recap.pinLabel}</CardPin>
-        )}
-      </CardHeader>
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          fontSize: 32,
-          letterSpacing: '-.02em',
-          lineHeight: 1,
-          textTransform: 'uppercase',
-          marginTop: 6,
-        }}
-      >
-        {recap.name}
-      </div>
-      <div className="t-eyebrow" style={{ marginTop: 6 }}>
-        {recap.shortDate} · {recap.distanceLabel}
-      </div>
-
-      {/* Finish + Avg pace */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 10,
-          paddingTop: 14,
-          marginTop: 14,
-          borderTop: '1px solid var(--l4)',
-        }}
-      >
-        <div>
-          <div className="t-eyebrow">FINISH</div>
-          <div className="t-section" style={{ color: recap.isPR ? 'var(--good)' : 'var(--t0)', marginTop: 6 }}>
-            {recap.finishDisplay}
+              <p className="coach-take">
+                <strong>Trust the easy.</strong> The race is won in the workouts you didn&apos;t try to win.
+              </p>
+            </div>
           </div>
-          <div
-            className="t-eyebrow"
-            style={{
-              color: recap.isPR ? 'var(--good)' : 'var(--t2)',
-              marginTop: 5,
-            }}
-          >
-            {recap.prLabel}
+        )}
+
+        {/* ── UPCOMING RACES TIMELINE ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Upcoming Races</div>
+            </div>
+          </div>
+
+          <div className="races-timeline">
+            <div className="races-timeline-track-area">
+              <div className="races-timeline-track-line"></div>
+              {upcoming.length === 0 ? (
+                <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+                  No upcoming races on the calendar.
+                </div>
+              ) : (
+                upcoming.map((race, i) => {
+                  const maxDays = Math.max(...upcoming.map((r) => r.daysAway));
+                  const pos = (race.daysAway / maxDays) * 100;
+                  const above = i % 2 === 0;
+                  return (
+                    <div key={race.name} className={`race-station ${above ? 'above' : 'below'} ${race.priority === 'A' ? 'a-race' : race.priority === 'B' ? 'b-race' : 'c-race'}`} style={{ left: `${pos}%` }}>
+                      <div className="race-station-dot"></div>
+                      <div className="race-station-label">
+                        <div className="race-station-priority">{race.priority}</div>
+                        <div className="race-station-name">{race.name}</div>
+                        <div className="race-station-meta">{race.date}</div>
+                        <div className="race-station-meta">{race.distanceLabel}</div>
+                        <div className="race-station-meta">Goal: {race.goal} · {race.daysAway}d away</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div className="t-eyebrow">AVG PACE</div>
-          <div className="t-section" style={{ marginTop: 6 }}>
-            {recap.paceDisplay}
-            <small style={{ fontSize: '.32em', fontWeight: 700, opacity: 0.55, marginLeft: 6 }}>
-              /mi
-            </small>
+
+        {/* ── RECENT RACES ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Recent Races</div>
+            </div>
           </div>
-          {recap.splitLabel && (
-            <div
-              className="t-eyebrow"
-              style={{
-                color: recap.splitNegative ? 'var(--good)' : 'var(--warn)',
-                marginTop: 5,
-              }}
-            >
-              {recap.splitNegative ? '▼' : '▲'} {recap.splitLabel}
+
+          {recent.length === 0 ? (
+            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              No past races logged. Add a recent race finish to seed your VDOT anchor.
+            </div>
+          ) : (
+            <div>
+              {recent.map((r) => (
+                <div key={`${r.date}-${r.name}`} className={`recent-row ${r.currentAnchor ? 'current-anchor' : ''}`}>
+                  <div className="recent-date">{r.date.slice(5).replace('-', '/')}</div>
+                  <span className={`recent-priority ${r.priority === 'A' ? 'a-race' : r.priority === 'B' ? 'b-race' : 'c-race'}`}>{r.priority}</span>
+                  <div>
+                    <div className="recent-name">{r.name}</div>
+                    <div className="recent-meta">{r.distanceLabel}{r.note ? ` · ${r.note}` : ''}</div>
+                  </div>
+                  <div className="recent-time">{r.finish}</div>
+                  <div className="recent-pace">{r.pace}</div>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Coach Read · synthesized until Stage R lands */}
-      <div
-        style={{
-          marginTop: 14,
-          padding: '12px 14px',
-          background: 'var(--l2)',
-          borderRadius: 8,
-        }}
-      >
-        <div className="t-eyebrow">COACH READ</div>
-        <div className="t-body" style={{ color: 'var(--t1)', marginTop: 4 }}>
-          {recap.coachRead}
-        </div>
-      </div>
-
-      {/* 3-tile stat strip — Place / Conditions / Avg HR. Each tile
-          conditionally renders; absent data → tile drops out rather than
-          showing a fake placeholder. */}
-      <RecapStats recap={recap} />
-
-      <CardFoot
-        left={<Link href={`/races/${recap.slug}`} style={{ color: 'inherit' }}>SEE FULL RECAP →</Link>}
-        right={
-          recap.isPR ? (
-            <span className="delta up">▲ AEROBIC PROVEN</span>
-          ) : recap.pinLabel === 'BEAT' ? (
-            <span className="delta up">▲ GOAL BEAT</span>
-          ) : null
-        }
-      />
-    </Card>
-  );
-}
-
-function RecapStats({ recap }: { recap: NonNullable<RacesData['latestRecap']> }) {
-  // Count how many tiles will render so we can pick the grid column count.
-  const tiles: Array<React.ReactNode> = [];
-
-  if (recap.place) {
-    tiles.push(
-      <div
-        key="place"
-        style={{
-          padding: '10px 12px',
-          background: 'var(--l2)',
-          borderRadius: 6,
-        }}
-      >
-        <div className="t-eyebrow">PLACE</div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 20,
-            fontWeight: 700,
-            letterSpacing: '-.01em',
-            lineHeight: 1,
-            marginTop: 4,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {recap.place}
-        </div>
-        {recap.placeSub && (
-          <div className="t-eyebrow" style={{ color: 'var(--good)', marginTop: 3 }}>
-            {recap.placeSub}
+        {/* ── PRs ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Personal Records</div>
+              <div className="card-sub">Per distance · current anchor highlighted</div>
+            </div>
           </div>
-        )}
-      </div>,
-    );
-  }
 
-  if (recap.conditions) {
-    tiles.push(
-      <div
-        key="conditions"
-        style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6 }}
-      >
-        <div className="t-eyebrow">CONDITIONS</div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 20,
-            fontWeight: 700,
-            letterSpacing: '-.01em',
-            lineHeight: 1,
-            marginTop: 4,
-          }}
-        >
-          {recap.conditions.value}
-          <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 3 }}>
-            {recap.conditions.unit}
-          </small>
+          <div className="pr-grid">
+            {PRs.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+                No PRs yet — log past races to populate.
+              </div>
+            ) : (
+              PRs.map((pr) => (
+                <div key={pr.distance} className={`pr-card ${pr.current ? 'current' : ''}`}>
+                  <div className="pr-distance">{pr.distance}</div>
+                  <div className="pr-time">{pr.time}</div>
+                  <div className="pr-when">{pr.when}</div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-        <div className="t-eyebrow" style={{ color: 'var(--t2)', marginTop: 3 }}>
-          {recap.conditions.sub}
-        </div>
-      </div>,
-    );
-  }
 
-  if (recap.avgHr) {
-    tiles.push(
-      <div
-        key="hr"
-        style={{ padding: '10px 12px', background: 'var(--l2)', borderRadius: 6 }}
-      >
-        <div className="t-eyebrow">AVG HR</div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 20,
-            fontWeight: 700,
-            letterSpacing: '-.01em',
-            lineHeight: 1,
-            marginTop: 4,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {recap.avgHr.value}
-          <small style={{ fontSize: '.4em', opacity: 0.55, fontWeight: 700, marginLeft: 3 }}>
-            BPM
-          </small>
-        </div>
-        <div className="t-eyebrow" style={{ color: 'var(--corp)', marginTop: 3 }}>
-          {recap.avgHr.pctMax}% MAX · {recap.avgHr.zone}
-        </div>
-      </div>,
-    );
-  }
-
-  if (tiles.length === 0) return null;
-
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${tiles.length}, 1fr)`,
-        gap: 8,
-        marginTop: 14,
-      }}
-    >
-      {tiles}
+      </div>
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// SEASON timeline (full-width)
-// ─────────────────────────────────────────────────────────────────────
-
-function SeasonTimelineCard({ data }: { data: RacesData }) {
-  const s = data.season;
-  const todayPct = s.todayPct;
-
-  // Past portion gradient (from year-start up to today).
-  const pastWidthPct = todayPct;
-
-  return (
-    <Card span={12} padding="22px 26px">
-      <CardHeader>
-        <div>
-          <CardLabel>{s.year} SEASON · 12 MONTHS</CardLabel>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: 24,
-              fontWeight: 600,
-              letterSpacing: '-.02em',
-              lineHeight: 1,
-              marginTop: 4,
-              textTransform: 'uppercase',
-            }}
-          >
-            {s.summary.countRun} races run · {s.summary.countAhead} ahead · {s.summary.countA} A-race target
-            {s.summary.countA === 1 ? '' : 's'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {s.summary.countA > 0 && (
-            <CardPin variant="race">{s.summary.countA}A</CardPin>
-          )}
-          {s.summary.countB > 0 && (
-            <CardPin variant="blue">{s.summary.countB}B</CardPin>
-          )}
-          {s.summary.countC > 0 && (
-            <CardPin variant="muted">{s.summary.countC}C</CardPin>
-          )}
-        </div>
-      </CardHeader>
-
-      {/* Timeline track with race dots above + month labels below.
-          Bottom padding leaves space for two rows of labels when close
-          race pairs get staggered to avoid horizontal overlap. */}
-      <div
-        style={{
-          position: 'relative',
-          marginTop: 28,
-          padding: '48px 0 170px',
-        }}
-      >
-        {/* TODAY marker above the track */}
-        <div
-          style={{
-            position: 'absolute',
-            left: `${todayPct}%`,
-            top: 8,
-            fontFamily: 'var(--f-data)',
-            fontSize: 10,
-            letterSpacing: '.12em',
-            color: 'var(--att)',
-            fontWeight: 600,
-            transform: 'translateX(-50%)',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          ▼ TODAY · {s.todayShort}
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            left: `${todayPct}%`,
-            top: 26,
-            height: 30,
-            width: 2,
-            background: 'var(--att)',
-          }}
-        />
-
-        {/* Track baseline */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 60,
-            height: 4,
-            background: 'var(--l3)',
-            borderRadius: 2,
-          }}
-        />
-        {/* Past portion gradient */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            width: `${pastWidthPct}%`,
-            top: 60,
-            height: 4,
-            background: 'linear-gradient(90deg, rgba(0,143,236,.45), rgba(0,143,236,.7))',
-            borderRadius: 2,
-          }}
-        />
-
-        {/* Race markers · only stagger a label DOWN when its dot is
-            within ~4% of the timeline (roughly half a month) of the
-            previous one's, so far-apart markers stay on the close row
-            and close pairs split between two rows. */}
-        {(() => {
-          const sorted = [...s.markers].sort((a, b) => a.pct - b.pct);
-          const COLLISION_PCT = 4;
-          const tier = new Map<string, number>();
-          let lastPct: number | null = null;
-          let lastTier = 0;
-          for (const m of sorted) {
-            const close = lastPct != null && (m.pct - lastPct) < COLLISION_PCT;
-            const t = close ? (lastTier === 0 ? 1 : 0) : 0;
-            tier.set(m.slug, t);
-            lastPct = m.pct;
-            lastTier = t;
-          }
-          return s.markers.map((m) => (
-            <SeasonMarkerDot key={m.slug} marker={m} stagger={tier.get(m.slug) ?? 0} />
-          ));
-        })()}
-      </div>
-
-      {/* Months strip */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(12, 1fr)',
-          gap: 0,
-          fontFamily: 'var(--f-data)',
-          fontSize: 10,
-          letterSpacing: '.12em',
-          color: 'var(--t3)',
-          fontWeight: 500,
-          marginTop: 8,
-          textTransform: 'uppercase',
-          borderTop: '1px solid var(--l4)',
-          paddingTop: 10,
-        }}
-      >
-        {MONTHS_SHORT.map((mShort, idx) => (
-          <span
-            key={mShort}
-            style={{
-              textAlign: 'center',
-              color: monthHighlight(idx, s),
-            }}
-          >
-            {mShort}
-            {monthHasStar(idx, s) && ' ★'}
-          </span>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-
-function monthHighlight(monthIdx: number, season: RacesData['season']): string {
-  // If TODAY falls in this month, highlight amber.
-  const todayMonthIdx = Math.floor((season.todayPct / 100) * 12);
-  if (todayMonthIdx === monthIdx) return 'var(--att)';
-  // If there's a PR-anchor race in this month, green-tint.
-  const hasPR = season.markers.some((m) => {
-    const monthOfMarker = Math.floor((m.pct / 100) * 12);
-    return monthOfMarker === monthIdx && m.tone === 'pr';
-  });
-  if (hasPR) return 'var(--good)';
-  // If the A-race is in this month, race-orange.
-  const hasA = season.markers.some((m) => {
-    const monthOfMarker = Math.floor((m.pct / 100) * 12);
-    return monthOfMarker === monthIdx && m.tone === 'upcoming-a';
-  });
-  if (hasA) return 'var(--race)';
-  return 'var(--t3)';
-}
-
-function monthHasStar(monthIdx: number, season: RacesData['season']): boolean {
-  return season.markers.some((m) => {
-    const monthOfMarker = Math.floor((m.pct / 100) * 12);
-    return monthOfMarker === monthIdx && m.tone === 'pr';
-  });
-}
-
-/**
- * Abbreviate long race names for the timeline. Full name → short form that
- * fits the column. Hits common race-name patterns; falls back to first-3-words.
- */
-function shortRaceName(name: string): string {
-  const map: Record<string, string> = {
-    'Americas Finest City Half': 'AFC HALF',
-    'Mission Bay 10K': 'MISSION BAY',
-    'Big Sur Marathon': 'BIG SUR',
-    'Sombrero Half Marathon': 'SOMBRERO HALF',
-    'Surf City 10K': 'SURF CITY',
-    'Disney Princess Half': 'DISNEY HALF',
-    'Disney 5K': 'DISNEY 5K',
-  };
-  if (map[name]) return map[name];
-  // Generic fallback: drop "Marathon" / "Half" / "Half Marathon" suffixes
-  // and cap at 14 chars so blocks stay uniform.
-  const stripped = name
-    .replace(/\s+(Half\s+Marathon|Marathon|Half|10K|5K)$/i, '')
-    .toUpperCase();
-  return stripped.length > 14 ? stripped.slice(0, 13) + '…' : stripped;
-}
-
-function SeasonMarkerDot({ marker, stagger = 0 }: { marker: SeasonMarker; stagger?: number }) {
-  const sizeMap: Record<SeasonMarker['tone'], number> = {
-    pr: 14,
-    past: 10,
-    'upcoming-a': 22,
-    'upcoming-b': 12,
-    'upcoming-c': 10,
-    today: 12,
-  };
-  const colorMap: Record<SeasonMarker['tone'], string> = {
-    pr: 'var(--good)',
-    past: 'var(--corp)',
-    'upcoming-a': 'var(--race)',
-    'upcoming-b': 'var(--corp)',
-    'upcoming-c': 'var(--t3)',
-    today: 'var(--att)',
-  };
-  const size = sizeMap[marker.tone];
-  const color = colorMap[marker.tone];
-  const isUpcoming = marker.tone.startsWith('upcoming');
-  const isA = marker.tone === 'upcoming-a';
-  const isPR = marker.tone === 'pr';
-
-  const dotTop = 60 - Math.floor(size / 2) + 2;
-  // Labels live below the timeline track. When a marker is flagged as
-  // colliding with the previous one (stagger=1), drop the label to a
-  // second row so the two name/date stacks don't overlap horizontally.
-  // Block has fixed width (90px) so long names don't push their column
-  // wider than short ones.
-  const ROW_GAP = 56;
-  const LABEL_TOP = 82 + (stagger ? ROW_GAP : 0);
-  const BLOCK_W = 90;
-
-  return (
-    <>
-      <div
-        style={{
-          position: 'absolute',
-          left: `${marker.pct}%`,
-          top: dotTop,
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          background: isUpcoming ? 'transparent' : color,
-          border: isUpcoming
-            ? `2px dashed ${color}`
-            : `${isA ? 3 : 2}px solid var(--l1)`,
-          transform: 'translateX(-50%)',
-          boxShadow: isA
-            ? '0 0 18px rgba(255,87,34,.65)'
-            : isPR
-            ? '0 0 8px rgba(62,189,65,.45)'
-            : 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left: `${marker.pct}%`,
-          top: LABEL_TOP,
-          transform: 'translateX(-50%)',
-          width: BLOCK_W,
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Line 1 · race name (abbreviated to fit) */}
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 11,
-            fontWeight: isA ? 700 : 600,
-            letterSpacing: '-.005em',
-            textTransform: 'uppercase',
-            color,
-            lineHeight: 1.15,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {shortRaceName(marker.name)}{isPR ? ' ★' : ''}
-        </div>
-        {/* Line 2 · date · always present, mono */}
-        <div
-          style={{
-            fontFamily: 'var(--f-data)',
-            fontSize: 8.5,
-            letterSpacing: '.4px',
-            color: 'var(--t3)',
-            fontWeight: 700,
-            marginTop: 3,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {marker.shortDate}
-        </div>
-        {/* Line 3 · result or goal · always present (use em dash for empty) */}
-        <div
-          style={{
-            fontFamily: 'var(--f-data)',
-            fontSize: 9,
-            color,
-            fontWeight: 700,
-            marginTop: 2,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {marker.caption || '—'}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// UPCOMING list
-// ─────────────────────────────────────────────────────────────────────
-
-function UpcomingListCard({ data }: { data: RacesData }) {
-  const list = data.races.upcoming;
-  const rangeLabel = upcomingRangeLabel(list);
-
-  if (list.length === 0) {
-    return (
-      <Card span={6}>
-        <CardHeader>
-          <CardLabel>UPCOMING</CardLabel>
-          <CardPin variant="muted">NONE</CardPin>
-        </CardHeader>
-        <div className="t-body" style={{ color: 'var(--t1)', marginTop: 10 }}>
-          No upcoming races. Add one to anchor the macrocycle.
-        </div>
-        <div style={{ marginTop: 18 }}>
-          <Link href="/races/new" className="btn-flat btn-primary">+ ADD RACE</Link>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card span={6}>
-      <CardHeader>
-        <CardLabel>UPCOMING · {list.length} RACE{list.length === 1 ? '' : 'S'}</CardLabel>
-        {rangeLabel && <CardPin variant="amber">{rangeLabel}</CardPin>}
-      </CardHeader>
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
-        {list.map((r, i) => (
-          <UpcomingRow key={r.slug} race={r} data={data} isFirst={i === 0} isLast={i === list.length - 1} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function UpcomingRow({ race, data, isLast }: { race: SavedRace; data: RacesData; isFirst?: boolean; isLast?: boolean }) {
-  const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
-  const daysToRace = data.predictions.get(race.slug)?.daysToRace
-    ?? Math.max(0, Math.round((Date.parse(race.meta.date + 'T12:00:00Z') - Date.parse(data.today + 'T12:00:00Z')) / 86_400_000));
-  const isA = priority === 'A';
-  const isB = priority === 'B';
-
-  const railColor = isA ? 'var(--race)' : isB ? 'var(--corp)' : 'var(--t3)';
-  const letterColor = railColor;
-  const dayColor = isA ? 'var(--race)' : 'var(--t3)';
-  const distLabel = distanceLabelForRow(race.meta.distanceMi);
-
-  const subline = buildUpcomingSubline(race, daysToRace, priority);
-  const dayLabel = dayOfWeekShort(race.meta.date) + (isWeekend(race.meta.date) ? ' AM' : '');
-
-  return (
-    <>
-      <Link
-        href={`/races/${race.slug}`}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '48px 1fr auto',
-          gap: 14,
-          padding: '14px 16px',
-          // Subtle wash only on the A-race row · others use the card surface
-          // so the list reads as one cohesive block with priority accents on
-          // the left rail instead of floating chiclets.
-          background: isA
-            ? 'linear-gradient(90deg, rgba(255,87,34,.10), transparent 70%)'
-            : 'transparent',
-          borderLeft: `${isA ? 4 : 3}px solid ${railColor}`,
-          // Divider between rows (not on the last row)
-          borderBottom: isLast ? 'none' : '1px solid var(--l4)',
-          alignItems: 'center',
-          textDecoration: 'none',
-          color: 'inherit',
-        }}
-      >
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: isA ? 36 : 32,
-            fontWeight: 700,
-            color: letterColor,
-            lineHeight: 1,
-          }}
-        >
-          {priority}
-        </div>
-        <div>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: isA ? 20 : 18,
-              fontWeight: isA ? 700 : 600,
-              textTransform: 'uppercase',
-              letterSpacing: '-.005em',
-            }}
-          >
-            {race.meta.name}
-          </div>
-          <div
-            className="mono-sm"
-            style={{
-              marginTop: 3,
-              color: 'var(--t2)',
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '.12em',
-              textTransform: 'uppercase',
-            }}
-          >
-            {formatShortDate(race.meta.date)} · {distLabel} · {subline}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontSize: isA ? 28 : 24,
-              fontWeight: 700,
-              lineHeight: 1,
-              color: isA ? 'var(--race)' : 'var(--t0)',
-            }}
-          >
-            {daysToRace}
-            <small style={{ fontSize: '.42em', color: isA ? 'var(--race)' : 'var(--t3)' }}>d</small>
-          </div>
-          <div
-            className="mono-sm"
-            style={{
-              fontSize: 8.5,
-              color: dayColor,
-              marginTop: 3,
-              fontWeight: 700,
-              letterSpacing: '.12em',
-              textTransform: 'uppercase',
-            }}
-          >
-            {dayLabel}
-          </div>
-        </div>
-      </Link>
-    </>
-  );
-}
-
-function buildUpcomingSubline(
-  race: SavedRace,
-  daysToRace: number,
-  priority: 'A' | 'B' | 'C',
-): string {
-  // Goal/role line — surface goal for A & B; for C we surface "WORKOUT EFFORT".
-  if (priority === 'A') {
-    return `GOAL ${race.meta.goalDisplay} · PEAK`;
-  }
-  if (priority === 'B') {
-    return 'TUNE-UP';
-  }
-  return daysToRace < 60 ? 'WORKOUT EFFORT' : 'C-EFFORT';
-}
-
-function synthesizeContextLine(race: SavedRace, data: RacesData): string | null {
-  // TODO: wire to Coach.trajectory14wk + plan_templates.ts phase boundaries.
-  // For now we surface a heuristic: days-to-race + assumed phase. The A-race
-  // gets a post-race recovery + reverse-taper hint; B-races get a build-block
-  // hint; C-races get nothing.
-  const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
-  const daysToRace = Math.round(
-    (Date.parse(race.meta.date + 'T12:00:00Z') - Date.parse(data.today + 'T12:00:00Z')) / 86_400_000,
-  );
-  if (priority === 'A') {
-    return null; // The A-race hero already explains the build/peak/taper.
-  }
-  if (priority === 'B') {
-    if (daysToRace < 30) return `${daysToRace} days of build · base→build phase transition`;
-    if (daysToRace < 60) return `${daysToRace} days of build · peak block`;
-    return `${daysToRace} days of build`;
-  }
-  return null;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// 2026 RESULTS list
-// ─────────────────────────────────────────────────────────────────────
-
-function ResultsListCard({ data }: { data: RacesData }) {
-  // Filter to current-year past races; mirror the mockup's "5 races" panel.
-  const year = data.season.year;
-  const inYear = data.races.past.filter((r) =>
-    r.meta.date.startsWith(String(year)),
-  );
-  const prCount = inYear.filter((r) => r.actualResult?.isPR).length;
-
-  if (inYear.length === 0) {
-    return (
-      <Card span={6}>
-        <CardHeader>
-          <CardLabel>{year} RESULTS</CardLabel>
-          <CardPin variant="muted">NONE</CardPin>
-        </CardHeader>
-        <EmptyState
-          title={`No ${year} results`}
-          body="Once you finish a race this year, the results land here with pace, HR, and PR detection."
-        />
-      </Card>
-    );
-  }
-
-  return (
-    <Card span={6}>
-      <CardHeader>
-        <CardLabel>{year} RESULTS · {inYear.length} RACE{inYear.length === 1 ? '' : 'S'}</CardLabel>
-        {prCount > 0 && (
-          <CardPin variant="green">{prCount} PR{prCount === 1 ? '' : 's'}</CardPin>
-        )}
-      </CardHeader>
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
-        {inYear.map((r, i) => (
-          <ResultRow key={r.slug} race={r} isLast={i === inYear.length - 1} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function ResultRow({ race, isLast }: { race: SavedRace; isLast?: boolean }) {
-  const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
-  const result = race.actualResult ?? null;
-  const isA = priority === 'A';
-  const isB = priority === 'B';
-  const isPR = !!result?.isPR;
-
-  const railColor = isA ? 'var(--race)' : isB ? 'var(--corp)' : 'var(--t3)';
-  const distLabel = distanceLabelForRow(race.meta.distanceMi);
-  const subline = buildResultSubline(race);
-
-  const finishColor = isPR ? 'var(--good)' : isA ? 'var(--good)' : 'var(--t1)';
-  const finishDisplay = result?.finishDisplay ?? '—';
-  const paceDisplay = result?.paceDisplay ? `${result.paceDisplay}/MI` : '';
-
-  return (
-    <Link
-      href={`/races/${race.slug}`}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '48px 1fr auto',
-        gap: 14,
-        padding: '14px 16px',
-        background: isA
-          ? 'linear-gradient(90deg, rgba(255,87,34,.08), transparent 70%)'
-          : 'transparent',
-        borderLeft: `3px solid ${railColor}`,
-        borderBottom: isLast ? 'none' : '1px solid var(--l4)',
-        alignItems: 'center',
-        textDecoration: 'none',
-        color: 'inherit',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontSize: 32,
-          fontWeight: 700,
-          color: railColor,
-          lineHeight: 1,
-        }}
-      >
-        {priority}
-      </div>
-      <div>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 18,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '-.005em',
-          }}
-        >
-          {race.meta.name}
-        </div>
-        <div
-          className="mono-sm"
-          style={{
-            marginTop: 3,
-            color: 'var(--t2)',
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {formatShortDate(race.meta.date)} · {distLabel} · {subline}
-        </div>
-      </div>
-      <div style={{ textAlign: 'right' }}>
-        <div
-          style={{
-            fontFamily: 'var(--f-display)',
-            fontSize: 22,
-            fontWeight: 700,
-            lineHeight: 1,
-            color: finishColor,
-          }}
-        >
-          {finishDisplay}
-          {isPR && ' ★'}
-        </div>
-        <div
-          className="mono-sm"
-          style={{
-            fontSize: 8.5,
-            color: isPR ? 'var(--good)' : 'var(--t3)',
-            marginTop: 3,
-            fontWeight: 700,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {isPR ? `PR · ${paceDisplay}` : paceDisplay || 'NO RESULT'}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function buildResultSubline(race: SavedRace): string {
-  // TODO: wire to Coach.coachRead() (Stage R) for race-classification
-  // labels like "SENTIMENTAL EFFORT" / "PR-PURSUIT" / "BIG SUR PREP".
-  // Until then we synthesize from priority + distance + course gain.
-  const priority: 'A' | 'B' | 'C' = race.meta.priority ?? 'A';
-  const gainFt = race.plan?.race?.total_gain_ft ?? 0;
-  if (gainFt >= 2000) return 'HILLY COURSE';
-  if (priority === 'A') return 'A-RACE';
-  if (priority === 'B') return 'TUNE-UP';
-  return 'WORKOUT EFFORT';
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Skeleton fallback
-// ─────────────────────────────────────────────────────────────────────
-
-function RacesSkeleton() {
-  return (
-    <>
-      <Row>
-        <Card span={8} padding="32px 36px" style={{ minHeight: 380 }} wash="race">
-          <Skeleton height={14} width="30%" />
-          <Skeleton height={64} width="60%" />
-          <Skeleton height={14} width="60%" />
-          <Skeleton height={140} />
-        </Card>
-        <Card span={4}>
-          <Skeleton height={14} width="60%" />
-          <Skeleton height={36} width="80%" />
-          <Skeleton height={120} />
-        </Card>
-      </Row>
-      <Row>
-        <Card span={12} padding="22px 26px">
-          <Skeleton height={36} width="40%" />
-          <Skeleton height={140} />
-        </Card>
-      </Row>
-      <Row>
-        <Card span={6}>
-          <Skeleton height={14} width="50%" />
-          <Skeleton height={180} />
-        </Card>
-        <Card span={6}>
-          <Skeleton height={14} width="50%" />
-          <Skeleton height={180} />
-        </Card>
-      </Row>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Display helpers
-// ─────────────────────────────────────────────────────────────────────
-
-function distanceLabelForRow(distanceMi: number): string {
-  if (Math.abs(distanceMi - 3.1) < 0.15) return '5K';
-  if (Math.abs(distanceMi - 6.2) < 0.2) return '10K';
-  if (Math.abs(distanceMi - 13.1) < 0.2) return 'HALF';
-  if (Math.abs(distanceMi - 26.2) < 0.3) return 'MARATHON';
-  if (Math.abs(distanceMi - 31.1) < 0.5) return '50K';
-  return `${distanceMi.toFixed(1)} MI`;
-}
-
-function upcomingRangeLabel(list: SavedRace[]): string {
-  if (list.length === 0) return '';
-  const first = list[0].meta.date;
-  const last = list[list.length - 1].meta.date;
-  if (first === last) return formatShortDate(first);
-  return `${formatShortDate(first)} → ${formatShortDate(last)}`;
-}
-
-function dayOfWeekShort(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  return ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getUTCDay()];
-}
-
-function isWeekend(iso: string): boolean {
-  const d = new Date(iso + 'T12:00:00Z');
-  const dow = d.getUTCDay();
-  return dow === 0 || dow === 6;
-}
-
-function formatTopbarClock(d: Date): React.ReactNode {
-  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()];
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const date = `${months[d.getMonth()]} ${d.getDate()}`;
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const am = h < 12;
-  const dispH = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  const time = `${dispH}:${m.toString().padStart(2, '0')} ${am ? 'AM' : 'PM'}`;
-  return (
-    <>
-      {dow} · {date} · <b>{time}</b>
-    </>
-  );
-}
-
