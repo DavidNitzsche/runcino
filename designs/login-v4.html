@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Sign in</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+.navbar { background: var(--bg); }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
+.nav-back { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); text-decoration: none; letter-spacing: 0.3px; }
+.nav-back:hover { color: var(--t0); }
+
+.auth-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px 80px;
+}
+.auth-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  padding: 48px 48px 40px;
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+
+.auth-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.auth-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px; line-height: 0.95;
+  letter-spacing: -0.5px;
+  color: var(--t0);
+  margin-bottom: 10px;
+}
+.auth-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--t1);
+  line-height: 1.5;
+  margin-bottom: 32px;
+}
+
+.form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.form-row-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.form-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 1.2px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+}
+.form-input {
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  padding: 13px 14px;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent;
+  border-radius: 9px;
+  color: var(--t0);
+  outline: none;
+  transition: border-color .12s, background .12s;
+}
+.form-input:focus {
+  border-color: var(--t1);
+  background: var(--card);
+}
+.form-input::placeholder { color: var(--t3); }
+
+.password-wrap { position: relative; }
+.password-toggle {
+  position: absolute;
+  right: 12px; top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.password-toggle:hover { color: var(--t0); }
+
+.forgot-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 0.3px;
+  color: var(--t1);
+  text-decoration: none;
+}
+.forgot-link:hover { color: var(--t0); text-decoration: underline; text-underline-offset: 2px; }
+
+.remember-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 0 0;
+}
+.remember-checkbox {
+  appearance: none;
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--t3);
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  background: var(--card);
+}
+.remember-checkbox:checked {
+  background: var(--t0);
+  border-color: var(--t0);
+}
+.remember-checkbox:checked::after {
+  content: '✓';
+  color: #fff;
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1;
+}
+.remember-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; color: var(--t1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.btn-submit {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; font-weight: 600;
+  color: #fff;
+  background: var(--t0);
+  border: none;
+  border-radius: 9px;
+  padding: 14px;
+  cursor: pointer;
+  width: 100%;
+  letter-spacing: 0.4px;
+  margin-top: 20px;
+}
+.btn-submit:hover { background: rgba(13,15,18,.85); }
+
+.auth-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 28px 0 24px;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px; letter-spacing: 1.5px;
+  color: var(--t3); text-transform: uppercase;
+  font-weight: 600;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--divider);
+}
+
+.auth-bottom {
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+.auth-bottom a {
+  color: var(--t0);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.auth-bottom a:hover { text-decoration: underline; text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="landing-v4.html">faff.run</a>
+    <a class="nav-back" href="landing-v4.html">← Back home</a>
+  </div>
+</nav>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-eyebrow">Sign in</div>
+    <h1 class="auth-title">Welcome back.</h1>
+    <p class="auth-sub">Pick up where you left off. The coach is ready.</p>
+
+    <form id="login-form" autocomplete="off">
+      <div class="form-row">
+        <label class="form-label" for="login-email">Email</label>
+        <input class="form-input" id="login-email" type="email" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-row-header">
+          <label class="form-label" for="login-password">Password</label>
+          <a class="forgot-link" href="#" onclick="alert('Real flow will send a reset email — design later in /forgot-password-v4.html'); return false;">Forgot?</a>
+        </div>
+        <div class="password-wrap">
+          <input class="form-input" id="login-password" type="password" required>
+          <button type="button" class="password-toggle" onclick="togglePwd('login-password', this)">Show</button>
+        </div>
+      </div>
+
+      <div class="remember-row">
+        <input class="remember-checkbox" id="login-remember" type="checkbox" checked>
+        <label class="remember-label" for="login-remember">Keep me signed in on this device</label>
+      </div>
+
+      <button class="btn-submit" type="submit">Sign in →</button>
+    </form>
+
+    <div class="auth-divider">New here?</div>
+    <div class="auth-bottom">Don't have an account? <a href="signup-v4.html">Sign up — free →</a></div>
+  </div>
+</div>
+
+<script>
+  function togglePwd(id, btn) {
+    const input = document.getElementById(id);
+    const showing = input.type === 'password';
+    input.type = showing ? 'text' : 'password';
+    btn.textContent = showing ? 'Hide' : 'Show';
+  }
+
+  // Mockup submit — drop into the app. Real /web/ port will POST
+  // to /api/auth/login and on success redirect to /overview.
+  document.getElementById('login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    window.location.href = 'overview-v4.html';
+  });
+</script>
+</body>
+</html>
