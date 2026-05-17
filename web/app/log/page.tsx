@@ -48,14 +48,24 @@ import {
   type PrCard,
   type RunRow,
 } from './data';
+import { ConnectBanner } from '@/app/components/v4';
 
 export default function LogPage() {
   const [now, setNow] = useState<Date | null>(null);
   const [data, setData] = useState<LogData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasSource, setHasSource] = useState<boolean | null>(null);
 
   useEffect(() => {
     setNow(new Date());
+  }, []);
+
+  // Connector status — banner only shows when zero activity sources active.
+  useEffect(() => {
+    fetch('/api/connectors').then((r) => r.json()).then((j) => {
+      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
+      setHasSource((j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider)));
+    }).catch(() => setHasSource(false));
   }, []);
 
   useEffect(() => {
@@ -84,6 +94,8 @@ export default function LogPage() {
         activeTab="log"
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
+
+      {hasSource === false && <ConnectBanner />}
 
       <LogGreet data={data} />
 
