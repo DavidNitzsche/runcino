@@ -79,6 +79,10 @@ export interface HeroCardProps {
    *  Renders a small chip near the eyebrow so the runner sees it
    *  without scanning the calendar. */
   hasStrength?: boolean;
+  /** True when today is a rest day — intensity bar swaps to "Rest day ·
+   *  No intensity" copy and hides the gradient bar.
+   *  Source spec: designs/overview-v4.html §intensity-section.rest. */
+  isRest?: boolean;
 }
 
 export function HeroCard(props: HeroCardProps) {
@@ -99,6 +103,7 @@ export function HeroCard(props: HeroCardProps) {
     onSkipToggle,
     skipped: skippedProp,
     hasStrength,
+    isRest,
   } = props;
 
   const [skippedLocal, setSkippedLocal] = useState(false);
@@ -312,7 +317,7 @@ export function HeroCard(props: HeroCardProps) {
           >
             Today&rsquo;s Intensity
           </div>
-          <IntensityBar effortPct={intensityPct} zoneName={intensityZone} note={intensityNote} />
+          <IntensityBar effortPct={intensityPct} zoneName={intensityZone} note={intensityNote} isRest={isRest} />
         </div>
       </div>
     </div>

@@ -28,6 +28,7 @@ import {
   WeekStripCard,
   WorkoutDetailModal,
   ScheduleModal,
+  ConnectBanner,
   type WeekDay,
   type SegmentRow,
   type FitnessSignal,
@@ -50,7 +51,21 @@ export default function OverviewPage() {
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [skipped, setSkipped] = useState<boolean>(false);
 
+  // Has the user connected an activity source (Strava, etc)? Renders
+  // the orange Connect-Strava banner at the top of the page until they
+  // connect at least one. Fetched once on mount.
+  const [hasSource, setHasSource] = useState<boolean | null>(null);
+
   useEffect(() => { setNow(new Date()); }, []);
+
+  // Check connectors on mount — banner only shows if zero connected.
+  useEffect(() => {
+    fetch('/api/connectors').then((r) => r.json()).then((j) => {
+      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
+      const any = (j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider));
+      setHasSource(any);
+    }).catch(() => setHasSource(false));
+  }, []);
 
   useEffect(() => {
     if (!now) return;
@@ -82,6 +97,10 @@ export default function OverviewPage() {
         activeTab="overview"
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
+
+      {/* Connect-Strava banner — shows when user has no activity source.
+          Dismiss is per-page-load; reappears on refresh until connected. */}
+      {hasSource === false && <ConnectBanner />}
 
       {loadError && (
         <EmptyState variant="error" title="Couldn&rsquo;t load Overview" body={loadError} />
@@ -238,6 +257,7 @@ interface HeroProps {
   intensityZone: string;
   intensityNote?: string;
   hasStrength: boolean;
+  isRest: boolean;
 }
 
 interface HeroStatPills {
@@ -293,6 +313,11 @@ function composeHero(data: OverviewData): HeroProps {
   // as the italic note under the intensity bar.
   const intensityNote = workout.voiceLead || undefined;
 
+  // Rest-day detection: the planned workout for today is a rest (or no
+  // workout at all). When true, IntensityBar swaps to "Rest day · No
+  // intensity" copy and hides the gradient bar entirely.
+  const isRest = isRestDayLabel(planToday?.type) || isRestDayLabel(workout.label) || distanceMi === 0 || distanceMi == null;
+
   return {
     eyebrow,
     title: titleFor(workout.label),
@@ -305,9 +330,17 @@ function composeHero(data: OverviewData): HeroProps {
     signals,
     intensityPct,
     intensityZone,
-    intensityNote,
+    intensityNote: isRest ? 'No run scheduled. The intensity scale returns tomorrow when the next workout posts.' : intensityNote,
     hasStrength: planToday?.hasStrength === true,
+    isRest,
   };
+}
+
+/** Match the various ways the plan / coach refer to a rest day. */
+function isRestDayLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  const norm = label.toLowerCase().trim();
+  return norm === 'rest' || norm === 'rest day' || norm === 'off' || norm.startsWith('rest ');
 }
 
 function composeSignals(data: OverviewData): FitnessSignal[] {

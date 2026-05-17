@@ -17,13 +17,49 @@ export interface IntensityBarProps {
   note?: string;
   /** Compact mode for inside modals (smaller bar height). */
   compact?: boolean;
+  /** Rest day — hide the gradient bar entirely + swap copy.
+   *  Source spec: designs/overview-v4.html §intensity-section.rest. */
+  isRest?: boolean;
 }
 
-export function IntensityBar({ effortPct, zoneName, note, compact = false }: IntensityBarProps) {
+export function IntensityBar({ effortPct, zoneName, note, compact = false, isRest = false }: IntensityBarProps) {
   const clamped = Math.max(0, Math.min(100, effortPct));
   const barHeight = compact ? 12 : 20;
   const radius = compact ? 6 : 10;
   const tickTop = compact ? -4 : -5;
+
+  // Rest day: skip the gradient bar entirely, render just the labels.
+  if (isRest) {
+    return (
+      <div>
+        <div
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            fontSize: compact ? '14px' : '15px',
+            fontWeight: 600,
+            color: 'rgba(13,15,18,.55)',
+            letterSpacing: '0.3px',
+          }}
+        >
+          Rest day · No intensity
+        </div>
+        {note && (
+          <p
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '13px',
+              fontStyle: 'italic',
+              color: 'rgba(13,15,18,.35)',
+              lineHeight: 1.55,
+              marginTop: '14px',
+            }}
+          >
+            {note}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
