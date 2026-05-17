@@ -1,0 +1,1193 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+
+/* ══════════════════════════
+   NAV BAR
+══════════════════════════ */
+.overview-v4-page .navbar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.overview-v4-page .navbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.overview-v4-page .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.overview-v4-page .nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
+
+.overview-v4-page .nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.overview-v4-page .nav-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t1);
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.overview-v4-page .nav-link.active {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+.overview-v4-page .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.overview-v4-page .nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--t0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.5px;; overflow: hidden
+}
+.overview-v4-page .nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.overview-v4-page .page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+/* ══════════════════════════
+   SECTION 1 — COACH STRIP
+══════════════════════════ */
+.overview-v4-page .coach-strip {
+  /* LAYOUT LAW: stretch so both sides fill identical height.
+     Coach-right pins its button to the bottom via space-between.
+     Min-height keeps short briefings from collapsing the strip.
+     CONTENT RULE: briefing = 2–4 sentences / ~60 words max.
+     Font stays 22px always — trim copy, never the size. */
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding-bottom: 0;
+  height: 200px;
+  margin-bottom: 16px;
+}
+
+.overview-v4-page .coach-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.overview-v4-page .coach-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.overview-v4-page .coach-label .dot-green {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.overview-v4-page .coach-briefing {
+  font-family: 'Inter', sans-serif;
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--t0);
+  font-weight: 400;
+}
+
+.overview-v4-page .coach-briefing strong {
+  font-weight: 700;
+}
+
+.overview-v4-page .coach-right {
+  flex-shrink: 0;
+  margin-left: 48px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+}
+
+.overview-v4-page .checkin-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.overview-v4-page .checkin-sliders {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.overview-v4-page .checkin-slider-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 24px;
+  align-items: center;
+  gap: 12px;
+}
+
+.overview-v4-page .checkin-slider-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  text-align: right;
+}
+
+/* Native range input — styled to match design */
+.overview-v4-page .checkin-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  display: block;
+}
+.overview-v4-page .checkin-range.energy { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #2CA82F 100%); }
+.overview-v4-page .checkin-range.soreness { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #E85D26 100%); }
+.overview-v4-page .checkin-range.stress { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #D4900A 100%); }
+
+.overview-v4-page .checkin-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; }
+.overview-v4-page .checkin-range::-moz-range-track { height: 8px; border-radius: 4px; }
+
+.overview-v4-page .checkin-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(13,15,18,.22);
+  box-shadow: 0 1px 6px rgba(0,0,0,.16);
+  cursor: grab;
+  margin-top: -6px;
+}
+.overview-v4-page .checkin-range::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(13,15,18,.22);
+  box-shadow: 0 1px 6px rgba(0,0,0,.16);
+  cursor: grab;
+}
+.overview-v4-page .checkin-range:disabled { opacity: 0.5; cursor: default; }
+
+.overview-v4-page .checkin-slider-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--t1);
+  text-align: right;
+}
+
+.overview-v4-page .checkin-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--t0);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+/* ══════════════════════════
+   SECTION 2 — HERO CARD
+══════════════════════════ */
+.overview-v4-page .hero-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+/* Hero Left */
+.overview-v4-page .hero-left {
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-v4-page .hero-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.overview-v4-page .hero-title {
+  font-family: 'Bebas Neue', sans-serif;
+  line-height: 0.86;
+  color: var(--t0);
+  flex: 0 0 auto;
+  margin-left: -6px; /* correct Bebas Neue side-bearing so ink aligns with eyebrow text */
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — sized for 'EASY RUN'-length workout names */
+  font-size: 300px;
+  letter-spacing: -4px;
+}
+/* Workout-title size buckets. Engine sets data-len based on the
+   character count of the workout name. Each bucket keeps the title
+   feeling hero-sized while preventing layout breakage on long titles.
+   Engine should also drop any hardcoded <br> for md+ since longer
+   titles wrap naturally at word boundaries. */
+.overview-v4-page .hero-title[data-len="xs"] { font-size: 320px; letter-spacing: -5px; } /* ≤6: REST, EASY */
+.overview-v4-page .hero-title[data-len="sm"] { font-size: 300px; letter-spacing: -4px; } /* 7-12: EASY RUN, LONG RUN, TEMPO */
+.overview-v4-page .hero-title[data-len="md"] { font-size: 180px; letter-spacing: -3px; } /* 13-20: EASY + STRIDES, LONG RUN · HM */
+.overview-v4-page .hero-title[data-len="lg"] { font-size: 120px; letter-spacing: -2px; } /* 21-30: THRESHOLD · CRUISE INTERVALS */
+.overview-v4-page .hero-title[data-len="xl"] { font-size: 80px;  letter-spacing: -1px; } /* 31+: fallback for novellas */
+
+.overview-v4-page .coach-note-inline {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--t2);
+  line-height: 1.55;
+  margin-top: 14px;
+}
+
+.overview-v4-page .stats-row {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 4px; /* Bebas Neue line-height:.86 adds ~20px dead space below ink, so 4+20≈24px visual gap */
+  flex-wrap: wrap;
+}
+
+.overview-v4-page .stat-pill {
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.overview-v4-page .stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--t0);
+}
+
+.overview-v4-page .stat-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+  margin-left: 1px;
+}
+
+.overview-v4-page .stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .stat-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.overview-v4-page .segments-table {
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 24px;
+}
+
+.overview-v4-page .segment-row {
+  display: grid;
+  grid-template-columns: 110px 60px 70px 90px;
+  align-items: center;
+  padding: 14px 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+.overview-v4-page .segment-row:last-child {
+  border-bottom: none;
+}
+
+.overview-v4-page .segment-row.main {
+  background: rgba(44,168,47,.06);
+}
+
+.overview-v4-page .segment-label {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--t1);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .segment-row.main .segment-label {
+  color: var(--green);
+}
+
+.overview-v4-page .segment-dim {
+  color: var(--t2);
+}
+
+.overview-v4-page .segment-data {
+  color: var(--t1);
+}
+
+.overview-v4-page .segment-row.main .segment-pace {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.overview-v4-page .hero-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.overview-v4-page .btn-primary {
+  background: var(--t0);
+  color: #FFFFFF;
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+}
+
+.overview-v4-page .btn-ghost {
+  background: transparent;
+  border: 1.5px solid rgba(13,15,18,.2);
+  color: var(--t0);
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* Hero Right */
+.overview-v4-page .hero-right {
+  background: rgba(13,15,18,.02);
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.overview-v4-page .readiness-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.overview-v4-page .readiness-label-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .badge-ready {
+  background: rgba(44,168,47,.12);
+  color: var(--green);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.overview-v4-page .readiness-ring-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.overview-v4-page .readiness-ring-wrap svg {
+  overflow: visible;
+}
+
+.overview-v4-page .readiness-building {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--green);
+  text-align: center;
+  text-transform: uppercase;
+  margin-top: 16px;
+}
+
+.overview-v4-page .trend-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overview-v4-page .trend-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.overview-v4-page .trend-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.overview-v4-page .trend-row-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .trend-row-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.overview-v4-page .trend-row-value.green { color: var(--green); }
+.overview-v4-page .trend-row-value.amber { color: var(--amber); }
+.overview-v4-page .trend-row-value.dim { color: var(--t2); }
+
+.overview-v4-page .trend-bar-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(13,15,18,.07);
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.overview-v4-page .trend-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.overview-v4-page .trend-bar-fill.green { background: var(--green); }
+.overview-v4-page .trend-bar-fill.amber { background: var(--amber); }
+.overview-v4-page .trend-bar-fill.dim { background: rgba(13,15,18,.25); }
+
+/* Intensity spectrum — clean Apple-style.
+   margin-top creates breathing room between Strain bar and Today's Intensity
+   so the section doesn't read as part of the strain bar. */
+.overview-v4-page .intensity-section {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--divider);
+}
+
+/* Rest-day variant: no gradient, no tick, just a flat copy block. */
+.overview-v4-page .intensity-section.rest { padding-top: 22px; }
+.overview-v4-page .intensity-section.rest .intensity-bar-wrap { display: none; }
+
+.overview-v4-page .intensity-heading {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 14px;
+}
+
+.overview-v4-page .intensity-bar-wrap {
+  position: relative;
+  height: 20px;
+  margin-bottom: 12px;
+}
+
+.overview-v4-page .intensity-bar {
+  width: 100%;
+  height: 20px;
+  border-radius: 10px;
+  background: linear-gradient(to right, #2CA82F 0%, #F3AD38 60%, #E85D26 100%);
+}
+
+.overview-v4-page .intensity-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 22%;
+  width: 3px;
+  background: #0D0F12;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.overview-v4-page .intensity-fade {
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 10px 10px 0;
+  background: rgba(255,255,255,.52);
+}
+
+.overview-v4-page .intensity-zone-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 0.3px;
+}
+
+/* ══════════════════════════
+   SECTION 3 — WEEK STRIP
+══════════════════════════ */
+.overview-v4-page .week-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.overview-v4-page .week-header {
+  padding: 28px 40px 20px;
+}
+
+.overview-v4-page .week-header-top {
+  display: flex;
+  align-items: last baseline;     /* aligns meta + link to 'Base Week 1' baseline (the LAST line of the label group), not 'This Week' above it */
+  gap: 40px;
+  margin-bottom: 14px;
+}
+
+.overview-v4-page .week-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.overview-v4-page .week-header-sublabel {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .week-header-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--t0);
+  letter-spacing: 0;
+}
+
+.overview-v4-page .week-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.overview-v4-page .week-meta-stat {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+.overview-v4-page .week-meta-stat strong { font-weight: 700; color: var(--t0); }
+.overview-v4-page .week-meta-stat.green { color: var(--green); font-weight: 600; }
+
+.overview-v4-page .week-meta-dot {
+  font-size: 13px;
+  color: var(--t2);
+}
+
+.overview-v4-page .week-view-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--green);
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.overview-v4-page .week-view-link:hover { opacity: 0.75; }
+
+.overview-v4-page .week-progress-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(13,15,18,.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.overview-v4-page .week-progress-fill {
+  height: 100%;
+  width: 59%;
+  background: var(--green);
+  border-radius: 3px;
+}
+
+.overview-v4-page .day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.overview-v4-page .day-col {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+/* Strength badge — matches the training-v4 cell corner pattern.
+   Black circle with yellow 'S' centered. */
+.overview-v4-page .day-strength {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--t0);
+  color: #FACC15;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+/* Hero strength callout — sits between the segments table and buttons,
+   visually flags that today's workout has a strength component without
+   competing with the run as the primary focus. */
+.overview-v4-page .strength-callout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: rgba(13,15,18,.035);
+  border-radius: 12px;
+  margin-top: 16px;
+}
+.overview-v4-page .strength-callout-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--t0);
+  color: #FACC15;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.overview-v4-page .strength-callout-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--t1);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.overview-v4-page .strength-callout-meta {
+  margin-top: 3px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+.overview-v4-page .day-col:first-child { padding-left: 40px; }
+.overview-v4-page .day-col:last-child { padding-right: 40px; }
+
+.overview-v4-page .day-col.today {
+  background: rgba(232,93,38,.04);
+  border-top: 2px solid var(--amber);
+}
+
+.overview-v4-page .day-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.overview-v4-page .day-date {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--t0);
+}
+
+.overview-v4-page .day-date.amber {
+  color: var(--amber);
+}
+
+.overview-v4-page .day-workout-name {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--t0);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.overview-v4-page .day-distance {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+}
+
+.overview-v4-page .day-status-done {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--green);
+  text-transform: uppercase;
+  /* Pin to the bottom of the day-col regardless of how much workout-name
+     text wraps above. All 7 cols share the same row height (grid stretch),
+     so this lines up the DONE labels in a single horizontal row. */
+  margin-top: auto;
+  padding-top: 12px;
+}
+/* Push the bottom element of each col to the bottom edge. CSS auto margins
+   resolve to whichever child comes first in the flex flow, so done cols
+   anchor on DONE, future cols anchor on distance, today's rest col anchors
+   on the dash. All sit at the same y-coordinate across the row. */
+.overview-v4-page .day-distance, .overview-v4-page .day-rest {
+  margin-top: auto;
+}
+.day-col:has(.day-status-done) .day-distance,
+.overview-v4-page .day-col:has(.day-status-done) .day-rest {
+  margin-top: 0;
+}
+
+.overview-v4-page .day-status-today {
+  display: inline-block;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--amber);
+  background: rgba(212,144,10,.12);
+  padding: 3px 9px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.overview-v4-page .day-rest {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: rgba(13,15,18,.2);
+  margin-top: 4px;
+}
+
+/* ══════════════════════════
+   MODALS
+══════════════════════════ */
+.overview-v4-page .modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13,15,18,.48);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.overview-v4-page .modal-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+.overview-v4-page .modal-card {
+  background: var(--card);
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.22);
+  position: relative;
+  transform: translateY(20px) scale(0.98);
+  transition: transform 0.25s cubic-bezier(.22,.68,0,1.2);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.overview-v4-page .modal-overlay.active .modal-card {
+  transform: translateY(0) scale(1);
+}
+.overview-v4-page .modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(13,15,18,.07);
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--t1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.overview-v4-page .modal-close:hover { background: rgba(13,15,18,.12); }
+
+/* — Workout modal — */
+.overview-v4-page .workout-modal-card { width: 520px; padding: 40px; }
+
+.overview-v4-page .modal-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.overview-v4-page .modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  line-height: 0.86;
+  color: var(--t0);
+  margin-left: -3px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — for 'EASY RUN'-length names */
+  font-size: 88px;
+  letter-spacing: -1px;
+}
+/* Same bucket convention as .hero-title, scaled down for the popup. */
+.overview-v4-page .modal-title[data-len="xs"] { font-size: 96px; letter-spacing: -1.5px; }
+.overview-v4-page .modal-title[data-len="sm"] { font-size: 88px; letter-spacing: -1px; }
+.overview-v4-page .modal-title[data-len="md"] { font-size: 64px; letter-spacing: -0.5px; }
+.overview-v4-page .modal-title[data-len="lg"] { font-size: 48px; letter-spacing: 0; }
+.overview-v4-page .modal-title[data-len="xl"] { font-size: 36px; letter-spacing: 0; }
+.overview-v4-page .modal-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+.overview-v4-page .modal-stat {
+  flex: 1;
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.overview-v4-page .modal-stat-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--t0);
+}
+.overview-v4-page .modal-stat-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+  margin-left: 2px;
+}
+.overview-v4-page .modal-stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.overview-v4-page .modal-segs {
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.overview-v4-page .modal-seg-row {
+  display: grid;
+  grid-template-columns: 100px 60px 70px 1fr;
+  align-items: center;
+  padding: 13px 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+.overview-v4-page .modal-seg-row + .modal-seg-row { border-top: 1px solid rgba(13,15,18,.05); }
+.overview-v4-page .modal-seg-row.main { background: rgba(44,168,47,.05); }
+.overview-v4-page .modal-seg-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.overview-v4-page .modal-seg-row.main .modal-seg-name { color: var(--green); }
+.overview-v4-page .modal-seg-row.main .modal-seg-pace { color: var(--green); font-weight: 600; }
+
+.overview-v4-page .modal-intensity-wrap { margin-bottom: 20px; }
+.overview-v4-page .modal-intensity-lbl {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 10px;
+}
+.overview-v4-page .modal-ibar-wrap {
+  position: relative;
+  height: 12px;
+  margin-bottom: 8px;
+}
+.overview-v4-page .modal-ibar {
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #2CA82F 0%, #F3AD38 60%, #E85D26 100%);
+}
+.overview-v4-page .modal-itick {
+  position: absolute;
+  top: -4px; bottom: -4px; left: 22%;
+  width: 2px;
+  background: #0D0F12;
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+.overview-v4-page .modal-ifade {
+  position: absolute;
+  top: 0; left: 22%; right: 0; bottom: 0;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255,255,255,.52);
+}
+.overview-v4-page .modal-zone {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+}
+.overview-v4-page .modal-coach-note {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+.overview-v4-page .modal-actions { display: flex; gap: 12px; }
+.overview-v4-page .modal-btn-complete {
+  flex: 1;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 15px 24px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.overview-v4-page .modal-btn-skip {
+  background: transparent;
+  border: 1.5px solid rgba(13,15,18,.2);
+  color: var(--t0);
+  border-radius: 10px;
+  padding: 15px 24px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* — Schedule modal — */
+.overview-v4-page .schedule-modal-card { width: 860px; padding: 40px; }
+.overview-v4-page .schedule-modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 52px;
+  line-height: 1;
+  color: var(--t0);
+  margin-top: 8px;
+  margin-bottom: 28px;
+}
+.overview-v4-page .schedule-phase-heading {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  padding: 8px 0 6px;
+  border-bottom: 1px solid rgba(13,15,18,.07);
+  margin-bottom: 4px;
+  margin-top: 24px;
+}
+.overview-v4-page .schedule-phase-heading:first-child { margin-top: 0; }
+.overview-v4-page .schedule-week-row {
+  display: grid;
+  grid-template-columns: 72px 72px 64px 1fr 80px;
+  align-items: center;
+  padding: 11px 14px;
+  border-radius: 10px;
+  gap: 8px;
+  cursor: pointer;
+}
+.overview-v4-page .schedule-week-row:hover { background: rgba(13,15,18,.03); }
+.overview-v4-page .schedule-week-row.current {
+  background: rgba(44,168,47,.06);
+  border: 1px solid rgba(44,168,47,.14);
+}
+.overview-v4-page .schedule-week-num {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t0);
+}
+.overview-v4-page .schedule-week-date {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+}
+.overview-v4-page .schedule-week-mi {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  color: var(--t0);
+  line-height: 1;
+}
+.overview-v4-page .schedule-week-mi span { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); }
+.overview-v4-page .schedule-week-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+}
+.overview-v4-page .schedule-week-status {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--green);
+}
+.overview-v4-page .schedule-week-status.upcoming { color: var(--t2); font-weight: 400; }
+.overview-v4-page .schedule-week-status.current { color: var(--amber); }
+
+/* ══════════════════════════
+   STATE CHANGES
+══════════════════════════ */
+.hero-left.skipped .hero-title,
+.hero-left.skipped .stats-row,
+.overview-v4-page .hero-left.skipped .segments-table { opacity: 0.25; transition: opacity .3s; }
+.overview-v4-page .hero-left.skipped .btn-primary { opacity: 0.3; pointer-events: none; }
+.overview-v4-page .hero-left.skipped .btn-ghost { border-color: var(--amber); color: var(--amber); }
+
+.overview-v4-page .checkin-logged .checkin-slider-thumb { border-color: var(--green); pointer-events: none; }
+.overview-v4-page .checkin-logged .checkin-btn {
+  background: var(--green);
+  pointer-events: none;
+}

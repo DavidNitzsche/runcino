@@ -22,90 +22,10 @@ import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { getCurrentUser } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, type PlanWeek } from '@/lib/synthetic-plan';
 import './training-v4.css';
 
-interface PlanWeekDay {
-  dow: string;
-  date: string;
-  type: string;
-  label: string;
-  distanceMi: number;
-  isRest?: boolean;
-  hasStrength?: boolean;
-}
-interface PlanWeek {
-  weekNum: number;
-  startDate: string;
-  endDate: string;
-  phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'RACE_WEEK';
-  plannedMi: number;
-  days: PlanWeekDay[];
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-function fmtShortDate(iso: string): string {
-  return `${MONTHS[parseInt(iso.slice(5, 7), 10) - 1]} ${parseInt(iso.slice(8, 10), 10)}`;
-}
-
-function daysBetween(fromISO: string, toISO: string): number {
-  const a = new Date(fromISO + 'T00:00:00Z');
-  const b = new Date(toISO + 'T00:00:00Z');
-  return Math.round((b.getTime() - a.getTime()) / 86400000);
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Build a synthesized 14-week plan from the user's prefs. This is the
- * deterministic fallback when the user hasn't generated a real plan yet
- * (e.g. just finished onboarding, no Strava yet). Mirrors the structure
- * faff-store.js buildPlan produces in the design mockups.
- */
-function buildSyntheticPlan(): PlanWeek[] {
-  const startDate = '2026-05-11';
-  const template: ([string, string, number, boolean?] | null)[][] = [
-    [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5,true],null,['long','Long',10.5]],
-    [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7.5],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Hill Strides',5.5,true],null,['long','Long',11]],
-    [['recovery','Recovery',4.5],['quality','Threshold · Cruise Intervals',6],['easy','Easy + Strides',4.5],['easy','Easy',4.5,true],['easy','Easy',4.5,true],null,['long','Long',11.5]],
-    [['recovery','Recovery',6],['quality','Threshold · Cruise Intervals',8],['easy','Easy + Strides',6],['easy','Easy',6,true],['easy','Hill Strides',6,true],null,['long','Long',12]],
-    [['easy','Easy',6.5,true],['quality','Threshold · HM Blocks',7.5],['easy','Easy',6.5],['quality','Intervals',6],['easy','Easy',6.5,true],null,['long','Long Run · HM Finish',12.5]],
-    [['easy','Easy',5,true],['quality','Threshold · HM Cruise',6.5],['easy','Easy',5],['quality','Intervals',5],['easy','Easy',5,true],null,['long','Long',11.5]],
-    [['easy','Easy',7,true],['quality','Threshold · HM Blocks',8],['easy','Easy',7],['quality','Intervals',6],['easy','Easy',7,true],null,['long','Long Run · HM Finish',13]],
-    [['easy','Easy',7,true],['quality','Threshold · HM Cruise',8.5],['easy','Easy',7],['quality','Intervals',6.5],['easy','Easy',7,true],null,['long','Long Run · Progression',13.5]],
-    [['easy','Easy',6,true],['quality','Threshold · HM Tempo',7],['easy','Easy',6],['quality','Intervals',5.5],['easy','Easy',6,true],null,['long','Long',11.5]],
-    [['easy','Easy',7.5,true],['quality','Threshold · HM Tempo',9],['easy','Easy',7.5],['quality','Intervals',7],['easy','Easy',7.5,true],null,['long','Long Run · Progression',14]],
-    [['easy','Easy',7.5,true],['quality','Threshold · HM Tempo',9],['easy','Easy',7.5],['quality','Intervals',7],['easy','Easy',7.5,true],null,['long','Long Run · HM Finish',14.5]],
-    [['easy','Easy',8,true],['quality','Threshold · HM Tempo',9.5],['easy','Easy',8],['quality','Intervals',7],['easy','Easy',8,true],null,['long','Long Run · Progression',15]],
-    [['easy','Easy',5.5],['quality','Threshold Touch',5],['easy','Easy',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5],null,['long','Long Run · Taper',7.5]],
-    [['easy','Easy',5],['quality','Threshold · Race Week Tune',4],['easy','Easy',5],null,null,['easy','Shake-out',3],['race','AFC Half',13.1]],
-  ];
-  const isoAdd = (start: string, days: number) => {
-    const d = new Date(start + 'T00:00:00Z');
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-  };
-  const phaseFor = (wk: number): PlanWeek['phase'] =>
-    wk <= 4 ? 'BASE' : wk <= 8 ? 'BUILD' : wk <= 12 ? 'PEAK' : wk === 13 ? 'TAPER' : 'RACE_WEEK';
-
-  return template.map((dayTpl, wIdx) => {
-    const weekNum = wIdx + 1;
-    const wkStart = isoAdd(startDate, wIdx * 7);
-    const days: PlanWeekDay[] = dayTpl.map((t, dIdx) => {
-      const date = isoAdd(wkStart, dIdx);
-      const dow = DOW_LABELS[dIdx];
-      if (!t) return { dow, date, type: 'rest', label: 'Rest', distanceMi: 0, isRest: true };
-      const [type, label, distanceMi, hasStrength] = t;
-      return { dow, date, type, label, distanceMi, hasStrength: !!hasStrength };
-    });
-    const plannedMi = Math.round(days.reduce((s, d) => s + (d.distanceMi || 0), 0) * 10) / 10;
-    return { weekNum, phase: phaseFor(weekNum), startDate: wkStart, endDate: isoAdd(wkStart, 6), plannedMi, days };
-  });
-}
 
 interface PhaseSpec {
   key: PlanWeek['phase'];

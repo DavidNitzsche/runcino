@@ -1,640 +1,255 @@
-'use client';
-
 /**
- * /overview · v4 redesign (simplified).
+ * /overview — fresh React port of designs/overview-v4.html.
  *
- * Three sections, top to bottom:
- *   1. CoachStrip — coach briefing left, today's check-in right.
- *   2. HeroCard   — workout title + stats + segments + actions LEFT,
- *                   readiness ring + fitness signals + intensity RIGHT.
- *   3. WeekStripCard — week header + 7-day strip + view-full link.
+ * Three sections matching the approved mockup:
+ *   1. Coach strip — left coach voice + right Today's Check-In sliders
+ *   2. Hero card — left today's workout (or rest day) + right readiness
+ *      ring + 5 trend rows + Today's Intensity bar (rest-day variant
+ *      hides the gradient bar)
+ *   3. Week strip — Base Week N header + 7-day grid + View Full Schedule
  *
- * Everything below was deliberately stripped from the v4 redesign —
- * the previous KPI band, PathToRace card, NextPush card, biometric
- * sparks, body systems, pace zones, VDOT card, load gauge, weekly
- * miles, long run, B-race, year heatmap, and YTD rings. Those
- * signals get rehomed when /training, /races, and /health get their
- * own v4 mockups.
- *
- * Data loading is unchanged — loadOverviewData / useActivities still
- * power everything. Only the rendering shape moved.
+ * Replaces the prior /overview implementation. Backup at
+ * page.tsx.pre-v4-port-bak.
  */
 
-import { useEffect, useState } from 'react';
-import { Topbar, Stage, EmptyState, Skeleton } from '@/app/components';
+import { redirect } from 'next/navigation';
+import { Topbar } from '@/app/components';
+import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
+import { CheckInIsland } from './CheckInIsland';
+import { getCurrentUser } from '@/lib/auth';
 import {
-  CoachStrip,
-  HeroCard,
-  WeekStripCard,
-  WorkoutDetailModal,
-  ScheduleModal,
-  ConnectBanner,
-  type WeekDay,
-  type SegmentRow,
-  type FitnessSignal,
-  type ReadinessLevel,
-  type SchedulePhase,
-} from '@/app/components/v4';
-import { useActivities } from '@/lib/strava-activities';
-import { loadOverviewData, type OverviewData } from './data';
+  buildSyntheticPlan,
+  todayISO,
+  daysBetween,
+  findCurrentWeek,
+  findTodayWorkout,
+  type PlanWeek,
+} from '@/lib/synthetic-plan';
+import './overview-v4.css';
 
-export default function OverviewPage() {
-  const [now, setNow] = useState<Date | null>(null);
-  const [data, setData] = useState<OverviewData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const { activities, fetchedAt } = useActivities();
-  const stravaFetchedAtMs = fetchedAt ? Date.parse(fetchedAt) : null;
+const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-  // Local UI state — modals + the optimistic skip flag. Skip persists
-  // through GET /api/plan/skip on initial load.
-  const [workoutModalOpen, setWorkoutModalOpen] = useState(false);
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
-  const [skipped, setSkipped] = useState<boolean>(false);
+interface IntensityCfg { pos: number; label: string; color: string; copy: string; }
+const INTENSITY_CFG: Record<string, IntensityCfg> = {
+  recovery: { pos: 10, label: 'Recovery · Zone 1', color: 'var(--green)',  copy: 'Very easy — clearing the legs, not building anything. Effort below conversational.' },
+  easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+  long:     { pos: 30, label: 'Long · Zone 2',     color: 'var(--green)',  copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed.' },
+  quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain.' },
+  race:     { pos: 88, label: 'Race · Zone 4–5',   color: 'var(--orange)', copy: 'Race day. Execute the plan; conserve early, commit late.' },
+};
 
-  // Has the user connected an activity source (Strava, etc)? Renders
-  // the orange Connect-Strava banner at the top of the page until they
-  // connect at least one. Fetched once on mount.
-  const [hasSource, setHasSource] = useState<boolean | null>(null);
+const PHASE_LABELS = { BASE: 'Base', BUILD: 'Build', PEAK: 'Peak', TAPER: 'Taper', RACE_WEEK: 'Race Week' } as const;
 
-  useEffect(() => { setNow(new Date()); }, []);
+function lenBucket(label: string): 'xs' | 'sm' | 'md' | 'lg' | 'xl' {
+  const n = label.length;
+  if (n <= 6) return 'xs';
+  if (n <= 12) return 'sm';
+  if (n <= 20) return 'md';
+  if (n <= 30) return 'lg';
+  return 'xl';
+}
 
-  // Check connectors on mount — banner only shows if zero connected.
-  useEffect(() => {
-    fetch('/api/connectors').then((r) => r.json()).then((j) => {
-      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
-      const any = (j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider));
-      setHasSource(any);
-    }).catch(() => setHasSource(false));
-  }, []);
+export default async function OverviewPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login?next=/overview');
 
-  useEffect(() => {
-    if (!now) return;
-    let cancelled = false;
-    setLoadError(null);
-    loadOverviewData(activities, stravaFetchedAtMs)
-      .then((d) => { if (!cancelled) setData(d); })
-      .catch((err) => {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : String(err));
-        }
-      });
-    return () => { cancelled = true; };
-  }, [now, activities, stravaFetchedAtMs]);
+  const today = todayISO();
+  const weeks = buildSyntheticPlan();
+  const currentWeek = findCurrentWeek(weeks, today);
+  const todayDay = findTodayWorkout(weeks, today);
+  const isRest = !todayDay || todayDay.isRest === true || todayDay.distanceMi === 0;
+  const phaseLabel = PHASE_LABELS[currentWeek.phase];
 
-  // Load today's skip state from the server so refreshing the page
-  // doesn't lose it. POST goes back through the API.
-  useEffect(() => {
-    fetch('/api/plan/skip').then((r) => r.json()).then((j) => {
-      if (j?.ok && j.skip) setSkipped(true);
-    }).catch(() => {});
-  }, []);
+  // Approximate phase-week position (week 1..4 of phase)
+  const phaseWeeks = weeks.filter((w) => w.phase === currentWeek.phase);
+  const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
 
-  const clock = now ? formatTopbarClock(now) : null;
+  // Compute simple session-progress: 'X of Y sessions logged this week'
+  const weekDaysWithWork = currentWeek.days.filter((d) => !d.isRest);
+  const sessionsDone = weekDaysWithWork.filter((d) => d.date < today).length;
+  const sessionsTotal = weekDaysWithWork.length;
+
+  // Approximate duration from distance + paceMin
+  const paceTargetByType: Record<string, string> = {
+    easy: '9:15', recovery: '10:00', long: '9:30', quality: '7:30', race: '7:15',
+  };
+  const todayPace = todayDay && !todayDay.isRest ? paceTargetByType[todayDay.type] ?? '9:00' : null;
+  const [paceM, paceS] = (todayPace ?? '0:00').split(':').map(Number);
+  const paceSec = paceM * 60 + paceS;
+  const durMin = todayDay && !todayDay.isRest && todayDay.distanceMi ? Math.round((paceSec * todayDay.distanceMi) / 60) : null;
+
+  // Title bucket sizing
+  const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
+  const titleBucket = lenBucket(titleLabel);
+
+  // Race countdown — race is week 14, last day
+  const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
+  const daysToRace = Math.max(0, daysBetween(today, raceDate));
+
+  // Today's Intensity config
+  const intensity = isRest
+    ? null
+    : INTENSITY_CFG[todayDay?.type ?? 'easy'] ?? INTENSITY_CFG.easy;
+
+  // Week-progress bar fill — pretty-approximation based on day-of-week.
+  const weekProgressDays = currentWeek.days.filter((d) => d.date <= today).length;
+  const weekProgressPct = Math.round((weekProgressDays / 7) * 100);
 
   return (
-    <Stage>
-      <Topbar
-        activeTab="overview"
-        clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
-      />
+    <div className="overview-v4-page">
+      <Topbar activeTab="overview" />
+      <ConnectBannerIsland />
 
-      {/* Connect-Strava banner — shows when user has no activity source.
-          Dismiss is per-page-load; reappears on refresh until connected. */}
-      {hasSource === false && <ConnectBanner />}
+      <div className="page">
 
-      {loadError && (
-        <EmptyState variant="error" title="Couldn&rsquo;t load Overview" body={loadError} />
-      )}
+        {/* ── SECTION 1 · COACH STRIP ── */}
+        <div className="coach-strip">
+          <div className="coach-left">
+            <div className="coach-label">
+              <span className="dot-green"></span>
+              COACH · {new Date(today + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
+            </div>
+            <p className="coach-briefing">
+              {isRest ? (
+                <>Good morning, {user.name?.split(' ')[0] || 'there'}. <strong>{sessionsDone} of {sessionsTotal} sessions down</strong>, body absorbing the load. Today is rest &mdash; use it. <strong>{daysToRace} days to AFC.</strong></>
+              ) : (
+                <>Today is <strong>{todayDay?.label?.toLowerCase() || 'an easy run'}</strong> at {todayDay?.distanceMi} mi. {todayDay?.type === 'easy' && 'Conversational throughout; the work is built on the easy days.'}{todayDay?.type === 'long' && 'Time on feet is the stimulus; pace is conversational.'}{todayDay?.type === 'quality' && 'Threshold dose &mdash; comfortably hard, controlled.'}{' '}<strong>{daysToRace} days to AFC.</strong></>
+              )}
+            </p>
+          </div>
 
-      {data ? (
-        <V4Body
-          data={data}
-          skipped={skipped}
-          onSkipToggle={async (next) => {
-            // Optimistic — flip the UI immediately, then sync DB.
-            setSkipped(next);
-            try {
-              if (next) {
-                const planToday = data.planWeekWorkouts?.find((w) => w.dateISO === data.today) ?? null;
-                await fetch('/api/plan/skip', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    plannedWorkoutType: planToday?.type ?? data.coach.workout.answer.label ?? null,
-                    plannedMi: planToday?.distanceMi ?? data.coach.workout.answer.distanceMi ?? null,
-                  }),
-                });
-              } else {
-                await fetch('/api/plan/skip', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ undo: true }),
-                });
-              }
-            } catch {
-              // If the network failed, revert.
-              setSkipped(!next);
-            }
-          }}
-          onOpenWorkout={() => setWorkoutModalOpen(true)}
-          onOpenSchedule={() => setScheduleModalOpen(true)}
-          workoutModalOpen={workoutModalOpen}
-          onCloseWorkoutModal={() => setWorkoutModalOpen(false)}
-          scheduleModalOpen={scheduleModalOpen}
-          onCloseScheduleModal={() => setScheduleModalOpen(false)}
-        />
-      ) : (
-        !loadError && <OverviewSkeleton />
-      )}
-    </Stage>
+          {/* Check-In is interactive (client island) */}
+          <CheckInIsland today={today} />
+        </div>
+
+        {/* ── SECTION 2 · HERO CARD ── */}
+        <div className="hero-card">
+          <div className="hero-left" id="hero-left">
+            <div className="hero-eyebrow">TODAY · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}</div>
+            <div className="hero-title" data-len={titleBucket}>{titleLabel}</div>
+
+            {isRest ? (
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, lineHeight: 1.6, color: 'var(--t1)', marginTop: 24, maxWidth: 540 }}>
+                No run on the schedule today. <strong style={{ color: 'var(--t0)' }}>Recovery is part of training</strong> &mdash; let the body absorb the work from this week and come into the next session fresh.
+              </p>
+            ) : (
+              <>
+                <div className="stats-row">
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayDay?.distanceMi}</span><span className="stat-unit">mi</span></div><div className="stat-label">Distance</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayPace}</span><span className="stat-unit">/mi</span></div><div className="stat-label">Pace</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">≤145</span><span className="stat-unit">bpm</span></div><div className="stat-label">Heart Rate</div></div>
+                </div>
+                <div className="hero-buttons">
+                  <button className="btn-primary" type="button">▶&nbsp;&nbsp;OPEN WORKOUT</button>
+                  <button className="btn-ghost" type="button">SKIP TODAY</button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="hero-right">
+            <div className="readiness-section">
+              <div className="readiness-header">
+                <span className="readiness-label-text">Readiness</span>
+                <span className="badge-ready">Ready</span>
+              </div>
+              <div className="readiness-ring-wrap">
+                <svg width="300" height="300" viewBox="0 0 300 300">
+                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="612.61 204.20" strokeLinecap="round" transform="rotate(135 150 150)" />
+                  <circle cx="150" cy="150" r="130" fill="none" stroke="#2CA82F" strokeWidth="16" strokeDasharray="539.10 277.70" strokeLinecap="round" transform="rotate(135 150 150)" />
+                  <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="96" fill="#0D0F12" textAnchor="middle">88</text>
+                  <text x="150" y="188" fontFamily="'Inter', sans-serif" fontSize="13" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">/ 100</text>
+                </svg>
+              </div>
+              <div className="readiness-building">Building</div>
+            </div>
+
+            <div className="trend-rows">
+              <TrendRow label="Effort"    value="+0.25"   tone="green" width={65} />
+              <TrendRow label="Load"      value="1.01"    tone="green" width={50} />
+              <TrendRow label="Mileage"   value="On plan" tone="green" width={50} />
+              <TrendRow label="Easy Pace" value="+0.25"   tone="green" width={60} />
+              <TrendRow label="Strain"    value="−0.25"   tone="amber" width={35} />
+            </div>
+
+            {/* Today's Intensity — rest-day variant hides gradient bar */}
+            <div className={`intensity-section${isRest ? ' rest' : ''}`}>
+              <div className="intensity-heading">Today&apos;s Intensity</div>
+              {!isRest && intensity && (
+                <div className="intensity-bar-wrap">
+                  <div className="intensity-bar"></div>
+                  <div className="intensity-tick" style={{ left: `${intensity.pos}%` }}></div>
+                  <div className="intensity-fade" style={{ left: `${intensity.pos}%` }}></div>
+                </div>
+              )}
+              <div className="intensity-zone-name" style={{ color: isRest ? 'var(--t1)' : intensity?.color }}>
+                {isRest ? 'Rest day · No intensity' : intensity?.label}
+              </div>
+              <p className="coach-note-inline">
+                {isRest ? 'No run scheduled. The intensity scale returns tomorrow when the next workout posts.' : intensity?.copy}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── SECTION 3 · WEEK STRIP ── */}
+        <div className="week-card">
+          <div className="week-header">
+            <div className="week-header-top">
+              <div className="week-label-group">
+                <span className="week-header-sublabel">This Week</span>
+                <span className="week-header-title">{phaseLabel} Week {phaseWeekIdx}</span>
+              </div>
+              <div className="week-meta">
+                {sessionsDone} of {sessionsTotal} sessions done · {currentWeek.plannedMi} mi planned
+              </div>
+              <a className="week-view-link" href="/training#current-week">View Full Schedule →</a>
+            </div>
+            <div className="week-progress-bar">
+              <div className="week-progress-fill" style={{ width: `${weekProgressPct}%` }}></div>
+            </div>
+          </div>
+
+          <div className="day-grid">
+            {currentWeek.days.map((d) => {
+              const isToday = d.date === today;
+              const isDone = !isToday && d.date < today && !d.isRest;
+              const dateNum = parseInt(d.date.slice(-2), 10);
+              return (
+                <div key={d.date} className={`day-col${isToday ? ' today' : ''}`}>
+                  <div className="day-dow">{d.dow}</div>
+                  <div className={`day-date${isToday ? ' amber' : ''}`}>{dateNum}</div>
+                  {d.isRest ? (
+                    <div className="day-rest">Rest</div>
+                  ) : (
+                    <>
+                      <div className="day-type">{d.label}</div>
+                      <div className="day-dist">{d.distanceMi}<small>mi</small></div>
+                      {isDone && <div className="day-done">DONE</div>}
+                      {d.hasStrength && !isDone && <span className="day-strength" title="Strength training">S</span>}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Body — three sections + modals
-// ─────────────────────────────────────────────────────────────────────
-
-interface V4BodyProps {
-  data: OverviewData;
-  skipped: boolean;
-  onSkipToggle: (next: boolean) => void;
-  onOpenWorkout: () => void;
-  onOpenSchedule: () => void;
-  workoutModalOpen: boolean;
-  onCloseWorkoutModal: () => void;
-  scheduleModalOpen: boolean;
-  onCloseScheduleModal: () => void;
-}
-
-function V4Body({
-  data,
-  skipped,
-  onSkipToggle,
-  onOpenWorkout,
-  onOpenSchedule,
-  workoutModalOpen,
-  onCloseWorkoutModal,
-  scheduleModalOpen,
-  onCloseScheduleModal,
-}: V4BodyProps) {
-  const briefing = composeBriefing(data);
-  const heroProps = composeHero(data);
-  const weekProps = composeWeek(data, onOpenSchedule);
-  const schedulePhases = composeSchedule(data);
-  const raceMeta = composeRaceMeta(data);
-
+function TrendRow({ label, value, tone, width }: { label: string; value: string; tone: 'green' | 'amber'; width: number }) {
   return (
-    <>
-      <CoachStrip label={briefing.label} briefing={briefing.text} />
-
-      <HeroCard
-        {...heroProps}
-        skipped={skipped}
-        onSkipToggle={onSkipToggle}
-        onOpenWorkout={onOpenWorkout}
-      />
-
-      <WeekStripCard {...weekProps} />
-
-      <WorkoutDetailModal
-        open={workoutModalOpen}
-        onClose={onCloseWorkoutModal}
-        eyebrow={heroProps.eyebrow}
-        title={heroProps.title}
-        stats={heroProps.stats}
-        segments={heroProps.segments}
-        intensityPct={heroProps.intensityPct}
-        intensityZone={heroProps.intensityZone}
-        intensityNote={heroProps.intensityNote}
-        onMarkComplete={() => {
-          onCloseWorkoutModal();
-          // TODO: wire to a "mark complete" endpoint when planned ↔ Strava
-          // matching lands.
-        }}
-        onSkip={() => {
-          onCloseWorkoutModal();
-          onSkipToggle(!skipped);
-        }}
-      />
-
-      <ScheduleModal
-        open={scheduleModalOpen}
-        onClose={onCloseScheduleModal}
-        raceMeta={raceMeta}
-        phases={schedulePhases}
-      />
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Composition helpers — pull real data → v4 primitive props
-// ─────────────────────────────────────────────────────────────────────
-
-function composeBriefing(data: OverviewData): { label: string; text: string } {
-  if (data.briefing) {
-    return { label: data.briefing.label, text: data.briefing.text };
-  }
-  // Fallback: profile greeting + workout voice lead if briefing is null.
-  const lead = data.coach.workout.answer.voiceLead ?? '';
-  return {
-    label: `COACH · ${todayLabel(data.today)}`,
-    text: lead || `${data.profile.greeting}, ${data.profile.name}.`,
-  };
-}
-
-interface HeroProps {
-  eyebrow: string;
-  title: string;
-  stats: HeroStatPills;
-  segments: SegmentRow[];
-  readinessScore: number | null;
-  readinessLevel: ReadinessLevel;
-  readinessBadge: string;
-  readinessCaption: string;
-  signals: FitnessSignal[];
-  intensityPct: number;
-  intensityZone: string;
-  intensityNote?: string;
-  hasStrength: boolean;
-  isRest: boolean;
-}
-
-interface HeroStatPills {
-  distanceMi: number | null;
-  paceSecPerMi: number | null;
-  durationMin: number | null;
-  hrCapBpm: number | null;
-}
-
-function composeHero(data: OverviewData): HeroProps {
-  const phase = data.planCurrentPhase ?? data.coach.workout.answer.phaseLabel ?? null;
-  const eyebrow = `TODAY${phase ? ` · ${phase.toUpperCase()}` : ''}`;
-
-  const workout = data.coach.workout.answer;
-  const planToday = data.planWeekWorkouts?.find((w) => w.dateISO === data.today) ?? null;
-  const distanceMi = planToday?.distanceMi ?? workout.distanceMi ?? null;
-  const paceMid = workout.paceTargetSPerMi
-    ? (workout.paceTargetSPerMi.lower + workout.paceTargetSPerMi.upper) / 2
-    : null;
-  const durationMin = paceMid != null && distanceMi != null
-    ? Math.round((paceMid * distanceMi) / 60)
-    : null;
-  // WorkoutPrescription doesn't expose a hard HR cap yet — pull it from
-  // the runner's max-HR if available, otherwise omit the stat pill.
-  const hrCapBpm: number | null = null;
-
-  const segments: SegmentRow[] = (data.workoutStructure ?? []).map((b) => ({
-    label: b.name.split('·')[0].trim().toUpperCase(),
-    duration: b.timeOffset || '—',
-    distance: b.distance || '—',
-    pace: b.pace || '—',
-    isMain: b.isMain,
-  }));
-
-  const readiness = data.coach.readiness.answer;
-  const readinessScore =
-    readiness.level === 'green' ? 88 :
-    readiness.level === 'yellow' ? 62 :
-    40;
-  const readinessBadge =
-    readiness.level === 'green' ? 'Ready' :
-    readiness.level === 'yellow' ? 'Holding' :
-    'Watching';
-  const readinessCaption =
-    readiness.level === 'green' ? 'Building' :
-    readiness.level === 'yellow' ? 'Holding steady' :
-    'Recovery focus';
-
-  const signals = composeSignals(data);
-  const intensityPct = computeIntensityPct(workout.label);
-  const intensityZone = zoneNameFor(workout.label);
-  // voiceLead is the verbatim coach paragraph for this workout; perfect
-  // as the italic note under the intensity bar.
-  const intensityNote = workout.voiceLead || undefined;
-
-  // Rest-day detection: the planned workout for today is a rest (or no
-  // workout at all). When true, IntensityBar swaps to "Rest day · No
-  // intensity" copy and hides the gradient bar entirely.
-  const isRest = isRestDayLabel(planToday?.type) || isRestDayLabel(workout.label) || distanceMi === 0 || distanceMi == null;
-
-  return {
-    eyebrow,
-    title: titleFor(workout.label),
-    stats: { distanceMi, paceSecPerMi: paceMid, durationMin, hrCapBpm },
-    segments,
-    readinessScore,
-    readinessLevel: readiness.level,
-    readinessBadge,
-    readinessCaption,
-    signals,
-    intensityPct,
-    intensityZone,
-    intensityNote: isRest ? 'No run scheduled. The intensity scale returns tomorrow when the next workout posts.' : intensityNote,
-    hasStrength: planToday?.hasStrength === true,
-    isRest,
-  };
-}
-
-/** Match the various ways the plan / coach refer to a rest day. */
-function isRestDayLabel(label: string | null | undefined): boolean {
-  if (!label) return false;
-  const norm = label.toLowerCase().trim();
-  return norm === 'rest' || norm === 'rest day' || norm === 'off' || norm.startsWith('rest ');
-}
-
-function composeSignals(data: OverviewData): FitnessSignal[] {
-  const week = data.coach.weekDeltas.answer;
-  const readiness = data.coach.readiness.answer;
-  const acwr = readiness.acwr;
-  const easyShare = readiness.easyShare;
-
-  const signals: FitnessSignal[] = [];
-
-  // Effort — net delta on the week vs plan, scaled.
-  const effortDelta = week.netDeltaMi;
-  signals.push({
-    label: 'Effort',
-    value: formatSigned(effortDelta, 2),
-    fillPct: clampPct(50 + effortDelta * 10),
-    tone: effortDelta > 0.5 ? 'green' : effortDelta < -0.5 ? 'warn' : 'dim',
-  });
-
-  // Load — ACWR.
-  if (acwr != null) {
-    signals.push({
-      label: 'Load',
-      value: acwr.toFixed(2),
-      fillPct: clampPct(acwr * 50),
-      tone: acwr >= 0.8 && acwr <= 1.3 ? 'green' : acwr > 1.3 ? 'amber' : 'dim',
-    });
-  } else {
-    signals.push({ label: 'Load', value: '—', fillPct: 0, tone: 'dim' });
-  }
-
-  // Mileage — 4w vs prior 4w delta.
-  const mDelta = data.state.volume.deltaPct4v4;
-  signals.push({
-    label: 'Mileage',
-    value: mDelta != null ? `${mDelta >= 0 ? '+' : ''}${(mDelta * 100).toFixed(0)}%` : '—',
-    fillPct: mDelta != null ? clampPct(50 + mDelta * 200) : 0,
-    tone: mDelta != null ? (mDelta > 0 ? 'green' : mDelta < -0.1 ? 'warn' : 'dim') : 'dim',
-  });
-
-  // Easy Pace — easy share of the last 14 days.
-  if (easyShare != null) {
-    signals.push({
-      label: 'Easy Share',
-      value: `${Math.round(easyShare * 100)}%`,
-      fillPct: clampPct(easyShare * 100),
-      tone: easyShare >= 0.8 ? 'green' : easyShare >= 0.7 ? 'amber' : 'warn',
-    });
-  } else {
-    signals.push({ label: 'Easy Share', value: '—', fillPct: 0, tone: 'dim' });
-  }
-
-  // Strain — placeholder until HealthKit lands. Render dim.
-  signals.push({ label: 'Strain', value: '—', fillPct: 0, tone: 'dim' });
-
-  return signals;
-}
-
-function composeWeek(data: OverviewData, onOpenSchedule: () => void) {
-  const week = data.coach.weekDeltas.answer;
-  const phase = data.planCurrentPhase ?? data.coach.workout.answer.phaseLabel ?? 'This Week';
-
-  // Build the 7-day strip from data.planWeekWorkouts + week.days for
-  // actual mileage. planWeekWorkouts is already keyed Mon→Sun.
-  const days: WeekDay[] = (data.planWeekWorkouts ?? []).slice(0, 7).map((w) => {
-    const d = new Date(w.dateISO + 'T12:00:00Z');
-    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
-    const actual = week.days.find((dd) => dd.dateISO === w.dateISO);
-    const hasActual = actual?.actualMi != null && actual.actualMi > 0;
-    const isToday = w.dateISO === data.today;
-    const isRest = w.type === 'rest' || w.distanceMi === 0;
-    const status: WeekDay['status'] =
-      isToday ? 'today' :
-      hasActual ? 'done' :
-      isRest ? 'rest' : 'planned';
-
-    return {
-      dow,
-      dateNum: String(d.getUTCDate()),
-      workoutName: workoutDisplayName(w.type),
-      distance: isRest ? '' : `${w.distanceMi.toFixed(1)} mi`,
-      status,
-      hasStrength: w.hasStrength === true,
-    };
-  });
-
-  // If planWeekWorkouts is empty (no plan yet), build empty 7 columns
-  // so the strip still renders.
-  while (days.length < 7) {
-    days.push({ dow: '—', dateNum: '—', workoutName: '—', distance: '', status: 'rest' });
-  }
-
-  const loggedMi = week.loggedWeekMi || null;
-  const plannedMi = week.plannedWeekMi || null;
-  const loggedWorkouts = days.filter((d) => d.status === 'done').length;
-  const totalWorkouts = days.filter((d) => d.status !== 'rest').length;
-
-  const delta = week.netDeltaMi;
-  const deltaLabel =
-    delta > 0.5 ? `Projecting +${delta.toFixed(1)} over plan` :
-    delta < -0.5 ? `Projecting ${delta.toFixed(1)} under plan` :
-    'On plan';
-  const deltaTone: 'green' | 'amber' | 'warn' | 'dim' =
-    delta > 0.5 ? 'green' :
-    delta < -0.5 ? 'warn' :
-    'dim';
-
-  const progressPct = plannedMi != null && plannedMi > 0
-    ? clampPct((loggedMi ?? 0) / plannedMi * 100)
-    : 0;
-
-  return {
-    eyebrow: 'This Week',
-    title: phase,
-    loggedMi,
-    plannedMi,
-    loggedWorkouts,
-    totalWorkouts,
-    deltaLabel,
-    deltaTone,
-    progressPct,
-    days,
-    onViewFullSchedule: onOpenSchedule,
-  };
-}
-
-function composeSchedule(data: OverviewData): SchedulePhase[] {
-  // For now, build a single-phase schedule using planWeekWorkouts +
-  // planFutureLongRuns to communicate at least the next few weeks. When
-  // /api/plan/active exposes the full Plan artifact end-to-end, this
-  // becomes a richer multi-phase view grouped by Plan.phases.
-  if (!data.planWeekWorkouts || data.planWeekWorkouts.length === 0) return [];
-
-  // Group by ISO week start (Mon). For each, compute the week label
-  // and roll up miles + a brief workout description.
-  const weeksByMon = new Map<string, {
-    miles: number;
-    descParts: string[];
-    hasToday: boolean;
-    hasUnloggedToday: boolean;
-  }>();
-
-  for (const w of data.planWeekWorkouts) {
-    const d = new Date(w.dateISO + 'T12:00:00Z');
-    // Compute Monday of that week (dow 1).
-    const dow = d.getUTCDay();
-    const monOffset = dow === 0 ? -6 : 1 - dow;
-    d.setUTCDate(d.getUTCDate() + monOffset);
-    const monISO = d.toISOString().slice(0, 10);
-    const entry = weeksByMon.get(monISO) ?? {
-      miles: 0,
-      descParts: [],
-      hasToday: false,
-      hasUnloggedToday: false,
-    };
-    entry.miles += w.distanceMi;
-    if (w.type !== 'rest' && w.distanceMi > 0) {
-      entry.descParts.push(workoutDisplayName(w.type));
-    }
-    if (w.dateISO === data.today) entry.hasToday = true;
-    weeksByMon.set(monISO, entry);
-  }
-
-  const weeks = Array.from(weeksByMon.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([monISO, agg], idx) => {
-      const m = new Date(monISO + 'T12:00:00Z');
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const dateLabel = `${monthNames[m.getUTCMonth()]} ${m.getUTCDate()}`;
-      const status: 'done' | 'current' | 'upcoming' =
-        agg.hasToday ? 'current' :
-        monISO < data.today ? 'done' :
-        'upcoming';
-      return {
-        weekNum: idx + 1,
-        dateLabel,
-        miles: agg.miles,
-        description: agg.descParts.slice(0, 5).join(' · ') || '—',
-        status,
-      };
-    });
-
-  return [
-    { label: data.planCurrentPhase ? `${data.planCurrentPhase} Phase` : 'Plan', weeks },
-  ];
-}
-
-function composeRaceMeta(data: OverviewData): string {
-  const nextA = data.races.nextA;
-  if (!nextA) return 'No A-race set';
-  const m = nextA.meta.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return nextA.meta.name;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${nextA.meta.name} · ${months[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Small helpers
-// ─────────────────────────────────────────────────────────────────────
-
-function clampPct(v: number): number { return Math.max(0, Math.min(100, v)); }
-
-function formatSigned(v: number, dp: number): string {
-  const s = v.toFixed(dp);
-  return v >= 0 ? `+${s}` : s;
-}
-
-function titleFor(label: string): string {
-  // Map workout label to the big Bebas Neue title — split 2-word labels
-  // across two lines per the v4 mockup ("EASY\nRUN", "LONG\nRUN", etc.).
-  const upper = label.toUpperCase();
-  if (upper.length <= 6) return upper;
-  // Find the first space and split there.
-  const idx = upper.indexOf(' ');
-  if (idx < 0) return upper;
-  return `${upper.slice(0, idx)}\n${upper.slice(idx + 1)}`;
-}
-
-function workoutDisplayName(type: string): string {
-  switch (type) {
-    case 'easy': return 'Easy Run';
-    case 'long': return 'Long Run';
-    case 'long_steady': return 'Long Run';
-    case 'long_progression': return 'Long Progression';
-    case 'long_mp_block': return 'Long MP';
-    case 'threshold': return 'Threshold';
-    case 'threshold_intervals': return 'Threshold';
-    case 'tempo': return 'Tempo';
-    case 'interval': return 'Intervals';
-    case 'intervals': return 'Intervals';
-    case 'medium_long': return 'Medium Long';
-    case 'marathon_specific': return 'MP Workout';
-    case 'recovery': return 'Recovery';
-    case 'strides': return 'Strides';
-    case 'race': return 'Race';
-    case 'rest': return 'Rest';
-    case 'general_aerobic': return 'Easy Run';
-    default: return 'Easy Run';
-  }
-}
-
-function zoneNameFor(label: string): string {
-  const l = label.toLowerCase();
-  if (l.includes('easy') || l.includes('recovery') || l.includes('general')) return 'Easy · Zone 2';
-  if (l.includes('threshold') || l.includes('tempo')) return 'Threshold · Zone 4';
-  if (l.includes('interval')) return 'VO2max · Zone 5';
-  if (l.includes('long')) return 'Aerobic · Zone 2';
-  if (l.includes('race')) return 'Race · Zone 5';
-  if (l.includes('rest')) return 'Rest';
-  return 'Easy · Zone 2';
-}
-
-function computeIntensityPct(label: string): number {
-  const l = label.toLowerCase();
-  if (l.includes('rest')) return 0;
-  if (l.includes('recovery')) return 12;
-  if (l.includes('easy') || l.includes('general')) return 22;
-  if (l.includes('long')) return 35;
-  if (l.includes('tempo')) return 55;
-  if (l.includes('threshold')) return 65;
-  if (l.includes('interval')) return 82;
-  if (l.includes('race')) return 95;
-  return 22;
-}
-
-function todayLabel(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return iso;
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const d = new Date(iso + 'T12:00:00Z');
-  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getUTCDay()];
-  return `${dow} ${months[Number(m[2]) - 1]} ${Number(m[3])}`;
-}
-
-function formatTopbarClock(d: Date): React.ReactNode {
-  const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()];
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const date = `${months[d.getMonth()]} ${d.getDate()}`;
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const am = h < 12;
-  const dispH = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  const time = `${dispH}:${m.toString().padStart(2, '0')} ${am ? 'AM' : 'PM'}`;
-  return <>{dow} · {date} · <b>{time}</b></>;
-}
-
-function OverviewSkeleton() {
-  return (
-    <div style={{ marginTop: 24 }}>
-      <Skeleton height={160} width="100%" />
-      <div style={{ height: 16 }} />
-      <Skeleton height={520} width="100%" />
-      <div style={{ height: 16 }} />
-      <Skeleton height={280} width="100%" />
+    <div className="trend-row">
+      <div className="trend-row-top">
+        <span className="trend-row-label">{label}</span>
+        <span className={`trend-row-value ${tone}`}>{value}</span>
+      </div>
+      <div className="trend-bar-track">
+        <div className={`trend-bar-fill ${tone}`} style={{ width: `${width}%` }}></div>
+      </div>
     </div>
   );
 }
