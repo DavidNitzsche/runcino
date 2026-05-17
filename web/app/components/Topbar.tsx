@@ -1,13 +1,11 @@
 /**
  * Topbar — page-top navigation band.
  *
- * Anatomy: optional BACK button · brand mark · tab row · clock.
- * Tabs are: Overview · Training · Races · Health · Log · Profile.
+ * Anatomy: optional BACK button · italic-gradient faff.run wordmark
+ * (replaces the legacy single-letter brand mark) · tab row · clock /
+ * sign-out menu.
  *
- * The Topbar is the canonical primitive at the top of every May 2026 page.
- * It owns the page back-nav (when on a detail view), the tab nav, and the
- * clock. The clock can either show the real time (default) or any string
- * supplied by the caller.
+ * Tabs: Overview · Training · Races · Health · Log · Profile.
  */
 
 import type { ReactNode } from 'react';
@@ -21,8 +19,6 @@ export interface TopbarProps {
   back?: { href: string; label?: string };
   /** Right-side clock content. Default: hidden. */
   clock?: ReactNode;
-  /** Override which brand glyph appears in the mark. Default: "R". */
-  brandGlyph?: string;
   /** Hide the brand mark entirely (rare — used on the very first onboarding screen). */
   hideBrand?: boolean;
 }
@@ -45,7 +41,7 @@ const TAB_HREFS: Record<TopbarTab, string> = {
   profile:  '/profile',
 };
 
-export function Topbar({ activeTab, back, clock, brandGlyph = 'R', hideBrand = false }: TopbarProps) {
+export function Topbar({ activeTab, back, clock, hideBrand = false }: TopbarProps) {
   return (
     <div className="topbar">
       {back && (
@@ -53,7 +49,9 @@ export function Topbar({ activeTab, back, clock, brandGlyph = 'R', hideBrand = f
           ← {back.label ?? 'BACK'}
         </a>
       )}
-      {!hideBrand && !back && <div className="brand">{brandGlyph}</div>}
+      {!hideBrand && !back && (
+        <a className="faff-topbar-logo" href="/overview">faff.run</a>
+      )}
       <div className="topbar-tabs" role="tablist">
         {(Object.keys(TAB_LABELS) as TopbarTab[]).map((key) => (
           <a

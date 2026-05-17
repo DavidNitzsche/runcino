@@ -1,0 +1,136 @@
+/* Onboarding page styles — 3-step flow */
+
+.faff-onb-nav-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: rgba(13,15,18,.35); letter-spacing: 0.3px; }
+
+.faff-onb-wrap {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 24px 24px 80px;
+}
+
+/* Stepper */
+.faff-onb-stepper {
+  display: flex; align-items: center; gap: 0;
+  max-width: 720px; width: 100%; margin: 24px 0 36px;
+}
+.faff-onb-step-pill {
+  flex: 1; display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+.faff-onb-step-pill + .faff-onb-step-pill { margin-left: 8px; }
+.faff-onb-step-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(13,15,18,.06); color: rgba(13,15,18,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.faff-onb-step-pill.active .faff-onb-step-num { background: #0D0F12; color: #fff; }
+.faff-onb-step-pill.done .faff-onb-step-num { background: #2CA82F; color: #fff; }
+.faff-onb-step-info { display: flex; flex-direction: column; gap: 2px; }
+.faff-onb-step-label {
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  letter-spacing: 1.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600;
+}
+.faff-onb-step-name {
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+  color: rgba(13,15,18,.55);
+}
+.faff-onb-step-pill.active .faff-onb-step-name { color: #0D0F12; }
+
+/* Card */
+.faff-onb-card {
+  background: #fff; border-radius: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  padding: 48px 56px 40px;
+  max-width: 720px; width: 100%; position: relative; overflow: hidden;
+}
+.faff-onb-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+.faff-onb-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 56px;
+  line-height: 0.92; letter-spacing: -0.5px; color: #0D0F12;
+  margin-bottom: 10px;
+}
+.faff-onb-sub {
+  font-family: 'Inter', sans-serif; font-size: 15px;
+  line-height: 1.55; color: rgba(13,15,18,.55);
+  margin-bottom: 36px; max-width: 540px;
+}
+.faff-onb-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.faff-onb-help {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); margin-top: 4px; line-height: 1.5;
+}
+.faff-onb-skip {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.55); text-align: center; margin-top: 8px;
+}
+.faff-onb-skip a {
+  color: rgba(13,15,18,.55); text-decoration: underline; text-underline-offset: 2px;
+}
+.faff-onb-skip a:hover { color: #0D0F12; }
+
+/* Pill row (sex / day / etc) */
+.faff-onb-pill-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.faff-onb-pill {
+  font-family: 'Oswald', sans-serif; font-weight: 600;
+  font-size: 12px; letter-spacing: 1.5px; text-align: center;
+  padding: 12px 0;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent; border-radius: 8px;
+  cursor: pointer; color: rgba(13,15,18,.55); text-transform: uppercase;
+}
+.faff-onb-pill:hover { background: rgba(13,15,18,.08); color: #0D0F12; }
+.faff-onb-pill.selected { background: #0D0F12; color: #fff; border-color: #0D0F12; }
+
+/* Level cards */
+.faff-onb-level-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+}
+.faff-onb-level-card {
+  padding: 16px 18px; background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent; border-radius: 10px; cursor: pointer;
+}
+.faff-onb-level-card:hover { background: rgba(13,15,18,.07); }
+.faff-onb-level-card.selected { background: #fff; border-color: #0D0F12; }
+.faff-onb-level-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: #0D0F12; }
+.faff-onb-level-meta {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); margin-top: 4px; line-height: 1.5;
+}
+
+/* Summary preview */
+.faff-onb-summary {
+  background: rgba(13,15,18,.03); border-radius: 10px;
+  padding: 14px 16px; margin: 20px 0 0;
+}
+.faff-onb-summary-label {
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  letter-spacing: 1.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600; margin-bottom: 4px;
+}
+.faff-onb-summary-value { font-family: 'Inter', sans-serif; font-size: 14px; color: #0D0F12; font-weight: 500; }
+
+/* Action buttons */
+.faff-onb-actions {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 36px; padding-top: 24px;
+  border-top: 1px solid rgba(13,15,18,.08);
+}
+.faff-onb-btn {
+  font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+  padding: 12px 24px; border-radius: 9px; cursor: pointer;
+  border: none; text-decoration: none; letter-spacing: 0.3px;
+}
+.faff-onb-btn.back {
+  background: transparent; color: rgba(13,15,18,.55); padding: 12px 12px;
+}
+.faff-onb-btn.back:hover { color: #0D0F12; }
+.faff-onb-btn.back.invisible { visibility: hidden; }
+.faff-onb-btn.primary { background: #0D0F12; color: #fff; }
+.faff-onb-btn.primary:hover { background: rgba(13,15,18,.85); }
+.faff-onb-btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }

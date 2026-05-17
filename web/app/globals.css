@@ -179,6 +179,24 @@
   width:auto; height:auto;
   text-decoration:none;
 }
+/* Italic gradient wordmark — replaces the single-letter brand glyph */
+.faff-topbar-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  letter-spacing: 3px;
+  line-height: 1;
+  font-style: italic;
+  text-decoration: none;
+  background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.faff-topbar-logo:hover {
+  background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
 .topbar-tabs {
   display:flex; gap:36px; align-items:center;
   padding:0;

@@ -1,0 +1,227 @@
+/* Landing-page specific styles. Shares public.css for nav + auth tokens. */
+
+.faff-land-page { max-width: 1280px; margin: 0 auto; padding: 24px 40px 100px; }
+
+/* Hero */
+.faff-land-hero {
+  display: grid;
+  grid-template-columns: 1fr 480px;
+  gap: 60px;
+  align-items: center;
+  padding: 80px 0 100px;
+}
+.faff-land-hero-left { display: flex; flex-direction: column; }
+.faff-land-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; letter-spacing: 3px;
+  color: rgba(13,15,18,.35); text-transform: uppercase; font-weight: 600;
+  margin-bottom: 28px;
+}
+.faff-land-headline {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 132px; line-height: 0.98;
+  letter-spacing: -1px; color: #0D0F12;
+  margin-bottom: 36px;
+}
+.faff-land-headline em {
+  font-style: italic;
+  display: inline-block;
+  padding: 0.08em 0;
+  vertical-align: baseline;
+  background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.faff-land-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 19px; line-height: 1.55;
+  color: rgba(13,15,18,.55); max-width: 540px;
+  margin-bottom: 40px; font-weight: 400;
+}
+.faff-land-sub strong { color: #0D0F12; font-weight: 600; }
+.faff-land-cta-row { display: flex; align-items: center; gap: 20px; }
+.faff-land-btn-primary {
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+  color: #fff; background: #0D0F12; border: none; border-radius: 10px;
+  padding: 16px 32px; cursor: pointer; text-decoration: none; letter-spacing: 0.5px;
+}
+.faff-land-btn-primary:hover { background: rgba(13,15,18,.85); }
+.faff-land-btn-primary.white { background: #fff; color: #0D0F12; }
+.faff-land-btn-primary.white:hover { background: rgba(255,255,255,.92); }
+.faff-land-btn-secondary {
+  font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500;
+  color: rgba(13,15,18,.55); text-decoration: none; letter-spacing: 0.3px;
+}
+.faff-land-btn-secondary:hover { color: #0D0F12; }
+.faff-land-trust {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); margin-top: 20px; letter-spacing: 0.3px;
+}
+
+/* Hero sample card */
+.faff-land-sample {
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  padding: 32px 36px; position: relative; overflow: hidden;
+}
+.faff-land-sample::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+.faff-land-sample-label {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2.5px;
+  color: rgba(13,15,18,.35); text-transform: uppercase; font-weight: 600;
+  margin-bottom: 18px;
+}
+.faff-land-dot { width: 7px; height: 7px; border-radius: 50%; background: #2CA82F; }
+.faff-land-sample-text {
+  font-family: 'Inter', sans-serif; font-size: 17px; line-height: 1.55;
+  color: #0D0F12; font-weight: 400;
+}
+.faff-land-sample-text strong { font-weight: 700; }
+.faff-land-sample-divider { height: 1px; background: rgba(13,15,18,.08); margin: 24px 0; }
+.faff-land-sample-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.faff-land-sample-stat-label {
+  font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px;
+  color: rgba(13,15,18,.35); text-transform: uppercase; font-weight: 600;
+  margin-bottom: 5px;
+}
+.faff-land-sample-stat-value {
+  font-family: 'Bebas Neue', sans-serif; font-size: 28px;
+  color: #0D0F12; line-height: 1;
+}
+.faff-land-sample-stat-value.green { color: #2CA82F; }
+.faff-land-sample-stat-value.orange { color: #E85D26; }
+.faff-land-sample-stat-suffix { font-size: .5em; color: rgba(13,15,18,.35); margin-left: 3px; }
+
+/* Sections */
+.faff-land-section { padding: 80px 0; }
+.faff-land-section-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 60px; line-height: 0.95;
+  letter-spacing: 0; color: #0D0F12; margin-bottom: 16px;
+}
+.faff-land-section-sub {
+  font-family: 'Inter', sans-serif; font-size: 18px;
+  line-height: 1.55; color: rgba(13,15,18,.55);
+  max-width: 640px; font-weight: 400; margin-bottom: 48px;
+}
+
+/* Feature grid */
+.faff-land-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.faff-land-feature {
+  background: #fff; border-radius: 20px;
+  padding: 36px 32px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+.faff-land-feature-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px; line-height: 1;
+  margin-bottom: 20px; font-style: italic;
+  background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.faff-land-feature-title {
+  font-family: 'Inter', sans-serif; font-weight: 700;
+  font-size: 19px; color: #0D0F12; margin-bottom: 12px;
+}
+.faff-land-feature-body {
+  font-family: 'Inter', sans-serif; font-size: 14px;
+  line-height: 1.55; color: rgba(13,15,18,.55);
+}
+.faff-land-feature-body strong { color: #0D0F12; font-weight: 600; }
+
+/* Connectors */
+.faff-land-connectors {
+  background: #fff; border-radius: 20px;
+  padding: 36px 40px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  margin-top: 32px;
+}
+.faff-land-conn-cat {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 1.8px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600;
+  margin: 24px 0 10px;
+}
+.faff-land-conn-cat:first-child { margin-top: 0; }
+.faff-land-conn-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.faff-land-conn {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 22px 12px 18px;
+  background: rgba(13,15,18,.03);
+  border-radius: 12px; border: 1px solid rgba(13,15,18,.08);
+}
+.faff-land-conn-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px; color: #fff;
+}
+.faff-land-conn-strava { background: #FC4C02; }
+.faff-land-conn-manual { background: #0D0F12; color: #D4900A; font-family: 'Inter', sans-serif; font-size: 20px; font-weight: 600; }
+.faff-land-conn-gpx { background: #0D0F12; color: #2563EB; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700; }
+.faff-land-conn-apple { background: linear-gradient(135deg, #FB264E, #F85B27); }
+.faff-land-conn-garmin { background: #000; }
+.faff-land-conn-coros { background: #FF4D00; }
+.faff-land-conn-polar { background: #C8102E; }
+.faff-land-conn-suunto { background: #003B5C; }
+.faff-land-conn-wahoo { background: #00A0DC; }
+.faff-land-conn-googlefit { background: linear-gradient(135deg, #4285F4, #34A853); font-size: 14px; }
+.faff-land-conn-finalsurge { background: #0088CC; }
+.faff-land-conn-trainingpeaks { background: #E32D2D; font-size: 16px; }
+.faff-land-conn-whoop { background: #000; }
+.faff-land-conn-oura { background: #1A1A1A; }
+.faff-land-conn-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 13px; color: #0D0F12; text-align: center; }
+.faff-land-conn-meta {
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  letter-spacing: 1.2px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600;
+}
+.faff-land-conn-meta.live { color: #2CA82F; }
+.faff-land-conn-meta.soon { color: #D4900A; }
+.faff-land-conn-meta.planned { color: rgba(13,15,18,.35); }
+
+/* Final CTA dark */
+.faff-land-final-cta {
+  background: #0D0F12; color: #fff; border-radius: 24px;
+  padding: 80px 60px; margin-top: 80px; text-align: center;
+}
+.faff-land-final-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  letter-spacing: 3px; color: rgba(255,255,255,.45);
+  text-transform: uppercase; font-weight: 600; margin-bottom: 18px;
+}
+.faff-land-final-headline {
+  font-family: 'Bebas Neue', sans-serif; font-size: 80px;
+  line-height: 1.10; letter-spacing: -0.5px;
+  margin-bottom: 24px;
+}
+.faff-land-final-headline em {
+  font-style: italic;
+  display: inline-block;
+  padding: 0.08em 0;
+  vertical-align: baseline;
+  background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.faff-land-final-sub {
+  font-family: 'Inter', sans-serif; font-size: 17px;
+  line-height: 1.55; color: rgba(255,255,255,.7);
+  max-width: 540px; margin: 0 auto 32px;
+}
+.faff-land-final-trust {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  font-style: italic; color: rgba(255,255,255,.4);
+  margin-top: 56px; letter-spacing: 0.3px;
+}
+
+/* Footer */
+.faff-land-footer {
+  padding: 40px 0 0; display: flex;
+  justify-content: space-between; align-items: center;
+  border-top: 1px solid rgba(13,15,18,.08); margin-top: 60px;
+}
+.faff-land-footer-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: rgba(13,15,18,.35); }

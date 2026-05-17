@@ -1,0 +1,197 @@
+/* ════════════════════════════════════════════════════════════════════
+   Shared styles for the signed-out experience.
+   Imported by /landing, /signup, /login, /onboarding pages.
+   ════════════════════════════════════════════════════════════════════ */
+
+.faff-public-body {
+  background: #EEECEA;
+  color: #0D0F12;
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  font-feature-settings: "kern" 1, "liga" 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Nav ──────────────────────────────────────────────────────── */
+.faff-pub-nav { background: #EEECEA; position: sticky; top: 0; z-index: 100; }
+.faff-pub-nav-inner {
+  max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 72px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.faff-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  letter-spacing: 3px;
+  line-height: 1;
+  font-style: italic;
+  text-decoration: none;
+  background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.faff-logo:hover {
+  background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.faff-pub-actions { display: flex; align-items: center; gap: 16px; }
+.faff-btn-link {
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+  color: rgba(13,15,18,.55); text-decoration: none; letter-spacing: 0.3px; padding: 10px 4px;
+}
+.faff-btn-link:hover { color: #0D0F12; }
+.faff-btn-primary {
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+  color: #fff; background: #0D0F12; border: none; border-radius: 8px;
+  padding: 10px 20px; cursor: pointer; text-decoration: none; letter-spacing: 0.5px;
+}
+.faff-btn-primary:hover { background: rgba(13,15,18,.85); }
+.faff-nav-back {
+  font-family: 'Inter', sans-serif; font-size: 13px;
+  color: rgba(13,15,18,.55); text-decoration: none; letter-spacing: 0.3px;
+}
+.faff-nav-back:hover { color: #0D0F12; }
+
+/* ── Auth card (signup / login shell) ────────────────────────── */
+.faff-auth-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 40px 24px 80px;
+}
+.faff-auth-card {
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  padding: 48px 48px 40px;
+  width: 100%; max-width: 440px;
+  position: relative; overflow: hidden;
+}
+.faff-auth-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+.faff-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 2.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600; margin-bottom: 12px;
+}
+.faff-auth-title {
+  font-family: 'Bebas Neue', sans-serif; font-size: 48px;
+  line-height: 0.95; letter-spacing: -0.5px; color: #0D0F12; margin-bottom: 10px;
+}
+.faff-auth-sub {
+  font-family: 'Inter', sans-serif; font-size: 14px;
+  color: rgba(13,15,18,.55); line-height: 1.5; margin-bottom: 32px;
+}
+
+.faff-form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.faff-form-label {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 1.2px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600;
+}
+.faff-form-row-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.faff-form-input {
+  width: 100%; font-family: 'Inter', sans-serif; font-size: 14px;
+  padding: 13px 14px;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent; border-radius: 9px;
+  color: #0D0F12; outline: none;
+  transition: border-color .12s, background .12s;
+}
+.faff-form-input:focus { border-color: rgba(13,15,18,.55); background: #fff; }
+
+.faff-password-wrap { position: relative; }
+.faff-password-toggle {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase; color: rgba(13,15,18,.35);
+}
+.faff-password-toggle:hover { color: #0D0F12; }
+
+.faff-password-rules {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
+  margin-top: 6px; padding: 10px 12px;
+  background: rgba(13,15,18,.03); border-radius: 8px;
+}
+.faff-password-rule {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); display: flex; align-items: center; gap: 6px;
+}
+.faff-password-rule::before { content: '○'; font-size: 11px; color: rgba(13,15,18,.20); }
+.faff-password-rule.met::before { content: '●'; color: #2CA82F; }
+.faff-password-rule.met { color: rgba(13,15,18,.55); }
+
+.faff-form-error {
+  background: rgba(244,63,94,.08); color: #B91C1C;
+  border-radius: 8px; padding: 10px 14px; font-size: 13px;
+  margin-bottom: 14px; font-family: 'Inter', sans-serif;
+}
+
+.faff-btn-submit {
+  font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+  color: #fff; background: #0D0F12; border: none; border-radius: 9px;
+  padding: 14px; cursor: pointer; width: 100%;
+  letter-spacing: 0.4px; margin-top: 8px;
+}
+.faff-btn-submit:hover { background: rgba(13,15,18,.85); }
+.faff-btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.faff-auth-meta {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); text-align: center; margin-top: 20px;
+  line-height: 1.5;
+}
+.faff-auth-meta a { color: rgba(13,15,18,.55); text-decoration: underline; text-underline-offset: 2px; }
+.faff-auth-meta a:hover { color: #0D0F12; }
+
+.faff-auth-divider {
+  display: flex; align-items: center; gap: 12px; margin: 28px 0 24px;
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  letter-spacing: 1.5px; color: rgba(13,15,18,.20);
+  text-transform: uppercase; font-weight: 600;
+}
+.faff-auth-divider::before, .faff-auth-divider::after {
+  content: ''; flex: 1; height: 1px; background: rgba(13,15,18,.08);
+}
+
+.faff-auth-bottom {
+  text-align: center; font-family: 'Inter', sans-serif;
+  font-size: 13px; color: rgba(13,15,18,.55); margin-top: 24px;
+}
+.faff-auth-bottom a {
+  color: #0D0F12; text-decoration: none; font-weight: 600; margin-left: 4px;
+}
+.faff-auth-bottom a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.faff-forgot-link {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 0.3px; color: rgba(13,15,18,.55); text-decoration: none;
+}
+.faff-forgot-link:hover { color: #0D0F12; text-decoration: underline; text-underline-offset: 2px; }
+
+.faff-remember-row {
+  display: flex; align-items: center; gap: 8px; margin: 14px 0 0;
+}
+.faff-remember-checkbox {
+  appearance: none; width: 16px; height: 16px;
+  border: 1.5px solid rgba(13,15,18,.20); border-radius: 4px;
+  cursor: pointer; position: relative; background: #fff;
+}
+.faff-remember-checkbox:checked {
+  background: #0D0F12; border-color: #0D0F12;
+}
+.faff-remember-checkbox:checked::after {
+  content: '✓'; color: #fff; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+}
+.faff-remember-label {
+  font-family: 'Inter', sans-serif; font-size: 13px;
+  color: rgba(13,15,18,.55); cursor: pointer; user-select: none;
+}
