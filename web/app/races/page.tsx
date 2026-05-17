@@ -28,6 +28,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ConnectBanner } from '@/app/components/v4';
 import {
   Topbar,
   Stage,
@@ -53,9 +54,17 @@ export default function RacesPage() {
   const [data, setData] = useState<RacesData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { activities } = useActivities();
+  const [hasSource, setHasSource] = useState<boolean | null>(null);
 
   useEffect(() => {
     setNow(new Date());
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/connectors').then((r) => r.json()).then((j) => {
+      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
+      setHasSource((j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider)));
+    }).catch(() => setHasSource(false));
   }, []);
 
   useEffect(() => {
@@ -84,6 +93,8 @@ export default function RacesPage() {
         activeTab="races"
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
+
+      {hasSource === false && <ConnectBanner />}
 
       <RacesGreet data={data} />
 

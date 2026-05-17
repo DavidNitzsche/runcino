@@ -24,6 +24,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { ConnectBanner } from '@/app/components/v4';
 import {
   Topbar,
   Stage,
@@ -56,9 +57,18 @@ export default function HealthPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const { activities } = useActivities();
+  const [hasSource, setHasSource] = useState<boolean | null>(null);
 
   useEffect(() => {
     setNow(new Date());
+  }, []);
+
+  // Connector status — banner only shows when zero activity sources active.
+  useEffect(() => {
+    fetch('/api/connectors').then((r) => r.json()).then((j) => {
+      const ACTIVITY = new Set(['strava','garmin','apple_health','coros','polar','suunto','wahoo','google_fit']);
+      setHasSource((j?.connectors || []).some((c: { provider: string }) => ACTIVITY.has(c.provider)));
+    }).catch(() => setHasSource(false));
   }, []);
 
   useEffect(() => {
@@ -89,6 +99,8 @@ export default function HealthPage() {
         activeTab="health"
         clock={clock !== null ? clock : <Skeleton width={140} height={12} />}
       />
+
+      {hasSource === false && <ConnectBanner />}
 
       <HealthGreet data={data} />
 
