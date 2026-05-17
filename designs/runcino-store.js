@@ -30,14 +30,68 @@
   'use strict';
 
   const STORE_KEY = 'runcino_v4_state';
-  const SEED_VERSION = 5;
+  const SEED_VERSION = 7;
+
+  // ── Shoe-purpose vocabulary ─────────────────────────────────────
+  // Canonical run types the shoe is appropriate for. Maps directly to
+  // the workout types in buildPlan() (easy/recovery/long/quality/race)
+  // plus two extras: 'trail' (surface) and 'daily' (catch-all).
+  // /log later uses this to highlight matching shoes for a run's type.
+  const SHOE_PURPOSE_OPTIONS = [
+    { id: 'easy',      label: 'Easy'      },
+    { id: 'recovery',  label: 'Recovery'  },
+    { id: 'long',      label: 'Long'      },
+    { id: 'threshold', label: 'Threshold' },
+    { id: 'intervals', label: 'Intervals' },
+    { id: 'race',      label: 'Race'      },
+    { id: 'trail',     label: 'Trail'     },
+    { id: 'daily',     label: 'Daily'     },
+  ];
+  const SHOE_PURPOSE_LABEL = Object.fromEntries(SHOE_PURPOSE_OPTIONS.map(o => [o.id, o.label]));
+  function formatShoePurposes(purposes) {
+    if (!Array.isArray(purposes) || !purposes.length) return '';
+    return purposes.map(p => SHOE_PURPOSE_LABEL[p] || p).join(' · ');
+  }
+
+  // ── Level doctrine ──────────────────────────────────────────────
+  // Mapped from Research/00a-distance-running-training.md §"Volume
+  // Guidelines by Experience and Distance" (HM column). Each level
+  // has a peak weekly mileage band plus race-experience signals.
+  // The app uses these thresholds for:
+  //   · placing the user in a level when they edit prefs
+  //   · capping weekly volume + long-run length in buildPlan()
+  //   · gating which workout types appear (Advanced+ unlocks
+  //     cruise-interval thresholds and HM-finish long runs)
+  const LEVEL_DOCTRINE = {
+    beginner:     { label: 'Beginner',     peakMiBand: [10, 25],  longRunCapMi: 8,  racesMin: 0, copy: '10–25 mi/wk peak · just finishing distance' },
+    intermediate: { label: 'Intermediate', peakMiBand: [25, 50],  longRunCapMi: 13, racesMin: 1, copy: '25–50 mi/wk peak · raced HM or marathon' },
+    advanced:     { label: 'Advanced',     peakMiBand: [50, 70],  longRunCapMi: 18, racesMin: 3, copy: '50–70 mi/wk peak · sub-elite mileage' },
+    elite:        { label: 'Elite',        peakMiBand: [70, 140], longRunCapMi: 22, racesMin: 8, copy: '70+ mi/wk peak · sub-1:15 HM territory' },
+  };
+
+  // Default training prefs — canonical AFC plan shape. Mon recovery,
+  // Tue+Thu quality, Wed/Fri easy, Sat rest, Sun long. User edits in
+  // /profile mutate these and re-trigger buildPlan().
+  const DEFAULT_PREFS = {
+    level: 'intermediate',          // research-grounded; user is mid-range volume + sub-1:35 HM
+    longRunDay: 'sun',
+    qualityDays: ['tue', 'thu'],
+    restDay: 'sat',
+  };
 
   // ── Plan builder ────────────────────────────────────────────────
   // Generates all 14 weeks of the AFC Half plan from a compact template.
   // Each week's days roll the date forward from a plan startDate. Day
   // shape: { dow, date, type, label, distanceMi, hasStrength, isRest,
   // paceMin, completed (computed elsewhere via date < today) }.
-  function buildPlan() {
+  //
+  // The template is authored in a canonical day-order (long-run = Sun,
+  // rest = Sat, quality = Tue/Thu). User prefs rotate the slots: when
+  // the user moves long-run to Sat or rest to Fri, the placeholder
+  // role-slots reshuffle to match. This is what makes the Training
+  // Profile prefs actually influence the plan instead of being decorative.
+  function buildPlan(prefs) {
+    const p = prefs || DEFAULT_PREFS;
     const startDate = '2026-05-11';
     const phaseFor = (wk) => {
       if (wk <= 4) return 'BASE';
@@ -82,13 +136,71 @@
     const variance = [-0.2, 0, 0.2, 0.5, -0.1, 0, 0.1, 0, -0.3, 0.2, 0, 0, -0.1, 0];
     const today = '2026-05-16';
 
+    // Canonical template positions: 0=Mon recovery, 1=Tue quality, 2=Wed easy+strides,
+    // 3=Thu easy+S, 4=Fri easy/hill+S, 5=Sat rest, 6=Sun long.
+    // Map "role" → "canonical day index" so we can rotate per prefs.
+    const canonicalIdx = { recovery: 0, qualityA: 1, easyMid: 2, easyOrStrides: 3, easyLate: 4, rest: 5, long: 6 };
+    // Compute target day-index (0=Mon..6=Sun) for each role based on prefs.
+    // Falls back to canonical positions when prefs match defaults.
+    const dowToIdx = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+    const longIdx = dowToIdx[p.longRunDay] ?? 6;
+    const restIdx = dowToIdx[p.restDay] ?? 5;
+    const qDays = (p.qualityDays || ['tue', 'thu']).map((d) => dowToIdx[d]).filter((i) => i != null);
+    // Build a per-day role assignment. Start with all slots = null; place
+    // long → restidx → quality(s) → fill rest with recovery/easy.
+    function buildRoleMap() {
+      const slots = new Array(7).fill(null);
+      slots[longIdx] = 'long';
+      if (slots[restIdx] == null) slots[restIdx] = 'rest';
+      // Quality days — prefer up to 2; second only if BUILD phase or later
+      const qPrimary = qDays[0];
+      const qSecondary = qDays[1];
+      if (qPrimary != null && slots[qPrimary] == null) slots[qPrimary] = 'qualityA';
+      if (qSecondary != null && slots[qSecondary] == null) slots[qSecondary] = 'qualityB';
+      // Recovery — Monday by default, or first open slot
+      let recoveryPlaced = false;
+      if (slots[0] == null) { slots[0] = 'recovery'; recoveryPlaced = true; }
+      else for (let i = 0; i < 7; i++) if (slots[i] == null) { slots[i] = 'recovery'; recoveryPlaced = true; break; }
+      // Remaining slots = easy days
+      for (let i = 0; i < 7; i++) if (slots[i] == null) slots[i] = 'easy';
+      return slots;
+    }
+    const roleMap = buildRoleMap();
+
+    // Volume cap from level doctrine (caps the long run + scales weekly volume).
+    const lvl = LEVEL_DOCTRINE[p.level] || LEVEL_DOCTRINE.intermediate;
+    function applyLevelCap(role, distanceMi) {
+      if (role === 'long' && distanceMi > lvl.longRunCapMi) return lvl.longRunCapMi;
+      return distanceMi;
+    }
+
     const weeks = template.map((dayTpl, wIdx) => {
       const weekNum = wIdx + 1;
       const phase = phaseFor(weekNum);
       const wkStart = isoAdd(startDate, wIdx * 7);
-      const days = dayTpl.map((t, dIdx) => {
+      // Source the canonical day tuples by ROLE rather than by position,
+      // then re-place them according to the user's roleMap.
+      const canonical = {
+        recovery:  dayTpl[0],
+        qualityA:  dayTpl[1],
+        qualityB:  dayTpl[3] && dayTpl[3][0] === 'quality' ? dayTpl[3] : null, // only in BUILD+
+        easy:      dayTpl[2] || dayTpl[4],
+        easyMid:   dayTpl[2],
+        easyAlt:   dayTpl[4],
+        rest:      null,
+        long:      dayTpl[6],
+      };
+      const days = roleMap.map((role, dIdx) => {
         const date = isoAdd(wkStart, dIdx);
         const dow = dowList[dIdx];
+        // Resolve tuple for this role. Falls back to an easy day when
+        // the canonical week doesn't have a tuple for the requested
+        // role (eg user wants 2 quality days but the BASE template
+        // only has 1 — second quality slot becomes an easy day).
+        let t;
+        if (role === 'rest') t = null;
+        else if (role === 'qualityB' && canonical.qualityB == null) t = canonical.easy;
+        else t = canonical[role] != null ? canonical[role] : canonical.easy;
         if (!t) return { dow, date, type: 'rest', label: 'Rest', isRest: true };
         const [type, label, distanceMi, hasStrength] = t;
         const paceMin = type === 'easy' ? '9:15'
@@ -97,7 +209,8 @@
                      : type === 'quality' ? '7:30'
                      : type === 'race' ? '7:15'
                      : '9:00';
-        const day = { dow, date, type, label, distanceMi, paceMin };
+        const cappedDistance = applyLevelCap(role, distanceMi);
+        const day = { dow, date, type, label, distanceMi: cappedDistance, paceMin };
         if (hasStrength) day.hasStrength = true;
         // Past completed days get an actualMi (simulating Strava match).
         // Thursday May 14 is a known double-run day — user ran twice; total
@@ -109,7 +222,7 @@
             day.activitiesCount = 2;
           } else {
             const vIdx = (wIdx * 7 + dIdx) % variance.length;
-            const actual = Math.max(0, Math.round((distanceMi + variance[vIdx]) * 10) / 10);
+            const actual = Math.max(0, Math.round((cappedDistance + variance[vIdx]) * 10) / 10);
             day.actualMi = actual;
             day.activitiesCount = 1;
           }
@@ -140,12 +253,46 @@
     };
   }
 
+  // Shoe wear-status derived from currentMi ÷ capMi.
+  // Returns { label, tone } where tone drives the color of the status pill.
+  function shoeStatus(mi, cap) {
+    const pct = (mi || 0) / (cap || 300);
+    if (pct >= 0.90) return { label: 'Retire soon', tone: 'warn' };
+    if (pct >= 0.70) return { label: 'Aging',       tone: 'amber' };
+    if (pct >= 0.20) return { label: 'Healthy',     tone: 'green' };
+    return { label: 'Fresh', tone: 'green' };
+  }
+
   const SEED = {
     _version: SEED_VERSION,
     today: '2026-05-16',
-    user: { name: 'David Nitzsche', initials: 'DN' },
+    // Identity. avatar.mode is 'initials' | 'strava' | 'upload'.
+    // stravaUrl is populated by the (future) Strava OAuth flow; until
+    // that exists, the toggle in /profile shows it as unavailable.
+    user: {
+      name: 'David Nitzsche',
+      initials: 'DN',
+      age: 40,
+      sex: 'M',
+      location: 'Los Angeles',
+      avatar: { mode: 'initials', uploadDataUrl: null, stravaUrl: null },
+    },
 
-    plan: buildPlan(),
+    // Training prefs — what the engine reads to shape the plan.
+    prefs: { ...DEFAULT_PREFS },
+
+    // Personal goals — coach surfaces these in the weekly narrative.
+    // type: 'speed' | 'volume' | 'habit'; target: human label;
+    // progress: 0-100; meta: short status note.
+    goals: {
+      active: [
+        { id: 'g-sub-135-half', type: 'speed',  target: 'Sub-1:35 Half Marathon', current: 'Current: 1:34:54 · AFC Half is the test', progress: 92, meta: 'Within range · 6 sec margin' },
+        { id: 'g-1000-mi-2026', type: 'volume', target: '1,000 mi in 2026',        current: 'Current: 624 mi · on pace for 1,705 mi',  progress: 62, meta: 'On track · projecting +70%' },
+        { id: 'g-strength-2x',  type: 'habit',  target: 'Strength 2× per week',    current: 'This month: 7 sessions across 4 weeks',   progress: 88, meta: 'Light week ago · catch up Sat' },
+      ],
+    },
+
+    plan: buildPlan(DEFAULT_PREFS),
 
     races: {
       upcoming: [
@@ -203,39 +350,47 @@
 
     vitals: { sleep7d: 7.4, rhr: 48, hrv: 62, strain7d: 11.4 },
 
-    // Shoe rotation. Each shoe has a baseline mileage (miles run before
-    // this app started tracking) + a color for visual ID. Per-run
-    // assignments live in shoes.byRun and add to the baseline at read
-    // time via shoeMileage(id).
+    // Shoe rotation. Source-of-truth for both /profile and /log shoe
+    // pickers. Each shoe has:
+    //   id           — stable key
+    //   name         — full model name
+    //   purpose      — short role label ("Race · Long · Tempo")
+    //   capMi        — manufacturer-recommended lifetime miles (default 300)
+    //   currentMi    — running total (baseline + activities since)
+    //   retired      — true if user has marked it retired
+    //   color        — accent color (used in mileage bar + log dot)
     shoes: {
       list: [
-        { id: 'pegasus41', name: 'Nike Pegasus 41',  baselineMi: 234, color: '#E85D26', purpose: 'daily'    },
-        { id: 'vaporfly3', name: 'Nike Vaporfly 3',  baselineMi: 78,  color: '#FACC15', purpose: 'race'     },
-        { id: 'rincon4',   name: 'Hoka Rincon 4',    baselineMi: 412, color: '#2563EB', purpose: 'long run' },
-        { id: 'nimbus26',  name: 'Asics Nimbus 26',  baselineMi: 156, color: '#2CA82F', purpose: 'recovery' },
+        // purposes is the structured array (IDs from SHOE_PURPOSE_OPTIONS).
+        // Display strings are derived via formatShoePurposes() so /profile,
+        // /log shoe picker, and any future "matching shoe" highlight all
+        // read from the same canonical source.
+        { id: 'nb-sct-v3',     name: 'New Balance SC Trainer v3',   purposes: ['race','long','threshold','intervals'], capMi: 300, currentMi: 40,  retired: false, color: '#2CA82F' },
+        { id: 'hoka-mach-6',   name: 'Hoka Mach 6',                 purposes: ['easy','recovery','daily'],              capMi: 300, currentMi: 185, retired: false, color: '#2563EB' },
+        { id: 'saucony-es-4',  name: 'Saucony Endorphin Speed 4',   purposes: ['threshold','race','intervals'],         capMi: 300, currentMi: 235, retired: false, color: '#D4900A' },
+        { id: 'brooks-casc17', name: 'Brooks Cascadia 17',          purposes: ['trail','long'],                          capMi: 300, currentMi: 275, retired: false, color: '#E85D26' },
       ],
       byRun: {
-        // run-id → shoe-id assignments (seeded with reasonable defaults
-        // for the existing 20 recent runs)
-        'thu-may-14': 'pegasus41',
-        'tue-may-12': 'vaporfly3',
-        'mon-may-11': 'pegasus41',
-        'sun-may-3':  'vaporfly3',
-        'thu-may-1':  'nimbus26',
-        'sun-apr-26': 'vaporfly3',
-        'sun-apr-19': 'rincon4',
-        'fri-apr-18': 'rincon4',
-        'wed-apr-15': 'pegasus41',
-        'mon-apr-13': 'vaporfly3',
-        'sat-apr-11': 'rincon4',
-        'thu-apr-9':  'pegasus41',
-        'tue-apr-7':  'vaporfly3',
-        'sun-apr-5':  'rincon4',
-        'fri-apr-3':  'pegasus41',
-        'wed-apr-1':  'vaporfly3',
-        'sun-mar-29': 'rincon4',
-        'thu-mar-26': 'nimbus26',
-        'tue-mar-24': 'nimbus26',
+        // run-id → shoe-id assignments using the real shoe rotation
+        'thu-may-14': 'hoka-mach-6',
+        'tue-may-12': 'saucony-es-4',
+        'mon-may-11': 'hoka-mach-6',
+        'sun-may-3':  'nb-sct-v3',
+        'thu-may-1':  'hoka-mach-6',
+        'sun-apr-26': 'nb-sct-v3',
+        'sun-apr-19': 'brooks-casc17',
+        'fri-apr-18': 'brooks-casc17',
+        'wed-apr-15': 'hoka-mach-6',
+        'mon-apr-13': 'saucony-es-4',
+        'sat-apr-11': 'brooks-casc17',
+        'thu-apr-9':  'hoka-mach-6',
+        'tue-apr-7':  'saucony-es-4',
+        'sun-apr-5':  'brooks-casc17',
+        'fri-apr-3':  'hoka-mach-6',
+        'wed-apr-1':  'saucony-es-4',
+        'sun-mar-29': 'brooks-casc17',
+        'thu-mar-26': 'hoka-mach-6',
+        'tue-mar-24': 'hoka-mach-6',
       },
     },
   };
@@ -344,22 +499,105 @@
     return s.shoes?.byRun?.[runId] || null;
   }
 
-  // Total mileage for a shoe = baseline + sum(distance of runs assigned).
-  // For the mockup we don't have per-run distance in shoes.byRun (just
-  // the runId), so callers can pass a lookup. For simplicity, we
-  // estimate by counting assigned runs × avg distance from the seed.
-  function shoeMileage(shoeId, runsList) {
+  // Active shoes (not retired). Used by both the /profile rotation
+  // card and the /log shoe picker so they stay in sync.
+  function activeShoes() {
     const s = getState();
-    const shoe = (s.shoes?.list || []).find((sh) => sh.id === shoeId);
-    if (!shoe) return 0;
-    const byRun = s.shoes?.byRun || {};
-    let added = 0;
-    if (Array.isArray(runsList)) {
-      runsList.forEach((r) => {
-        if (byRun[r.id] === shoeId) added += (r.distanceMi || 0);
-      });
-    }
-    return Math.round((shoe.baselineMi + added) * 10) / 10;
+    return (s.shoes?.list || []).filter((sh) => !sh.retired);
+  }
+
+  // ── Shoe CRUD (called from /profile modals) ─────────────────────
+  function addShoe(shoe) {
+    if (!shoe || !shoe.name) return;
+    const id = shoe.id || ('shoe-' + Date.now().toString(36));
+    const entry = {
+      id,
+      name: shoe.name,
+      purposes: Array.isArray(shoe.purposes) ? shoe.purposes : [],
+      capMi: shoe.capMi || 300,
+      currentMi: shoe.currentMi || 0,
+      retired: false,
+      color: shoe.color || '#2CA82F',
+    };
+    return setState((s) => ({ ...s, shoes: { ...s.shoes, list: [...(s.shoes?.list || []), entry] } }));
+  }
+
+  function updateShoe(id, patch) {
+    if (!id || !patch) return;
+    return setState((s) => ({
+      ...s,
+      shoes: {
+        ...s.shoes,
+        list: (s.shoes?.list || []).map((sh) => sh.id === id ? { ...sh, ...patch } : sh),
+      },
+    }));
+  }
+
+  function retireShoe(id) { return updateShoe(id, { retired: true }); }
+  function unretireShoe(id) { return updateShoe(id, { retired: false }); }
+  function deleteShoe(id) {
+    return setState((s) => ({
+      ...s,
+      shoes: {
+        ...s.shoes,
+        list: (s.shoes?.list || []).filter((sh) => sh.id !== id),
+        // Unassign any runs that pointed at the deleted shoe.
+        byRun: Object.fromEntries(Object.entries(s.shoes?.byRun || {}).filter(([_, v]) => v !== id)),
+      },
+    }));
+  }
+
+  // ── User / Prefs / Goals (called from /profile modals) ──────────
+  function setUser(patch) {
+    if (!patch) return;
+    return setState((s) => ({ ...s, user: { ...s.user, ...patch } }));
+  }
+
+  function setAvatar(mode, dataUrl) {
+    return setState((s) => ({
+      ...s,
+      user: { ...s.user, avatar: { ...(s.user.avatar || {}), mode, uploadDataUrl: mode === 'upload' ? (dataUrl || s.user.avatar?.uploadDataUrl) : s.user.avatar?.uploadDataUrl } },
+    }));
+  }
+
+  // Setting prefs ALWAYS regenerates the 14-week plan from the new
+  // pref shape. That's the actual wiring that makes Training Profile
+  // edits influence training — not just decoration.
+  function setPrefs(patch) {
+    if (!patch) return;
+    return setState((s) => {
+      const prefs = { ...(s.prefs || DEFAULT_PREFS), ...patch };
+      const plan = buildPlan(prefs);
+      return { ...s, prefs, plan };
+    });
+  }
+
+  function addGoal(goal) {
+    if (!goal || !goal.target) return;
+    const id = goal.id || ('goal-' + Date.now().toString(36));
+    const entry = {
+      id,
+      type: goal.type || 'speed',
+      target: goal.target,
+      current: goal.current || '',
+      progress: typeof goal.progress === 'number' ? goal.progress : 0,
+      meta: goal.meta || 'New goal',
+    };
+    return setState((s) => ({ ...s, goals: { active: [...(s.goals?.active || []), entry] } }));
+  }
+
+  function updateGoal(id, patch) {
+    return setState((s) => ({
+      ...s,
+      goals: { active: (s.goals?.active || []).map((g) => g.id === id ? { ...g, ...patch } : g) },
+    }));
+  }
+
+  function deleteGoal(id) {
+    return setState((s) => ({
+      ...s,
+      goals: { active: (s.goals?.active || []).filter((g) => g.id !== id) },
+    }));
   }
 
   // ── Selectors ────────────────────────────────────────────────────
@@ -433,9 +671,27 @@
     getCurrentWeekContext,
     todayWorkout,
     fmtDayLabel,
+    // Shoes
     setShoeForRun,
     getShoeForRun,
-    shoeMileage,
+    activeShoes,
+    addShoe,
+    updateShoe,
+    retireShoe,
+    unretireShoe,
+    deleteShoe,
+    shoeStatus,
+    SHOE_PURPOSE_OPTIONS,
+    formatShoePurposes,
+    // User / Prefs / Goals
+    setUser,
+    setAvatar,
+    setPrefs,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    // Doctrine
+    LEVEL_DOCTRINE,
     SEED_VERSION,
   };
 

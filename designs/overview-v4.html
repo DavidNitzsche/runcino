@@ -96,8 +96,9 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: #fff;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.5px;; overflow: hidden
 }
+.nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .page {
   max-width: 1280px;
@@ -582,10 +583,18 @@ body {
 .trend-bar-fill.amber { background: var(--amber); }
 .trend-bar-fill.dim { background: rgba(13,15,18,.25); }
 
-/* Intensity spectrum — clean Apple-style */
+/* Intensity spectrum — clean Apple-style.
+   margin-top creates breathing room between Strain bar and Today's Intensity
+   so the section doesn't read as part of the strain bar. */
 .intensity-section {
-  margin-top: 0;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--divider);
 }
+
+/* Rest-day variant: no gradient, no tick, just a flat copy block. */
+.intensity-section.rest { padding-top: 22px; }
+.intensity-section.rest .intensity-bar-wrap { display: none; }
 
 .intensity-heading {
   font-family: 'Inter', sans-serif;
@@ -1217,7 +1226,7 @@ body {
       <a class="nav-link" href="profile-v4.html">Profile</a>
     </div>
     <div class="nav-right">
-      <div class="nav-avatar">DK</div>
+      <div class="nav-avatar">DN</div>
     </div>
   </div>
 </nav>
@@ -1346,15 +1355,19 @@ body {
         </div>
       </div>
 
-      <div class="intensity-section">
+      <!-- Today's Intensity — rendered by renderHero() / renderIntensity() based
+           on RuncinoStore.todayWorkout(). On rest days the gradient bar is
+           hidden (.intensity-section.rest) and the copy switches to "Rest day
+           — no intensity". On run days the tick + fade position by type. -->
+      <div class="intensity-section" id="intensity-section">
         <div class="intensity-heading">Today's Intensity</div>
         <div class="intensity-bar-wrap">
           <div class="intensity-bar"></div>
-          <div class="intensity-tick"></div>
-          <div class="intensity-fade"></div>
+          <div class="intensity-tick" id="intensity-tick"></div>
+          <div class="intensity-fade" id="intensity-fade"></div>
         </div>
-        <div class="intensity-zone-name">Easy · Zone 2</div>
-        <p class="coach-note-inline">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
+        <div class="intensity-zone-name" id="intensity-zone-name">Easy · Zone 2</div>
+        <p class="coach-note-inline" id="intensity-coach-note">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
       </div>
 
     </div><!-- /hero-right -->
@@ -1681,6 +1694,44 @@ body {
       '</div>';
   }
 
+  // ── Today's Intensity render ─────────────────────────────────────
+  // Reads RuncinoStore.todayWorkout() and reconfigures the gradient bar.
+  // Rest days: hides the bar entirely, swaps the zone label and coach copy
+  // to match. Workout days: positions the tick by type (easy ~22%, recovery
+  // ~10%, long ~30%, quality ~70%, race ~85%) and updates the zone label.
+  function renderIntensity() {
+    if (!window.RuncinoStore) return;
+    const section = document.getElementById('intensity-section');
+    const tick    = document.getElementById('intensity-tick');
+    const fade    = document.getElementById('intensity-fade');
+    const zone    = document.getElementById('intensity-zone-name');
+    const note    = document.getElementById('intensity-coach-note');
+    if (!section || !zone) return;
+    const day = RuncinoStore.todayWorkout();
+    if (!day || day.isRest) {
+      section.classList.add('rest');
+      zone.textContent = 'Rest day · No intensity';
+      zone.style.color = 'var(--t1)';
+      note.textContent = 'No run scheduled. The intensity scale returns tomorrow when the next workout posts.';
+      return;
+    }
+    section.classList.remove('rest');
+    // Tick position + zone label per workout type
+    const cfg = {
+      recovery: { pos: 10, label: 'Recovery · Zone 1', color: 'var(--green)',  copy: 'Very easy — clearing the legs, not building anything. Effort below conversational.' },
+      easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can\'t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+      long:     { pos: 30, label: 'Long · Zone 2',     color: 'var(--green)',  copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed.' },
+      quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain.' },
+      race:     { pos: 88, label: 'Race · Zone 4–5',   color: 'var(--orange)', copy: 'Race day. Execute the plan; conserve early, commit late.' },
+    };
+    const c = cfg[day.type] || cfg.easy;
+    tick.style.left = c.pos + '%';
+    fade.style.left = c.pos + '%';
+    zone.textContent = c.label;
+    zone.style.color = c.color;
+    note.textContent = c.copy;
+  }
+
   // Buttons inside the hero are recreated on each render — use event delegation.
   document.addEventListener('click', function (e) {
     if (e.target.closest('#hero-left .btn-primary')) {
@@ -1696,7 +1747,8 @@ body {
 
   if (window.RuncinoStore) {
     renderHero();
-    RuncinoStore.subscribe(renderHero);
+    renderIntensity();
+    RuncinoStore.subscribe(() => { renderHero(); renderIntensity(); });
   }
 
   // ── This Week strip · render from RuncinoStore.currentWeekPlan() ──

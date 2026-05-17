@@ -22,7 +22,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .nav-links { display: flex; align-items: center; gap: 36px; }
 .nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
 .nav-link.active { color: var(--t0); font-weight: 500; }
-.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px;; overflow: hidden }
+.nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
 
@@ -83,22 +84,42 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .month-tick { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); text-align: center; letter-spacing: 0.5px; }
 .month-tick.current { color: var(--amber); font-weight: 600; }
 
-/* Year heatmap */
-.year-heat { padding: 0 40px 28px; }
-.heat-row { display: grid; grid-template-columns: 50px 1fr; gap: 12px; align-items: center; margin-top: 4px; }
-.heat-month { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
-.heat-cells { display: grid; grid-template-columns: repeat(31, 1fr); gap: 2px; }
-.heat-cell { aspect-ratio: 1; border-radius: 2px; background: rgba(13,15,18,.04); }
-.heat-cell.l1 { background: rgba(44,168,47,.20); }
-.heat-cell.l2 { background: rgba(44,168,47,.45); }
-.heat-cell.l3 { background: rgba(44,168,47,.70); }
-.heat-cell.l4 { background: rgba(232,93,38,.75); }
+/* Year heatmap — each row sized to its actual day count (Feb=28, Apr/Jun/Sep/Nov=30,
+   rest=31). Cell width is locked across rows by using a fixed cell size + month
+   labels in a fixed-width column. The grid track ends naturally at the month's
+   last day rather than padding to 31. */
+.year-heat { padding: 0 40px 28px; --heat-cell: 18px; --heat-gap: 4px; }
+.heat-row { display: flex; align-items: center; gap: 12px; margin-top: 5px; }
+.heat-month { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; width: 36px; flex-shrink: 0; }
+.heat-cells {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--heat-cell);
+  grid-template-rows: var(--heat-cell);
+  gap: var(--heat-gap);
+}
+.heat-cell { width: var(--heat-cell); height: var(--heat-cell); border-radius: 3px; background: rgba(13,15,18,.04); position: relative; }
+.heat-cell.l1 { background: rgba(44,168,47,.22); }
+.heat-cell.l2 { background: rgba(44,168,47,.48); }
+.heat-cell.l3 { background: rgba(44,168,47,.72); }
+.heat-cell.l4 { background: rgba(232,93,38,.78); }
+/* Today: thin amber outline only — does NOT imply a run was logged.
+   If a run was logged today, the row above also applies its color tier;
+   the outline is overlaid via inset border-radius/box-shadow trick. */
+.heat-cell.is-today { box-shadow: inset 0 0 0 1.5px var(--amber); }
+/* Day past today's date — not yet happened, render as very faint placeholder */
+.heat-cell.future { background: rgba(13,15,18,.02); }
+.heat-cell[title]:hover { transform: scale(1.15); transition: transform .12s; }
 
 /* Recent runs */
+/* Columns: date · type · name · shoes · time · miles  (per user spec)
+   The name column is 1fr so it absorbs slack. */
 .run-row {
   display: grid;
-  /* date · type · name · miles · time · shoes */
-  grid-template-columns: 100px 100px 1fr 80px 90px 160px;
+  /* date · type · name · shoes · time · miles
+     Shoe column widened to 240px so full names ("Saucony Endorphin Speed 4",
+     "New Balance SC Trainer v3") fit without truncation. */
+  grid-template-columns: 100px 100px 1fr 240px 90px 80px;
   align-items: center; gap: 16px;
   padding: 14px 40px;
   border-top: 1px solid var(--divider);
@@ -106,13 +127,19 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   transition: background .15s;
 }
 .run-row:hover { background: rgba(13,15,18,.025); }
-/* Extra breathing room between the type tag and the run name. */
+/* Breathing room between the type tag and the run name. */
 .run-row > :nth-child(3) { margin-left: 12px; }
+.run-shoe-wrap { /* container that holds the custom picker — same width as the grid track */ }
 
-/* Inline shoe picker — native select styled to fit row layout */
-.run-shoe-picker {
-  -webkit-appearance: none;
-  appearance: none;
+/* ──────────────────────────────────
+   Custom designed shoe picker
+   (replaces the native <select> for v4 design language)
+   ────────────────────────────────── */
+.shoe-picker { position: relative; }
+.shoe-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: 'Inter', sans-serif;
   font-size: 12px;
   font-weight: 500;
@@ -120,19 +147,101 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   background-color: rgba(13,15,18,.035);
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 8px 28px 8px 12px;
+  padding: 8px 12px;
   cursor: pointer;
   width: 100%;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  transition: border-color .15s, background-color .15s;
+  transition: border-color .15s, background-color .15s, color .15s;
 }
-.run-shoe-picker:hover { border-color: var(--t3); background-color: rgba(13,15,18,.06); }
-.run-shoe-picker:focus { outline: none; border-color: var(--t1); }
+.shoe-picker-trigger:hover { border-color: var(--t3); background-color: rgba(13,15,18,.06); color: var(--t0); }
+.shoe-picker.open .shoe-picker-trigger { border-color: var(--t1); background-color: rgba(13,15,18,.06); color: var(--t0); }
+.shoe-picker-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(13,15,18,.18);
+  flex-shrink: 0;
+}
+.shoe-picker-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shoe-picker-chev {
+  width: 10px; height: 10px;
+  flex-shrink: 0;
+  opacity: .55;
+  transition: transform .18s;
+}
+.shoe-picker.open .shoe-picker-chev { transform: rotate(180deg); opacity: .9; }
+.shoe-picker-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 280px;
+  max-width: 360px;
+  background: var(--card);
+  border: 1px solid rgba(13,15,18,.10);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(13,15,18,.14), 0 2px 6px rgba(13,15,18,.06);
+  padding: 6px;
+  display: none;
+  z-index: 100;
+}
+.shoe-picker.open .shoe-picker-panel { display: block; }
+.shoe-picker-option {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .12s;
+}
+.shoe-picker-option:hover { background: rgba(13,15,18,.04); }
+.shoe-picker-option-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  justify-self: center;
+}
+.shoe-picker-option-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t0);
+}
+.shoe-picker-option-meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  margin-top: 1px;
+}
+.shoe-picker-option-mi {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 16px;
+  color: var(--t1);
+  letter-spacing: 0.5px;
+}
+.shoe-picker-option.selected { background: rgba(13,15,18,.05); }
+.shoe-picker-option.selected .shoe-picker-option-name { color: var(--t0); }
+.shoe-picker-option.is-none .shoe-picker-option-dot {
+  background: transparent;
+  border: 1.5px dashed var(--t3);
+}
+.shoe-picker-divider { height: 1px; background: var(--divider); margin: 4px 6px; }
+.shoe-picker-manage {
+  display: block;
+  text-align: center;
+  padding: 10px 12px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t1);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background .12s;
+}
+.shoe-picker-manage:hover { background: rgba(13,15,18,.04); color: var(--t0); }
 
 /* Run detail modal */
 .run-modal-overlay {
@@ -220,7 +329,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <a class="nav-link active" href="log-v4.html">Log</a>
       <a class="nav-link" href="profile-v4.html">Profile</a>
     </div>
-    <div class="nav-right"><div class="nav-avatar">DK</div></div>
+    <div class="nav-right"><div class="nav-avatar">DN</div></div>
   </div>
 </nav>
 
@@ -347,44 +456,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         </span>
       </div>
     </div>
-    <div class="year-heat">
-      <!-- Simplified visual — 5 months × 31 cells with light/medium/heavy randomized -->
-      <div class="heat-row"><div class="heat-month">JAN</div><div class="heat-cells">
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div>
-      </div></div>
-      <div class="heat-row"><div class="heat-month">FEB</div><div class="heat-cells">
-        <div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l4"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-      </div></div>
-      <div class="heat-row"><div class="heat-month">MAR</div><div class="heat-cells">
-        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div><div class="heat-cell l1"></div>
-        <div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div>
-        <div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div><div class="heat-cell"></div>
-        <div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div>
-      </div></div>
-      <div class="heat-row"><div class="heat-month">APR</div><div class="heat-cells">
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div><div class="heat-cell l3"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell l2"></div><div class="heat-cell l3"></div><div class="heat-cell"></div><div class="heat-cell l1"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-      </div></div>
-      <div class="heat-row"><div class="heat-month">MAY</div><div class="heat-cells">
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l4"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l1"></div>
-        <div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell l1"></div><div class="heat-cell l2"></div><div class="heat-cell l1"></div>
-        <div class="heat-cell l1" style="outline: 2px solid var(--amber); outline-offset: -1px;"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-        <div class="heat-cell"></div><div class="heat-cell"></div><div class="heat-cell"></div>
-      </div></div>
-    </div>
+    <div class="year-heat" id="year-heat"><!-- populated by renderYearHeatmap() --></div>
   </div>
 
   <!-- RECENT RUNS -->
@@ -392,522 +464,10 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Recent Runs</div>
-        <div class="card-sub"><strong>Last 20 activities</strong> · pulled from Strava</div>
+        <div class="card-sub"><strong id="recent-runs-count">Last 19 activities</strong> · pulled from Strava · shoes read from /profile</div>
       </div>
     </div>
-
-    <div class="run-row" data-run-id="thu-may-14">
-      <div class="run-date">Thu May 14</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Easy slow and boring</div>
-        <div class="run-type">Easy · prescribed</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="thu-may-14">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">5.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:14/mi</div>
-      </div>
-      <div>
-        <div class="run-num">47<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 138 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="tue-may-12">
-      <div class="run-date">Tue May 12</div>
-      <span class="run-tag quality">Threshold</span>
-      <div>
-        <div class="run-name">Working on better form</div>
-        <div class="run-type">Threshold · 5×1K cruise</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="tue-may-12">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">7.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">7:18/mi avg</div>
-      </div>
-      <div>
-        <div class="run-num">52<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 162 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="mon-may-11">
-      <div class="run-date">Mon May 11</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Lunch Run</div>
-        <div class="run-type">Easy · base mileage</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="mon-may-11">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:22/mi</div>
-      </div>
-      <div>
-        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 134 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sun-may-3">
-      <div class="run-date">Sun May 3</div>
-      <span class="run-tag race">Race</span>
-      <div>
-        <div class="run-name">Sombrero Half Marathon</div>
-        <div class="run-type">Race · passion run · anniversary</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sun-may-3">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">13.16<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">7:40/mi</div>
-      </div>
-      <div>
-        <div class="run-num">1:40<span style="font-size: 12px; color: var(--t2);">:57</span></div>
-        <div class="run-num-unit">avg 168 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="thu-may-1">
-      <div class="run-date">Thu May 1</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Omg I ran again</div>
-        <div class="run-type">Easy · short shakeout</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="thu-may-1">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">3.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:50/mi</div>
-      </div>
-      <div>
-        <div class="run-num">31<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 128 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sun-apr-26">
-      <div class="run-date">Sun Apr 26</div>
-      <span class="run-tag race">Race</span>
-      <div>
-        <div class="run-name">Big Sur Marathon</div>
-        <div class="run-type">Race · adventure · hilly</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sun-apr-26">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">26.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">8:17/mi</div>
-      </div>
-      <div>
-        <div class="run-num">3:36<span style="font-size: 12px; color: var(--t2);">:55</span></div>
-        <div class="run-num-unit">avg 154 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sun-apr-19">
-      <div class="run-date">Sun Apr 19</div>
-      <span class="run-tag long">Long</span>
-      <div>
-        <div class="run-name">Morning Run</div>
-        <div class="run-type">Long · pre-Big Sur taper</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sun-apr-19">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">8.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:05/mi</div>
-      </div>
-      <div>
-        <div class="run-num">73<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 142 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="fri-apr-18">
-      <div class="run-date">Fri Apr 18</div>
-      <span class="run-tag race">Race</span>
-      <div>
-        <div class="run-name">Point Magu Half Marathon</div>
-        <div class="run-type">Race · trail · B-race</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="fri-apr-18">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">13.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:33/mi</div>
-      </div>
-      <div>
-        <div class="run-num">2:09<span style="font-size: 12px; color: var(--t2);">:02</span></div>
-        <div class="run-num-unit">avg 158 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="wed-apr-15">
-      <div class="run-date">Wed Apr 15</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Coffee shake-out</div>
-        <div class="run-type">Easy · pre-race week</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="wed-apr-15">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">4.2<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:28/mi</div>
-      </div>
-      <div>
-        <div class="run-num">40<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 132 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="mon-apr-13">
-      <div class="run-date">Mon Apr 13</div>
-      <span class="run-tag quality">Threshold</span>
-      <div>
-        <div class="run-name">Sharpening session</div>
-        <div class="run-type">Threshold · 4×1mi cruise</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="mon-apr-13">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">7.1<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">7:24/mi avg</div>
-      </div>
-      <div>
-        <div class="run-num">52<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 161 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sat-apr-11">
-      <div class="run-date">Sat Apr 11</div>
-      <span class="run-tag long">Long</span>
-      <div>
-        <div class="run-name">Rose Bowl loops</div>
-        <div class="run-type">Long · pre-Point Magu</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sat-apr-11">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">12.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:12/mi</div>
-      </div>
-      <div>
-        <div class="run-num">1:50<span style="font-size: 12px; color: var(--t2);">:24</span></div>
-        <div class="run-num-unit">avg 144 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="thu-apr-9">
-      <div class="run-date">Thu Apr 9</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Easy with strides</div>
-        <div class="run-type">Easy · 6×100m strides</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="thu-apr-9">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">5.4<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:18/mi</div>
-      </div>
-      <div>
-        <div class="run-num">50<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 136 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="tue-apr-7">
-      <div class="run-date">Tue Apr 7</div>
-      <span class="run-tag quality">Threshold</span>
-      <div>
-        <div class="run-name">Cruise intervals</div>
-        <div class="run-type">Threshold · 5×1K</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="tue-apr-7">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">6.8<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">7:32/mi avg</div>
-      </div>
-      <div>
-        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 159 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sun-apr-5">
-      <div class="run-date">Sun Apr 5</div>
-      <span class="run-tag long">Long</span>
-      <div>
-        <div class="run-name">Griffith Park out-and-back</div>
-        <div class="run-type">Long · marathon-recovery rebuild</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sun-apr-5">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">14.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:20/mi</div>
-      </div>
-      <div>
-        <div class="run-num">2:10<span style="font-size: 12px; color: var(--t2);">:48</span></div>
-        <div class="run-num-unit">avg 145 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="fri-apr-3">
-      <div class="run-date">Fri Apr 3</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Lunch run</div>
-        <div class="run-type">Easy · base mileage</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="fri-apr-3">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">5.5<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:24/mi</div>
-      </div>
-      <div>
-        <div class="run-num">51<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 134 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="wed-apr-1">
-      <div class="run-date">Wed Apr 1</div>
-      <span class="run-tag quality">Threshold</span>
-      <div>
-        <div class="run-name">First tempo back</div>
-        <div class="run-type">Threshold · light dose</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="wed-apr-1">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">6.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">7:48/mi avg</div>
-      </div>
-      <div>
-        <div class="run-num">47<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 156 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="sun-mar-29">
-      <div class="run-date">Sun Mar 29</div>
-      <span class="run-tag long">Long</span>
-      <div>
-        <div class="run-name">Slow long</div>
-        <div class="run-type">Long · post-LA recovery build</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="sun-mar-29">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">10.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:38/mi</div>
-      </div>
-      <div>
-        <div class="run-num">1:36<span style="font-size: 12px; color: var(--t2);">:20</span></div>
-        <div class="run-num-unit">avg 142 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="thu-mar-26">
-      <div class="run-date">Thu Mar 26</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">First real run back</div>
-        <div class="run-type">Easy · 11 days post-LA</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="thu-mar-26">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">5.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">9:42/mi</div>
-      </div>
-      <div>
-        <div class="run-num">48<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 138 HR</div>
-      </div>
-    </div>
-
-    <div class="run-row" data-run-id="tue-mar-24">
-      <div class="run-date">Tue Mar 24</div>
-      <span class="run-tag easy">Easy</span>
-      <div>
-        <div class="run-name">Shuffle around the block</div>
-        <div class="run-type">Easy · marathon recovery</div>
-      
-      <div onclick="event.stopPropagation()">
-        <select class="run-shoe-picker" data-run-id="tue-mar-24">
-          <option value="">No shoe set</option>
-          <option value="pegasus41">Nike Pegasus 41</option>
-          <option value="vaporfly3">Nike Vaporfly 3</option>
-          <option value="rincon4">Hoka Rincon 4</option>
-          <option value="nimbus26">Asics Nimbus 26</option>
-        </select>
-      </div>
-    </div>
-      <div>
-        <div class="run-num">3.0<span style="font-size: 12px; color: var(--t2);">mi</span></div>
-        <div class="run-num-unit">10:14/mi</div>
-      </div>
-      <div>
-        <div class="run-num">31<span style="font-size: 12px; color: var(--t2);">min</span></div>
-        <div class="run-num-unit">avg 128 HR</div>
-      </div>
-    </div>
+    <div id="recent-runs-list"><!-- populated by renderRecentRuns() --></div>
   </div>
 
 </div>
@@ -937,67 +497,275 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 <script src="runcino-store.js"></script>
 <script>
-  // Wire shoe pickers — restore saved selection + persist on change.
-  // Stop propagation so clicking the picker doesn't open the run modal.
-  function wireShoePickers() {
+  // ── Recent Runs data ────────────────────────────────────────────
+  // Authored once here. Each row's shoe assignment lives in the store
+  // (RuncinoStore.getShoeForRun / setShoeForRun) so it round-trips with
+  // /profile mileage tracking. The shoe LIST itself comes from the
+  // profile's shoes section — this page is a consumer, not an owner.
+  // date (ISO) drives the Year heatmap fill.
+  const RECENT_RUNS = [
+    { id:'thu-may-14', date:'2026-05-14', dateLabel:'Thu May 14', tag:'easy',    tagLabel:'Easy',      name:'Easy slow and boring',     sub:'Easy · prescribed',           mi:5.1,  min:47, pace:'9:14/mi',     avgHr:138 },
+    { id:'tue-may-12', date:'2026-05-12', dateLabel:'Tue May 12', tag:'quality', tagLabel:'Threshold', name:'Working on better form',   sub:'Threshold · 5×1K cruise',     mi:7.2,  min:52, pace:'7:18/mi avg', avgHr:162 },
+    { id:'mon-may-11', date:'2026-05-11', dateLabel:'Mon May 11', tag:'easy',    tagLabel:'Easy',      name:'Lunch Run',                sub:'Easy · base mileage',         mi:5.5,  min:51, pace:'9:22/mi',     avgHr:134 },
+    { id:'sun-may-3',  date:'2026-05-03', dateLabel:'Sun May 3',  tag:'race',    tagLabel:'Race',      name:'Sombrero Half Marathon',   sub:'Race · passion run',          mi:13.16,min:101,pace:'7:40/mi',     avgHr:168 },
+    { id:'thu-may-1',  date:'2026-05-01', dateLabel:'Thu May 1',  tag:'easy',    tagLabel:'Easy',      name:'Omg I ran again',          sub:'Easy · short shakeout',       mi:3.2,  min:31, pace:'9:50/mi',     avgHr:128 },
+    { id:'sun-apr-26', date:'2026-04-26', dateLabel:'Sun Apr 26', tag:'race',    tagLabel:'Race',      name:'Big Sur Marathon',         sub:'Race · adventure · hilly',    mi:26.8, min:222,pace:'8:17/mi',     avgHr:154 },
+    { id:'sun-apr-19', date:'2026-04-19', dateLabel:'Sun Apr 19', tag:'long',    tagLabel:'Long',      name:'Morning Run',              sub:'Long · pre-Big Sur taper',    mi:8.0,  min:73, pace:'9:05/mi',     avgHr:142 },
+    { id:'fri-apr-18', date:'2026-04-18', dateLabel:'Fri Apr 18', tag:'race',    tagLabel:'Race',      name:'Point Magu Half Marathon', sub:'Race · trail · B-race',       mi:13.5, min:129,pace:'9:33/mi',     avgHr:158 },
+    { id:'wed-apr-15', date:'2026-04-15', dateLabel:'Wed Apr 15', tag:'easy',    tagLabel:'Easy',      name:'Coffee shake-out',         sub:'Easy · pre-race week',        mi:4.2,  min:40, pace:'9:28/mi',     avgHr:132 },
+    { id:'mon-apr-13', date:'2026-04-13', dateLabel:'Mon Apr 13', tag:'quality', tagLabel:'Threshold', name:'Sharpening session',       sub:'Threshold · 4×1mi cruise',    mi:7.1,  min:52, pace:'7:24/mi avg', avgHr:161 },
+    { id:'sat-apr-11', date:'2026-04-11', dateLabel:'Sat Apr 11', tag:'long',    tagLabel:'Long',      name:'Rose Bowl loops',          sub:'Long · pre-Point Magu',       mi:12.0, min:110,pace:'9:12/mi',     avgHr:144 },
+    { id:'thu-apr-9',  date:'2026-04-09', dateLabel:'Thu Apr 9',  tag:'easy',    tagLabel:'Easy',      name:'Easy with strides',        sub:'Easy · 6×100m strides',       mi:5.4,  min:50, pace:'9:18/mi',     avgHr:136 },
+    { id:'tue-apr-7',  date:'2026-04-07', dateLabel:'Tue Apr 7',  tag:'quality', tagLabel:'Threshold', name:'Cruise intervals',         sub:'Threshold · 5×1K',            mi:6.8,  min:51, pace:'7:32/mi avg', avgHr:159 },
+    { id:'sun-apr-5',  date:'2026-04-05', dateLabel:'Sun Apr 5',  tag:'long',    tagLabel:'Long',      name:'Griffith Park out-and-back', sub:'Long · marathon-recovery rebuild', mi:14.0, min:130,pace:'9:20/mi', avgHr:145 },
+    { id:'fri-apr-3',  date:'2026-04-03', dateLabel:'Fri Apr 3',  tag:'easy',    tagLabel:'Easy',      name:'Lunch run',                sub:'Easy · base mileage',         mi:5.5,  min:51, pace:'9:24/mi',     avgHr:134 },
+    { id:'wed-apr-1',  date:'2026-04-01', dateLabel:'Wed Apr 1',  tag:'quality', tagLabel:'Threshold', name:'First tempo back',         sub:'Threshold · light dose',      mi:6.0,  min:47, pace:'7:48/mi avg', avgHr:156 },
+    { id:'sun-mar-29', date:'2026-03-29', dateLabel:'Sun Mar 29', tag:'long',    tagLabel:'Long',      name:'Slow long',                sub:'Long · post-LA recovery build', mi:10.0, min:97, pace:'9:38/mi',    avgHr:142 },
+    { id:'thu-mar-26', date:'2026-03-26', dateLabel:'Thu Mar 26', tag:'easy',    tagLabel:'Easy',      name:'First real run back',      sub:'Easy · 11 days post-LA',      mi:5.0,  min:48, pace:'9:42/mi',     avgHr:138 },
+    { id:'tue-mar-24', date:'2026-03-24', dateLabel:'Tue Mar 24', tag:'easy',    tagLabel:'Easy',      name:'Shuffle around the block', sub:'Easy · marathon recovery',    mi:3.0,  min:31, pace:'10:14/mi',    avgHr:128 },
+  ];
+
+  // Quick lookup by id for the modal.
+  const RUNS_BY_ID = Object.fromEntries(RECENT_RUNS.map(r => [r.id, r]));
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Recent runs rendering ───────────────────────────────────────
+  // Columns: date · type · name · custom-shoe-picker · time · miles
+  // The shoe picker is its own component (renderShoePicker) so it can
+  // read activeShoes() at render time — when /profile changes, all
+  // pickers re-render with the new list automatically via subscribe().
+  function renderRecentRuns() {
     if (!window.RuncinoStore) return;
-    document.querySelectorAll('.run-shoe-picker').forEach(function (sel) {
-      const runId = sel.dataset.runId;
-      const saved = RuncinoStore.getShoeForRun(runId);
-      if (saved) sel.value = saved;
-      sel.addEventListener('change', function (e) {
-        e.stopPropagation();
-        RuncinoStore.setShoeForRun(runId, e.target.value || null);
+    const list = document.getElementById('recent-runs-list');
+    if (!list) return;
+    const html = RECENT_RUNS.map((r) => {
+      const shoeId = RuncinoStore.getShoeForRun(r.id);
+      return (
+        '<div class="run-row" data-run-id="' + r.id + '">' +
+          '<div class="run-date">' + esc(r.dateLabel) + '</div>' +
+          '<span class="run-tag ' + r.tag + '">' + esc(r.tagLabel) + '</span>' +
+          '<div>' +
+            '<div class="run-name">' + esc(r.name) + '</div>' +
+            '<div class="run-type">' + esc(r.sub) + '</div>' +
+          '</div>' +
+          '<div class="run-shoe-wrap" data-run-id="' + r.id + '">' +
+            renderShoePicker(r.id, shoeId) +
+          '</div>' +
+          '<div>' +
+            '<div class="run-num">' + r.min + '<span style="font-size: 12px; color: var(--t2);">min</span></div>' +
+            '<div class="run-num-unit">avg ' + r.avgHr + ' HR</div>' +
+          '</div>' +
+          '<div>' +
+            '<div class="run-num">' + r.mi + '<span style="font-size: 12px; color: var(--t2);">mi</span></div>' +
+            '<div class="run-num-unit">' + esc(r.pace) + '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    list.innerHTML = html;
+    document.getElementById('recent-runs-count').textContent = 'Last ' + RECENT_RUNS.length + ' activities';
+    // Wire row click → modal
+    list.querySelectorAll('.run-row').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        // Don't open modal if click was inside the shoe picker
+        if (e.target.closest('.shoe-picker')) return;
+        openRunModal(row.dataset.runId);
       });
-      sel.addEventListener('click', function (e) { e.stopPropagation(); });
+    });
+    // Wire all shoe pickers in the rendered rows
+    wireAllShoePickers();
+  }
+
+  // ── Custom shoe picker (replaces the native <select>) ───────────
+  // Reads RuncinoStore.activeShoes() — the canonical shoe list owned
+  // by /profile. Adding/retiring shoes in /profile flows through here.
+  function renderShoePicker(runId, selectedShoeId) {
+    const shoes = RuncinoStore.activeShoes();
+    const selected = shoes.find((sh) => sh.id === selectedShoeId);
+    const triggerDot = selected
+      ? '<span class="shoe-picker-dot" style="background:' + (selected.color || '#2CA82F') + ';"></span>'
+      : '<span class="shoe-picker-dot"></span>';
+    const triggerLabel = selected ? esc(selected.name) : 'No shoe set';
+    let panel = '';
+    // "No shoe" option
+    panel += (
+      '<div class="shoe-picker-option is-none' + (!selected ? ' selected' : '') + '" data-shoe-id="">' +
+        '<span class="shoe-picker-option-dot"></span>' +
+        '<div>' +
+          '<div class="shoe-picker-option-name" style="color: var(--t2);">No shoe</div>' +
+          '<div class="shoe-picker-option-meta">Clear assignment</div>' +
+        '</div>' +
+        '<span></span>' +
+      '</div>'
+    );
+    // Active shoes
+    shoes.forEach((sh) => {
+      const status = RuncinoStore.shoeStatus(sh.currentMi, sh.capMi);
+      const isSel = sh.id === selectedShoeId;
+      panel += (
+        '<div class="shoe-picker-option' + (isSel ? ' selected' : '') + '" data-shoe-id="' + sh.id + '">' +
+          '<span class="shoe-picker-option-dot" style="background:' + (sh.color || '#2CA82F') + ';"></span>' +
+          '<div>' +
+            '<div class="shoe-picker-option-name">' + esc(sh.name) + '</div>' +
+            '<div class="shoe-picker-option-meta">' + esc(RuncinoStore.formatShoePurposes(sh.purposes) || '') + (status.label === 'Retire soon' ? ' · <strong style="color: var(--warn);">' + status.label + '</strong>' : '') + '</div>' +
+          '</div>' +
+          '<span class="shoe-picker-option-mi">' + sh.currentMi + '<span style="font-family: \'Inter\', sans-serif; font-size: 9px; color: var(--t2); margin-left: 2px;">MI</span></span>' +
+        '</div>'
+      );
+    });
+    panel += '<div class="shoe-picker-divider"></div>';
+    panel += '<a class="shoe-picker-manage" href="profile-v4.html">+ Manage shoes →</a>';
+
+    return (
+      '<div class="shoe-picker" data-run-id="' + runId + '">' +
+        '<div class="shoe-picker-trigger">' +
+          triggerDot +
+          '<span class="shoe-picker-label">' + triggerLabel + '</span>' +
+          '<svg class="shoe-picker-chev" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>' +
+        '</div>' +
+        '<div class="shoe-picker-panel">' + panel + '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireAllShoePickers() {
+    document.querySelectorAll('.shoe-picker').forEach((picker) => {
+      const runId = picker.dataset.runId;
+      const trigger = picker.querySelector('.shoe-picker-trigger');
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Close all other open pickers first
+        document.querySelectorAll('.shoe-picker.open').forEach((p) => { if (p !== picker) p.classList.remove('open'); });
+        picker.classList.toggle('open');
+      });
+      picker.querySelectorAll('.shoe-picker-option').forEach((opt) => {
+        opt.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const shoeId = opt.dataset.shoeId || null;
+          RuncinoStore.setShoeForRun(runId, shoeId);
+          picker.classList.remove('open');
+          // The subscribe() callback below will re-render to update labels + mileage,
+          // but for snappiness we can also update this picker's trigger inline.
+        });
+      });
     });
   }
 
-  // Open the run detail modal when a row is clicked.
-  function openRunModal(row) {
-    const date = row.querySelector('.run-date')?.textContent.trim() || '';
-    const tag  = row.querySelector('.run-tag')?.textContent.trim() || '';
-    const name = row.querySelector('.run-name')?.textContent.trim() || '';
-    const sub  = row.querySelector('.run-type')?.textContent.trim() || '';
-    // Pull the four numeric blocks: mi, pace-or-pace-avg, time, avg HR
-    const nums = row.querySelectorAll('.run-num');
-    const subs = row.querySelectorAll('.run-num-unit');
-    const miText   = nums[0]?.textContent || '';
-    const paceText = subs[0]?.textContent || '';
-    const timeText = nums[1]?.textContent || '';
-    const hrText   = subs[1]?.textContent || '';
+  // Close any open picker when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.shoe-picker')) {
+      document.querySelectorAll('.shoe-picker.open').forEach((p) => p.classList.remove('open'));
+    }
+  });
 
-    const miNum = parseFloat(miText) || 0;
+  // ── Year heatmap rendering ──────────────────────────────────────
+  // Builds 5 rows (Jan–May 2026) with the correct day-count per month.
+  // Today (state.today) renders with an amber outline ONLY — no fill —
+  // unless an actual run was logged that day (then the outline overlays
+  // the colored cell). Days past today render in a very-faint "future"
+  // state instead of empty.
+  function renderYearHeatmap() {
+    if (!window.RuncinoStore) return;
+    const container = document.getElementById('year-heat');
+    if (!container) return;
+    const state = RuncinoStore.getState();
+    const today = state.today;
+    // Build miles-by-date map from RECENT_RUNS (truth) +
+    // synthesized history for the rest of YTD so the heatmap looks lived-in.
+    const milesByDate = {};
+    RECENT_RUNS.forEach((r) => { milesByDate[r.date] = (milesByDate[r.date] || 0) + r.mi; });
+    // Sprinkle in deterministic synthetic miles for dates the user
+    // ran but that aren't in the Recent 19. Roughly 80 days total YTD.
+    const seedNoise = (iso) => {
+      let h = 0; for (let i = 0; i < iso.length; i++) h = (h * 31 + iso.charCodeAt(i)) | 0;
+      return Math.abs(h);
+    };
+    // Iterate Jan 1 → today-1, mark ~60% of days as run days (deterministic)
+    const start = new Date('2026-01-01T00:00:00Z');
+    const todayD = new Date(today + 'T00:00:00Z');
+    for (let d = new Date(start); d < todayD; d.setUTCDate(d.getUTCDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      if (milesByDate[iso] != null) continue;            // truth already there
+      const n = seedNoise(iso);
+      if (n % 5 < 2) continue;                            // ~40% rest days
+      const milesBucket = n % 10;
+      if (milesBucket < 4) milesByDate[iso] = 3 + (n % 2);          // 3-4 mi
+      else if (milesBucket < 7) milesByDate[iso] = 5 + (n % 3);     // 5-7 mi
+      else if (milesBucket < 9) milesByDate[iso] = 8 + (n % 4);     // 8-11 mi
+      else                       milesByDate[iso] = 14 + (n % 8);   // 14-21 mi
+    }
+
+    // Bucket helper (light → heavy)
+    function bucket(mi) {
+      if (mi <= 0) return '';
+      if (mi < 4)  return 'l1';
+      if (mi < 8)  return 'l2';
+      if (mi < 14) return 'l3';
+      return 'l4';
+    }
+    function daysInMonth(y, mIdx) { return new Date(Date.UTC(y, mIdx + 1, 0)).getUTCDate(); }
+    const monthLabels = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    let html = '';
+    for (let m = 0; m < 5; m++) {                        // Jan – May for the mockup
+      const dim = daysInMonth(2026, m);
+      let cells = '';
+      for (let day = 1; day <= dim; day++) {
+        const iso = '2026-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        const isFuture = iso > today;
+        const isToday  = iso === today;
+        const mi = milesByDate[iso] || 0;
+        const cls = ['heat-cell'];
+        if (isFuture)           cls.push('future');
+        else                    { const b = bucket(mi); if (b) cls.push(b); }
+        if (isToday)            cls.push('is-today');
+        const title = isToday && mi <= 0
+          ? 'Today · no run logged'
+          : iso + (mi > 0 ? ' · ' + mi + ' mi' : (isFuture ? ' · upcoming' : ' · rest'));
+        cells += '<div class="' + cls.join(' ') + '" title="' + title + '"></div>';
+      }
+      html += (
+        '<div class="heat-row">' +
+          '<div class="heat-month">' + monthLabels[m] + '</div>' +
+          '<div class="heat-cells" style="grid-auto-columns: var(--heat-cell); grid-template-columns: repeat(' + dim + ', var(--heat-cell));">' + cells + '</div>' +
+        '</div>'
+      );
+    }
+    container.innerHTML = html;
+  }
+
+  // ── Run detail modal ────────────────────────────────────────────
+  function openRunModal(runId) {
+    const r = RUNS_BY_ID[runId];
+    if (!r) return;
     const avgPaceSec = (function () {
-      const m = (subs[0]?.textContent || '').match(/(\d+):(\d+)/);
+      const m = (r.pace || '').match(/(\d+):(\d+)/);
       if (!m) return 540;
-      return parseInt(m[1],10)*60 + parseInt(m[2],10);
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
     })();
-    const avgHr = parseInt((subs[1]?.textContent || '').replace(/[^\d]/g,''),10) || 140;
+    const avgHr = r.avgHr;
 
-    document.getElementById('run-modal-eyebrow').textContent = (tag || 'RUN') + ' · ' + date;
-    document.getElementById('run-modal-title').textContent = name;
-    document.getElementById('run-modal-sub').textContent = sub;
+    document.getElementById('run-modal-eyebrow').textContent = r.tagLabel.toUpperCase() + ' · ' + r.dateLabel;
+    document.getElementById('run-modal-title').textContent = r.name;
+    document.getElementById('run-modal-sub').textContent = r.sub;
 
-    // Stats grid — Distance / Time / Avg Pace / Avg HR
     const stats = document.getElementById('run-modal-stats');
     stats.innerHTML =
-      '<div class="run-modal-stat"><div class="run-modal-stat-label">Distance</div><div class="run-modal-stat-val">' + miNum.toFixed(1).replace(/\.0$/, '') + '<span class="run-modal-stat-unit">mi</span></div></div>' +
-      '<div class="run-modal-stat"><div class="run-modal-stat-label">Time</div><div class="run-modal-stat-val">' + timeText + '<span class="run-modal-stat-unit">min</span></div></div>' +
-      '<div class="run-modal-stat"><div class="run-modal-stat-label">Avg Pace</div><div class="run-modal-stat-val">' + (paceText.split(' ')[0] || '—') + '</div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Distance</div><div class="run-modal-stat-val">' + (Math.round(r.mi * 10) / 10) + '<span class="run-modal-stat-unit">mi</span></div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Time</div><div class="run-modal-stat-val">' + r.min + '<span class="run-modal-stat-unit">min</span></div></div>' +
+      '<div class="run-modal-stat"><div class="run-modal-stat-label">Avg Pace</div><div class="run-modal-stat-val">' + (r.pace.split(' ')[0] || '—') + '</div></div>' +
       '<div class="run-modal-stat"><div class="run-modal-stat-label">Avg HR</div><div class="run-modal-stat-val">' + avgHr + '<span class="run-modal-stat-unit">bpm</span></div></div>';
 
-    // Synthesize per-mile splits from avg pace + small variance
-    const wholeMiles = Math.max(1, Math.floor(miNum));
+    const wholeMiles = Math.max(1, Math.floor(r.mi));
     const body = document.getElementById('run-modal-splits-body');
     let rows = '';
     for (let i = 1; i <= wholeMiles; i++) {
-      const drift = ((i % 3) - 1) * 4; // -4, 0, +4 seconds
+      const drift = ((i % 3) - 1) * 4;
       const sec = avgPaceSec + drift;
       const mm = Math.floor(sec / 60), ss = sec % 60;
       const pace = mm + ':' + String(ss).padStart(2, '0');
       const hr = avgHr + ((i % 3) - 1) * 3;
-      const elev = ((i % 4) - 1) * 12; // -12, 0, +12, +24
+      const elev = ((i % 4) - 1) * 12;
       const elevStr = (elev > 0 ? '+' : '') + elev + ' ft';
       rows += '<tr><td class="val">' + i + '</td><td class="val">' + pace + '</td><td class="val">' + hr + '</td><td>' + elevStr + '</td></tr>';
     }
@@ -1010,11 +778,17 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     document.getElementById('run-modal-overlay').classList.remove('active');
   }
 
+  // ── Boot ────────────────────────────────────────────────────────
+  function renderAll() {
+    renderRecentRuns();
+    renderYearHeatmap();
+  }
   document.addEventListener('DOMContentLoaded', function () {
-    wireShoePickers();
-    document.querySelectorAll('.run-row').forEach(function (row) {
-      row.addEventListener('click', function () { openRunModal(row); });
-    });
+    if (window.RuncinoStore) {
+      renderAll();
+      // When /profile changes shoe list, /log re-renders pickers automatically.
+      RuncinoStore.subscribe(renderAll);
+    }
     document.getElementById('run-modal-close').addEventListener('click', closeRunModal);
     document.getElementById('run-modal-overlay').addEventListener('click', function (e) {
       if (e.target === this) closeRunModal();

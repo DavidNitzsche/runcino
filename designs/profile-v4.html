@@ -12,6 +12,7 @@
   --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
   --divider: rgba(13,15,18,.08);
   --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --strava: #FC4C02;
   --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
 }
 body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
@@ -22,18 +23,21 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .nav-links { display: flex; align-items: center; gap: 36px; }
 .nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
 .nav-link.active { color: var(--t0); font-weight: 500; }
-.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; overflow: hidden; }
+.nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
 
 /* Identity hero — wider than usual since the profile IS the identity */
 .identity-card { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); padding: 40px; display: grid; grid-template-columns: auto 1fr auto; gap: 40px; align-items: center; }
-.identity-avatar { width: 120px; height: 120px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 52px; color: #fff; letter-spacing: 0.5px; flex-shrink: 0; }
+.identity-avatar { width: 120px; height: 120px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 52px; color: #fff; letter-spacing: 0.5px; flex-shrink: 0; overflow: hidden; position: relative; }
+.identity-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .identity-info { display: flex; flex-direction: column; }
 .identity-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 8px; font-weight: 500; }
 .identity-name { font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 0.9; letter-spacing: -1px; color: var(--t0); }
 .identity-bio { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t1); margin-top: 10px; letter-spacing: 0.5px; }
 .identity-edit { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t0); background: transparent; border: 1.5px solid rgba(13,15,18,.2); padding: 10px 20px; border-radius: 10px; cursor: pointer; align-self: start; white-space: nowrap; }
+.identity-edit:hover { background: rgba(13,15,18,.04); }
 
 /* KPIs strip below the identity hero */
 .kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
@@ -54,16 +58,20 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
 .card-meta strong { color: var(--t0); font-weight: 700; }
 .card-action { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t1); background: transparent; border: 1px solid rgba(13,15,18,.16); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+.card-action:hover { background: rgba(13,15,18,.04); color: var(--t0); }
 
 /* Prefs / engine inputs grid */
 .prefs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0 40px 28px; }
 .pref-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
 .pref-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .pref-value { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.pref-value.text { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; }
 .pref-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
 
 /* Goals list */
-.goal-row { display: grid; grid-template-columns: 100px 1fr 130px 70px; align-items: center; gap: 20px; padding: 16px 40px; border-top: 1px solid var(--divider); }
+.goal-row { display: grid; grid-template-columns: 100px 1fr 130px 70px auto; align-items: center; gap: 20px; padding: 16px 40px; border-top: 1px solid var(--divider); cursor: pointer; transition: background 120ms ease; }
+.goal-row:hover { background: rgba(13,15,18,.025); }
+.goal-row:hover .goal-row-edit { opacity: 1; }
 .goal-type { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; color: var(--t1); text-transform: uppercase; background: rgba(13,15,18,.05); padding: 6px 10px; border-radius: 6px; text-align: center; }
 .goal-type.speed { color: var(--orange); background: rgba(232,93,38,.08); }
 .goal-type.volume { color: var(--green); background: rgba(44,168,47,.08); }
@@ -74,11 +82,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .goal-progress-fill { height: 100%; border-radius: 3px; }
 .goal-progress-fill.green { background: var(--green); }
 .goal-progress-fill.amber { background: var(--amber); }
+.goal-progress-fill.warn { background: var(--warn); }
 .goal-progress-meta { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 5px; }
 .goal-pct { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); text-align: right; line-height: 1; }
 .goal-pct .unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-left: 2px; }
+.goal-row-edit { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; opacity: 0; transition: opacity 120ms ease; }
 
-/* HR zones grid (since the API has hr:null, render an empty state too) */
+/* HR zones grid */
 .hr-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 0 40px 28px; }
 .hr-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
 .hr-zone { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
@@ -94,18 +104,110 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 /* Shoes grid */
 .shoes-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 40px 28px; }
-.shoe-row { background: rgba(13,15,18,.03); border: 1px solid rgba(13,15,18,.08); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; }
+.shoe-row { background: rgba(13,15,18,.03); border: 1px solid rgba(13,15,18,.08); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
+.shoe-row:hover { background: rgba(13,15,18,.05); border-color: rgba(13,15,18,.16); }
+.shoe-row:hover .shoe-row-edit { opacity: 1; }
 .shoe-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
 .shoe-role { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-top: 4px; }
 .shoe-mileage-bar { width: 100%; height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; margin-top: 10px; }
 .shoe-mileage-fill { height: 100%; background: var(--green); border-radius: 3px; }
-.shoe-mileage-fill.warn { background: var(--amber); }
-.shoe-mileage-fill.over { background: var(--warn); }
+.shoe-mileage-fill.amber { background: var(--amber); }
+.shoe-mileage-fill.warn { background: var(--warn); }
 .shoe-mileage-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
 .shoe-mileage-meta strong { color: var(--t1); font-weight: 600; }
+.shoe-status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .shoe-status { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--green); }
 .shoe-status.amber { color: var(--amber); }
 .shoe-status.warn { color: var(--warn); }
+.shoe-row-edit { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; opacity: 0; transition: opacity 120ms ease; }
+.shoes-empty { padding: 40px; text-align: center; color: var(--t2); font-size: 13px; }
+
+/* ──────────────────────────────────
+   MODAL FRAMEWORK
+   ────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(13,15,18,.55); display: none; align-items: flex-start; justify-content: center; z-index: 1000; padding: 60px 24px; overflow-y: auto; backdrop-filter: blur(4px); }
+.modal-overlay.open { display: flex; }
+.modal-card { background: var(--card); border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.25); width: 100%; max-width: 540px; padding: 36px 40px 32px; position: relative; }
+.modal-card.wide { max-width: 680px; }
+.modal-close { position: absolute; top: 18px; right: 18px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(13,15,18,.06); color: var(--t1); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.modal-close:hover { background: rgba(13,15,18,.12); color: var(--t0); }
+.modal-eyebrow { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 38px; letter-spacing: -.5px; line-height: 1; color: var(--t0); margin-top: 6px; }
+.modal-section { margin-top: 24px; }
+.modal-section-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; margin-bottom: 10px; }
+.modal-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.modal-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.modal-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.modal-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.modal-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.modal-input, .modal-select { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.10); border-radius: 8px; color: var(--t0); outline: none; }
+.modal-input:focus, .modal-select:focus { border-color: var(--t1); background: var(--card); }
+.modal-input.readonly { background: rgba(13,15,18,.02); color: var(--t2); cursor: not-allowed; }
+.modal-textarea { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.10); border-radius: 8px; min-height: 60px; resize: vertical; outline: none; }
+.modal-help { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
+.modal-help strong { color: var(--t1); font-weight: 600; }
+.modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--divider); }
+.modal-btn { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; padding: 11px 22px; border-radius: 9px; cursor: pointer; border: none; }
+.modal-btn.primary { background: var(--t0); color: #fff; }
+.modal-btn.primary:hover { background: rgba(13,15,18,.85); }
+.modal-btn.secondary { background: transparent; color: var(--t1); border: 1px solid rgba(13,15,18,.16); }
+.modal-btn.secondary:hover { background: rgba(13,15,18,.05); color: var(--t0); }
+.modal-btn.danger { background: transparent; color: var(--warn); border: 1px solid rgba(244,63,94,.30); }
+.modal-btn.danger:hover { background: rgba(244,63,94,.06); }
+.modal-btn.ghost { background: transparent; color: var(--t2); border: none; padding: 8px 12px; }
+.modal-btn.ghost:hover { color: var(--t0); }
+
+/* Day-of-week pill picker (used for long-run, rest, quality days) */
+.day-pills { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.day-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 11px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.day-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.day-pill.selected { background: var(--t0); color: #fff; border-color: var(--t0); }
+.day-pill.disabled { opacity: .35; pointer-events: none; }
+
+/* Level radio cards */
+.level-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.level-card { padding: 14px 16px; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 10px; cursor: pointer; }
+.level-card:hover { background: rgba(13,15,18,.07); }
+.level-card.selected { background: var(--card); border-color: var(--t0); }
+.level-card-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
+.level-card-meta { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
+
+/* Goal-type toggle (Speed / Volume / Habit) */
+.goal-type-pills { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.goal-type-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 12px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.goal-type-pill:hover { background: rgba(13,15,18,.08); }
+.goal-type-pill.selected.speed  { background: rgba(232,93,38,.10); color: var(--orange); border-color: var(--orange); }
+.goal-type-pill.selected.volume { background: rgba(44,168,47,.10);  color: var(--green);  border-color: var(--green); }
+.goal-type-pill.selected.habit  { background: rgba(212,144,10,.12); color: var(--amber);  border-color: var(--amber); }
+
+/* Avatar source toggle (initials / strava / upload) */
+.avatar-source-row { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; padding: 16px 18px; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 12px; cursor: pointer; margin-bottom: 8px; }
+.avatar-source-row.selected { background: var(--card); border-color: var(--t0); }
+.avatar-source-row.disabled { opacity: .45; pointer-events: none; }
+.avatar-source-preview { width: 52px; height: 52px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #fff; overflow: hidden; }
+.avatar-source-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-source-preview.strava { background: var(--strava); color: #fff; }
+.avatar-source-preview.placeholder { background: rgba(13,15,18,.08); color: var(--t2); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+.avatar-source-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
+.avatar-source-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
+.avatar-upload-input { display: none; }
+
+/* Color swatch picker for shoes */
+.swatch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2.5px solid transparent; }
+.swatch.selected { border-color: var(--t0); transform: scale(1.08); }
+
+/* Sex pill picker — segmented control (matches day-pills pattern) */
+.sex-pills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.sex-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; text-align: center; padding: 12px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.sex-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.sex-pill.selected { background: var(--t0); color: #fff; border-color: var(--t0); }
+
+/* Shoe-purpose multi-select pill picker — same vocab as run types in /log */
+.shoe-purpose-pills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.shoe-purpose-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.2px; text-align: center; padding: 11px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.shoe-purpose-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.shoe-purpose-pill.selected { background: rgba(13,15,18,.92); color: #fff; border-color: var(--t0); }
 </style>
 </head>
 <body>
@@ -121,7 +223,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <a class="nav-link" href="log-v4.html">Log</a>
       <a class="nav-link active" href="profile-v4.html">Profile</a>
     </div>
-    <div class="nav-right"><div class="nav-avatar">DN</div></div>
+    <div class="nav-right"><div class="nav-avatar" id="nav-avatar">DN</div></div>
   </div>
 </nav>
 
@@ -129,16 +231,16 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
   <!-- IDENTITY HERO -->
   <div class="identity-card">
-    <div class="identity-avatar">DN</div>
+    <div class="identity-avatar" id="identity-avatar">DN</div>
     <div class="identity-info">
-      <div class="identity-eyebrow">Runner · Advanced level</div>
-      <div class="identity-name">David Nitzsche</div>
-      <div class="identity-bio">M · 40 · Los Angeles · running since 2019</div>
+      <div class="identity-eyebrow" id="identity-eyebrow">Runner · Intermediate level</div>
+      <div class="identity-name" id="identity-name">David Nitzsche</div>
+      <div class="identity-bio" id="identity-bio">M · 40 · Los Angeles</div>
     </div>
-    <button class="identity-edit">Edit Profile</button>
+    <button class="identity-edit" onclick="openModal('profile-modal')">Edit Profile</button>
   </div>
 
-  <!-- LIFETIME KPIs -->
+  <!-- LIFETIME KPIs (static — these are read-only stats from history) -->
   <div class="kpi-strip">
     <div class="kpi-cell">
       <div class="kpi-label">Lifetime mi</div>
@@ -172,30 +274,30 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Training Profile</div>
-        <div class="card-sub">What the coach reads to build your plan</div>
+        <div class="card-sub">What the coach reads to build your plan · <span id="prefs-influence-note">these affect every plan day</span></div>
       </div>
-      <button class="card-action">Edit Prefs</button>
+      <button class="card-action" onclick="openModal('prefs-modal')">Edit Prefs</button>
     </div>
 
     <div class="prefs-grid">
       <div class="pref-cell">
         <div class="pref-label">Level</div>
-        <div class="pref-value" style="font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700;">Advanced</div>
-        <div class="pref-meta">25+ mi/wk base · 6 races logged</div>
+        <div class="pref-value text" id="pref-level">Intermediate</div>
+        <div class="pref-meta" id="pref-level-meta">25–50 mi/wk peak · raced HM or marathon</div>
       </div>
       <div class="pref-cell">
         <div class="pref-label">Long Run Day</div>
-        <div class="pref-value">Sun</div>
-        <div class="pref-meta">Your set preference</div>
+        <div class="pref-value" id="pref-long-day">Sun</div>
+        <div class="pref-meta">Long-run anchor each week</div>
       </div>
       <div class="pref-cell">
         <div class="pref-label">Quality Days</div>
-        <div class="pref-value" style="font-size: 24px;">Tue / Thu</div>
+        <div class="pref-value" style="font-size: 24px;" id="pref-quality-days">Tue / Thu</div>
         <div class="pref-meta">Threshold + interval slots</div>
       </div>
       <div class="pref-cell">
         <div class="pref-label">Rest Day</div>
-        <div class="pref-value">Sat</div>
+        <div class="pref-value" id="pref-rest-day">Sat</div>
         <div class="pref-meta">Day before the long run</div>
       </div>
     </div>
@@ -214,31 +316,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     </div>
 
     <div class="hr-grid">
-      <div class="hr-cell">
-        <div class="hr-zone z1">Z1 · Recovery</div>
-        <div class="hr-range">93–111<span class="unit">bpm</span></div>
-        <div class="hr-pct">50–60% max</div>
-      </div>
-      <div class="hr-cell">
-        <div class="hr-zone z2">Z2 · Easy</div>
-        <div class="hr-range">112–129<span class="unit">bpm</span></div>
-        <div class="hr-pct">60–70% max</div>
-      </div>
-      <div class="hr-cell">
-        <div class="hr-zone z3">Z3 · Steady</div>
-        <div class="hr-range">130–148<span class="unit">bpm</span></div>
-        <div class="hr-pct">70–80% max</div>
-      </div>
-      <div class="hr-cell">
-        <div class="hr-zone z4">Z4 · Threshold</div>
-        <div class="hr-range">149–167<span class="unit">bpm</span></div>
-        <div class="hr-pct">80–90% max</div>
-      </div>
-      <div class="hr-cell">
-        <div class="hr-zone z5">Z5 · VO₂max</div>
-        <div class="hr-range">168–185<span class="unit">bpm</span></div>
-        <div class="hr-pct">90–100% max</div>
-      </div>
+      <div class="hr-cell"><div class="hr-zone z1">Z1 · Recovery</div><div class="hr-range">93–111<span class="unit">bpm</span></div><div class="hr-pct">50–60% max</div></div>
+      <div class="hr-cell"><div class="hr-zone z2">Z2 · Easy</div><div class="hr-range">112–129<span class="unit">bpm</span></div><div class="hr-pct">60–70% max</div></div>
+      <div class="hr-cell"><div class="hr-zone z3">Z3 · Steady</div><div class="hr-range">130–148<span class="unit">bpm</span></div><div class="hr-pct">70–80% max</div></div>
+      <div class="hr-cell"><div class="hr-zone z4">Z4 · Threshold</div><div class="hr-range">149–167<span class="unit">bpm</span></div><div class="hr-pct">80–90% max</div></div>
+      <div class="hr-cell"><div class="hr-zone z5">Z5 · VO₂max</div><div class="hr-range">168–185<span class="unit">bpm</span></div><div class="hr-pct">90–100% max</div></div>
     </div>
 
     <div class="hr-source">
@@ -247,109 +329,516 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     </div>
   </div>
 
-  <!-- GOALS -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <div class="card-title">Personal Goals</div>
-        <div class="card-sub"><strong>3 active</strong> · coach reads these when building the plan</div>
-      </div>
-      <button class="card-action">+ Add Goal</button>
-    </div>
-
-    <div class="goal-row">
-      <span class="goal-type speed">Speed</span>
-      <div>
-        <div class="goal-target">Sub-1:35 Half Marathon</div>
-        <div class="goal-current">Current: 1:34:54 · AFC Half is the test</div>
-      </div>
-      <div>
-        <div class="goal-progress-bar"><div class="goal-progress-fill green" style="width: 92%;"></div></div>
-        <div class="goal-progress-meta">Within range · 6 sec margin</div>
-      </div>
-      <div class="goal-pct">92<span class="unit">%</span></div>
-    </div>
-
-    <div class="goal-row">
-      <span class="goal-type volume">Volume</span>
-      <div>
-        <div class="goal-target">1,000 mi in 2026</div>
-        <div class="goal-current">Current: 624 mi · on pace for 1,705 mi</div>
-      </div>
-      <div>
-        <div class="goal-progress-bar"><div class="goal-progress-fill green" style="width: 62%;"></div></div>
-        <div class="goal-progress-meta">On track · projecting +70%</div>
-      </div>
-      <div class="goal-pct">62<span class="unit">%</span></div>
-    </div>
-
-    <div class="goal-row">
-      <span class="goal-type habit">Habit</span>
-      <div>
-        <div class="goal-target">Strength 2× per week</div>
-        <div class="goal-current">This month: 7 sessions across 4 weeks</div>
-      </div>
-      <div>
-        <div class="goal-progress-bar"><div class="goal-progress-fill amber" style="width: 70%;"></div></div>
-        <div class="goal-progress-meta">Light week ago · catch up Sat</div>
-      </div>
-      <div class="goal-pct">88<span class="unit">%</span></div>
-    </div>
-  </div>
+  <!-- Personal Goals card intentionally removed.
+       Race-time goals already live on each race in /races (goal + goalPace);
+       the coach reads those directly. A standalone goals card was just
+       decoration that didn't influence anything. -->
 
   <!-- SHOES -->
   <div class="card">
     <div class="card-header">
       <div class="card-title-group">
         <div class="card-title">Shoe Rotation</div>
-        <div class="card-sub"><strong>4 active</strong> · coach watches mileage to flag retire-soon</div>
+        <div class="card-sub"><strong id="shoes-count">4 active</strong> · coach watches mileage to flag retire-soon · /log shoe picker reads from this list</div>
       </div>
-      <button class="card-action">+ Add Shoe</button>
+      <button class="card-action" onclick="openShoeModal()">+ Add Shoe</button>
     </div>
-
-    <div class="shoes-grid">
-      <div class="shoe-row">
-        <div>
-          <div class="shoe-name">New Balance SC Trainer v3</div>
-          <div class="shoe-role">Race · Long · Tempo · Intervals</div>
-          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill" style="width: 13%;"></div></div>
-          <div class="shoe-mileage-meta"><strong>40</strong> / 300 mi · 260 left</div>
-        </div>
-        <div class="shoe-status">Fresh</div>
-      </div>
-
-      <div class="shoe-row">
-        <div>
-          <div class="shoe-name">Hoka Mach 6</div>
-          <div class="shoe-role">Easy · Recovery · Daily</div>
-          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill" style="width: 62%;"></div></div>
-          <div class="shoe-mileage-meta"><strong>185</strong> / 300 mi · 115 left</div>
-        </div>
-        <div class="shoe-status">Healthy</div>
-      </div>
-
-      <div class="shoe-row">
-        <div>
-          <div class="shoe-name">Saucony Endorphin Speed 4</div>
-          <div class="shoe-role">Threshold · Race · Tempo</div>
-          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill warn" style="width: 78%;"></div></div>
-          <div class="shoe-mileage-meta"><strong>235</strong> / 300 mi · 65 left</div>
-        </div>
-        <div class="shoe-status amber">Aging</div>
-      </div>
-
-      <div class="shoe-row">
-        <div>
-          <div class="shoe-name">Brooks Cascadia 17</div>
-          <div class="shoe-role">Trail · Adventure · Hilly Long</div>
-          <div class="shoe-mileage-bar"><div class="shoe-mileage-fill warn" style="width: 92%;"></div></div>
-          <div class="shoe-mileage-meta"><strong>275</strong> / 300 mi · 25 left</div>
-        </div>
-        <div class="shoe-status warn">Retire soon</div>
-      </div>
-    </div>
+    <div id="shoes-grid" class="shoes-grid"></div>
   </div>
 
 </div>
+
+<!-- ══════════════════════════════════════════════════
+     MODALS
+     ══════════════════════════════════════════════════ -->
+
+<!-- EDIT PROFILE -->
+<div id="profile-modal" class="modal-overlay">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal('profile-modal')">✕</button>
+    <div class="modal-eyebrow">Identity</div>
+    <div class="modal-title">EDIT PROFILE</div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Avatar</div>
+      <div class="avatar-source-row" data-avatar-mode="initials">
+        <div class="avatar-source-preview" id="avatar-preview-initials">DN</div>
+        <div>
+          <div class="avatar-source-title">Initials</div>
+          <div class="avatar-source-meta">Default — generated from your name</div>
+        </div>
+      </div>
+      <div class="avatar-source-row disabled" data-avatar-mode="strava" id="avatar-strava-row">
+        <div class="avatar-source-preview strava">S</div>
+        <div>
+          <div class="avatar-source-title">Use Strava photo</div>
+          <div class="avatar-source-meta" id="avatar-strava-meta">Connect Strava to pull your profile picture</div>
+        </div>
+      </div>
+      <div class="avatar-source-row" data-avatar-mode="upload">
+        <div class="avatar-source-preview placeholder" id="avatar-preview-upload">UPLOAD</div>
+        <div>
+          <div class="avatar-source-title">Upload custom</div>
+          <div class="avatar-source-meta">JPG or PNG · square recommended</div>
+        </div>
+      </div>
+      <input type="file" id="avatar-upload-input" class="avatar-upload-input" accept="image/jpeg,image/png">
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Identity</div>
+      <div class="modal-grid-2">
+        <div class="modal-row">
+          <label class="modal-label" for="profile-name">Name</label>
+          <input id="profile-name" class="modal-input" type="text">
+        </div>
+        <div class="modal-row">
+          <label class="modal-label" for="profile-location">Location</label>
+          <input id="profile-location" class="modal-input" type="text">
+        </div>
+      </div>
+      <div class="modal-grid-2">
+        <div class="modal-row">
+          <label class="modal-label" for="profile-age">Age</label>
+          <input id="profile-age" class="modal-input" type="number" min="13" max="100">
+        </div>
+        <div class="modal-row">
+          <label class="modal-label">Sex</label>
+          <div class="sex-pills" id="profile-sex-pills">
+            <div class="sex-pill" data-sex="M">Male</div>
+            <div class="sex-pill" data-sex="F">Female</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-help">Age + sex influence max HR estimation (208 − 0.7 × age) and the sex-specific recovery guidance in /health.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-btn secondary" onclick="closeModal('profile-modal')">Cancel</button>
+      <button class="modal-btn primary" onclick="saveProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PREFS -->
+<div id="prefs-modal" class="modal-overlay">
+  <div class="modal-card wide">
+    <button class="modal-close" onclick="closeModal('prefs-modal')">✕</button>
+    <div class="modal-eyebrow">Training Profile</div>
+    <div class="modal-title">EDIT PREFS</div>
+    <div class="modal-help" style="margin-top: 10px;"><strong>Every pref here re-builds your plan.</strong> Long-run day moves the long run. Rest day clears that slot. Quality days place threshold/interval sessions. Level caps weekly volume + long-run length.</div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Level</div>
+      <div class="level-grid" id="level-grid">
+        <!-- populated from RuncinoStore.LEVEL_DOCTRINE -->
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Long Run Day</div>
+      <div class="day-pills" id="long-day-pills"></div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Quality Days (pick 1 or 2)</div>
+      <div class="day-pills" id="quality-days-pills"></div>
+      <div class="modal-help">Quality = threshold + intervals. BASE phase uses 1; BUILD/PEAK uses 2.</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-label">Rest Day</div>
+      <div class="day-pills" id="rest-day-pills"></div>
+      <div class="modal-help">Rest is the day before the long run by default — protects long-run quality.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-btn secondary" onclick="closeModal('prefs-modal')">Cancel</button>
+      <button class="modal-btn primary" onclick="savePrefs()">Save · Rebuild plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD / EDIT SHOE -->
+<div id="shoe-modal" class="modal-overlay">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal('shoe-modal')">✕</button>
+    <div class="modal-eyebrow" id="shoe-modal-eyebrow">Shoe Rotation</div>
+    <div class="modal-title" id="shoe-modal-title">ADD SHOE</div>
+
+    <div class="modal-section">
+      <div class="modal-row">
+        <label class="modal-label" for="shoe-name">Name</label>
+        <input id="shoe-name" class="modal-input" type="text" placeholder="e.g. Hoka Mach 6">
+      </div>
+      <div class="modal-row">
+        <label class="modal-label">Purpose · what kind of runs is this shoe for</label>
+        <div class="shoe-purpose-pills" id="shoe-purpose-pills"><!-- populated from RuncinoStore.SHOE_PURPOSE_OPTIONS --></div>
+        <div class="modal-help">Pick any number. These map to the run types in /log — when you click a shoe picker for a Threshold run, threshold-tagged shoes surface first.</div>
+      </div>
+      <div class="modal-grid-2">
+        <div class="modal-row">
+          <label class="modal-label" for="shoe-current">Current miles</label>
+          <input id="shoe-current" class="modal-input" type="number" min="0" value="0" step="1">
+        </div>
+        <div class="modal-row">
+          <label class="modal-label" for="shoe-cap">Retirement cap (mi)</label>
+          <input id="shoe-cap" class="modal-input" type="number" min="100" max="1000" value="300" step="10">
+          <div class="modal-help">Most road shoes: 300–500 mi. Super-shoes: ~150–200 mi.</div>
+        </div>
+      </div>
+      <div class="modal-row">
+        <label class="modal-label">Accent color</label>
+        <div class="swatch-row" id="shoe-color-swatches"></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <div style="display: flex; gap: 8px;">
+        <button class="modal-btn danger" id="shoe-retire-btn" style="display:none;" onclick="retireShoeFromModal()">Retire</button>
+        <button class="modal-btn ghost" id="shoe-unretire-btn" style="display:none;" onclick="unretireShoeFromModal()">Un-retire</button>
+        <button class="modal-btn danger" id="shoe-delete-btn" style="display:none;" onclick="deleteShoeFromModal()">Delete</button>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:12px;">
+        <button class="modal-btn secondary" onclick="closeModal('shoe-modal')">Cancel</button>
+        <button class="modal-btn primary" onclick="saveShoe()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="runcino-store.js"></script>
+<script>
+  // ── Modal plumbing ───────────────────────────────────────────────
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('open');
+  }
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+  }
+  // Close on backdrop click + Escape
+  document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach((o) => o.classList.remove('open'));
+  });
+
+  // ── Identity + KPIs renderer ─────────────────────────────────────
+  function renderIdentity() {
+    const s = RuncinoStore.getState();
+    const u = s.user || {};
+    const lvl = (RuncinoStore.LEVEL_DOCTRINE && RuncinoStore.LEVEL_DOCTRINE[s.prefs?.level]) || RuncinoStore.LEVEL_DOCTRINE.intermediate;
+    document.getElementById('identity-name').textContent = u.name || 'Runner';
+    document.getElementById('identity-eyebrow').textContent = 'Runner · ' + lvl.label + ' level';
+    const bioBits = [];
+    if (u.sex) bioBits.push(u.sex);
+    if (u.age) bioBits.push(u.age);
+    if (u.location) bioBits.push(u.location);
+    document.getElementById('identity-bio').textContent = bioBits.join(' · ');
+    // Avatar render — same for hero + nav
+    const avatarHTML = renderAvatarHTML(u, 'DN');
+    document.getElementById('identity-avatar').innerHTML = avatarHTML;
+    document.getElementById('nav-avatar').innerHTML = avatarHTML;
+  }
+  function renderAvatarHTML(user, fallback) {
+    const a = (user && user.avatar) || {};
+    if (a.mode === 'upload' && a.uploadDataUrl) {
+      return '<img src="' + a.uploadDataUrl + '" alt="">';
+    }
+    if (a.mode === 'strava' && a.stravaUrl) {
+      return '<img src="' + a.stravaUrl + '" alt="">';
+    }
+    return user?.initials || fallback || '?';
+  }
+
+  // ── Prefs renderer (Training Profile cells) ──────────────────────
+  function fmtDow(dow) { return ({ mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' })[dow] || dow; }
+  function renderPrefs() {
+    const s = RuncinoStore.getState();
+    const p = s.prefs || {};
+    const lvl = (RuncinoStore.LEVEL_DOCTRINE && RuncinoStore.LEVEL_DOCTRINE[p.level]) || RuncinoStore.LEVEL_DOCTRINE.intermediate;
+    document.getElementById('pref-level').textContent = lvl.label;
+    document.getElementById('pref-level-meta').textContent = lvl.copy;
+    document.getElementById('pref-long-day').textContent = fmtDow(p.longRunDay);
+    document.getElementById('pref-quality-days').textContent = (p.qualityDays || []).map(fmtDow).join(' / ');
+    document.getElementById('pref-rest-day').textContent = fmtDow(p.restDay);
+  }
+
+  // ── Shoes renderer + modal ───────────────────────────────────────
+  function renderShoes() {
+    const s = RuncinoStore.getState();
+    const all = s.shoes?.list || [];
+    const active = all.filter((sh) => !sh.retired);
+    document.getElementById('shoes-count').textContent = active.length + ' active' + (all.length > active.length ? ' · ' + (all.length - active.length) + ' retired' : '');
+    const grid = document.getElementById('shoes-grid');
+    if (!all.length) {
+      grid.innerHTML = '<div class="shoes-empty" style="grid-column: 1 / -1;">No shoes yet. Click + Add Shoe to get started.</div>';
+      return;
+    }
+    grid.innerHTML = all.map((sh) => {
+      const status = RuncinoStore.shoeStatus(sh.currentMi, sh.capMi);
+      const pct = Math.min(100, Math.round((sh.currentMi / sh.capMi) * 100));
+      const fillCls = status.tone === 'warn' ? 'warn' : (status.tone === 'amber' ? 'amber' : '');
+      const retiredBadge = sh.retired ? ' · <strong style="color: var(--t1);">RETIRED</strong>' : '';
+      const purposeStr = RuncinoStore.formatShoePurposes(sh.purposes) || '—';
+      return (
+        '<div class="shoe-row" data-shoe-id="' + sh.id + '" onclick="openShoeModal(\'' + sh.id + '\')"' + (sh.retired ? ' style="opacity:.5;"' : '') + '>' +
+          '<div>' +
+            '<div class="shoe-name">' + esc(sh.name) + '</div>' +
+            '<div class="shoe-role">' + esc(purposeStr) + '</div>' +
+            '<div class="shoe-mileage-bar"><div class="shoe-mileage-fill ' + fillCls + '" style="width:' + pct + '%"></div></div>' +
+            '<div class="shoe-mileage-meta"><strong>' + sh.currentMi + '</strong> / ' + sh.capMi + ' mi · ' + Math.max(0, sh.capMi - sh.currentMi) + ' left' + retiredBadge + '</div>' +
+          '</div>' +
+          '<div class="shoe-status-col">' +
+            '<div class="shoe-status ' + status.tone + '">' + status.label + '</div>' +
+            '<div class="shoe-row-edit">Edit →</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  const SHOE_PALETTE = ['#2CA82F', '#2563EB', '#D4900A', '#E85D26', '#9333EA', '#0EA5E9', '#F43F5E', '#0D0F12'];
+  let editingShoeId = null;
+  function openShoeModal(id) {
+    editingShoeId = id || null;
+    const s = RuncinoStore.getState();
+    const sh = id ? (s.shoes?.list || []).find((x) => x.id === id) : null;
+    document.getElementById('shoe-modal-title').textContent = sh ? 'EDIT SHOE' : 'ADD SHOE';
+    document.getElementById('shoe-name').value = sh?.name || '';
+    // Purpose pill picker — populate from canonical SHOE_PURPOSE_OPTIONS,
+    // mark the shoe's existing purposes as selected.
+    const currentPurposes = Array.isArray(sh?.purposes) ? sh.purposes : [];
+    const pillsHost = document.getElementById('shoe-purpose-pills');
+    pillsHost.innerHTML = (RuncinoStore.SHOE_PURPOSE_OPTIONS || []).map((opt) => (
+      '<div class="shoe-purpose-pill' + (currentPurposes.includes(opt.id) ? ' selected' : '') + '" data-purpose="' + opt.id + '">' + opt.label + '</div>'
+    )).join('');
+    pillsHost.querySelectorAll('.shoe-purpose-pill').forEach((pill) => {
+      pill.addEventListener('click', () => pill.classList.toggle('selected'));
+    });
+    document.getElementById('shoe-current').value = sh?.currentMi ?? 0;
+    document.getElementById('shoe-cap').value = sh?.capMi ?? 300;
+    // Color swatches
+    const selectedColor = sh?.color || SHOE_PALETTE[0];
+    document.getElementById('shoe-color-swatches').innerHTML = SHOE_PALETTE.map((c) => (
+      '<div class="swatch ' + (c === selectedColor ? 'selected' : '') + '" data-color="' + c + '" style="background:' + c + ';"></div>'
+    )).join('');
+    document.querySelectorAll('#shoe-color-swatches .swatch').forEach((el) => {
+      el.addEventListener('click', () => {
+        document.querySelectorAll('#shoe-color-swatches .swatch').forEach((s) => s.classList.remove('selected'));
+        el.classList.add('selected');
+      });
+    });
+    // Retire / Unretire / Delete buttons — only visible on edit
+    document.getElementById('shoe-retire-btn').style.display   = (sh && !sh.retired) ? '' : 'none';
+    document.getElementById('shoe-unretire-btn').style.display = (sh && sh.retired)  ? '' : 'none';
+    document.getElementById('shoe-delete-btn').style.display   = sh ? '' : 'none';
+    openModal('shoe-modal');
+  }
+  function saveShoe() {
+    const color = document.querySelector('#shoe-color-swatches .swatch.selected')?.dataset.color || SHOE_PALETTE[0];
+    const payload = {
+      name: document.getElementById('shoe-name').value.trim(),
+      purposes: Array.from(document.querySelectorAll('#shoe-purpose-pills .shoe-purpose-pill.selected')).map((p) => p.dataset.purpose),
+      currentMi: parseInt(document.getElementById('shoe-current').value, 10) || 0,
+      capMi: parseInt(document.getElementById('shoe-cap').value, 10) || 300,
+      color,
+    };
+    if (!payload.name) { alert('Name is required'); return; }
+    if (editingShoeId) RuncinoStore.updateShoe(editingShoeId, payload);
+    else RuncinoStore.addShoe(payload);
+    closeModal('shoe-modal');
+  }
+  function retireShoeFromModal() {
+    if (!editingShoeId) return;
+    RuncinoStore.retireShoe(editingShoeId);
+    closeModal('shoe-modal');
+  }
+  function unretireShoeFromModal() {
+    if (!editingShoeId) return;
+    RuncinoStore.unretireShoe(editingShoeId);
+    closeModal('shoe-modal');
+  }
+  function deleteShoeFromModal() {
+    if (!editingShoeId) return;
+    if (!confirm('Delete this shoe permanently? Runs assigned to it will be un-assigned. To keep history, use Retire instead.')) return;
+    RuncinoStore.deleteShoe(editingShoeId);
+    closeModal('shoe-modal');
+  }
+
+  // ── Profile modal (identity + avatar) ────────────────────────────
+  function preloadProfileModal() {
+    const s = RuncinoStore.getState();
+    const u = s.user || {};
+    document.getElementById('profile-name').value = u.name || '';
+    document.getElementById('profile-location').value = u.location || '';
+    document.getElementById('profile-age').value = u.age || '';
+    // Sex pill picker — set selected pill from stored value
+    const sexValue = u.sex || 'M';
+    document.querySelectorAll('#profile-sex-pills .sex-pill').forEach((pill) => {
+      pill.classList.toggle('selected', pill.dataset.sex === sexValue);
+    });
+    // Avatar preview
+    document.getElementById('avatar-preview-initials').textContent = u.initials || (u.name ? u.name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase() : 'DN');
+    if (u.avatar?.uploadDataUrl) {
+      document.getElementById('avatar-preview-upload').innerHTML = '<img src="' + u.avatar.uploadDataUrl + '" alt="">';
+    } else {
+      document.getElementById('avatar-preview-upload').textContent = 'UPLOAD';
+    }
+    // Strava connection state
+    const stravaConnected = !!(u.avatar?.stravaUrl);
+    const stravaRow = document.getElementById('avatar-strava-row');
+    stravaRow.classList.toggle('disabled', !stravaConnected);
+    document.getElementById('avatar-strava-meta').textContent = stravaConnected
+      ? 'Connected — pulled from your Strava profile'
+      : 'Connect Strava in /overview to pull your profile picture';
+    // Selected state
+    document.querySelectorAll('.avatar-source-row').forEach((row) => {
+      row.classList.toggle('selected', row.dataset.avatarMode === (u.avatar?.mode || 'initials'));
+    });
+  }
+  // Sex pill picker — exclusive selection, same UX as the day-pills in prefs
+  document.querySelectorAll('#profile-sex-pills .sex-pill').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#profile-sex-pills .sex-pill').forEach((p) => p.classList.remove('selected'));
+      pill.classList.add('selected');
+    });
+  });
+
+  document.querySelectorAll('.avatar-source-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      if (row.classList.contains('disabled')) return;
+      document.querySelectorAll('.avatar-source-row').forEach((r) => r.classList.remove('selected'));
+      row.classList.add('selected');
+      // If user picked "upload" and there's no upload yet, prompt for file
+      if (row.dataset.avatarMode === 'upload') {
+        const u = RuncinoStore.getState().user;
+        if (!u.avatar?.uploadDataUrl) document.getElementById('avatar-upload-input').click();
+      }
+    });
+  });
+  document.getElementById('avatar-upload-input').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      document.getElementById('avatar-preview-upload').innerHTML = '<img src="' + dataUrl + '" alt="">';
+      // Stash on the row temporarily; saveProfile() will commit it
+      document.querySelector('.avatar-source-row[data-avatar-mode="upload"]').dataset.pendingUpload = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+  function saveProfile() {
+    const name = document.getElementById('profile-name').value.trim() || 'Runner';
+    const initials = name.split(/\s+/).map(p => p[0] || '').join('').slice(0, 2).toUpperCase();
+    const patch = {
+      name,
+      initials,
+      location: document.getElementById('profile-location').value.trim(),
+      age: parseInt(document.getElementById('profile-age').value, 10) || null,
+      sex: document.querySelector('#profile-sex-pills .sex-pill.selected')?.dataset.sex || 'M',
+    };
+    // Avatar
+    const selRow = document.querySelector('.avatar-source-row.selected');
+    const mode = selRow?.dataset.avatarMode || 'initials';
+    const pendingUpload = document.querySelector('.avatar-source-row[data-avatar-mode="upload"]').dataset.pendingUpload || null;
+    RuncinoStore.setUser(patch);
+    RuncinoStore.setAvatar(mode, pendingUpload);
+    closeModal('profile-modal');
+  }
+
+  // ── Prefs modal (Training Profile editor) ────────────────────────
+  const DOW_LIST = ['mon','tue','wed','thu','fri','sat','sun'];
+  function renderDayPills(containerId, selected, multi) {
+    const c = document.getElementById(containerId);
+    c.innerHTML = DOW_LIST.map((d) => {
+      const isSel = multi ? (Array.isArray(selected) && selected.includes(d)) : (selected === d);
+      return '<div class="day-pill ' + (isSel ? 'selected' : '') + '" data-day="' + d + '">' + d.toUpperCase() + '</div>';
+    }).join('');
+    c.querySelectorAll('.day-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        if (multi) {
+          pill.classList.toggle('selected');
+          // Cap at 2 quality days
+          if (containerId === 'quality-days-pills') {
+            const selected = c.querySelectorAll('.day-pill.selected');
+            if (selected.length > 2) pill.classList.remove('selected');
+          }
+        } else {
+          c.querySelectorAll('.day-pill').forEach((p) => p.classList.remove('selected'));
+          pill.classList.add('selected');
+        }
+      });
+    });
+  }
+  function renderLevelGrid(selected) {
+    const doc = RuncinoStore.LEVEL_DOCTRINE || {};
+    const g = document.getElementById('level-grid');
+    g.innerHTML = Object.entries(doc).map(([key, def]) => (
+      '<div class="level-card ' + (key === selected ? 'selected' : '') + '" data-level="' + key + '">' +
+        '<div class="level-card-name">' + def.label + '</div>' +
+        '<div class="level-card-meta">' + def.copy + '<br>Long-run cap: ' + def.longRunCapMi + ' mi</div>' +
+      '</div>'
+    )).join('');
+    g.querySelectorAll('.level-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        g.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+    });
+  }
+  function preloadPrefsModal() {
+    const p = RuncinoStore.getState().prefs || {};
+    renderLevelGrid(p.level);
+    renderDayPills('long-day-pills', p.longRunDay, false);
+    renderDayPills('quality-days-pills', p.qualityDays || [], true);
+    renderDayPills('rest-day-pills', p.restDay, false);
+  }
+  function savePrefs() {
+    const level = document.querySelector('#level-grid .level-card.selected')?.dataset.level || 'intermediate';
+    const longRunDay = document.querySelector('#long-day-pills .day-pill.selected')?.dataset.day || 'sun';
+    const qualityDays = Array.from(document.querySelectorAll('#quality-days-pills .day-pill.selected')).map((p) => p.dataset.day);
+    const restDay = document.querySelector('#rest-day-pills .day-pill.selected')?.dataset.day || 'sat';
+    if (!qualityDays.length) { alert('Pick at least one quality day'); return; }
+    // Sanity check: don't let user pick same day for multiple roles
+    const used = new Set();
+    [longRunDay, restDay, ...qualityDays].forEach((d) => {
+      if (used.has(d)) { /* will be resolved by buildPlan() role priority */ }
+      used.add(d);
+    });
+    if (used.size < (2 + qualityDays.length)) {
+      if (!confirm('Some days are assigned to multiple roles (long-run + rest + quality). buildPlan() will prioritize long > rest > quality. Continue?')) return;
+    }
+    RuncinoStore.setPrefs({ level, longRunDay, qualityDays, restDay });
+    closeModal('prefs-modal');
+  }
+
+  // ── Open modal hooks (preload before showing) ────────────────────
+  const _openModal = openModal;
+  openModal = function (id) {
+    if (id === 'profile-modal') preloadProfileModal();
+    if (id === 'prefs-modal') preloadPrefsModal();
+    _openModal(id);
+  };
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Boot + subscribe ─────────────────────────────────────────────
+  function renderAll() {
+    renderIdentity();
+    renderPrefs();
+    renderShoes();
+  }
+  if (window.RuncinoStore) {
+    renderAll();
+    RuncinoStore.subscribe(renderAll);
+  }
+</script>
+<script src="runcino-bind.js" defer></script>
 </body>
 </html>

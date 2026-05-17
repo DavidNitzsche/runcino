@@ -48,11 +48,34 @@
 
   function render() {
     if (!window.RuncinoStore) return;
-    const map = format(RuncinoStore.getState());
+    const state = RuncinoStore.getState();
+    const map = format(state);
     Object.entries(map).forEach(([attr, value]) => {
       document.querySelectorAll(`[${attr}]`).forEach((el) => {
         el.textContent = value;
       });
+    });
+    renderNavAvatar(state);
+  }
+
+  // Nav avatar — every page has a .nav-avatar in the top-right.
+  // We render initials by default, or an <img> when the user has chosen
+  // 'upload' (custom photo) or 'strava' (synced from Strava). All pages
+  // share this so /profile's Edit Profile modal reflects everywhere.
+  function renderNavAvatar(state) {
+    const u = state.user || {};
+    const a = u.avatar || {};
+    const initials = u.initials || 'DN';
+    let html;
+    if (a.mode === 'upload' && a.uploadDataUrl) {
+      html = '<img src="' + a.uploadDataUrl + '" alt="">';
+    } else if (a.mode === 'strava' && a.stravaUrl) {
+      html = '<img src="' + a.stravaUrl + '" alt="">';
+    } else {
+      html = initials;
+    }
+    document.querySelectorAll('.nav-avatar').forEach((el) => {
+      el.innerHTML = html;
     });
   }
 

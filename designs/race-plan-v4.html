@@ -60,74 +60,32 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .countdown-divider { height: 1px; background: var(--divider); margin: 14px 0; }
 
 /* ── A-race hero ────────────────────────────────────────── */
+/* Single-column card now. Old layout had a black right panel with
+   goal-pace breakdown + 4-clause strategy list — that content was
+   redundant with the per-phase pace table below + the course profile
+   sub-heading. Trimmed to just the title + 3 anchor stats. */
 .a-race-card {
   background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow);
-  display: grid; grid-template-columns: 1fr 460px;
-  margin-top: 16px; overflow: hidden;
+  padding: 40px;
+  margin-top: 16px;
 }
-.a-race-left { padding: 40px; display: flex; flex-direction: column; }
 .a-race-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
 .a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: 220px; line-height: 0.86; letter-spacing: -6px; color: var(--t0); margin-left: -8px; }
 .a-race-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--orange); margin-top: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
-.a-race-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 18px; max-width: 560px; }
-.a-race-explainer strong { color: var(--t0); font-weight: 700; }
 
 .path-stats {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-  margin-top: 28px;
+  margin-top: 32px;
 }
 .path-stat {
   background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
-  border-radius: 10px; padding: 16px 20px;
+  border-radius: 10px; padding: 18px 22px;
 }
 .path-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .path-stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; color: var(--t0); margin-top: 6px; }
 .path-stat-value.green { color: var(--green); }
 .path-stat-value.orange { color: var(--orange); }
 .path-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
-
-/* Right side: black panel — inverts colors. */
-.a-race-right {
-  background: var(--t0);
-  padding: 40px;
-  display: flex; flex-direction: column; justify-content: space-between;
-  color: rgba(255,255,255,.78);
-}
-.a-race-right .path-section-label {
-  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
-  letter-spacing: 1.5px; color: rgba(255,255,255,.45);
-  text-transform: uppercase; margin-bottom: 14px;
-}
-.goal-breakdown-row {
-  display: flex; justify-content: space-between; align-items: baseline;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(255,255,255,.10);
-}
-.goal-breakdown-row:last-child { border-bottom: none; }
-.goal-breakdown-label { font-family: 'Inter', sans-serif; font-size: 13px; color: rgba(255,255,255,.65); }
-.goal-breakdown-val { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #fff; letter-spacing: -0.5px; }
-.goal-breakdown-val .sub { font-family: 'Inter', sans-serif; font-size: 11px; color: rgba(255,255,255,.45); margin-left: 6px; letter-spacing: 0.5px; }
-
-.strategy-clauses {
-  margin-top: 28px;
-  list-style: none;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.strategy-clauses li {
-  font-family: 'Inter', sans-serif; font-size: 13.5px; line-height: 1.5;
-  color: rgba(255,255,255,.82);
-  padding-left: 22px;
-  position: relative;
-}
-.strategy-clauses li::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 8px;
-  width: 6px; height: 6px;
-  background: var(--orange);
-  border-radius: 50%;
-}
-.strategy-clauses li strong { color: #fff; font-weight: 700; }
 
 /* ── Generic v4 card ─────────────────────────────────────── */
 .card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
@@ -406,63 +364,25 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
   <!-- ── A-RACE HERO ────────────────────────── -->
   <div class="a-race-card">
-    <div class="a-race-left">
-      <div class="a-race-eyebrow">A-RACE · GOAL TIME 1:35:00</div>
-      <div class="a-race-title">AFC<br>HALF</div>
-      <div class="a-race-sub">Americas Finest City · Aug 16</div>
-      <p class="a-race-explainer">
-        The full 14-week build points to this start line. Goal of <strong>1:35:00</strong> averages
-        <strong>7:15/mi</strong> on the road but rides on a <strong>7:10/mi flat-equivalent effort</strong> —
-        the course gives you the descent at mile 2 and takes it back at mile 11. Pacing is
-        course-aware, not clock-aware. Trust the splits below.
-      </p>
+    <div class="a-race-eyebrow">A-RACE · GOAL TIME 1:35:00</div>
+    <div class="a-race-title">AFC<br>HALF</div>
+    <div class="a-race-sub">Americas Finest City · Aug 16</div>
 
-      <div class="path-stats">
-        <div class="path-stat">
-          <div class="path-stat-label">Goal Time</div>
-          <div class="path-stat-value">1:35:00</div>
-          <div class="path-stat-sub">7:10/mi flat-equiv</div>
-        </div>
-        <div class="path-stat">
-          <div class="path-stat-label">Predicted</div>
-          <div class="path-stat-value orange">1:36:42</div>
-          <div class="path-stat-sub">VDOT 48.1 · Riegel</div>
-        </div>
-        <div class="path-stat">
-          <div class="path-stat-label">Strategy</div>
-          <div class="path-stat-value green">Even</div>
-          <div class="path-stat-sub">effort, not pace</div>
-        </div>
+    <div class="path-stats">
+      <div class="path-stat">
+        <div class="path-stat-label">Goal Time</div>
+        <div class="path-stat-value">1:35:00</div>
+        <div class="path-stat-sub">7:15/mi avg · 7:10 flat-equiv</div>
       </div>
-    </div>
-
-    <div class="a-race-right">
-      <div>
-        <div class="path-section-label">Goal Pace Breakdown</div>
-        <div class="goal-breakdown-row">
-          <span class="goal-breakdown-label">Flat-equivalent pace</span>
-          <span class="goal-breakdown-val">7:10<span class="sub">/mi</span></span>
-        </div>
-        <div class="goal-breakdown-row">
-          <span class="goal-breakdown-label">Average road pace</span>
-          <span class="goal-breakdown-val">7:15<span class="sub">/mi</span></span>
-        </div>
-        <div class="goal-breakdown-row">
-          <span class="goal-breakdown-label">Total elevation</span>
-          <span class="goal-breakdown-val">+684<span class="sub">/ −795 ft</span></span>
-        </div>
-        <div class="goal-breakdown-row">
-          <span class="goal-breakdown-label">Pace tolerance</span>
-          <span class="goal-breakdown-val">±10<span class="sub">s/mi</span></span>
-        </div>
-
-        <div class="path-section-label" style="margin-top: 28px;">Even-Effort Strategy</div>
-        <ul class="strategy-clauses">
-          <li><strong>Climb conservative.</strong> Add 14s to goal pace through the Point Loma ridge — banked time is not banked.</li>
-          <li><strong>Brake the descent.</strong> 10-15s under goal pace on The Drop, no more. Quads at mile 11 want them fresh.</li>
-          <li><strong>Hold the line.</strong> Mission Bay is where the race is decided. Don't drift. Don't surge.</li>
-          <li><strong>Make your move at 11.</strong> If you've paced clean, the Balboa climb is yours to take.</li>
-        </ul>
+      <div class="path-stat">
+        <div class="path-stat-label">Predicted</div>
+        <div class="path-stat-value orange">1:36:42</div>
+        <div class="path-stat-sub">VDOT 48.1 · Riegel</div>
+      </div>
+      <div class="path-stat">
+        <div class="path-stat-label">Strategy</div>
+        <div class="path-stat-value green">Even Effort</div>
+        <div class="path-stat-sub">±10 s/mi tolerance</div>
       </div>
     </div>
   </div>
@@ -587,12 +507,9 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <circle cx="981.87" cy="225" r="4" fill="#2CA82F"/>
           <circle cx="1180"   cy="30"  r="4" fill="#E85D26"/>
 
-          <!-- Peak callout -->
-          <text x="186" y="44" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#D4900A">CABRILLO 220 ft</text>
-          <!-- Finish callout -->
-          <text x="1120" y="20" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#E85D26" text-anchor="end">BALBOA +250 ft</text>
-          <!-- Bottom-of-drop -->
-          <text x="412" y="275" font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="#2563EB">−500 ft in 2.5 mi</text>
+          <!-- Inline callouts removed — the phase strip below the chart
+               labels each colored band, so layering text over the SVG was
+               doing duplicate work. -->
         </svg>
       </div>
 
@@ -626,24 +543,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="profile-legend">
-      <div class="profile-legend-item">
-        <span class="profile-legend-swatch" style="background: rgba(212,144,10,.5);"></span>
-        Climb · pace conservative
-      </div>
-      <div class="profile-legend-item">
-        <span class="profile-legend-swatch" style="background: rgba(37,99,235,.5);"></span>
-        Downhill · brake the quads
-      </div>
-      <div class="profile-legend-item">
-        <span class="profile-legend-swatch" style="background: rgba(44,168,47,.5);"></span>
-        Flat · hold the line
-      </div>
-      <div class="profile-legend-item">
-        <span class="profile-legend-swatch" style="background: rgba(232,93,38,.5);"></span>
-        Hard climb · race-finish
-      </div>
-    </div>
+    <!-- Legend removed — phase strip below chart labels each colored
+         segment by name (Point Loma Climb, The Drop, Mission Bay, …). -->
   </div>
 
   <!-- ── PHASE-BY-PHASE PLAN ────────────────── -->
@@ -670,11 +571,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <div class="phase-elev">
             <span class="up">↑ 158 ft</span> &nbsp;·&nbsp; <span class="down">↓ 116 ft</span> &nbsp;·&nbsp; net +42 ft
           </div>
-          <p class="phase-note">
-            The first 2 miles climb the Point Loma ridge toward the peak near Cabrillo National Monument.
-            <strong>Control effort here</strong> — the descent is coming and you'll want fresh legs.
-            Don't bank time on the uphills.
-          </p>
+          <p class="phase-note"><strong>Control effort.</strong> Don't bank time on the climb — the descent is coming.</p>
         </div>
         <div class="phase-pace">
           <div class="phase-pace-num">7:24</div>
@@ -698,11 +595,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <div class="phase-elev">
             <span class="up">↑ 111 ft</span> &nbsp;·&nbsp; <span class="down">↓ 499 ft</span> &nbsp;·&nbsp; net −388 ft
           </div>
-          <p class="phase-note">
-            The signature descent off Point Loma — steep, fast, and <strong>quad-punishing</strong> if
-            you let yourself fly. Use gravity but brake with your cadence, not your quads.
-            Overspeed here costs you at mile 10. Target 10–15s faster than goal pace, no more.
-          </p>
+          <p class="phase-note"><strong>Brake with cadence, not quads.</strong> 10–15 s under goal pace — no more. Overspeed here costs you at mile 11.</p>
         </div>
         <div class="phase-pace">
           <div class="phase-pace-num">6:49</div>
@@ -726,11 +619,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <div class="phase-elev">
             <span class="up">↑ 257 ft</span> &nbsp;·&nbsp; <span class="down">↓ 260 ft</span> &nbsp;·&nbsp; rolling
           </div>
-          <p class="phase-note">
-            Long flat run through the Mission Bay and Midway districts. <strong>This is where
-            the race is won</strong> — hold goal pace precisely, don't drift, stay hydrated.
-            The August heat reflects hard off the pavement here. Shade is minimal.
-          </p>
+          <p class="phase-note"><strong>The race is won here.</strong> Hold goal pace, don't drift, stay hydrated. August heat reflects off the pavement; minimal shade.</p>
         </div>
         <div class="phase-pace">
           <div class="phase-pace-num">7:20</div>
@@ -754,11 +643,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <div class="phase-elev">
             <span class="up">↑ 75 ft</span> &nbsp;·&nbsp; <span class="down">↓ 50 ft</span> &nbsp;·&nbsp; net +25 ft
           </div>
-          <p class="phase-note">
-            Transition section into downtown San Diego. Largely flat. <strong>This is the final
-            check-in</strong> — if you've been steady through Mission Bay, you have enough left.
-            If you've drifted, it's damage control time.
-          </p>
+          <p class="phase-note"><strong>Final check-in.</strong> Steady through Mission Bay = you have enough left. Drifted = damage control.</p>
         </div>
         <div class="phase-pace">
           <div class="phase-pace-num">7:23</div>
@@ -782,11 +667,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
           <div class="phase-elev">
             <span class="up">↑ 306 ft</span> &nbsp;·&nbsp; <span class="down">↓ 64 ft</span> &nbsp;·&nbsp; net +242 ft
           </div>
-          <p class="phase-note">
-            The sting in the tail — a gradual climb toward Balboa Park for the final 2.2 miles.
-            Many runners don't prep for this. <strong>If you've paced conservatively, this is
-            where you make your move.</strong> If not, dig in and hold form.
-          </p>
+          <p class="phase-note"><strong>Make your move — or hold form.</strong> If you paced clean, Balboa is yours. If not, dig in and protect time.</p>
         </div>
         <div class="phase-pace">
           <div class="phase-pace-num">7:22</div>
@@ -876,11 +757,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <div class="fuel-note">
-      <strong>Gels anchored to phase boundaries, not clock.</strong>
-      Take gel 1 at the bottom of The Drop — your stomach is calm. Gel 2 mid-Mission Bay before
-      the heat catches up. Gel 3 right before the Balboa climb so the carbs hit when you need them.
-    </div>
+    <!-- Footnote removed — the timeline above visually shows phase-boundary
+         anchoring and each marker already labels its mile + time. -->
   </div>
 
   <!-- ── RACE-DAY EXECUTION / BRIEF ────────── -->
