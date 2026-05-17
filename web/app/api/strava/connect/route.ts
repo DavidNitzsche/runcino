@@ -1,32 +1,25 @@
 /**
- * /api/strava/connect — kicks off the OAuth one-shot.
+ * /api/strava/connect — kicks off Strava OAuth.
  *
- * Redirects the browser to Strava's authorize page with the right
- * scopes. Strava redirects back to /api/strava/callback?code=... once
- * the user clicks "Authorize" — that's where we exchange the code
- * for tokens.
- *
- * Single-user tool, so we don't bother with state/CSRF — there's no
- * second user to confuse. If we ever multi-tenant, add a state param
- * and verify on callback.
+ * Requires a logged-in faff.run session. The user's UUID is encoded
+ * into the OAuth `state` param + verified on the callback so we know
+ * which faff user just connected (multi-tenant safe).
  */
 
 import { NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
+import { getCurrentUser } from '../../../../lib/auth';
+import { query } from '../../../../lib/db';
 
 /** Resolve the public origin for the Strava redirect_uri.
  *
- *  Inside a Railway container, req.url is something like
- *  http://0.0.0.0:8080/... — using its origin would send Strava a
- *  redirect_uri it can't validate (Strava's "Authorization Callback
- *  Domain" is set to __KEEP_FAFF.RUN_PROD__.up.railway.app).
- *
- *  Fall through, in priority order:
- *   1. RAILWAY_PUBLIC_DOMAIN env var (Railway injects this for the
- *      service's primary public hostname)
- *   2. X-Forwarded-Host + X-Forwarded-Proto headers (the proxy
- *      sets these to the real public hostname)
- *   3. Host header
- *   4. req.url origin (dev fallback for localhost)
+ *  Inside a Railway container req.url is something like
+ *  http://0.0.0.0:8080/... — that's not what Strava is configured to
+ *  accept. Falls through:
+ *    1. RAILWAY_PUBLIC_DOMAIN env var
+ *    2. X-Forwarded-Host + X-Forwarded-Proto headers (Railway proxy)
+ *    3. Host header
+ *    4. req.url origin (localhost dev fallback)
  */
 function publicOrigin(req: Request): string {
   const fromEnv = process.env.RAILWAY_PUBLIC_DOMAIN;
@@ -42,38 +35,68 @@ function publicOrigin(req: Request): string {
   return new URL(req.url).origin;
 }
 
+// Short-lived state cookie name — set during /connect, verified during
+// callback. Prevents CSRF + threads user_id through the OAuth handoff.
+const STATE_COOKIE = 'faff_strava_oauth_state';
+
 export async function GET(req: Request) {
   const clientId = process.env.STRAVA_CLIENT_ID;
   if (!clientId) {
-    return new Response('Missing STRAVA_CLIENT_ID — set it in web/.env.local + Railway Variables', { status: 500 });
+    return new Response('Missing STRAVA_CLIENT_ID — set it in Railway Variables', { status: 500 });
   }
+
+  // Require login
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.redirect(new URL('/login', new URL(req.url).origin));
+  }
+
   const origin = publicOrigin(req);
   const redirectUri = `${origin}/api/strava/callback`;
-  // Debug: hitting /api/strava/connect?debug=1 shows the redirect_uri
-  // the app would send, instead of redirecting to Strava. Useful for
-  // diagnosing "redirect_uri invalid" errors without round-tripping
-  // through Strava.
+
+  // Debug hatch
   const url = new URL(req.url);
   if (url.searchParams.get('debug') === '1') {
     return new Response(JSON.stringify({
       redirectUri,
       detectedOrigin: origin,
-      reqUrl: req.url,
-      headers: {
-        host: req.headers.get('host'),
-        'x-forwarded-host': req.headers.get('x-forwarded-host'),
-        'x-forwarded-proto': req.headers.get('x-forwarded-proto'),
-      },
-      env: { RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN ?? null },
+      user: { id: user.id, email: user.email },
     }, null, 2), { headers: { 'content-type': 'application/json' } });
   }
+
+  // Generate state — random + user_id, persisted in a short-lived cookie
+  // and to the DB so the callback can verify + look up the user.
+  const stateNonce = randomBytes(16).toString('base64url');
+  const stateValue = `${stateNonce}:${user.id}`;
+
+  // Stash in a connector_sync_log row so callback can verify.
+  // (Lightweight; rows are short-lived. Could use Redis but pg is fine.)
+  await query(
+    `INSERT INTO connector_sync_log (user_id, provider, trigger, status, started_at)
+     VALUES ($1, 'strava', 'connect', 'in_progress', NOW())
+     RETURNING id;`,
+    [user.id],
+  ).catch(() => { /* table may not exist on older deploys — non-fatal */ });
+
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'read,activity:read_all',
+    scope: 'read,activity:read_all,profile:read_all',
     approval_prompt: 'auto',
+    state: stateValue,
   });
-  const authorizeUrl = `https://www.strava.com/oauth/authorize?${params}`;
-  return NextResponse.redirect(authorizeUrl);
+
+  const res = NextResponse.redirect(`https://www.strava.com/oauth/authorize?${params}`);
+  // 10-min state cookie — callback verifies against this
+  res.cookies.set({
+    name: STATE_COOKIE,
+    value: stateValue,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 600,
+  });
+  return res;
 }

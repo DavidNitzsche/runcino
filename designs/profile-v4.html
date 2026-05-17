@@ -198,6 +198,110 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .swatch { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2.5px solid transparent; }
 .swatch.selected { border-color: var(--t0); transform: scale(1.08); }
 
+/* ──────────────────────────────────
+   CONNECTORS CARD
+   ────────────────────────────────── */
+.conn-body { padding: 0 40px 28px; display: flex; flex-direction: column; gap: 14px; }
+.conn-section-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+.conn-section-label:first-child { margin-top: 0; }
+
+/* Connected / active row — prominent, has actions */
+.conn-row {
+  background: rgba(13,15,18,.03);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 16px;
+  align-items: center;
+}
+.conn-row.connected { background: rgba(44,168,47,.05); border-color: rgba(44,168,47,.20); }
+.conn-icon {
+  width: 44px; height: 44px;
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px; color: #fff;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.conn-icon.strava { background: var(--strava); }
+.conn-icon.manual { background: var(--t0); color: var(--amber); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 17px; }
+.conn-icon.gpx    { background: var(--t0); color: var(--blue); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: .5px; }
+.conn-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
+.conn-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 3px; line-height: 1.5; }
+.conn-meta .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.conn-meta .status-dot.green { background: var(--green); }
+.conn-meta .status-dot.amber { background: var(--amber); }
+.conn-meta strong { color: var(--t1); font-weight: 600; }
+.conn-action-row { display: flex; gap: 8px; align-items: center; }
+.conn-btn {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid rgba(13,15,18,.16);
+  background: transparent;
+  color: var(--t1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.conn-btn:hover { background: rgba(13,15,18,.04); color: var(--t0); }
+.conn-btn.connect { background: var(--t0); color: #fff; border-color: var(--t0); }
+.conn-btn.connect:hover { background: rgba(13,15,18,.85); }
+.conn-btn.disconnect { color: var(--warn); border-color: rgba(244,63,94,.25); }
+.conn-btn.disconnect:hover { background: rgba(244,63,94,.06); color: var(--warn); }
+
+/* Compact future-connectors pill row */
+.conn-future-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.conn-future {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: rgba(13,15,18,.03);
+  border: 1px solid var(--divider);
+  border-radius: 9px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; color: var(--t1); font-weight: 500;
+}
+.conn-future-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.conn-future-dot.strava        { background: var(--strava); }
+.conn-future-dot.apple-health  { background: #FB264E; }
+.conn-future-dot.garmin        { background: #000; }
+.conn-future-dot.coros         { background: #FF4D00; }
+.conn-future-dot.polar         { background: #C8102E; }
+.conn-future-dot.suunto        { background: #003B5C; }
+.conn-future-dot.wahoo         { background: #00A0DC; }
+.conn-future-dot.googlefit     { background: #4285F4; }
+.conn-future-dot.finalsurge    { background: #0088CC; }
+.conn-future-dot.trainingpeaks { background: #E32D2D; }
+.conn-future-dot.whoop         { background: #0D0F12; }
+.conn-future-dot.oura          { background: #1A1A1A; }
+.conn-future-tag {
+  font-family: 'Inter', sans-serif;
+  font-size: 9.5px; letter-spacing: 1.2px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.conn-future-tag.soon    { color: var(--amber); }
+.conn-future-tag.planned { color: var(--t2); }
+
+
 /* Sex pill picker — segmented control (matches day-pills pattern) */
 .sex-pills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .sex-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; text-align: center; padding: 12px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
@@ -267,6 +371,91 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       <div class="kpi-label">Lifetime elev</div>
       <div class="kpi-value-row"><span class="kpi-value">16K</span><span class="kpi-unit">ft</span></div>
       <div class="kpi-sub">0.54× Everest</div>
+    </div>
+  </div>
+
+  <!-- CONNECTORS · where your data comes from -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Connectors</div>
+        <div class="card-sub">Where your data comes in · activity sources, recovery signal, plan source</div>
+      </div>
+      <div class="card-meta"><strong>1</strong> connected · <strong>1</strong> always-on</div>
+    </div>
+
+    <div class="conn-body">
+
+      <!-- Currently connected — full row with last-sync + Disconnect -->
+      <div class="conn-section-label">Connected</div>
+      <div class="conn-row connected">
+        <div class="conn-icon strava">S</div>
+        <div>
+          <div class="conn-name">Strava</div>
+          <div class="conn-meta">
+            <span class="status-dot green"></span><strong>Syncing</strong> · last sync 2 min ago · <strong>247</strong> activities backfilled
+          </div>
+        </div>
+        <div class="conn-action-row">
+          <button class="conn-btn">Sync now</button>
+          <button class="conn-btn disconnect">Disconnect</button>
+        </div>
+      </div>
+
+      <!-- Always-on (no auth, but counted as a source) -->
+      <div class="conn-row">
+        <div class="conn-icon manual">✎</div>
+        <div>
+          <div class="conn-name">Manual entry</div>
+          <div class="conn-meta">
+            <span class="status-dot green"></span>Always on · log runs from /log when you want
+          </div>
+        </div>
+        <div class="conn-action-row">
+          <a class="conn-btn" href="log-v4.html">Open log →</a>
+        </div>
+      </div>
+
+      <!-- File upload — live-soon -->
+      <div class="conn-row">
+        <div class="conn-icon gpx">GPX</div>
+        <div>
+          <div class="conn-name">GPX / FIT upload</div>
+          <div class="conn-meta">
+            <span class="status-dot amber"></span>Soon · upload a watch export to backfill or correct a missing run
+          </div>
+        </div>
+        <div class="conn-action-row">
+          <button class="conn-btn" disabled style="opacity:.5; cursor:not-allowed;">Notify me</button>
+        </div>
+      </div>
+
+      <!-- Coming-soon activity sources — compact pill row -->
+      <div class="conn-section-label">Coming soon · activity sources</div>
+      <div class="conn-future-row">
+        <span class="conn-future"><span class="conn-future-dot apple-health"></span>Apple Health<span class="conn-future-tag soon">iOS app</span></span>
+        <span class="conn-future"><span class="conn-future-dot garmin"></span>Garmin Connect<span class="conn-future-tag soon">Soon</span></span>
+        <span class="conn-future"><span class="conn-future-dot coros"></span>Coros<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot polar"></span>Polar Flow<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot suunto"></span>Suunto App<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot wahoo"></span>Wahoo Fitness<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot googlefit"></span>Google Fit<span class="conn-future-tag planned">Planned</span></span>
+      </div>
+
+      <!-- Coach platforms — when a separate coach builds your plan -->
+      <div class="conn-section-label">Coach plan platforms · plan-source mode</div>
+      <div class="conn-future-row">
+        <span class="conn-future"><span class="conn-future-dot finalsurge"></span>Final Surge<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot trainingpeaks"></span>TrainingPeaks<span class="conn-future-tag planned">Planned</span></span>
+      </div>
+
+      <!-- Recovery + sleep — feeds the readiness model -->
+      <div class="conn-section-label">Recovery + sleep signal</div>
+      <div class="conn-future-row">
+        <span class="conn-future"><span class="conn-future-dot whoop"></span>Whoop<span class="conn-future-tag planned">Planned</span></span>
+        <span class="conn-future"><span class="conn-future-dot oura"></span>Oura Ring<span class="conn-future-tag planned">Planned</span></span>
+      </div>
+
     </div>
   </div>
 

@@ -88,7 +88,10 @@ export async function POST(req: Request) {
 
   if (coords) {
     try {
-      const w = await fetchNoaaWeather(coords.lat, coords.lon, race_date, '07:00');
+      // fetchNoaaWeather signature is (lat, lon) only. The 4-arg form
+      // (lat, lon, date, time) referenced a deprecated function variant;
+      // current NOAA lookup just takes coords. race_date is unused here.
+      const w = await fetchNoaaWeather(coords.lat, coords.lon);
       weather = {
         narrative: w.narrative,
         start_temp_f: w.start_period.temperature_f,

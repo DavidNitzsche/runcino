@@ -327,9 +327,132 @@ async function bootstrap(): Promise<void> {
       CREATE INDEX IF NOT EXISTS skipped_workouts_by_date
         ON skipped_workouts (user_id, date DESC);
     `);
+
+    // ════════════════════════════════════════════════════════════════
+    // MULTI-TENANT AUTH + CONNECTORS
+    // Applied additively. Legacy `user_id TEXT='me'` columns stay until
+    // every row has been claimed by a real users row (see backfill
+    // below). The legacy + new columns coexist; readers should prefer
+    // user_uuid when set.
+    // ════════════════════════════════════════════════════════════════
+
+    // Required extensions (pgcrypto for gen_random_uuid, citext for emails)
+    await client.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+    await client.query(`CREATE EXTENSION IF NOT EXISTS citext;`);
+
+    // users — one row per signed-up account
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email               CITEXT NOT NULL UNIQUE,
+        password_hash       TEXT NOT NULL,
+        email_verified_at   TIMESTAMPTZ,
+        name                TEXT NOT NULL DEFAULT '',
+        age                 INTEGER CHECK (age IS NULL OR (age >= 13 AND age <= 100)),
+        sex                 TEXT CHECK (sex IS NULL OR sex IN ('M','F')),
+        location            TEXT,
+        avatar_mode         TEXT NOT NULL DEFAULT 'initials' CHECK (avatar_mode IN ('initials','upload','strava')),
+        avatar_upload_url   TEXT,
+        avatar_strava_url   TEXT,
+        level               TEXT NOT NULL DEFAULT 'intermediate' CHECK (level IN ('beginner','intermediate','advanced','elite')),
+        long_run_day        TEXT NOT NULL DEFAULT 'sun' CHECK (long_run_day IN ('mon','tue','wed','thu','fri','sat','sun')),
+        quality_days        TEXT[] NOT NULL DEFAULT ARRAY['tue','thu']::TEXT[],
+        rest_day            TEXT NOT NULL DEFAULT 'sat' CHECK (rest_day IN ('mon','tue','wed','thu','fri','sat','sun')),
+        onboarding_complete BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_login_at       TIMESTAMPTZ
+      );
+    `);
+
+    // sessions — cookie-token lookup (server-side session store)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_token   TEXT NOT NULL UNIQUE,
+        expires_at      TIMESTAMPTZ NOT NULL,
+        ip_address      INET,
+        user_agent      TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_token   ON sessions (session_token);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions (user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);`);
+
+    // connector_tokens — per-user OAuth credentials for every source
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS connector_tokens (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider          TEXT NOT NULL CHECK (provider IN (
+                            'strava','garmin','apple_health','coros','polar','suunto',
+                            'wahoo','google_fit','final_surge','training_peaks','whoop','oura'
+                          )),
+        provider_user_id  TEXT,
+        scope             TEXT,
+        access_token      TEXT NOT NULL,
+        refresh_token     TEXT,
+        expires_at        TIMESTAMPTZ,
+        metadata          JSONB NOT NULL DEFAULT '{}'::JSONB,
+        last_sync_at      TIMESTAMPTZ,
+        last_sync_status  TEXT CHECK (last_sync_status IS NULL OR last_sync_status IN ('success','error','in_progress','rate_limited')),
+        last_sync_error   TEXT,
+        activities_count  INTEGER NOT NULL DEFAULT 0,
+        connected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        disconnected_at   TIMESTAMPTZ,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, provider)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_connector_tokens_user ON connector_tokens (user_id) WHERE disconnected_at IS NULL;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_connector_tokens_provider_user_id ON connector_tokens (provider, provider_user_id) WHERE disconnected_at IS NULL;`);
+
+    // Link existing tables to users via nullable user_uuid FK columns.
+    // Legacy user_id='me' rows keep working until they get claimed by
+    // the backfill on first signup.
+    for (const tbl of [
+      'daily_checkin', 'personal_goals', 'profile', 'user_prefs',
+      'training_plans', 'skipped_workouts', 'recovery_sessions',
+      'shoes', 'strava_activities', 'races',
+    ]) {
+      await client.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS user_uuid UUID REFERENCES users(id) ON DELETE CASCADE;`);
+    }
   } finally {
     client.release();
   }
+}
+
+/**
+ * Backfill claim — runs once on first signup. If the new user's email
+ * matches LEGACY_OWNER_EMAIL (set via env var; defaults to dnitch85@me.com),
+ * every existing user_id='me' row is reassigned to their UUID.
+ *
+ * Called from the signup route after a successful insert into users.
+ * Idempotent: subsequent calls find no 'me' rows and do nothing.
+ */
+export async function maybeBackfillLegacyOwner(userId: string, email: string): Promise<void> {
+  const legacy = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+  if (email.toLowerCase() !== legacy) return;
+  await withClient(async (client) => {
+    await client.query('BEGIN');
+    try {
+      // Tables that keyed by user_id TEXT
+      for (const tbl of ['daily_checkin', 'personal_goals', 'profile', 'user_prefs', 'training_plans', 'skipped_workouts']) {
+        await client.query(`UPDATE ${tbl} SET user_uuid = $1 WHERE user_id = 'me' AND user_uuid IS NULL;`, [userId]);
+      }
+      // Tables that have no user_id column — claim everything that's still unclaimed
+      for (const tbl of ['recovery_sessions', 'shoes', 'strava_activities', 'races']) {
+        await client.query(`UPDATE ${tbl} SET user_uuid = $1 WHERE user_uuid IS NULL;`, [userId]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    }
+  });
 }
 
 /** Test helper — drops all app tables. Never call in production. */
