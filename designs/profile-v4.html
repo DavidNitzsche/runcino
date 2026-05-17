@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Runcino · Profile</title>
+<title>faff.run · Profile</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -214,7 +214,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 <nav class="navbar">
   <div class="navbar-inner">
-    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
     <div class="nav-links">
       <a class="nav-link" href="overview-v4.html">Overview</a>
       <a class="nav-link" href="training-v4.html">Training</a>
@@ -431,7 +431,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     <div class="modal-section">
       <div class="modal-section-label">Level</div>
       <div class="level-grid" id="level-grid">
-        <!-- populated from RuncinoStore.LEVEL_DOCTRINE -->
+        <!-- populated from FaffStore.LEVEL_DOCTRINE -->
       </div>
     </div>
 
@@ -473,7 +473,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
       <div class="modal-row">
         <label class="modal-label">Purpose · what kind of runs is this shoe for</label>
-        <div class="shoe-purpose-pills" id="shoe-purpose-pills"><!-- populated from RuncinoStore.SHOE_PURPOSE_OPTIONS --></div>
+        <div class="shoe-purpose-pills" id="shoe-purpose-pills"><!-- populated from FaffStore.SHOE_PURPOSE_OPTIONS --></div>
         <div class="modal-help">Pick any number. These map to the run types in /log — when you click a shoe picker for a Threshold run, threshold-tagged shoes surface first.</div>
       </div>
       <div class="modal-grid-2">
@@ -507,7 +507,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 </div>
 
-<script src="runcino-store.js"></script>
+<script src="faff-store.js"></script>
 <script>
   // ── Modal plumbing ───────────────────────────────────────────────
   function openModal(id) {
@@ -528,9 +528,9 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
   // ── Identity + KPIs renderer ─────────────────────────────────────
   function renderIdentity() {
-    const s = RuncinoStore.getState();
+    const s = FaffStore.getState();
     const u = s.user || {};
-    const lvl = (RuncinoStore.LEVEL_DOCTRINE && RuncinoStore.LEVEL_DOCTRINE[s.prefs?.level]) || RuncinoStore.LEVEL_DOCTRINE.intermediate;
+    const lvl = (FaffStore.LEVEL_DOCTRINE && FaffStore.LEVEL_DOCTRINE[s.prefs?.level]) || FaffStore.LEVEL_DOCTRINE.intermediate;
     document.getElementById('identity-name').textContent = u.name || 'Runner';
     document.getElementById('identity-eyebrow').textContent = 'Runner · ' + lvl.label + ' level';
     const bioBits = [];
@@ -557,9 +557,9 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   // ── Prefs renderer (Training Profile cells) ──────────────────────
   function fmtDow(dow) { return ({ mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' })[dow] || dow; }
   function renderPrefs() {
-    const s = RuncinoStore.getState();
+    const s = FaffStore.getState();
     const p = s.prefs || {};
-    const lvl = (RuncinoStore.LEVEL_DOCTRINE && RuncinoStore.LEVEL_DOCTRINE[p.level]) || RuncinoStore.LEVEL_DOCTRINE.intermediate;
+    const lvl = (FaffStore.LEVEL_DOCTRINE && FaffStore.LEVEL_DOCTRINE[p.level]) || FaffStore.LEVEL_DOCTRINE.intermediate;
     document.getElementById('pref-level').textContent = lvl.label;
     document.getElementById('pref-level-meta').textContent = lvl.copy;
     document.getElementById('pref-long-day').textContent = fmtDow(p.longRunDay);
@@ -569,7 +569,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
   // ── Shoes renderer + modal ───────────────────────────────────────
   function renderShoes() {
-    const s = RuncinoStore.getState();
+    const s = FaffStore.getState();
     const all = s.shoes?.list || [];
     const active = all.filter((sh) => !sh.retired);
     document.getElementById('shoes-count').textContent = active.length + ' active' + (all.length > active.length ? ' · ' + (all.length - active.length) + ' retired' : '');
@@ -579,11 +579,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       return;
     }
     grid.innerHTML = all.map((sh) => {
-      const status = RuncinoStore.shoeStatus(sh.currentMi, sh.capMi);
+      const status = FaffStore.shoeStatus(sh.currentMi, sh.capMi);
       const pct = Math.min(100, Math.round((sh.currentMi / sh.capMi) * 100));
       const fillCls = status.tone === 'warn' ? 'warn' : (status.tone === 'amber' ? 'amber' : '');
       const retiredBadge = sh.retired ? ' · <strong style="color: var(--t1);">RETIRED</strong>' : '';
-      const purposeStr = RuncinoStore.formatShoePurposes(sh.purposes) || '—';
+      const purposeStr = FaffStore.formatShoePurposes(sh.purposes) || '—';
       return (
         '<div class="shoe-row" data-shoe-id="' + sh.id + '" onclick="openShoeModal(\'' + sh.id + '\')"' + (sh.retired ? ' style="opacity:.5;"' : '') + '>' +
           '<div>' +
@@ -605,7 +605,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   let editingShoeId = null;
   function openShoeModal(id) {
     editingShoeId = id || null;
-    const s = RuncinoStore.getState();
+    const s = FaffStore.getState();
     const sh = id ? (s.shoes?.list || []).find((x) => x.id === id) : null;
     document.getElementById('shoe-modal-title').textContent = sh ? 'EDIT SHOE' : 'ADD SHOE';
     document.getElementById('shoe-name').value = sh?.name || '';
@@ -613,7 +613,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     // mark the shoe's existing purposes as selected.
     const currentPurposes = Array.isArray(sh?.purposes) ? sh.purposes : [];
     const pillsHost = document.getElementById('shoe-purpose-pills');
-    pillsHost.innerHTML = (RuncinoStore.SHOE_PURPOSE_OPTIONS || []).map((opt) => (
+    pillsHost.innerHTML = (FaffStore.SHOE_PURPOSE_OPTIONS || []).map((opt) => (
       '<div class="shoe-purpose-pill' + (currentPurposes.includes(opt.id) ? ' selected' : '') + '" data-purpose="' + opt.id + '">' + opt.label + '</div>'
     )).join('');
     pillsHost.querySelectorAll('.shoe-purpose-pill').forEach((pill) => {
@@ -648,30 +648,30 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       color,
     };
     if (!payload.name) { alert('Name is required'); return; }
-    if (editingShoeId) RuncinoStore.updateShoe(editingShoeId, payload);
-    else RuncinoStore.addShoe(payload);
+    if (editingShoeId) FaffStore.updateShoe(editingShoeId, payload);
+    else FaffStore.addShoe(payload);
     closeModal('shoe-modal');
   }
   function retireShoeFromModal() {
     if (!editingShoeId) return;
-    RuncinoStore.retireShoe(editingShoeId);
+    FaffStore.retireShoe(editingShoeId);
     closeModal('shoe-modal');
   }
   function unretireShoeFromModal() {
     if (!editingShoeId) return;
-    RuncinoStore.unretireShoe(editingShoeId);
+    FaffStore.unretireShoe(editingShoeId);
     closeModal('shoe-modal');
   }
   function deleteShoeFromModal() {
     if (!editingShoeId) return;
     if (!confirm('Delete this shoe permanently? Runs assigned to it will be un-assigned. To keep history, use Retire instead.')) return;
-    RuncinoStore.deleteShoe(editingShoeId);
+    FaffStore.deleteShoe(editingShoeId);
     closeModal('shoe-modal');
   }
 
   // ── Profile modal (identity + avatar) ────────────────────────────
   function preloadProfileModal() {
-    const s = RuncinoStore.getState();
+    const s = FaffStore.getState();
     const u = s.user || {};
     document.getElementById('profile-name').value = u.name || '';
     document.getElementById('profile-location').value = u.location || '';
@@ -715,7 +715,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       row.classList.add('selected');
       // If user picked "upload" and there's no upload yet, prompt for file
       if (row.dataset.avatarMode === 'upload') {
-        const u = RuncinoStore.getState().user;
+        const u = FaffStore.getState().user;
         if (!u.avatar?.uploadDataUrl) document.getElementById('avatar-upload-input').click();
       }
     });
@@ -746,8 +746,8 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     const selRow = document.querySelector('.avatar-source-row.selected');
     const mode = selRow?.dataset.avatarMode || 'initials';
     const pendingUpload = document.querySelector('.avatar-source-row[data-avatar-mode="upload"]').dataset.pendingUpload || null;
-    RuncinoStore.setUser(patch);
-    RuncinoStore.setAvatar(mode, pendingUpload);
+    FaffStore.setUser(patch);
+    FaffStore.setAvatar(mode, pendingUpload);
     closeModal('profile-modal');
   }
 
@@ -776,7 +776,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     });
   }
   function renderLevelGrid(selected) {
-    const doc = RuncinoStore.LEVEL_DOCTRINE || {};
+    const doc = FaffStore.LEVEL_DOCTRINE || {};
     const g = document.getElementById('level-grid');
     g.innerHTML = Object.entries(doc).map(([key, def]) => (
       '<div class="level-card ' + (key === selected ? 'selected' : '') + '" data-level="' + key + '">' +
@@ -792,7 +792,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     });
   }
   function preloadPrefsModal() {
-    const p = RuncinoStore.getState().prefs || {};
+    const p = FaffStore.getState().prefs || {};
     renderLevelGrid(p.level);
     renderDayPills('long-day-pills', p.longRunDay, false);
     renderDayPills('quality-days-pills', p.qualityDays || [], true);
@@ -813,7 +813,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     if (used.size < (2 + qualityDays.length)) {
       if (!confirm('Some days are assigned to multiple roles (long-run + rest + quality). buildPlan() will prioritize long > rest > quality. Continue?')) return;
     }
-    RuncinoStore.setPrefs({ level, longRunDay, qualityDays, restDay });
+    FaffStore.setPrefs({ level, longRunDay, qualityDays, restDay });
     closeModal('prefs-modal');
   }
 
@@ -834,11 +834,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     renderPrefs();
     renderShoes();
   }
-  if (window.RuncinoStore) {
+  if (window.FaffStore) {
     renderAll();
-    RuncinoStore.subscribe(renderAll);
+    FaffStore.subscribe(renderAll);
   }
 </script>
-<script src="runcino-bind.js" defer></script>
+<script src="faff-bind.js" defer></script>
 </body>
 </html>

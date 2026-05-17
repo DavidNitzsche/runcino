@@ -1,4 +1,4 @@
-# Runcino Design System
+# faff.run Design System
 
 **Status:** locked as of hub.html hero-hub iteration.
 **Canonical reference mockup:** `designs/hub.html` (hero hub · v.1)

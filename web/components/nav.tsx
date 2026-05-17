@@ -1,5 +1,5 @@
 /**
- * Top nav — mirrors the dark Runcino design system from designs/runcino.css.
+ * Top nav — mirrors the dark faff.run design system from designs/faff.css.
  * Tabs map to Next.js routes; pills indicate milestones not yet shipped.
  */
 
@@ -58,7 +58,7 @@ export function Nav({ active }: { active?: NavKey }) {
 export function Caption({ left, right }: { left?: string; right?: string }) {
   return (
     <div className="caption">
-      <span>{left ?? 'Runcino · localhost'}</span>
+      <span>{left ?? 'faff.run · localhost'}</span>
       <b>{right ?? 'v0.1 · M0'}</b>
     </div>
   );

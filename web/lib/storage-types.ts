@@ -9,7 +9,7 @@
  * app reads the same shape from iCloud once that pipe lands.
  */
 
-import type { RuncinoPlan } from './types';
+import type { FaffPlan } from './types';
 
 export interface ActualResult {
   finishS: number;
@@ -52,7 +52,7 @@ export interface ActualResult {
 
 export interface SavedRace {
   slug: string;
-  plan: RuncinoPlan;
+  plan: FaffPlan;
   gpxText: string;
   /** DEM elevation in meters, parallel to the GPX trackpoints array.
    *  Set when the race was created via the DEM pipeline. Used by the

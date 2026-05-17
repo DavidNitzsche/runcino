@@ -1,4 +1,4 @@
-# Runcino v4 · Design Law
+# faff.run v4 · Design Law
 
 This document is the source of truth for the v4 visual system. It was
 derived from `designs/overview-v4.html` (the approved mockup) and is

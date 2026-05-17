@@ -8,7 +8,7 @@ import { TopbarClock } from '../../components/TopbarClock';
 import { saveRace, listRaces, slugifyRaceName } from '../../../lib/storage';
 import { parseGpx } from '../../../lib/gpx';
 import { analyzeGpx, type CourseAnalysis } from '../../../lib/gpx-analysis';
-import type { RuncinoPlan } from '../../../lib/types';
+import type { FaffPlan } from '../../../lib/types';
 import type { ExtractedAidStation, ExtractionResult } from '../../../lib/aid-extraction';
 import type { SavedRace } from '../../../lib/storage-types';
 import CoursePreview from '../../../components/CoursePreview';
@@ -323,7 +323,7 @@ export default function NewRacePage() {
         throw new Error(`Build failed (${res.status}): ${txt.slice(0, 200)}`);
       }
       const data: BuildResult = await res.json();
-      const plan = JSON.parse(data.planJsonText) as RuncinoPlan;
+      const plan = JSON.parse(data.planJsonText) as FaffPlan;
       const headlineDistance = canonical ?? plan.race.distance_mi;
 
       // Save overrides sidecar in dev
@@ -379,7 +379,7 @@ export default function NewRacePage() {
 
   return (
     <>
-      <Caption left="Runcino · races · new" right="ADD RACE" />
+      <Caption left="faff.run · races · new" right="ADD RACE" />
       <div className="stage">
         <Topbar activeTab="races" clock={<TopbarClock />} />
         <div className="body">
@@ -409,26 +409,26 @@ export default function NewRacePage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
                   <div>
-                    <label className="runcino-label">Race name</label>
-                    <input className="runcino-input" placeholder="e.g. America's Finest City Half"
+                    <label className="faff-label">Race name</label>
+                    <input className="faff-input" placeholder="e.g. America's Finest City Half"
                       value={raceName} onChange={e => setRaceName(e.target.value)} />
                   </div>
                   <div>
-                    <label className="runcino-label">Date</label>
-                    <input className="runcino-input font-data" type="date"
+                    <label className="faff-label">Date</label>
+                    <input className="faff-input font-data" type="date"
                       value={raceDate} onChange={e => setRaceDate(e.target.value)} />
                   </div>
                   <div>
-                    <label className="runcino-label">Start time</label>
-                    <input className="runcino-input font-data" type="time"
+                    <label className="faff-label">Start time</label>
+                    <input className="faff-input font-data" type="time"
                       value={startTime} onChange={e => setStartTime(e.target.value)} />
                   </div>
                 </div>
 
                 {/* Official URL + optional fields */}
                 <div style={{ marginTop: 14 }}>
-                  <label className="runcino-label">Official race URL <span style={{ color: 'var(--color-warning)' }}>*</span></label>
-                  <input className="runcino-input" type="url"
+                  <label className="faff-label">Official race URL <span style={{ color: 'var(--color-warning)' }}>*</span></label>
+                  <input className="faff-input" type="url"
                     placeholder="https://www.afcmarathon.com/course"
                     value={officialUrl} onChange={e => setOfficialUrl(e.target.value)} />
                   {officialUrl && !isValidUrl(officialUrl) && (
@@ -437,14 +437,14 @@ export default function NewRacePage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
                   <div>
-                    <label className="runcino-label">Athlete guide PDF URL <span style={{ color: 'var(--color-t3)' }}>(optional)</span></label>
-                    <input className="runcino-input" type="url"
+                    <label className="faff-label">Athlete guide PDF URL <span style={{ color: 'var(--color-t3)' }}>(optional)</span></label>
+                    <input className="faff-input" type="url"
                       placeholder="https://example.com/guide.pdf"
                       value={guideUrl} onChange={e => setGuideUrl(e.target.value)} />
                   </div>
                   <div>
-                    <label className="runcino-label">USATF cert # <span style={{ color: 'var(--color-t3)' }}>(optional)</span></label>
-                    <input className="runcino-input font-data"
+                    <label className="faff-label">USATF cert # <span style={{ color: 'var(--color-t3)' }}>(optional)</span></label>
+                    <input className="faff-input font-data"
                       placeholder="CA11106RS"
                       value={usatfCert} onChange={e => setUsatfCert(e.target.value.toUpperCase())} />
                     {usatfCert && !/^[A-Z]{2}\d{5}[A-Z]{2}$/.test(usatfCert) && (
@@ -455,7 +455,7 @@ export default function NewRacePage() {
 
                 {/* Distance picker */}
                 <div style={{ marginTop: 14 }}>
-                  <label className="runcino-label">Distance</label>
+                  <label className="faff-label">Distance</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
                     {DISTANCES.map(d => {
                       const active = distanceId === d.id;
@@ -535,8 +535,8 @@ export default function NewRacePage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14 }}>
                   <div>
-                    <label className="runcino-label">Goal finish time</label>
-                    <input className="runcino-input font-data" style={{ fontSize: 18 }}
+                    <label className="faff-label">Goal finish time</label>
+                    <input className="faff-input font-data" style={{ fontSize: 18 }}
                       placeholder="h:mm:ss" value={goalHMS}
                       onChange={e => { setGoalHMS(e.target.value); setGoalDirty(true); }} />
                     <div className="hint" style={{ marginTop: 4 }}>
@@ -545,7 +545,7 @@ export default function NewRacePage() {
                     </div>
                   </div>
                   <div>
-                    <label className="runcino-label">Pacing strategy</label>
+                    <label className="faff-label">Pacing strategy</label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                       {([
                         { id: 'even_effort', name: 'Even effort', desc: 'Minetti GAP · default' },
@@ -566,7 +566,7 @@ export default function NewRacePage() {
                   </div>
                 </div>
                 <div style={{ marginTop: 18 }}>
-                  <label className="runcino-label">Watch tolerance · ±{tolerance} sec/mi</label>
+                  <label className="faff-label">Watch tolerance · ±{tolerance} sec/mi</label>
                   <input type="range" min={5} max={15} value={tolerance}
                     onChange={e => setTolerance(Number(e.target.value))}
                     style={{ width: '100%', accentColor: 'var(--color-attention)' }} />

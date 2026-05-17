@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0",
   "generated_at": "2026-05-04T19:35:46.558Z",
-  "generator": "runcino-web@0.1.0",
+  "generator": "faff-web@0.1.0",
   "race": {
     "name": "Sombrero Half Marathon",
     "date": "2026-05-03",

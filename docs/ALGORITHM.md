@@ -1,6 +1,6 @@
 # The Pacing Algorithm
 
-Plain-English walk-through of how a GPX becomes a `.runcino.json`.
+Plain-English walk-through of how a GPX becomes a `__KEEP_DOT_FAFF.RUN_JSON__`.
 No code — just the math and the decisions.
 
 ---
@@ -167,7 +167,7 @@ mile marker.
 
 ---
 
-## 10. Emit `.runcino.json`
+## 10. Emit `__KEEP_DOT_FAFF.RUN_JSON__`
 
 Populate the fields in [`SCHEMA.md`](SCHEMA.md) and write the
 file. That's the whole Phase 1 pipeline.

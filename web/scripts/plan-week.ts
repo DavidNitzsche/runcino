@@ -38,7 +38,7 @@ async function main() {
   const today = arg('today', args);
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(` RUNCINO · training block · ${block.goalRace}`);
+  console.log(` FAFF.RUN · training block · ${block.goalRace}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`  Goal date: ${block.goalDate}`);
   console.log(`  ${block.weeksTotal} weeks · peak ${block.peakMpw} mpw · philosophy: ${block.philosophy}`);

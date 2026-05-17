@@ -3,7 +3,7 @@
  * Sombrero 2026-05-03). Replaces the old client-side localStorage
  * seed.
  *
- * On first /api/races call, reads the bundled .runcino.json + GPX
+ * On first /api/races call, reads the bundled __KEEP_DOT_FAFF.RUN_JSON__ + GPX
  * pairs out of web/public/, upserts the race plan into Postgres
  * without touching actual_result. Idempotent — a tracking row in
  * `strava_sync_state` keys off SEED_VERSION so re-deploys don't
@@ -20,7 +20,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { query } from './db';
 import { upsertPlanDB } from './race-store';
-import type { RuncinoPlan } from './types';
+import type { FaffPlan } from './types';
 import type { SavedRace } from './storage-types';
 
 const SEED_VERSION = 'v4';
@@ -35,7 +35,7 @@ interface SeedSpec {
 const SEEDS: SeedSpec[] = [
   {
     slug: 'big-sur-marathon',
-    planFile: 'big-sur-3-40.runcino.json',
+    planFile: 'big-sur-3-40__KEEP_DOT_FAFF.RUN_JSON__',
     gpxFile:  'sample-bigsur.gpx',
     meta: {
       name: 'Big Sur Marathon',
@@ -47,7 +47,7 @@ const SEEDS: SeedSpec[] = [
   },
   {
     slug: 'sombrero-half',
-    planFile: 'sombrero-half-1-32.runcino.json',
+    planFile: 'sombrero-half-1-32__KEEP_DOT_FAFF.RUN_JSON__',
     gpxFile:  'sample-sombrero.gpx',
     meta: {
       name: 'Sombrero Half Marathon',
@@ -84,7 +84,7 @@ async function runSeed(): Promise<void> {
         fs.readFile(path.join(publicDir, seed.planFile), 'utf8'),
         fs.readFile(path.join(publicDir, seed.gpxFile), 'utf8'),
       ]);
-      const plan = JSON.parse(planJson) as RuncinoPlan;
+      const plan = JSON.parse(planJson) as FaffPlan;
       await upsertPlanDB({
         slug: seed.slug,
         plan,

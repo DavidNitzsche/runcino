@@ -1,0 +1,54 @@
+# faff.run — Project Memory
+
+This project is a multi-surface running app for a competitive marathoner. Three surfaces share one source of truth: **web** (command center), **iPhone** (daily companion), **Apple Watch** (execution layer).
+
+---
+
+## Required reading at session start
+
+Read these in order before doing any design or implementation work in this project. Do not skim. Load them into context fully.
+
+### 1. Design source of truth
+
+`Design/running-app-design-brief.md`
+
+The complete design language: palette (locked), typography, spacing, component vocabulary, hierarchy rules, surface variants, tone of voice, anti-patterns. Includes an explicit "Source of truth" section at the top that supersedes any prior design work in this codebase.
+
+### 2. Knowledge base research
+
+Two directories holding training methodology, data model, and domain context. Read everything in them:
+
+- `BuildResearch/`
+- `Research/`
+
+The coach runtime pulls from these. Decisions about what each beat of a page should hold should be informed by what's in here, not assumptions.
+
+### 3. Product surface specs
+
+- `APP_FEATURE_SPEC.md` — whole-app surface map. What each surface (web, iPhone, watch) is for and what pages exist.
+- `C1-overview-and-today.md` — element inventory for Web Overview and iOS Today, including the conditional layouts that promote, demote, add, and remove elements based on training state.
+
+---
+
+## Operating posture
+
+- **The design brief is authoritative.** If existing components, tokens, or layouts conflict with it, replace them. Do not harmonize. Do not split the difference.
+- **Light-theme work in the codebase is abandoned.** The app is dark. The palette in the brief is locked.
+- **Composition is state-driven, not template-driven.** Pick what each beat of a page holds based on the C1 inventory and the user's current training state (off-season, base, build, peak, taper, race week, race day, post-race, injury). A page rendered race week and a page rendered four months out should look meaningfully different, not the same page with new numbers.
+- **Coach voice, not app voice.** Short, direct, no hype, no exclamation marks, no emoji, no em dashes. See the brief's tone section for canonical examples.
+- **Audit before changing.** When starting work on a new surface or component, audit what's already there against the brief and surface every conflict before acting. Don't silently rewrite.
+
+---
+
+## Conventions
+
+- New design files under `docs/design/`.
+- Research outputs under `docs/research/`.
+- Product decisions documented in `docs/PRODUCT_DECISIONS.md`.
+- The brief itself is editable. If you find a real reason to change a token, a rule, or a principle, propose the change explicitly rather than working around it.
+
+---
+
+## What to do if a doc referenced above is missing
+
+If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.

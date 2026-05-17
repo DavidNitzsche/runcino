@@ -26,3 +26,4 @@ xcuserdata/
 # Logs
 *.log
 npm-debug.log*
+.claude/worktrees/

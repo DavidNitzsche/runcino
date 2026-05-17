@@ -6,7 +6,7 @@
  * Reads the saved race from localStorage by slug, then renders the full
  * pacing experience: hero, course map, elevation profile, five-phase
  * strategy cards, mile splits, fueling, and a one-click export of the
- * .runcino.json (the file the iOS app imports).
+ * __KEEP_DOT_FAFF.RUN_JSON__ (the file the iOS app imports).
  *
  * Single source of truth: every numeric value displayed on this page
  * derives from `analyzeGpx(race.gpxText)` (the StravaGPX-calibrated
@@ -39,7 +39,7 @@ const FT_PER_M = 3.28084;
 // Phase color palette — 8 deterministic colors so any course with up to 8
 // phases gets a distinct hue. Extends the 5-color rainbow used in the
 // canonical Sombrero design with the additional palette tokens defined
-// in runcino.css (pink, aqua, orange) so 6-phase races like Big Sur
+// in faff.css (pink, aqua, orange) so 6-phase races like Big Sur
 // don't fall off the end with a gray-stub final segment.
 const PHASE_COLORS = [
   '#3EBD41', // 1 · success green
@@ -110,7 +110,7 @@ export default function RaceDetailPage() {
   if (race === 'loading') {
     return (
       <>
-        <Caption left="Runcino · races" right="LOADING…" />
+        <Caption left="faff.run · races" right="LOADING…" />
         <div className="stage">
           <Topbar activeTab="races" clock={<TopbarClock />} />
           <div className="body">
@@ -129,7 +129,7 @@ export default function RaceDetailPage() {
   if (!race) {
     return (
       <>
-        <Caption left="Runcino · races" right="NOT FOUND" />
+        <Caption left="faff.run · races" right="NOT FOUND" />
         <div className="stage">
           <Topbar activeTab="races" clock={<TopbarClock />} />
           <div className="body">
@@ -200,7 +200,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${race.slug}.runcino.json`;
+    a.download = `${race.slug}__KEEP_DOT_FAFF.RUN_JSON__`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -209,7 +209,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
 
   return (
     <>
-      <Caption left={`Runcino · ${race.meta.name}`} right={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`} />
+      <Caption left={`faff.run · ${race.meta.name}`} right={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`} />
       <div className="stage">
         <Topbar activeTab="races" clock={<TopbarClock />} />
         <div className="body">
@@ -222,7 +222,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost" onClick={() => setEditing(true)}>Edit</button>
               <button className="btn btn--ghost" onClick={() => setConfirmingDelete(true)}>Delete</button>
-              <button className="btn btn--primary" onClick={downloadJson}>↓ Export .runcino.json</button>
+              <button className="btn btn--primary" onClick={downloadJson}>↓ Export __KEEP_DOT_FAFF.RUN_JSON__</button>
             </div>
           </div>
           {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onUpdated(); }} />}
@@ -233,7 +233,7 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             body={
               <>
                 This removes the race plan, GPX trace, and any logged result from
-                your library. You can&apos;t undo this — re-import the .runcino.json
+                your library. You can&apos;t undo this — re-import the __KEEP_DOT_FAFF.RUN_JSON__
                 if you change your mind.
               </>
             }
@@ -1294,9 +1294,9 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
         <div>
-          <label className="runcino-label">Finish time</label>
+          <label className="faff-label">Finish time</label>
           <input
-            className="runcino-input font-data"
+            className="faff-input font-data"
             placeholder={`h:mm:ss · goal ${race.meta.goalDisplay}`}
             value={hms}
             onChange={e => setHms(e.target.value)}
@@ -1311,9 +1311,9 @@ function ResultForm({ race, existing, onSaved }: { race: SavedRace; existing: Ac
         </div>
       </div>
       <div>
-        <label className="runcino-label">Notes</label>
+        <label className="faff-label">Notes</label>
         <textarea
-          className="runcino-input"
+          className="faff-input"
           rows={2}
           placeholder="How did the day go? Conditions? What worked / what didn't?"
           value={notes}
@@ -1692,14 +1692,14 @@ function ExportFooter({ race, onDownload }: { race: SavedRace; onDownload: () =>
       <div>
         <div className="eyebrow">Ship it to the watch</div>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, marginTop: 4, textTransform: 'uppercase' }}>
-          .runcino.json · {race.plan.intervals.length} intervals
+          __KEEP_DOT_FAFF.RUN_JSON__ · {race.plan.intervals.length} intervals
         </div>
         <div style={{ color: 'var(--color-t2)', fontSize: 13, marginTop: 4 }}>
-          AirDrop to your phone → open in Runcino → push to Watch via WorkoutKit.
+          AirDrop to your phone → open in faff.run → push to Watch via WorkoutKit.
         </div>
       </div>
       <button className="btn btn--primary" onClick={onDownload} style={{ padding: '14px 24px' }}>
-        ↓ Download .runcino.json
+        ↓ Download __KEEP_DOT_FAFF.RUN_JSON__
       </button>
     </div>
   );

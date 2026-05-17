@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Runcino · Races</title>
+<title>faff.run · Races</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -342,13 +342,13 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 .races-timeline-station.placement-above .races-timeline-name { order: 4; margin-top: 8px; }
 .races-timeline-station.placement-above .races-timeline-date { order: 5; margin-top: 6px; }
 </style>
-<script src="runcino-store.js"></script>
+<script src="faff-store.js"></script>
 </head>
 <body>
 
 <nav class="navbar">
   <div class="navbar-inner">
-    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
     <div class="nav-links">
       <a class="nav-link" href="overview-v4.html">Overview</a>
       <a class="nav-link" href="training-v4.html">Training</a>
@@ -459,7 +459,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <!-- Stations rendered from RuncinoStore.races.upcoming by inline script below.
+    <!-- Stations rendered from FaffStore.races.upcoming by inline script below.
          Positions computed proportional to daysAway with the rightmost race at 100%.
          Placement alternates ABOVE/BELOW the line to prevent label collisions. -->
     <div class="races-timeline">
@@ -477,7 +477,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
       </div>
     </div>
 
-    <!-- Rendered from RuncinoStore.getState().races.recent by inline script below -->
+    <!-- Rendered from FaffStore.getState().races.recent by inline script below -->
     <div id="recent-races"></div>
 
   </div>
@@ -506,12 +506,12 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 </div>
 <script>
-  // ── Recent Races · render from RuncinoStore.races.recent ──────────
+  // ── Recent Races · render from FaffStore.races.recent ──────────
   function renderRecentRaces() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const container = document.getElementById('recent-races');
     if (!container) return;
-    const races = (RuncinoStore.getState().races || {}).recent || [];
+    const races = (FaffStore.getState().races || {}).recent || [];
 
     function fmtDate(iso) {
       const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(iso.slice(5,7),10)-1];
@@ -547,11 +547,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
   // ── Upcoming Races · render horizontal timeline from store ──────────
   function renderUpcomingTimeline() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const area = document.getElementById('upcoming-timeline');
     if (!area) return;
 
-    const state = RuncinoStore.getState();
+    const state = FaffStore.getState();
     const races = (state.races || {}).upcoming || [];
     if (!races.length) { area.innerHTML = '<div class="races-timeline-track-line"></div>'; return; }
 
@@ -606,16 +606,16 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     area.innerHTML = '<div class="races-timeline-track-line"></div>' + todayHTML + stationsHTML;
   }
 
-  if (window.RuncinoStore) {
+  if (window.FaffStore) {
     renderRecentRaces();
     renderUpcomingTimeline();
-    RuncinoStore.subscribe(function () {
+    FaffStore.subscribe(function () {
       renderRecentRaces();
       renderUpcomingTimeline();
     });
   }
 </script>
-<script src="runcino-bind.js" defer></script>
-<script src="runcino-live.js" defer></script>
+<script src="faff-bind.js" defer></script>
+<script src="faff-live.js" defer></script>
 </body>
 </html>

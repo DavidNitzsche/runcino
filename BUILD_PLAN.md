@@ -1,4 +1,4 @@
-# Runcino · Build plan
+# faff.run · Build plan
 
 > One document. The full picture: what's real, what's mock, what's missing, and the dependency-ordered sequence to ship the rest.
 >
@@ -14,15 +14,15 @@
 |---|---|---|---|
 | **web/lib (math)** | 16 modules. GPX parse, Minetti GAP, pacing, phase grouping, fueling (Claude + deterministic), course-facts validation, weather (NOAA), retrospective, training periodization, time fmt. 9 with vitest suites. | nothing — math is solid | nothing critical |
 | **web/api routes** | 7 endpoints, all coded: `build-plan`, `goal`, `brief`, `weather`, `research`, `retrospective`, `plan-week`. Anthropic-keyed where applicable; deterministic fallbacks when no key. | nothing | nothing |
-| **web/app pages** | `/` Overview, `/training`, `/races`, `/races/new`, `/races/[slug]`, `/health`, `/log` — all 5 nav tabs serve the dark Runcino theme. | 4 of 5 tabs render embedded design HTML with mock data (`/training`, `/health`, `/log`, parts of `/`). Stat cards on `/` deep-link into context. | Real React port of each embedded section as it acquires live data. |
-| **iOS app** | Skeleton only — `RuncinoApp.swift`, `RuncinoPlan.swift` (Codable mirror of schema), 3 Views, `WorkoutBuilder.swift`, Info.plist. **Never compiled.** | everything | All wiring: file import, plan render, watch sync. |
+| **web/app pages** | `/` Overview, `/training`, `/races`, `/races/new`, `/races/[slug]`, `/health`, `/log` — all 5 nav tabs serve the dark faff.run theme. | 4 of 5 tabs render embedded design HTML with mock data (`/training`, `/health`, `/log`, parts of `/`). Stat cards on `/` deep-link into context. | Real React port of each embedded section as it acquires live data. |
+| **iOS app** | Skeleton only — `faff.runApp.swift`, `FaffPlan.swift` (Codable mirror of schema), 3 Views, `WorkoutBuilder.swift`, Info.plist. **Never compiled.** | everything | All wiring: file import, plan render, watch sync. |
 | **Watch surface** | `WorkoutBuilder.swift` skeleton refers to WorkoutKit's `CustomWorkout` API. | implementation never run | Schedule.preview integration, IntervalStep build-out, fuel/landmark steps as work intervals with haptic cues. |
 | **Strava** | `lib/storage.ts` knows about `source: 'strava'` field in `FitnessSummary`. Schema accepts strava-flagged data. | nothing else | OAuth flow, refresh-token storage, paginated activity fetch, normalize-into-`SavedRun` mapper, `/api/strava/sync`, `/runs` page, `/runs/[id]`. |
 | **HealthKit** | Schema's `fitness_summary.source: 'healthkit'` recognized. | nothing else | iOS-side: HKQuery (HRV, sleep, RHR, weekly mileage). Writes a `latest-fitness.json` to iCloud Drive that the web reads. |
 | **NOAA weather** | `lib/weather.ts` + `/api/weather` — fetches forecast for race coords. | not surfaced in UI yet (only consumed by `build-plan` if weather text passed through). | Weather card on `/races/[slug]` (T-72h forecast + countdown), Claude race-morning brief auto-trigger 1h before start. |
-| **iCloud sync** | `lib/storage.ts` is localStorage today; designed as a swappable adapter. | localStorage only — single browser, one machine. | iOS writes `.runcino.json` files to the app's iCloud Drive container; web reads via a small Mac dev helper or Files-app picker. |
+| **iCloud sync** | `lib/storage.ts` is localStorage today; designed as a swappable adapter. | localStorage only — single browser, one machine. | iOS writes `__KEEP_DOT_FAFF.RUN_JSON__` files to the app's iCloud Drive container; web reads via a small Mac dev helper or Files-app picker. |
 | **Anthropic / Claude** | SDK wired, used by `build-plan`, `goal`, `research`, `retrospective`, `plan-week`. Uses `claude-sonnet-4-6`. Deterministic stubs when `ANTHROPIC_API_KEY` is unset. | nothing | Pre-race brief auto-trigger, post-race retrospective auto-trigger, weekly plan adaptive replanning. |
-| **Designs** | 21 HTML files. Canonical dark design system in `runcino.css`. iPhone prototype + morning briefing live in this branch. | n/a | nothing — designs are the spec. |
+| **Designs** | 21 HTML files. Canonical dark design system in `faff.css`. iPhone prototype + morning briefing live in this branch. | n/a | nothing — designs are the spec. |
 
 **The shape of the work:** *the math + API are 90% done. The visible app is mostly mock-data designs embedded with `dangerouslySetInnerHTML`. The iOS surface is a skeleton with zero working code. The integrations (Strava, HealthKit, iCloud, Watch) are unwired but well-shaped.*
 
@@ -35,7 +35,7 @@ Each milestone is **shippable on its own** and unlocks the next one. Dates assum
 | M | Window | What ships | What's still mock after this | Public-URL on Railway |
 |---|---|---|---|---|
 | **M0** ✓ | done overnight | Web app surface, /races flow, dark theme, Sombrero + Big Sur first-class, iPhone prototype HTML | All of `/`, `/training`, `/health`, `/log` | After push: yes |
-| **M1** | 1 session (~3h) | Cards on `/` deep-link everywhere; key tiles peeled into real React; Railway live; build-plan produces shippable .runcino.json | training plan, health metrics, run history | yes |
+| **M1** | 1 session (~3h) | Cards on `/` deep-link everywhere; key tiles peeled into real React; Railway live; build-plan produces shippable __KEEP_DOT_FAFF.RUN_JSON__ | training plan, health metrics, run history | yes |
 | **M2** | 2 sessions (~6h) | iOS app: Import view + Plan view. AirDrop loop closes — laptop builds plan → AirDrop → phone renders it. | Watch sync, training/health/log data sources | partial — web only |
 | **M3** | 2 sessions (~6h) | Watch sync via WorkoutKit. CustomWorkout with paced IntervalSteps + fuel haptics. End-to-end race-day capability. | training plan generation, post-race retro auto-trigger | yes |
 | **M4** | 2 sessions (~6h) | Strava OAuth → `/runs` page populated; `/log` page wired to real run data. HealthKit read on iOS → `fitness_summary` block populates from real sleep/HRV/RHR. | training plan generation; iCloud sync | yes |
@@ -82,12 +82,12 @@ Each one has a clean shape; here's what each gives, what it costs, and when it l
 - **What gets built:** Surface on `/races/[slug]` — a "race-week weather" tile that shows T-72h / T-24h / race-morning windows. Auto-trigger Claude brief 1h before gun time.
 
 ### E. iCloud Drive sync — *M2-M3 (gradual)*
-- **What it gives:** `.runcino.json` files travel between web (builder/editor) and iOS (consumer/runner) via the user's existing iCloud Drive. No backend.
+- **What it gives:** `__KEEP_DOT_FAFF.RUN_JSON__` files travel between web (builder/editor) and iOS (consumer/runner) via the user's existing iCloud Drive. No backend.
 - **Decision needed (you):** Three options, recap from `NEXT_PHASE.md`:
   - **(a)** Web read-only after iOS exists; iOS owns writes
   - **(b)** Web writes to a known dir; Mac helper forwards
   - **(c) Recommended:** Web is plan-builder + downloader; iOS is source of truth. Web's localStorage stays as a session cache. AirDrop is the bridge.
-- **What gets built:** Trivial once option chosen. iOS already has FileImporter scaffold for `.runcino.json`.
+- **What gets built:** Trivial once option chosen. iOS already has FileImporter scaffold for `__KEEP_DOT_FAFF.RUN_JSON__`.
 
 ### F. WorkoutKit — *M3 (iOS)*
 - **What it gives:** The race plan running on your wrist as a native workout — paced IntervalSteps, fuel cues as sub-second work intervals with haptic alerts, phase transitions as labeled section breaks.
@@ -115,11 +115,11 @@ Dependency-ordered. Tag in brackets is the milestone.
 7. **[M1]** Add a "Generate Claude brief" button on race detail (T-24h auto-suggests; manual trigger always available).
 
 ### M2 · iOS Import + Plan (~6h)
-8. **[M2]** Build `ios/Runcino` in Xcode — first compile. May need provisioning profile setup; you'd do this part on your Mac.
-9. **[M2]** Wire `ImportView` to handle `.runcino.json` files via `.fileImporter` modifier.
-10. **[M2]** Implement `RuncinoPlan.swift` decoder against schema v1.1.0 (the file already exists; needs verification).
+8. **[M2]** Build `ios/faff.run` in Xcode — first compile. May need provisioning profile setup; you'd do this part on your Mac.
+9. **[M2]** Wire `ImportView` to handle `__KEEP_DOT_FAFF.RUN_JSON__` files via `.fileImporter` modifier.
+10. **[M2]** Implement `FaffPlan.swift` decoder against schema v1.1.0 (the file already exists; needs verification).
 11. **[M2]** Build `PlanView` to render hero + phases + intervals + fueling — mirrors iPhone prototype Screen 2.
-12. **[M2]** Validate against `web/public/big-sur-3-50.runcino.json` (already in repo).
+12. **[M2]** Validate against `web/public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__` (already in repo).
 13. **[M2]** Smoke test: build a plan in the web app → AirDrop → opens in iOS → renders.
 
 ### M3 · Watch + race-day surface (~6h)
@@ -137,7 +137,7 @@ Dependency-ordered. Tag in brackets is the milestone.
 23. **[M4]** Wire `/races/new` form: auto-fill baseline race from most-recent Strava race-distance PR.
 24. **[M4]** **iOS:** add HealthKit entitlement. Build `HealthKitReader.swift` reading HRV / sleep / RHR / weekly mileage.
 25. **[M4]** iOS app on launch refreshes `latest-fitness.json` in iCloud Drive container.
-26. **[M4]** Web reads it (Mac dev path: read from `~/Library/Mobile Documents/iCloud~com~davidnitzsche~runcino/Documents`). Peel `/health` page from embed to real React.
+26. **[M4]** Web reads it (Mac dev path: read from `~/Library/Mobile Documents/iCloud~com~davidnitzsche~faff/Documents`). Peel `/health` page from embed to real React.
 
 ### M5 · Coaching loop (~10h)
 27. **[M5]** Wire `/api/plan-week` into `/training` page. Generates 7-day plan from current fitness + days-until-next-race.

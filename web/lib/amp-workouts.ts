@@ -1,5 +1,5 @@
 /**
- * Curated Runcino Amp workout catalog.
+ * Curated faff.run Amp workout catalog.
  *
  * Real 30 / 45-minute full-body sessions, weighted toward running-
  * specific carry-over (single-leg, glute drive, eccentric posterior

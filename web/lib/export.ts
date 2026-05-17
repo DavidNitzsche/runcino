@@ -1,5 +1,5 @@
 /**
- * Assemble the full `.runcino.json` (v1.1.0) from pipeline outputs.
+ * Assemble the full `__KEEP_DOT_FAFF.RUN_JSON__` (v1.1.0) from pipeline outputs.
  *
  * Takes: parsed GPX track, pacing input, phase list, fueling plan,
  *        optional Claude rationale, optional fitness summary.
@@ -13,7 +13,7 @@ import type {
   GpxTrack,
   PacingInput,
   Phase,
-  RuncinoPlan,
+  FaffPlan,
 } from './types';
 import type { FuelPlan } from './fueling';
 
@@ -34,9 +34,9 @@ export interface AssembleInput {
 
 /** Build the flat intervals[] array from phases + fuel + landmarks.
  *  Guarantees contiguity in mile space. Returns the schema-shaped
- *  (snake_case) interval list — matches RuncinoPlan.intervals exactly,
+ *  (snake_case) interval list — matches FaffPlan.intervals exactly,
  *  not the camelCase Interval type used internally elsewhere. */
-type SchemaInterval = RuncinoPlan['intervals'][number];
+type SchemaInterval = FaffPlan['intervals'][number];
 export function buildIntervals(
   phases: Phase[],
   fueling: FuelPlan,
@@ -149,7 +149,7 @@ export function buildIntervals(
   return intervals;
 }
 
-export function assemblePlan(input: AssembleInput): RuncinoPlan {
+export function assemblePlan(input: AssembleInput): FaffPlan {
   const { race, track, pacing, phases, fueling, fitnessSummary, landmarks, claudeRationale } = input;
   const totalMi = track.totalDistanceM / 1609.344;
   const flatPace = Math.round(pacing.goalFinishS / totalMi);
@@ -159,7 +159,7 @@ export function assemblePlan(input: AssembleInput): RuncinoPlan {
   return {
     schema_version: '1.1.0',
     generated_at: new Date().toISOString(),
-    generator: input.generator ?? 'runcino-web@0.1.0',
+    generator: input.generator ?? 'faff-web@0.1.0',
     race: {
       name: race.name,
       date: race.date,

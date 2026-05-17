@@ -6,7 +6,7 @@
  *   npm run retrospective -- [--plan path] [--actual path]
  *
  * Defaults:
- *   --plan    public/big-sur-3-50.runcino.json
+ *   --plan    public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__
  *   --actual  fixtures/bigsur-actual.json
  */
 
@@ -15,7 +15,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeRetrospective, type ActualRace } from '../lib/retrospective';
 import { formatHMS, formatPaceMi } from '../lib/time';
-import type { RuncinoPlan } from '../lib/types';
+import type { FaffPlan } from '../lib/types';
 
 function arg(name: string, args: string[]): string | undefined {
   const idx = args.indexOf(`--${name}`);
@@ -25,16 +25,16 @@ function arg(name: string, args: string[]): string | undefined {
 async function main() {
   const args = process.argv.slice(2);
   const here = dirname(fileURLToPath(import.meta.url));
-  const planPath = resolve(here, '..', arg('plan', args) ?? 'public/big-sur-3-50.runcino.json');
+  const planPath = resolve(here, '..', arg('plan', args) ?? 'public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__');
   const actualPath = resolve(here, '..', arg('actual', args) ?? 'fixtures/bigsur-actual.json');
 
-  const plan: RuncinoPlan = JSON.parse(readFileSync(planPath, 'utf8'));
+  const plan: FaffPlan = JSON.parse(readFileSync(planPath, 'utf8'));
   const actual: ActualRace = JSON.parse(readFileSync(actualPath, 'utf8'));
 
   const retro = computeRetrospective(plan, actual);
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(' RUNCINO · post-race retrospective');
+  console.log(' FAFF.RUN · post-race retrospective');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`  Race: ${retro.race_name} · ${retro.race_date}`);
   console.log(`  Planned:  ${formatHMS(retro.planned_finish_s)}`);

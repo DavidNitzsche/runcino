@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Schedule</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --purple: #7C3AED;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+/* ══ NAV ══ */
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--t0); line-height: 1; text-decoration: none; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+
+/* ══ PAGE ══ */
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* ══ PAGE HEADER ══ */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+.header-left {}
+.header-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.header-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 64px;
+  line-height: 1;
+  color: var(--t0);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.header-subline {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  color: var(--t1);
+  font-weight: 400;
+}
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+.phases-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+.phases-row {
+  display: flex;
+  gap: 8px;
+}
+.phase-pill {
+  display: flex;
+  align-items: stretch;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+.phase-bar {
+  width: 4px;
+  flex-shrink: 0;
+}
+.phase-pill-inner {
+  padding: 8px 14px;
+}
+.phase-pill-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.phase-pill-weeks {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: var(--t2);
+  margin-top: 1px;
+  letter-spacing: 0.5px;
+}
+
+/* ══ CONTENT AREA ══ */
+.content-area { display: flex; flex-direction: column; gap: 8px; }
+
+/* ══ LEGEND ══ */
+.legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  letter-spacing: 1px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+/* ══ WEEK CARD ══ */
+.week-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+.week-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,.10), 0 8px 24px rgba(0,0,0,.08);
+}
+.week-card.is-current {
+  box-shadow: 0 0 0 2px var(--amber), 0 4px 16px rgba(212,144,10,.15);
+}
+
+/* Phase gutter */
+.week-gutter {
+  width: 6px;
+  flex-shrink: 0;
+}
+
+/* Week info column */
+.week-info {
+  padding: 16px 20px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+.week-num-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.week-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 1px;
+  color: var(--t0);
+  line-height: 1;
+}
+.week-phase {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+.week-dates {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  letter-spacing: 0.3px;
+}
+.week-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  align-self: flex-start;
+}
+.badge-cutback { background: rgba(212,144,10,.12); color: var(--amber); }
+.badge-peak    { background: rgba(232,93,38,.12);  color: var(--orange); }
+.badge-race    { background: rgba(44,168,47,.12);  color: var(--green); }
+
+/* Mileage column */
+.week-mileage {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  border-left: 1px solid var(--divider);
+}
+.mileage-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--t0);
+}
+.mileage-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: var(--t2);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+/* Days strip */
+.week-days {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 6px;
+  border-left: 1px solid var(--divider);
+}
+.day-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  transition: background 0.1s;
+}
+.day-col.today {
+  background: rgba(212,144,10,.07);
+  outline: 1.5px solid rgba(212,144,10,.35);
+}
+.day-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.day-col.today .day-label {
+  color: var(--amber);
+}
+
+/* Workout pills */
+.pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  height: 28px;
+  min-width: 38px;
+  padding: 0 6px;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+  user-select: none;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.pill:hover { transform: scale(1.06); opacity: 0.9; }
+.pill:active { transform: scale(0.97); }
+
+.pill-easy   { background: rgba(44,168,47,.15);  color: #1a7a1c; }
+.pill-tempo  { background: rgba(212,144,10,.15); color: #9a6800; }
+.pill-long   { background: rgba(232,93,38,.15);  color: #b83f10; }
+.pill-quality{ background: rgba(124,58,237,.15); color: #5b21b6; }
+.pill-race   { background: var(--t0); color: #fff; }
+.pill-rest   { background: var(--divider); color: var(--t2); font-size: 10px; font-weight: 500; }
+.pill-xtra   { background: rgba(44,168,47,.08);  color: #1a7a1c; font-size: 10px; }
+
+/* Status column */
+.week-status {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 130px;
+  border-left: 1px solid var(--divider);
+}
+.status-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.status-complete   { color: var(--green); }
+.status-inprogress { color: var(--amber); }
+.status-upcoming   { color: var(--t2); }
+
+/* ══ MODAL ══ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13,15,18,.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: all;
+}
+.modal {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.18);
+  width: 400px;
+  padding: 0;
+  overflow: hidden;
+  transform: translateY(12px) scale(0.97);
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease;
+  opacity: 0;
+}
+.modal-backdrop.open .modal {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+.modal-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+.modal-type-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.modal-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.modal-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--divider);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--t1);
+  transition: background 0.15s;
+}
+.modal-close:hover { background: rgba(13,15,18,.14); }
+.modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  letter-spacing: 1px;
+  color: var(--t0);
+  line-height: 1;
+}
+.modal-date {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t2);
+  margin-top: 4px;
+}
+.modal-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.modal-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.modal-stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.modal-stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  color: var(--t0);
+  line-height: 1;
+}
+.modal-stat-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: var(--t2);
+}
+.modal-notes-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 6px;
+}
+.modal-notes-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--t1);
+}
+.modal-cta {
+  display: flex;
+  gap: 8px;
+}
+.btn-primary {
+  flex: 1;
+  height: 40px;
+  background: var(--t0);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-ghost {
+  height: 40px;
+  padding: 0 18px;
+  background: transparent;
+  color: var(--t1);
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--t2); color: var(--t0); }
+</style>
+</head>
+<body>
+
+<!-- ══ NAV ══ -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link active" href="training.html">Training</a>
+      <a class="nav-link" href="races.html">Races</a>
+      <a class="nav-link" href="health.html">Health</a>
+      <a class="nav-link" href="log.html">Log</a>
+      <a class="nav-link" href="profile.html">Profile</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar">DK</div>
+    </div>
+  </div>
+</nav>
+
+<!-- ══ PAGE ══ -->
+<main class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="header-left">
+      <div class="header-eyebrow">Training Plan · 16 Weeks</div>
+      <div class="header-title">AFC 50K</div>
+      <div class="header-subline">August 16, 2026 · 93 days away</div>
+    </div>
+    <div class="header-right">
+      <div class="phases-label">Plan Phases</div>
+      <div class="phases-row">
+        <div class="phase-pill">
+          <div class="phase-bar" style="background:var(--green)"></div>
+          <div class="phase-pill-inner">
+            <div class="phase-pill-name" style="color:var(--green)">Base</div>
+            <div class="phase-pill-weeks">Weeks 1–5</div>
+          </div>
+        </div>
+        <div class="phase-pill">
+          <div class="phase-bar" style="background:var(--amber)"></div>
+          <div class="phase-pill-inner">
+            <div class="phase-pill-name" style="color:var(--amber)">Build</div>
+            <div class="phase-pill-weeks">Weeks 6–10</div>
+          </div>
+        </div>
+        <div class="phase-pill">
+          <div class="phase-bar" style="background:var(--orange)"></div>
+          <div class="phase-pill-inner">
+            <div class="phase-pill-name" style="color:var(--orange)">Peak</div>
+            <div class="phase-pill-weeks">Weeks 11–13</div>
+          </div>
+        </div>
+        <div class="phase-pill">
+          <div class="phase-bar" style="background:var(--t2)"></div>
+          <div class="phase-pill-inner">
+            <div class="phase-pill-name" style="color:var(--t2)">Taper</div>
+            <div class="phase-pill-weeks">Weeks 14–16</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEGEND + WEEKS -->
+  <div class="content-area">
+    <div class="legend-row">
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(44,168,47,.6)"></div>Easy</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(212,144,10,.7)"></div>Tempo</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(232,93,38,.65)"></div>Long</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(124,58,237,.6)"></div>Quality</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(13,15,18,.12)"></div>Rest</div>
+    </div>
+
+    <!-- WEEK 1 — Base, Complete -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--green)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 1</span>
+          <span class="week-phase">Base</span>
+        </div>
+        <div class="week-dates">Apr 21 – 27</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">38</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col">
+          <div class="day-label">Mon</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Apr 21','6','9:45','6 miles at easy conversational pace. HR zone 2. Focus on cadence — aim for 170+ spm.',null)">6E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Tue</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Wed</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy + Strides','Wed, Apr 23','7','9:30','7 miles easy with 4×20s strides at the end. Rest 60s between. Great for neuromuscular activation.',null)">7E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Thu</div>
+          <div class="pill pill-tempo" onclick="openModal('tempo','Tempo Run','Thu, Apr 24','7','8:10','2mi warm-up, 3mi at lactate threshold (~8:10/mi), 2mi cool-down. Focus on holding even effort.',null)">7T</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Fri</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sat</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Apr 26','4','10:00','Recovery run. Keep HR low — this preps you for Sunday\'s long run.',null)">4E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sun</div>
+          <div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Apr 27','14','10:15','Trail long run. Include 1000ft of elevation gain if possible. Eat a gel every 45 min. Run by feel.',null)">14L</div>
+        </div>
+      </div>
+      <div class="week-status">
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+    </div>
+
+    <!-- WEEK 2 — Base, Complete -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--green)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 2</span>
+          <span class="week-phase">Base</span>
+        </div>
+        <div class="week-dates">Apr 28 – May 4</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">42</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col">
+          <div class="day-label">Mon</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Apr 28','7','9:45','Easy aerobic run. Stay fully conversational. Focus on fueling post-long-run recovery.',null)">7E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Tue</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Wed</div>
+          <div class="pill pill-quality" onclick="openModal('quality','Hill Repeats','Wed, Apr 30','8','—','2mi warm-up. 8×60s uphill hard effort, jog down recovery. 2mi cool-down. Total ~8mi. Builds strength specific to AFC course.',null)">8Q</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Thu</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, May 1','6','9:50','Easy recovery effort. Zone 2 only. Legs will feel the hill repeats — keep it light.',null)">6E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Fri</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sat</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, May 3','5','9:45','Pre-long-run shakeout. Light and easy — less than 60 min.',null)">5E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sun</div>
+          <div class="pill pill-long" onclick="openModal('long','Long Run','Sun, May 4','16','10:20','16mi trail run. Wear race vest. Practice nutrition — gel every 40 min, electrolytes every hour. Finish strong.',null)">16L</div>
+        </div>
+      </div>
+      <div class="week-status">
+        <span class="status-badge status-complete">Complete</span>
+      </div>
+    </div>
+
+    <!-- WEEK 3 — Base, IN PROGRESS (current week, today = Thu May 15) -->
+    <div class="week-card is-current">
+      <div class="week-gutter" style="background:var(--green)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 3</span>
+          <span class="week-phase">Base</span>
+        </div>
+        <div class="week-dates">May 12 – 18</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">38.5</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col">
+          <div class="day-label">Mon</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, May 12','6','9:45','Easy aerobic run to start the week. HR zone 2. Stretch afterwards.',null)">6E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Tue</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Wed</div>
+          <div class="pill pill-tempo" onclick="openModal('tempo','Progression Run','Wed, May 14','8','8:20','3mi easy, 3mi at tempo effort, 2mi at 5K effort. Cool-down optional. Total 8mi. Last completed run this week.',null)">8T</div>
+        </div>
+        <div class="day-col today">
+          <div class="day-label">Thu</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, May 15 · TODAY','6','9:50','Today\'s run. Easy 6 miles. HR zone 2. Stay relaxed after yesterday\'s progression — your legs earned it.',null)">6E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Fri</div>
+          <div class="pill pill-rest">Rest</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sat</div>
+          <div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, May 17','4','10:00','Short easy shakeout before Sunday\'s long. Keep HR low, legs loose.',null)">4E</div>
+        </div>
+        <div class="day-col">
+          <div class="day-label">Sun</div>
+          <div class="pill pill-long" onclick="openModal('long','Long Run','Sun, May 18','14.5','10:15','Trail long run with 1200ft gain. Practice fueling — target 200 cal/hr. New shoes optional.',null)">14.5L</div>
+        </div>
+      </div>
+      <div class="week-status">
+        <span class="status-badge status-inprogress">In Progress</span>
+      </div>
+    </div>
+
+    <!-- WEEK 4 — Base, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--green)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 4</span>
+          <span class="week-phase">Base</span>
+        </div>
+        <div class="week-dates">May 19 – 25</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">44</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, May 19','7','9:40','Standard easy aerobic day.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Track Workout','Wed, May 21','9','—','2mi warm-up. 4×1mi at 5K effort w/ 2min rest. 3mi cool-down. Total 9mi.',null)">9Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, May 22','6','9:50','Recovery day after track workout. Zone 2 only.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, May 24','5','9:45','Shakeout before the long run.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, May 25','17','10:20','Longest run yet. Trail. 1500ft elevation. Practice race nutrition strategy fully.',null)">17L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 5 — Base, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--green)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 5</span>
+          <span class="week-phase">Base</span>
+        </div>
+        <div class="week-dates">May 26 – Jun 1</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">46</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, May 26','7','9:45','Easy aerobic — Memorial Day. Keep it casual.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-tempo" onclick="openModal('tempo','Tempo Run','Wed, May 28','9','8:05','2mi warm-up, 5mi at tempo, 2mi cool-down. Settle into uncomfortable but sustainable effort.',null)">9T</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, May 29','6','9:50','Easy recovery run.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, May 31','6','9:40','Easy pre-long-run day.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jun 1','18','10:25','Final big base-phase long run. Simulate race-day fueling. 1800ft total gain. Last chance to dial in kit.',null)">18L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 6 — Build, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--amber)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 6</span>
+          <span class="week-phase">Build</span>
+        </div>
+        <div class="week-dates">Jun 2 – 8</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">42</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jun 2','6','9:45','First week of Build phase. Keep easy days truly easy — intensity increases this block.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Hill Intervals','Wed, Jun 4','9','—','2mi warm-up. 10×90s uphill hard, walk/jog down recovery. 2mi cool-down. Total 9mi.',null)">9Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jun 5','6','9:50','Zone 2. Feel out legs after hills.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jun 7','5','9:45','Pre-long shakeout.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jun 8','16','10:15','Build phase long run. Focus on time-on-feet, not pace. 1200ft elevation.',null)">16L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 7 — Build, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--amber)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 7</span>
+          <span class="week-phase">Build</span>
+        </div>
+        <div class="week-dates">Jun 9 – 15</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">47</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jun 9','7','9:40','Aerobic base work.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-tempo" onclick="openModal('tempo','Threshold Run','Wed, Jun 11','10','7:55','3mi warm-up, 4mi at threshold, 3mi cool-down. First double-digit mid-week run.',null)">10T</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jun 12','7','9:50','Recovery pace. No metrics — run by feel.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jun 14','5','9:45','Keep it short and easy.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jun 15','18','10:20','Back-to-back long effort. Simulate race conditions — poles optional, vest mandatory.',null)">18L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 8 — Build, Cutback, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--amber)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 8</span>
+          <span class="week-phase">Build</span>
+        </div>
+        <div class="week-dates">Jun 16 – 22</div>
+        <div class="week-badge badge-cutback">Cutback Week</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">38</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jun 16','5','10:00','Cutback week — step back in volume. Let adaptations consolidate.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Wed, Jun 18','8','9:45','Slightly longer easy day — no workout this week. Aerobic flush.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jun 19','5','9:50','Easy and light. Focus on form.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jun 21','6','9:40','Pre-long easy run.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jun 22','14','10:30','Cutback long run. Comfortable effort. Treat it like active recovery.',null)">14L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 9 — Build, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--amber)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 9</span>
+          <span class="week-phase">Build</span>
+        </div>
+        <div class="week-dates">Jun 23 – 29</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">50</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jun 23','8','9:40','Return to higher volume. Aerobic base.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Vert Workout','Wed, Jun 25','10','—','2mi warm-up. 5×3min uphill intervals, 90s walk recovery. Descending practice. 3mi cool-down.',null)">10Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jun 26','7','9:50','Recovery effort. Zone 2 heart rate.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jun 28','6','9:45','Pre-long run.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jun 29','19','10:20','Longest run of Build. 2000ft gain. Run conservative for 3/4, strong finish last 5 miles.',null)">19L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 10 — Build, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--amber)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 10</span>
+          <span class="week-phase">Build</span>
+        </div>
+        <div class="week-dates">Jun 30 – Jul 6</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">52</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jun 30','8','9:40','Easy aerobic start to the final build week.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-tempo" onclick="openModal('tempo','Threshold Run','Wed, Jul 2','11','7:50','3mi warm-up, 5mi at threshold effort, 3mi cool-down. Peak build workout.',null)">11T</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jul 3','8','9:50','Easy recovery. 4th of July weekend — keep it enjoyable.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jul 5','6','9:45','Easy pre-long.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jul 6','20','10:15','First 20-miler. This is your confidence run. Treat every mile as practice for race day.',null)">20L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 11 — Peak, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--orange)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 11</span>
+          <span class="week-phase">Peak</span>
+        </div>
+        <div class="week-dates">Jul 7 – 13</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">55</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jul 7','8','9:40','Peak phase begins. Mileage is highest here. Stay disciplined on easy days.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Race Simulation','Wed, Jul 9','12','—','Full race-pace simulation. Wear race kit. Vest loaded with real-race nutrition. 2000ft gain/loss.',null)">12Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jul 10','8','9:50','Easy recovery from simulation workout.',null)">8E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jul 12','6','9:45','Short pre-long day.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jul 13','21','10:10','21 miles. Trail with significant vert. Run first 2/3 by effort. Last third: push harder.',null)">21L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 12 — Peak, Peak Week -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--orange)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 12</span>
+          <span class="week-phase">Peak</span>
+        </div>
+        <div class="week-dates">Jul 14 – 20</div>
+        <div class="week-badge badge-peak">Peak Week</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">58</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jul 14','9','9:35','Peak volume week. The hardest week of the plan. Trust the process.',null)">9E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Peak Workout','Wed, Jul 16','12','—','2mi warm-up. 3×2mi at marathon effort. 60s easy jog between. 4mi cool-down. Mental durability session.',null)">12Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jul 17','9','9:50','Recovery run after the peak workout.',null)">9E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jul 19','6','9:45','Day before the biggest long run of the cycle.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jul 20','22','10:05','22 miles — your longest run of this cycle. 2500ft gain. Full race kit. This run makes you.',null)">22L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 13 — Peak, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--orange)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 13</span>
+          <span class="week-phase">Peak</span>
+        </div>
+        <div class="week-dates">Jul 21 – 27</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">50</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jul 21','7','9:45','Volume steps back slightly after peak. Let the big week absorb.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-tempo" onclick="openModal('tempo','Threshold Run','Wed, Jul 23','10','8:00','2mi warm-up, 5mi at threshold, 3mi cool-down. Last hard tempo before taper.',null)">10T</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jul 24','7','9:50','Easy recovery.',null)">7E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Jul 26','6','9:45','Pre-long easy.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Jul 27','20','10:15','20 miles. Last big long run. Run it relaxed. Celebrate afterward.',null)">20L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 14 — Taper, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--t2)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 14</span>
+          <span class="week-phase">Taper</span>
+        </div>
+        <div class="week-dates">Jul 28 – Aug 3</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">40</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Jul 28','6','9:50','Taper begins. Volume drops. Intensity stays. Legs will feel weird — that\'s normal.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-quality" onclick="openModal('quality','Tune-Up Workout','Wed, Jul 30','8','—','2mi warm-up. 3×1mi at 10K effort with 90s rest. 3mi cool-down. Keep the snap.',null)">8Q</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Jul 31','6','9:50','Easy taper run. Dress rehearsal for race morning — same time of day.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Aug 2','6','9:45','Easy aerobic.',null)">6E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Aug 3','14','10:20','Last long run of taper. Keep it controlled. You\'re strong — don\'t prove it today.',null)">14L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 15 — Taper, Upcoming -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--t2)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 15</span>
+          <span class="week-phase">Taper</span>
+        </div>
+        <div class="week-dates">Aug 4 – 10</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">28</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Aug 4','5','9:55','Volume is low now. Resist the urge to do more.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-tempo" onclick="openModal('tempo','Sharpening Run','Wed, Aug 6','7','8:15','2mi warm-up, 3mi at marathon effort, 2mi cool-down. Keeps legs sharp. Do not do more.',null)">7T</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Thu, Aug 7','4','10:00','Short and easy. Walk away feeling fresh.',null)">4E</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Sat, Aug 9','5','9:50','Easy shake. Stay off your feet the rest of the day.',null)">5E</div></div>
+        <div class="day-col"><div class="day-label">Sun</div><div class="pill pill-long" onclick="openModal('long','Long Run','Sun, Aug 10','7','10:30','7 miles easy. That\'s it. You\'re ready. Trust your training.',null)">7L</div></div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+    <!-- WEEK 16 — Race Week -->
+    <div class="week-card">
+      <div class="week-gutter" style="background:var(--t2)"></div>
+      <div class="week-info">
+        <div class="week-num-row">
+          <span class="week-num">Week 16</span>
+          <span class="week-phase">Taper</span>
+        </div>
+        <div class="week-dates">Aug 11 – 17</div>
+        <div class="week-badge badge-race">Race Week</div>
+      </div>
+      <div class="week-mileage">
+        <div class="mileage-num">15</div>
+        <div class="mileage-unit">mi</div>
+      </div>
+      <div class="week-days">
+        <div class="day-col"><div class="day-label">Mon</div><div class="pill pill-easy" onclick="openModal('easy','Easy Run','Mon, Aug 11','4','10:00','Keep it short. Eat well. Sleep. This is the job now.',null)">4E</div></div>
+        <div class="day-col"><div class="day-label">Tue</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Wed</div><div class="pill pill-easy" onclick="openModal('easy','Easy + Strides','Wed, Aug 13','4','9:50','20 min easy, 4×20s strides, done. Legs stay sharp. Eat carbs tonight.',null)">4E</div></div>
+        <div class="day-col"><div class="day-label">Thu</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col"><div class="day-label">Fri</div><div class="pill pill-easy" onclick="openModal('easy','Shakeout Run','Fri, Aug 15','3','10:10','15 min easy. Drive to race location. Packet pickup. Visualize your race.',null)">3E</div></div>
+        <div class="day-col"><div class="day-label">Sat</div><div class="pill pill-rest">Rest</div></div>
+        <div class="day-col">
+          <div class="day-label">Sun</div>
+          <div class="pill pill-race" onclick="openModal('race','AFC 50K','Sun, Aug 16 · Race Day','31.1','—','You are ready. 16 weeks of work leads to this. Start conservative, run your plan, enjoy every mile. Go get it.',null)">RACE</div>
+        </div>
+      </div>
+      <div class="week-status"><span class="status-badge status-upcoming">Upcoming</span></div>
+    </div>
+
+  </div><!-- /content-area -->
+</main>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="handleBackdropClick(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-type-row">
+        <span class="modal-type-badge" id="modal-type-badge"></span>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-date" id="modal-date"></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-stats" id="modal-stats"></div>
+      <div id="modal-notes-section">
+        <div class="modal-notes-label">Coach Notes</div>
+        <div class="modal-notes-text" id="modal-notes"></div>
+      </div>
+      <div class="modal-cta">
+        <button class="btn-primary">Mark Complete</button>
+        <button class="btn-ghost" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const typeConfig = {
+  easy:    { label: 'Easy Run',    color: '#1a7a1c', bg: 'rgba(44,168,47,.15)',  paceLabel: 'Target Pace' },
+  tempo:   { label: 'Tempo Run',   color: '#9a6800', bg: 'rgba(212,144,10,.15)', paceLabel: 'Tempo Pace' },
+  long:    { label: 'Long Run',    color: '#b83f10', bg: 'rgba(232,93,38,.15)',  paceLabel: 'Long Pace' },
+  quality: { label: 'Quality',     color: '#5b21b6', bg: 'rgba(124,58,237,.15)', paceLabel: 'Effort' },
+  race:    { label: 'Race Day',    color: '#fff',    bg: '#0D0F12',              paceLabel: 'Goal Pace' },
+};
+
+function openModal(type, title, date, dist, pace, notes) {
+  const cfg = typeConfig[type] || typeConfig.easy;
+  const badge = document.getElementById('modal-type-badge');
+  badge.textContent = cfg.label;
+  badge.style.background = cfg.bg;
+  badge.style.color = cfg.color;
+  badge.style.border = type === 'race' ? '1px solid rgba(13,15,18,.15)' : 'none';
+
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-date').textContent = date;
+
+  const statsEl = document.getElementById('modal-stats');
+  const distLabel = type === 'race' ? '31.1 mi' : dist + ' mi';
+  const paceVal = pace === '—' ? 'Effort' : pace + ' /mi';
+
+  statsEl.innerHTML = `
+    <div class="modal-stat">
+      <div class="modal-stat-label">Distance</div>
+      <div class="modal-stat-value">${dist}</div>
+      <div class="modal-stat-sub">miles</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">${cfg.paceLabel}</div>
+      <div class="modal-stat-value" style="font-size:18px;letter-spacing:0.5px;padding-top:4px">${pace === '—' ? 'By Feel' : pace}</div>
+      <div class="modal-stat-sub">${pace === '—' ? 'effort-based' : 'per mile'}</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-label">Type</div>
+      <div class="modal-stat-value" style="font-size:16px;letter-spacing:0.5px;padding-top:4px">${cfg.label}</div>
+      <div class="modal-stat-sub">workout</div>
+    </div>
+  `;
+
+  const coachNotes = notes || 'No additional notes for this workout.';
+  document.getElementById('modal-notes').textContent = coachNotes;
+
+  const backdrop = document.getElementById('modal-backdrop');
+  backdrop.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  const backdrop = document.getElementById('modal-backdrop');
+  backdrop.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleBackdropClick(e) {
+  if (e.target === document.getElementById('modal-backdrop')) closeModal();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+
+</body>
+</html>

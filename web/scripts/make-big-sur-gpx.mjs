@@ -2,7 +2,7 @@
 // Generate a synthesized Big Sur Marathon GPX.
 //
 // The real race GPX isn't publicly downloadable from bigsurmarathon.org
-// and third-party hosts block automated fetches. Since Runcino's pacing
+// and third-party hosts block automated fetches. Since faff.run's pacing
 // algorithm operates on distance + elevation only, a faithful synthesis
 // of the known course profile is functionally equivalent for algorithm
 // development and testing.
@@ -173,11 +173,11 @@ for (let i = 0; i < POINT_COUNT; i++) {
 const now = new Date().toISOString();
 const header =
 `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="runcino-synth"
+<gpx version="1.1" creator="faff-synth"
      xmlns="http://www.topografix.com/GPX/1/1">
   <metadata>
     <name>Big Sur International Marathon — synthesized course</name>
-    <desc>Synthesized GPX for Runcino algorithm development. Profile matches public course facts (26.22 mi, +2,182 ft gain, Hurricane Point climb miles 10-12). Coordinates are a simplified interpolation along Highway 1 — distance accuracy is maintained for pacing tests; GPS fidelity is not race-day accurate.</desc>
+    <desc>Synthesized GPX for faff.run algorithm development. Profile matches public course facts (26.22 mi, +2,182 ft gain, Hurricane Point climb miles 10-12). Coordinates are a simplified interpolation along Highway 1 — distance accuracy is maintained for pacing tests; GPS fidelity is not race-day accurate.</desc>
     <time>${now}</time>
   </metadata>
   <trk>

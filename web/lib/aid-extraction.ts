@@ -78,7 +78,7 @@ function parseMileMarks(text: string, courseMi: number, sourceUrl: string): Extr
 async function fetchText(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Runcino/1.0 (race data verification)' },
+      headers: { 'User-Agent': 'faff.run/1.0 (race data verification)' },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;

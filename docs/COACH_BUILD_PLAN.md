@@ -1,7 +1,7 @@
 # Coach Build Plan
 
 > **Goal:** make the structured research library at `/Volumes/WP/06 Claude Code/Runcino/Research/` the
-> mastermind of the app. Every coaching judgment in Runcino — pacing,
+> mastermind of the app. Every coaching judgment in faff.run — pacing,
 > workout prescription, fueling, taper, retrospective, race-morning brief —
 > routes through a single `Coach` entity that reads from doctrine extracted
 > directly from those research docs. Doctrine constants cite their source
@@ -184,7 +184,7 @@ If a future session needs to pick this up cold: read this file top to bottom,
 look at the **Status** field on each stage, and at any open commits in
 `web/coach/`. The directory is empty until Stage 0 finishes; from Stage 1 on,
 each stage adds clearly-named files. Memory entry
-[`coach_build_plan.md`](/Users/david/.claude/projects/-Volumes-WP-06-Claude-Code-Runcino/memory/coach_build_plan.md)
+[`coach_build_plan.md`](/Users/david/.claude/projects/-Volumes-WP-06-Claude-Code-faff.run/memory/coach_build_plan.md)
 points back here. Memory entry
-[`feedback_engine_match_research.md`](/Users/david/.claude/projects/-Volumes-WP-06-Claude-Code-Runcino/memory/feedback_engine_match_research.md)
+[`feedback_engine_match_research.md`](/Users/david/.claude/projects/-Volumes-WP-06-Claude-Code-faff.run/memory/feedback_engine_match_research.md)
 documents the rule against extrapolation.

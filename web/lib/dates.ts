@@ -11,7 +11,7 @@
  *  runs in UTC. Computing "today" naively against UTC means we flip
  *  to tomorrow at 4–5 PM local — highlighting the wrong day in the
  *  week strip. All date-string math goes through LA. */
-export const RUNCINO_TZ = 'America/Los_Angeles';
+export const FAFF_TZ = 'America/Los_Angeles';
 
 export function now(): Date {
   return new Date();
@@ -21,7 +21,7 @@ export function now(): Date {
  *  yields ISO format). Use this anywhere you need the user's calendar
  *  date, never `new Date().toISOString().slice(0,10)` (which is UTC). */
 export function todayISO(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: RUNCINO_TZ });
+  return new Date().toLocaleDateString('en-CA', { timeZone: FAFF_TZ });
 }
 
 /** A Date anchored at noon UTC of LA's calendar today. Safe to pass

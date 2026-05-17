@@ -15,7 +15,7 @@ import { getCourseFacts } from '../../../lib/course-facts';
 import { formatHMS, parseHMS } from '../../../lib/time';
 
 const GOAL_SYSTEM_PROMPT = `
-You are Runcino's goal-setting assistant. You help a runner pick an honest goal finish time for an upcoming marathon based on their current fitness and the course's character.
+You are faff.run's goal-setting assistant. You help a runner pick an honest goal finish time for an upcoming marathon based on their current fitness and the course's character.
 
 # Hard rules
 

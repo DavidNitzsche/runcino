@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>faff.run · Live Audit Log</title>
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32);
+    --good:#3EBD41; --warn:#FC4D64; --att:#F3AD38; --coach:#27B4E0; --race:#FF5722; --xp:#9013FE;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--l0); color: var(--t0); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { padding: 24px 28px 80px; max-width: 1100px; margin: 0 auto; line-height: 1.55; }
+  .hdr { display: flex; align-items: baseline; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--l4); margin-bottom: 22px; }
+  .hdr h1 { font-family: 'Oswald', 'Helvetica Neue', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: -.02em; text-transform: uppercase; }
+  .hdr .sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; color: var(--t3); text-transform: uppercase; font-weight: 700; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); animation: pulse 1.6s ease-in-out infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
+  .status-bar { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .stat { padding: 14px 16px; background: var(--l1); border: 1px solid var(--l4); border-radius: 10px; border-left: 3px solid var(--coach); }
+  .stat.wave { border-left-color: var(--att); }
+  .stat .lbl { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; color: var(--t3); text-transform: uppercase; font-weight: 700; }
+  .stat .val { font-family: 'Oswald', sans-serif; font-size: 22px; font-weight: 700; margin-top: 4px; line-height: 1; }
+  .stat .val.good { color: var(--good); }
+  .stat .val.coach { color: var(--coach); }
+  .stat .val.warn { color: var(--warn); }
+  .stat .val.att { color: var(--att); }
+  .sec-h { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 700; margin: 18px 0 12px; }
+  .feed { display: flex; flex-direction: column; gap: 10px; }
+  .entry { display: grid; grid-template-columns: 100px 28px 1fr; gap: 14px; padding: 14px 16px; background: var(--l1); border: 1px solid var(--l4); border-radius: 8px; }
+  .entry .time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--t3); font-weight: 600; letter-spacing: .04em; padding-top: 2px; }
+  .entry .glyph { font-size: 20px; line-height: 1; text-align: center; }
+  .entry .body { font-size: 14.5px; color: var(--t0); }
+  .entry .body b { color: var(--t0); font-weight: 600; }
+  .entry .meta { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3); margin-top: 6px; letter-spacing: .04em; }
+  .entry.finding { border-left: 3px solid var(--att); }
+  .entry.fix { border-left: 3px solid var(--coach); }
+  .entry.test { border-left: 3px solid var(--good); }
+  .entry.commit { border-left: 3px solid var(--xp); }
+  .entry.blocker { border-left: 3px solid var(--warn); }
+  .entry.wave-start { border-left: 3px solid var(--race); background: rgba(255,87,34,.04); }
+  .entry.wave-done { border-left: 3px solid var(--good); background: rgba(62,189,65,.04); }
+  .entry.note { border-left: 3px solid var(--t3); }
+  .entry table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 12.5px; }
+  .entry th, .entry td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--l4); }
+  .entry th { color: var(--t2); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.3px; text-transform: uppercase; }
+  .footer { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--l4); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--t3); letter-spacing: .06em; }
+  .footer code { background: var(--l2); padding: 2px 7px; border-radius: 4px; color: var(--t1); }
+
+  /* Right Now panel — live "alive coach" feel */
+  .right-now { background: linear-gradient(180deg, rgba(39,180,224,.07), rgba(39,180,224,.02)); border: 1px solid rgba(39,180,224,.28); border-radius: 14px; padding: 18px 20px 20px; margin-bottom: 22px; position: relative; }
+  .right-now::before { content: ''; position: absolute; top: -1px; left: 14px; right: 14px; height: 1px; background: linear-gradient(90deg, transparent, rgba(39,180,224,.55), transparent); }
+  .right-now h2 { font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1.7px; color: var(--coach); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .right-now h2 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--coach); box-shadow: 0 0 12px rgba(39,180,224,.7); animation: heartbeat 1.4s ease-in-out infinite; }
+  @keyframes heartbeat { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+  .agents { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .agent-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 10px 12px; background: rgba(20,24,32,.65); border-radius: 8px; border-left: 2px solid var(--coach); align-items: start; }
+  .agent-row .name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.3px; color: var(--coach); font-weight: 700; text-transform: uppercase; padding-top: 2px; }
+  .agent-row .what { font-size: 13px; color: var(--t0); line-height: 1.5; }
+  .agent-row .what em { color: var(--t2); font-style: normal; font-size: 12px; display: block; margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>FAFF.RUN · LIVE AUDIT</h1>
+  <span class="sub"><span class="pulse"></span>AUTO-REFRESHING · UPDATES EVERY 4S</span>
+</div>
+
+<div class="status-bar">
+  <div class="stat wave" style="border-left-color: var(--good);">
+    <div class="lbl">COACH STATUS</div>
+    <div class="val good">ALIVE · SHIPPING</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">GAPS FOUND</div>
+    <div class="val att">76</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">FIXES SHIPPED</div>
+    <div class="val coach">93</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">TESTS ADDED</div>
+    <div class="val good">158</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">COMMITS PUSHED</div>
+    <div class="val">42</div>
+  </div>
+</div>
+
+<div class="right-now" style="background: linear-gradient(180deg, rgba(62,189,65,.10), rgba(62,189,65,.03)); border-color: rgba(62,189,65,.32);">
+  <h2 style="color: var(--good);"><span class="dot" style="background: var(--good); box-shadow: 0 0 12px rgba(62,189,65,.7);"></span>PLAN-AS-ARTIFACT IS LIVE ON MAIN</h2>
+  <div class="agents">
+    <div class="agent-row" style="grid-column: 1 / -1; border-left-color: var(--good); background: rgba(62,189,65,.05);">
+      <div class="name" style="color: var(--good);">✓ shipped</div>
+      <div class="what">The coach now writes a real plan — a persisted artifact with phase structure, weekly arc, and day-by-day workouts — then mutates it via doctrine-grounded triggers as reality unfolds. Five new database tables (training_plans · plan_phases · plan_weeks · plan_workouts · plan_mutations). New buildPlan + adaptPlan methods. New /api/plan/active route. The profile-edit modal now lets you set Level (Beginner/Intermediate/Advanced), long-run day, quality days, rest day — and those fields drive the plan. The /training calendar reads from the plan. The TodayCard on /overview reads today's PlanWorkout. The PLAN ADAPTED card reads real mutation history. Auto-transitions when an A-race date passes.<em>Wave V: 7 commits, 25 new tests passing, every adaptation trigger cites a verified Research/ path. The legacy pickRun engine survives as fallback.</em></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h">▾ Activity · newest first</div>
+<div class="feed">
+
+  <div class="entry wave-done">
+    <div class="time">just now</div>
+    <div class="glyph">🎯</div>
+    <div class="body">
+      <b>The engine is the cleanest it has ever been. 221 of 221 tests pass.</b>
+      <p style="margin-top:8px">The last engine-bug agent just landed. All four bugs the event-driven stress tests caught are fixed at the source — every one with a doctrine citation in the comment, none of them papered over with looser tests. Highlights:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>Today's prescription now actually reads your check-in.</b> The Decision Matrix is wired directly into the function that picks today's workout. Three or more poor days in the last week suppresses any quality session. Five or more makes today rest or recovery only. The adjustment layer downstream still does its job, but the underlying plan is finally honest first.</li>
+        <li><b>After a bad week of runs, the coach now backs off — properly.</b> A new disruption detector watches for the case where this past week ran 30% lighter than your four-week average (without being a planned cutback). When it fires, next week ramps up from the actual cratered volume at 10% per week — not the average. No more catch-up doubles.</li>
+        <li><b>The "rebuild after a break" softening now fires regardless of base volume.</b> A 50-mile-per-week runner who took five days off gets the same gentle ramp a 10-mile-per-week runner does. Different absolute numbers, same principle: volume before intensity, ramp from where you are right now.</li>
+        <li><b>B-races on your calendar are now protected.</b> Days on either side of a B-race lose any scheduled quality work — those become recovery or general aerobic. The race day itself gets a "race" prescription, not a threshold session piled on top.</li>
+      </ul>
+      <p style="margin-top:12px">The agent activated six previously-skipped assertions from the event-driven test suite. All passing.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">just now</div>
+    <div class="glyph">🌟</div>
+    <div class="body">
+      <b>The alive coach is live. Every piece is composed into /overview and /training, and it's been verified in the browser.</b>
+      <p style="margin-top:8px">The final agent landed. Here's the dashboard you now see, top to bottom on /overview:</p>
+      <ol style="margin-top:10px; padding-left:24px; line-height:1.7">
+        <li><b>Coach narrative line</b> — one sentence in the coach's voice. Only when a real signal fires. In the local empty-state test, it fired with "21+ days since your last long run" and cited the relevant doctrine. When nothing fires, the slot collapses and shows nothing — no fake reassurance.</li>
+        <li><b>Greet band</b> (existing).</li>
+        <li><b>"Coach is watching" strip</b> — five chips: Strava sync · Check-in · Streak · Readiness · Race calendar. Each chip reads the live freshness map. The strip honestly says "STRAVA · NOT CONNECTED" or "CHECK-IN · NOT WIRED" rather than faking green.</li>
+        <li><b>Today's card</b> with the COACH ADJUSTED pin + WHY line when something moved.</li>
+        <li><b>Readiness card</b> + <b>Race countdown</b>.</li>
+        <li><b>Path to Race hero</b> — for your next A-race, current fitness vs goal vs gap vs weeks needed. Empty-state CTA when no A-race is set ("Add an A-race goal and the coach starts pointing every workout at it.").</li>
+        <li><b>Next Push card</b> — 1-3 actionable pushes the coach is making this week, with the signal that triggered each. "Plan steady — keep executing this week" when nothing fires.</li>
+        <li><b>Coach this week</b> + <b>Week strip</b>.</li>
+        <li><b>Trajectory</b> + <b>Plan adapted</b> (last 7 days of adjustments, or "Plan held steady").</li>
+        <li><b>Check-in readiness</b> tile.</li>
+        <li>The existing tile grid below — biometric sparks, body systems, pace zones, VDOT, load, weekly miles, long run, B-race, year heatmap, YTD.</li>
+      </ol>
+      <p style="margin-top:12px">/training also picks up the narrative line and watching strip at the top, so the coach voice is consistent across both surfaces.</p>
+      <p style="margin-top:10px">The agent caught and fixed an architecture issue along the way: the coach methods can't be called directly from a client component (they transitively import node:fs), so the coach calls all moved into the API routes and the page receives pre-computed decisions in its payload. That's the right architecture; it shipped clean.</p>
+      <p style="margin-top:10px">Tests: 221 of 221 pass. TypeScript: clean. Browser preview verified at desktop (1440×900) and mobile (460×900) widths. Empty-state cases all render honestly: no fake numbers, no broken cards.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🧩</div>
+    <div class="body">
+      <b>The final integration just started — this is what makes /overview actually feel like the coach you described.</b>
+      <p style="margin-top:8px">Every preceding agent shipped its piece. The narrative line, the "Coach is watching" strip, the Path-to-Race hero, the Next Push card, the freshness map, the adaptive layer, the engine fixes — they all exist. But they're sitting separately. One agent just got launched to do the only thing left: compose them into the actual /overview layout.</p>
+      <p style="margin-top:10px">After this lands, your dashboard top-to-bottom is:</p>
+      <ol style="margin-top:8px; padding-left:24px; line-height:1.7">
+        <li>The coach narrative line — one sentence in the coach's voice, only when a real signal fires.</li>
+        <li>The "Coach is watching" strip — chips for what the coach is monitoring right now (Strava sync age, check-in freshness, streak, readiness, easy share, race countdown).</li>
+        <li>Today's card — with the COACH ADJUSTED pin + WHY line when something moved.</li>
+        <li>Path to your next race — current fitness vs goal vs gap vs weeks needed.</li>
+        <li>Next Push — what the coach is pushing you toward this week, with the signal that triggered each.</li>
+        <li>Check-in readiness — the 7-day aggregate with its pin.</li>
+        <li>Plan adapted — the last 7 days of adjustments, or "Plan held steady."</li>
+        <li>The existing week strip, weekly miles strip, year heatmap, etc.</li>
+      </ol>
+      <p style="margin-top:12px">No new logic. Every piece already exists and is tested. Just composition. The dev preview will get verified after the agent finishes.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">⚡</div>
+    <div class="body">
+      <b>The adaptive layer is live. The coach can now actually change the plan in response to what's happening — and you'll see it on screen.</b>
+      <p style="margin-top:8px">This is the one we've been building toward. Four pieces all shipped at once:</p>
+
+      <p style="margin-top:14px"><b>1. Today's card knows when the coach has changed today's plan.</b><br>
+      When the adaptation engine moves something — softens Wednesday's tempo because your last three check-ins flagged poor sleep, or shifts your long run because you skipped Tuesday — today's card now shows a <code>▾ COACH ADJUSTED</code> pin and a "WHY" line under the workout title that names the reason in plain English. When the coach holds the plan steady, the card stays clean. No fake reassurance, no "nothing changed today" filler.</p>
+
+      <p style="margin-top:14px"><b>2. Race recaps are now real verdicts from the coach.</b><br>
+      When you mark a race complete and open it, the /races/[race] page now renders a coach retrospect block: what was planned, what actually happened, what the coach learned, and a "CALIBRATION UPDATED" chip when the result changed your VDOT or shifted the next cycle's assumptions. Not a placeholder block — an actual call to <code>coach.retrospect</code> with your real plan and your real result.</p>
+
+      <p style="margin-top:14px"><b>3. Your daily check-ins now feed the engine.</b><br>
+      Until today, you could log a check-in but the coach couldn't see it. Now the last 7 days of check-ins get aggregated into a real signal — a "poor day" count where energy ≤ 4 or soreness ≥ 7 or stress ≥ 7 trips a day from "fine" to "poor" (per the doctrine on qualitative recovery signals). The readiness engine escalates green → yellow → red on 2 or 3+ poor days. /overview now has a CHECK-IN READINESS tile with a STEADY / WATCHING / CUTBACK pin reflecting that aggregate. You log a check-in, the coach reacts.</p>
+
+      <p style="margin-top:14px"><b>4. The "PLAN ADAPTED" card now has real items.</b><br>
+      The card that was previously hardcoded "+12% VOL" and then deliberately blanked by Wave B now reads <code>coach.recentAdjustments</code>: every time over the last 7 days the coach moved a workout vs the original plan, with the date, what changed, and why. When the coach held steady all week, the card honestly says "Plan held steady." No invented adjustments, no fake history.</p>
+
+      <p style="margin-top:14px">Fifteen new tests pin the whole thing. The check-in aggregator has its own test file, the adjustment path has its own, the recent-adjustments method has its own. All passing.</p>
+
+      <p style="margin-top:12px">After this, the dashboard has the bones of an actually-adaptive coach. The remaining piece is integration of the surfaces that the alive-coach agent built last hour — the "Coach is watching" strip, the Path-to-Race hero, the Next Push card, the narrative line. Those are sitting as components, waiting for one integration pass to put them into /overview's actual layout. That's the next move.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">💚</div>
+    <div class="body">
+      <b>The "alive coach" surfaces are built. The dashboard is one integration away from feeling like it.</b>
+      <p style="margin-top:8px">The agent just finished building three new cards plus the underlying coach methods that power them. They're sitting unintegrated, waiting for the adaptive-layer agent to land its part — but the pieces are real:</p>
+
+      <p style="margin-top:14px"><b>1. The "Coach is watching" strip.</b><br>
+      A horizontal row of chips at the top of /overview showing what the coach is monitoring right now. Strava sync age. Check-in freshness. Streak. Readiness. Easy share. Race countdown. Each chip flips amber when its signal goes stale, and honestly says "NOT WIRED" or "NOT CONNECTED" when a source isn't available. A subtle pulse dot to its left implies the coach is live. Now that the freshness pipeline lands, this strip just reads what every API route is already returning.</p>
+
+      <p style="margin-top:14px"><b>2. The "Path to Race" hero.</b><br>
+      For your next A-race: current fitness (computed from VDOT, scaled to the race distance), the goal time you set, the gap between them, and how many weeks of typical training progression close that gap. The bottom line is a feasibility verdict — ahead · on track · tight · behind · unknown — and a one-line "next move" the coach is making toward closing the gap. Empty state with a "set your goal" link to /profile when you haven't entered a race.</p>
+
+      <p style="margin-top:14px"><b>3. The "Next Push" card.</b><br>
+      One to three prioritized things the coach is actively pushing you toward this week. Each push has an urgency chip (low / med / high), the real signal that triggered it (e.g., "last 10mi run was 23 days ago"), a one-line action ("Saturday at 8 miles eases you back in"), and a research citation. When the engine has nothing to push (state is steady), the card honestly says "Plan steady — keep executing." No filler.</p>
+
+      <p style="margin-top:12px">The two new coach methods underneath have eleven new tests pinning them. Every citation in the source is verified to literally exist in the research docs — no decorative pointers.</p>
+
+      <p style="margin-top:10px">A few honest flags the agent left for the integrator: the "days since last long run" signal is approximated because the engine doesn't yet have a per-activity date feed; the VDOT-per-week progression rate (used to compute the weeks-to-goal) is translated from doctrine bands rather than literally stated; and the strava freshness number needs to be passed in from outside since CoachState doesn't carry it.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">🩺</div>
+    <div class="body">
+      <b>The freshness pipeline is live end-to-end.</b>
+      <p style="margin-top:8px">Every API route now returns a "freshness map" alongside its data, telling the UI when each underlying signal was last refreshed. Six signal sources are wired:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>Strava</b> — fresh if synced in the last two hours, stale past that.</li>
+        <li><b>Check-in</b> — fresh if logged in the last 36 hours; gets a gentle nudge past that.</li>
+        <li><b>VDOT anchor</b> — fresh if the race that's setting your VDOT is within 60 days; stale past that per the doctrine on fitness signal expiration.</li>
+        <li><b>Profile</b> — fresh if edited within the last 6 months; stale past that.</li>
+        <li><b>Race calendar</b> — fresh if a race was saved in the last 14 days; otherwise quiet-but-OK (a calendar can be quiet without being broken).</li>
+        <li><b>HealthKit</b> — always honestly "awaiting" until that integration lands. No fake fresh state.</li>
+      </ul>
+      <p style="margin-top:12px">Each signal gets a chip-ready label ("STRAVA · synced 2m ago" or "CHECK-IN · 18h ago" or "VDOT · 92 days old — log a race"), a plain-English reason explaining the staleness, and a freshness bucket the UI can color. Eight new tests pin every case.</p>
+      <p style="margin-top:10px">Plus three more hardcoded leaks closed at the same time: the "12 of 12 plan integrity" was bogus and now renders honestly as NO DATA YET until a real engine method computes it; the synthesized heart-rate zone daily mix is gone (the page now says AWAITING STRAVA HR); and "male / 38" hardcoded into /health is replaced by reads from your real profile (showing "—" if you haven't filled it in).</p>
+      <p style="margin-top:10px">The biggest win: the "Coach is watching" strip the alive-coach agent is building can now consume this map directly instead of rolling its own. When that lands, the strip will say things like "STRAVA · synced 4m ago" in real time.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">🛠</div>
+    <div class="body">
+      <b>The engine just got a major round of fixes — and they're all doctrine-grounded.</b>
+      <p style="margin-top:8px">The agent that was working through the bugs the first stress-test caught just landed six commits. The engine is now in the cleanest state it's been: <b>215 tests pass, zero fail.</b> Beyond the three bugs we already knew about, the agent caught two more along the way:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>The taper was way too shallow.</b> Daniels says cut volume 30-50% in the final two weeks before a race. The engine was cutting it by 13%. Now properly halved.</li>
+        <li><b>Mid-build weekly mileage was overshooting its ceiling.</b> The math for "how much easy mileage fits in the week" left no room for two quality sessions plus a long run without blowing past the phase volume cap. Adjusted so quality and long runs fit cleanly.</li>
+      </ul>
+      <p style="margin-top:12px">Every behavior change carries a research citation in the source. No assertions were loosened to make tests pass — the engine got better, not the bar lower.</p>
+      <p style="margin-top:10px">The engine files are now unlocked. The next agent just got fired to tackle the four bugs the event-driven tests found — especially the big one (today's prescription needs to actually read your check-in, not just the adjustment layer afterward).</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🐛</div>
+    <div class="body">
+      <b>The event-driven stress tests found four more engine bugs — and they're the kind that matter most.</b>
+      <p style="margin-top:8px">These are exactly the moments where the coach is supposed to act like a coach, and right now in each one it doesn't. The agent that ran the ten scenarios caught all four cleanly, root-caused each one, and flagged them for the next engine-fix pass (the engine files are locked by another agent's commits in flight right now, so the fixes get queued, not jammed):</p>
+
+      <p style="margin-top:14px"><b>1. After a bad week of runs, the coach pushes you <i>harder</i>, not softer.</b><br>
+      The engine plans next week's volume from your four-week average and ignores the fact that this past week cratered. So a runner who skipped three runs gets a "catch-up" week at 1.15–1.35× their normal volume. That's the opposite of what doctrine says. Recalibrate from where the runner actually is, not where the plan thought they'd be.</p>
+
+      <p style="margin-top:14px"><b>2. The "rebuild after a break" softening only fires for low-volume runners.</b><br>
+      A 50-mile-per-week runner who takes 5 days off carries the rebuild flag — but the actual softening path is gated on weekly volume being under 8 miles. Net effect: high-fitness runners come back from a break and get full build-block quality immediately. The softening logic should fire regardless of base volume; it should just ramp from the actual last-7-days volume.</p>
+
+      <p style="margin-top:14px"><b>3. B-races inside an A-race window get threshold work scheduled on top of them.</b><br>
+      The engine only branches on the next A-race; it doesn't look at the other races on the calendar. So if you've got a tune-up race 10 days before your goal race, the coach might schedule a VO2 session for that day. The B-race day itself should be a race, and the surrounding ±1–2 days should be easy.</p>
+
+      <p style="margin-top:14px"><b>4. The daily plan doesn't read your check-ins. Only the after-the-fact adjustment does.</b><br>
+      This is the big one. The function that picks today's workout (<code>pickRun</code>) doesn't read your check-in signal. Only the adjustment layer downstream does. So an ill or exhausted runner gets a threshold session in the underlying plan, and only gets softened by the adjustment on top. The check-in signal needs to flow into the prescription path itself — that way "I slept four hours and I'm sore everywhere" actually changes what the coach prescribes, not just modifies it after the fact.</p>
+
+      <p style="margin-top:14px">Also flagged: four signals the engine should have but doesn't.</p>
+      <ul style="margin-top:8px; padding-left:22px; line-height:1.7">
+        <li>A real <b>illness flag</b> on state — today the only proxy is the qualitative check-in count. A boolean would let the engine cut quality cleanly.</li>
+        <li>An <b>env-disruption flag</b> for heat or travel — currently approximated through poor check-ins + volume crater. A first-class field would be cleaner.</li>
+        <li>A <b>first-distance caveat</b> on race predictions — when you're racing a distance you've never raced, the prediction should widen its confidence interval and say so out loud.</li>
+        <li>A <b>VDOT-upgrade dampener</b> — one fast B-race shouldn't slingshot your VDOT from 49 to 54. Daniels caps trained-runner upgrades at ~1.0 per cycle.</li>
+      </ul>
+      <p style="margin-top:12px">All four bugs are queued as the next wave. They'll ship right after the agent currently fixing the earlier set of engine bugs lands and unlocks the file.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">🧹</div>
+    <div class="body">
+      <b>The four leaks the re-audit caught are all closed.</b>
+      <p style="margin-top:8px">All four shipped clean. Quick recap of what changed in plain English:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>The "+12% VOL" badge now reads your real volume delta.</b> It computes from your last 7 days versus your 4-week average. Up arrow green when you're climbing, down arrow warn when sliding, and the badge hides entirely when there's not enough data to compute a real delta.</li>
+        <li><b>/races no longer fabricates a fake calendar when your race table is empty.</b> The empty-state CTAs that were already in the page — "+ ADD RACE" on the hero card, the upcoming list, and the results list — now show through honestly. Your real races stay exactly where they were.</li>
+        <li><b>/log no longer invents a year of runs when Strava hasn't synced.</b> The "Connect Strava" empty state that was already in the page comes through. Your real Strava history is untouched — every cached activity continues to render normally; this only changes what happens in the zero-cache state.</li>
+        <li><b>/races stopped reading "David / VDOT 49.2" as fallback.</b> The page now reads your real name from the profile table and your real VDOT from `vdotSnapshot`. When there's no usable race result yet, it honestly says "NO VDOT YET" instead of inventing 49.2.</li>
+      </ul>
+      <p style="margin-top:12px">The agent also flagged three smaller things to address later:</p>
+      <ul style="margin-top:8px; padding-left:22px; line-height:1.7">
+        <li>Your max heart rate is still hardcoded to 187 in one spot on /races. The profile schema doesn't have a `maxHr` column yet, so the right fix is to add the column and read from it. Folding into a future "persist real values on profile" wave.</li>
+        <li>The name fallback "Runner" is duplicated across /overview and /training data builders — should be one shared helper. Small refactor for after the adaptive-layer agent lands its edits.</li>
+        <li>One pre-existing test still fails because of a missing fixture JSON file. Unrelated to anything in this loop, but worth picking up.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">just now</div>
+    <div class="glyph">🗣️</div>
+    <div class="body">
+      <b>The coach voice is built. It works exactly the way we said it should.</b>
+      <p style="margin-top:8px">The function that decides whether to say something walks through nine priority rules, top down. The first one that has a real signal triggering it produces the line. If none do, the function returns nothing and the slot at the top of /overview stays empty. There's no fallback, no filler.</p>
+      <p style="margin-top:10px">The nine triggers, in order of priority:</p>
+      <ol style="margin-top:8px; padding-left:24px; line-height:1.7">
+        <li>An A-race is within seven days — taper voice.</li>
+        <li>The adaptive coach just changed today's plan — explains what moved and why.</li>
+        <li>You crossed a streak milestone (30, 60, 90, or 180 consecutive days) — celebrates.</li>
+        <li>You haven't logged a check-in in four-plus days — gentle reminder that the coach is flying partly blind.</li>
+        <li><i>(deferred — see below)</i></li>
+        <li>You hit a long-run milestone in the last week — names the breakthrough.</li>
+        <li>Your volume is sliding four weeks in a row with a race approaching — reorients.</li>
+        <li>You've gone fourteen-plus days without a threshold session — points it out, with a research citation.</li>
+        <li>You've gone twenty-one-plus days without a long run — same.</li>
+      </ol>
+      <p style="margin-top:12px">Each rule cites a specific number in your data ("23 days since your last 10-mile run"), and where doctrine backs the rule, the function attaches the research breadcrumb. There are fourteen tests covering the fire / don't-fire conditions for every priority. All passing.</p>
+      <p style="margin-top:10px">Two priorities got honestly deferred instead of faked: the "you just PR'd — VDOT updated to 50.1" one needs VDOT to be persisted on coach state (today it's computed at read-time and not stored), and the "first miss in 47 days" streak-break variant needs the prior streak peak stored too. The agent flagged both for a future wave rather than inventing the fields. That's exactly the right call — no fake data.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🗣️</div>
+    <div class="body">
+      <b>Adding a coach voice at the top of /overview.</b>
+      <p style="margin-top:8px">One short sentence at the very top of the dashboard, written in the coach's voice — but only when there's a real signal worth saying something about. The whole rule is "no narrative unless a real signal fires." Generic motivational text is forbidden: no "great work this week," no "stay consistent," no "you got this." If there's nothing specific and grounded to say today, the slot collapses to nothing.</p>
+      <p style="margin-top:10px">What can trigger it: race-week imminent ("AFC Half is in 4 days. Volume drops to 60% this week — you've banked everything you need."), an adjustment just fired ("Coach softened Wednesday's tempo — your last three check-ins flagged poor sleep."), a streak milestone or break, a stale check-in, a recent PR, a long-run milestone, falling behind on a build, going 14+ days without quality, going 21+ days without a long run. Every sentence has to cite a real number or date the runner can verify in their own data.</p>
+      <p style="margin-top:10px">It's getting built in isolation so it doesn't collide with the other agents touching /overview. Integration into the page itself happens after Wave F and Wave G land. Once it's wired up: the page either feels like a coach said something specific to you today, or it stays quiet.</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🩺</div>
+    <div class="body">
+      <b>The freshness audit caught a live bug — and a bigger missing piece.</b>
+      <p style="margin-top:8px">An agent just finished mapping every data source against how fresh it is and how fresh it should be. The headline: the server knows the answer for each one (when Strava last synced, when you last logged a check-in, when the race that anchors your VDOT happened, when your profile was last edited) but none of that information ever reaches the screen. That's the single biggest thing blocking the "alive coach" feel — the coach <i>has</i> the freshness data, it just never says so out loud.</p>
+      <p style="margin-top:10px">The auditor also found a real live bug: the coach is calling the adaptation method with a check-in signal that's never actually populated. So every "coach softened today because of your check-ins" decision has been silently working from a blank field. That bug will close as the adaptive-layer agent lands its commits.</p>
+      <p style="margin-top:10px">Plus three more leaks the previous re-audit hadn't caught: a hardcoded "12 of 12 plan integrity" on /profile, a synthesized heart-rate zone daily mix on /training (it should say "awaiting Strava HR" until that pipeline is real), and a literal "male / 38" on /health that should be reading from your profile.</p>
+      <p style="margin-top:10px">An agent just got launched to build the full freshness pipeline — server, API, UI — so every page can show "synced 2m ago" or "last check-in 4 days ago — Coach is flying partly blind" in real time, and to close all three of those leaks at the same time.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🧪</div>
+    <div class="body">
+      <b>The stress-tests just got a lot more interesting.</b>
+      <p style="margin-top:8px">The first batch of stress-tests checked what the coach does at different <i>positions</i> in a training cycle — a runner three days post-half, a runner mid-build, a runner in taper, a runner returning from injury. It caught three real bugs. That worked.</p>
+      <p style="margin-top:10px">But there's a whole other dimension that wasn't covered: what does the coach do when something <i>happens</i> mid-cycle? An agent just got launched to write ten new scenarios for exactly that:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li>You log a check-in saying you slept four hours and you're sore everywhere. Does today's prescription get softer?</li>
+        <li>You have a bad <i>week</i> of check-ins. Does the coach reduce next week's quality work, or push through?</li>
+        <li>You skip three runs in a row mid-build. Does the coach try to "catch up" with a double session, or accept the lower volume and recalibrate?</li>
+        <li>You race a B-race much slower than predicted. Does the next cycle's plan get more realistic, or does the coach insist on the original ambitions?</li>
+        <li>You race much <i>faster</i> than predicted. Does the coach upgrade you appropriately — but not unrealistically (Daniels caps VDOT gains at ~1.0 per cycle)?</li>
+        <li>Travel/heat disrupts a week. Does the coach acknowledge or pretend it didn't happen?</li>
+        <li>You stack two B-races in the week before an A-race. Does the coach load up around them, or recognize the conflict and keep surrounding days easy?</li>
+        <li>You're returning after a five-day break in the middle of a sixty-day streak. Does the coach jump back to full intensity, or rebuild gradually?</li>
+        <li>You're returning from illness. Does the coach freeze quality work until the signal clears?</li>
+        <li>Your next race is a marathon and you've only ever run halves. Does the coach widen the prediction interval and ramp long runs appropriately?</li>
+      </ul>
+      <p style="margin-top:12px">These are the moments where adaptive coaching actually earns its keep. Any failures here are exactly the kind of bug that would hurt a real runner downstream.</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🕵️</div>
+    <div class="body">
+      <b>The re-auditor finished its sweep — and caught fourteen new gaps.</b>
+      <p style="margin-top:8px">After Wave B shipped its four big fixes, I sent an independent auditor back through every page and every API route to verify what was actually closed and to look for anything Wave B missed. Most of B's claims hold up — your /profile and /health pages came back fully clean. But the audit found fourteen places where the app is still showing you something that isn't real. The four highest-leverage ones:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>"▲ +12% VOL" was hardcoded directly into the page itself.</b> Not in a data file — actually written into the rendered text. So that "you're up 12% on volume this week" badge has been showing the same +12% every week regardless of what your volume is actually doing. Wave B swept the data builders but never looked at the page markup.</li>
+        <li><b>Your /races page is showing a fake race calendar when your real one is empty.</b> If you haven't added any races to the database, the page synthesizes a placeholder list — Disney Half, AFC Half, Sombrero, Big Sur, Mission Bay — and renders them like real entries. It's not just hiding the empty state; it's actively faking content.</li>
+        <li><b>Your /log page has a fallback that invents a year of runs <i>when the Strava cache is empty</i>.</b> Your real Strava history (which is populated) is fine and untouched — but if you ever hit a state with zero cached activities (fresh database, disconnected Strava, migration), the page synthesizes a placeholder year instead of saying "connect Strava." The synthetic seed happened to use names of races you actually ran, which is what made it look real. The fix only changes the empty-cache code path; your real runs continue to flow through exactly as they do today.</li>
+        <li><b>/races still has "David / VDOT 49.2" hardcoded.</b> That file was outside Wave B's scope by accident — B3 swept /overview and /training but not /races. So the original complaint that started this whole effort still applies on one of the surfaces.</li>
+      </ul>
+      <p style="margin-top:12px">A fix agent just got launched to handle all four. The fifth gap (a fake "3 miles at 9-minute pace" workout structure that renders when the coach has no prescription) is in another agent's working area, so I'm holding it until that one lands to avoid stepping on toes.</p>
+      <div class="meta" style="margin-top:10px">Also worth flagging: the auditor noticed some uncommitted in-progress code in the working tree that would break the type-checker if committed as-is. That's the adaptive-layer agent mid-flight — expected, will resolve when it commits.</div>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🐛</div>
+    <div class="body">
+      <b>The stress-test agent finished — and it caught three real bugs in the coach.</b>
+      <p style="margin-top:8px">This is exactly what that agent was supposed to do. It made up seven different runners, asked the coach to plan four weeks for each, and checked whether the plan made sense. Six of its thirty-eight checks failed — and they're all real engine bugs the live runner would have hit eventually:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>A returning runner doing 8 miles a week was being prescribed threshold workouts.</b> Daniels doctrine says low-volume runners should be on aerobic foundation only — no quality work until the base is built. The coach was skipping straight to intensity.</li>
+        <li><b>An injury-return runner with a 4-mile-per-week base was being jumped to 18 miles in week one.</b> That's a 350% increase. The 10% rule says ten percent at most. This was a real injury-risk bug.</li>
+        <li><b>One day inside race week was being prescribed something other than easy or shakeout.</b> Race week is supposed to be taper only — drop volume, hold a touch of intensity, no surprises. The coach was sneaking in something that didn't belong.</li>
+      </ul>
+      <p style="margin-top:12px">A fourth agent just got launched to fix all three at the source (not by softening the tests) and commit the stress-test suite once everything passes. The whole point of building a simulation harness was to catch this kind of thing before a real runner did — and it's already paying off.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🚀</div>
+    <div class="body">
+      <b>Three more agents just got to work.</b>
+      <p style="margin-top:8px">Now that the four big fixes from Wave B landed, I sent three more agents off in parallel.</p>
+      <p style="margin-top:10px"><b>Agent one</b> is stress-testing your coach. It's making up seven different runners — one three days after a half-marathon, one deep in a build block, one a week out from a race, one returning from injury, and so on — and proving the plan the coach generates for each one actually makes sense. No same-day double-quality sessions, no random long-run jumps, no quality work inside a recovery window. If anything's still off in the engine, this is what surfaces it.</p>
+      <p style="margin-top:10px"><b>Agent two</b> is independently re-auditing every page and every coach method, double-checking that Wave B actually closed what it claimed. It also sweeps the corners Wave B didn't touch (/races, /log, individual run pages) for any fake numbers hiding there.</p>
+      <p style="margin-top:10px"><b>Agent three</b> is the one you just asked about. It's wiring the adaptive layer end-to-end. Right now the coach decides what you should do today, but it doesn't <i>react</i> when you skip a run, when your check-in says you slept four hours, or when you finish a race. After this lands, today's card will show "▾ COACH ADJUSTED" with a one-line reason whenever the plan moved. The race recap will be a real verdict from the coach, not a placeholder. And there'll be a "Plan adapted in the last 7 days" card showing every time the coach changed its mind and why.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">just now</div>
+    <div class="glyph">🎯</div>
+    <div class="body">
+      <b>Wave B is done — here's what actually changed.</b>
+      <p style="margin-top:8px">Four agents shipped four fixes between them. Walking through each one:</p>
+
+      <p style="margin-top:14px"><b>1. Your citations were pointing at thin air.</b><br>Every recommendation the coach gives is supposed to point at a research doc explaining where the rule comes from — that's the breadcrumb that proves it's not making things up. About thirty of those breadcrumbs were pointing at files that didn't exist anymore (because docs got renamed) or at section headings that had been rewritten. They all point at real things now. Five other citations were decorative — pointing at research the coach method didn't actually use — those got stripped.</p>
+
+      <p style="margin-top:14px"><b>2. Your /profile page was almost entirely made up.</b><br>Your name, your age, your VDOT, your max heart rate, your heart-rate zones, your goals, your shoe rotation, your personal records — none of it was actually yours. The page was pulling from placeholder helpers returning a fixed person named "David Nitzschke" with a VDOT of 49.2 and a 187 max heart rate. Now: your VDOT comes from your actual races, your HR zones come from your age or a measured value when you've entered one, your goals come from a real database, and the bits that need data you haven't entered yet honestly say "no data yet" or prompt you to add it.</p>
+
+      <p style="margin-top:14px"><b>3. /overview and /training had pretend tiles scattered everywhere.</b><br>Twenty-two tiles across those two pages were rendering hardcoded fallback values whenever the coach couldn't compute the real one. The worst offender was "NEXT 4 WEEKS" — it was showing the same recovery → base → base → base sequence no matter where you actually were in your training. That sequence now reads what phase you're really in, every week. Same for pace zones, the weekly miles strip, the year heatmap, the highlights bar, the personal-records strip. Where there's genuinely no data yet (like the "plan adapted" card before today), it goes blank instead of inventing numbers.</p>
+
+      <p style="margin-top:14px"><b>4. /health was showing fake HRV, sleep, and resting heart rate.</b><br>Fourteen metrics on the health page need HealthKit data we haven't wired yet. They were rendering placeholder numbers that looked real. They now say "awaiting HealthKit" (or "awaiting labs" for ferritin, "awaiting Strava HR" for the heart-rate zone breakdown) so you know what's real and what's pending. The research citation under each card stays visible — the doctrine is honest about itself even when the data isn't there.</p>
+
+      <div class="meta" style="margin-top:14px">All four agents ran clean — no broken tests, no broken types, no regressions. Ninety-seven tests still pass, same as before.</div>
+    </div>
+  </div>
+
+  <div class="entry fix">
+    <div class="time">verified</div>
+    <div class="glyph">🔬</div>
+    <div class="body">
+      <b>I checked the "NEXT 4 WEEKS" fix directly.</b>
+      <p style="margin-top:8px">Earlier you complained that the next-four-weeks strip showed a flat, monotone "easy / easy / easy / easy" no matter what. That was because someone had hardcoded the sequence as four fixed labels: recovery, base, base, base — every time, every runner, regardless of where you actually were.</p>
+      <p style="margin-top:10px">That hardcoded sequence is gone. Each of the four weeks now reads what phase you're really in: base, build, peak, taper, or race week. The label tells you which one ("Build · week 2"), and the small one-line reason underneath ("Add volume + quality. Absorb hard work.") matches. The colored pins at the top of the card now reflect the actual mix of weeks ahead — for example, "BASE · 7D + BUILD · 14D + PEAK · 7D" if you're transitioning — instead of the fixed "RECOVERY 2/2 + BASE · 21D" that used to show no matter what.</p>
+      <p style="margin-top:10px">If you really are in a four-week stretch of base mileage, the strip will still show four base weeks. But that's because that's where you are — not because the page is faking it.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🚀</div>
+    <div class="body">
+      <b>Wave B got launched — four agents, one to each problem area.</b>
+      <p style="margin-top:8px">After the audit catalogued the gaps, I split the work four ways so the fixes could ship in parallel:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li>One agent on <b>citations</b>: fixing the thirty-or-so pointers to research docs that broke when files got renamed or sections rewritten.</li>
+        <li>One agent on <b>/profile</b>: killing the placeholder identity, VDOT, heart rate, goals, prefs, shoes, and PRs — wiring each to your real data.</li>
+        <li>One agent on <b>/overview and /training</b>: replacing all the hardcoded tiles with real coach calls or honest empty states.</li>
+        <li>One agent on <b>/health</b>: flipping the fourteen HealthKit-dependent metrics from fake-looking numbers to "awaiting HealthKit" cards.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">✅</div>
+    <div class="body">
+      <b>The audit finished — 62 separate places where the app was showing you something that wasn't real.</b>
+      <p style="margin-top:8px">The auditor swept every page, every API route, every coach method, and every research citation. Here's how those 62 gaps broke down:</p>
+      <ul style="margin-top:10px; padding-left:22px; line-height:1.7">
+        <li><b>38 tiles rendering pretend numbers</b> — the coach could compute the real value, but the page was falling back to a hardcoded one whenever the coach returned null. "VDOT 49.2" appeared in five different files alone.</li>
+        <li><b>3 coach methods inventing data when your state was sparse</b> — the 14-week trajectory was faking past weeks you hadn't actually run; the proof-sessions card was pretending you had a race 90 days out when you didn't; plan integrity was hardcoded at "12 out of 12 checks pass."</li>
+        <li><b>About 30 broken citation pointers</b> — research docs that had been renamed but the breadcrumbs still pointed at the old path.</li>
+        <li><b>Pages skipping the coach entirely</b> — /profile and /log didn't talk to the coach at all. /overview, /training, /races, and /health were mixed: they called the coach for some things and rendered fake numbers alongside.</li>
+        <li><b>14 HealthKit-dependent metrics rendering fake data</b> — HRV, sleep, resting heart rate, VO2max, body temp, body mass, respiratory rate, illness composite, submax HR drift, cycle phase, ferritin, plus the daily HR-zone breakdown, sleep stages, and soreness. Until HealthKit is wired, these need to be honest about what they don't have.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🔍</div>
+    <div class="body">
+      <b>The biggest single trust problem: /profile was entirely fake.</b>
+      <p style="margin-top:8px">The profile page renders your identity, your VDOT, your heart-rate zones, your goals, your prefs, your tier, your shoes. Every single number on that page came from a placeholder helper returning a fixed person — "David Nitzschke, 38, VDOT 49.2, max HR 187, 18 lifetime half-marathons." None of it was yours. Marked as the highest-priority fix for Wave B.</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🔍</div>
+    <div class="body">
+      <b>"VDOT 49.2" was hardcoded in five different files.</b>
+      <p style="margin-top:8px">The coach can compute your real VDOT from your race times — that part worked. But five different pages were falling back to a fixed "49.2" string whenever the coach returned a null. So even though the math existed, the value you saw on screen often wasn't yours. Wave B3 routed all five through the real coach call.</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🔍</div>
+    <div class="body">
+      <b>About thirty research-citation pointers were broken.</b>
+      <p style="margin-top:8px">Under every coach decision there's a breadcrumb saying which research doc the rule came from — that's how you can trust the coach isn't making things up. About thirty of those breadcrumbs pointed at files that had been renamed (e.g., the recovery doc was renamed but every citation still pointed at the old filename). The logic still worked; the breadcrumb just led nowhere. Wave B1 swept all of them.</p>
+    </div>
+  </div>
+
+  <div class="entry finding">
+    <div class="time">earlier</div>
+    <div class="glyph">🔍</div>
+    <div class="body">
+      <b>Many citations also pointed at section headings that no longer existed.</b>
+      <p style="margin-top:8px">Even when the file was right, the cited section heading often wasn't. For example, three different coach methods cited "§13.1 Single-session spike" — but the actual heading in the doc had been rewritten to "Training Load and Injury Risk › The 10% rule — reconsidered." The concept was still in the doc, just not under that name. Same problem for "Polarized 80/20," "Plan skeletons," "Pace zones," and others. Wave B1 repointed each to the literal heading that exists today.</p>
+    </div>
+  </div>
+
+  <div class="entry wave-done">
+    <div class="time">earlier</div>
+    <div class="glyph">🛡</div>
+    <div class="body">
+      <b>Earlier this session I found a bug where the coach told you to rest forever.</b>
+      <p style="margin-top:8px">If you had two races stacked within fourteen days of each other, the coach would generate a normal plan for the first fortnight and then prescribe "rest" for every single day after that — for months. Three different bugs were compounding to cause it. All three fixed. The plan now generates a real workout every day across the next four months, no matter what your race calendar looks like, with a fourteen-assertion test pinned in place so it can't regress.</p>
+      <div class="meta">This is what unblocks everything else — the engine itself is reliable now.</div>
+    </div>
+  </div>
+
+  <div class="entry wave-start">
+    <div class="time">earlier</div>
+    <div class="glyph">🚀</div>
+    <div class="body">
+      <b>The audit got kicked off.</b>
+      <p style="margin-top:8px">First step of the master plan: send an auditor agent through the entire app, reading every page, every API route, every coach method, and every research citation, and build a structured catalog of every fake number, broken pointer, and coach-bypassed page it can find. Expected to take around fifteen minutes.</p>
+    </div>
+  </div>
+
+  <div class="entry note">
+    <div class="time">earlier</div>
+    <div class="glyph">📜</div>
+    <div class="body">
+      <b>The contract that runs everything from here.</b>
+      <p style="margin-top:8px">Every number you see on screen has to be one of three things: computed by the coach from your real data, pulled directly from your state (your runs, your races, your check-ins), or honestly labeled "no data yet." No placeholder values, no fake fallbacks, no inventing things to make a page look complete.</p>
+      <p style="margin-top:10px">Anything that depends on HealthKit (which isn't wired yet) shows "awaiting HealthKit" instead of pretending. The base coach and plan have to work end-to-end before any new data sources get added — and once HealthKit goes in, things should only get <i>better</i>, never finally start working.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  This page reloads itself every 4 seconds. Leave it open. Latest entries appear at the top. Source: <code>docs/audit-live.html</code> · written by Claude as audits + fixes complete.
+</div>
+
+<script>
+  // Preserve scroll position across reloads.
+  if (sessionStorage.getItem('rcnAuditScroll')) {
+    window.scrollTo(0, parseInt(sessionStorage.getItem('rcnAuditScroll')));
+  }
+  setInterval(() => {
+    sessionStorage.setItem('rcnAuditScroll', String(window.scrollY));
+    location.reload();
+  }, 4000);
+</script>
+
+</body>
+</html>

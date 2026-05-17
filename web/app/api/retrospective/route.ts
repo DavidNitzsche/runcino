@@ -9,10 +9,10 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { computeRetrospective, type ActualRace } from '../../../lib/retrospective';
-import type { RuncinoPlan } from '../../../lib/types';
+import type { FaffPlan } from '../../../lib/types';
 
 const RETROSPECTIVE_SYSTEM_PROMPT = `
-You are Runcino's race retrospective writer. You receive a computed retrospective object — phase deltas, calibration coefficients, HR drift, weather log, and deterministic takeaways — and you write a 3-5 paragraph race report in the runner's voice.
+You are faff.run's race retrospective writer. You receive a computed retrospective object — phase deltas, calibration coefficients, HR drift, weather log, and deterministic takeaways — and you write a 3-5 paragraph race report in the runner's voice.
 
 # Hard rules
 
@@ -30,7 +30,7 @@ The narrative should be 4-6 sentences, paragraph form, no headers or bullets.
 `;
 
 export async function POST(req: Request) {
-  let body: { plan: RuncinoPlan; actual: ActualRace };
+  let body: { plan: FaffPlan; actual: ActualRace };
   try {
     body = await req.json();
   } catch {

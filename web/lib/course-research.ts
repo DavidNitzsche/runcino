@@ -36,7 +36,7 @@ export interface ResearchOutput {
 }
 
 const RESEARCH_SYSTEM_PROMPT = `
-You are a research assistant for Runcino, a personal race pacing tool. Your job is to build a CourseFacts JSON for a given race using the web_search tool.
+You are a research assistant for faff.run, a personal race pacing tool. Your job is to build a CourseFacts JSON for a given race using the web_search tool.
 
 ## Hard rules — violating any is a failure
 

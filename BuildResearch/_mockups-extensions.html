@@ -1,0 +1,357 @@
+<style>
+  :root{
+    --l0:#10131A;--l1:#141820;--l2:#1A212D;--l3:#1D2736;--l4:#21303F;--l5:#2b3a4e;
+    --t0:#F6F7F8;--t1:rgba(246,247,248,.72);--t2:rgba(246,247,248,.48);--t3:rgba(246,247,248,.32);
+    --corporate:#008FEC;--warning:#FC4D54;--success:#3EBD41;--caution:#F0DF47;--attention:#F3AD3B;--xp:#9013FE;--aqua:#27E087;
+    --f-display:"Oswald",sans-serif;--f-body:"Jost",sans-serif;--f-data:"JetBrains Mono",monospace;
+  }
+  .mockup-section{padding:24px;font-family:var(--f-body);color:var(--t0);}
+  .mockup-h{font:600 11px/1 var(--f-data);letter-spacing:.12em;color:var(--t2);text-transform:uppercase;margin-bottom:6px;}
+  .mockup-name{font:600 22px/1.1 var(--f-display);letter-spacing:.02em;text-transform:uppercase;margin-bottom:4px;}
+  .mockup-job{font:400 13px/1.4 var(--f-body);color:var(--t1);margin-bottom:18px;}
+  .mockup-frame{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;padding:32px;background:linear-gradient(180deg,#0a0c12 0%,#181d26 100%);border-radius:18px;}
+  .mockup-notes{font:400 12px/1.5 var(--f-body);color:var(--t1);margin-top:12px;padding:10px 14px;background:rgba(255,255,255,.03);border-left:2px solid var(--corporate);border-radius:6px;}
+  .mockup-notes b{color:var(--t0);}
+  .caption{font:600 10px/1 var(--f-data);letter-spacing:.14em;color:var(--t2);text-transform:uppercase;margin-bottom:10px;text-align:center;}
+
+  /* ---------- Lock Screen frame ---------- */
+  .lockscreen{width:300px;height:600px;border-radius:42px;background:linear-gradient(160deg,#1a1f2e 0%,#0a0d14 60%,#000 100%);position:relative;padding:18px 14px;box-shadow:0 0 0 8px #0a0c12,0 0 0 9px #2a2f3a,0 30px 60px rgba(0,0,0,.6);overflow:hidden;}
+  .lockscreen::before{content:"";position:absolute;top:14px;left:50%;transform:translateX(-50%);width:90px;height:26px;background:#000;border-radius:14px;z-index:5;}
+  .ls-statusbar{display:flex;justify-content:space-between;font:600 11px/1 var(--f-data);color:#fff;padding:0 18px;margin-top:2px;opacity:.85;position:relative;z-index:6;}
+  .ls-time{text-align:center;margin-top:54px;font:300 76px/1 var(--f-display);color:#fff;letter-spacing:-.02em;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+  .ls-date{text-align:center;font:500 13px/1 var(--f-body);color:rgba(255,255,255,.85);margin-top:6px;letter-spacing:.02em;}
+  .ls-stack{margin-top:32px;display:flex;flex-direction:column;gap:8px;}
+
+  /* Live Activity card on lock screen */
+  .la-card{background:linear-gradient(135deg,rgba(0,143,236,.22) 0%,rgba(20,24,32,.92) 65%);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:22px;padding:14px;border:.5px solid rgba(255,255,255,.08);box-shadow:0 4px 14px rgba(0,0,0,.4);}
+  .la-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .la-brand{display:flex;align-items:center;gap:8px;}
+  .la-logo{width:20px;height:20px;border-radius:6px;background:var(--corporate);color:#fff;font:700 12px/20px var(--f-display);text-align:center;}
+  .la-label{font:600 10px/1 var(--f-data);letter-spacing:.14em;color:rgba(255,255,255,.78);text-transform:uppercase;}
+  .pulse-dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 0 rgba(62,189,65,.7);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(62,189,65,.6);}70%{box-shadow:0 0 0 6px rgba(62,189,65,0);}100%{box-shadow:0 0 0 0 rgba(62,189,65,0);}}
+  .la-pace-tag{font:600 9px/1 var(--f-data);letter-spacing:.1em;color:var(--t2);}
+  .la-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;}
+  .la-distance{font:300 38px/1 var(--f-display);color:#fff;letter-spacing:-.01em;}
+  .la-distance .u{font:500 14px/1 var(--f-body);color:var(--t1);margin-left:4px;}
+  .la-pace{font:600 14px/1 var(--f-data);color:var(--corporate);}
+  .la-bottom{display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:.5px solid rgba(255,255,255,.08);}
+  .la-elapsed{font:500 13px/1 var(--f-data);color:rgba(255,255,255,.92);}
+  .la-next{font:400 11px/1.2 var(--f-body);color:var(--t1);}
+  .la-next b{color:var(--caution);font-weight:600;}
+
+  /* Faded notification stacks */
+  .notif{background:rgba(40,42,52,.55);backdrop-filter:blur(20px);border-radius:18px;padding:10px 14px;display:flex;gap:10px;align-items:center;opacity:.55;}
+  .notif-icon{width:28px;height:28px;border-radius:7px;flex-shrink:0;}
+  .notif-text{flex:1;min-width:0;}
+  .notif-title{font:600 11px/1.2 var(--f-body);color:#fff;}
+  .notif-body{font:400 10px/1.3 var(--f-body);color:rgba(255,255,255,.7);margin-top:2px;}
+  .notif-time{font:500 9px/1 var(--f-data);color:rgba(255,255,255,.55);}
+
+  /* ---------- Dynamic Island states ---------- */
+  .di-wrap{display:flex;flex-direction:column;gap:24px;align-items:center;}
+  .di-phone-top{width:300px;height:90px;background:linear-gradient(180deg,#161a22 0%,#0a0c12 100%);border-radius:42px 42px 16px 16px;position:relative;padding-top:14px;display:flex;justify-content:center;box-shadow:0 0 0 8px #0a0c12,0 0 0 9px #2a2f3a;}
+  .di-statusbar{position:absolute;top:18px;left:0;right:0;display:flex;justify-content:space-between;padding:0 26px;font:600 11px/1 var(--f-data);color:#fff;opacity:.85;}
+  .di-pill-compact{background:#000;border-radius:32px;padding:8px 14px 8px 14px;display:flex;align-items:center;gap:14px;height:34px;min-width:200px;}
+  .di-leading{display:flex;align-items:center;gap:6px;}
+  .di-logo-mini{width:18px;height:18px;border-radius:5px;background:var(--corporate);color:#fff;font:700 10px/18px var(--f-display);text-align:center;}
+  .di-pace-mini{font:600 13px/1 var(--f-data);color:var(--corporate);}
+  .di-trailing{font:600 13px/1 var(--f-data);color:#fff;margin-left:auto;}
+
+  .di-phone-expanded{width:300px;height:240px;background:linear-gradient(180deg,#161a22 0%,#0a0c12 100%);border-radius:42px 42px 16px 16px;position:relative;padding-top:14px;display:flex;justify-content:center;box-shadow:0 0 0 8px #0a0c12,0 0 0 9px #2a2f3a;}
+  .di-card{background:#000;border-radius:32px;padding:14px 16px;width:262px;margin-top:6px;}
+  .di-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .di-card-brand{display:flex;align-items:center;gap:6px;font:600 10px/1 var(--f-data);letter-spacing:.12em;color:var(--t1);text-transform:uppercase;}
+  .di-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;}
+  .di-stat .v{font:300 22px/1 var(--f-display);color:#fff;}
+  .di-stat .v.blue{color:var(--corporate);}
+  .di-stat .l{font:600 8px/1 var(--f-data);letter-spacing:.12em;color:var(--t2);text-transform:uppercase;margin-top:4px;}
+  .di-end{width:100%;background:rgba(252,77,84,.18);color:var(--warning);border:.5px solid rgba(252,77,84,.4);border-radius:10px;padding:8px;font:600 11px/1 var(--f-body);letter-spacing:.04em;text-align:center;text-transform:uppercase;}
+
+  /* ---------- Widgets ---------- */
+  .home-bg{background:radial-gradient(ellipse at top,#1a2030 0%,#0a0c12 70%);padding:36px;border-radius:24px;display:flex;flex-direction:column;gap:18px;align-items:center;width:100%;max-width:760px;}
+  .icon-grid{display:grid;grid-template-columns:repeat(6,46px);gap:14px;opacity:.45;}
+  .app-icon{width:46px;height:46px;border-radius:11px;}
+  .a1{background:linear-gradient(135deg,#3a8eef,#1f5fbe);}
+  .a2{background:linear-gradient(135deg,#2ec27e,#1a7a4e);}
+  .a3{background:linear-gradient(135deg,#fb923c,#c2410c);}
+  .a4{background:linear-gradient(135deg,#a855f7,#6b21a8);}
+  .a5{background:linear-gradient(135deg,#ec4899,#9d174d);}
+  .a6{background:linear-gradient(135deg,#fbbf24,#92400e);}
+
+  .widget-row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
+  .w-col{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .w-label{font:600 10px/1 var(--f-data);letter-spacing:.14em;color:var(--t2);text-transform:uppercase;}
+  .widget{background:linear-gradient(160deg,#1A212D 0%,#10131A 100%);border-radius:22px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.4),inset 0 0 0 .5px rgba(255,255,255,.04);position:relative;overflow:hidden;}
+  .widget::before{content:"";position:absolute;top:0;right:0;width:80px;height:80px;background:radial-gradient(circle,rgba(0,143,236,.12) 0%,transparent 70%);}
+  .w-small{width:155px;height:155px;}
+  .w-medium{width:338px;height:155px;}
+  .w-large{width:338px;height:338px;}
+
+  .w-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;position:relative;z-index:1;}
+  .w-brand{display:flex;align-items:center;gap:6px;font:600 9px/1 var(--f-data);letter-spacing:.12em;color:var(--t2);text-transform:uppercase;}
+  .w-brand .lg{width:14px;height:14px;border-radius:4px;background:var(--corporate);color:#fff;font:700 9px/14px var(--f-display);text-align:center;}
+
+  /* Small widget — workout */
+  .ws-tag{font:600 10px/1 var(--f-data);letter-spacing:.14em;color:var(--corporate);text-transform:uppercase;}
+  .ws-title{font:300 26px/1 var(--f-display);color:#fff;margin:8px 0 4px;letter-spacing:-.01em;}
+  .ws-meta{font:500 11px/1.3 var(--f-body);color:var(--t1);}
+  .ws-foot{position:absolute;bottom:14px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:center;font:600 9px/1 var(--f-data);color:var(--t2);text-transform:uppercase;letter-spacing:.1em;}
+
+  /* Small widget — recovery */
+  .ws-rec-num{font:300 56px/1 var(--f-display);color:var(--success);text-align:center;margin-top:20px;}
+  .ws-rec-lbl{font:600 10px/1 var(--f-data);letter-spacing:.18em;color:var(--success);text-transform:uppercase;text-align:center;margin-top:6px;}
+  .ws-rec-tier{font:500 11px/1.2 var(--f-body);color:var(--t1);text-align:center;margin-top:10px;}
+
+  /* Medium widget — recovery + race */
+  .wm-split{display:grid;grid-template-columns:1fr .5px 1fr;gap:14px;height:100%;align-items:center;}
+  .wm-divider{background:rgba(255,255,255,.08);height:80%;}
+  .wm-side{display:flex;flex-direction:column;gap:4px;padding:6px 4px;}
+  .wm-side .label{font:600 9px/1 var(--f-data);letter-spacing:.14em;color:var(--t2);text-transform:uppercase;}
+  .wm-side .val{font:300 38px/1 var(--f-display);color:#fff;}
+  .wm-side .val.green{color:var(--success);}
+  .wm-side .sub{font:500 11px/1.2 var(--f-body);color:var(--t1);}
+
+  /* Large widget — quadrants */
+  .wl-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:rgba(255,255,255,.06);height:calc(100% - 22px);border-radius:10px;overflow:hidden;}
+  .wl-q{background:#10131A;padding:12px;display:flex;flex-direction:column;gap:4px;}
+  .wl-q .lab{font:600 8px/1 var(--f-data);letter-spacing:.14em;color:var(--t2);text-transform:uppercase;}
+  .wl-q .big{font:300 26px/1 var(--f-display);color:#fff;}
+  .wl-q .big.blue{color:var(--corporate);}
+  .wl-q .big.green{color:var(--success);}
+  .wl-q .sm{font:500 10px/1.3 var(--f-body);color:var(--t1);}
+  .wl-bar{display:flex;gap:3px;margin-top:6px;align-items:flex-end;height:30px;}
+  .wl-bar i{flex:1;background:var(--corporate);border-radius:1px;opacity:.85;}
+  .wl-bar i.rest{background:var(--t3);height:6px!important;opacity:.5;}
+  .wl-bar i.today{background:var(--caution);box-shadow:0 0 0 1px rgba(240,223,71,.3);}
+</style>
+
+<!-- ============================================================ -->
+<!-- 1. LIVE ACTIVITY DURING RUN                                   -->
+<!-- ============================================================ -->
+<div class="mockup-section" id="mockup-live-activity-during-run">
+  <div class="mockup-h">iOS · System Surface</div>
+  <div class="mockup-name">Live Activity — During Run</div>
+  <div class="mockup-job">Pace, distance, and next interval glanceable from anywhere — Lock Screen, Dynamic Island, or AirPods.</div>
+  <div class="mockup-frame">
+
+    <!-- Lock Screen -->
+    <div>
+      <div class="caption">Lock Screen</div>
+      <div class="lockscreen">
+        <div class="ls-statusbar"><span>9:41</span><span>5G &nbsp; 87%</span></div>
+        <div class="ls-time">9:41</div>
+        <div class="ls-date">Sunday, April 21</div>
+
+        <div class="ls-stack">
+          <!-- faff.run Live Activity -->
+          <div class="la-card">
+            <div class="la-top">
+              <div class="la-brand">
+                <div class="la-logo">R</div>
+                <span class="la-label">Active Run</span>
+                <span class="pulse-dot"></span>
+              </div>
+              <span class="la-pace-tag">7:42 / MI</span>
+            </div>
+            <div class="la-row">
+              <div class="la-distance">3.21<span class="u">mi</span></div>
+              <div class="la-pace">21:34</div>
+            </div>
+            <div class="la-bottom">
+              <span class="la-elapsed">HR 152 · Z2</span>
+              <span class="la-next">Next: <b>½ mi @ T pace</b></span>
+            </div>
+          </div>
+
+          <!-- Faded notifications -->
+          <div class="notif">
+            <div class="notif-icon" style="background:linear-gradient(135deg,#34c759,#1a7a4e);"></div>
+            <div class="notif-text">
+              <div class="notif-title">Messages</div>
+              <div class="notif-body">Sarah: Good luck out there!</div>
+            </div>
+            <div class="notif-time">9:18</div>
+          </div>
+          <div class="notif">
+            <div class="notif-icon" style="background:linear-gradient(135deg,#fb923c,#c2410c);"></div>
+            <div class="notif-text">
+              <div class="notif-title">Strava</div>
+              <div class="notif-body">3 new activities from people you follow</div>
+            </div>
+            <div class="notif-time">8:52</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dynamic Island states -->
+    <div class="di-wrap">
+      <div>
+        <div class="caption">Dynamic Island · Compact</div>
+        <div class="di-phone-top">
+          <div class="di-statusbar"><span>9:41</span><span>5G &nbsp; 87%</span></div>
+          <div class="di-pill-compact" style="margin-top:30px;">
+            <div class="di-leading">
+              <div class="di-logo-mini">R</div>
+              <span class="di-pace-mini">7:42</span>
+            </div>
+            <div class="di-trailing">3.21mi</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="caption">Dynamic Island · Expanded (long-press)</div>
+        <div class="di-phone-expanded">
+          <div class="di-statusbar"><span>9:41</span><span>5G &nbsp; 87%</span></div>
+          <div class="di-card" style="margin-top:30px;">
+            <div class="di-card-top">
+              <div class="di-card-brand">
+                <div class="di-logo-mini">R</div>
+                <span>faff.run · Easy Run</span>
+                <span class="pulse-dot"></span>
+              </div>
+            </div>
+            <div class="di-card-stats">
+              <div class="di-stat"><div class="v blue">7:42</div><div class="l">Pace /mi</div></div>
+              <div class="di-stat"><div class="v">3.21</div><div class="l">Miles</div></div>
+              <div class="di-stat"><div class="v">21:34</div><div class="l">Elapsed</div></div>
+            </div>
+            <div class="di-card-stats" style="grid-template-columns:1fr 1fr;margin-bottom:10px;">
+              <div class="di-stat"><div class="v" style="font-size:18px;">152 <span style="font-size:10px;color:var(--t2);font-family:var(--f-data);letter-spacing:.1em;">BPM · Z2</span></div></div>
+              <div class="di-stat" style="text-align:right;"><div class="v" style="font-size:18px;color:var(--caution);">½ mi <span style="font-size:10px;color:var(--t2);font-family:var(--f-data);letter-spacing:.1em;">NEXT · T</span></div></div>
+            </div>
+            <div class="di-end">End Run</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Live Activity stays active for the run's full duration; updates pushed via ActivityKit on every GPS sample (every 1–2s for distance/pace, every 5s for HR). The "Next" hint surfaces only during structured workouts — for free runs it's replaced with HR zone or split. Dynamic Island compact prioritizes pace (the runner's primary feedback signal) over distance.</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- 2. WIDGETS                                                    -->
+<!-- ============================================================ -->
+<div class="mockup-section" id="mockup-widgets">
+  <div class="mockup-h">iOS · System Surface</div>
+  <div class="mockup-name">Home Screen Widgets</div>
+  <div class="mockup-job">Three sizes covering glance-only check-ins (small) through full daily overview (large).</div>
+  <div class="mockup-frame">
+    <div class="home-bg">
+
+      <div class="icon-grid">
+        <div class="app-icon a1"></div><div class="app-icon a2"></div><div class="app-icon a3"></div>
+        <div class="app-icon a4"></div><div class="app-icon a5"></div><div class="app-icon a6"></div>
+      </div>
+
+      <div class="widget-row">
+
+        <!-- Small · Today's workout -->
+        <div class="w-col">
+          <div class="w-label">Small · 1×1 · Today</div>
+          <div class="widget w-small">
+            <div class="w-head">
+              <div class="w-brand"><div class="lg">R</div>faff.run</div>
+            </div>
+            <div class="ws-tag">Today · Easy</div>
+            <div class="ws-title">5 MI</div>
+            <div class="ws-meta">8:00–8:30 / mi</div>
+            <div class="ws-foot"><span>~42 min</span><span>Z2</span></div>
+          </div>
+        </div>
+
+        <!-- Small · Recovery -->
+        <div class="w-col">
+          <div class="w-label">Small · 1×1 · Recovery</div>
+          <div class="widget w-small">
+            <div class="w-head">
+              <div class="w-brand"><div class="lg">R</div>Recovery</div>
+            </div>
+            <div class="ws-rec-num">78</div>
+            <div class="ws-rec-lbl">Optimal</div>
+            <div class="ws-rec-tier">HRV 64 · RHR 48</div>
+          </div>
+        </div>
+
+        <!-- Medium · Recovery + Race -->
+        <div class="w-col">
+          <div class="w-label">Medium · 2×1 · Recovery & Race</div>
+          <div class="widget w-medium">
+            <div class="w-head">
+              <div class="w-brand"><div class="lg">R</div>faff.run</div>
+              <div style="font:600 9px/1 var(--f-data);letter-spacing:.12em;color:var(--t2);text-transform:uppercase;">Sun · Apr 21</div>
+            </div>
+            <div class="wm-split">
+              <div class="wm-side">
+                <span class="label">Recovery</span>
+                <span class="val green">78</span>
+                <span class="sub">Optimal · HRV 64</span>
+              </div>
+              <div class="wm-divider"></div>
+              <div class="wm-side">
+                <span class="label">Next Race</span>
+                <span class="val">6<span style="font-size:14px;color:var(--t1);margin-left:4px;">days</span></span>
+                <span class="sub">Big Sur Marathon</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Large · Daily overview quadrants -->
+        <div class="w-col">
+          <div class="w-label">Large · 2×2 · Mini Overview</div>
+          <div class="widget w-large">
+            <div class="w-head">
+              <div class="w-brand"><div class="lg">R</div>faff.run · Today</div>
+              <div style="font:600 9px/1 var(--f-data);letter-spacing:.12em;color:var(--t2);text-transform:uppercase;">Apr 21</div>
+            </div>
+            <div class="wl-grid">
+              <!-- Today's workout -->
+              <div class="wl-q">
+                <div class="lab">Today · Easy</div>
+                <div class="big">5 mi</div>
+                <div class="sm">8:00–8:30 / mi</div>
+                <div class="sm" style="color:var(--corporate);font:600 10px/1 var(--f-data);letter-spacing:.08em;text-transform:uppercase;margin-top:auto;">Tap → Watch</div>
+              </div>
+              <!-- Week strip -->
+              <div class="wl-q">
+                <div class="lab">Week · 28 / 42 mi</div>
+                <div class="wl-bar">
+                  <i style="height:60%;"></i>
+                  <i style="height:40%;"></i>
+                  <i class="rest"></i>
+                  <i style="height:80%;"></i>
+                  <i style="height:30%;"></i>
+                  <i class="today" style="height:55%;"></i>
+                  <i style="height:95%;opacity:.3;"></i>
+                </div>
+                <div class="sm" style="margin-top:auto;">M T W T F <b style="color:var(--caution);">S</b> S</div>
+                <div class="sm" style="font-size:9px;color:var(--t2);">14 mi long run Sat</div>
+              </div>
+              <!-- Recovery -->
+              <div class="wl-q">
+                <div class="lab">Recovery</div>
+                <div class="big green">78</div>
+                <div class="sm">Optimal · HRV 64</div>
+                <div class="sm" style="font-size:10px;color:var(--t2);margin-top:auto;">RHR 48 · Sleep 7h 42m</div>
+              </div>
+              <!-- Race countdown -->
+              <div class="wl-q">
+                <div class="lab">Goal Race</div>
+                <div class="big blue">6<span style="font-size:13px;color:var(--t1);margin-left:4px;">days</span></div>
+                <div class="sm">Big Sur Marathon</div>
+                <div class="sm" style="font-size:10px;color:var(--t2);margin-top:auto;">Goal 3:15 · Taper wk</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Widgets refresh on WidgetKit's standard timeline (≈hourly) plus on app reload after a sync. Tap targets deep-link: Today widget → /today, Recovery → /health, Race → /races/[id]. The "Tap → Watch" affordance on the Large widget triggers the workout transfer when the watch is paired and reachable.</div>
+</div>

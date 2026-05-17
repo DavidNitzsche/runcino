@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0D0F12;
+    --l1: #13161B;
+    --l2: #191C23;
+    --l4: rgba(244,246,248,.10);
+    --t0: #F4F6F8;
+    --t1: rgba(244,246,248,.80);
+    --t2: rgba(244,246,248,.50);
+    --t3: rgba(244,246,248,.30);
+    --good: #3EBD41;
+    --att: #F3AD38;
+    --race: #E85D26;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--t0);
+    font-family: 'Inter', sans-serif;
+    padding: 0;
+  }
+
+  .page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 48px 32px 64px;
+  }
+
+  /* ══════════════════════════════════
+     COACH SECTION — typographic, no card
+  ══════════════════════════════════ */
+  .coach-section {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 48px;
+    padding: 40px 0 32px;
+  }
+
+  .coach-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .coach-label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 6px rgba(62,189,65,.7);
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .55; transform: scale(.82); }
+  }
+
+  .coach-label-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+
+  .coach-brief {
+    font-family: 'Inter', sans-serif;
+    font-size: 22px;
+    line-height: 1.6;
+    color: var(--t1);
+    max-width: 680px;
+    font-weight: 300;
+  }
+  .coach-brief strong {
+    color: var(--t0);
+    font-weight: 500;
+  }
+
+  /* Coach right — readiness summary */
+  .coach-right {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    padding-top: 2px;
+  }
+
+  .ready-badge {
+    background: rgba(62,189,65,.12);
+    border: 1px solid rgba(62,189,65,.28);
+    color: var(--good);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    padding: 3px 9px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    align-self: flex-end;
+  }
+
+  .coach-score-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    line-height: 1;
+  }
+
+  .coach-score {
+    font-family: 'Oswald', sans-serif;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--good);
+    line-height: 1;
+  }
+
+  .coach-score-denom {
+    font-family: 'Oswald', sans-serif;
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--t3);
+  }
+
+  .coach-readiness-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+    align-self: flex-end;
+  }
+
+  /* Mini trend rows in coach right */
+  .coach-trends {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 4px;
+    align-items: stretch;
+    min-width: 200px;
+  }
+
+  .trend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .trend-row-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--t3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    flex: 1;
+    white-space: nowrap;
+  }
+
+  .trend-row-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 600;
+    width: 38px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .trend-row-bar-wrap {
+    width: 60px;
+    flex-shrink: 0;
+    height: 3px;
+    background: rgba(244,246,248,.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .trend-row-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  /* ══════════════════════════════════
+     HERO CARD
+  ══════════════════════════════════ */
+  .hero-card {
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 14px;
+    overflow: hidden;
+    min-height: 420px;
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 65% 35%;
+    min-height: 420px;
+  }
+
+  /* ── Left column ── */
+  .hero-left {
+    padding: 40px 48px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(244,246,248,.06);
+  }
+
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    color: var(--t3);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .hero-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 120px;
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: -1px;
+    color: var(--t0);
+  }
+
+  .hero-coaching-note {
+    font-family: 'Inter', sans-serif;
+    font-style: italic;
+    font-size: 15px;
+    color: var(--t2);
+    line-height: 1.65;
+    margin-top: 20px;
+    max-width: 440px;
+  }
+
+  /* Stat pills row */
+  .hero-stats {
+    display: flex;
+    gap: 8px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+
+  .stat-pill {
+    border: 1px solid rgba(244,246,248,.10);
+    border-radius: 8px;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-pill-val {
+    font-family: 'Oswald', sans-serif;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--t0);
+    line-height: 1;
+  }
+
+  .stat-pill-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+
+  /* Segment rows */
+  .hero-segments {
+    border: 1px solid rgba(244,246,248,.10);
+    border-radius: 10px;
+    padding: 0 20px;
+    margin-top: 20px;
+  }
+
+  .seg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(244,246,248,.06);
+    gap: 16px;
+  }
+  .seg-row:last-child { border-bottom: none; }
+
+  .seg-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .seg-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    color: var(--t2);
+    text-transform: uppercase;
+    width: 80px;
+  }
+
+  .seg-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t3);
+    width: 36px;
+  }
+
+  .seg-dist {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t2);
+    width: 44px;
+  }
+
+  .seg-note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--t3);
+  }
+  .seg-note.green { color: var(--good); }
+
+  /* Buttons */
+  .hero-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .btn-primary {
+    background: var(--good);
+    color: #0D0F12;
+    font-family: 'Oswald', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    padding: 10px 22px;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--t2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    padding: 10px 18px;
+    border-radius: 7px;
+    border: 1px solid rgba(244,246,248,.12);
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  /* ── Right column ── */
+  .hero-right {
+    padding: 40px 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* Readiness ring */
+  .readiness-ring-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ring-svg-wrap {
+    position: relative;
+  }
+  .ring-svg-wrap svg {
+    transform: rotate(-90deg);
+  }
+  .ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .ring-score {
+    font-family: 'Oswald', sans-serif;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--t0);
+    line-height: 1;
+  }
+  .ring-denom {
+    font-family: 'Oswald', sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--t3);
+    line-height: 1;
+  }
+
+  .ring-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--good);
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  /* Right trend bars */
+  .hero-trends {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .hero-trend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hero-trend-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--t3);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    flex: 1;
+  }
+
+  .hero-trend-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 600;
+    width: 40px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .hero-trend-bar-wrap {
+    width: 72px;
+    flex-shrink: 0;
+    height: 3px;
+    background: rgba(244,246,248,.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .hero-trend-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  /* Check-in compact */
+  .hero-checkin {
+    border-top: 1px solid rgba(244,246,248,.06);
+    padding-top: 16px;
+  }
+
+  .checkin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .checkin-header-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+
+  .checkin-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .checkin-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .checkin-item-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    width: 58px;
+    flex-shrink: 0;
+  }
+
+  .dots-row {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(244,246,248,.10);
+    border: 1px solid rgba(244,246,248,.06);
+  }
+  .dot.amber { background: var(--att); border-color: var(--att); }
+
+  .checkin-log-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t3);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* ══════════════════════════════════
+     WEEK STRIP
+  ══════════════════════════════════ */
+  .week-wrap {
+    margin-top: 10px;
+  }
+
+  .week-header {
+    background: var(--l2);
+    border: 1px solid rgba(244,246,248,.08);
+    border-radius: 10px 10px 0 0;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .week-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .week-phase {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    color: var(--t0);
+    text-transform: uppercase;
+  }
+
+  .week-prog-bar {
+    width: 80px;
+    height: 4px;
+    background: rgba(244,246,248,.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .week-prog-fill {
+    height: 100%;
+    width: 40%;
+    background: var(--good);
+    border-radius: 2px;
+  }
+
+  .week-prog-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+  }
+
+  .week-header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .week-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+  }
+  .week-meta .over { color: var(--att); font-weight: 600; }
+
+  .week-view-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--t3);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .week-view-link:hover { color: var(--t2); }
+
+  .week-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: var(--l1);
+    border: 1px solid rgba(244,246,248,.08);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+  }
+
+  .day-col {
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    cursor: default;
+  }
+  .day-col + .day-col::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 12px; bottom: 12px;
+    width: 1px;
+    background: rgba(244,246,248,.05);
+  }
+  .day-col.today { background: rgba(62,189,65,.04); }
+
+  .day-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--t3);
+    text-transform: uppercase;
+  }
+  .day-col.today .day-name { color: var(--good); }
+
+  .day-date {
+    font-family: 'Oswald', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--t2);
+    line-height: 1;
+  }
+  .day-col.today .day-date { color: var(--t0); }
+  .day-col.done .day-date { color: var(--t3); }
+
+  .day-type {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--t2);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    line-height: 1.4;
+  }
+  .day-col.today .day-type { color: var(--good); }
+
+  .day-dist {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--t1);
+    margin-top: 2px;
+  }
+  .day-col.done .day-dist { color: var(--t3); }
+
+  .done-check {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(62,189,65,.15);
+    border: 1px solid rgba(62,189,65,.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+  }
+  .done-check svg { width: 8px; height: 8px; }
+
+  .today-badge {
+    background: var(--good);
+    color: #0D0F12;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    width: fit-content;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ══════════════════════════════════
+       COACH SECTION — no card border
+  ══════════════════════════════════ -->
+  <div class="coach-section">
+
+    <!-- Left: briefing -->
+    <div class="coach-left">
+      <div class="coach-label-row">
+        <div class="pulse-dot"></div>
+        <div class="coach-label-text">COACH · THU MAY 15 · BASE WEEK 3</div>
+      </div>
+      <p class="coach-brief">Load is in the sweet spot — <strong>body is absorbing training well.</strong> 5.5 easy miles today, conversational pace. 93 days to Americas Finest City — every easy run in this window pays forward to race day.</p>
+    </div>
+
+    <!-- Right: check-in -->
+    <div class="coach-right">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:2px;color:var(--t3);text-transform:uppercase;">CHECK-IN</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:3px 10px;border-radius:5px;background:rgba(244,246,248,.07);color:var(--t3);">LOG TODAY</span>
+      </div>
+      <div style="font-family:'Inter',sans-serif;font-size:14px;font-weight:600;color:var(--t0);margin-bottom:16px;">Check-ins steady.</div>
+      <!-- Dot rows -->
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:1.2px;width:60px;">ENERGY</span>
+          <div style="display:flex;gap:5px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:1.2px;width:60px;">SORENESS</span>
+          <div style="display:flex;gap:5px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:1.2px;width:60px;">STRESS</span>
+          <div style="display:flex;gap:5px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:#F3AD38;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:rgba(244,246,248,.12);"></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding-top:12px;border-top:1px solid var(--l4);font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--t3);">
+        <span>TAP TO LOG</span>
+        <a href="#" style="color:rgba(123,168,241,.8);text-decoration:none;">SEE HEALTH →</a>
+      </div>
+    </div>
+
+  </div><!-- /coach-section -->
+
+
+  <!-- ══════════════════════════════════
+       HERO CARD
+  ══════════════════════════════════ -->
+  <div class="hero-card">
+    <div class="hero-grid">
+
+      <!-- ── Left column ── -->
+      <div class="hero-left">
+
+        <div class="hero-eyebrow">TODAY · THU MAY 15 · BASE WK 3</div>
+
+        <div class="hero-title">EASY<br>RUN</div>
+
+        <p class="hero-coaching-note">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
+
+        <!-- Stats pills -->
+        <div class="hero-stats">
+          <div class="stat-pill">
+            <div class="stat-pill-val">5.5</div>
+            <div class="stat-pill-label">MI</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-val">9:15</div>
+            <div class="stat-pill-label">/ MI PACE</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-val">~52</div>
+            <div class="stat-pill-label">MIN EST.</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-val">≤145</div>
+            <div class="stat-pill-label">BPM CAP</div>
+          </div>
+        </div>
+
+        <!-- Segments -->
+        <div class="hero-segments">
+          <div class="seg-row">
+            <div class="seg-left">
+              <div class="seg-name">WARMUP</div>
+              <div class="seg-time">0:00</div>
+              <div class="seg-dist">0.5 mi</div>
+              <div class="seg-note">Easy jog</div>
+            </div>
+          </div>
+          <div class="seg-row">
+            <div class="seg-left">
+              <div class="seg-name" style="color:var(--good)">MAIN</div>
+              <div class="seg-time">0:05</div>
+              <div class="seg-dist">4.5 mi</div>
+              <div class="seg-note green">9:15/mi Z2</div>
+            </div>
+          </div>
+          <div class="seg-row">
+            <div class="seg-left">
+              <div class="seg-name">COOLDOWN</div>
+              <div class="seg-time">0:50</div>
+              <div class="seg-dist">0.5 mi</div>
+              <div class="seg-note">Walk</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="hero-buttons">
+          <button class="btn-primary">▶ OPEN WORKOUT</button>
+          <button class="btn-ghost">SKIP TODAY</button>
+        </div>
+
+      </div><!-- /hero-left -->
+
+      <!-- ── Right column ── -->
+      <div class="hero-right">
+
+        <!-- Readiness ring -->
+        <div class="readiness-ring-wrap">
+          <div class="ring-svg-wrap">
+            <!--
+              270° arc: r=88, circumference=2π×88≈552.9
+              270° = 75% of full circle → dasharray=552.9, dashoffset=552.9×0.25=138.2
+              Track same but full (no offset trick); use 270° clip via dasharray approach:
+              We rotate -90deg on svg, start at top.
+              For 270° arc: dasharray = circ, dashoffset = circ × (1 - 0.75) = circ × 0.25
+              Track: show 270° grey arc → same dasharray / dashoffset
+              Fill: 88/100 of the 270° span = 88% × 270° filled
+                    filled_length = 552.9 × 0.75 × 0.88 = 365.5
+                    dasharray = 552.9, dashoffset = 552.9 - 365.5 = 187.4
+            -->
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              <!-- Track: 270° arc, grey -->
+              <circle cx="100" cy="100" r="88" fill="none"
+                stroke="rgba(244,246,248,.07)"
+                stroke-width="10"
+                stroke-dasharray="552.92"
+                stroke-dashoffset="138.23"
+                stroke-linecap="round"/>
+              <!-- Fill: 88% of 270° = green -->
+              <circle cx="100" cy="100" r="88" fill="none"
+                stroke="#3EBD41"
+                stroke-width="10"
+                stroke-dasharray="552.92"
+                stroke-dashoffset="187.37"
+                stroke-linecap="round"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-score">88</div>
+              <div class="ring-denom">/100</div>
+            </div>
+          </div>
+          <div class="ring-label">READINESS · BUILDING</div>
+        </div>
+
+        <!-- Trend bars (right column) -->
+        <div class="hero-trends">
+
+          <div class="hero-trend-row">
+            <div class="hero-trend-label">Effort trend</div>
+            <div class="hero-trend-val" style="color:var(--good)">+0.25</div>
+            <div class="hero-trend-bar-wrap">
+              <div class="hero-trend-bar-fill" style="width:65%; background:var(--good)"></div>
+            </div>
+          </div>
+
+          <div class="hero-trend-row">
+            <div class="hero-trend-label">Load balance</div>
+            <div class="hero-trend-val" style="color:var(--good)">1.01</div>
+            <div class="hero-trend-bar-wrap">
+              <div class="hero-trend-bar-fill" style="width:50%; background:var(--good)"></div>
+            </div>
+          </div>
+
+          <div class="hero-trend-row">
+            <div class="hero-trend-label">Mileage trend</div>
+            <div class="hero-trend-val" style="color:var(--t3)">0.00</div>
+            <div class="hero-trend-bar-wrap">
+              <div class="hero-trend-bar-fill" style="width:50%; background:rgba(244,246,248,.20)"></div>
+            </div>
+          </div>
+
+          <div class="hero-trend-row">
+            <div class="hero-trend-label">Easy pace 70%</div>
+            <div class="hero-trend-val" style="color:var(--good)">+0.25</div>
+            <div class="hero-trend-bar-wrap">
+              <div class="hero-trend-bar-fill" style="width:60%; background:var(--good)"></div>
+            </div>
+          </div>
+
+          <div class="hero-trend-row">
+            <div class="hero-trend-label">Recent strain</div>
+            <div class="hero-trend-val" style="color:var(--att)">−0.25</div>
+            <div class="hero-trend-bar-wrap">
+              <div class="hero-trend-bar-fill" style="width:35%; background:var(--att)"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Effort ring -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:8px;">
+          <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+            <defs>
+              <linearGradient id="effort-grad" x1="0" y1="120" x2="120" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#3EBD41" stop-opacity=".4"/>
+                <stop offset="100%" stop-color="#3EBD41"/>
+              </linearGradient>
+            </defs>
+            <circle cx="60" cy="60" r="46" stroke="rgba(244,246,248,.07)" stroke-width="7"
+              stroke-dasharray="216.8 72.3" stroke-linecap="round" transform="rotate(135 60 60)"/>
+            <circle cx="60" cy="60" r="46" stroke="url(#effort-grad)" stroke-width="7"
+              stroke-dasharray="60.7 228.4" stroke-linecap="round" transform="rotate(135 60 60)"/>
+            <text x="60" y="56" text-anchor="middle" font-family="Oswald,sans-serif" font-size="18" font-weight="700" fill="#3EBD41">EASY</text>
+            <text x="60" y="71" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="7.5" fill="rgba(244,246,248,.28)" letter-spacing="1.5">ZONE 2</text>
+          </svg>
+          <div style="display:flex;align-items:center;width:110px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--t3);white-space:nowrap;">RECOVERY</span>
+            <div style="flex:1;height:2px;margin:0 6px;border-radius:2px;background:linear-gradient(to right,#3EBD41 28%,rgba(244,246,248,.08) 28%);"></div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--t3);white-space:nowrap;">MAX</span>
+          </div>
+        </div>
+
+      </div><!-- /hero-right -->
+
+    </div><!-- /hero-grid -->
+  </div><!-- /hero-card -->
+
+
+  <!-- ══════════════════════════════════
+       WEEK STRIP
+  ══════════════════════════════════ -->
+  <div class="week-wrap">
+    <div class="week-header">
+      <div class="week-header-left">
+        <div class="week-phase">THIS WEEK · BASE WEEK 3</div>
+        <div class="week-prog-bar"><div class="week-prog-fill"></div></div>
+        <div class="week-prog-label">15.3 / 38.5 MI · 40%</div>
+      </div>
+      <div class="week-header-right">
+        <div class="week-meta">Projecting <strong>39.4 MI</strong> <span class="over">+0.9 OVER PLAN</span> · 3 / 6 LOGGED</div>
+        <div class="week-view-link">VIEW FULL SCHEDULE →</div>
+      </div>
+    </div>
+
+    <div class="week-days">
+
+      <!-- MON done -->
+      <div class="day-col done">
+        <div class="day-name">Mon</div>
+        <div class="day-date">12</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">6.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <!-- TUE done -->
+      <div class="day-col done">
+        <div class="day-name">Tue</div>
+        <div class="day-date">13</div>
+        <div class="day-type">Tempo</div>
+        <div class="day-dist">7.2 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <!-- WED done -->
+      <div class="day-col done">
+        <div class="day-name">Wed</div>
+        <div class="day-date">14</div>
+        <div class="day-type">Recovery</div>
+        <div class="day-dist">4.0 mi</div>
+        <div class="done-check">
+          <svg viewBox="0 0 8 8" fill="none"><polyline points="1,4 3,6 7,2" stroke="#3EBD41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <!-- THU today -->
+      <div class="day-col today">
+        <div class="day-name">Thu</div>
+        <div class="day-date">15</div>
+        <div class="day-type">Easy Run</div>
+        <div class="day-dist">5.5 mi</div>
+        <div class="today-badge">Today</div>
+      </div>
+
+      <!-- FRI -->
+      <div class="day-col">
+        <div class="day-name">Fri</div>
+        <div class="day-date">16</div>
+        <div class="day-type">Long Run</div>
+        <div class="day-dist">10.0 mi</div>
+      </div>
+
+      <!-- SAT -->
+      <div class="day-col">
+        <div class="day-name">Sat</div>
+        <div class="day-date">17</div>
+        <div class="day-type">Strides</div>
+        <div class="day-dist">5.0 mi</div>
+      </div>
+
+      <!-- SUN -->
+      <div class="day-col">
+        <div class="day-name">Sun</div>
+        <div class="day-date">18</div>
+        <div class="day-type">Rest</div>
+        <div class="day-dist">—</div>
+      </div>
+
+    </div>
+  </div><!-- /week-wrap -->
+
+</div><!-- /page -->
+
+</body>
+</html>

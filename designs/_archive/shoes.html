@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Shoes</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* ══════════════════════════════
+   NAV BAR
+══════════════════════════════ */
+.navbar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: var(--t0);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.nav-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t1);
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.nav-link.active {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--t0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ══════════════════════════════
+   PAGE LAYOUT
+══════════════════════════════ */
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+/* ══════════════════════════════
+   PAGE HEADER
+══════════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.page-header-left {}
+
+.eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.page-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 64px;
+  line-height: 1;
+  color: var(--t0);
+  letter-spacing: 1px;
+}
+
+.btn-primary {
+  background: var(--t0);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: opacity 120ms;
+}
+
+.btn-primary:hover {
+  opacity: 0.82;
+}
+
+/* ══════════════════════════════
+   SECTION LABEL
+══════════════════════════════ */
+.section-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+/* ══════════════════════════════
+   ACTIVE SHOES GRID
+══════════════════════════════ */
+.shoes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 44px;
+}
+
+/* ══════════════════════════════
+   SHOE CARD
+══════════════════════════════ */
+.shoe-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transition: box-shadow 180ms ease;
+  position: relative;
+}
+
+.shoe-card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,.10);
+}
+
+/* Top row: identity + swatch */
+.shoe-identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.shoe-identity-text {}
+
+.shoe-brand {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.shoe-model {
+  font-family: 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--t0);
+  line-height: 1.1;
+}
+
+.shoe-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* Run type chips */
+.shoe-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--t1);
+  background: var(--divider);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+/* Mileage section */
+.mileage-section {}
+
+.mileage-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--divider);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 600ms cubic-bezier(.22,.68,0,1.2);
+}
+
+.progress-bar-fill.green  { background: var(--green); }
+.progress-bar-fill.amber  { background: var(--amber); }
+.progress-bar-fill.orange { background: var(--orange); }
+
+.mileage-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.mileage-current {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  color: var(--t0);
+  line-height: 1;
+}
+
+.mileage-cap {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t2);
+}
+
+/* Shoe notes */
+.shoe-notes {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Footer: last used + retire */
+.shoe-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.shoe-last-used {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+}
+
+.btn-retire {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t2);
+  background: transparent;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+
+.btn-retire:hover {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+/* Retire inline confirmation */
+.retire-confirm {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff8f6;
+  border: 1px solid rgba(232,93,38,.18);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: -4px;
+}
+
+.retire-confirm.visible {
+  display: flex;
+}
+
+.retire-confirm-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+  line-height: 1.5;
+}
+
+.retire-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-confirm-cancel {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t1);
+  background: transparent;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 120ms;
+}
+
+.btn-confirm-cancel:hover { color: var(--t0); }
+
+.btn-confirm-retire {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--orange);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.btn-confirm-retire:hover { opacity: 0.85; }
+
+/* Urgent state for near-cap shoe */
+.shoe-card.urgent .mileage-current {
+  color: var(--orange);
+}
+
+/* ══════════════════════════════
+   RETIRED SHOES
+══════════════════════════════ */
+.retired-section {
+  margin-top: 8px;
+}
+
+.retired-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  opacity: 0.5;
+}
+
+.retired-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.retired-brand {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.retired-model {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--t0);
+}
+
+.retired-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.retired-mileage {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  color: var(--t0);
+  line-height: 1;
+}
+
+.retired-date {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+}
+
+/* ══════════════════════════════
+   ADD SHOE MODAL
+══════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13,15,18,.48);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.modal {
+  background: var(--card);
+  border-radius: 24px;
+  padding: 36px;
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  box-shadow: 0 8px 48px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
+  transform: scale(.92) translateY(12px);
+  opacity: 0;
+  transition: transform 360ms cubic-bezier(.22,.68,0,1.2), opacity 220ms ease;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.modal-overlay.open .modal {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 36px;
+  letter-spacing: 1px;
+  color: var(--t0);
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--divider);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms;
+  flex-shrink: 0;
+}
+
+.modal-close:hover { background: rgba(13,15,18,.14); }
+
+.modal-close svg { display: block; }
+
+/* Form */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.form-field:last-child { margin-bottom: 0; }
+
+.form-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.8px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.form-input {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--t0);
+  background: var(--bg);
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 150ms;
+  width: 100%;
+}
+
+.form-input:focus {
+  border-color: var(--t0);
+  background: #fff;
+}
+
+.form-input::placeholder { color: var(--t2); }
+
+textarea.form-input {
+  resize: vertical;
+  min-height: 80px;
+  font-size: 13px;
+}
+
+/* Color picker row */
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-swatch-input {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1.5px solid var(--divider);
+  padding: 3px;
+  background: var(--bg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Run type checkboxes */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+  letter-spacing: .5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--divider);
+  transition: border-color 120ms, background 120ms;
+  user-select: none;
+}
+
+.checkbox-label:hover { border-color: rgba(13,15,18,.2); }
+
+.checkbox-label input[type="checkbox"] { display: none; }
+
+.checkbox-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--divider);
+  background: #fff;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms, border-color 120ms;
+}
+
+.checkbox-label input:checked + .checkbox-indicator {
+  background: var(--t0);
+  border-color: var(--t0);
+}
+
+.checkbox-label input:checked + .checkbox-indicator::after {
+  content: '';
+  display: block;
+  width: 7px;
+  height: 5px;
+  border-left: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+}
+
+.checkbox-label:has(input:checked) {
+  border-color: var(--t0);
+  background: rgba(13,15,18,.04);
+}
+
+/* Modal footer */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--divider);
+}
+
+.btn-ghost {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t1);
+  background: transparent;
+  border: 1.5px solid var(--divider);
+  border-radius: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+
+.btn-ghost:hover { color: var(--t0); border-color: rgba(13,15,18,.25); }
+
+/* ══════════════════════════════
+   NAV DIVIDER (subtle)
+══════════════════════════════ */
+.navbar::after {
+  content: '';
+  display: block;
+  height: 1px;
+  background: var(--divider);
+}
+
+/* ══════════════════════════════
+   URGENCY CALLOUT (Clifton)
+══════════════════════════════ */
+.urgent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--orange);
+  background: rgba(232,93,38,.08);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+.urgent-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex-shrink: 0;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ══ NAV ═══════════════════════════════════════ -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training.html">Training</a>
+      <a class="nav-link" href="races.html">Races</a>
+      <a class="nav-link" href="health.html">Health</a>
+      <a class="nav-link" href="log.html">Log</a>
+      <a class="nav-link active" href="profile.html">Profile</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar">DK</div>
+    </div>
+  </div>
+</nav>
+
+<!-- ══ PAGE ══════════════════════════════════════ -->
+<div class="page">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="eyebrow">Your Gear</div>
+      <h1 class="page-title">Shoes</h1>
+    </div>
+    <button class="btn-primary" id="openModal">+ Add Shoe</button>
+  </div>
+
+  <!-- Active shoes -->
+  <div class="section-label">Active — 4 pairs</div>
+  <div class="shoes-grid" id="shoesGrid">
+
+    <!-- Card 1: Speedgoat 5 -->
+    <div class="shoe-card">
+      <div class="shoe-identity">
+        <div class="shoe-identity-text">
+          <div class="shoe-brand">HOKA</div>
+          <div class="shoe-model">Speedgoat 5</div>
+        </div>
+        <div class="shoe-swatch" style="background: #C0392B;"></div>
+      </div>
+      <div class="shoe-chips">
+        <span class="chip">Trail</span>
+        <span class="chip">Long</span>
+      </div>
+      <div class="mileage-section">
+        <div class="mileage-label">Mileage</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill amber" style="width: 68.4%;"></div>
+        </div>
+        <div class="mileage-nums">
+          <span class="mileage-current">342</span>
+          <span class="mileage-cap">&thinsp;/ 500 mi</span>
+        </div>
+      </div>
+      <div class="shoe-notes">Primary trail shoe for long efforts</div>
+      <div class="shoe-footer">
+        <span class="shoe-last-used">Last used 2 days ago</span>
+        <button class="btn-retire" onclick="showRetireConfirm(this)">Retire</button>
+      </div>
+      <div class="retire-confirm">
+        <div class="retire-confirm-text">Retire this shoe? This will stop mileage tracking.</div>
+        <div class="retire-confirm-actions">
+          <button class="btn-confirm-cancel" onclick="hideRetireConfirm(this)">Cancel</button>
+          <button class="btn-confirm-retire" onclick="retireShoe(this)">Confirm Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: Vaporfly 3 -->
+    <div class="shoe-card">
+      <div class="shoe-identity">
+        <div class="shoe-identity-text">
+          <div class="shoe-brand">Nike</div>
+          <div class="shoe-model">Vaporfly 3</div>
+        </div>
+        <div class="shoe-swatch" style="background: #1a1a1a;"></div>
+      </div>
+      <div class="shoe-chips">
+        <span class="chip">Race</span>
+        <span class="chip">Tempo</span>
+      </div>
+      <div class="mileage-section">
+        <div class="mileage-label">Mileage</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill amber" style="width: 62.3%;"></div>
+        </div>
+        <div class="mileage-nums">
+          <span class="mileage-current">187</span>
+          <span class="mileage-cap">&thinsp;/ 300 mi</span>
+        </div>
+      </div>
+      <div class="shoe-notes">Race day only</div>
+      <div class="shoe-footer">
+        <span class="shoe-last-used">Last used 12 days ago</span>
+        <button class="btn-retire" onclick="showRetireConfirm(this)">Retire</button>
+      </div>
+      <div class="retire-confirm">
+        <div class="retire-confirm-text">Retire this shoe? This will stop mileage tracking.</div>
+        <div class="retire-confirm-actions">
+          <button class="btn-confirm-cancel" onclick="hideRetireConfirm(this)">Cancel</button>
+          <button class="btn-confirm-retire" onclick="retireShoe(this)">Confirm Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: Clifton 9 — URGENT -->
+    <div class="shoe-card urgent">
+      <div class="shoe-identity">
+        <div class="shoe-identity-text">
+          <div class="shoe-brand">Hoka</div>
+          <div class="shoe-model">Clifton 9</div>
+        </div>
+        <div class="shoe-swatch" style="background: #2563EB;"></div>
+      </div>
+      <div class="shoe-chips">
+        <span class="chip">Easy</span>
+        <span class="chip">Recovery</span>
+        <span class="urgent-badge">Near cap</span>
+      </div>
+      <div class="mileage-section">
+        <div class="mileage-label">Mileage</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill orange" style="width: 97.8%;"></div>
+        </div>
+        <div class="mileage-nums">
+          <span class="mileage-current">489</span>
+          <span class="mileage-cap">&thinsp;/ 500 mi</span>
+        </div>
+      </div>
+      <div class="shoe-notes">Getting close to cap</div>
+      <div class="shoe-footer">
+        <span class="shoe-last-used">Last used 5 days ago</span>
+        <button class="btn-retire" onclick="showRetireConfirm(this)">Retire</button>
+      </div>
+      <div class="retire-confirm">
+        <div class="retire-confirm-text">Retire this shoe? This will stop mileage tracking.</div>
+        <div class="retire-confirm-actions">
+          <button class="btn-confirm-cancel" onclick="hideRetireConfirm(this)">Cancel</button>
+          <button class="btn-confirm-retire" onclick="retireShoe(this)">Confirm Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 4: Ultra Glide 2 -->
+    <div class="shoe-card">
+      <div class="shoe-identity">
+        <div class="shoe-identity-text">
+          <div class="shoe-brand">Salomon</div>
+          <div class="shoe-model">Ultra Glide 2</div>
+        </div>
+        <div class="shoe-swatch" style="background: #2CA82F;"></div>
+      </div>
+      <div class="shoe-chips">
+        <span class="chip">Trail</span>
+        <span class="chip">Easy</span>
+      </div>
+      <div class="mileage-section">
+        <div class="mileage-label">Mileage</div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill green" style="width: 15.6%;"></div>
+        </div>
+        <div class="mileage-nums">
+          <span class="mileage-current">78</span>
+          <span class="mileage-cap">&thinsp;/ 500 mi</span>
+        </div>
+      </div>
+      <div class="shoe-notes">New addition, breaking in</div>
+      <div class="shoe-footer">
+        <span class="shoe-last-used">Last used yesterday</span>
+        <button class="btn-retire" onclick="showRetireConfirm(this)">Retire</button>
+      </div>
+      <div class="retire-confirm">
+        <div class="retire-confirm-text">Retire this shoe? This will stop mileage tracking.</div>
+        <div class="retire-confirm-actions">
+          <button class="btn-confirm-cancel" onclick="hideRetireConfirm(this)">Cancel</button>
+          <button class="btn-confirm-retire" onclick="retireShoe(this)">Confirm Retire</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /shoes-grid -->
+
+  <!-- Retired shoes -->
+  <div class="retired-section">
+    <div class="section-label" style="margin-bottom: 14px;">Retired</div>
+    <div class="retired-grid">
+
+      <div class="retired-card">
+        <div class="retired-brand">HOKA</div>
+        <div class="retired-model">Speedgoat 4</div>
+        <div class="retired-stats">
+          <span class="retired-mileage">502</span>
+          <span class="retired-date">mi · Retired Jan 2026</span>
+        </div>
+      </div>
+
+      <div class="retired-card">
+        <div class="retired-brand">Brooks</div>
+        <div class="retired-model">Glycerin 20</div>
+        <div class="retired-stats">
+          <span class="retired-mileage">487</span>
+          <span class="retired-date">mi · Retired Oct 2025</span>
+        </div>
+      </div>
+
+      <div class="retired-card">
+        <div class="retired-brand">Nike</div>
+        <div class="retired-model">Pegasus 40</div>
+        <div class="retired-stats">
+          <span class="retired-mileage">634</span>
+          <span class="retired-date">mi · Retired Aug 2025</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<!-- ══ ADD SHOE MODAL ══════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Add Shoe</div>
+      <button class="modal-close" id="closeModal" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 1L13 13M13 1L1 13" stroke="#0D0F12" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <form id="addShoeForm" onsubmit="submitShoe(event)">
+
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label" for="inputBrand">Brand</label>
+          <input class="form-input" id="inputBrand" type="text" placeholder="e.g. HOKA" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="inputModel">Model</label>
+          <input class="form-input" id="inputModel" type="text" placeholder="e.g. Speedgoat 5" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-field">
+          <label class="form-label" for="inputColor">Colorway</label>
+          <div class="color-row">
+            <input class="color-swatch-input" id="inputColorPicker" type="color" value="#2563EB" title="Pick shoe color">
+            <input class="form-input" id="inputColor" type="text" placeholder="e.g. Blue / White" style="flex:1;">
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="inputCap">Mileage Cap (mi)</label>
+          <input class="form-input" id="inputCap" type="number" placeholder="500" min="1" max="2000">
+        </div>
+      </div>
+
+      <div class="form-field">
+        <div class="form-label">Run Types</div>
+        <div class="checkbox-grid">
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="easy">
+            <span class="checkbox-indicator"></span>
+            Easy
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="long">
+            <span class="checkbox-indicator"></span>
+            Long
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="tempo">
+            <span class="checkbox-indicator"></span>
+            Tempo
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="trail">
+            <span class="checkbox-indicator"></span>
+            Trail
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="race">
+            <span class="checkbox-indicator"></span>
+            Race
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="runType" value="recovery">
+            <span class="checkbox-indicator"></span>
+            Recovery
+          </label>
+        </div>
+      </div>
+
+      <div class="form-field" style="margin-top: 14px;">
+        <label class="form-label" for="inputNotes">Notes</label>
+        <textarea class="form-input" id="inputNotes" placeholder="Any notes about this shoe..."></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-ghost" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn-primary">Save Shoe</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+/* ──────────────────────────────────
+   Modal open / close
+────────────────────────────────── */
+const overlay = document.getElementById('modalOverlay');
+
+function openModal() {
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('inputBrand').focus(), 50);
+}
+
+function closeModal() {
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.getElementById('openModal').addEventListener('click', openModal);
+document.getElementById('closeModal').addEventListener('click', closeModal);
+document.getElementById('cancelModal').addEventListener('click', closeModal);
+
+overlay.addEventListener('click', function(e) {
+  if (e.target === overlay) closeModal();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && overlay.classList.contains('open')) closeModal();
+});
+
+/* ──────────────────────────────────
+   Add shoe form submit
+────────────────────────────────── */
+function submitShoe(e) {
+  e.preventDefault();
+
+  const brand = document.getElementById('inputBrand').value.trim();
+  const model = document.getElementById('inputModel').value.trim();
+  const color = document.getElementById('inputColorPicker').value;
+  const cap   = parseInt(document.getElementById('inputCap').value) || 500;
+  const notes = document.getElementById('inputNotes').value.trim();
+  const types = Array.from(document.querySelectorAll('input[name="runType"]:checked'))
+                     .map(cb => cb.value);
+
+  const card = buildShoeCard({ brand, model, color, cap, notes, types });
+  document.getElementById('shoesGrid').appendChild(card);
+  updateActiveCount();
+  document.getElementById('addShoeForm').reset();
+  document.getElementById('inputColorPicker').value = '#2563EB';
+  closeModal();
+}
+
+function buildShoeCard({ brand, model, color, cap, notes, types }) {
+  const div = document.createElement('div');
+  div.className = 'shoe-card';
+
+  const chipsHtml = types.map(t =>
+    `<span class="chip">${t.charAt(0).toUpperCase() + t.slice(1)}</span>`
+  ).join('');
+
+  div.innerHTML = `
+    <div class="shoe-identity">
+      <div class="shoe-identity-text">
+        <div class="shoe-brand">${escHtml(brand)}</div>
+        <div class="shoe-model">${escHtml(model)}</div>
+      </div>
+      <div class="shoe-swatch" style="background:${color};"></div>
+    </div>
+    <div class="shoe-chips">${chipsHtml || '<span class="chip">General</span>'}</div>
+    <div class="mileage-section">
+      <div class="mileage-label">Mileage</div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill green" style="width: 0%;"></div>
+      </div>
+      <div class="mileage-nums">
+        <span class="mileage-current">0</span>
+        <span class="mileage-cap">&thinsp;/ ${cap} mi</span>
+      </div>
+    </div>
+    ${notes ? `<div class="shoe-notes">${escHtml(notes)}</div>` : ''}
+    <div class="shoe-footer">
+      <span class="shoe-last-used">Just added</span>
+      <button class="btn-retire" onclick="showRetireConfirm(this)">Retire</button>
+    </div>
+    <div class="retire-confirm">
+      <div class="retire-confirm-text">Retire this shoe? This will stop mileage tracking.</div>
+      <div class="retire-confirm-actions">
+        <button class="btn-confirm-cancel" onclick="hideRetireConfirm(this)">Cancel</button>
+        <button class="btn-confirm-retire" onclick="retireShoe(this)">Confirm Retire</button>
+      </div>
+    </div>
+  `;
+  return div;
+}
+
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function updateActiveCount() {
+  const n = document.getElementById('shoesGrid').children.length;
+  document.querySelector('.section-label').textContent = `Active — ${n} pair${n === 1 ? '' : 's'}`;
+}
+
+/* ──────────────────────────────────
+   Retire inline confirm
+────────────────────────────────── */
+function showRetireConfirm(btn) {
+  const card = btn.closest('.shoe-card');
+  const confirm = card.querySelector('.retire-confirm');
+  btn.style.display = 'none';
+  confirm.classList.add('visible');
+}
+
+function hideRetireConfirm(btn) {
+  const card = btn.closest('.shoe-card');
+  const confirm = card.querySelector('.retire-confirm');
+  const retireBtn = card.querySelector('.btn-retire');
+  confirm.classList.remove('visible');
+  retireBtn.style.display = '';
+}
+
+function retireShoe(btn) {
+  const card = btn.closest('.shoe-card');
+
+  // Grab shoe info for the retired card
+  const brand = card.querySelector('.shoe-brand').textContent.trim();
+  const model = card.querySelector('.shoe-model').textContent.trim();
+  const currentMi = card.querySelector('.mileage-current').textContent.trim();
+
+  // Animate out
+  card.style.transition = 'opacity 300ms, transform 300ms';
+  card.style.opacity = '0';
+  card.style.transform = 'scale(.96)';
+
+  setTimeout(() => {
+    card.remove();
+    updateActiveCount();
+    addRetiredCard(brand, model, currentMi);
+  }, 310);
+}
+
+function addRetiredCard(brand, model, mileage) {
+  const grid = document.querySelector('.retired-grid');
+  const now = new Date();
+  const monthYear = now.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+
+  const div = document.createElement('div');
+  div.className = 'retired-card';
+  div.innerHTML = `
+    <div class="retired-brand">${escHtml(brand)}</div>
+    <div class="retired-model">${escHtml(model)}</div>
+    <div class="retired-stats">
+      <span class="retired-mileage">${escHtml(mileage)}</span>
+      <span class="retired-date">mi · Retired ${monthYear}</span>
+    </div>
+  `;
+  grid.prepend(div);
+}
+</script>
+
+</body>
+</html>

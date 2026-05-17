@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Runcino',
+  title: 'faff.run',
   description: 'Personal Apple Watch race pacing tool.',
 };
 

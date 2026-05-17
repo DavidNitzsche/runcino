@@ -75,7 +75,7 @@ function successHtml(refreshToken: string, athleteId: number | null, firstname: 
 
     <div class="step">
       <span class="step-num">2</span><h3>Add the same vars to Railway</h3>
-      <p style="margin-top:10px;">Open the Runcino service in Railway → <b>Variables</b> tab → <b>+ New Variable</b>. Add <code style="font-family:JetBrains Mono,monospace; background:#1A212D; padding:1px 6px; border-radius:3px;">STRAVA_REFRESH_TOKEN</code> with the value above. Same for the other Strava vars if not already there. Redeploy is automatic.</p>
+      <p style="margin-top:10px;">Open the faff.run service in Railway → <b>Variables</b> tab → <b>+ New Variable</b>. Add <code style="font-family:JetBrains Mono,monospace; background:#1A212D; padding:1px 6px; border-radius:3px;">STRAVA_REFRESH_TOKEN</code> with the value above. Same for the other Strava vars if not already there. Redeploy is automatic.</p>
     </div>
 
     <div class="step">

@@ -1,7 +1,7 @@
 /**
  * Post-race retrospective engine.
  *
- * Given a RuncinoPlan (what was planned) and an ActualRace (what
+ * Given a FaffPlan (what was planned) and an ActualRace (what
  * happened, imported from the Apple Watch workout export), compute
  * structured comparisons: per-phase deltas, HR envelope stats, drift
  * analysis, personal GAP calibration coefficients.
@@ -10,7 +10,7 @@
  * narrative on top via /api/retrospective.
  */
 
-import type { RuncinoPlan } from './types';
+import type { FaffPlan } from './types';
 
 export interface ActualSplit {
   /** Phase index, matches plan.phases[i].index */
@@ -91,7 +91,7 @@ function paceDeltaStatus(deltaSPerMi: number): PhaseDelta['status'] {
   return 'large_drift';
 }
 
-export function computeRetrospective(plan: RuncinoPlan, actual: ActualRace): Retrospective {
+export function computeRetrospective(plan: FaffPlan, actual: ActualRace): Retrospective {
   if (actual.splits.length !== plan.phases.length) {
     throw new Error(
       `Actual has ${actual.splits.length} splits; plan has ${plan.phases.length} phases`

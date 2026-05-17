@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Data integrations · Runcino M2</title>
+  <title>Data integrations · faff.run M2</title>
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
@@ -13,7 +13,7 @@
   <nav class="nav">
     <a class="brand" href="index.html">
       <span class="brand-mark">R</span>
-      <span>Runcino</span>
+      <span>faff.run</span>
     </a>
     <div class="nav-links">
       <a href="index.html">Overview</a>
@@ -34,7 +34,7 @@
     </h2>
     <p class="lede" style="max-width:62ch;color:var(--ink-3);">
       HealthKit, Strava, Apple Calendar, and NOAA together replace the
-      manual fitness summary. Runcino reads once per race-prep session,
+      manual fitness summary. faff.run reads once per race-prep session,
       writes nothing back without permission.
     </p>
   </section>
@@ -136,7 +136,7 @@
   <section style="padding:0 0 48px;">
     <div class="section-header">
       <div class="eyebrow">What this unlocks</div>
-      <h2 style="max-width:20ch;">No more typing numbers<br/><span class="serif-italic">Runcino already reads them.</span></h2>
+      <h2 style="max-width:20ch;">No more typing numbers<br/><span class="serif-italic">faff.run already reads them.</span></h2>
     </div>
 
     <div class="features">
@@ -166,7 +166,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M5 12 a9 4 0 0 0 14 0"/></svg>
         </div>
         <h4>Shoe rotation suggestion</h4>
-        <p>Strava tracks your shoe mileage. Runcino picks the right pair for Big Sur's terrain from what's under 300 miles.</p>
+        <p>Strava tracks your shoe mileage. faff.run picks the right pair for Big Sur's terrain from what's under 300 miles.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">
@@ -194,10 +194,10 @@
       <div>
         <h4 style="margin-bottom:12px;">Privacy model</h4>
         <div class="vstack" style="gap:10px;color:var(--ink-2);font-size:14px;line-height:1.6;">
-          <div><strong>HealthKit</strong> — read-only permissions. Runcino never writes to Health. Requested scopes are the narrow set above, not "everything."</div>
+          <div><strong>HealthKit</strong> — read-only permissions. faff.run never writes to Health. Requested scopes are the narrow set above, not "everything."</div>
           <div><strong>Strava</strong> — OAuth with the <code style="font-family:var(--font-mono);font-size:12px;">activity:read, profile:read_all</code> scopes. Tokens live in iOS keychain. Revocable at any time from strava.com/settings/apps.</div>
           <div><strong>Calendar</strong> — read-only, scoped to calendars you select. Not synced anywhere, never exported.</div>
-          <div><strong>NOAA</strong> — no auth, no account. Runcino issues an API call with your race location only.</div>
+          <div><strong>NOAA</strong> — no auth, no account. faff.run issues an API call with your race location only.</div>
           <div><strong>Claude API</strong> — the only outbound call. Sends a compact numeric summary (no names, no locations beyond city-level). Cached to reduce token spend.</div>
         </div>
       </div>
@@ -205,7 +205,7 @@
   </section>
 
   <footer class="footer">
-    <div>Runcino · M2 mockup — ships after M1</div>
+    <div>faff.run · M2 mockup — ships after M1</div>
     <div>v0.3.0 target</div>
   </footer>
 

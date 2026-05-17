@@ -10,7 +10,7 @@
       "autoPort": true
     },
     {
-      "name": "Runcino web",
+      "name": "faff.run web",
       "runtimeExecutable": "/Volumes/WP/06 Claude Code/Runcino/web/node_modules/.bin/next",
       "runtimeArgs": ["dev", "--turbopack"],
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/web",

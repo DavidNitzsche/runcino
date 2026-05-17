@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 /**
  * CORS middleware for /api/* routes.
  *
- * The Runcino v4 redesign mockups (designs/*-v4.html) want to fetch
+ * The faff.run v4 redesign mockups (designs/*-v4.html) want to fetch
  * live data from the production API when opened locally or hosted on
  * a different origin. Without these headers, browsers block the
  * cross-origin requests and the pages fall back to embedded snapshot

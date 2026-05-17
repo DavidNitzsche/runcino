@@ -1,39 +1,39 @@
-# Runcino v4 — Local Build
+# faff.run v4 — Local Build
 
-The v4 redesign, fully wired as a functional local app. Open `designs/runcino.html` in a browser (or `localhost:4040/designs/runcino.html`) to launch.
+The v4 redesign, fully wired as a functional local app. Open `designs/faff.html` in a browser (or `localhost:4040/designs/faff.html`) to launch.
 
 ## What's working
 
 ### Single entry point
-`runcino.html` iframes the v4 site. You land on Overview; the nav inside each page drives between Overview → Training → Races → Health.
+`faff.html` iframes the v4 site. You land on Overview; the nav inside each page drives between Overview → Training → Races → Health.
 
 ### Central data hub
-**`designs/runcino-store.js`** is the data layer. localStorage-backed, cross-tab synced, exposed as `window.RuncinoStore`. One source of truth that every page reads on load and writes to on actions.
+**`designs/faff-store.js`** is the data layer. localStorage-backed, cross-tab synced, exposed as `window.FaffStore`. One source of truth that every page reads on load and writes to on actions.
 
 ```js
-RuncinoStore.getState()          // full state object
-RuncinoStore.setState(updater)   // mutate state (writes localStorage, fires listeners)
-RuncinoStore.logCheckIn({ energy: 7, soreness: 3, stress: 2 })
-RuncinoStore.todayCheckIn()      // null or { energy, soreness, stress, loggedAt }
-RuncinoStore.recentCheckIns(14)  // [{ date, log }, ...] over the last N days
-RuncinoStore.currentWeekPlan()   // this week's days from the plan
-RuncinoStore.todayWorkout()      // today's day object from the plan
-RuncinoStore.subscribe(fn)       // fires on local + cross-tab changes
-RuncinoStore.resetState()        // wipe and reseed (debug)
-RuncinoStore.fmtDayLabel(iso)    // '2026-05-16' → 'Sat May 16'
+FaffStore.getState()          // full state object
+FaffStore.setState(updater)   // mutate state (writes localStorage, fires listeners)
+FaffStore.logCheckIn({ energy: 7, soreness: 3, stress: 2 })
+FaffStore.todayCheckIn()      // null or { energy, soreness, stress, loggedAt }
+FaffStore.recentCheckIns(14)  // [{ date, log }, ...] over the last N days
+FaffStore.currentWeekPlan()   // this week's days from the plan
+FaffStore.todayWorkout()      // today's day object from the plan
+FaffStore.subscribe(fn)       // fires on local + cross-tab changes
+FaffStore.resetState()        // wipe and reseed (debug)
+FaffStore.fmtDayLabel(iso)    // '2026-05-16' → 'Sat May 16'
 ```
 
 The seed state is the current production snapshot — same data the four approved pages were designed around.
 
 ### Three pieces of glue
 
-- **`runcino-bind.js`** — declarative binder. Tag any element with `data-today-label`, `data-plan-week`, `data-plan-phase`, `data-plan-race-days-away`, `data-vdot-anchor`, etc., and it gets filled from the store on load (and re-filled on store changes). See the script for the full list.
-- **`runcino-live.js`** — best-effort live API refresh. Tries to fetch `/api/overview` from production on each page load and update `[data-live=...]` surfaces. Currently blocked by CORS; the embedded snapshot is used. `web/middleware.ts` is committed locally with the CORS fix — once deployed, live fetching activates.
+- **`faff-bind.js`** — declarative binder. Tag any element with `data-today-label`, `data-plan-week`, `data-plan-phase`, `data-plan-race-days-away`, `data-vdot-anchor`, etc., and it gets filled from the store on load (and re-filled on store changes). See the script for the full list.
+- **`faff-live.js`** — best-effort live API refresh. Tries to fetch `/api/overview` from production on each page load and update `[data-live=...]` surfaces. Currently blocked by CORS; the embedded snapshot is used. `web/middleware.ts` is committed locally with the CORS fix — once deployed, live fetching activates.
 - Inline `<script>` per page — pages with structured data (lists, grids, timelines) render their content from the store using small inline render functions.
 
 ### What's actually rendering from the store
 
-These are the surfaces that read from `RuncinoStore` instead of static HTML:
+These are the surfaces that read from `FaffStore` instead of static HTML:
 
 **Overview**
 - Coach strip date label (`COACH · SAT MAY 16 · ...`)
@@ -76,10 +76,10 @@ These would follow the same pattern: replace static markup with a `<div id="x">`
 
 ```
 designs/
-  runcino.html             — single entry SPA wrapper
-  runcino-store.js         — central state hub (data layer)
-  runcino-bind.js          — declarative data-* binder for labels
-  runcino-live.js          — best-effort live API refresh
+  faff.html             — single entry SPA wrapper
+  faff-store.js         — central state hub (data layer)
+  faff-bind.js          — declarative data-* binder for labels
+  faff-live.js          — best-effort live API refresh
   README-v4.md             — this file
   overview-v4.html         — Overview page (approved)
   training-v4.html         — Training page (approved)
@@ -94,11 +94,11 @@ web/
 
 ## Debug
 
-- **Reset state** in dev console: `RuncinoStore.resetState()` then refresh
-- **Inspect state**: `RuncinoStore.getState()` returns the full object
-- **Mutate state**: `RuncinoStore.setState(s => ({...s, today: '2026-05-15'}))` — all bound surfaces re-render
+- **Reset state** in dev console: `FaffStore.resetState()` then refresh
+- **Inspect state**: `FaffStore.getState()` returns the full object
+- **Mutate state**: `FaffStore.setState(s => ({...s, today: '2026-05-15'}))` — all bound surfaces re-render
 - **Force re-render**: subscribers re-fire on any `setState`; pages render fresh on load
 
 ## Push live
 
-The "push live" step is to port `designs/*-v4.html` markup into the corresponding `web/app/*/page.tsx` Next.js components. The render patterns in the inline scripts translate cleanly to React (Zustand/Context for the store, useEffect for subscribe, JSX templates for what's currently in template strings). The seed in `runcino-store.js` documents the data contract the Next.js pages need from the API.
+The "push live" step is to port `designs/*-v4.html` markup into the corresponding `web/app/*/page.tsx` Next.js components. The render patterns in the inline scripts translate cleanly to React (Zustand/Context for the store, useEffect for subscribe, JSX templates for what's currently in template strings). The seed in `faff-store.js` documents the data contract the Next.js pages need from the API.

@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1500">
+<title>faff.run · Overview · v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F; --l5:#34405266;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32); --t4:rgba(244,246,248,.18);
+    --corp:#008FEC; --warn:#FC4D64; --good:#3EBD41; --att:#F3AD38; --xp:#9013FE; --race:#FF5722; --coach:#27B4E0; --milestone:#F0DF47; --aqua:#27E087; --pink:#CD317C;
+    --race-grad-light:#FF8A3D; --race-grad:#FF5722; --race-grad-deep:#E03E00;
+    --f-display:'Oswald',sans-serif; --f-body:'Jost',sans-serif; --f-data:'JetBrains Mono',monospace;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; }
+
+  /* ── TYPE SCALE — six steps, no in-between ──────────────────────── */
+  /* HERO    · race finish times, biggest singular hero numbers */
+  .t-hero    { font-family:var(--f-display); font-size:140px; font-weight:700; letter-spacing:-.04em; line-height:.9; font-variant-numeric:tabular-nums; }
+  /* DISPLAY · race names, page titles, biggest body-adjacent headlines */
+  .t-display { font-family:var(--f-display); font-size:72px;  font-weight:700; letter-spacing:-.03em; line-height:.95; }
+  /* SECTION · workout names, section titles, mid-card hero text */
+  .t-section { font-family:var(--f-display); font-size:36px;  font-weight:600; letter-spacing:-.02em; line-height:1; }
+  /* STAT    · stat hero numbers (mileage, pace, distance, %, days) */
+  .t-stat    { font-family:var(--f-display); font-size:48px;  font-weight:700; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  /* BODY    · body copy, descriptions */
+  .t-body    { font-family:var(--f-body);    font-size:15px;  font-weight:400; letter-spacing:-.012em; line-height:1.6; }
+  /* EYEBROW · labels, metadata strips. ALWAYS uppercase, ALWAYS muted, ALWAYS above a heading. No exceptions. */
+  .t-eyebrow { font-family:var(--f-data);    font-size:11px;  font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); }
+
+  .stage { max-width:1500px; margin:0 auto; padding:24px 26px 60px; }
+
+  /* ── Top bar ──────────────────────────── */
+  .topbar { display:flex; align-items:center; gap:18px; padding:13px 18px; background:var(--l1); border:1px solid var(--l4); border-radius:10px; margin-bottom:14px; }
+  .topbar .brand { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--xp),var(--corp)); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:18px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:3px; border-radius:100px; background:var(--l0); border:1px solid var(--l4); }
+  .tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); letter-spacing:-.005em; cursor:pointer; }
+  .tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .clock { margin-left:auto; font-family:var(--f-data); font-size:12px; letter-spacing:1.4px; color:var(--t1); font-weight:700; }
+  .clock b { color:var(--att); }
+  .topbar-status { display:flex; gap:14px; align-items:center; font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; color:var(--t2); font-weight:700; }
+  .led { width:7px; height:7px; border-radius:50%; }
+  .led.green { background:var(--good); box-shadow:0 0 5px rgba(62,189,65,.7); }
+  .led.amber { background:var(--att); box-shadow:0 0 5px rgba(243,173,56,.7); }
+  .led.blue  { background:var(--corp); box-shadow:0 0 5px rgba(0,143,236,.6); }
+
+  /* ── Greeting strip ──────────────────────────── */
+  .greet { display:flex; align-items:stretch; gap:14px; padding:14px 4px 18px; }
+  .greet-id { display:flex; flex-direction:column; justify-content:center; padding:10px 22px 10px 0; border-right:1px solid var(--l4); min-width:fit-content; }
+  .greet-id .hi { font-family:var(--f-data); font-size:10px; letter-spacing:2.4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .greet-id h1 { font-family:var(--f-display); font-weight:600; font-size:36px; letter-spacing:-.02em; line-height:1; text-transform:uppercase; margin-top:4px; }
+  .greet-state { flex:1; display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .greet-tile { padding:12px 14px 12px 16px; background:var(--l2); border-radius:8px; border:1px solid var(--l4); border-left-width:3px; display:flex; flex-direction:column; justify-content:center; min-height:64px; }
+  .greet-tile.amber { border-color:var(--l4); border-left-color:var(--att); background:linear-gradient(180deg,rgba(243,173,56,.06),var(--l2) 60%); }
+  .greet-tile.race  { border-color:var(--l4); border-left-color:var(--race); background:linear-gradient(180deg,rgba(255,87,34,.06),var(--l2) 60%); }
+  .greet-tile.coach { border-color:var(--l4); border-left-color:var(--coach); background:linear-gradient(180deg,rgba(39,180,224,.06),var(--l2) 60%); }
+  .greet-tile.good  { border-color:var(--l4); border-left-color:var(--good); background:linear-gradient(180deg,rgba(62,189,65,.06),var(--l2) 60%); }
+  .greet-tile .l { font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .greet-tile .v { font-family:var(--f-display); font-size:22px; font-weight:700; letter-spacing:-.005em; line-height:1; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .greet-tile .v small { font-family:var(--f-data); font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; letter-spacing:1px; }
+  .greet-tile .d { font-family:var(--f-data); font-size:9px; letter-spacing:.5px; color:var(--t2); font-weight:600; margin-top:3px; }
+  .pill { padding:6px 12px; border-radius:6px; font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; border:1px solid; }
+  .pill.amber { color:var(--att); border-color:rgba(243,173,56,.4); background:rgba(243,173,56,.08); }
+  .pill.green { color:var(--good); border-color:rgba(62,189,65,.4); background:rgba(62,189,65,.08); }
+  .pill.blue { color:var(--corp); border-color:rgba(0,143,236,.4); background:rgba(0,143,236,.08); }
+  .pill.race { color:var(--race); border-color:rgba(255,87,34,.45); background:rgba(255,87,34,.10); }
+
+  /* ── Grid system ──────────────────────────── */
+  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:10px; }
+  .row { display:grid; gap:10px; margin-bottom:10px; }
+  .span-3 { grid-column:span 3; } .span-4 { grid-column:span 4; } .span-5 { grid-column:span 5; }
+  .span-6 { grid-column:span 6; } .span-7 { grid-column:span 7; } .span-8 { grid-column:span 8; }
+  .span-9 { grid-column:span 9; } .span-12 { grid-column:span 12; }
+
+  /* ── Card base ──────────────────────────── */
+  .card { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+  .card-h { display:flex; justify-content:space-between; align-items:flex-start; }
+  .card-l { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); font-weight:500; }
+  .card-pin { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; padding:3px 7px; border-radius:4px; font-weight:700; }
+  .card-pin.green { background:rgba(62,189,65,.16); color:var(--good); }
+  .card-pin.amber { background:rgba(243,173,56,.18); color:var(--att); }
+  .card-pin.warn  { background:rgba(252,77,100,.16); color:var(--warn); }
+  .card-pin.blue  { background:rgba(0,143,236,.16); color:var(--corp); }
+  .card-pin.purple { background:rgba(144,19,254,.18); color:var(--xp); }
+  .card-pin.race { background:rgba(255,87,34,.18); color:var(--race); }
+  .card-num { font-family:var(--f-display); font-weight:700; line-height:.95; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+  .card-num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:7px; }
+  .card-foot { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; padding-top:8px; border-top:1px solid var(--l4); margin-top:auto; display:flex; justify-content:space-between; }
+  .delta { display:inline-flex; align-items:center; gap:3px; font-family:var(--f-data); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; letter-spacing:.6px; }
+  .delta.up { background:rgba(62,189,65,.16); color:var(--good); }
+  .delta.dn { background:rgba(252,77,100,.18); color:var(--warn); }
+  .delta.flat { background:var(--l3); color:var(--t2); }
+
+  /* ── HERO row: TODAY card ──────────────────────────── */
+  .hero-today { padding:26px 28px; min-height:340px; background:linear-gradient(135deg, rgba(243,173,56,.10) 0%, var(--l1) 60%); border-color:rgba(243,173,56,.24); display:flex; flex-direction:column; }
+  .hero-today::after { content:""; position:absolute; right:-100px; top:-100px; width:340px; height:340px; border-radius:50%; background:radial-gradient(circle, rgba(243,173,56,.10), transparent 65%); pointer-events:none; }
+  .hero-today .eyebrow { font-family:var(--f-data); font-size:11px; letter-spacing:2.4px; text-transform:uppercase; color:var(--att); font-weight:700; display:flex; align-items:center; gap:8px; }
+  .hero-today .eyebrow::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--att); box-shadow:0 0 0 3px rgba(243,173,56,.22); }
+  .hero-today h2 { font-family:var(--f-display); font-weight:700; font-size:72px; letter-spacing:-.03em; line-height:.95; text-transform:uppercase; margin-top:12px; white-space:nowrap; }
+  .hero-today .why { font-size:15px; color:var(--t1); line-height:1.6; letter-spacing:-.012em; margin-top:8px; max-width:560px; font-weight:400; }
+  .hero-today .why b { color:var(--t0); font-weight:600; }
+  .hero-today-kpis { display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:auto auto auto; row-gap:6px; column-gap:18px; padding-top:18px; margin-top:18px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hero-today-k { display:grid; grid-template-rows:subgrid; grid-row:span 3; row-gap:6px; }
+  .hero-today-k .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; align-self:end; }
+  .hero-today-k .v { font-family:var(--f-display); font-weight:700; font-size:32px; letter-spacing:-.015em; line-height:1; font-variant-numeric:tabular-nums; align-self:center; white-space:nowrap; }
+  .hero-today-k .v small { font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; }
+  .hero-today-k .d { font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t2); font-weight:700; align-self:start; }
+  .hero-today-structure { margin-top:14px; padding-top:14px; border-top:1px solid var(--l4); display:flex; flex-direction:column; gap:6px; }
+  .hts-row { display:grid; grid-template-columns:auto 1fr auto auto; gap:14px; align-items:baseline; padding:7px 0; font-size:13px; }
+  .hts-row .t { font-family:var(--f-data); font-size:10.5px; color:var(--t3); font-weight:700; }
+  .hts-row .name { color:var(--t1); font-weight:500; }
+  .hts-row .name b { color:var(--t0); font-weight:700; }
+  .hts-row .pace { font-family:var(--f-data); color:var(--corp); font-weight:700; font-size:13px; }
+  .hts-row .dist { font-family:var(--f-data); color:var(--t1); font-size:12px; font-weight:600; }
+  .hero-today-cta { display:flex; gap:8px; margin-top:auto; padding-top:18px; }
+  /* Reset native button browser styling — Safari + Chrome add a
+     subtle blue gradient + inset shadow to <button> elements which
+     made the primary CTA look glossy and out-of-place. Flat all
+     the way through. */
+  .btn { padding:11px 20px; border-radius:8px; font-family:var(--f-data); font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; cursor:pointer; appearance:none; -webkit-appearance:none; border:1px solid transparent; outline:none; box-shadow:none; transition:background .12s, border-color .12s; }
+  .btn:hover { filter:brightness(1.1); }
+  .btn-primary { background:var(--corp); color:var(--t0); border-color:var(--corp); }
+  .btn-secondary { background:transparent; color:var(--t1); border-color:var(--l4); }
+  .btn-secondary:hover { border-color:var(--l5); background:var(--l2); }
+
+  /* ── HERO: Readiness ring ──────────────────────────── */
+  .hero-ready { padding:24px 26px; min-height:340px; }
+  .ring-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; padding:12px 0 4px; }
+  .ring { width:220px; height:220px; flex-shrink:0; filter:drop-shadow(0 0 24px rgba(62,189,65,.15)); }
+  .ring-v { display:flex; flex-direction:column; gap:4px; align-items:center; text-align:center; }
+  .ring-band { font-family:var(--f-display); font-size:32px; font-weight:700; letter-spacing:-.01em; line-height:1; text-transform:uppercase; color:var(--good); }
+  .ring-score { font-family:var(--f-data); font-size:11px; font-weight:700; color:var(--t2); letter-spacing:1.4px; text-transform:uppercase; }
+  .ring-desc { font-size:12.5px; color:var(--t2); margin-top:4px; line-height:1.5; }
+  .signal-list { display:flex; flex-direction:column; gap:5px; padding-top:14px; margin-top:14px; border-top:1px solid var(--l4); }
+  .signal-row { display:grid; grid-template-columns:1fr auto 60px; gap:10px; align-items:center; font-size:12px; }
+  .signal-row .name { color:var(--t1); font-weight:600; }
+  .signal-row .v { font-family:var(--f-data); font-size:10.5px; font-weight:700; }
+  .signal-row .v.up { color:var(--good); }
+  .signal-row .v.dn { color:var(--warn); }
+  .signal-row .v.flat { color:var(--t2); }
+  .signal-bar { width:60px; height:5px; border-radius:3px; background:var(--l3); overflow:hidden; }
+  .signal-bar i { display:block; height:100%; border-radius:3px; }
+  .signal-bar i.up { background:var(--good); }
+  .signal-bar i.dn { background:var(--warn); }
+  .signal-bar i.flat { background:var(--t3); }
+
+  /* ── HERO: Race countdown ──────────────────────────── */
+  /* Race surface — subtle race-orange tint on dark. Used when race is far out (14+ days). */
+  /* For race-week / race-day, swap to .hero-race--imminent (full canonical race gradient) — see rule at end of stylesheet. */
+  .hero-race { padding:24px 26px; min-height:340px; background:linear-gradient(135deg, rgba(255,87,34,.10) 0%, var(--l1) 60%); border-color:rgba(255,87,34,.28); }
+  .hero-race::after { content:""; position:absolute; right:-80px; bottom:-80px; width:280px; height:280px; border-radius:50%; background:radial-gradient(circle, rgba(255,87,34,.12), transparent 65%); pointer-events:none; }
+  .hr-eye { font-family:var(--f-data); font-size:11px; letter-spacing:2.4px; text-transform:uppercase; color:var(--race); font-weight:700; }
+  .hr-cd { font-family:var(--f-display); font-weight:700; font-size:104px; letter-spacing:-.025em; line-height:.92; color:var(--race); margin-top:8px; }
+  .hr-cd small { font-size:.18em; opacity:.55; font-weight:700; margin-left:10px; }
+  .hr-name { font-family:var(--f-display); font-weight:600; font-size:24px; letter-spacing:-.005em; text-transform:uppercase; margin-top:4px; }
+  .hr-meta { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.3px; color:var(--t2); margin-top:6px; font-weight:700; }
+  .hr-progress { margin-top:18px; padding-top:14px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hr-prog-l { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-bottom:6px; }
+  .hr-prog-bar { height:8px; border-radius:4px; background:var(--l3); position:relative; overflow:hidden; }
+  .hr-prog-bar i { display:block; height:100%; background:linear-gradient(90deg, var(--corp), var(--good), var(--race)); border-radius:4px; }
+  .hr-prog-bar .now { position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--t0); box-shadow:0 0 0 2px rgba(244,246,248,.2); }
+  .hr-status { display:flex; justify-content:space-between; align-items:baseline; margin-top:14px; padding-top:14px; border-top:1px solid var(--l4); position:relative; z-index:1; }
+  .hr-status .l { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .hr-status .v { font-family:var(--f-display); font-size:18px; font-weight:600; }
+  .hr-status .pace { color:var(--good); }
+  /* Race-week / race-day treatment (≤14 days out): apply .imminent for full canonical gradient surface */
+  .hero-race.imminent { background:linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 50%, var(--race-grad-deep) 100%); border:0; color:#fff; }
+  .hero-race.imminent::after { background:radial-gradient(circle, rgba(255,255,255,.10), transparent 65%); }
+  .hero-race.imminent .hr-eye { color:rgba(255,255,255,.85); }
+  .hero-race.imminent .hr-cd { color:#fff; }
+  .hero-race.imminent .hr-name,
+  .hero-race.imminent .hr-status .v,
+  .hero-race.imminent .hr-status .pace { color:#fff; }
+  .hero-race.imminent .hr-meta { color:rgba(255,255,255,.78); }
+  .hero-race.imminent .hr-progress,
+  .hero-race.imminent .hr-status { border-top-color:rgba(255,255,255,.18); }
+  .hero-race.imminent .hr-prog-l,
+  .hero-race.imminent .hr-status .l { color:rgba(255,255,255,.65); }
+  .hero-race.imminent .hr-prog-bar { background:rgba(0,0,0,.22); }
+  .hero-race.imminent .hr-prog-bar i { background:rgba(255,255,255,.85); }
+  .hero-race.imminent .hr-prog-bar .now { background:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.25); }
+
+  /* ── Week strip ──────────────────────────── */
+  .week-strip { padding:18px 22px; }
+  .week-h { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+  .week-h .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; color:var(--t2); text-transform:uppercase; font-weight:700; }
+  .week-h .v { font-family:var(--f-display); font-size:32px; font-weight:700; letter-spacing:-.015em; font-variant-numeric:tabular-nums; line-height:1; margin-top:4px; }
+  .week-h .v small { font-family:var(--f-data); font-size:.34em; color:var(--t3); margin-left:8px; font-weight:700; letter-spacing:1.4px; vertical-align:middle; }
+  .week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+
+  /* Day card — clean rebuild:
+     · 4px colored type-tag on the left edge identifies the day's role
+     · DOW + DATE corner pair (one line, mono, light)
+     · Workout type as the visual anchor (Oswald, condensed, prominent)
+     · Distance + pace pair below type
+     · Footer status full-width
+     The whole card reads top → bottom: tag, date, what, how-far, status.
+     Done days fade to green; rest days fade out; today glows amber. */
+  .day { padding:0; border-radius:8px; background:var(--l2); border:1px solid var(--l4); min-height:138px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  /* Type tag on left edge — vertical strip color codes the day's role */
+  .day::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--l4); }
+  .day.t-rest::before     { background:rgba(244,246,248,.08); }
+  .day.t-recovery::before { background:var(--good); }
+  .day.t-easy::before     { background:var(--corp); }
+  .day.t-long::before     { background:var(--corp); }
+  .day.t-quality::before  { background:var(--milestone); }
+  .day.t-strength::before { background:var(--xp); }
+
+  .day.today { border:2px solid var(--att); background:linear-gradient(135deg, rgba(243,173,56,.14), var(--l2)); box-shadow:0 0 16px rgba(243,173,56,.18); }
+  .day.today::before { background:var(--att); width:4px; box-shadow:0 0 8px var(--att); }
+  .day.done.t-rest { opacity:.65; }
+  .day.done:not(.t-rest) { background:linear-gradient(180deg, rgba(62,189,65,.04), var(--l2)); }
+  .day.future { opacity:.92; }
+
+  /* Top header — DOW (small left) · DATE (small right) — ONE line, no fight */
+  .day-strip { display:flex; justify-content:space-between; align-items:baseline; padding:9px 11px 6px; }
+  .day-dow { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .day-date { font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700; letter-spacing:.6px; font-variant-numeric:tabular-nums; }
+  .day.today .day-dow  { color:var(--att); }
+  .day.today .day-date { color:var(--t0); }
+
+  /* Body — workout type is the hero */
+  .day-body { padding:0 11px; flex:1; display:flex; flex-direction:column; gap:4px; }
+  .day-type { font-family:var(--f-display); font-size:18px; font-weight:600; line-height:1; text-transform:uppercase; color:var(--t0); letter-spacing:-.005em; }
+  .day.today .day-type { font-size:20px; color:var(--t0); }
+  .day.t-rest .day-type { font-size:20px; color:var(--t2); font-weight:500; }
+  .day.done.t-rest .day-type { color:var(--t3); }
+  .day-mi { font-family:var(--f-data); font-size:13px; font-weight:700; color:var(--t1); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .day-mi small { font-size:.65em; opacity:.5; font-weight:700; margin-left:4px; }
+  .day-pace { font-family:var(--f-data); font-size:10px; color:var(--t3); font-weight:600; letter-spacing:.4px; }
+
+  /* Footer status bar */
+  .day-foot { padding:8px 11px; font-family:var(--f-data); font-size:9.5px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; margin-top:auto; border-top:1px solid var(--l4); }
+  .day-foot.done   { background:rgba(62,189,65,.10); color:var(--good); border-top-color:rgba(62,189,65,.20); }
+  .day-foot.active { background:rgba(243,173,56,.14); color:var(--att); border-top-color:rgba(243,173,56,.30); }
+  .day-foot.future { background:rgba(0,143,236,.06); color:var(--corp); border-top-color:rgba(0,143,236,.18); }
+  .day-foot.rest   { background:transparent; color:var(--t3); }
+  .day-foot .delta { font-family:var(--f-data); font-weight:700; }
+  .day-foot .delta.up { color:var(--corp); }
+
+  /* ── Plan adapted ──────────────────────────── */
+  .plan-card { padding:20px 22px; background:linear-gradient(135deg, rgba(39,180,224,.10) 0%, var(--l1) 70%); border-color:rgba(39,180,224,.28); }
+  .plan-card .h { font-family:var(--f-display); font-size:24px; font-weight:600; line-height:1.1; text-transform:uppercase; margin-top:6px; }
+  .plan-card .h em { color:var(--coach); font-style:normal; }
+  .plan-card .sub { font-size:15px; color:var(--t1); line-height:1.6; letter-spacing:-.012em; margin-top:6px; font-weight:400; }
+  .plan-diff { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; padding:10px 12px; background:var(--l2); border-radius:8px; margin-top:10px; }
+  .plan-diff-cell .l { font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .plan-diff-cell .v { font-family:var(--f-display); font-size:18px; font-weight:700; line-height:1; margin-top:3px; }
+  .plan-diff-cell .v.was { color:var(--t3); text-decoration:line-through; }
+  .plan-diff-cell .v.now { color:var(--coach); }
+  .plan-diff-arrow { font-family:var(--f-data); font-size:14px; color:var(--coach); font-weight:700; }
+  .card-pin.coach { background:rgba(39,180,224,.18); color:var(--coach); }
+
+  /* ── Build trajectory ──────────────────────────── */
+  .trajectory-card { padding:20px 22px; }
+  .trajectory-h { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  .trajectory-h .l { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.8px; color:var(--t2); text-transform:uppercase; font-weight:700; }
+  .trajectory-h .v { font-family:var(--f-display); font-size:22px; font-weight:600; line-height:1; }
+  .trajectory-svg { width:100%; height:130px; display:block; }
+  .trajectory-phases { display:flex; gap:4px; margin-top:6px; }
+  .trajectory-phase { flex:1; padding:8px 10px; border-radius:6px; background:var(--l2); border:1px solid var(--l4); border-left-width:3px; min-width:0; }
+  .trajectory-phase .l { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .trajectory-phase .h { font-family:var(--f-display); font-size:11px; font-weight:600; text-transform:uppercase; margin-top:3px; }
+  .trajectory-phase.now { background:linear-gradient(180deg, rgba(244,246,248,.05), var(--l2) 60%); border-left-color:var(--t0); }
+  .trajectory-phase.next { border-left-color:var(--corp); }
+  .trajectory-phase.peak { border-left-color:var(--good); }
+  .trajectory-phase.taper { border-left-color:var(--warn); }
+  .trajectory-phase.race { border-left-color:var(--race); }
+
+  /* ── Body systems radar ──────────────────────────── */
+  .body-card { padding:20px 22px; }
+  .body-list { display:flex; flex-direction:column; gap:7px; margin-top:8px; }
+  .body-row { display:grid; grid-template-columns:14px 1fr 70px 30px; gap:10px; align-items:center; font-size:12px; }
+  .body-icon { width:14px; height:14px; border-radius:50%; }
+  .body-icon.done { background:var(--good); }
+  .body-icon.wip { background:var(--coach); }
+  .body-name { color:var(--t1); font-weight:600; }
+  .body-prog { height:5px; border-radius:3px; background:var(--l3); overflow:hidden; }
+  .body-prog i { display:block; height:100%; border-radius:3px; }
+  .body-pct { font-family:var(--f-data); font-size:10px; color:var(--t2); font-weight:700; text-align:right; }
+
+  /* ── Sparkline cards ──────────────────────────── */
+  .spark-card { padding:16px 18px; min-height:148px; }
+  .spark-card .num { font-family:var(--f-display); font-weight:700; font-size:42px; letter-spacing:-.015em; line-height:.95; font-variant-numeric:tabular-nums; }
+  .spark-card .num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:7px; }
+  .spark-svg { width:100%; height:36px; display:block; }
+  .spark-card .sub { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.2px; color:var(--t3); text-transform:uppercase; font-weight:700; }
+
+  /* ── Pace zones ──────────────────────────── */
+  .zones-card { padding:18px 20px; }
+  .zones-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:10px; }
+  .zone { padding:10px 8px; border-radius:7px; }
+  .zone.E { background:rgba(62,189,65,.10); border:1px solid rgba(62,189,65,.25); }
+  .zone.M { background:rgba(0,143,236,.10); border:1px solid rgba(0,143,236,.30); }
+  .zone.T { background:rgba(240,223,71,.10); border:1px solid rgba(240,223,71,.32); }
+  .zone.I { background:rgba(252,77,100,.12); border:1px solid rgba(252,77,100,.30); }
+  .zone.R { background:rgba(144,19,254,.14); border:1px solid rgba(144,19,254,.32); }
+  .zone .z { font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; font-weight:700; }
+  .zone.E .z { color:var(--good); } .zone.M .z { color:var(--corp); } .zone.T .z { color:var(--milestone); } .zone.I .z { color:var(--warn); } .zone.R .z { color:var(--xp); }
+  .zone .lab { font-family:var(--f-data); font-size:8.5px; color:var(--t3); letter-spacing:.8px; margin-top:2px; font-weight:600; text-transform:uppercase; }
+  .zone .v { font-family:var(--f-display); font-size:17px; font-weight:700; margin-top:5px; line-height:1; font-variant-numeric:tabular-nums; }
+
+  /* ── VDOT ──────────────────────────── */
+  .vdot-card { padding:20px 22px; background:linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%); border:0; min-height:148px; }
+  .vdot-card .lbl { color:rgba(255,255,255,.78); font-family:var(--f-data); font-size:10px; letter-spacing:1.8px; text-transform:uppercase; font-weight:700; }
+  .vdot-card .num { font-family:var(--f-display); font-weight:700; font-size:72px; line-height:.95; letter-spacing:-.03em; }
+  .vdot-card .src { font-family:var(--f-data); font-size:10px; color:rgba(255,255,255,.78); letter-spacing:.4px; font-weight:600; margin-top:auto; }
+  .vdot-card .delta-w { background:rgba(255,255,255,.16); color:#fff; }
+
+  /* ── Stat chips (small) ──────────────────────────── */
+  .chip-card { padding:14px 16px; min-height:108px; }
+  .chip-card .lbl { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.6px; color:var(--t3); text-transform:uppercase; font-weight:700; }
+  .chip-card .num { font-family:var(--f-display); font-size:30px; font-weight:700; letter-spacing:-.005em; line-height:1; margin-top:4px; }
+  .chip-card .num small { font-size:.4em; opacity:.55; font-weight:700; margin-left:7px; }
+  .chip-card .row { display:flex; align-items:center; gap:6px; margin-top:auto; padding-top:8px; border-top:1px solid var(--l4); }
+  .chip-card .sparkmini { flex:1; height:18px; }
+
+  /* ── Footnote ──────────────────────────── */
+  .footnote { margin-top:14px; padding:12px 16px; background:var(--l1); border:1px dashed var(--l4); border-radius:8px; font-family:var(--f-data); font-size:10.5px; letter-spacing:.6px; color:var(--t2); display:flex; gap:14px; flex-wrap:wrap; }
+  .footnote span b { color:var(--t0); }
+</style>
+<style>
+  /* ── MODAL / OVERLAY SYSTEM ─────────────────────────────────────── */
+  .overlay { position:fixed; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(16,19,26,.85); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+  .modal { background:var(--l1); border:1px solid var(--l4); border-radius:14px; width:100%; max-width:560px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 32px 80px rgba(0,0,0,.55); }
+  .modal--narrow { max-width:440px; }
+  .modal--wide   { max-width:760px; }
+
+  .modal-h { display:flex; justify-content:space-between; align-items:flex-start; padding:22px 26px; border-bottom:1px solid var(--l4); gap:18px; }
+  .modal-h h2 { font-family:var(--f-display); font-size:30px; font-weight:600; letter-spacing:-.02em; line-height:1; text-transform:uppercase; }
+  .modal-h .modal-eyebrow { font-family:var(--f-data); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); margin-bottom:6px; }
+  .modal-close { width:34px; height:34px; border-radius:8px; background:var(--l2); border:1px solid var(--l4); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; color:var(--t2); font-size:18px; }
+  .modal-close:hover { background:var(--l3); color:var(--t0); }
+
+  .modal-body { padding:26px; flex:1; overflow-y:auto; overflow-x:hidden; }
+  .modal-foot { display:flex; gap:10px; justify-content:flex-end; padding:18px 26px; border-top:1px solid var(--l4); }
+  .modal-foot.split { justify-content:space-between; align-items:center; }
+  .modal-foot .foot-meta { font-family:var(--f-data); font-size:10px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t3); }
+
+  /* ── FORM FIELDS ────────────────────────────────────────────────── */
+  .field { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+  .field:last-child { margin-bottom:0; }
+  .field-label { font-family:var(--f-data); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); }
+  .field-help { font-family:var(--f-body); font-size:13px; color:var(--t3); line-height:1.55; letter-spacing:-.005em; margin-top:-2px; }
+  .field-help b { color:var(--t1); font-weight:600; }
+
+  .input, .textarea, .select { background:var(--l2); border:1px solid var(--l4); border-radius:8px; padding:12px 14px; font-family:var(--f-body); font-size:15px; line-height:1.4; color:var(--t0); width:100%; transition:border-color .12s ease, background .12s ease; appearance:none; -webkit-appearance:none; }
+  .input:focus, .textarea:focus, .select:focus { outline:none; border-color:var(--corp); background:var(--l3); }
+  .input::placeholder, .textarea::placeholder { color:var(--t3); }
+  .input[type="number"], .input.num { font-family:var(--f-data); font-variant-numeric:tabular-nums; }
+  .textarea { resize:vertical; min-height:88px; font-family:var(--f-body); }
+  .select { background-image:linear-gradient(45deg, transparent 50%, var(--t2) 50%), linear-gradient(135deg, var(--t2) 50%, transparent 50%); background-position:calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size:6px 6px; background-repeat:no-repeat; padding-right:38px; }
+
+  .input-with-unit { position:relative; }
+  .input-with-unit .input { padding-right:54px; }
+  .input-with-unit .unit { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-family:var(--f-data); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t3); pointer-events:none; }
+
+  /* ── CHIP / PICKER GROUPS ───────────────────────────────────────── */
+  .chip-group { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip-pick { padding:9px 14px; background:var(--l2); border:1px solid var(--l4); border-radius:100px; font-family:var(--f-data); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t1); cursor:pointer; transition:all .12s ease; }
+  .chip-pick:hover { background:var(--l3); color:var(--t0); }
+  .chip-pick.active { background:var(--corp); color:#fff; border-color:var(--corp); }
+  .chip-pick.active.race { background:var(--race); border-color:var(--race); }
+  .chip-pick.active.coach { background:var(--coach); border-color:var(--coach); color:var(--l0); }
+
+  /* ── RADIO ROW LIST ─────────────────────────────────────────────── */
+  .radio-list { display:flex; flex-direction:column; gap:8px; }
+  .radio-row { display:grid; grid-template-columns:18px 1fr auto; gap:14px; align-items:center; padding:12px 14px; background:var(--l2); border:1px solid var(--l4); border-radius:8px; cursor:pointer; transition:all .12s ease; }
+  .radio-row .radio-mark { width:18px; height:18px; border-radius:50%; border:2px solid var(--t3); background:transparent; transition:all .12s ease; }
+  .radio-row.active { border-color:var(--corp); background:rgba(0,143,236,.06); }
+  .radio-row.active .radio-mark { border-color:var(--corp); background:radial-gradient(circle, var(--corp) 0 5px, transparent 5px); }
+  .radio-row .radio-label { font-family:var(--f-display); font-size:16px; font-weight:600; letter-spacing:-.01em; text-transform:uppercase; }
+  .radio-row .radio-meta { font-family:var(--f-data); font-size:10px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t3); margin-top:3px; }
+  .radio-row .radio-aux { font-family:var(--f-data); font-size:11px; font-weight:600; letter-spacing:.06em; color:var(--t2); }
+
+  /* ── PAGE BACK NAV (detail pages) ───────────────────────────────── */
+  .page-back { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border-radius:6px; background:var(--l2); border:1px solid var(--l4); font-family:var(--f-data); font-size:11px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--t1); white-space:nowrap; }
+  .page-back:hover { background:var(--l3); color:var(--t0); }
+
+  /* ── EXTRA BUTTON VARIANTS ──────────────────────────────────────── */
+  .btn-danger { background:var(--warn); color:#fff; }
+  .btn-danger:hover { filter:brightness(1.08); }
+  .btn-coach { background:var(--coach); color:var(--l0); }
+  .btn-race { background:var(--race); color:#fff; }
+  .btn-ghost { background:transparent; color:var(--t2); border:0; padding:11px 14px; }
+  .btn-ghost:hover { color:var(--t0); }
+
+  /* ── EMPTY / LOADING / ERROR ATOMS ──────────────────────────────── */
+  .empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:48px 32px; text-align:center; gap:14px; min-height:280px; }
+  .empty-glyph { font-family:var(--f-display); font-size:48px; opacity:.35; color:var(--t2); line-height:1; }
+  .empty-state h3 { font-family:var(--f-display); font-size:24px; font-weight:600; letter-spacing:-.02em; text-transform:uppercase; line-height:1; }
+  .empty-state p { font-family:var(--f-body); font-size:14px; color:var(--t2); line-height:1.55; max-width:280px; letter-spacing:-.005em; }
+
+  .skeleton { background:linear-gradient(90deg, var(--l2) 0%, var(--l3) 50%, var(--l2) 100%); background-size:200% 100%; border-radius:6px; animation:skeleton-shimmer 1.4s ease-in-out infinite; }
+  @keyframes skeleton-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+</style>
+
+</head>
+<body>
+
+<div class="stage">
+  <!-- Top bar · BACK nav left · tabs center · clock right -->
+  <div class="topbar">
+    <a class="page-back" href="log-2026-05-09.html">← BACK TO LOG</a>
+    <div class="tabs"><a class="tab" href="overview-2026-05-09.html">Overview</a><a class="tab" href="training-2026-05-09.html">Training</a><a class="tab" href="races-2026-05-09.html">Races</a><a class="tab" href="health-2026-05-09.html">Health</a><a class="tab active" href="log-2026-05-09.html">Log</a><a class="tab" href="profile-2026-05-09.html">Profile</a></div>
+    <div class="clock">FRI · MAY 9 · <b>4:42 PM</b></div>
+  </div>
+
+  <!-- Page hero · uses canonical .greet pattern: .greet-id (eyebrow+title) on left, 5 KPI tiles on right.
+       This collapses the old hero + separate stats row into a single dense band. -->
+  <div class="greet">
+    <div class="greet-id">
+      <div class="hi">RUN DETAIL · WED MAY 6</div>
+      <h1>Easy 6.7 mi</h1>
+    </div>
+    <div class="greet-state">
+      <div class="greet-tile">
+        <div class="t-eyebrow">DISTANCE</div>
+        <div style="font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;">6.7<small style="font-family:var(--f-data);font-size:.42em;opacity:.55;font-weight:700;margin-left:5px;">MI</small></div>
+        <div class="mono-sm" style="color:var(--corp);font-size:8.5px;margin-top:4px;">+4.7 VS PLAN</div>
+      </div>
+      <div class="greet-tile">
+        <div class="t-eyebrow">TIME</div>
+        <div style="font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;">59:18</div>
+        <div class="mono-sm" style="color:var(--t3);font-size:8.5px;margin-top:4px;">1:02 ELAPSED</div>
+      </div>
+      <div class="greet-tile good">
+        <div class="t-eyebrow">AVG PACE</div>
+        <div style="font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;">8:50<small style="font-family:var(--f-data);font-size:.42em;opacity:.55;font-weight:700;margin-left:5px;">/MI</small></div>
+        <div class="mono-sm" style="color:var(--good);font-size:8.5px;margin-top:4px;">EASY · DANIELS E</div>
+      </div>
+      <div class="greet-tile">
+        <div class="t-eyebrow">AVG HR</div>
+        <div style="font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;">142<small style="font-family:var(--f-data);font-size:.42em;opacity:.55;font-weight:700;margin-left:5px;">BPM</small></div>
+        <div class="mono-sm" style="color:var(--t3);font-size:8.5px;margin-top:4px;">76% MAX · Z1-Z2</div>
+      </div>
+      <div class="greet-tile">
+        <div class="t-eyebrow">ELEVATION</div>
+        <div style="font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;">182<small style="font-family:var(--f-data);font-size:.42em;opacity:.55;font-weight:700;margin-left:5px;">FT</small></div>
+        <div class="mono-sm" style="color:var(--t3);font-size:8.5px;margin-top:4px;">ROLLING · NEUTRAL</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW A · RECAP · Coach Read verdict + Route map, paired side by side -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+    <div class="card span-7" style="padding:18px 22px;background:linear-gradient(135deg, rgba(39,180,224,.12) 0%, var(--l1) 65%);border-color:rgba(39,180,224,.32);display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l" style="color:var(--coach);">▸ COACH READ</div>
+        <span class="card-pin coach">+12% BASELINE UNLOCKED</span>
+      </div>
+      <div class="t-section" style="font-size:20px;line-height:1.2;margin-top:4px;">Recovery run, but you absorbed more.</div>
+      <div class="t-body" style="color:var(--t1);margin-top:6px;">Ran <b style="color:var(--t0);font-weight:600;">+4.7 mi over plan</b> at <b style="color:var(--t0);font-weight:600;">RPE −0.4</b>. HR stayed Z1–Z2 the whole way. Coach bumped baseline +12%, lifted long-run cap to 8.2 mi.</div>
+      <!-- Two-column decision deltas · inline, no big box -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:auto;padding-top:14px;">
+        <div style="padding:8px 12px;background:var(--l2);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">
+          <span class="mono-sm" style="color:var(--t3);font-size:9px;">VOL / WK</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:var(--f-data);font-size:11px;color:var(--t3);text-decoration:line-through;">14</span>
+            <span style="color:var(--coach);font-weight:700;">→</span>
+            <span style="font-family:var(--f-display);font-size:16px;font-weight:700;color:var(--coach);line-height:1;">17<small style="font-size:.55em;opacity:.7;">mi</small></span>
+          </div>
+        </div>
+        <div style="padding:8px 12px;background:var(--l2);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">
+          <span class="mono-sm" style="color:var(--t3);font-size:9px;">LONG RUN CAP</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:var(--f-data);font-size:11px;color:var(--t3);text-decoration:line-through;">7.4</span>
+            <span style="color:var(--coach);font-weight:700;">→</span>
+            <span style="font-family:var(--f-display);font-size:16px;font-weight:700;color:var(--coach);line-height:1;">8.2<small style="font-size:.55em;opacity:.7;">mi</small></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Route map · span-5, compact aspect -->
+    <div class="card span-5" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="card-h" style="padding:14px 18px 0 18px;">
+        <div class="card-l">ROUTE · LIBERTY STATION</div>
+        <span class="card-pin muted">SAN DIEGO</span>
+      </div>
+      <svg viewBox="0 0 600 260" style="width:100%;height:auto;display:block;margin-top:6px;">
+        <defs>
+          <pattern id="contours-r" patternUnits="userSpaceOnUse" width="50" height="50" patternTransform="rotate(8)">
+            <path d="M -10 25 Q 10 18, 25 25 T 60 25" fill="none" stroke="rgba(244,246,248,.025)" stroke-width="1"/>
+            <path d="M -10 45 Q 10 38, 25 45 T 60 45" fill="none" stroke="rgba(244,246,248,.025)" stroke-width="1"/>
+          </pattern>
+          <linearGradient id="route-r" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%"   stop-color="#3EBD41" stop-opacity=".7"/>
+            <stop offset="100%" stop-color="#3EBD41" stop-opacity="1"/>
+          </linearGradient>
+        </defs>
+        <rect width="600" height="260" fill="#0B0E14"/>
+        <rect width="600" height="260" fill="url(#contours-r)"/>
+        <!-- Bay hint -->
+        <path d="M -20 235 Q 100 222, 190 226 T 360 217 Q 450 214, 550 210 L 550 280 L -20 280 Z" fill="rgba(0,143,236,.06)" stroke="rgba(0,143,236,.18)" stroke-width="1" stroke-dasharray="3 5"/>
+        <text x="20" y="248" font-family="JetBrains Mono" font-size="9" font-weight="700" fill="rgba(0,143,236,.35)" letter-spacing=".8">SD BAY</text>
+        <!-- Route · scaled to viewBox 600×260, route occupies ~y=40 to y=220 -->
+        <path d="M 60 190 C 100 165, 140 145, 170 115 S 240 55, 320 50 S 440 70, 485 115 S 535 185, 510 215 S 410 240, 320 235 S 140 220, 60 190 Z"
+              fill="none" stroke="rgba(62,189,65,.18)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 60 190 C 100 165, 140 145, 170 115 S 240 55, 320 50 S 440 70, 485 115 S 535 185, 510 215 S 410 240, 320 235 S 140 220, 60 190 Z"
+              fill="none" stroke="url(#route-r)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Mile markers -->
+        <g font-family="JetBrains Mono" font-size="9.5" font-weight="700" fill="#F4F6F8">
+          <circle cx="135" cy="140" r="9" fill="#10131A" stroke="#3EBD41" stroke-width="2"/>
+          <text x="135" y="144" text-anchor="middle">1</text>
+          <circle cx="215" cy="80" r="9" fill="#10131A" stroke="#3EBD41" stroke-width="2"/>
+          <text x="215" y="84" text-anchor="middle">2</text>
+          <circle cx="340" cy="52" r="10" fill="#10131A" stroke="#3EBD41" stroke-width="2.5"/>
+          <text x="340" y="56" text-anchor="middle">3</text>
+          <circle cx="450" cy="100" r="9" fill="#10131A" stroke="#3EBD41" stroke-width="2"/>
+          <text x="450" y="104" text-anchor="middle">4</text>
+          <circle cx="510" cy="180" r="9" fill="#10131A" stroke="#3EBD41" stroke-width="2"/>
+          <text x="510" y="184" text-anchor="middle">5</text>
+          <circle cx="395" cy="237" r="9" fill="#10131A" stroke="#3EBD41" stroke-width="2"/>
+          <text x="395" y="241" text-anchor="middle">6</text>
+        </g>
+        <!-- Start + finish -->
+        <circle cx="60" cy="190" r="10" fill="#3EBD41" stroke="#10131A" stroke-width="2.5"/>
+        <circle cx="60" cy="190" r="3" fill="#10131A"/>
+        <circle cx="95" cy="200" r="9" fill="#10131A" stroke="#FF5722" stroke-width="2.5"/>
+        <circle cx="95" cy="200" r="4" fill="#FF5722"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;padding:8px 18px;border-top:1px solid var(--l4);font-family:var(--f-data);font-size:9px;font-weight:700;letter-spacing:.4px;color:var(--t3);">
+        <span>▶ 8:42 AM</span>
+        <span style="color:var(--t2);">LOOP · 6.7 MI</span>
+        <span style="color:var(--coach);">OPEN →</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW B · MILE-BY-MILE STRIP · the splits + elevation + grade story in one band -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+    <div class="card span-12" style="padding:18px 22px;">
+      <div class="card-h">
+        <div>
+          <div class="card-l">MILE-BY-MILE · 7 SPLITS</div>
+          <div class="h-mid" style="font-size:16px;margin-top:3px;">Elevation by grade <span style="color:var(--t3);font-weight:400;">·</span> pace, HR per mile below</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <span class="card-pin green">▼ NEGATIVE SPLIT</span>
+          <span class="card-pin amber">CLIMB AT MI 3</span>
+        </div>
+      </div>
+
+      <!-- Grade legend strip · explains the colored elevation band below -->
+      <div style="display:flex;gap:14px;margin-top:10px;font-family:var(--f-data);font-size:9px;letter-spacing:.8px;font-weight:700;color:var(--t3);">
+        <span class="t-eyebrow" style="color:var(--t2);">ELEVATION</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#FC4D64;border-radius:2px;vertical-align:middle;margin-right:5px;"></span>STEEP &gt;6%</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#F3AD38;border-radius:2px;vertical-align:middle;margin-right:5px;"></span>UP 3–6%</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:rgba(244,246,248,.35);border-radius:2px;vertical-align:middle;margin-right:5px;"></span>FLAT ±3%</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:#3EBD41;border-radius:2px;vertical-align:middle;margin-right:5px;"></span>DESCENT</span>
+        <span style="margin-left:auto;color:var(--att);">▲ PEAK 528 FT · MI 3</span>
+      </div>
+
+      <!-- Elevation profile spanning the full row · aligned to mile cards below -->
+      <svg viewBox="0 0 1400 90" preserveAspectRatio="none" style="width:100%;height:60px;display:block;margin-top:10px;">
+        <defs>
+          <!-- Horizontal grade gradient · soft transitions between mile segments.
+               Mile boundaries at 14.3% / 28.6% / 42.8% / 57.1% / 71.4% / 85.7%.
+               Each grade-change has a ~6% blend zone. -->
+          <linearGradient id="ms-x" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%"     stop-color="#F3AD38"/>          <!-- M1 amber (up) -->
+            <stop offset="25%"    stop-color="#F3AD38"/>          <!-- M2 still amber -->
+            <stop offset="31%"    stop-color="#FC4D64"/>          <!-- → steep red -->
+            <stop offset="40%"    stop-color="#FC4D64"/>          <!-- M3 steep red -->
+            <stop offset="47%"    stop-color="#3EBD41"/>          <!-- → descent green -->
+            <stop offset="68%"    stop-color="#3EBD41"/>          <!-- M4-M5 green -->
+            <stop offset="74%"    stop-color="rgba(244,246,248,.5)"/>  <!-- → flat -->
+            <stop offset="100%"   stop-color="rgba(244,246,248,.5)"/>  <!-- M6, KICK flat -->
+          </linearGradient>
+          <!-- Vertical fade · full alpha at top, transparent at bottom · gives the soft elevation feel -->
+          <linearGradient id="ms-fade" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%"   stop-color="#fff" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+          </linearGradient>
+          <!-- Mask applies the vertical fade to whatever it's applied to -->
+          <mask id="ms-mask" maskUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="1400" height="90" fill="url(#ms-fade)"/>
+          </mask>
+        </defs>
+        <!-- ONE continuous elevation polygon · fill is horizontal-grade gradient, mask applies vertical fade.
+             Result: smooth color blends across mile boundaries AND soft fade to the baseline. -->
+        <path d="M 0 65 L 100 58 L 200 50 L 300 42 L 400 36 L 500 22 L 600 18 L 700 36 L 800 56 L 900 64 L 1000 70 L 1100 70 L 1200 72 L 1300 70 L 1400 68 L 1400 90 L 0 90 Z"
+              fill="url(#ms-x)" opacity=".40" mask="url(#ms-mask)"/>
+        <!-- Profile line on top · full opacity, no mask -->
+        <polyline points="0,65 100,58 200,50 300,42 400,36 500,22 600,18 700,36 800,56 900,64 1000,70 1100,70 1200,72 1300,70 1400,68"
+                  fill="none" stroke="#F4F6F8" stroke-width="2" stroke-opacity=".85" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        <!-- Peak marker -->
+        <circle cx="600" cy="18" r="4" fill="#FC4D64" stroke="#10131A" stroke-width="1.5"/>
+      </svg>
+
+      <!-- 7 mile cards, columns aligned to the elevation segments above -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:8px;">
+        <!-- M1 -->
+        <div style="padding:10px 12px;background:var(--l2);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--t1);">M1</span>
+            <span class="mono-sm" style="color:var(--att);font-size:9px;">+1.6%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:55</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:3px;">138 BPM · Z1</div>
+        </div>
+        <!-- M2 -->
+        <div style="padding:10px 12px;background:var(--l2);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--t1);">M2</span>
+            <span class="mono-sm" style="color:var(--att);font-size:9px;">+1.4%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:50</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:3px;">141 BPM · Z1-2</div>
+        </div>
+        <!-- M3 · the climb -->
+        <div style="padding:10px 12px;background:rgba(243,173,56,.06);border-radius:6px;box-shadow:inset 0 2px 0 var(--att);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--att);">M3</span>
+            <span class="mono-sm" style="color:var(--warn);font-size:9px;">+4.8%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:45</div>
+          <div class="mono-sm" style="color:var(--att);font-size:9px;margin-top:3px;">148 BPM · Z2</div>
+        </div>
+        <!-- M4 -->
+        <div style="padding:10px 12px;background:var(--l2);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--t1);">M4</span>
+            <span class="mono-sm" style="color:var(--good);font-size:9px;">−2.1%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:52</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:3px;">142 BPM · Z2</div>
+        </div>
+        <!-- M5 -->
+        <div style="padding:10px 12px;background:var(--l2);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--t1);">M5</span>
+            <span class="mono-sm" style="color:var(--good);font-size:9px;">−1.6%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:55</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:3px;">140 BPM · Z1-2</div>
+        </div>
+        <!-- M6 -->
+        <div style="padding:10px 12px;background:var(--l2);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--t1);">M6</span>
+            <span class="mono-sm" style="color:var(--t3);font-size:9px;">−0.2%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;">8:50</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:3px;">143 BPM · Z2</div>
+        </div>
+        <!-- KICK · fastest mile -->
+        <div style="padding:10px 12px;background:rgba(62,189,65,.06);border-radius:6px;box-shadow:inset 0 2px 0 var(--good);">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--f-display);font-size:13px;font-weight:700;color:var(--good);">KICK 0.7</span>
+            <span class="mono-sm" style="color:var(--t3);font-size:9px;">−0.2%</span>
+          </div>
+          <div style="font-family:var(--f-display);font-size:18px;font-weight:700;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;color:var(--good);">8:42</div>
+          <div class="mono-sm" style="color:var(--corp);font-size:9px;margin-top:3px;">152 BPM · Z2+</div>
+        </div>
+      </div>
+
+      <div class="card-foot" style="margin-top:12px;">
+        <span>SLOWEST M1/M5 · 8:55 · FASTEST KICK · 8:42</span>
+        <span style="color:var(--good);">▲ +6 SPM ON KICK · POLARIZED</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW C · CONTEXT · 4 equal compact cards -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+    <!-- Climbs · 2 climbs as tiny rows -->
+    <div class="card span-3" style="padding:14px 18px;display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l">CLIMBS · 2</div>
+        <span class="card-pin amber">CAT 5</span>
+      </div>
+      <div style="padding:8px 10px;background:linear-gradient(90deg, rgba(243,173,56,.10), var(--l2));border-left:3px solid var(--att);border-radius:5px;margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span class="mono-sm" style="color:var(--att);font-size:9px;">▲ MI 2.1–3.0</span>
+          <span style="font-family:var(--f-display);font-size:13px;font-weight:700;color:var(--att);line-height:1;">2.4<small style="font-size:.55em;opacity:.55;">%</small></span>
+        </div>
+        <div class="mono-sm" style="color:var(--t2);font-size:9.5px;margin-top:3px;">+116 ft · 0.9 mi</div>
+      </div>
+      <div style="padding:8px 10px;background:var(--l2);border-left:3px solid rgba(243,173,56,.45);border-radius:5px;margin-top:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span class="mono-sm" style="color:var(--t2);font-size:9px;">▲ MI 5.4–5.8</span>
+          <span style="font-family:var(--f-display);font-size:12px;font-weight:700;color:var(--t1);line-height:1;">1.8<small style="font-size:.55em;opacity:.55;">%</small></span>
+        </div>
+        <div class="mono-sm" style="color:var(--t2);font-size:9.5px;margin-top:3px;">+38 ft · 0.4 mi</div>
+      </div>
+      <div class="card-foot" style="margin-top:auto;"><span>NET +182 / −182 FT</span><span style="color:var(--good);">▼ NO FADE</span></div>
+    </div>
+
+    <!-- HR Zones -->
+    <div class="card span-3" style="padding:14px 18px;display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l">HR · TIME IN ZONE</div>
+        <span class="card-pin green">92% EASY</span>
+      </div>
+      <div style="display:flex;height:10px;border-radius:4px;overflow:hidden;gap:1px;background:var(--l3);margin-top:10px;">
+        <div style="flex:62;background:var(--good);"></div>
+        <div style="flex:35;background:rgba(62,189,65,.55);"></div>
+        <div style="flex:3;background:var(--corp);"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;">
+        <div style="padding:6px 4px;background:rgba(62,189,65,.10);border-radius:4px;text-align:center;">
+          <div class="t-eyebrow" style="color:var(--good);font-size:9px;">Z1</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:2px;">37<small style="font-size:.5em;opacity:.55;">m</small></div>
+        </div>
+        <div style="padding:6px 4px;background:rgba(62,189,65,.10);border-radius:4px;text-align:center;">
+          <div class="t-eyebrow" style="color:var(--good);font-size:9px;">Z2</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:2px;">20<small style="font-size:.5em;opacity:.55;">m</small></div>
+        </div>
+        <div style="padding:6px 4px;background:rgba(0,143,236,.08);border-radius:4px;text-align:center;">
+          <div class="t-eyebrow" style="color:var(--corp);font-size:9px;">Z3+</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:2px;color:var(--t2);">2<small style="font-size:.5em;opacity:.55;">m</small></div>
+        </div>
+      </div>
+      <div class="card-foot" style="margin-top:auto;"><span>MAX 158</span><span class="delta up">▲ POLARIZED</span></div>
+    </div>
+
+    <!-- Conditions -->
+    <div class="card span-3" style="padding:14px 18px;display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l">CONDITIONS</div>
+        <span class="card-pin green">IDEAL</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;">
+        <div style="padding:7px 10px;background:var(--l2);border-radius:5px;">
+          <div class="t-eyebrow" style="font-size:9px;">TEMP</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:3px;">61<small style="font-size:.42em;opacity:.55;margin-left:2px;">°F</small></div>
+        </div>
+        <div style="padding:7px 10px;background:var(--l2);border-radius:5px;">
+          <div class="t-eyebrow" style="font-size:9px;">DEW</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:3px;">53<small style="font-size:.42em;opacity:.55;margin-left:2px;">°F</small></div>
+        </div>
+        <div style="padding:7px 10px;background:var(--l2);border-radius:5px;">
+          <div class="t-eyebrow" style="font-size:9px;">HUM</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:3px;">72<small style="font-size:.42em;opacity:.55;margin-left:2px;">%</small></div>
+        </div>
+        <div style="padding:7px 10px;background:var(--l2);border-radius:5px;">
+          <div class="t-eyebrow" style="font-size:9px;">WIND</div>
+          <div style="font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;margin-top:3px;">4<small style="font-size:.42em;opacity:.55;margin-left:2px;">SW</small></div>
+        </div>
+      </div>
+      <div class="card-foot" style="margin-top:auto;"><span>MARINE LAYER</span><span style="color:var(--good);">NO PENALTY</span></div>
+    </div>
+
+    <!-- Gear -->
+    <div class="card span-3" style="padding:14px 18px;display:flex;flex-direction:column;">
+      <div class="card-h">
+        <div class="card-l">GEAR · TODAY</div>
+        <span class="card-pin muted">EDIT</span>
+      </div>
+      <div style="display:grid;grid-template-columns:32px 1fr;gap:10px;align-items:center;padding:8px 10px;background:var(--l2);border-radius:5px;border-left:3px solid var(--corp);margin-top:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,rgba(0,143,236,.3),rgba(0,143,236,.05));display:flex;align-items:center;justify-content:center;font-family:var(--f-data);font-size:8.5px;font-weight:700;color:var(--corp);letter-spacing:.5px;">SG5</div>
+        <div>
+          <div class="h-mid" style="font-size:13px;">Speedgoat 5</div>
+          <div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:1px;">287 / 400 MI</div>
+        </div>
+      </div>
+      <div style="height:4px;background:var(--l3);border-radius:2px;margin-top:8px;overflow:hidden;">
+        <div style="height:100%;width:71.75%;background:linear-gradient(90deg,var(--corp),var(--good));"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <div style="flex:1;padding:5px 8px;background:var(--l2);border-radius:4px;">
+          <div class="mono-sm" style="color:var(--t3);font-size:8.5px;">WATCH</div>
+          <div style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);margin-top:1px;">FENIX 7</div>
+        </div>
+        <div style="flex:1;padding:5px 8px;background:var(--l2);border-radius:4px;">
+          <div class="mono-sm" style="color:var(--t3);font-size:8.5px;">HRM</div>
+          <div style="font-family:var(--f-data);font-size:10px;font-weight:700;color:var(--t1);margin-top:1px;">HRM-PRO</div>
+        </div>
+      </div>
+      <div class="card-foot" style="margin-top:auto;"><span>+6.7 ADDED</span><span style="color:var(--good);">▲ ON TRACK</span></div>
+    </div>
+  </div>
+
+  <!-- ACTIONS row -->
+  <div class="row" style="grid-template-columns:repeat(12,1fr);">
+    <div class="card span-12" style="padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div class="t-eyebrow" style="color:var(--t2);">RUN ACTIONS</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost">VIEW ON STRAVA →</button>
+        <button class="btn btn-secondary">EDIT RUN</button>
+        <button class="btn btn-secondary">DELETE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

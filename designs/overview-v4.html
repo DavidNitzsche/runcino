@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Runcino · Overview</title>
+<title>faff.run · Overview</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
 
@@ -1210,13 +1210,13 @@ body {
   pointer-events: none;
 }
 </style>
-<script src="runcino-store.js"></script>
+<script src="faff-store.js"></script>
 </head>
 <body>
 
 <nav class="navbar">
   <div class="navbar-inner">
-    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
     <div class="nav-links">
       <a class="nav-link active" href="overview-v4.html">Overview</a>
       <a class="nav-link" href="training-v4.html">Training</a>
@@ -1276,7 +1276,7 @@ body {
   ══════════════════════════════════ -->
   <div class="hero-card">
 
-    <!-- Left column · rendered from RuncinoStore.todayWorkout() by inline script.
+    <!-- Left column · rendered from FaffStore.todayWorkout() by inline script.
          Two modes: workout day (title + stats + segments + buttons) and rest day
          (title + short note). -->
     <div class="hero-left" id="hero-left"></div>
@@ -1356,7 +1356,7 @@ body {
       </div>
 
       <!-- Today's Intensity — rendered by renderHero() / renderIntensity() based
-           on RuncinoStore.todayWorkout(). On rest days the gradient bar is
+           on FaffStore.todayWorkout(). On rest days the gradient bar is
            hidden (.intensity-section.rest) and the copy switches to "Rest day
            — no intensity". On run days the tick + fade position by type. -->
       <div class="intensity-section" id="intensity-section">
@@ -1391,7 +1391,7 @@ body {
       </div>
     </div>
 
-    <!-- The 7 day-cols are rendered from RuncinoStore.currentWeekPlan() by the
+    <!-- The 7 day-cols are rendered from FaffStore.currentWeekPlan() by the
          inline render script at the bottom of the page. -->
     <div class="day-grid" id="day-grid"></div>
   </div>
@@ -1481,7 +1481,7 @@ body {
       document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
   });
 
-  // LOG CHECK-IN — writes to the central RuncinoStore so the same
+  // LOG CHECK-IN — writes to the central FaffStore so the same
   // log persists to /health and to any other page reading the store.
   function applyOverviewCheckInState(checkin) {
     const btn = document.querySelector('.checkin-btn');
@@ -1512,31 +1512,31 @@ body {
 
   document.querySelector('.checkin-btn').addEventListener('click', function() {
     if (this.classList.contains('logged')) return;
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const sliders = document.querySelectorAll('.checkin-range');
     const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
-    RuncinoStore.logCheckIn({ energy, soreness, stress });
+    FaffStore.logCheckIn({ energy, soreness, stress });
     // applyOverviewCheckInState fires via the subscribe handler below
   });
 
   // On load — reflect any existing check-in for today
-  if (window.RuncinoStore) {
-    applyOverviewCheckInState(RuncinoStore.todayCheckIn());
-    RuncinoStore.subscribe(() => {
-      applyOverviewCheckInState(RuncinoStore.todayCheckIn());
+  if (window.FaffStore) {
+    applyOverviewCheckInState(FaffStore.todayCheckIn());
+    FaffStore.subscribe(() => {
+      applyOverviewCheckInState(FaffStore.todayCheckIn());
     });
   }
 
   // ── Coach briefing · day-aware narrative ──────────────────────────
   function renderCoachBriefing() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const el = document.getElementById('coach-briefing');
     if (!el) return;
-    const day = RuncinoStore.todayWorkout();
-    const ctx = RuncinoStore.getCurrentWeekContext();
+    const day = FaffStore.todayWorkout();
+    const ctx = FaffStore.getCurrentWeekContext();
     const week = ctx.week;
     const weekNum = ctx.weekNum;
-    const state = RuncinoStore.getState();
+    const state = FaffStore.getState();
     const nextA = (state.races.upcoming || [])[0];
     const daysAway = nextA ? nextA.daysAway : '—';
     const raceName = nextA ? nextA.name.split(' ').slice(0,3).join(' ') : 'the next race';
@@ -1573,22 +1573,22 @@ body {
     el.innerHTML = text;
   }
 
-  if (window.RuncinoStore) {
+  if (window.FaffStore) {
     renderCoachBriefing();
-    RuncinoStore.subscribe(renderCoachBriefing);
+    FaffStore.subscribe(renderCoachBriefing);
   }
 
-  // ── Hero · render from RuncinoStore.todayWorkout() ────────────────
+  // ── Hero · render from FaffStore.todayWorkout() ────────────────
   // Two modes: workout day (title + stats + segments + strength + buttons)
   // and rest day (title + recovery note). Buttons use event delegation
   // since they're recreated on every render.
   function renderHero() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const host = document.getElementById('hero-left');
     if (!host) return;
-    const day = RuncinoStore.todayWorkout();
-    const state = RuncinoStore.getState();
-    const ctx = RuncinoStore.getCurrentWeekContext();
+    const day = FaffStore.todayWorkout();
+    const state = FaffStore.getState();
+    const ctx = FaffStore.getCurrentWeekContext();
     const phaseLabel = ctx.phase + ' WEEK ' + ctx.phaseWeekNum;
     const eyebrow = 'TODAY · ' + phaseLabel;
 
@@ -1695,19 +1695,19 @@ body {
   }
 
   // ── Today's Intensity render ─────────────────────────────────────
-  // Reads RuncinoStore.todayWorkout() and reconfigures the gradient bar.
+  // Reads FaffStore.todayWorkout() and reconfigures the gradient bar.
   // Rest days: hides the bar entirely, swaps the zone label and coach copy
   // to match. Workout days: positions the tick by type (easy ~22%, recovery
   // ~10%, long ~30%, quality ~70%, race ~85%) and updates the zone label.
   function renderIntensity() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const section = document.getElementById('intensity-section');
     const tick    = document.getElementById('intensity-tick');
     const fade    = document.getElementById('intensity-fade');
     const zone    = document.getElementById('intensity-zone-name');
     const note    = document.getElementById('intensity-coach-note');
     if (!section || !zone) return;
-    const day = RuncinoStore.todayWorkout();
+    const day = FaffStore.todayWorkout();
     if (!day || day.isRest) {
       section.classList.add('rest');
       zone.textContent = 'Rest day · No intensity';
@@ -1745,22 +1745,22 @@ body {
     }
   });
 
-  if (window.RuncinoStore) {
+  if (window.FaffStore) {
     renderHero();
     renderIntensity();
-    RuncinoStore.subscribe(() => { renderHero(); renderIntensity(); });
+    FaffStore.subscribe(() => { renderHero(); renderIntensity(); });
   }
 
-  // ── This Week strip · render from RuncinoStore.currentWeekPlan() ──
+  // ── This Week strip · render from FaffStore.currentWeekPlan() ──
   // Each day-col is a function of plan day + whether it's today.
   // Rest days render with a dim 'Rest' label and a long dash.
   function renderDayGrid() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const grid = document.getElementById('day-grid');
     if (!grid) return;
-    const week = RuncinoStore.currentWeekPlan();
+    const week = FaffStore.currentWeekPlan();
     if (!week) return;
-    const today = RuncinoStore.getState().today;
+    const today = FaffStore.getState().today;
 
     grid.innerHTML = week.days.map(function (d) {
       const isToday = d.date === today;
@@ -1798,12 +1798,12 @@ body {
 
   // ── Week meta line · totals + 'on track for X mi this week' ──────
   function renderWeekMeta() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const el = document.getElementById('week-meta');
     if (!el) return;
-    const week = RuncinoStore.currentWeekPlan();
+    const week = FaffStore.currentWeekPlan();
     if (!week) return;
-    const today = RuncinoStore.getState().today;
+    const today = FaffStore.getState().today;
     let doneMi = 0, plannedSoFarMi = 0, doneRuns = 0, totalRuns = 0;
     week.days.forEach(d => {
       if (d.isRest) return;
@@ -1833,10 +1833,10 @@ body {
       '<span class="week-meta-stat green">' + driftLabel + '</span>';
   }
 
-  if (window.RuncinoStore) {
+  if (window.FaffStore) {
     renderDayGrid();
     renderWeekMeta();
-    RuncinoStore.subscribe(() => { renderDayGrid(); renderWeekMeta(); });
+    FaffStore.subscribe(() => { renderDayGrid(); renderWeekMeta(); });
   }
 
   // OPEN WORKOUT / SKIP TODAY handlers now live in the event-delegation
@@ -1861,7 +1861,7 @@ body {
     document.querySelector('.btn-ghost').click();
   }
 </script>
-<script src="runcino-bind.js" defer></script>
-<script src="runcino-live.js" defer></script>
+<script src="faff-bind.js" defer></script>
+<script src="faff-live.js" defer></script>
 </body>
 </html>

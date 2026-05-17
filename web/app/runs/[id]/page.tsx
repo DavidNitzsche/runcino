@@ -259,7 +259,7 @@ function DescriptionOrMeta({ activity }: { activity: RichActivity }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <Caption left="Runcino · runs" />
+      <Caption left="faff.run · runs" />
       <div className="stage">
         <Topbar activeTab="log" clock={<TopbarClock />} />
         <div className="body">

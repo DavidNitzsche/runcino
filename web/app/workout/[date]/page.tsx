@@ -111,7 +111,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
 
   return (
     <>
-      <Caption left="Runcino · workout" right={`WORKOUT · ${date}`} />
+      <Caption left="faff.run · workout" right={`WORKOUT · ${date}`} />
       <div className="stage">
         <Topbar activeTab="training" clock={<TopbarClock />} />
         <div className="body">

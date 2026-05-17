@@ -1,5 +1,5 @@
 /**
- * Shared types for the Runcino pacing pipeline.
+ * Shared types for the faff.run pacing pipeline.
  * Maps 1:1 with docs/SCHEMA.md v1.1.0.
  */
 
@@ -128,7 +128,7 @@ export interface FitnessSummary {
   source: 'manual' | 'healthkit' | 'strava';
 }
 
-export interface RuncinoPlan {
+export interface FaffPlan {
   schema_version: '1.1.0';
   generated_at: string;
   generator: string;

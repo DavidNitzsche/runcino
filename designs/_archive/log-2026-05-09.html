@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1500">
+<title>faff.run · Tabs · v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F; --l5:#34405266;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32); --t4:rgba(244,246,248,.18);
+    --corp:#008FEC; --warn:#FC4D64; --good:#3EBD41; --att:#F3AD38; --xp:#9013FE; --race:#FF5722; --coach:#27B4E0; --milestone:#F0DF47; --aqua:#27E087; --pink:#CD317C;
+    --race-grad-light:#FF8A3D; --race-grad:#FF5722; --race-grad-deep:#E03E00;
+    --f-display:'Oswald',sans-serif; --f-body:'Jost',sans-serif; --f-data:'JetBrains Mono',monospace;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; }
+
+  /* TYPE SCALE — six steps, no in-between */
+  .t-hero    { font-family:var(--f-display); font-size:140px; font-weight:700; letter-spacing:-.04em; line-height:.9; font-variant-numeric:tabular-nums; }
+  .t-display { font-family:var(--f-display); font-size:72px;  font-weight:700; letter-spacing:-.03em; line-height:.95; }
+  .t-section { font-family:var(--f-display); font-size:36px;  font-weight:600; letter-spacing:-.02em; line-height:1; }
+  .t-stat    { font-family:var(--f-display); font-size:48px;  font-weight:700; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  .t-body    { font-family:var(--f-body);    font-size:15px;  font-weight:400; letter-spacing:-.012em; line-height:1.6; }
+  .t-eyebrow { font-family:var(--f-data);    font-size:11px;  font-weight:500; letter-spacing:.12em;  text-transform:uppercase; color:var(--t2); }
+  a { color:inherit; text-decoration:none; }
+  button { appearance:none; -webkit-appearance:none; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+
+  .stage { max-width:1500px; margin:0 auto; padding:24px 26px 60px; }
+
+  /* Top deck nav */
+  .deck-nav { position:sticky; top:0; z-index:1000; background:rgba(10,12,16,.94); backdrop-filter:blur(10px); padding:12px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--l4); }
+  .deck-brand { font-family:var(--f-display); font-weight:700; letter-spacing:.04em; font-size:18px; color:var(--t2); }
+  .deck-links { display:flex; gap:6px; }
+  .deck-links a { padding:6px 12px; border-radius:6px; font-family:var(--f-data); font-size:10.5px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); }
+  .deck-links a:hover { background:var(--l2); color:var(--t0); }
+
+  /* Tab section frame */
+  .tab-section { padding:60px 0 80px; border-bottom:1px solid var(--l4); }
+  .tab-head { padding:0 26px 36px; max-width:1500px; margin:0 auto; }
+  .tab-head .ix { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; color:var(--t2); font-weight:500; text-transform:uppercase; }
+  .tab-head h2 { font-family:var(--f-display); font-weight:700; font-size:64px; letter-spacing:-.015em; line-height:.95; text-transform:uppercase; margin-top:8px; }
+  .tab-head .lede { font-size:16px; color:var(--t1); line-height:1.55; max-width:720px; margin-top:14px; }
+
+  /* Topbar inside each tab (mocking real app) */
+  .topbar { display:flex; align-items:center; gap:18px; padding:13px 18px; background:var(--l1); border:1px solid var(--l4); border-radius:10px; margin-bottom:14px; }
+  .topbar .brand { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--xp),var(--corp)); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:18px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:3px; border-radius:100px; background:var(--l0); border:1px solid var(--l4); }
+  .tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); cursor:pointer; }
+  .tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .clock { margin-left:auto; font-family:var(--f-data); font-size:12px; letter-spacing:1.4px; color:var(--t1); font-weight:700; }
+  .clock b { color:var(--att); }
+
+  /* Card system */
+  .grid { display:grid; gap:10px; }
+  .row { display:grid; gap:10px; margin-bottom:10px; grid-template-columns:repeat(12,1fr); }
+  .span-3 { grid-column:span 3; } .span-4 { grid-column:span 4; } .span-5 { grid-column:span 5; }
+  .span-6 { grid-column:span 6; } .span-7 { grid-column:span 7; } .span-8 { grid-column:span 8; }
+  .span-9 { grid-column:span 9; } .span-12 { grid-column:span 12; }
+
+  .card { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+  .card-h { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .card-l { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); font-weight:500; }
+  .card-pin { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; padding:3px 7px; border-radius:4px; font-weight:700; flex-shrink:0; }
+  .card-pin.green { background:rgba(62,189,65,.16); color:var(--good); }
+  .card-pin.amber { background:rgba(243,173,56,.18); color:var(--att); }
+  .card-pin.warn  { background:rgba(252,77,100,.16); color:var(--warn); }
+  .card-pin.blue  { background:rgba(0,143,236,.16); color:var(--corp); }
+  .card-pin.purple { background:rgba(144,19,254,.18); color:var(--xp); }
+  .card-pin.race  { background:rgba(255,87,34,.18); color:var(--race); }
+  .card-pin.coach { background:rgba(39,180,224,.18); color:var(--coach); }
+  .card-pin.muted { background:rgba(244,246,248,.06); color:var(--t2); }
+  .card-num { font-family:var(--f-display); font-weight:700; line-height:.95; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+  .card-num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:3px; }
+  .card-foot { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; padding-top:10px; border-top:1px solid var(--l4); margin-top:auto; display:flex; justify-content:space-between; }
+  .delta { display:inline-flex; align-items:center; gap:3px; font-family:var(--f-data); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; letter-spacing:.6px; }
+  .delta.up { background:rgba(62,189,65,.16); color:var(--good); }
+  .delta.dn { background:rgba(252,77,100,.18); color:var(--warn); }
+
+  /* Greeting/hero strip */
+  .greet { padding:14px 4px 24px; }
+  .greet .hi { font-family:var(--f-data); font-size:11px; letter-spacing:2.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:8px; }
+  .greet h1 { font-family:var(--f-display); font-weight:700; font-size:54px; letter-spacing:-.005em; line-height:.95; text-transform:uppercase; }
+  .greet .sub { font-size:14px; color:var(--t1); margin-top:8px; }
+  .greet .sub b { color:var(--att); }
+
+  /* Sparklines */
+  .spark-svg { width:100%; height:36px; display:block; }
+
+  /* Common type */
+  .h-mid { font-family:var(--f-display); font-weight:600; font-size:18px; line-height:1.05; text-transform:uppercase; letter-spacing:-.005em; }
+  .h-big { font-family:var(--f-display); font-weight:700; font-size:42px; letter-spacing:-.015em; line-height:.95; }
+  .h-huge { font-family:var(--f-display); font-weight:700; font-size:64px; letter-spacing:-.02em; line-height:.95; }
+  .mono-sm { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .mono-md { font-family:var(--f-data); font-size:11.5px; letter-spacing:.6px; color:var(--t1); font-weight:600; }
+
+  /* Buttons */
+  .btn { padding:11px 20px; border-radius:8px; font-family:var(--f-data); font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; border:1px solid transparent; box-shadow:none; transition:filter .12s; }
+  .btn:hover { filter:brightness(1.1); }
+  .btn-primary { background:var(--corp); color:var(--t0); }
+  .btn-secondary { background:transparent; color:var(--t1); border-color:var(--l4); }
+
+  /* Day card system (shared) */
+  .week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .day { padding:0; border-radius:8px; background:var(--l2); border:1px solid var(--l4); min-height:138px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  .day::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--l4); }
+  .day.t-rest::before     { background:rgba(244,246,248,.08); }
+  .day.t-recovery::before { background:var(--good); }
+  .day.t-easy::before, .day.t-long::before { background:var(--corp); }
+  .day.t-quality::before  { background:var(--milestone); }
+  .day.t-strength::before { background:var(--xp); }
+  .day.today { border:2px solid var(--att); background:linear-gradient(135deg, rgba(243,173,56,.14), var(--l2)); box-shadow:0 0 16px rgba(243,173,56,.18); }
+  .day.today::before { background:var(--att); width:4px; }
+  .day.done.t-rest { opacity:.65; }
+  .day.done:not(.t-rest) { background:linear-gradient(180deg, rgba(62,189,65,.04), var(--l2)); }
+  .day.future { opacity:.92; }
+  .day-strip { display:flex; justify-content:space-between; align-items:baseline; padding:9px 11px 6px; }
+  .day-dow { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .day-date { font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700; letter-spacing:.6px; font-variant-numeric:tabular-nums; }
+  .day.today .day-dow { color:var(--att); }
+  .day.today .day-date { color:var(--t0); }
+  .day-body { padding:0 11px; flex:1; display:flex; flex-direction:column; gap:4px; }
+  .day-type { font-family:var(--f-display); font-size:18px; font-weight:600; line-height:1; text-transform:uppercase; color:var(--t0); letter-spacing:-.005em; }
+  .day.today .day-type { font-size:20px; }
+  .day.t-rest .day-type { font-size:20px; color:var(--t2); font-weight:500; }
+  .day.done.t-rest .day-type { color:var(--t3); }
+  .day-mi { font-family:var(--f-data); font-size:13px; font-weight:700; color:var(--t1); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .day-mi small { font-size:.65em; opacity:.5; font-weight:700; }
+  .day-pace { font-family:var(--f-data); font-size:10px; color:var(--t3); font-weight:600; letter-spacing:.4px; }
+  .day-foot { padding:8px 11px; font-family:var(--f-data); font-size:9.5px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; margin-top:auto; border-top:1px solid var(--l4); }
+  .day-foot.done   { background:rgba(62,189,65,.10); color:var(--good); border-top-color:rgba(62,189,65,.20); }
+  .day-foot.active { background:rgba(243,173,56,.14); color:var(--att); border-top-color:rgba(243,173,56,.30); }
+  .day-foot.future { background:rgba(0,143,236,.06); color:var(--corp); border-top-color:rgba(0,143,236,.18); }
+  .day-foot.rest   { background:transparent; color:var(--t3); }
+  .day-foot .delta.up { color:var(--corp); }
+  .deck-links a.active { background:var(--l3); color:var(--t0); }
+</style>
+
+</head>
+<body>
+
+<div class="stage">
+    <div class="topbar">
+      <div class="tabs"><a class="tab" href="overview-2026-05-09.html">Overview</a><a class="tab" href="training-2026-05-09.html">Training</a><a class="tab" href="races-2026-05-09.html">Races</a><a class="tab" href="health-2026-05-09.html">Health</a><a class="tab active" href="log-2026-05-09.html">Log</a><a class="tab" href="profile-2026-05-09.html">Profile</a></div>
+      <div class="clock">FRI · MAY 9 · <b>4:42 PM</b></div>
+    </div>
+
+    <div class="greet">
+      <div class="hi">2026 · 503 MI · 87 RUNS · 62 DAYS · 5 RACES</div>
+      <h1>Log</h1>
+      <div class="sub"><b>+22 mi vs same day 2025.</b> April was a peak month at 142 mi · longest run a Big Sur 26.2 PR.</div>
+    </div>
+
+    <!-- ROW 1: Year summary big -->
+    <div class="row">
+      <div class="card span-12">
+        <div class="card-h">
+          <div class="card-l">YEAR IN RUNNING · 2026 · DAY 111/365</div>
+          <div style="display:flex;gap:14px;font-family:var(--f-data);font-size:11px;letter-spacing:1.4px;font-weight:700;text-transform:uppercase;">
+            <span><b style="color:var(--good);">1,650</b> EOY PROJ</span>
+            <span><b style="color:var(--corp);">503</b> YTD</span>
+            <span><b style="color:var(--good);">+22</b> vs 2025</span>
+          </div>
+        </div>
+
+        <!-- Year heat strip -->
+        <div style="display:grid;grid-template-columns:repeat(53,1fr);gap:2px;margin-top:14px;">
+          <!-- Past weeks - varying intensity -->
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.10);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.18);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.22);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.32);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.42);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.50);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.60);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.65);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.50);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.65);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.70);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.75);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.80);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.85);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.90);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.95);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.50);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.45);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.50);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.55);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.65);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.75);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.82);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.88);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.92);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.95);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:#FF5722;border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(243,173,56,.45);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.32);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:rgba(62,189,65,.30);border-radius:2px;outline:2px solid var(--att);"></div>
+          <!-- Future weeks - empty -->
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+          <div style="aspect-ratio:1;background:var(--l3);border-radius:2px;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--f-data);font-size:9px;letter-spacing:1.2px;color:var(--t3);font-weight:700;margin-top:8px;">
+          <span>JAN</span><span>FEB</span><span>MAR</span><span>APR ★</span><span>MAY ▶</span><span>JUN</span><span>JUL</span><span>AUG ◆</span><span>SEP</span><span>OCT</span><span>NOV</span><span>DEC</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2: Monthly bars · best efforts · lifetime -->
+    <div class="row">
+      <div class="card span-6">
+        <div class="card-h">
+          <div class="card-l">MONTHLY VOLUME · 2026 vs 2025</div>
+          <span class="card-pin green">+22 YTD</span>
+        </div>
+        <svg style="width:100%;height:200px;margin-top:10px;" viewBox="0 0 720 200" preserveAspectRatio="none">
+          <line x1="0" y1="50" x2="720" y2="50" stroke="rgba(244,246,248,.06)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+          <line x1="0" y1="100" x2="720" y2="100" stroke="rgba(244,246,248,.06)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+          <line x1="0" y1="150" x2="720" y2="150" stroke="rgba(244,246,248,.06)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+          <!-- 2025 bars (background gray) -->
+          <g opacity=".4">
+            <rect x="20" y="140" width="20" height="40" fill="var(--t3)" rx="2"/>
+            <rect x="80" y="115" width="20" height="65" fill="var(--t3)" rx="2"/>
+            <rect x="140" y="100" width="20" height="80" fill="var(--t3)" rx="2"/>
+            <rect x="200" y="80" width="20" height="100" fill="var(--t3)" rx="2"/>
+            <rect x="260" y="120" width="20" height="60" fill="var(--t3)" rx="2"/>
+          </g>
+          <!-- 2026 bars (color) -->
+          <rect x="44" y="135" width="20" height="45" fill="rgba(62,189,65,.7)" rx="2"/>
+          <rect x="104" y="100" width="20" height="80" fill="rgba(62,189,65,.7)" rx="2"/>
+          <rect x="164" y="80" width="20" height="100" fill="rgba(62,189,65,.7)" rx="2"/>
+          <rect x="224" y="50" width="20" height="130" fill="var(--good)" rx="2"/>
+          <rect x="284" y="160" width="20" height="20" fill="rgba(0,143,236,.6)" rx="2"/>
+          <!-- Future months gray -->
+          <rect x="344" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+          <rect x="404" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+          <rect x="464" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+          <rect x="524" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+          <rect x="584" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+          <rect x="644" y="170" width="20" height="10" fill="var(--l3)" rx="2"/>
+
+          <!-- Values -->
+          <text x="54" y="125" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#F4F6F8" font-weight="700">52</text>
+          <text x="114" y="90" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#F4F6F8" font-weight="700">98</text>
+          <text x="174" y="70" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#F4F6F8" font-weight="700">120</text>
+          <text x="234" y="40" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#F3AD38" font-weight="700">142★</text>
+          <text x="294" y="150" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#008FEC" font-weight="700">14</text>
+        </svg>
+        <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-top:6px;">
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:700;">JAN</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:700;">FEB</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:700;">MAR</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t2);font-weight:700;">APR</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--corp);font-weight:700;">MAY ▶</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">JUN</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">JUL</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">AUG</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">SEP</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">OCT</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">NOV</div>
+          <div style="text-align:center;font-family:var(--f-data);font-size:9px;color:var(--t3);font-weight:700;">DEC</div>
+        </div>
+        <div class="card-foot"><span>2025 SHADED · 2026 SOLID</span><span class="delta up">▲ AHEAD</span></div>
+      </div>
+
+      <!-- Best efforts shelf -->
+      <div class="card span-6">
+        <div class="card-h">
+          <div class="card-l">PERSONAL BESTS · 2026</div>
+          <span class="card-pin green">3 NEW PRs</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+          <div style="padding:14px 16px;background:var(--l2);border-left:3px solid var(--good);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--good);">★ 5K · NEW</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">21:15</div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">FROM TEMPO · MAR 28 · 6:51/MI</div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border-left:3px solid var(--good);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--good);">★ 10K · NEW</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">42:18</div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">SURF CITY 10K · FEB 7 · 6:49/MI</div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border-left:3px solid var(--good);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--good);">★ HALF · NEW</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">1:32:00</div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">DISNEY · JAN 12 · 7:00/MI</div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border-left:3px solid var(--good);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--good);">★ MARATHON · NEW</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">3:36:55</div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">BIG SUR · APR 27 · 8:17/MI</div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--t2);">1 MILE · 2025</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">5:42</div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">KEZAR LOOP · DEC 8 · TT</div>
+          </div>
+          <div style="padding:14px 16px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="color:var(--t2);">LONGEST · 2024</div>
+            <div class="h-big" style="font-size:30px;margin-top:4px;">31.2<small style="font-size:.4em;color:var(--t3);">mi</small></div>
+            <div class="mono-sm" style="color:var(--t2);font-size:9px;font-weight:600;letter-spacing:.4px;">SF 50K · OCT 5</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3: Recent runs feed -->
+    <div class="row">
+      <div class="card span-12">
+        <div class="card-h">
+          <div class="card-l">RECENT RUNS · LAST 7</div>
+          <span class="card-pin muted">VIEW ALL →</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;">
+          <!-- Header -->
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:6px 10px;font-family:var(--f-data);font-size:9px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;border-bottom:1px solid var(--l4);">
+            <span>DATE</span><span>WORKOUT</span><span>DIST</span><span>TIME</span><span>PACE</span><span>HR</span><span>RPE</span>
+          </div>
+          <!-- Rows -->
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--t1);">FRI 8</div>
+            <div><div class="h-mid" style="font-size:14px;">Recovery jog</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">EAST BAY LOOP · STRAVA</div></div>
+            <div class="mono-md">7.4 mi</div>
+            <div class="mono-md">1:04:33</div>
+            <div class="mono-md" style="color:var(--good);">8:42/mi</div>
+            <div class="mono-md">141 avg</div>
+            <div class="mono-md" style="color:var(--good);">3</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--t1);">WED 6</div>
+            <div><div class="h-mid" style="font-size:14px;">Recovery jog</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">PRESIDIO LOOP · STRAVA</div></div>
+            <div class="mono-md">6.7 mi</div>
+            <div class="mono-md">57:08</div>
+            <div class="mono-md" style="color:var(--good);">8:32/mi</div>
+            <div class="mono-md">138 avg</div>
+            <div class="mono-md" style="color:var(--good);">3</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--good);">SUN 3 ★</div>
+            <div><div class="h-mid" style="font-size:14px;">Sombrero Half</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">RACE · C-EFFORT · SENTIMENTAL</div></div>
+            <div class="mono-md">13.2 mi</div>
+            <div class="mono-md">1:40:57</div>
+            <div class="mono-md">7:42/mi</div>
+            <div class="mono-md">158 avg</div>
+            <div class="mono-md">6</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--t1);">SAT 2</div>
+            <div><div class="h-mid" style="font-size:14px;">Shakeout</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">PRE-SOMBRERO · STRAVA</div></div>
+            <div class="mono-md">2.0 mi</div>
+            <div class="mono-md">17:10</div>
+            <div class="mono-md" style="color:var(--good);">8:35/mi</div>
+            <div class="mono-md">132 avg</div>
+            <div class="mono-md" style="color:var(--good);">2</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--good);">SUN APR 27 ★</div>
+            <div><div class="h-mid" style="font-size:14px;">Big Sur Marathon</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">A-RACE · PR · HILLY</div></div>
+            <div class="mono-md">26.2 mi</div>
+            <div class="mono-md" style="color:var(--good);">3:36:55</div>
+            <div class="mono-md">8:17/mi</div>
+            <div class="mono-md">165 avg</div>
+            <div class="mono-md" style="color:var(--warn);">9</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;border-bottom:1px solid var(--l3);align-items:center;">
+            <div class="mono-sm" style="color:var(--t1);">FRI APR 25</div>
+            <div><div class="h-mid" style="font-size:14px;">Pre-race shakeout</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">CARMEL · STRAVA</div></div>
+            <div class="mono-md">3.0 mi</div>
+            <div class="mono-md">26:42</div>
+            <div class="mono-md" style="color:var(--good);">8:54/mi</div>
+            <div class="mono-md">128 avg</div>
+            <div class="mono-md" style="color:var(--good);">2</div>
+          </div>
+          <div style="display:grid;grid-template-columns:60px 1fr 80px 80px 80px 80px 80px;gap:14px;padding:12px 10px;align-items:center;">
+            <div class="mono-sm" style="color:var(--t1);">WED APR 23</div>
+            <div><div class="h-mid" style="font-size:14px;">Threshold tempo</div><div class="mono-sm" style="color:var(--t3);font-size:9px;margin-top:2px;">5MI @ T · TAPER · STRAVA</div></div>
+            <div class="mono-md">8.0 mi</div>
+            <div class="mono-md">59:28</div>
+            <div class="mono-md" style="color:var(--corp);">7:26/mi</div>
+            <div class="mono-md">162 avg</div>
+            <div class="mono-md">5</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

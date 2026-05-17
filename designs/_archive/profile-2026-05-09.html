@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1500">
+<title>faff.run · Tabs · v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F; --l5:#34405266;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32); --t4:rgba(244,246,248,.18);
+    --corp:#008FEC; --warn:#FC4D64; --good:#3EBD41; --att:#F3AD38; --xp:#9013FE; --race:#FF5722; --coach:#27B4E0; --milestone:#F0DF47; --aqua:#27E087; --pink:#CD317C;
+    --race-grad-light:#FF8A3D; --race-grad:#FF5722; --race-grad-deep:#E03E00;
+    --f-display:'Oswald',sans-serif; --f-body:'Jost',sans-serif; --f-data:'JetBrains Mono',monospace;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--l0); color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; }
+
+  /* TYPE SCALE — six steps, no in-between */
+  .t-hero    { font-family:var(--f-display); font-size:140px; font-weight:700; letter-spacing:-.04em; line-height:.9; font-variant-numeric:tabular-nums; }
+  .t-display { font-family:var(--f-display); font-size:72px;  font-weight:700; letter-spacing:-.03em; line-height:.95; }
+  .t-section { font-family:var(--f-display); font-size:36px;  font-weight:600; letter-spacing:-.02em; line-height:1; }
+  .t-stat    { font-family:var(--f-display); font-size:48px;  font-weight:700; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  .t-body    { font-family:var(--f-body);    font-size:15px;  font-weight:400; letter-spacing:-.012em; line-height:1.6; }
+  .t-eyebrow { font-family:var(--f-data);    font-size:11px;  font-weight:500; letter-spacing:.12em;  text-transform:uppercase; color:var(--t2); }
+  a { color:inherit; text-decoration:none; }
+  button { appearance:none; -webkit-appearance:none; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+
+  .stage { max-width:1500px; margin:0 auto; padding:24px 26px 60px; }
+
+  /* Top deck nav */
+  .deck-nav { position:sticky; top:0; z-index:1000; background:rgba(10,12,16,.94); backdrop-filter:blur(10px); padding:12px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--l4); }
+  .deck-brand { font-family:var(--f-display); font-weight:700; letter-spacing:.04em; font-size:18px; color:var(--t2); }
+  .deck-links { display:flex; gap:6px; }
+  .deck-links a { padding:6px 12px; border-radius:6px; font-family:var(--f-data); font-size:10.5px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); }
+  .deck-links a:hover { background:var(--l2); color:var(--t0); }
+
+  /* Tab section frame */
+  .tab-section { padding:60px 0 80px; border-bottom:1px solid var(--l4); }
+  .tab-head { padding:0 26px 36px; max-width:1500px; margin:0 auto; }
+  .tab-head .ix { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; color:var(--t2); font-weight:500; text-transform:uppercase; }
+  .tab-head h2 { font-family:var(--f-display); font-weight:700; font-size:64px; letter-spacing:-.015em; line-height:.95; text-transform:uppercase; margin-top:8px; }
+  .tab-head .lede { font-size:16px; color:var(--t1); line-height:1.55; max-width:720px; margin-top:14px; }
+
+  /* Topbar inside each tab (mocking real app) */
+  .topbar { display:flex; align-items:center; gap:18px; padding:13px 18px; background:var(--l1); border:1px solid var(--l4); border-radius:10px; margin-bottom:14px; }
+  .topbar .brand { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--xp),var(--corp)); display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:18px; }
+  .tabs { display:flex; gap:2px; align-items:center; padding:3px; border-radius:100px; background:var(--l0); border:1px solid var(--l4); }
+  .tab { padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; color:var(--t2); cursor:pointer; }
+  .tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .clock { margin-left:auto; font-family:var(--f-data); font-size:12px; letter-spacing:1.4px; color:var(--t1); font-weight:700; }
+  .clock b { color:var(--att); }
+
+  /* Card system */
+  .grid { display:grid; gap:10px; }
+  .row { display:grid; gap:10px; margin-bottom:10px; grid-template-columns:repeat(12,1fr); }
+  .span-3 { grid-column:span 3; } .span-4 { grid-column:span 4; } .span-5 { grid-column:span 5; }
+  .span-6 { grid-column:span 6; } .span-7 { grid-column:span 7; } .span-8 { grid-column:span 8; }
+  .span-9 { grid-column:span 9; } .span-12 { grid-column:span 12; }
+
+  .card { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden; }
+  .card-h { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .card-l { font-family:var(--f-data); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--t2); font-weight:500; }
+  .card-pin { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; padding:3px 7px; border-radius:4px; font-weight:700; flex-shrink:0; }
+  .card-pin.green { background:rgba(62,189,65,.16); color:var(--good); }
+  .card-pin.amber { background:rgba(243,173,56,.18); color:var(--att); }
+  .card-pin.warn  { background:rgba(252,77,100,.16); color:var(--warn); }
+  .card-pin.blue  { background:rgba(0,143,236,.16); color:var(--corp); }
+  .card-pin.purple { background:rgba(144,19,254,.18); color:var(--xp); }
+  .card-pin.race  { background:rgba(255,87,34,.18); color:var(--race); }
+  .card-pin.coach { background:rgba(39,180,224,.18); color:var(--coach); }
+  .card-pin.muted { background:rgba(244,246,248,.06); color:var(--t2); }
+  .card-num { font-family:var(--f-display); font-weight:700; line-height:.95; letter-spacing:-.015em; font-variant-numeric:tabular-nums; }
+  .card-num small { font-size:.32em; opacity:.5; font-weight:700; margin-left:3px; }
+  .card-foot { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; padding-top:10px; border-top:1px solid var(--l4); margin-top:auto; display:flex; justify-content:space-between; }
+  .delta { display:inline-flex; align-items:center; gap:3px; font-family:var(--f-data); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; letter-spacing:.6px; }
+  .delta.up { background:rgba(62,189,65,.16); color:var(--good); }
+  .delta.dn { background:rgba(252,77,100,.18); color:var(--warn); }
+
+  /* Greeting/hero strip */
+  .greet { padding:14px 4px 24px; }
+  .greet .hi { font-family:var(--f-data); font-size:11px; letter-spacing:2.8px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:8px; }
+  .greet h1 { font-family:var(--f-display); font-weight:700; font-size:54px; letter-spacing:-.005em; line-height:.95; text-transform:uppercase; }
+  .greet .sub { font-size:14px; color:var(--t1); margin-top:8px; }
+  .greet .sub b { color:var(--att); }
+
+  /* Sparklines */
+  .spark-svg { width:100%; height:36px; display:block; }
+
+  /* Common type */
+  .h-mid { font-family:var(--f-display); font-weight:600; font-size:18px; line-height:1.05; text-transform:uppercase; letter-spacing:-.005em; }
+  .h-big { font-family:var(--f-display); font-weight:700; font-size:42px; letter-spacing:-.015em; line-height:.95; }
+  .h-huge { font-family:var(--f-display); font-weight:700; font-size:64px; letter-spacing:-.02em; line-height:.95; }
+  .mono-sm { font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .mono-md { font-family:var(--f-data); font-size:11.5px; letter-spacing:.6px; color:var(--t1); font-weight:600; }
+
+  /* Buttons */
+  .btn { padding:11px 20px; border-radius:8px; font-family:var(--f-data); font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; border:1px solid transparent; box-shadow:none; transition:filter .12s; }
+  .btn:hover { filter:brightness(1.1); }
+  .btn-primary { background:var(--corp); color:var(--t0); }
+  .btn-secondary { background:transparent; color:var(--t1); border-color:var(--l4); }
+
+  /* Day card system (shared) */
+  .week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .day { padding:0; border-radius:8px; background:var(--l2); border:1px solid var(--l4); min-height:138px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+  .day::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--l4); }
+  .day.t-rest::before     { background:rgba(244,246,248,.08); }
+  .day.t-recovery::before { background:var(--good); }
+  .day.t-easy::before, .day.t-long::before { background:var(--corp); }
+  .day.t-quality::before  { background:var(--milestone); }
+  .day.t-strength::before { background:var(--xp); }
+  .day.today { border:2px solid var(--att); background:linear-gradient(135deg, rgba(243,173,56,.14), var(--l2)); box-shadow:0 0 16px rgba(243,173,56,.18); }
+  .day.today::before { background:var(--att); width:4px; }
+  .day.done.t-rest { opacity:.65; }
+  .day.done:not(.t-rest) { background:linear-gradient(180deg, rgba(62,189,65,.04), var(--l2)); }
+  .day.future { opacity:.92; }
+  .day-strip { display:flex; justify-content:space-between; align-items:baseline; padding:9px 11px 6px; }
+  .day-dow { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+  .day-date { font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700; letter-spacing:.6px; font-variant-numeric:tabular-nums; }
+  .day.today .day-dow { color:var(--att); }
+  .day.today .day-date { color:var(--t0); }
+  .day-body { padding:0 11px; flex:1; display:flex; flex-direction:column; gap:4px; }
+  .day-type { font-family:var(--f-display); font-size:18px; font-weight:600; line-height:1; text-transform:uppercase; color:var(--t0); letter-spacing:-.005em; }
+  .day.today .day-type { font-size:20px; }
+  .day.t-rest .day-type { font-size:20px; color:var(--t2); font-weight:500; }
+  .day.done.t-rest .day-type { color:var(--t3); }
+  .day-mi { font-family:var(--f-data); font-size:13px; font-weight:700; color:var(--t1); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .day-mi small { font-size:.65em; opacity:.5; font-weight:700; }
+  .day-pace { font-family:var(--f-data); font-size:10px; color:var(--t3); font-weight:600; letter-spacing:.4px; }
+  .day-foot { padding:8px 11px; font-family:var(--f-data); font-size:9.5px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; margin-top:auto; border-top:1px solid var(--l4); }
+  .day-foot.done   { background:rgba(62,189,65,.10); color:var(--good); border-top-color:rgba(62,189,65,.20); }
+  .day-foot.active { background:rgba(243,173,56,.14); color:var(--att); border-top-color:rgba(243,173,56,.30); }
+  .day-foot.future { background:rgba(0,143,236,.06); color:var(--corp); border-top-color:rgba(0,143,236,.18); }
+  .day-foot.rest   { background:transparent; color:var(--t3); }
+  .day-foot .delta.up { color:var(--corp); }
+  .deck-links a.active { background:var(--l3); color:var(--t0); }
+</style>
+
+</head>
+<body>
+
+<div class="stage">
+    <div class="topbar">
+      <div class="tabs"><a class="tab" href="overview-2026-05-09.html">Overview</a><a class="tab" href="training-2026-05-09.html">Training</a><a class="tab" href="races-2026-05-09.html">Races</a><a class="tab" href="health-2026-05-09.html">Health</a><a class="tab" href="log-2026-05-09.html">Log</a><a class="tab active" href="profile-2026-05-09.html">Profile</a></div>
+      <div class="clock">FRI · MAY 9 · <b>4:42 PM</b></div>
+    </div>
+
+    <!-- ROW 1: Identity hero · lifetime stats -->
+    <div class="row">
+      <div class="card span-7" style="padding:32px 36px; background:linear-gradient(135deg, rgba(0,143,236,.08), var(--l1) 60%);">
+        <div class="card-h">
+          <div class="card-l">RUNNER · ID-001 · SINCE 2019</div>
+          <span class="card-pin blue">7 YEARS RUNNING</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:24px;margin-top:18px;">
+          <div style="width:96px;height:96px;border-radius:24px;background:linear-gradient(135deg,var(--corp),var(--xp));display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:42px;color:#fff;">DN</div>
+          <div>
+            <div style="font-family:var(--f-display);font-weight:700;font-size:64px;letter-spacing:-.015em;line-height:.95;text-transform:uppercase;">David<br>Nitzschke</div>
+            <div class="mono-md" style="margin-top:10px;">M · 38 · LOS ANGELES, CA</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px;padding-top:24px;margin-top:24px;border-top:1px solid var(--l4);">
+          <div>
+            <div class="t-eyebrow">LIFETIME MI</div>
+            <div class="h-big" style="margin-top:10px;">12.4<small style="font-size:.32em;">k</small></div>
+            <div class="t-eyebrow" style="color:var(--t2);margin-top:10px;line-height:1.5;">SINCE 2019</div>
+          </div>
+          <div>
+            <div class="t-eyebrow">RACES</div>
+            <div class="h-big" style="margin-top:10px;">38</div>
+            <div class="t-eyebrow" style="color:var(--t2);margin-top:10px;line-height:1.5;">5×M · 18×HM · 12×10K · 3×5K</div>
+          </div>
+          <div>
+            <div class="t-eyebrow">DAYS RUN</div>
+            <div class="h-big" style="margin-top:10px;">1,847</div>
+            <div class="t-eyebrow" style="color:var(--t2);margin-top:10px;line-height:1.5;">~72% OF 7 YR</div>
+          </div>
+          <div>
+            <div class="t-eyebrow">PEAK YEAR</div>
+            <div class="h-big" style="margin-top:10px;">2,140<small style="font-size:.32em;">mi</small></div>
+            <div class="t-eyebrow" style="color:var(--t2);margin-top:10px;line-height:1.5;">2024</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LIFETIME PERSONAL RECORDS · who you are as a runner, not the active race -->
+      <div class="card span-5" style="padding:24px 26px;display:flex;flex-direction:column;">
+        <div class="card-h">
+          <div class="card-l">LIFETIME PERSONAL RECORDS</div>
+          <span class="card-pin green">2 NEW · 2026</span>
+        </div>
+        <div class="h-mid" style="font-size:24px;margin-top:6px;">All-time bests by distance</div>
+
+        <!-- PR rows · row-based list matching shoe rotation pattern -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;">
+          <div style="display:grid;grid-template-columns:3px 70px 1fr auto;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--good);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t2);font-weight:700;">5K</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;">19:32</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">FEB 14 2026 · SURF CITY · 6:18/MI</div>
+            </div>
+            <span class="card-pin green">NEW PR</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:3px 70px 1fr auto;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--good);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t2);font-weight:700;">10K</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;">41:32</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">MAR 22 2026 · POINT MAGU · 6:41/MI</div>
+            </div>
+            <span class="card-pin green">NEW PR</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:3px 70px 1fr auto;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--t3);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t2);font-weight:700;">HALF</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;">1:32:00</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">JAN 12 2026 · DISNEY · 7:00/MI</div>
+            </div>
+            <span class="card-pin muted">5 MO AGO</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:3px 70px 1fr auto;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--good);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t2);font-weight:700;">MARATHON</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;">3:18:42</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">APR 27 2026 · BIG SUR · 7:35/MI · HILLY</div>
+            </div>
+            <span class="card-pin green">NEW PR</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:3px 70px 1fr auto;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;opacity:.7;">
+            <div style="background:var(--t3);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t2);font-weight:700;">50K</div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--t2);">—</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">NEVER RUN · ADD WHEN YOU DO</div>
+            </div>
+            <span class="card-pin muted">—</span>
+          </div>
+        </div>
+
+        <div class="card-foot" style="margin-top:auto;"><span>3 PRs SET THIS YEAR</span><span style="color:var(--good);">▲ FITNESS PEAKING</span></div>
+      </div>
+    </div>
+
+    <!-- PERSONAL GOALS · the runner's intent, read by Coach + plan + research engine -->
+    <div class="row">
+      <div class="card span-12" style="padding:22px 26px;">
+        <div class="card-h">
+          <div>
+            <div class="card-l">PERSONAL GOALS · COACH READS THESE</div>
+            <div class="h-mid" style="font-size:22px;margin-top:4px;">What you want · what the plan respects</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <span class="card-pin coach">5 ACTIVE</span>
+            <span class="card-pin muted">+ ADD GOAL</span>
+          </div>
+        </div>
+        <div class="t-body" style="color:var(--t2);margin-top:8px;max-width:720px;">Set what you actually want and the Coach builds the plan around it. Each goal explains how it changes your training.</div>
+
+        <!-- Goals grid · 6 example goals showing the categories of intent -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;">
+
+          <!-- VOLUME · weekly mileage target -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--corp);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--corp);">VOLUME · WEEKLY MILEAGE</div>
+              <div class="t-eyebrow" style="color:var(--good);">▲ ON TRACK</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--t3);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">35<small style="font-family:var(--f-data);font-size:.5em;opacity:.55;font-weight:700;margin-left:3px;">/wk now</small></span>
+              <span style="font-family:var(--f-data);font-size:14px;color:var(--coach);font-weight:700;">→</span>
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--coach);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">45<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">/wk</small></span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:78%;background:linear-gradient(90deg,var(--corp),var(--coach));"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">By Dec 2026 · 10 mi to add. Coach is bumping <b style="color:var(--t1);font-weight:600;">+12% absorbed weeks</b> instead of forcing weekly jumps.</div>
+          </div>
+
+          <!-- SPEED · race time PR target -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--race);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--race);">SPEED · HM TIME</div>
+              <div class="t-eyebrow" style="color:var(--good);">▲ POSSIBLE</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--t3);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">1:32<small style="font-family:var(--f-data);font-size:.5em;opacity:.55;font-weight:700;margin-left:3px;">PR</small></span>
+              <span style="font-family:var(--f-data);font-size:14px;color:var(--race);font-weight:700;">→</span>
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--race);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">1:29<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">sub-1:30</small></span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:65%;background:linear-gradient(90deg,var(--race),var(--milestone));"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Within 12 months. Coach is adding <b style="color:var(--t1);font-weight:600;">threshold + HMP miles</b> earlier in builds and gating quality at 6:45/mi targets.</div>
+          </div>
+
+          <!-- DISTANCE · first-time distance -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--xp);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--xp);">DISTANCE · FIRST 50K</div>
+              <div class="t-eyebrow" style="color:var(--coach);">PLANNED 2027</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:18px;font-weight:600;color:var(--t3);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">26.2<small style="font-family:var(--f-data);font-size:.5em;opacity:.55;font-weight:700;margin-left:3px;">furthest</small></span>
+              <span style="font-family:var(--f-data);font-size:14px;color:var(--xp);font-weight:700;">→</span>
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--xp);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">31<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">50K</small></span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:30%;background:linear-gradient(90deg,var(--xp),var(--pink));"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Target Q1 2027. Coach is adding <b style="color:var(--t1);font-weight:600;">back-to-back long runs</b> in 2026 Q4 to build durability.</div>
+          </div>
+
+          <!-- HABIT · run frequency -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--good);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--good);">HABIT · RUN FREQUENCY</div>
+              <div class="t-eyebrow" style="color:var(--good);">✓ MET</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--good);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">5<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">days/wk</small></span>
+              <span style="font-family:var(--f-data);font-size:11px;color:var(--t3);font-weight:700;margin-left:auto;">CURRENT 4.6 avg · 28D</span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:92%;background:var(--good);"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Coach respects this as a <b style="color:var(--t1);font-weight:600;">frequency floor</b> and won't prescribe more than 2 rest days/wk except in cutbacks.</div>
+          </div>
+
+          <!-- STRENGTH · cross-training frequency -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--xp);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--xp);">STRENGTH · WEEKLY SESSIONS</div>
+              <div class="t-eyebrow" style="color:var(--good);">✓ MET</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--xp);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">2<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">sessions/wk</small></span>
+              <span style="font-family:var(--f-data);font-size:11px;color:var(--t3);font-weight:700;margin-left:auto;">28-DAY: 8/8</span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:100%;background:var(--xp);"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Coach <b style="color:var(--t1);font-weight:600;">never stacks</b> strength against quality run days · schedules upper-body on hard-run days, lower on easy days.</div>
+          </div>
+
+          <!-- HEALTH · sleep floor (gates hard sessions) -->
+          <div style="padding:16px 18px;background:var(--l2);border-left:3px solid var(--coach);border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div class="t-eyebrow" style="color:var(--coach);">HEALTH · SLEEP FLOOR</div>
+              <div class="t-eyebrow" style="color:var(--good);">✓ HOLDING</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--coach);letter-spacing:-.01em;font-variant-numeric:tabular-nums;">7.0<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:3px;">hrs min</small></span>
+              <span style="font-family:var(--f-data);font-size:11px;color:var(--t3);font-weight:700;margin-left:auto;">7D AVG · 7:42</span>
+            </div>
+            <div style="height:5px;background:var(--l3);border-radius:3px;overflow:hidden;"><i style="display:block;height:100%;width:100%;background:var(--coach);"></i></div>
+            <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">If sleep drops below 7h before a quality session, Coach <b style="color:var(--t1);font-weight:600;">auto-downgrades</b> to easy or moves the workout.</div>
+          </div>
+
+        </div>
+
+        <!-- Empty-slot affordance for future goals -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;">
+          <div style="padding:16px 18px;background:transparent;border:1px dashed var(--l4);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
+            <span style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">+ ADD GOAL</span>
+          </div>
+          <div style="padding:16px 18px;background:transparent;border:1px dashed var(--l4);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
+            <span style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">+ ADD GOAL</span>
+          </div>
+          <div style="padding:16px 18px;background:transparent;border:1px dashed var(--l4);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;">
+            <span style="font-family:var(--f-data);font-size:11px;letter-spacing:1.2px;color:var(--t3);font-weight:700;text-transform:uppercase;">+ ADD GOAL</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ROW 2: VDOT · HRMAX · TIER · TRAINING PREFS -->
+    <div class="row">
+      <!-- VDOT -->
+      <div class="card span-3" style="padding:18px 20px; background:linear-gradient(135deg, var(--corp) 0%, var(--xp) 100%); border:0; min-height:200px;">
+        <div class="card-h">
+          <div class="card-l" style="color:rgba(255,255,255,.78);">VDOT · AGE-GRADED</div>
+          <span class="card-pin" style="background:rgba(255,255,255,.16);color:#fff;">FRESH</span>
+        </div>
+        <div class="h-big" style="font-size:64px;color:#fff;">49.2</div>
+        <div style="font-family:var(--f-data);font-size:9.5px;color:rgba(255,255,255,.78);font-weight:700;letter-spacing:.5px;">RAW 50.0 · DECAY −0.8</div>
+        <div style="margin-top:auto;padding-top:10px;border-top:1px solid rgba(255,255,255,.18);font-family:var(--f-data);font-size:9.5px;color:rgba(255,255,255,.85);font-weight:700;">DISNEY HALF · 1:32 · 6 MO AGO</div>
+      </div>
+
+      <!-- HR -->
+      <div class="card span-3">
+        <div class="card-h">
+          <div class="card-l">HEART RATE · 5-ZONE</div>
+          <span class="card-pin green">MEASURED</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+          <div><div class="mono-sm">HRMAX</div><div class="h-big" style="font-size:30px;">187<small style="font-size:.32em;">bpm</small></div></div>
+          <div><div class="mono-sm">RHR</div><div class="h-big" style="font-size:30px;">42<small style="font-size:.32em;">bpm</small></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-top:auto;padding-top:10px;border-top:1px solid var(--l4);">
+          <div style="display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;font-size:11px;"><span class="mono-sm" style="color:var(--good);">Z1</span><span style="color:var(--t2);">RECOVERY</span><span class="mono-md">≤ 141</span></div>
+          <div style="display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;font-size:11px;"><span class="mono-sm" style="color:var(--corp);">Z2</span><span style="color:var(--t2);">AEROBIC</span><span class="mono-md">142-155</span></div>
+          <div style="display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;font-size:11px;"><span class="mono-sm" style="color:var(--milestone);">Z3</span><span style="color:var(--t2);">TEMPO</span><span class="mono-md">156-167</span></div>
+          <div style="display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;font-size:11px;"><span class="mono-sm" style="color:var(--warn);">Z4</span><span style="color:var(--t2);">THRESHOLD</span><span class="mono-md">168-178</span></div>
+          <div style="display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;font-size:11px;"><span class="mono-sm" style="color:var(--xp);">Z5</span><span style="color:var(--t2);">VO2MAX</span><span class="mono-md">179-187</span></div>
+        </div>
+      </div>
+
+      <!-- Tier -->
+      <div class="card span-3">
+        <div class="card-h">
+          <div class="card-l">MILEAGE TIER · CURRENT</div>
+          <span class="card-pin coach">CLIMBING</span>
+        </div>
+        <div class="h-big" style="font-size:36px;">35<small style="font-size:.3em;">mi/wk</small></div>
+        <div class="mono-sm">4-WEEK AVG · LOW BAND (20-40)</div>
+
+        <div style="position:relative;height:6px;background:var(--l3);border-radius:3px;margin-top:10px;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:75%;background:linear-gradient(90deg,var(--good),var(--coach));border-radius:3px;"></div>
+          <div style="position:absolute;left:75%;top:-4px;width:14px;height:14px;border-radius:7px;background:var(--coach);border:2px solid var(--l0);"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--f-data);font-size:9px;letter-spacing:.6px;color:var(--t3);font-weight:700;margin-top:6px;">
+          <span>20</span><span>30</span><span>40 → MID</span>
+        </div>
+
+        <div class="card-foot"><span>2026 PEAK · 42 MI</span><span class="delta up">▲ +12% V8W</span></div>
+      </div>
+
+      <!-- Training prefs -->
+      <div class="card span-3">
+        <div class="card-h">
+          <div class="card-l">TRAINING PREFERENCES</div>
+          <span class="card-pin muted">EDIT →</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+          <div style="padding:8px 10px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="font-size:8.5px;">LONG RUN DAY</div>
+            <div class="h-mid" style="font-size:14px;margin-top:3px;">Sunday</div>
+          </div>
+          <div style="padding:8px 10px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="font-size:8.5px;">QUALITY DAY</div>
+            <div class="h-mid" style="font-size:14px;margin-top:3px;">Tue / Thu</div>
+          </div>
+          <div style="padding:8px 10px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="font-size:8.5px;">TYPICAL REST</div>
+            <div class="h-mid" style="font-size:14px;margin-top:3px;">Mon · 1-2/wk</div>
+          </div>
+          <div style="padding:8px 10px;background:var(--l2);border-radius:6px;">
+            <div class="mono-sm" style="font-size:8.5px;">UNITS</div>
+            <div class="h-mid" style="font-size:14px;margin-top:3px;">Imperial · °F</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3: Connections + Shoes -->
+    <div class="row">
+      <div class="card span-4">
+        <div class="card-h">
+          <div class="card-l">CONNECTIONS</div>
+          <span class="card-pin green">2/3 LIVE</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+          <div style="display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:var(--l2);border-radius:6px;">
+            <div style="width:32px;height:32px;border-radius:8px;background:#FC4C02;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;color:#fff;">S</div>
+            <div>
+              <div class="h-mid" style="font-size:14px;">Strava</div>
+              <div class="mono-sm" style="font-size:9px;color:var(--t3);">87 ACTIVITIES SYNCED · LIVE</div>
+            </div>
+            <span class="card-pin green">LIVE</span>
+          </div>
+          <div style="display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:var(--l2);border-radius:6px;">
+            <div style="width:32px;height:32px;border-radius:8px;background:#FF2D55;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;color:#fff;">♥</div>
+            <div>
+              <div class="h-mid" style="font-size:14px;">Apple HealthKit</div>
+              <div class="mono-sm" style="font-size:9px;color:var(--t3);">HRV · RHR · SLEEP · TEMP</div>
+            </div>
+            <span class="card-pin green">LIVE</span>
+          </div>
+          <div style="display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:var(--l2);border-radius:6px;opacity:.6;">
+            <div style="width:32px;height:32px;border-radius:8px;background:var(--l3);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;color:var(--t2);">G</div>
+            <div>
+              <div class="h-mid" style="font-size:14px;">Garmin Connect</div>
+              <div class="mono-sm" style="font-size:9px;color:var(--t3);">DEVICE-LEVEL DETAIL · M3</div>
+            </div>
+            <span class="card-pin muted">SOON</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shoes rotation · row-based list so it scales to 4-5+ shoes without cramping -->
+      <div class="card span-8">
+        <div class="card-h">
+          <div class="card-l">SHOE ROTATION · 5 ACTIVE</div>
+          <span class="card-pin warn">1 RETIRE · 1 NEAR CAP</span>
+        </div>
+
+        <!-- Each shoe is a horizontal row: type-tag · name+role · mileage · bar · cap-status -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+          <!-- Novablast 4 · daily trainer · 71% -->
+          <div style="display:grid;grid-template-columns:3px 1.6fr 90px 1fr 110px;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--good);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;line-height:1;">Novablast 4</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">DAILY TRAINER · ROAD</div>
+            </div>
+            <div style="font-family:var(--f-display);font-size:22px;font-weight:600;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">284<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:4px;">mi</small></div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span class="t-eyebrow" style="color:var(--t3);">/ 400 CAP</span>
+                <span class="t-eyebrow" style="color:var(--good);">71%</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:var(--l3);overflow:hidden;"><i style="display:block;height:100%;background:var(--good);width:71%;"></i></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="card-pin green">116 LEFT</span>
+            </div>
+          </div>
+
+          <!-- Alphafly 3 · race carbon · 45% -->
+          <div style="display:grid;grid-template-columns:3px 1.6fr 90px 1fr 110px;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--corp);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;line-height:1;">Alphafly 3</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">RACE · CARBON · BIG SUR APR</div>
+            </div>
+            <div style="font-family:var(--f-display);font-size:22px;font-weight:600;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">68<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:4px;">mi</small></div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span class="t-eyebrow" style="color:var(--t3);">/ 150 CAP</span>
+                <span class="t-eyebrow" style="color:var(--corp);">45%</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:var(--l3);overflow:hidden;"><i style="display:block;height:100%;background:var(--corp);width:45%;"></i></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="card-pin blue">82 LEFT</span>
+            </div>
+          </div>
+
+          <!-- Endorphin Speed 4 · tempo / workouts -->
+          <div style="display:grid;grid-template-columns:3px 1.6fr 90px 1fr 110px;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--milestone);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;line-height:1;">Endorphin Speed 4</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">TEMPO · WORKOUTS · PLATE</div>
+            </div>
+            <div style="font-family:var(--f-display);font-size:22px;font-weight:600;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">156<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:4px;">mi</small></div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span class="t-eyebrow" style="color:var(--t3);">/ 400 CAP</span>
+                <span class="t-eyebrow" style="color:var(--milestone);">39%</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:var(--l3);overflow:hidden;"><i style="display:block;height:100%;background:var(--milestone);width:39%;"></i></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="card-pin muted">244 LEFT</span>
+            </div>
+          </div>
+
+          <!-- Invincible 3 · recovery / easy days -->
+          <div style="display:grid;grid-template-columns:3px 1.6fr 90px 1fr 110px;gap:14px;align-items:center;padding:11px 14px 11px 0;background:var(--l2);border-radius:8px;">
+            <div style="background:var(--coach);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;line-height:1;">Invincible 3</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">RECOVERY · EASY · MAX CUSHION</div>
+            </div>
+            <div style="font-family:var(--f-display);font-size:22px;font-weight:600;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">340<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:4px;">mi</small></div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span class="t-eyebrow" style="color:var(--t3);">/ 400 CAP</span>
+                <span class="t-eyebrow" style="color:var(--att);">85%</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:var(--l3);overflow:hidden;"><i style="display:block;height:100%;background:var(--att);width:85%;"></i></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="card-pin amber">60 LEFT</span>
+            </div>
+          </div>
+
+          <!-- Speedgoat 5 · trail · RETIRE -->
+          <div style="display:grid;grid-template-columns:3px 1.6fr 90px 1fr 110px;gap:14px;align-items:center;padding:11px 14px 11px 0;background:rgba(252,77,100,.04);border-radius:8px;">
+            <div style="background:var(--warn);height:100%;border-radius:8px 0 0 8px;align-self:stretch;"></div>
+            <div>
+              <div style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;text-transform:uppercase;line-height:1;">Speedgoat 5</div>
+              <div class="t-eyebrow" style="color:var(--t3);margin-top:4px;">TRAIL · DIRT · TECHNICAL</div>
+            </div>
+            <div style="font-family:var(--f-display);font-size:22px;font-weight:600;line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--warn);">412<small style="font-family:var(--f-data);font-size:.4em;opacity:.55;font-weight:700;margin-left:4px;">mi</small></div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                <span class="t-eyebrow" style="color:var(--t3);">/ 400 CAP</span>
+                <span class="t-eyebrow" style="color:var(--warn);">103%</span>
+              </div>
+              <div style="height:5px;border-radius:3px;background:var(--l3);overflow:hidden;"><i style="display:block;height:100%;background:var(--warn);width:100%;"></i></div>
+            </div>
+            <div style="text-align:right;">
+              <span class="card-pin warn">RETIRE</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-foot"><span>+ ADD SHOE · MANAGE RETIRED</span><span style="color:var(--good);">3 IN ROTATION · TARGET 3-5</span></div>
+      </div>
+    </div>
+
+    <!-- ROW 4: ENGINE DETAILS (Calibration folded in) -->
+    <div class="row">
+      <div class="card span-12" style="padding:22px 26px;">
+        <div class="card-h">
+          <div>
+            <div class="card-l">COACH DETAILS · WHAT THE ENGINE IS USING</div>
+            <div class="h-mid" style="font-size:22px;margin-top:4px;">Every input the Coach reads to make decisions</div>
+          </div>
+          <span class="card-pin muted">EXPAND ↓</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px;">
+          <!-- Pace zones -->
+          <div style="padding:18px 20px;background:var(--l2);border-radius:8px;display:flex;flex-direction:column;">
+            <div class="t-eyebrow">YOUR PACE ZONES</div>
+            <div style="font-family:var(--f-display);font-size:18px;font-weight:600;letter-spacing:-.01em;line-height:1;text-transform:uppercase;margin-top:8px;">From VDOT 49.2</div>
+            <div class="t-body" style="color:var(--t2);margin-top:6px;">The Coach prescribes every run inside one of these 5 pace bands.</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:baseline;">
+                <span style="font-family:var(--f-data);font-size:11px;color:var(--good);font-weight:700;letter-spacing:1.2px;">EASY</span>
+                <span style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">8:55<span style="opacity:.55;">–</span>9:25<small style="font-family:var(--f-data);font-size:.55em;opacity:.55;font-weight:700;margin-left:5px;letter-spacing:.5px;">/MI</small></span>
+              </div>
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:baseline;">
+                <span style="font-family:var(--f-data);font-size:11px;color:var(--corp);font-weight:700;letter-spacing:1.2px;">MARATHON</span>
+                <span style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">7:18<small style="font-family:var(--f-data);font-size:.55em;opacity:.55;font-weight:700;margin-left:5px;letter-spacing:.5px;">/MI</small></span>
+              </div>
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:baseline;">
+                <span style="font-family:var(--f-data);font-size:11px;color:var(--milestone);font-weight:700;letter-spacing:1.2px;">THRESHOLD</span>
+                <span style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">7:00<small style="font-family:var(--f-data);font-size:.55em;opacity:.55;font-weight:700;margin-left:5px;letter-spacing:.5px;">/MI</small></span>
+              </div>
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:baseline;">
+                <span style="font-family:var(--f-data);font-size:11px;color:var(--warn);font-weight:700;letter-spacing:1.2px;">INTERVAL</span>
+                <span style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">6:30<small style="font-family:var(--f-data);font-size:.55em;opacity:.55;font-weight:700;margin-left:5px;letter-spacing:.5px;">/MI</small></span>
+              </div>
+              <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:baseline;">
+                <span style="font-family:var(--f-data);font-size:11px;color:var(--xp);font-weight:700;letter-spacing:1.2px;">REP</span>
+                <span style="font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;">5:55<small style="font-family:var(--f-data);font-size:.55em;opacity:.55;font-weight:700;margin-left:5px;letter-spacing:.5px;">/MI</small></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Long run cap -->
+          <div style="padding:18px 20px;background:var(--l2);border-radius:8px;display:flex;flex-direction:column;">
+            <div class="t-eyebrow">NEXT WEEK'S LONG-RUN LIMIT</div>
+            <div style="font-family:var(--f-display);font-size:42px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:10px;font-variant-numeric:tabular-nums;">8.2<small style="font-family:var(--f-data);font-size:.32em;opacity:.55;font-weight:700;margin-left:6px;">MI</small></div>
+            <div class="t-body" style="color:var(--t1);margin-top:10px;">The Coach won't prescribe a long run over <b style="color:var(--t0);font-weight:600;">8.2 mi</b> next week — keeps the jump safe.</div>
+            <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--l4);">
+              <div class="t-eyebrow" style="color:var(--t2);">HOW</div>
+              <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Your longest run in the last 28 days was <b style="color:var(--t1);font-weight:600;">7.4 mi</b>. Coach caps the next at <b style="color:var(--t1);font-weight:600;">+10%</b> to prevent spikes.</div>
+            </div>
+          </div>
+
+          <!-- Easy share target -->
+          <div style="padding:18px 20px;background:var(--l2);border-radius:8px;display:flex;flex-direction:column;">
+            <div class="t-eyebrow">EASY-PACE TARGET</div>
+            <div style="font-family:var(--f-display);font-size:42px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:10px;font-variant-numeric:tabular-nums;">≥80<small style="font-family:var(--f-data);font-size:.32em;opacity:.55;font-weight:700;margin-left:6px;">%</small></div>
+            <div class="t-body" style="color:var(--t1);margin-top:10px;">At least <b style="color:var(--t0);font-weight:600;">80%</b> of your weekly miles should be at easy pace. You're at <b style="color:var(--good);font-weight:600;">92%</b>.</div>
+            <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--l4);">
+              <div class="t-eyebrow" style="color:var(--t2);">WHY</div>
+              <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">Polarized training: lots of easy + a little hard beats lots of moderate. Reduces injury, builds aerobic engine.</div>
+            </div>
+          </div>
+
+          <!-- Cutback cadence -->
+          <div style="padding:18px 20px;background:var(--l2);border-radius:8px;display:flex;flex-direction:column;">
+            <div class="t-eyebrow">RECOVERY WEEK CADENCE</div>
+            <div style="font-family:var(--f-display);font-size:42px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-top:10px;font-variant-numeric:tabular-nums;">Every 3<small style="font-family:var(--f-data);font-size:.32em;opacity:.55;font-weight:700;margin-left:6px;">WKS</small></div>
+            <div class="t-body" style="color:var(--t1);margin-top:10px;">Every 3rd week the Coach drops volume <b style="color:var(--t0);font-weight:600;">−20%</b> so the body can absorb training.</div>
+            <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--l4);">
+              <div class="t-eyebrow" style="color:var(--t2);">WHY 3 WEEKS</div>
+              <div class="t-body" style="color:var(--t2);font-size:13px;margin-top:4px;">At your mileage tier (low band, 20-40 mi/wk), 3-week blocks balance stimulus and recovery without losing fitness.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding:14px 18px;background:rgba(62,189,65,.06);border:1px solid rgba(62,189,65,.20);border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div class="mono-sm" style="color:var(--good);">▲ PLAN INTEGRITY VALIDATED</div>
+            <div style="font-size:13px;color:var(--t1);margin-top:4px;line-height:1.5;">All 12 doctrine rules pass against current plan. No regressions detected.</div>
+          </div>
+          <span class="card-pin green">12/12 RULES OK</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

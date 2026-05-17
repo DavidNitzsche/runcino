@@ -1,0 +1,757 @@
+<!-- ============================================================
+     FAFF.RUN · MIXED MOCKUPS (5)
+     Insights · Plan Builder · Today · Workout Detail · Recap
+     ============================================================ -->
+<style>
+/* ── Shared mockup primitives (scoped) ───────────────────────── */
+.mm-eyebrow { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; font-weight:700; color:var(--t3); }
+.mm-display { font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:-.01em; line-height:.95; }
+.mm-data { font-family:var(--f-data); font-weight:700; }
+.mm-divider { height:1px; background:var(--l4); margin:14px 0; }
+.mm-pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:99px; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; }
+.mm-dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.mm-coach { font-style:italic; color:var(--t1); border-left:2px solid var(--xp); padding:6px 12px; line-height:1.5; }
+
+/* ── INSIGHTS (web) ──────────────────────────────────────────── */
+.ins-hero { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:22px; border-bottom:1px solid var(--l4); margin-bottom:26px; }
+.ins-hero h1 { font-family:var(--f-display); font-size:84px; font-weight:800; line-height:.85; letter-spacing:-.02em; text-transform:uppercase; }
+.ins-hero .meta { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; color:var(--t3); text-align:right; line-height:1.7; }
+.ins-tabs { display:flex; gap:4px; margin-bottom:22px; }
+.ins-tab { padding:8px 16px; border-radius:8px; font-family:var(--f-data); font-size:10.5px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; color:var(--t2); background:var(--l1); border:1px solid var(--l4); cursor:default; }
+.ins-tab.act { background:var(--l2); color:var(--t0); border-color:var(--l5); }
+.ins-tab .ct { font-family:var(--f-data); margin-left:8px; color:var(--t3); }
+.ins-card { background:var(--l1); border:1px solid var(--l4); border-radius:12px; padding:20px 22px 18px; margin-bottom:14px; position:relative; overflow:hidden; }
+.ins-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; }
+.ins-card.act::before { background:var(--warning); }
+.ins-card.consider::before { background:var(--caution); }
+.ins-card.observe::before { background:var(--corporate); }
+.ins-card .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.ins-card .head .left { display:flex; gap:8px; align-items:center; }
+.ins-card .body { font-size:14.5px; color:var(--t0); line-height:1.45; margin-bottom:10px; font-weight:500; }
+.ins-card .trig { font-size:12px; color:var(--t2); margin-bottom:10px; }
+.ins-card .actrow { display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--l4); }
+.ins-card .actrow .coach-bit { font-size:12.5px; color:var(--t1); font-style:italic; max-width:62%; line-height:1.4; }
+.ins-card .ctrls { display:flex; gap:6px; }
+.ins-btn { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; padding:6px 10px; border-radius:6px; background:transparent; border:1px solid var(--l4); color:var(--t2); cursor:default; }
+.ins-btn.primary { background:var(--corporate); color:#fff; border-color:var(--corporate); }
+.pill-act { background:rgba(252,77,84,.14); color:var(--warning); }
+.pill-consider { background:rgba(240,223,71,.14); color:var(--caution); }
+.pill-observe { background:rgba(0,143,236,.16); color:var(--corporate); }
+.pill-conf { background:var(--l2); color:var(--t1); }
+
+/* ── PLAN BUILDER (web) ──────────────────────────────────────── */
+.pb-hero { padding-bottom:22px; border-bottom:1px solid var(--l4); margin-bottom:26px; }
+.pb-hero .top { display:flex; justify-content:space-between; align-items:flex-end; }
+.pb-hero h1 { font-family:var(--f-display); font-size:60px; font-weight:800; line-height:.9; letter-spacing:-.02em; text-transform:uppercase; }
+.pb-progress { display:flex; gap:10px; align-items:center; }
+.pb-step { display:flex; align-items:center; gap:8px; }
+.pb-stepdot { width:30px; height:30px; border-radius:50%; background:var(--l2); border:1px solid var(--l4); display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-weight:700; font-size:11px; color:var(--t2); }
+.pb-step.done .pb-stepdot { background:var(--success); color:#fff; border-color:var(--success); }
+.pb-step.active .pb-stepdot { background:var(--corporate); color:#fff; border-color:var(--corporate); }
+.pb-step .lbl { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; color:var(--t3); }
+.pb-step.active .lbl { color:var(--t0); }
+.pb-stepline { width:24px; height:1px; background:var(--l4); }
+.pb-grid { display:grid; grid-template-columns:1fr 1.15fr; gap:24px; }
+.pb-panel { background:var(--l1); border:1px solid var(--l4); border-radius:12px; padding:22px 24px; }
+.pb-panel h3 { font-family:var(--f-display); font-size:20px; font-weight:700; text-transform:uppercase; letter-spacing:.005em; margin-bottom:16px; }
+.pb-field { margin-bottom:18px; }
+.pb-field label { display:block; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; color:var(--t3); margin-bottom:6px; }
+.pb-field .val { font-family:var(--f-display); font-size:22px; font-weight:600; color:var(--t0); margin-bottom:4px; line-height:1.1; }
+.pb-field .sub { font-size:11.5px; color:var(--t2); }
+.pb-slider { height:6px; background:var(--l3); border-radius:3px; position:relative; margin:8px 0 6px; }
+.pb-slider .fill { position:absolute; top:0; bottom:0; left:0; background:var(--corporate); border-radius:3px; }
+.pb-slider .knob { position:absolute; top:50%; transform:translate(-50%,-50%); width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px rgba(0,143,236,.35); }
+.pb-tmpl { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px; }
+.pb-tmpl .o { padding:8px 6px; border-radius:6px; background:var(--l2); border:1px solid var(--l4); text-align:center; font-family:var(--f-data); font-size:10px; letter-spacing:1.2px; font-weight:700; color:var(--t2); text-transform:uppercase; }
+.pb-tmpl .o.sel { background:var(--corporate); color:#fff; border-color:var(--corporate); }
+.pb-weeks { display:grid; grid-template-columns:repeat(8,1fr); gap:5px; margin-top:8px; }
+.pb-week { aspect-ratio:1; border-radius:5px; background:var(--l3); position:relative; }
+.pb-week.base { background:rgba(0,143,236,.25); }
+.pb-week.build { background:rgba(0,143,236,.55); }
+.pb-week.peak { background:rgba(243,173,59,.85); }
+.pb-week.taper { background:rgba(62,189,65,.55); }
+.pb-week.race { background:var(--warning); }
+.pb-week .n { position:absolute; top:2px; left:4px; font-family:var(--f-data); font-size:8.5px; font-weight:700; color:rgba(255,255,255,.85); }
+.pb-week .mi { position:absolute; bottom:2px; right:4px; font-family:var(--f-data); font-size:9px; color:rgba(255,255,255,.85); font-weight:700; }
+.pb-legend { display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; }
+.pb-legend span { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; color:var(--t2); display:flex; align-items:center; gap:6px; }
+.pb-pred { padding:14px 16px; background:linear-gradient(135deg,rgba(0,143,236,.1),rgba(144,19,254,.06)); border:1px solid rgba(0,143,236,.35); border-radius:10px; margin-top:14px; }
+.pb-pred .l { font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; color:var(--corporate); }
+.pb-pred .v { font-family:var(--f-display); font-size:34px; font-weight:700; color:var(--t0); line-height:1.05; margin:4px 0 2px; }
+.pb-pred .s { font-size:12px; color:var(--t1); }
+.pb-warn { padding:12px 14px; background:rgba(243,173,59,.08); border:1px solid rgba(243,173,59,.4); border-radius:8px; margin-top:12px; font-size:12.5px; color:var(--t1); display:flex; gap:10px; align-items:flex-start; }
+.pb-warn .ic { color:var(--attention); font-weight:700; }
+.pb-cta { display:flex; gap:10px; margin-top:18px; }
+.pb-btn { padding:11px 18px; border-radius:9px; font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; border:1px solid var(--l4); color:var(--t1); background:var(--l2); cursor:default; }
+.pb-btn.primary { background:var(--corporate); color:#fff; border-color:var(--corporate); flex:1; text-align:center; }
+
+/* ── iOS shared internals ────────────────────────────────────── */
+.io-greet { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; font-weight:700; text-transform:uppercase; color:var(--t2); margin-bottom:6px; }
+.io-h1 { font-family:var(--f-display); font-size:30px; font-weight:700; line-height:1; letter-spacing:-.005em; text-transform:uppercase; margin-bottom:10px; }
+.io-card { background:var(--l1); border:1px solid var(--l4); border-radius:14px; padding:14px 16px; margin-bottom:10px; }
+.io-label { font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; color:var(--t3); margin-bottom:5px; }
+.io-cta { display:block; width:100%; padding:13px; border-radius:11px; background:var(--corporate); color:#fff; font-family:var(--f-data); font-size:11px; letter-spacing:1.6px; font-weight:700; text-transform:uppercase; text-align:center; margin-top:10px; border:0; }
+
+/* TODAY */
+.tday-pill { background:rgba(243,173,59,.18); color:var(--attention); border:1px solid rgba(243,173,59,.4); padding:5px 10px; border-radius:99px; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; font-weight:700; text-transform:uppercase; display:inline-flex; gap:6px; align-items:center; }
+.tday-sub { font-size:12px; color:var(--t1); margin:8px 0 14px; }
+.rec-card { background:linear-gradient(135deg,rgba(62,189,65,.12),rgba(62,189,65,.03)); border:1px solid rgba(62,189,65,.4); border-radius:14px; padding:14px 16px; margin-bottom:10px; position:relative; }
+.rec-num { font-family:var(--f-display); font-size:54px; font-weight:700; color:var(--success); line-height:1; }
+.rec-band { display:flex; gap:2px; margin:8px 0 6px; }
+.rec-band .seg { flex:1; height:5px; border-radius:2px; background:var(--l3); }
+.rec-band .seg.on { background:var(--success); }
+.wk-card { background:linear-gradient(135deg,rgba(0,143,236,.12),rgba(0,143,236,.03)); border:1px solid rgba(0,143,236,.4); border-radius:14px; padding:14px 16px; margin-bottom:10px; }
+.wk-name { font-family:var(--f-display); font-size:22px; font-weight:700; text-transform:uppercase; line-height:1; }
+.wk-meta { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.4px; color:var(--corporate); margin:5px 0 10px; font-weight:700; }
+.qa-row { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:10px; }
+.qa { background:var(--l2); border:1px solid var(--l4); border-radius:10px; padding:8px 4px; text-align:center; }
+.qa .ic { font-size:16px; }
+.qa .lb { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; font-weight:700; text-transform:uppercase; color:var(--t2); margin-top:3px; }
+
+/* WORKOUT DETAIL */
+.wd-pace { font-family:var(--f-data); font-size:11px; letter-spacing:1.4px; color:var(--corporate); font-weight:700; margin-bottom:12px; }
+.wd-strip { display:flex; height:28px; border-radius:6px; overflow:hidden; margin:8px 0 6px; border:1px solid var(--l4); }
+.wd-strip .seg { display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; font-weight:700; text-transform:uppercase; color:#fff; }
+.wd-strip .wu { background:rgba(62,189,65,.55); flex:1.5; }
+.wd-strip .t  { background:rgba(252,77,84,.65); flex:4; }
+.wd-strip .cd { background:rgba(62,189,65,.55); flex:1.5; }
+.wd-stripL { display:flex; justify-content:space-between; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+.wd-meta-row { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:10px; }
+.wd-mc { background:var(--l1); border:1px solid var(--l4); border-radius:10px; padding:10px 12px; }
+.wd-mc .l { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; color:var(--t3); margin-bottom:3px; }
+.wd-mc .v { font-size:13px; color:var(--t0); font-weight:600; line-height:1.25; }
+.wd-hist { display:flex; gap:6px; margin-top:8px; }
+.wd-hbox { flex:1; background:var(--l2); border:1px solid var(--l4); border-radius:8px; padding:6px 7px; }
+.wd-hbox .d { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+.wd-hbox .p { font-family:var(--f-data); font-size:11px; color:var(--t0); font-weight:700; margin-top:2px; }
+
+/* RECAP */
+.rec-greet { font-family:var(--f-display); font-size:32px; font-weight:700; color:var(--success); text-transform:uppercase; line-height:.95; letter-spacing:-.005em; margin-bottom:4px; }
+.rec-sub { font-size:11px; color:var(--t2); margin-bottom:12px; }
+.rec-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin-bottom:12px; }
+.rec-stat { background:var(--l1); border:1px solid var(--l4); border-radius:10px; padding:9px 11px; }
+.rec-stat .l { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.3px; color:var(--t3); font-weight:700; text-transform:uppercase; }
+.rec-stat .v { font-family:var(--f-data); font-size:18px; color:var(--t0); font-weight:700; line-height:1.05; margin-top:2px; }
+.rec-recon { padding:9px 12px; background:rgba(62,189,65,.12); border:1px solid rgba(62,189,65,.45); border-radius:10px; margin-bottom:10px; display:flex; gap:9px; align-items:center; }
+.rec-recon .ic { color:var(--success); font-weight:700; }
+.rec-recon .t { font-family:var(--f-data); font-size:10px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; color:var(--success); }
+.rec-recon .s { font-size:11px; color:var(--t1); }
+.rec-cr10 { background:var(--l1); border:1px solid var(--l4); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+.rec-cr10 .scale { display:flex; gap:3px; margin:8px 0 6px; }
+.rec-cr10 .tk { flex:1; height:22px; border-radius:4px; background:var(--l3); display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:9px; font-weight:700; color:var(--t3); }
+.rec-cr10 .tk.on { background:var(--corporate); color:#fff; }
+.rec-cr10 .tk.cur { background:var(--xp); color:#fff; box-shadow:0 0 0 2px rgba(144,19,254,.4); }
+.rec-actrow { display:flex; gap:6px; }
+.rec-abtn { flex:1; background:var(--l2); border:1px solid var(--l4); border-radius:10px; padding:9px 4px; text-align:center; font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; font-weight:700; text-transform:uppercase; color:var(--t1); }
+</style>
+
+
+<!-- ============================================================
+     1 · INSIGHTS (web)
+     ============================================================ -->
+<div class="mockup-section" id="mockup-web-insights">
+  <div class="mockup-h">Web · Insights</div>
+  <div class="mockup-name">Insights Stream</div>
+  <div class="mockup-job">Coach-voiced patterns the system has noticed. Sorted by action class. Each card explains the trigger, confidence, and what to do.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/insights</span>
+      </div>
+      <div style="padding:26px 28px;">
+        <div class="ins-hero">
+          <div>
+            <div class="mm-eyebrow" style="color:var(--corporate); margin-bottom:10px;">Pattern Stream · Last 30 days</div>
+            <h1>Insights</h1>
+          </div>
+          <div class="meta">
+            6 active<br>
+            Synced 2 min ago<br>
+            <span style="color:var(--success)">● Coach online</span>
+          </div>
+        </div>
+
+        <div class="ins-tabs">
+          <span class="ins-tab act">All <span class="ct">6</span></span>
+          <span class="ins-tab" style="color:var(--warning)">Act <span class="ct">1</span></span>
+          <span class="ins-tab" style="color:var(--caution)">Consider <span class="ct">2</span></span>
+          <span class="ins-tab" style="color:var(--corporate)">Observe <span class="ct">3</span></span>
+          <span class="ins-tab" style="margin-left:auto">Dismissed</span>
+        </div>
+
+        <!-- 1 ACT -->
+        <div class="ins-card act">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-act"><span class="mm-dot" style="background:var(--warning)"></span>Act</span>
+              <span class="mm-pill pill-conf">Confidence · High</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">02 MAY · 6:42 AM</span>
+          </div>
+          <div class="body">HRV trend declining 4 days · consider a recovery day instead of threshold tomorrow.</div>
+          <div class="trig">Triggered by: HRV 7d-avg dropped from 71 → 64ms (-9.8%); RHR rose 4bpm; sleep 6h22 avg vs 7h15 baseline.</div>
+          <div class="actrow">
+            <div class="coach-bit">"Race week is the wrong moment to bank fitness. Swap tomorrow's 4mi T to easy 4 — you'll thank yourself Sunday."</div>
+            <div class="ctrls">
+              <button class="ins-btn">Snooze 24h</button>
+              <button class="ins-btn">Dismiss</button>
+              <button class="ins-btn primary">Apply swap</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 CONSIDER -->
+        <div class="ins-card consider">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-consider"><span class="mm-dot" style="background:var(--caution)"></span>Consider</span>
+              <span class="mm-pill pill-conf">Confidence · Med</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">01 MAY</span>
+          </div>
+          <div class="body">Predicted race-time trajectory: 3:05:24 ± 90s for Big Sur (current VDOT 53, accounting for course/heat).</div>
+          <div class="trig">Triggered by: 12-week consistency 94%, last 3 long runs averaging 7:42/mi, projected course adjustment +4:15 (1,420ft elev), forecast 58°F at gun.</div>
+          <div class="actrow">
+            <div class="coach-bit">"You're on schedule for the A-goal. Defend the start — Hurricane Point will take what you give it freely."</div>
+            <div class="ctrls">
+              <button class="ins-btn">View model</button>
+              <button class="ins-btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 OBSERVE -->
+        <div class="ins-card observe">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-observe"><span class="mm-dot" style="background:var(--corporate)"></span>Observe</span>
+              <span class="mm-pill pill-conf">Confidence · High</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">29 APR</span>
+          </div>
+          <div class="body">Plan adherence 94% over 4 weeks · strong execution.</div>
+          <div class="trig">Triggered by: 23 of 24 prescribed sessions completed; 1 swap (you moved Tue→Wed in W14); zero missed long runs since Feb 18.</div>
+          <div class="actrow">
+            <div class="coach-bit">"This is what wins races — boring weeks done right. Trust the taper now."</div>
+            <div class="ctrls">
+              <button class="ins-btn">View detail</button>
+              <button class="ins-btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 OBSERVE -->
+        <div class="ins-card observe">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-observe"><span class="mm-dot" style="background:var(--corporate)"></span>Observe</span>
+              <span class="mm-pill pill-conf">Confidence · High</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">26 APR</span>
+          </div>
+          <div class="body">Easy pace at the same HR has improved 12 sec/mi over 8 weeks.</div>
+          <div class="trig">Triggered by: HR-zone 2 sessions (n=27) — pace at 145bpm moved from 8:38 → 8:26 since Mar 03. Aerobic decoupling held under 5%.</div>
+          <div class="actrow">
+            <div class="coach-bit">"Aerobic engine is upgrading quietly. Don't get tempted to push easy days — that's exactly the gain you'd erase."</div>
+            <div class="ctrls">
+              <button class="ins-btn">See chart</button>
+              <button class="ins-btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 CONSIDER -->
+        <div class="ins-card consider">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-consider"><span class="mm-dot" style="background:var(--caution)"></span>Consider</span>
+              <span class="mm-pill pill-conf">Confidence · Med</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">22 APR</span>
+          </div>
+          <div class="body">Long runs ran 8 sec faster than prescribed in 4 of last 5 weeks · easy days getting hard.</div>
+          <div class="trig">Triggered by: prescribed 7:50/mi → actual 7:42 avg. HR drift +6bpm late-run (vs target +3bpm). Pattern consistent in finishing splits.</div>
+          <div class="actrow">
+            <div class="coach-bit">"Easy means easy. The adaptation lives in the patience — you're already strong, slow it down 8 seconds."</div>
+            <div class="ctrls">
+              <button class="ins-btn">Compare splits</button>
+              <button class="ins-btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 OBSERVE -->
+        <div class="ins-card observe">
+          <div class="head">
+            <div class="left">
+              <span class="mm-pill pill-observe"><span class="mm-dot" style="background:var(--corporate)"></span>Observe</span>
+              <span class="mm-pill pill-conf">Confidence · Low</span>
+            </div>
+            <span class="mm-data" style="color:var(--t3); font-size:10px; letter-spacing:1.4px;">18 APR</span>
+          </div>
+          <div class="body">Best time of day for HR/pace ratio: 6–8 AM (you ran 80% of recent sessions).</div>
+          <div class="trig">Triggered by: efficiency factor 1.78 in 6–8AM window vs 1.64 evening; cooler temps (52°F vs 64°F) and lower cortisol-related RPE.</div>
+          <div class="actrow">
+            <div class="coach-bit">"Race start is 6:45 — you've trained your body for this exact window. Don't change that the week before."</div>
+            <div class="ctrls">
+              <button class="ins-btn">View pattern</button>
+              <button class="ins-btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Action class is the primary axis (act/consider/observe), with confidence as secondary. Coach voice italicized after the trigger explanation — never mixed in.</div>
+</div>
+
+
+<!-- ============================================================
+     2 · PLAN BUILDER (web) — step 3 of 5
+     ============================================================ -->
+<div class="mockup-section" id="mockup-web-plan-builder">
+  <div class="mockup-h">Web · Plan Builder Wizard</div>
+  <div class="mockup-name">Build a Plan</div>
+  <div class="mockup-job">Five-step wizard. On step 3, the user shapes the plan and sees a live week-by-week preview with predicted race time and ramp warnings.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/plan/new?step=3</span>
+      </div>
+      <div style="padding:26px 28px;">
+
+        <div class="pb-hero">
+          <div class="top">
+            <div>
+              <div class="mm-eyebrow" style="color:var(--corporate); margin-bottom:10px;">Plan Builder · 16-week marathon block</div>
+              <h1>Build a New Plan</h1>
+            </div>
+            <div class="pb-progress">
+              <div class="pb-step done"><div class="pb-stepdot">✓</div><div class="lbl">Goal</div></div>
+              <div class="pb-stepline"></div>
+              <div class="pb-step done"><div class="pb-stepdot">✓</div><div class="lbl">Fitness</div></div>
+              <div class="pb-stepline"></div>
+              <div class="pb-step active"><div class="pb-stepdot">3</div><div class="lbl">Shape</div></div>
+              <div class="pb-stepline"></div>
+              <div class="pb-step"><div class="pb-stepdot">4</div><div class="lbl">Review</div></div>
+              <div class="pb-stepline"></div>
+              <div class="pb-step"><div class="pb-stepdot">5</div><div class="lbl">Activate</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pb-grid">
+
+          <!-- LEFT: form -->
+          <div class="pb-panel">
+            <h3>Plan parameters</h3>
+
+            <div class="pb-field">
+              <label>Goal race</label>
+              <div class="val">Big Sur Marathon</div>
+              <div class="sub">Sun Apr 27, 2026 · 6:45 AM · target 3:05:00 (7:03/mi avg)</div>
+            </div>
+
+            <div class="pb-field">
+              <label>Current fitness · auto-detected</label>
+              <div class="val">VDOT 53 <span style="font-size:13px; color:var(--t2); font-family:var(--f-body); font-weight:500;">· override</span></div>
+              <div class="sub">From Salinas Half-Marathon, Mar 02 · 1:24:18 chip time</div>
+            </div>
+
+            <div class="pb-field">
+              <label>Days / week</label>
+              <div class="val">5 days</div>
+              <div class="pb-slider"><div class="fill" style="width:50%"></div><div class="knob" style="left:50%"></div></div>
+              <div class="sub" style="display:flex; justify-content:space-between;"><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span></div>
+            </div>
+
+            <div class="pb-field">
+              <label>Max long run</label>
+              <div class="val">22 mi</div>
+              <div class="pb-slider"><div class="fill" style="width:73%"></div><div class="knob" style="left:73%"></div></div>
+              <div class="sub" style="display:flex; justify-content:space-between;"><span>16</span><span>18</span><span>20</span><span>22</span><span>24</span></div>
+            </div>
+
+            <div class="pb-field">
+              <label>Plan length</label>
+              <div class="val">16 weeks</div>
+              <div class="sub">Race in 16 weeks — perfect fit. Alt: 12 / 18 / 20.</div>
+            </div>
+
+            <div class="pb-field" style="margin-bottom:0;">
+              <label>Plan template</label>
+              <div class="pb-tmpl">
+                <div class="o">Daniels</div>
+                <div class="o sel">Pfitzinger</div>
+                <div class="o">Hansons</div>
+                <div class="o">Lydiard</div>
+              </div>
+              <div class="sub" style="margin-top:8px;">Pfitzinger 18/55 mid-vol — medium-long mid-week, quality long runs at MP, lactate-threshold focus.</div>
+            </div>
+          </div>
+
+          <!-- RIGHT: preview -->
+          <div class="pb-panel">
+            <h3>Plan preview</h3>
+
+            <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-bottom:6px;">Weekly mileage · 16 weeks</div>
+            <div class="pb-weeks">
+              <div class="pb-week base"><span class="n">1</span><span class="mi">32</span></div>
+              <div class="pb-week base"><span class="n">2</span><span class="mi">36</span></div>
+              <div class="pb-week base"><span class="n">3</span><span class="mi">40</span></div>
+              <div class="pb-week base"><span class="n">4</span><span class="mi">30</span></div>
+              <div class="pb-week build"><span class="n">5</span><span class="mi">42</span></div>
+              <div class="pb-week build"><span class="n">6</span><span class="mi">46</span></div>
+              <div class="pb-week build"><span class="n">7</span><span class="mi">48</span></div>
+              <div class="pb-week build"><span class="n">8</span><span class="mi">38</span></div>
+              <div class="pb-week peak"><span class="n">9</span><span class="mi">52</span></div>
+              <div class="pb-week peak"><span class="n">10</span><span class="mi">55</span></div>
+              <div class="pb-week peak"><span class="n">11</span><span class="mi">55</span></div>
+              <div class="pb-week peak"><span class="n">12</span><span class="mi">50</span></div>
+              <div class="pb-week peak"><span class="n">13</span><span class="mi">48</span></div>
+              <div class="pb-week taper"><span class="n">14</span><span class="mi">38</span></div>
+              <div class="pb-week taper"><span class="n">15</span><span class="mi">28</span></div>
+              <div class="pb-week race"><span class="n">16</span><span class="mi">26.2</span></div>
+            </div>
+
+            <div class="pb-legend">
+              <span><span class="mm-dot" style="background:rgba(0,143,236,.55); width:9px; height:9px;"></span>Base</span>
+              <span><span class="mm-dot" style="background:rgba(0,143,236,.85); width:9px; height:9px;"></span>Build</span>
+              <span><span class="mm-dot" style="background:var(--attention); width:9px; height:9px;"></span>Peak</span>
+              <span><span class="mm-dot" style="background:rgba(62,189,65,.65); width:9px; height:9px;"></span>Taper</span>
+              <span><span class="mm-dot" style="background:var(--warning); width:9px; height:9px;"></span>Race</span>
+            </div>
+
+            <div class="pb-pred">
+              <div class="l">Predicted race time at completion</div>
+              <div class="v">3:04 — 3:08</div>
+              <div class="s">Confidence: <b style="color:var(--success)">High</b> · based on 12-week consistency, current VDOT, course factor +4:15 for Big Sur elevation.</div>
+            </div>
+
+            <div class="pb-warn">
+              <span class="ic">!</span>
+              <div><b style="color:var(--t0)">Volume jump from W8 → W9 exceeds 15%</b><br>Consider a gentler ramp: W9 at 50mi instead of 52, or extend the recovery in W8.</div>
+            </div>
+
+            <div class="pb-cta">
+              <button class="pb-btn">Customize weeks</button>
+              <button class="pb-btn primary">Continue → Review</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Live preview is the trick — every left-panel change repaints the right panel and re-runs the prediction. Warnings appear inline, not as modals.</div>
+</div>
+
+
+<!-- ============================================================
+     3 · TODAY (iOS)
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-today">
+  <div class="mockup-h">iOS · Today</div>
+  <div class="mockup-name">Race Week — Today</div>
+  <div class="mockup-job">First screen of the morning. Recovery state, today's prescribed work, send-to-watch one-tap, and a coach-voiced daily message.</div>
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status">
+          <span>9:41</span>
+          <div style="display:flex; gap:5px; align-items:center; font-size:12px;">
+            <span>···</span><span>📶</span><span>🔋</span>
+          </div>
+        </div>
+
+        <div style="padding:14px 18px; height:600px; overflow:hidden;">
+          <div class="io-greet">Tue · May 5 · Good morning, David</div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+            <span class="tday-pill"><span class="mm-dot" style="background:var(--attention)"></span>Race Week</span>
+            <span style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Day 14 of 16 · taper</span>
+          </div>
+          <div class="io-h1">5 days to Big Sur</div>
+          <div class="tday-sub">Sun · 6:45 AM · 58°F forecast · target 3:05</div>
+
+          <!-- Recovery hero -->
+          <div class="rec-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div>
+                <div class="io-label" style="color:var(--success)">Recovery</div>
+                <div class="rec-num">78</div>
+                <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; font-weight:700; text-transform:uppercase; color:var(--success); margin-top:2px;">Optimal · ready to train</div>
+              </div>
+              <svg width="58" height="58" viewBox="0 0 58 58">
+                <circle cx="29" cy="29" r="24" stroke="rgba(62,189,65,.18)" stroke-width="5" fill="none"/>
+                <circle cx="29" cy="29" r="24" stroke="var(--success)" stroke-width="5" fill="none"
+                        stroke-dasharray="150.8" stroke-dashoffset="33" stroke-linecap="round"
+                        transform="rotate(-90 29 29)"/>
+                <text x="29" y="33" text-anchor="middle" fill="var(--success)" font-family="JetBrains Mono" font-size="13" font-weight="700">78</text>
+              </svg>
+            </div>
+            <div class="rec-band">
+              <span class="seg on"></span><span class="seg on"></span><span class="seg on"></span>
+              <span class="seg on"></span><span class="seg on"></span><span class="seg on"></span>
+              <span class="seg on"></span><span class="seg on"></span><span class="seg"></span><span class="seg"></span>
+            </div>
+            <div style="font-size:11px; color:var(--t1);">↑ HRV strong · 64ms (+4 vs baseline) · sleep 7h32</div>
+          </div>
+
+          <!-- Today's workout -->
+          <div class="wk-card">
+            <div class="io-label" style="color:var(--corporate)">Today's run</div>
+            <div class="wk-name">Easy 5 mi</div>
+            <div class="wk-meta">35 min · 8:00–8:30/mi · zone 2</div>
+            <button class="io-cta">Send to Watch ↓</button>
+          </div>
+
+          <!-- Coach message -->
+          <div class="io-card" style="background:linear-gradient(135deg,rgba(144,19,254,.10),rgba(144,19,254,.02)); border-color:rgba(144,19,254,.4);">
+            <div class="io-label" style="color:#b873ff;">Coach · Daily message</div>
+            <div style="font-style:italic; color:var(--t0); font-size:13px; line-height:1.5; margin-top:4px;">"Recovery is the workout this week. Run easy, sleep more, stay hydrated — the fitness is already in the bank."</div>
+          </div>
+
+          <!-- Weekly progress + conditions -->
+          <div style="display:grid; grid-template-columns:1.1fr 1fr; gap:8px; margin-top:0;">
+            <div class="io-card" style="margin-bottom:0;">
+              <div class="io-label">Week 14 · taper</div>
+              <div style="font-family:var(--f-data); font-weight:700; font-size:13px; color:var(--t0); margin-top:2px;">12 / 24 mi</div>
+              <div style="height:5px; background:var(--l3); border-radius:2.5px; margin-top:6px; overflow:hidden;">
+                <div style="height:100%; width:50%; background:var(--corporate);"></div>
+              </div>
+            </div>
+            <div class="io-card" style="margin-bottom:0;">
+              <div class="io-label">Conditions</div>
+              <div style="font-family:var(--f-data); font-weight:700; font-size:13px; color:var(--t0); margin-top:2px;">58°F · overcast</div>
+              <div style="font-size:10.5px; color:var(--t2); margin-top:3px;">👟 Pegasus 41</div>
+            </div>
+          </div>
+
+          <!-- Quick actions -->
+          <div class="qa-row">
+            <div class="qa"><div class="ic">✎</div><div class="lb">Log feel</div></div>
+            <div class="qa"><div class="ic">↻</div><div class="lb">Move</div></div>
+            <div class="qa"><div class="ic">→</div><div class="lb">Tomorrow</div></div>
+            <div class="qa" style="background:rgba(144,19,254,.12); border-color:rgba(144,19,254,.4);"><div class="ic" style="color:#b873ff;">✦</div><div class="lb" style="color:#b873ff;">Coach</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> One-tap "Send to Watch" lives on the workout card. Recovery card uses success-green band, distinct from corporate-blue workout card so the two states never blur.</div>
+</div>
+
+
+<!-- ============================================================
+     4 · WORKOUT DETAIL (iOS)
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-workout-detail">
+  <div class="mockup-h">iOS · Pre-workout briefing</div>
+  <div class="mockup-name">Tempo 6 mi</div>
+  <div class="mockup-job">A workout opened from Today. Coach explains the why, structure is a single visual strip, send-to-watch is the dominant CTA.</div>
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status">
+          <span>9:41</span>
+          <div style="display:flex; gap:5px; align-items:center; font-size:12px;">
+            <span>···</span><span>📶</span><span>🔋</span>
+          </div>
+        </div>
+
+        <div style="padding:14px 18px; height:600px; overflow:hidden;">
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span class="mm-data" style="font-size:10px; letter-spacing:1.5px; color:var(--corporate);">◀  Today</span>
+            <span class="mm-data" style="font-size:9.5px; letter-spacing:1.4px; color:var(--t3);">Wed · Workout 1 of 1</span>
+          </div>
+
+          <div class="mm-data" style="font-size:9.5px; letter-spacing:1.6px; color:var(--warning); text-transform:uppercase; margin-bottom:5px;">Quality · Lactate Threshold</div>
+          <div class="io-h1">Tempo 6 mi</div>
+          <div class="wd-pace">6 MI · 38–42 MIN · 6:55–7:05/MI · T-PACE</div>
+
+          <!-- WHY block -->
+          <div class="io-card" style="background:linear-gradient(135deg,rgba(144,19,254,.10),rgba(144,19,254,.02)); border-color:rgba(144,19,254,.4);">
+            <div class="io-label" style="color:#b873ff;">Why this run</div>
+            <div style="font-style:italic; color:var(--t0); font-size:13px; line-height:1.5; margin-top:4px;">"You're three weeks from race-specific work. This builds the lactate clearance you'll need at MP — the body learns to push the ceiling out."</div>
+          </div>
+
+          <!-- Structure strip -->
+          <div class="io-card">
+            <div class="io-label">Structure</div>
+            <div class="wd-strip">
+              <span class="seg wu">WU 1.5</span>
+              <span class="seg t">4 MI @ T · 6:55–7:05</span>
+              <span class="seg cd">CD 1.5</span>
+            </div>
+            <div class="wd-stripL"><span>0:00</span><span>11:00</span><span>40:00</span></div>
+            <div style="font-size:11.5px; color:var(--t1); margin-top:7px; line-height:1.45;">Steady, controlled. Negative split the T block by 3–5s if it feels honest. HR target 168–174.</div>
+          </div>
+
+          <!-- Conditions / shoe -->
+          <div class="wd-meta-row">
+            <div class="wd-mc">
+              <div class="l">Conditions · 7am</div>
+              <div class="v">58°F · overcast</div>
+              <div style="font-size:10.5px; color:var(--t2); margin-top:2px;">light SW wind · 78% RH</div>
+            </div>
+            <div class="wd-mc">
+              <div class="l">Suggested shoe</div>
+              <div class="v">Pegasus 41</div>
+              <div style="font-size:10.5px; color:var(--t2); margin-top:2px;">218 mi · rotation A</div>
+            </div>
+          </div>
+
+          <!-- Audio + fueling -->
+          <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <div class="wd-mc" style="flex:1;">
+              <div class="l">Audio briefing</div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                <span style="width:26px; height:26px; border-radius:50%; background:var(--xp); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px;">▶</span>
+                <span style="font-family:var(--f-data); font-size:11px; color:var(--t1); font-weight:700;">1:14</span>
+              </div>
+            </div>
+            <div class="wd-mc" style="flex:1;">
+              <div class="l">Fueling</div>
+              <div style="font-size:12px; color:var(--t1); margin-top:3px; line-height:1.3;">Pre: 250ml + caf<br>Post: 30g carb</div>
+            </div>
+          </div>
+
+          <!-- Big CTA -->
+          <button class="io-cta">▼ Send to Watch · Pegasus 41</button>
+
+          <!-- History strip -->
+          <div style="margin-top:12px;">
+            <div class="io-label">Recent T-pace efforts</div>
+            <div class="wd-hist">
+              <div class="wd-hbox"><div class="d">Apr 24 · 5mi</div><div class="p">7:01</div></div>
+              <div class="wd-hbox"><div class="d">Apr 17 · 4mi</div><div class="p">7:04</div></div>
+              <div class="wd-hbox"><div class="d">Apr 10 · 6mi</div><div class="p">7:08</div></div>
+              <div class="wd-hbox" style="background:rgba(0,143,236,.10); border-color:rgba(0,143,236,.4);"><div class="d" style="color:var(--corporate)">Today</div><div class="p" style="color:var(--corporate)">7:00?</div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> The "why" leads, the structure strip is the spec, the watch-button is the commitment. History strip lets the runner self-set expectations honestly.</div>
+</div>
+
+
+<!-- ============================================================
+     5 · RUN RECAP (iOS)
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-run-recap">
+  <div class="mockup-h">iOS · Post-run recap</div>
+  <div class="mockup-name">Run Recap — 18 mi MP</div>
+  <div class="mockup-job">Auto-presented after sync. Verdict at top, prescription reconciliation in green if hit, subjective feel as the primary CTA.</div>
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status">
+          <span>9:41</span>
+          <div style="display:flex; gap:5px; align-items:center; font-size:12px;">
+            <span>···</span><span>📶</span><span>🔋</span>
+          </div>
+        </div>
+
+        <div style="padding:14px 18px; height:600px; overflow:hidden;">
+
+          <div class="io-greet" style="color:var(--success); letter-spacing:1.8px;">Sun · Apr 27 · Just synced</div>
+          <div class="rec-greet">Nice work.</div>
+          <div class="rec-sub">18mi long run · MP miles in the back half · Big Sur prep</div>
+
+          <!-- Hero stats -->
+          <div class="rec-stats">
+            <div class="rec-stat"><div class="l">Distance</div><div class="v">18.04 <span style="font-size:11px; color:var(--t2)">mi</span></div></div>
+            <div class="rec-stat"><div class="l">Time</div><div class="v">2:18:42</div></div>
+            <div class="rec-stat"><div class="l">Avg pace</div><div class="v">7:42 <span style="font-size:11px; color:var(--t2)">/mi</span></div></div>
+            <div class="rec-stat"><div class="l">Avg HR</div><div class="v">162 <span style="font-size:11px; color:var(--t2)">bpm</span></div></div>
+          </div>
+
+          <!-- Pace chart -->
+          <div class="io-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div class="io-label">Pace · vs prescribed</div>
+              <div style="display:flex; gap:8px; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; font-weight:700; text-transform:uppercase;">
+                <span style="color:var(--corporate)">● actual</span>
+                <span style="color:var(--t3)">┄ target</span>
+              </div>
+            </div>
+            <svg viewBox="0 0 240 78" width="100%" height="78" preserveAspectRatio="none">
+              <!-- gridlines -->
+              <line x1="0" y1="20" x2="240" y2="20" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+              <line x1="0" y1="40" x2="240" y2="40" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+              <line x1="0" y1="60" x2="240" y2="60" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+              <!-- prescribed (target) line, dashed -->
+              <path d="M0,52 L60,52 L60,38 L180,38 L180,38 L240,52" stroke="rgba(246,247,248,.45)" stroke-width="1.4" fill="none" stroke-dasharray="3 3"/>
+              <!-- MP zone band (back half) -->
+              <rect x="80" y="32" width="120" height="16" fill="rgba(243,173,59,.10)"/>
+              <!-- actual pace -->
+              <path d="M0,55 L15,52 L30,53 L45,54 L60,50 L75,42 L90,38 L105,36 L120,37 L135,36 L150,38 L165,40 L180,44 L195,48 L210,50 L225,52 L240,54"
+                    stroke="var(--corporate)" stroke-width="2" fill="none" stroke-linejoin="round"/>
+              <!-- MP zone label -->
+              <text x="140" y="28" fill="var(--attention)" font-family="JetBrains Mono" font-size="7" font-weight="700" letter-spacing="1">MP BLOCK · 12 MI</text>
+              <!-- x labels -->
+              <text x="0"   y="76" fill="var(--t3)" font-family="JetBrains Mono" font-size="7">0</text>
+              <text x="116" y="76" fill="var(--t3)" font-family="JetBrains Mono" font-size="7">9</text>
+              <text x="226" y="76" fill="var(--t3)" font-family="JetBrains Mono" font-size="7">18</text>
+            </svg>
+          </div>
+
+          <!-- Reconciliation -->
+          <div class="rec-recon">
+            <span class="ic" style="font-size:18px;">✓</span>
+            <div>
+              <div class="t">Hit the prescription</div>
+              <div class="s">12 mi at MP 7:05 target · actual 7:03 avg · zero late-run drift</div>
+            </div>
+          </div>
+
+          <!-- Coach analysis -->
+          <div class="io-card" style="background:linear-gradient(135deg,rgba(144,19,254,.10),rgba(144,19,254,.02)); border-color:rgba(144,19,254,.4);">
+            <div class="io-label" style="color:#b873ff;">Coach analysis</div>
+            <div style="font-style:italic; color:var(--t0); font-size:12.5px; line-height:1.5; margin-top:4px;">"Strong execution. The fade in the last 2 miles was minimal — under 4 sec/mi — you're race-ready."</div>
+          </div>
+
+          <!-- CR-10 slider -->
+          <div class="rec-cr10">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div class="io-label">How did it feel? · CR-10</div>
+              <div class="mm-data" style="font-size:11px; color:var(--xp);">Currently 7</div>
+            </div>
+            <div class="scale">
+              <span class="tk">0</span><span class="tk">1</span><span class="tk">2</span><span class="tk">3</span>
+              <span class="tk on">4</span><span class="tk on">5</span><span class="tk on">6</span>
+              <span class="tk cur">7</span><span class="tk">8</span><span class="tk">9</span><span class="tk">10</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:8.5px; letter-spacing:1.1px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-top:4px;">
+              <span>Easy</span><span>Mod</span><span>Hard</span><span>Max</span>
+            </div>
+          </div>
+
+          <!-- Action row + see detail -->
+          <div class="rec-actrow">
+            <div class="rec-abtn">📷 Photo</div>
+            <div class="rec-abtn">✎ Note</div>
+            <div class="rec-abtn">↗ Share</div>
+          </div>
+          <div style="text-align:center; margin-top:9px;">
+            <span style="font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; color:var(--corporate); font-weight:700; text-transform:uppercase;">See full detail on web →</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> The "Hit the prescription" badge is the punchline — it's why a runner opens this screen. Coach voice is short and earned, never gushy. CR-10 is the next-day input the system will weight against.</div>
+</div>

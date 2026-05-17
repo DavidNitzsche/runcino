@@ -1,4 +1,4 @@
-# Runcino · Session Handoff Brief
+# faff.run · Session Handoff Brief
 
 Paste this into a new Claude Code session to bootstrap context. It's the minimum you need to land productive work without re-explaining the project.
 
@@ -6,7 +6,7 @@ Paste this into a new Claude Code session to bootstrap context. It's the minimum
 
 ## What this is
 
-Runcino is a Next.js running-coach app. The soul of the product: **an AI running coach, not a planner or tracker.** Every number on screen must be one of three things:
+faff.run is a Next.js running-coach app. The soul of the product: **an AI running coach, not a planner or tracker.** Every number on screen must be one of three things:
 
 1. **Computed by the coach** from the runner's real data, citing real doctrine.
 2. **Pulled from real state** (Strava runs, races, daily check-ins).
@@ -17,14 +17,14 @@ This is the trust contract. Violating it is the worst sin in this codebase.
 ## Where to work
 
 - **Working directory:** `/Volumes/WP/06 Claude Code/Runcino` (NOT a sub-worktree).
-- **Dev branch:** `claude/build-runcino-app-OIRJr` — all development commits land here.
+- **Dev branch:** `claude/build-faff-app-OIRJr` — all development commits land here.
 - **Production branch:** `main` — fast-forward from the dev branch after meaningful work. The user wants both kept in sync.
 
 **Standard commit + push pattern:**
 
 ```bash
-git push origin claude/build-runcino-app-OIRJr
-git push origin claude/build-runcino-app-OIRJr:main
+git push origin claude/build-faff-app-OIRJr
+git push origin claude/build-faff-app-OIRJr:main
 ```
 
 Both pushes after every meaningful commit. Railway deploys from `main`.
@@ -110,7 +110,7 @@ Nothing. All previous-session agents landed. Plan-as-artifact is shipping. The d
 ```bash
 cd "/Volumes/WP/06 Claude Code/Runcino"
 git worktree list                                    # confirm you're NOT in a sub-worktree
-git remote show origin | grep "HEAD branch"          # confirms origin/HEAD → claude/build-runcino-app-OIRJr
+git remote show origin | grep "HEAD branch"          # confirms origin/HEAD → claude/build-faff-app-OIRJr
 git fetch origin && git log origin/main --oneline -5 # see what's on main
 ```
 

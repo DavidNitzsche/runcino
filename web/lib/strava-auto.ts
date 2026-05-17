@@ -11,7 +11,7 @@
  * don't double-trigger.
  */
 
-const LAST_SYNC_KEY = 'runcino:strava:last-sync';
+const LAST_SYNC_KEY = 'faff:strava:last-sync';
 const MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface AutoSyncResult {

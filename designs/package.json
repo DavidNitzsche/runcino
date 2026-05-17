@@ -1,7 +1,7 @@
 {
-  "name": "runcino-designs",
+  "name": "faff-designs",
   "version": "1.0.0",
-  "description": "Runcino — web mockup site (static HTML)",
+  "description": "faff.run — web mockup site (static HTML)",
   "private": true,
   "scripts": {
     "start": "serve -l tcp://0.0.0.0:${PORT:-3000} ."

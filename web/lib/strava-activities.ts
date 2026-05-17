@@ -54,7 +54,7 @@ interface CachedPayload {
   error?: string;
 }
 
-const CACHE_KEY = 'runcino:strava:activities:v1';
+const CACHE_KEY = 'faff:strava:activities:v1';
 const CLIENT_TTL_MS = 5 * 60 * 1000;
 
 let inflight: Promise<CachedPayload> | null = null;

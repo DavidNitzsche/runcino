@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { computeRetrospective, type ActualRace } from '../retrospective';
-import type { RuncinoPlan } from '../types';
+import type { FaffPlan } from '../types';
 
-const plan: RuncinoPlan = JSON.parse(
-  readFileSync(resolve(__dirname, '..', '..', 'public', 'big-sur-3-50.runcino.json'), 'utf8')
+const plan: FaffPlan = JSON.parse(
+  readFileSync(resolve(__dirname, '..', '..', 'public', 'big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__'), 'utf8')
 );
 const actual: ActualRace = JSON.parse(
   readFileSync(resolve(__dirname, '..', '..', 'fixtures', 'bigsur-actual.json'), 'utf8')

@@ -18,7 +18,7 @@ import { NextResponse } from 'next/server';
  *  Inside a Railway container, req.url is something like
  *  http://0.0.0.0:8080/... — using its origin would send Strava a
  *  redirect_uri it can't validate (Strava's "Authorization Callback
- *  Domain" is set to runcino-production.up.railway.app).
+ *  Domain" is set to __KEEP_FAFF.RUN_PROD__.up.railway.app).
  *
  *  Fall through, in priority order:
  *   1. RAILWAY_PUBLIC_DOMAIN env var (Railway injects this for the

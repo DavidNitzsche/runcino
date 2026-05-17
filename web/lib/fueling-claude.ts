@@ -14,7 +14,7 @@ import { planFueling, type FuelPlan, type FuelPlanInput } from './fueling';
 import type { Phase } from './types';
 
 const FUEL_SYSTEM_PROMPT = `
-You are Runcino's fueling strategist. You place gels on a race course to maximize performance.
+You are faff.run's fueling strategist. You place gels on a race course to maximize performance.
 
 # Fueling science you must apply
 

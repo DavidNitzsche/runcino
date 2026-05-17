@@ -1,0 +1,494 @@
+<!-- =========================================================
+     faff.run · iOS + Watch Mockups (6 total)
+     Fragment file. Inserted into deck.html mockup section.
+     Frames defined in deck.html: .mockup-frame, .iphone-frame,
+     .iphone-screen, .watch-frame, .watch-screen.
+     ========================================================= -->
+
+<style>
+/* ───────────────────────────────────────────────────────────
+   Shared mockup-local primitives
+   ─────────────────────────────────────────────────────────── */
+.mk-row { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+.mk-caps { font-family:var(--f-data); font-size:9px; letter-spacing:1.6px; font-weight:700; text-transform:uppercase; color:var(--t3); }
+.mk-mono { font-family:var(--f-data); }
+.mk-disp { font-family:var(--f-display); }
+
+/* iPhone-shared */
+.ios-tabbar { position:absolute; bottom:0; left:0; right:0; height:62px; background:rgba(20,24,32,.92); backdrop-filter:blur(16px); border-top:1px solid var(--l4); display:flex; padding:6px 4px 18px; }
+.ios-tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:9.5px; color:var(--t3); font-weight:600; }
+.ios-tab .ic { font-size:18px; line-height:1; }
+.ios-tab.active { color:var(--corporate); }
+.ios-title { font-family:var(--f-display); font-size:28px; font-weight:700; letter-spacing:-.01em; text-transform:uppercase; color:var(--t0); line-height:1; }
+
+/* ───────────────────────────────────────────────────────────
+   1. Coach Chat
+   ─────────────────────────────────────────────────────────── */
+.coach-head { display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--l3); margin-bottom:10px; }
+.coach-mic { width:34px; height:34px; border-radius:17px; background:var(--l3); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--t1); border:1px solid var(--l4); }
+.bub { max-width:84%; padding:9px 12px; border-radius:14px; font-size:11.5px; line-height:1.42; margin-bottom:8px; }
+.bub.user { background:var(--corporate); color:#fff; margin-left:auto; border-bottom-right-radius:4px; }
+.bub.coach { background:var(--l2); color:var(--t0); border:1px solid var(--l4); border-bottom-left-radius:4px; }
+.bub.coach b { color:var(--success); font-weight:700; }
+.refcard { margin-top:6px; padding:7px 9px; background:var(--l1); border:1px solid var(--l4); border-radius:8px; display:flex; gap:8px; align-items:center; }
+.refcard .ic { width:22px; height:22px; border-radius:5px; background:rgba(0,143,236,.18); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--corporate); }
+.refcard .body { flex:1; min-width:0; }
+.refcard .ttl { font-size:10px; font-weight:700; color:var(--t0); line-height:1.2; }
+.refcard .sub { font-size:8.5px; color:var(--t3); font-family:var(--f-data); letter-spacing:.6px; text-transform:uppercase; margin-top:1px; }
+.suggest-row { display:flex; gap:6px; padding:8px 0; overflow-x:auto; flex-wrap:nowrap; }
+.suggest-chip { flex-shrink:0; padding:6px 10px; background:var(--l2); border:1px solid var(--l4); border-radius:14px; font-size:10.5px; color:var(--t1); white-space:nowrap; }
+.coach-input-row { display:flex; gap:8px; align-items:center; padding:8px 0 0; border-top:1px solid var(--l3); margin-top:6px; }
+.coach-textfield { flex:1; height:34px; background:var(--l2); border-radius:17px; border:1px solid var(--l4); display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--t3); }
+.coach-voice-btn { width:46px; height:46px; border-radius:23px; background:linear-gradient(135deg,var(--xp),var(--corporate)); display:flex; align-items:center; justify-content:center; font-size:18px; color:#fff; box-shadow:0 4px 14px rgba(144,19,254,.35); }
+
+/* ───────────────────────────────────────────────────────────
+   2. Health
+   ─────────────────────────────────────────────────────────── */
+.health-hero { margin-top:10px; padding:14px; background:linear-gradient(135deg,rgba(62,189,65,.12),rgba(62,189,65,.02)); border:1px solid rgba(62,189,65,.35); border-radius:14px; }
+.health-hero .label { font-family:var(--f-data); font-size:9px; letter-spacing:1.6px; font-weight:700; color:var(--success); text-transform:uppercase; }
+.health-hero .score { font-family:var(--f-display); font-size:64px; font-weight:800; line-height:.9; color:var(--success); margin:2px 0; letter-spacing:-.02em; }
+.health-hero .trend { font-size:11px; color:var(--t1); display:flex; align-items:baseline; gap:8px; }
+.health-hero .trend .up { color:var(--success); font-weight:700; }
+.contrib-row { display:flex; gap:6px; margin-top:10px; }
+.contrib-pill { flex:1; background:rgba(255,255,255,.04); border:1px solid var(--l4); border-radius:8px; padding:5px 7px; font-size:9px; color:var(--t1); display:flex; flex-direction:column; gap:1px; }
+.contrib-pill .k { font-family:var(--f-data); letter-spacing:1px; font-weight:700; color:var(--t3); font-size:8px; text-transform:uppercase; }
+.contrib-pill .v { font-size:10px; color:var(--t0); font-weight:600; }
+.metric-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:10px; }
+.metric-tile { background:var(--l2); border:1px solid var(--l4); border-radius:10px; padding:8px 9px; }
+.metric-tile .label { font-family:var(--f-data); font-size:8px; letter-spacing:1.2px; font-weight:700; color:var(--t3); text-transform:uppercase; }
+.metric-tile .val { font-family:var(--f-display); font-size:18px; font-weight:700; color:var(--t0); line-height:1; margin:2px 0 4px; }
+.metric-tile .unit { font-size:9px; color:var(--t2); margin-left:2px; }
+.body-row { margin-top:10px; padding:10px 12px; background:var(--l2); border:1px solid var(--l4); border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
+.body-row .l { font-size:10px; color:var(--t2); font-family:var(--f-data); letter-spacing:1px; text-transform:uppercase; font-weight:700; }
+.body-row .v { font-family:var(--f-display); font-size:20px; font-weight:700; color:var(--t0); }
+.bodymap-link { margin-top:8px; padding:9px 12px; background:var(--l2); border:1px solid var(--l4); border-radius:10px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--t1); }
+.bodymap-link .arrow { color:var(--t3); }
+.quicklog-h { font-family:var(--f-data); font-size:9px; letter-spacing:1.6px; font-weight:700; color:var(--t3); text-transform:uppercase; margin:12px 0 6px; }
+.quicklog-row { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:5px; }
+.quicklog-btn { background:var(--l2); border:1px solid var(--l4); border-radius:9px; padding:8px 4px; display:flex; flex-direction:column; align-items:center; gap:2px; }
+.quicklog-btn .ic { font-size:15px; }
+.quicklog-btn .lbl { font-size:8.5px; color:var(--t1); font-weight:600; line-height:1.1; text-align:center; }
+
+/* ───────────────────────────────────────────────────────────
+   3. Race-day mode
+   ─────────────────────────────────────────────────────────── */
+.rd-screen { background:#0a0d12; }
+.rd-banner { padding:8px 10px; border-radius:8px; background:rgba(243,173,59,.10); border:1px solid rgba(243,173,59,.4); font-family:var(--f-display); font-size:14px; font-weight:700; color:var(--attention); letter-spacing:.01em; text-transform:uppercase; line-height:1.05; text-align:center; margin-bottom:8px; }
+.rd-map { height:64px; background:linear-gradient(135deg,#152030,#1a2b3d); border:1px solid var(--l4); border-radius:10px; position:relative; overflow:hidden; margin-bottom:8px; }
+.rd-map svg { width:100%; height:100%; display:block; }
+.rd-bigtime { font-family:var(--f-display); font-size:46px; font-weight:800; color:var(--t0); letter-spacing:-.02em; line-height:.9; text-align:center; margin:6px 0 2px; }
+.rd-time-sub { display:flex; justify-content:center; gap:12px; font-family:var(--f-data); font-size:11px; color:var(--t2); letter-spacing:.5px; margin-bottom:8px; }
+.rd-time-sub b { color:var(--t0); font-weight:700; }
+.rd-pace-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+.rd-tile { background:var(--l2); border:1px solid var(--l4); border-radius:10px; padding:8px 10px; }
+.rd-tile.ok { background:rgba(62,189,65,.12); border-color:rgba(62,189,65,.5); }
+.rd-tile .label { font-family:var(--f-data); font-size:8px; letter-spacing:1.2px; font-weight:700; color:var(--t3); text-transform:uppercase; }
+.rd-tile.ok .label { color:var(--success); }
+.rd-tile .v { font-family:var(--f-display); font-size:20px; font-weight:700; color:var(--t0); line-height:1; margin-top:3px; }
+.rd-tile .sub { font-size:9.5px; color:var(--t2); margin-top:1px; }
+.rd-aid { padding:8px 10px; background:rgba(0,143,236,.10); border:1px solid rgba(0,143,236,.35); border-radius:10px; display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.rd-aid .ic { width:22px; height:22px; border-radius:11px; background:rgba(0,143,236,.25); display:flex; align-items:center; justify-content:center; font-size:11px; }
+.rd-aid .body { flex:1; min-width:0; }
+.rd-aid .ttl { font-size:10.5px; font-weight:700; color:var(--t0); line-height:1.15; }
+.rd-aid .sub { font-size:9px; color:var(--t2); }
+.rd-spec { padding:7px 10px; background:var(--l2); border:1px solid var(--l4); border-radius:10px; display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:10px; color:var(--t1); }
+.rd-spec .dot { width:6px; height:6px; border-radius:3px; background:var(--success); }
+.rd-spec .ct { color:var(--t0); font-weight:700; }
+.rd-fallback { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.2px; color:var(--t3); text-transform:uppercase; text-align:center; margin-bottom:8px; }
+.rd-controls { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.rd-btn { padding:10px 0; border-radius:10px; font-family:var(--f-display); font-weight:700; font-size:13px; letter-spacing:.04em; text-transform:uppercase; text-align:center; }
+.rd-btn.pause { background:var(--l3); color:var(--t0); border:1px solid var(--l4); }
+.rd-btn.end { background:var(--warning); color:#fff; }
+
+/* ───────────────────────────────────────────────────────────
+   4. Watch — Today
+   ─────────────────────────────────────────────────────────── */
+.w-today { display:flex; flex-direction:column; height:100%; padding:2px; }
+.w-cap { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.4px; font-weight:700; color:var(--t3); text-transform:uppercase; text-align:center; }
+.w-today .name { font-family:var(--f-display); font-size:30px; font-weight:800; line-height:.92; letter-spacing:-.01em; color:var(--t0); text-align:center; margin:14px 0 4px; }
+.w-today .meta { font-family:var(--f-data); font-size:9px; letter-spacing:1.2px; font-weight:700; color:var(--t1); text-transform:uppercase; text-align:center; margin-bottom:10px; }
+.w-start { background:var(--corporate); color:#fff; font-family:var(--f-display); font-weight:700; font-size:18px; letter-spacing:.05em; text-transform:uppercase; padding:13px 0; border-radius:18px; text-align:center; margin:auto 4px 6px; box-shadow:0 4px 14px rgba(0,143,236,.4); }
+.w-alts { font-family:var(--f-data); font-size:8px; letter-spacing:1.2px; color:var(--t3); text-align:center; text-transform:uppercase; }
+.w-alts .dots { letter-spacing:3px; color:var(--t3); display:block; margin-bottom:1px; }
+
+/* ───────────────────────────────────────────────────────────
+   5. Watch — Active workout (the brand artifact)
+   ─────────────────────────────────────────────────────────── */
+.w-active { display:flex; flex-direction:column; height:100%; padding:0; position:relative; }
+.w-active .banner { font-family:var(--f-data); font-size:8px; letter-spacing:1.4px; font-weight:700; color:var(--attention); text-transform:uppercase; text-align:center; padding:2px 0 0; line-height:1.1; }
+.w-active .pace-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; margin-top:-4px; }
+.w-active .pace { font-family:var(--f-display); font-size:78px; font-weight:800; line-height:.9; letter-spacing:-.04em; color:var(--t0); }
+.w-active .pace-unit { font-family:var(--f-data); font-size:9px; color:var(--t2); letter-spacing:1.2px; font-weight:700; text-transform:uppercase; margin-top:-6px; }
+.w-active .delta { font-family:var(--f-display); font-size:14px; font-weight:700; color:var(--caution); letter-spacing:.01em; margin-top:4px; }
+.w-active .stats { font-family:var(--f-data); font-size:9px; letter-spacing:.4px; font-weight:700; color:var(--t1); text-align:center; padding:0 4px; line-height:1.2; }
+.w-active .next { font-family:var(--f-data); font-size:8px; letter-spacing:1.2px; font-weight:700; color:var(--t2); text-transform:uppercase; text-align:center; padding:3px 0 2px; line-height:1.1; }
+
+/* ───────────────────────────────────────────────────────────
+   6. Watch — Recovery
+   ─────────────────────────────────────────────────────────── */
+.w-rec { display:flex; flex-direction:column; height:100%; padding:0; }
+.w-rec .top { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.4px; font-weight:700; color:var(--t3); text-transform:uppercase; text-align:center; padding:2px 0 4px; }
+.w-rec .score { font-family:var(--f-display); font-size:74px; font-weight:800; line-height:.9; letter-spacing:-.03em; color:var(--success); text-align:center; margin-top:4px; }
+.w-rec .band { font-family:var(--f-display); font-size:13px; font-weight:700; color:var(--success); letter-spacing:.08em; text-align:center; text-transform:uppercase; margin-top:2px; }
+.w-rec .stats { font-family:var(--f-data); font-size:8.5px; letter-spacing:.6px; font-weight:700; color:var(--t1); text-align:center; margin-top:8px; line-height:1.25; }
+.w-rec .coach { font-size:9.5px; color:var(--t0); text-align:center; margin-top:7px; padding:0 6px; line-height:1.25; }
+.w-rec .force { font-family:var(--f-data); font-size:8px; letter-spacing:1.4px; font-weight:700; color:var(--warning); text-transform:uppercase; text-align:center; margin-top:auto; padding:4px 0 2px; }
+</style>
+
+
+<!-- ============================================================
+     1) iOS COACH CHAT
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-coach-chat">
+  <div class="mockup-h">Mockup · iOS</div>
+  <div class="mockup-name">Coach Chat</div>
+  <div class="mockup-job">Mobile coach conversation. Voice-first, RAG-grounded answers with reference cards. Suggested follow-ups stay one tap away.</div>
+
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status"><span>9:41</span><div style="display:flex;gap:5px;align-items:center;font-size:12px;"><span>···</span><span>📶</span><span>🔋</span></div></div>
+
+        <div style="padding:8px 16px 0; height:546px; overflow:hidden; display:flex; flex-direction:column;">
+          <!-- Header -->
+          <div class="coach-head">
+            <div>
+              <div class="ios-title" style="font-size:24px;">Coach</div>
+              <div class="mk-caps" style="margin-top:3px; color:var(--t2);">Big Sur · 6 days out</div>
+            </div>
+            <div class="coach-mic">🎤</div>
+          </div>
+
+          <!-- Conversation scroll -->
+          <div style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
+            <div class="bub user">How am I feeling for Big Sur?</div>
+
+            <div class="bub coach">
+              <b>Strong shape.</b> HRV trended up 8 ms over the last week (64 vs 56 baseline), you've nailed 11 of 12 key sessions, and your 18-miler last Sunday had hill splits 12 sec faster than week 4.
+              <div class="refcard">
+                <div class="ic">📈</div>
+                <div class="body">
+                  <div class="ttl">18-mile long run · Apr 27</div>
+                  <div class="sub">Adherence 100% · Hill splits −12s</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bub user">Should I be worried about Hurricane Point?</div>
+
+            <div class="bub coach">
+              Less than you think. Your last long run hit 480 ft of climb between mi 14–17 at marathon effort and HR stayed under 158. Hurricane Point is shorter and you'll be fresher. Plan: settle 10–15 sec/mi off goal, recover on the descent.
+              <div class="refcard">
+                <div class="ic">📚</div>
+                <div class="body">
+                  <div class="ttl">KB · Big Sur Course-Specific Training</div>
+                  <div class="sub">Doc 11 · Hurricane Point pacing</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Suggested chips -->
+          <div class="suggest-row">
+            <div class="suggest-chip">What pace today?</div>
+            <div class="suggest-chip">Race day weather</div>
+            <div class="suggest-chip">Carb load schedule</div>
+          </div>
+
+          <!-- Input + voice -->
+          <div class="coach-input-row">
+            <div class="coach-textfield">Ask anything…</div>
+            <div class="coach-voice-btn">🎤</div>
+          </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="ios-tabbar">
+          <div class="ios-tab"><span class="ic">◐</span><span>Today</span></div>
+          <div class="ios-tab"><span class="ic">▦</span><span>Plan</span></div>
+          <div class="ios-tab active"><span class="ic">✦</span><span>Coach</span></div>
+          <div class="ios-tab"><span class="ic">♥</span><span>Health</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> Voice mic is the hero input — coach is meant to answer "How am I doing?" hands-free. Reference cards expose RAG sources so the user can audit any claim. Three suggested chips reflect the highest-intent follow-ups for race week.</div>
+</div>
+
+
+<!-- ============================================================
+     2) iOS HEALTH
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-health">
+  <div class="mockup-h">Mockup · iOS</div>
+  <div class="mockup-name">Health</div>
+  <div class="mockup-job">Mobile-condensed Health view. Recovery hero, contributing factors, sparklines, body composition, body map link, and quick logs.</div>
+
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status"><span>9:41</span><div style="display:flex;gap:5px;align-items:center;font-size:12px;"><span>···</span><span>📶</span><span>🔋</span></div></div>
+
+        <div style="padding:8px 16px 70px; height:600px; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:10px; border-bottom:1px solid var(--l3);">
+            <div>
+              <div class="ios-title">Health</div>
+              <div class="mk-caps" style="margin-top:3px; color:var(--t2);">Mon · May 5</div>
+            </div>
+            <div class="mk-caps" style="color:var(--t3);">7d ▾</div>
+          </div>
+
+          <!-- Recovery hero -->
+          <div class="health-hero">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div>
+                <div class="label">Recovery · Optimal</div>
+                <div class="score">78</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="mk-caps" style="color:var(--t2);">vs 7d avg</div>
+                <div style="font-family:var(--f-display); font-size:20px; font-weight:700; color:var(--success); margin-top:2px;">↗ +6</div>
+              </div>
+            </div>
+            <div class="trend"><span class="up">Green light.</span><span style="color:var(--t2);">Cleared for tempo block.</span></div>
+
+            <div class="contrib-row">
+              <div class="contrib-pill"><span class="k">Sleep</span><span class="v">↑ 8h12m</span></div>
+              <div class="contrib-pill"><span class="k">HRV</span><span class="v">→ stable</span></div>
+              <div class="contrib-pill"><span class="k">Subj.</span><span class="v">4 / 5</span></div>
+            </div>
+          </div>
+
+          <!-- Metric tiles with sparklines -->
+          <div class="metric-row">
+            <div class="metric-tile">
+              <div class="label">HRV</div>
+              <div class="val">64<span class="unit">ms</span></div>
+              <svg viewBox="0 0 60 18" width="100%" height="14" preserveAspectRatio="none">
+                <polyline points="0,12 6,11 12,13 18,9 24,10 30,8 36,7 42,9 48,6 54,7 60,5" fill="none" stroke="#3EBD41" stroke-width="1.4"/>
+              </svg>
+            </div>
+            <div class="metric-tile">
+              <div class="label">RHR</div>
+              <div class="val">48<span class="unit">bpm</span></div>
+              <svg viewBox="0 0 60 18" width="100%" height="14" preserveAspectRatio="none">
+                <polyline points="0,8 6,9 12,7 18,8 24,9 30,8 36,7 42,8 48,9 54,8 60,7" fill="none" stroke="#008FEC" stroke-width="1.4"/>
+              </svg>
+            </div>
+            <div class="metric-tile">
+              <div class="label">Sleep</div>
+              <div class="val">8.2<span class="unit">h</span></div>
+              <svg viewBox="0 0 60 18" width="100%" height="14" preserveAspectRatio="none">
+                <polyline points="0,10 6,9 12,11 18,8 24,7 30,9 36,8 42,7 48,9 54,6 60,5" fill="none" stroke="#9013FE" stroke-width="1.4"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Body composition -->
+          <div class="body-row">
+            <div>
+              <div class="l">Weight</div>
+              <div class="v">168<span style="font-size:12px; color:var(--t2); font-family:var(--f-data); margin-left:3px;">lb</span></div>
+            </div>
+            <div style="text-align:right;">
+              <div class="l">14d trend</div>
+              <div style="font-family:var(--f-display); font-size:14px; font-weight:700; color:var(--t1); margin-top:2px;">→ flat</div>
+            </div>
+          </div>
+
+          <!-- Body map link -->
+          <div class="bodymap-link">
+            <span><span style="margin-right:6px;">⌐</span>Body Map · <span style="color:var(--t2);">No active flags</span></span>
+            <span class="arrow">›</span>
+          </div>
+
+          <!-- Quick logs -->
+          <div class="quicklog-h">Quick Logs</div>
+          <div class="quicklog-row">
+            <div class="quicklog-btn"><span class="ic">♨</span><span class="lbl">Sauna</span></div>
+            <div class="quicklog-btn"><span class="ic">❄</span><span class="lbl">Cold</span></div>
+            <div class="quicklog-btn"><span class="ic">✋</span><span class="lbl">Massage</span></div>
+            <div class="quicklog-btn"><span class="ic">⊙</span><span class="lbl">Mobility</span></div>
+          </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="ios-tabbar">
+          <div class="ios-tab"><span class="ic">◐</span><span>Today</span></div>
+          <div class="ios-tab"><span class="ic">▦</span><span>Plan</span></div>
+          <div class="ios-tab"><span class="ic">✦</span><span>Coach</span></div>
+          <div class="ios-tab active"><span class="ic">♥</span><span>Health</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> Recovery score is the only "verdict" — everything below is the receipt. Sparklines are 30-day; colors per metric (HRV green, RHR blue, sleep purple). Body Map link surfaces injury state without taking the slot.</div>
+</div>
+
+
+<!-- ============================================================
+     3) iOS RACE-DAY MODE
+     ============================================================ -->
+<div class="mockup-section" id="mockup-ios-race-day-mode">
+  <div class="mockup-h">Mockup · iOS</div>
+  <div class="mockup-name">Race-Day Mode</div>
+  <div class="mockup-job">Phone-as-fallback during the race. Different layout from Today: live splits, pace-vs-target verdict, aid-station fueling, spectator share, emergency controls.</div>
+
+  <div class="mockup-frame">
+    <div class="iphone-frame">
+      <div class="iphone-screen rd-screen">
+        <div class="iphone-island"></div>
+        <div class="iphone-status"><span>9:41</span><div style="display:flex;gap:5px;align-items:center;font-size:12px;"><span>···</span><span>📶</span><span>🔋</span></div></div>
+
+        <div style="padding:8px 14px; height:600px; overflow:hidden;">
+          <!-- Banner -->
+          <div class="rd-banner">Big Sur Marathon · Mile 18 of 26.2</div>
+
+          <!-- Mini map -->
+          <div class="rd-map">
+            <svg viewBox="0 0 280 64" preserveAspectRatio="none">
+              <path d="M6,52 Q40,38 60,42 T110,30 T160,22 T210,28 T270,12" fill="none" stroke="#2b3a4e" stroke-width="3"/>
+              <path d="M6,52 Q40,38 60,42 T110,30 T160,22" fill="none" stroke="#F3AD3B" stroke-width="3"/>
+              <circle cx="160" cy="22" r="4" fill="#F3AD3B"/>
+              <circle cx="160" cy="22" r="8" fill="#F3AD3B" opacity=".25"/>
+              <circle cx="270" cy="12" r="3" fill="#3EBD41"/>
+            </svg>
+          </div>
+
+          <!-- Big time -->
+          <div class="rd-bigtime">2:13:45</div>
+          <div class="rd-time-sub"><span>18.0 <b>mi</b></span><span>7:25 <b>avg</b></span><span>target <b>7:25</b></span></div>
+
+          <!-- Pace vs target + HR -->
+          <div class="rd-pace-row">
+            <div class="rd-tile ok">
+              <div class="label">Pace · on target</div>
+              <div class="v">ON PACE</div>
+              <div class="sub" style="color:var(--success);">+0 sec/mi</div>
+            </div>
+            <div class="rd-tile">
+              <div class="label">Heart rate</div>
+              <div class="v">168</div>
+              <div class="sub">ceiling 172 bpm</div>
+            </div>
+          </div>
+
+          <!-- Aid station + gel reminder -->
+          <div class="rd-aid">
+            <div class="ic">⛳</div>
+            <div class="body">
+              <div class="ttl">Aid Station 9 · 1.8 mi ahead</div>
+              <div class="sub">Take gel #5 · water, no sport drink</div>
+            </div>
+          </div>
+
+          <!-- Spectator -->
+          <div class="rd-spec">
+            <div class="dot"></div>
+            <span class="ct">3 watching</span>
+            <span style="color:var(--t3); font-family:var(--f-data); font-size:9px; letter-spacing:1px;">SHARE LINK ›</span>
+          </div>
+
+          <!-- Phone-fallback indicator -->
+          <div class="rd-fallback">⌚ Watch live · Phone fallback ready</div>
+
+          <!-- Controls -->
+          <div class="rd-controls">
+            <div class="rd-btn pause">Pause</div>
+            <div class="rd-btn end">End</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> Layout reorders priority: race position first, then verdict (on/off pace), then fuel logistics. Pause is gray, End is warning red — End is irreversible during race-day mode and confirms before stopping. Phone-fallback line tells David his Watch is primary; the phone screen is only here in case.</div>
+</div>
+
+
+<!-- ============================================================
+     4) WATCH — TODAY
+     ============================================================ -->
+<div class="mockup-section" id="mockup-watch-today">
+  <div class="mockup-h">Mockup · Watch</div>
+  <div class="mockup-name">Today</div>
+  <div class="mockup-job">8-second glance: what is today's workout, and the big START. Swipe down for alternates if you can't or don't want to do it.</div>
+
+  <div class="mockup-frame" style="background:transparent; border:0;">
+    <div class="watch-frame">
+      <div class="watch-screen">
+        <div class="w-today">
+          <div class="w-cap">Today · 9:41</div>
+          <div class="name">Easy<br>5 mi</div>
+          <div class="meta">35 min · 8:00–8:30/mi</div>
+          <div class="w-start">Start</div>
+          <div class="w-alts">
+            <span class="dots">• • •</span>
+            Swipe ↓ for alts
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> Single-screen glance. Two-line workout name uses display font at 30px — readable mid-stride. Pace range is small caps mono — secondary info. Start is corporate blue and consumes ~80% of width.</div>
+</div>
+
+
+<!-- ============================================================
+     5) WATCH — ACTIVE WORKOUT (THE BRAND ARTIFACT)
+     ============================================================ -->
+<div class="mockup-section" id="mockup-watch-active-workout">
+  <div class="mockup-h">Mockup · Watch · Hero</div>
+  <div class="mockup-name">Active Workout</div>
+  <div class="mockup-job">The screen David sees mid-tempo, gasping, glancing. Pace is the verdict, delta is the correction, everything else is supporting evidence.</div>
+
+  <div class="mockup-frame" style="background:transparent; border:0;">
+    <div class="watch-frame">
+      <div class="watch-screen">
+        <div class="w-active">
+          <div class="banner">Mile 3 of 5 · Threshold</div>
+
+          <div class="pace-wrap">
+            <div class="pace">6:42</div>
+            <div class="pace-unit">/mi</div>
+            <div class="delta">▼ 7 sec</div>
+          </div>
+
+          <div class="stats">3.21mi · 21:34 · 168bpm</div>
+          <div class="next">Next: 90s recovery</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> This is the brand artifact. <b>Pace</b> is the single answer at 78px Oswald — visible at arm's length in motion. <b>▼ 7 sec</b> in caution yellow tells David he's 7s off target T-pace (6:25–6:35); the down arrow means slow, not declining. The orange interval banner anchors the top, the mono stats line anchors the bottom — chrome stays out of the middle. No buttons; gestures handle pause/skip. If pace turns warning-red (>15s off), the watch buzzes haptically — visual is glance-only.</div>
+</div>
+
+
+<!-- ============================================================
+     6) WATCH — RECOVERY
+     ============================================================ -->
+<div class="mockup-section" id="mockup-watch-recovery">
+  <div class="mockup-h">Mockup · Watch</div>
+  <div class="mockup-name">Recovery Glance</div>
+  <div class="mockup-job">Wake-up glance. One number, one verdict, one coach line, one escape hatch.</div>
+
+  <div class="mockup-frame" style="background:transparent; border:0;">
+    <div class="watch-frame">
+      <div class="watch-screen">
+        <div class="w-rec">
+          <div class="top">Recovery · 9:41</div>
+          <div class="score">78</div>
+          <div class="band">Optimal</div>
+          <div class="stats">HRV 64 · Sleep 8h12m<br>RHR 48</div>
+          <div class="coach">Green light for tomorrow's tempo.</div>
+          <div class="force">Force rest →</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Design notes.</b> Score color = recovery band: green for optimal, yellow for moderate, red for low. Coach line is one sentence — never two. Force rest is small, warning-red, intentionally subordinate: it's an escape hatch, not a CTA.</div>
+</div>

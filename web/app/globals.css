@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Runcino design system — canonical tokens + component primitives
+   faff.run design system — canonical tokens + component primitives
    Fonts: Inter (all weights) + JetBrains Mono (data/mono)
    ───────────────────────────────────────────────────────────────────────── */
 
@@ -1091,7 +1091,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ─── Inputs ──────────────────────────────────────────────────────────────── */
-.runcino-input {
+.faff-input {
   width: 100%;
   padding: 11px 14px;
   font-family: 'Inter', sans-serif;
@@ -1103,13 +1103,13 @@ a { color: inherit; text-decoration: none; }
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.runcino-input:focus {
+.faff-input:focus {
   border-color: var(--active);
   box-shadow: 0 0 0 3px rgba(79, 143, 247, 0.15);
 }
-.runcino-input::placeholder { color: var(--mute); }
+.faff-input::placeholder { color: var(--mute); }
 
-.runcino-label {
+.faff-label {
   display: block;
   font-family: 'Inter', sans-serif;
   font-size: 11px;

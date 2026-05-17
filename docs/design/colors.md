@@ -1,4 +1,4 @@
-# Runcino · color palette
+# faff.run · color palette
 
 Reference image: [colors.jpg](./colors.jpg).
 

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0",
   "generated_at": "2026-04-19T07:54:11.478Z",
-  "generator": "runcino-web-cli@0.1.0",
+  "generator": "faff-web-cli@0.1.0",
   "race": {
     "name": "Big Sur International Marathon",
     "date": "2026-04-26",

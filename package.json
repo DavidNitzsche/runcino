@@ -1,8 +1,8 @@
 {
-  "name": "runcino",
+  "name": "faff",
   "version": "0.1.0",
   "private": true,
-  "description": "Runcino — personal race + training app. Production deploy points at web/ (Next.js); designs/ stays as the canonical visual reference.",
+  "description": "faff.run — personal race + training app. Production deploy points at web/ (Next.js); designs/ stays as the canonical visual reference.",
   "scripts": {
     "build": "cd web && npm install && npm run build",
     "start": "cd web && npx next start -p ${PORT:-3000} -H 0.0.0.0",

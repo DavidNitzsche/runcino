@@ -1,5 +1,5 @@
 /**
- * /api/build-plan — run the full pacing pipeline and return a .runcino.json
+ * /api/build-plan — run the full pacing pipeline and return a __KEEP_DOT_FAFF.RUN_JSON__
  * payload plus a summary for UI display.
  */
 
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
     fitnessSummary,
     landmarks,
     claudeRationale: body.claudeRationale ?? null,
-    generator: 'runcino-web@0.1.0',
+    generator: 'faff-web@0.1.0',
   });
 
   const planJsonText = JSON.stringify(plan, null, 2);

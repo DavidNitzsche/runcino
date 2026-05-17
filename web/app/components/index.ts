@@ -1,5 +1,5 @@
 /**
- * Runcino React component library — barrel.
+ * faff.run React component library — barrel.
  *
  * The May 2026 design-system primitives. Import from here to keep
  * imports clean:

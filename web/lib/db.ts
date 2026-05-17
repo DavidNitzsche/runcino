@@ -7,9 +7,9 @@
  * conditional CREATEs cover us through M0/M1.
  *
  * Connection comes from DATABASE_URL (Railway sets this automatically
- * when a Postgres service is referenced from the runcino service).
+ * when a Postgres service is referenced from the faff service).
  * Locally, set DATABASE_URL in web/.env.local pointing at any reachable
- * Postgres (e.g. `postgres://localhost/runcino`).
+ * Postgres (e.g. `postgres://localhost/faff`).
  *
  * SSL: Railway's internal Postgres routing requires no SSL between
  * services in the same project, but external connections do. We
@@ -27,7 +27,7 @@ function getPool(): Pool {
   if (pool) return pool;
   const url = process.env.DATABASE_URL;
   if (!url) {
-    throw new Error('DATABASE_URL not set — Postgres is required. Locally, point it at any Postgres; on Railway, reference the Postgres service from runcino.');
+    throw new Error('DATABASE_URL not set — Postgres is required. Locally, point it at any Postgres; on Railway, reference the Postgres service from faff.');
   }
   const isInternal = /\.railway\.internal/.test(url);
   pool = new Pool({

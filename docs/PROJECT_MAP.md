@@ -4,16 +4,16 @@ The full repo layout, with the purpose of every directory and every
 file we plan to create. Current state noted in the right column.
 
 ```
-runcino/
+faff/
 ├── README.md                    ← project overview           [DONE]
 ├── .gitignore                                                [DONE]
 │
 ├── docs/                        ← specs & planning
 │   ├── PROJECT_MAP.md           ← this file                  [DONE]
 │   ├── CHECKLIST.md             ← day-by-day plan            [DONE]
-│   ├── SCHEMA.md                ← .runcino.json contract     [DONE]
+│   ├── SCHEMA.md                ← __KEEP_DOT_FAFF.RUN_JSON__ contract     [DONE]
 │   ├── ALGORITHM.md             ← Minetti GAP math           [DONE]
-│   └── example.runcino.json     ← Big Sur 3:50 example       [DONE]
+│   └── example__KEEP_DOT_FAFF.RUN_JSON__     ← Big Sur 3:50 example       [DONE]
 │
 ├── mockups/                     ← HTML pitch-deck mockups
 │   ├── index.html               ← pitch deck / landing       [DONE]
@@ -41,7 +41,7 @@ runcino/
 │   │   ├── minetti.ts           ← GAP cost curve
 │   │   ├── pacing.ts            ← segment → phase logic
 │   │   ├── grouping.ts          ← auto-group into 6–8 phases
-│   │   └── export.ts            ← emit .runcino.json
+│   │   └── export.ts            ← emit __KEEP_DOT_FAFF.RUN_JSON__
 │   ├── lib/__tests__/
 │   │   ├── minetti.test.ts
 │   │   ├── pacing.test.ts
@@ -55,32 +55,32 @@ runcino/
 │       └── sample-bigsur.gpx    ← fixture for dev/tests
 │
 └── ios/                         ← Phase 2 — NOT YET BUILT
-    ├── Runcino.xcodeproj/
+    ├── faff.run.xcodeproj/
     │   └── project.pbxproj
-    ├── Runcino/
-    │   ├── RuncinoApp.swift     ← @main, WindowGroup
-    │   ├── Info.plist           ← UTTypes for .runcino.json
+    ├── faff.run/
+    │   ├── faff.runApp.swift     ← @main, WindowGroup
+    │   ├── Info.plist           ← UTTypes for __KEEP_DOT_FAFF.RUN_JSON__
     │   ├── Assets.xcassets/
     │   ├── Views/
     │   │   ├── ImportView.swift ← .fileImporter
     │   │   ├── PlanView.swift   ← phases + paces
     │   │   └── SyncView.swift   ← "Add to Apple Watch" CTA
     │   ├── Models/
-    │   │   ├── RuncinoPlan.swift    ← Codable mirror of JSON
+    │   │   ├── FaffPlan.swift    ← Codable mirror of JSON
     │   │   └── PlanDocument.swift   ← FileDocument for import
     │   └── Workout/
     │       ├── WorkoutBuilder.swift ← CustomWorkout assembly
     │       └── PaceGoal.swift       ← IntervalStep.pace wrapper
-    └── RuncinoTests/
+    └── faff.runTests/
         └── WorkoutBuilderTests.swift
 ```
 
 ## File ownership by phase
 
 **Phase 1 (web) touches:** `web/*`, `docs/SCHEMA.md`,
-`docs/example.runcino.json`.
+`docs/example__KEEP_DOT_FAFF.RUN_JSON__`.
 
 **Phase 2 (iOS) touches:** `ios/*`. Consumes `docs/SCHEMA.md` as
 the contract. Does not modify the schema.
 
-**Bundle ID:** `com.davidnitzsche.runcino`.
+**Bundle ID:** `com.davidnitzsche.faff`.

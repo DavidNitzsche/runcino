@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Runcino · Log</title>
+<title>faff.run · Log</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -320,7 +320,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
 
 <nav class="navbar">
   <div class="navbar-inner">
-    <a class="nav-logo" href="overview-v4.html">RUNCINO</a>
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
     <div class="nav-links">
       <a class="nav-link" href="overview-v4.html">Overview</a>
       <a class="nav-link" href="training-v4.html">Training</a>
@@ -495,11 +495,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   </div>
 </div>
 
-<script src="runcino-store.js"></script>
+<script src="faff-store.js"></script>
 <script>
   // ── Recent Runs data ────────────────────────────────────────────
   // Authored once here. Each row's shoe assignment lives in the store
-  // (RuncinoStore.getShoeForRun / setShoeForRun) so it round-trips with
+  // (FaffStore.getShoeForRun / setShoeForRun) so it round-trips with
   // /profile mileage tracking. The shoe LIST itself comes from the
   // profile's shoes section — this page is a consumer, not an owner.
   // date (ISO) drives the Year heatmap fill.
@@ -536,11 +536,11 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   // read activeShoes() at render time — when /profile changes, all
   // pickers re-render with the new list automatically via subscribe().
   function renderRecentRuns() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const list = document.getElementById('recent-runs-list');
     if (!list) return;
     const html = RECENT_RUNS.map((r) => {
-      const shoeId = RuncinoStore.getShoeForRun(r.id);
+      const shoeId = FaffStore.getShoeForRun(r.id);
       return (
         '<div class="run-row" data-run-id="' + r.id + '">' +
           '<div class="run-date">' + esc(r.dateLabel) + '</div>' +
@@ -578,10 +578,10 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   }
 
   // ── Custom shoe picker (replaces the native <select>) ───────────
-  // Reads RuncinoStore.activeShoes() — the canonical shoe list owned
+  // Reads FaffStore.activeShoes() — the canonical shoe list owned
   // by /profile. Adding/retiring shoes in /profile flows through here.
   function renderShoePicker(runId, selectedShoeId) {
-    const shoes = RuncinoStore.activeShoes();
+    const shoes = FaffStore.activeShoes();
     const selected = shoes.find((sh) => sh.id === selectedShoeId);
     const triggerDot = selected
       ? '<span class="shoe-picker-dot" style="background:' + (selected.color || '#2CA82F') + ';"></span>'
@@ -601,14 +601,14 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     );
     // Active shoes
     shoes.forEach((sh) => {
-      const status = RuncinoStore.shoeStatus(sh.currentMi, sh.capMi);
+      const status = FaffStore.shoeStatus(sh.currentMi, sh.capMi);
       const isSel = sh.id === selectedShoeId;
       panel += (
         '<div class="shoe-picker-option' + (isSel ? ' selected' : '') + '" data-shoe-id="' + sh.id + '">' +
           '<span class="shoe-picker-option-dot" style="background:' + (sh.color || '#2CA82F') + ';"></span>' +
           '<div>' +
             '<div class="shoe-picker-option-name">' + esc(sh.name) + '</div>' +
-            '<div class="shoe-picker-option-meta">' + esc(RuncinoStore.formatShoePurposes(sh.purposes) || '') + (status.label === 'Retire soon' ? ' · <strong style="color: var(--warn);">' + status.label + '</strong>' : '') + '</div>' +
+            '<div class="shoe-picker-option-meta">' + esc(FaffStore.formatShoePurposes(sh.purposes) || '') + (status.label === 'Retire soon' ? ' · <strong style="color: var(--warn);">' + status.label + '</strong>' : '') + '</div>' +
           '</div>' +
           '<span class="shoe-picker-option-mi">' + sh.currentMi + '<span style="font-family: \'Inter\', sans-serif; font-size: 9px; color: var(--t2); margin-left: 2px;">MI</span></span>' +
         '</div>'
@@ -643,7 +643,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
         opt.addEventListener('click', (e) => {
           e.stopPropagation();
           const shoeId = opt.dataset.shoeId || null;
-          RuncinoStore.setShoeForRun(runId, shoeId);
+          FaffStore.setShoeForRun(runId, shoeId);
           picker.classList.remove('open');
           // The subscribe() callback below will re-render to update labels + mileage,
           // but for snappiness we can also update this picker's trigger inline.
@@ -666,10 +666,10 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
   // the colored cell). Days past today render in a very-faint "future"
   // state instead of empty.
   function renderYearHeatmap() {
-    if (!window.RuncinoStore) return;
+    if (!window.FaffStore) return;
     const container = document.getElementById('year-heat');
     if (!container) return;
-    const state = RuncinoStore.getState();
+    const state = FaffStore.getState();
     const today = state.today;
     // Build miles-by-date map from RECENT_RUNS (truth) +
     // synthesized history for the rest of YTD so the heatmap looks lived-in.
@@ -784,10 +784,10 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     renderYearHeatmap();
   }
   document.addEventListener('DOMContentLoaded', function () {
-    if (window.RuncinoStore) {
+    if (window.FaffStore) {
       renderAll();
       // When /profile changes shoe list, /log re-renders pickers automatically.
-      RuncinoStore.subscribe(renderAll);
+      FaffStore.subscribe(renderAll);
     }
     document.getElementById('run-modal-close').addEventListener('click', closeRunModal);
     document.getElementById('run-modal-overlay').addEventListener('click', function (e) {
@@ -798,7 +798,7 @@ body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif
     });
   });
 </script>
-<script src="runcino-bind.js" defer></script>
-<script src="runcino-live.js" defer></script>
+<script src="faff-bind.js" defer></script>
+<script src="faff-live.js" defer></script>
 </body>
 </html>

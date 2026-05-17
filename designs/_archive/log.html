@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --purple: #7C3AED;
+  --red: #DC2626;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ══════════════ NAV ══════════════ */
+.navbar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: var(--t0);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.nav-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t1);
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color .15s;
+}
+
+.nav-link:hover { color: var(--t0); }
+
+.nav-link.active {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--t0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ══════════════ PAGE ══════════════ */
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+/* ══════════════ PAGE HEADER ══════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.page-eyebrow {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.page-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 64px;
+  line-height: 1;
+  color: var(--t0);
+  letter-spacing: 1px;
+}
+
+.year-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(13,15,18,.06);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.year-tab {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--t1);
+  padding: 5px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .15s;
+  border: none;
+  background: none;
+  font-family: 'Inter', sans-serif;
+}
+
+.year-tab.active {
+  background: #fff;
+  color: var(--t0);
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+
+.year-tab:hover:not(.active) {
+  color: var(--t0);
+}
+
+/* ══════════════ CARD ══════════════ */
+.card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+}
+
+.card-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.8px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+/* ══════════════ YEAR IN RUNNING ══════════════ */
+.year-card {
+  padding: 32px;
+  margin-bottom: 16px;
+}
+
+.year-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.year-total {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t1);
+  letter-spacing: 0.3px;
+}
+
+.heatmap-wrap {
+  overflow-x: auto;
+}
+
+/* KPI Strip */
+.kpi-strip {
+  display: flex;
+  align-items: stretch;
+  margin-top: 28px;
+  border-top: 1px solid var(--divider);
+  padding-top: 24px;
+}
+
+.kpi-item {
+  flex: 1;
+  padding: 0 24px;
+  border-right: 1px solid var(--divider);
+}
+
+.kpi-item:first-child { padding-left: 0; }
+.kpi-item:last-child { border-right: none; padding-right: 0; }
+
+.kpi-number {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 36px;
+  line-height: 1;
+  color: var(--t0);
+  letter-spacing: 0.5px;
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: var(--t2);
+  margin-top: 3px;
+  letter-spacing: 0.2px;
+}
+
+/* ══════════════ TWO-COL ROW ══════════════ */
+.two-col {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.two-col .card {
+  flex: 1;
+  padding: 32px;
+  min-width: 0;
+}
+
+/* ══════════════ MONTHLY BAR CHART ══════════════ */
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--t1);
+}
+
+/* ══════════════ PERSONAL BESTS ══════════════ */
+.pb-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.pb-card {
+  background: rgba(13,15,18,.04);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.pb-distance {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.pb-time {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--t0);
+  letter-spacing: 0.5px;
+}
+
+.pb-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pb-date {
+  font-size: 11px;
+  color: var(--t1);
+}
+
+.pb-pill {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(44,168,47,.12);
+  color: var(--green);
+}
+
+.pb-delta {
+  font-size: 11px;
+  color: var(--t1);
+  margin-top: 3px;
+}
+
+/* ══════════════ RECENT RUNS ══════════════ */
+.runs-card {
+  padding: 32px;
+}
+
+.runs-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.runs-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-pill {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--t1);
+  padding: 6px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--divider);
+  background: transparent;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: border-color .15s;
+}
+
+.filter-pill:hover {
+  border-color: rgba(13,15,18,.2);
+}
+
+/* Table */
+.runs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.runs-table thead th {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--divider);
+  white-space: nowrap;
+}
+
+.runs-table thead th:not(:first-child) {
+  padding-left: 16px;
+}
+
+.runs-table tbody tr {
+  cursor: pointer;
+  transition: background .1s;
+}
+
+.runs-table tbody tr:hover td {
+  background: rgba(13,15,18,.022);
+}
+
+.runs-table tbody tr.selected .sel-cell {
+  background: rgba(44,168,47,.07);
+}
+
+.runs-table tbody tr.selected .sel-first {
+  background: rgba(44,168,47,.07);
+  box-shadow: inset 3px 0 0 var(--green);
+  padding-left: 13px;
+}
+
+.runs-table tbody td {
+  padding: 14px 0;
+  font-size: 13px;
+  color: var(--t1);
+  vertical-align: middle;
+}
+
+.runs-table tbody td:not(:first-child) {
+  padding-left: 16px;
+}
+
+/* Type chips */
+.type-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.chip-easy  { background: rgba(44,168,47,.12);  color: #1d8a20; }
+.chip-tempo { background: rgba(212,144,10,.12); color: #a56f00; }
+.chip-long  { background: rgba(232,93,38,.12);  color: #c04010; }
+.chip-hill  { background: rgba(124,58,237,.12); color: #6d29e0; }
+.chip-race  { background: rgba(220,38,38,.12);  color: #b91c1c; }
+
+.td-dist {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  color: var(--t0);
+  white-space: nowrap;
+}
+
+.td-dist-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+}
+
+.td-route-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t0);
+  text-decoration: none;
+  transition: color .15s;
+}
+
+.td-route-link:hover { color: var(--green); }
+
+.shoe-chip {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--t2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(13,15,18,.06);
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training.html">Training</a>
+      <a class="nav-link" href="races.html">Races</a>
+      <a class="nav-link" href="health.html">Health</a>
+      <a class="nav-link active" href="log.html">Log</a>
+      <a class="nav-link" href="profile.html">Profile</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar">DK</div>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div>
+      <div class="page-eyebrow">Run History</div>
+      <div class="page-title">Log</div>
+    </div>
+    <div class="year-tabs">
+      <button class="year-tab">2025</button>
+      <button class="year-tab active">2026</button>
+    </div>
+  </div>
+
+  <!-- ════════════ YEAR IN RUNNING ════════════ -->
+  <div class="card year-card">
+    <div class="year-card-header">
+      <span class="card-label">Year in Running · 2026</span>
+      <span class="year-total">145 runs · 1,247 mi</span>
+    </div>
+
+    <div class="heatmap-wrap">
+      <svg id="heatmap" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi-item">
+        <div class="kpi-number">1,247</div>
+        <div class="kpi-label">mi this year</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-number">22.4</div>
+        <div class="kpi-label">mi longest (Apr 18)</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-number">8:42</div>
+        <div class="kpi-label">/mi overall avg pace</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-number">84,200</div>
+        <div class="kpi-label">ft elevation gained</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-number">14</div>
+        <div class="kpi-label">day current streak</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════ TWO-COL ════════════ -->
+  <div class="two-col">
+
+    <!-- Monthly Volume -->
+    <div class="card">
+      <div class="chart-header">
+        <span class="card-label">Monthly Volume · 2026 vs 2025</span>
+        <div class="chart-legend">
+          <span class="legend-item">
+            <span class="legend-dot" style="background:var(--green);"></span>2026
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot" style="background:rgba(13,15,18,.18);"></span>2025
+          </span>
+        </div>
+      </div>
+      <svg id="bar-chart" viewBox="0 0 480 210" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;"></svg>
+    </div>
+
+    <!-- Personal Bests -->
+    <div class="card">
+      <span class="card-label">Personal Bests</span>
+      <div class="pb-grid">
+
+        <div class="pb-card">
+          <div class="pb-distance">5K</div>
+          <div class="pb-time">19:42</div>
+          <div class="pb-meta">
+            <span class="pb-date">Mar 2026</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">−0:28 vs prev</div>
+        </div>
+
+        <div class="pb-card">
+          <div class="pb-distance">10K</div>
+          <div class="pb-time">41:18</div>
+          <div class="pb-meta">
+            <span class="pb-date">Feb 2026</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">−1:04 vs prev</div>
+        </div>
+
+        <div class="pb-card">
+          <div class="pb-distance">Half</div>
+          <div class="pb-time">1:29:44</div>
+          <div class="pb-meta">
+            <span class="pb-date">Oct 2025</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">−2:18 vs prev</div>
+        </div>
+
+        <div class="pb-card">
+          <div class="pb-distance">Marathon</div>
+          <div class="pb-time">3:18:52</div>
+          <div class="pb-meta">
+            <span class="pb-date">Oct 2025</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">−4:42 vs prev</div>
+        </div>
+
+        <div class="pb-card">
+          <div class="pb-distance">50K</div>
+          <div class="pb-time">5:12:44</div>
+          <div class="pb-meta">
+            <span class="pb-date">Feb 2026</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">first 50K finish</div>
+        </div>
+
+        <div class="pb-card">
+          <div class="pb-distance">Mile</div>
+          <div class="pb-time">5:58</div>
+          <div class="pb-meta">
+            <span class="pb-date">Jan 2026</span>
+            <span class="pb-pill">PR</span>
+          </div>
+          <div class="pb-delta">−0:12 vs prev</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════ RECENT RUNS ════════════ -->
+  <div class="card runs-card">
+    <div class="runs-card-header">
+      <span class="card-label">Recent Runs</span>
+      <div class="runs-filters">
+        <button class="filter-pill">
+          All Types
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2.5 3.75L5 6.25L7.5 3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="filter-pill">
+          This Month
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2.5 3.75L5 6.25L7.5 3.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <table class="runs-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Route</th>
+          <th>Distance</th>
+          <th>Pace</th>
+          <th>Duration</th>
+          <th>HR</th>
+          <th>Shoes</th>
+        </tr>
+      </thead>
+      <tbody id="runs-tbody"></tbody>
+    </table>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+/* ─── Seeded RNG so heatmap is consistent ─── */
+function seededRng(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 4294967296;
+  };
+}
+const rng = seededRng(42);
+
+/* ─── HEATMAP ─── */
+(function() {
+  const CELL = 12, GAP = 2, STEP = CELL + GAP;
+  const COLS = 53, ROWS = 7;
+  // Grid day 0 = Mon Dec 30 2025
+  // Jan 1 2026 = Thu → gridDay 3
+  const GRID_START_OFFSET = 3; // days before Jan 1 in the grid
+  // Today = May 15 2026 → dayOfYear 134 (0-indexed from Jan 1)
+  const TODAY_DOY = 134;
+
+  function weekMiles(col) {
+    if (col === 0) return 4;
+    if (col >= 1  && col <= 4)  return 30 + rng() * 5;
+    if (col >= 5  && col <= 8)  return 33 + rng() * 5;
+    if (col >= 9  && col <= 13) return 37 + rng() * 6;
+    if (col >= 14 && col <= 17) return 42 + rng() * 5;
+    if (col === 18) return 28; // May 4-10 done
+    if (col === 19) return 14; // May 11-15 done (3 days so far)
+    return 0;
+  }
+
+  function cellColor(miles, isToday) {
+    if (isToday) return '#2CA82F';
+    if (miles <= 0) return 'rgba(13,15,18,.06)';
+    if (miles < 3)  return 'rgba(44,168,47,.18)';
+    if (miles < 6)  return 'rgba(44,168,47,.35)';
+    if (miles < 9)  return 'rgba(44,168,47,.55)';
+    if (miles < 12) return 'rgba(44,168,47,.75)';
+    return '#2CA82F';
+  }
+
+  // Pre-compute per-day miles
+  const perDay = {};
+  for (let col = 0; col < COLS; col++) {
+    const wm = weekMiles(col);
+    // Assign rest days: Sun always has 60% rest chance; ~18% for other days
+    for (let row = 0; row < ROWS; row++) {
+      const gridDay = col * ROWS + row;
+      const doy = gridDay - GRID_START_OFFSET;
+      let miles = 0;
+      if (doy >= 0 && doy <= TODAY_DOY && wm > 0) {
+        const isRest = row === 6 ? (rng() < 0.55) : (rng() < 0.2);
+        if (!isRest) {
+          miles = (wm / 5.5) * (0.55 + rng() * 0.9);
+        }
+      }
+      perDay[gridDay] = { miles, doy };
+    }
+  }
+
+  // Build SVG
+  const svgW = COLS * STEP + 2;
+  const svgH = ROWS * STEP + 22; // 22px for month labels
+  let html = '';
+
+  for (let col = 0; col < COLS; col++) {
+    for (let row = 0; row < ROWS; row++) {
+      const gridDay = col * ROWS + row;
+      const { miles, doy } = perDay[gridDay];
+      const x = col * STEP;
+      const y = row * STEP;
+      const isToday = doy === TODAY_DOY;
+      const color = cellColor(miles, isToday);
+      const rx = isToday ? 3 : 2;
+      const opacity = col === 19 && doy > 0 ? 0.85 : 1;
+      html += `<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" rx="${rx}" fill="${color}" opacity="${opacity}"/>`;
+    }
+  }
+
+  // Month labels
+  const months = [
+    { label: 'Jan', doy: 0 },
+    { label: 'Feb', doy: 31 },
+    { label: 'Mar', doy: 59 },
+    { label: 'Apr', doy: 90 },
+    { label: 'May', doy: 120 },
+  ];
+  const labelY = ROWS * STEP + 16;
+  for (const m of months) {
+    const col = Math.floor((m.doy + GRID_START_OFFSET) / ROWS);
+    const x = col * STEP;
+    html += `<text x="${x}" y="${labelY}" font-family="Inter,sans-serif" font-size="10" fill="rgba(13,15,18,.32)" letter-spacing="0.3">${m.label}</text>`;
+  }
+
+  const svg = document.getElementById('heatmap');
+  svg.setAttribute('width', svgW);
+  svg.setAttribute('height', svgH);
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+  svg.innerHTML = html;
+})();
+
+/* ─── BAR CHART ─── */
+(function() {
+  const months = [
+    { label: 'Jan', y26: 148, y25: 122 },
+    { label: 'Feb', y26: 162, y25: 139 },
+    { label: 'Mar', y26: 198, y25: 171 },
+    { label: 'Apr', y26: 234, y25: 198 },
+    { label: 'May', y26: 87,  y25: 192, partial: true },
+  ];
+
+  const MAX = 250;
+  const CHART_H = 155;
+  const CHART_TOP = 12;
+  const BAR_W = 26;
+  const PAIR_GAP = 4;
+  const GROUP_W = BAR_W * 2 + PAIR_GAP;
+  const GROUP_GAP = 44;
+  const START_X = 28;
+  const LABEL_Y = CHART_TOP + CHART_H + 16;
+
+  let html = '';
+
+  // Grid lines
+  [60, 120, 180, 240].forEach(v => {
+    const y = CHART_TOP + CHART_H - (v / MAX) * CHART_H;
+    html += `<line x1="${START_X - 4}" y1="${y.toFixed(1)}" x2="480" y2="${y.toFixed(1)}" stroke="rgba(13,15,18,.06)" stroke-width="1"/>`;
+    html += `<text x="0" y="${(y + 4).toFixed(1)}" font-family="Inter,sans-serif" font-size="9" fill="rgba(13,15,18,.28)">${v}</text>`;
+  });
+
+  months.forEach((m, i) => {
+    const gx = START_X + i * (GROUP_W + GROUP_GAP);
+    const h26 = (m.y26 / MAX) * CHART_H;
+    const h25 = (m.y25 / MAX) * CHART_H;
+    const x26 = gx;
+    const x25 = gx + BAR_W + PAIR_GAP;
+    const y26 = (CHART_TOP + CHART_H - h26).toFixed(1);
+    const y25 = (CHART_TOP + CHART_H - h25).toFixed(1);
+
+    const green = m.partial ? 'rgba(44,168,47,.6)' : '#2CA82F';
+
+    html += `<rect x="${x26}" y="${y26}" width="${BAR_W}" height="${h26.toFixed(1)}" rx="4" fill="${green}"/>`;
+    html += `<rect x="${x25}" y="${y25}" width="${BAR_W}" height="${h25.toFixed(1)}" rx="4" fill="rgba(13,15,18,.10)"/>`;
+
+    // Value above 2026 bar
+    const valColor = m.partial ? 'rgba(44,168,47,.75)' : 'var(--green)';
+    html += `<text x="${(x26 + BAR_W / 2).toFixed(1)}" y="${(parseFloat(y26) - 5).toFixed(1)}" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="13" fill="${valColor}">${m.y26}</text>`;
+
+    // Month label
+    const lx = (gx + GROUP_W / 2).toFixed(1);
+    html += `<text x="${lx}" y="${LABEL_Y}" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="rgba(13,15,18,.42)" letter-spacing="0.2">${m.label}</text>`;
+
+    // Partial label
+    if (m.partial) {
+      html += `<text x="${(x26 + BAR_W/2).toFixed(1)}" y="${(parseFloat(y26) + 16).toFixed(1)}" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" fill="rgba(44,168,47,.6)">MTD</text>`;
+    }
+  });
+
+  document.getElementById('bar-chart').innerHTML = html;
+})();
+
+/* ─── RUNS TABLE ─── */
+(function() {
+  const runs = [
+    { date:'May 14', type:'Easy',  route:'Corner Canyon Loop',   dist:'5.5',  pace:'9:02/mi',  dur:'49:41',   hr:'138 bpm', shoe:'Speedgoat 5' },
+    { date:'May 13', type:'Easy',  route:'Neighborhood Loop',    dist:'4.0',  pace:'9:18/mi',  dur:'37:12',   hr:'132 bpm', shoe:'Clifton 9' },
+    { date:'May 11', type:'Long',  route:'Timpanogos Trail',     dist:'14.2', pace:'9:45/mi',  dur:'2:18:34', hr:'148 bpm', shoe:'Speedgoat 5' },
+    { date:'May 10', type:'Tempo', route:'Provo River Parkway',  dist:'7.1',  pace:'7:38/mi',  dur:'54:12',   hr:'162 bpm', shoe:'Vaporfly 3' },
+    { date:'May 8',  type:'Easy',  route:'Corner Canyon',        dist:'5.5',  pace:'9:08/mi',  dur:'50:12',   hr:'136 bpm', shoe:'Speedgoat 5' },
+    { date:'May 7',  type:'Easy',  route:'Neighborhood Loop',    dist:'3.5',  pace:'9:22/mi',  dur:'32:47',   hr:'131 bpm', shoe:'Clifton 9' },
+    { date:'May 6',  type:'Hill',  route:'Battle Creek Trail',   dist:'6.2',  pace:'9:52/mi',  dur:'1:01:12', hr:'158 bpm', shoe:'Speedgoat 5' },
+    { date:'May 4',  type:'Long',  route:'Alpine Loop',          dist:'18.4', pace:'9:38/mi',  dur:'2:57:31', hr:'151 bpm', shoe:'Speedgoat 5' },
+    { date:'May 3',  type:'Race',  route:'Squaw Peak 25K',       dist:'15.5', pace:'6:28/mi',  dur:'2:41:08', hr:'171 bpm', shoe:'Speedgoat 5' },
+    { date:'May 1',  type:'Easy',  route:'Neighborhood',         dist:'4.0',  pace:'9:28/mi',  dur:'37:52',   hr:'133 bpm', shoe:'Clifton 9' },
+    { date:'Apr 30', type:'Tempo', route:'Provo River',          dist:'8.4',  pace:'7:44/mi',  dur:'1:05:02', hr:'164 bpm', shoe:'Vaporfly 3' },
+    { date:'Apr 28', type:'Long',  route:'Bonneville Shoreline', dist:'22.4', pace:'9:12/mi',  dur:'3:25:17', hr:'154 bpm', shoe:'Speedgoat 5' },
+    { date:'Apr 26', type:'Easy',  route:'Corner Canyon',        dist:'5.0',  pace:'9:04/mi',  dur:'45:20',   hr:'137 bpm', shoe:'Clifton 9' },
+    { date:'Apr 24', type:'Tempo', route:'Track Workout',        dist:'6.8',  pace:'7:22/mi',  dur:'50:06',   hr:'168 bpm', shoe:'Vaporfly 3' },
+    { date:'Apr 22', type:'Easy',  route:'Neighborhood',         dist:'5.5',  pace:'9:14/mi',  dur:'50:47',   hr:'135 bpm', shoe:'Clifton 9' },
+  ];
+
+  const chipClass = {
+    Easy:  'chip-easy',
+    Tempo: 'chip-tempo',
+    Long:  'chip-long',
+    Hill:  'chip-hill',
+    Race:  'chip-race',
+  };
+
+  const tbody = document.getElementById('runs-tbody');
+
+  runs.forEach(run => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="sel-first" style="padding-left:0;white-space:nowrap;">${run.date}</td>
+      <td class="sel-cell"><span class="type-chip ${chipClass[run.type]}">${run.type}</span></td>
+      <td class="sel-cell" style="min-width:170px;"><a class="td-route-link" href="#">${run.route}</a></td>
+      <td class="td-dist sel-cell">${run.dist} <span class="td-dist-unit">mi</span></td>
+      <td class="sel-cell" style="white-space:nowrap;">${run.pace}</td>
+      <td class="sel-cell" style="white-space:nowrap;">${run.dur}</td>
+      <td class="sel-cell" style="white-space:nowrap;">${run.hr}</td>
+      <td class="sel-cell"><span class="shoe-chip">${run.shoe}</span></td>
+    `;
+
+    tr.addEventListener('click', () => {
+      const was = tr.classList.contains('selected');
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+      if (!was) tr.classList.add('selected');
+    });
+
+    // Prevent route link from propagating to row highlight
+    tr.querySelector('a').addEventListener('click', e => e.stopPropagation());
+
+    tbody.appendChild(tr);
+  });
+})();
+
+/* ─── YEAR TABS ─── */
+document.querySelectorAll('.year-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Runcino · Big Sur 2026 · Master Tracker</title>
+<title>faff.run · Big Sur 2026 · Master Tracker</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -397,7 +397,7 @@
     <div class="brand">
       <div class="brand-icon">R</div>
       <div>
-        <div class="brand-name">Runcino</div>
+        <div class="brand-name">faff.run</div>
         <div class="brand-sub">Big Sur · 2026-04-26</div>
       </div>
     </div>
@@ -452,7 +452,7 @@
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">0.1</div>
-        <div class="task-text">Clone repo, checkout <code style="font-family:var(--mono);font-size:12px">claude/build-runcino-app-OIRJr</code>, npm install, npm test</div>
+        <div class="task-text">Clone repo, checkout <code style="font-family:var(--mono);font-size:12px">claude/build-faff-app-OIRJr</code>, npm install, npm test</div>
         <div class="task-exit">✓ 75/75 tests pass — done. Fixed vitest exclude pattern for macOS ._* files.</div>
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
@@ -515,10 +515,10 @@
         <div class="task-text">
           Open Xcode → <strong>File → New → Project → iOS → App → Next</strong><br>
           Fill in:<br>
-          &nbsp;&nbsp;• Product Name: <code style="font-family:var(--mono);font-size:12px">Runcino</code><br>
-          &nbsp;&nbsp;• Bundle ID: <code style="font-family:var(--mono);font-size:12px">com.davidnitzsche.runcino</code><br>
+          &nbsp;&nbsp;• Product Name: <code style="font-family:var(--mono);font-size:12px">faff.run</code><br>
+          &nbsp;&nbsp;• Bundle ID: <code style="font-family:var(--mono);font-size:12px">com.davidnitzsche.faff</code><br>
           &nbsp;&nbsp;• Interface: <strong>SwiftUI</strong> &nbsp;·&nbsp; Language: <strong>Swift</strong><br>
-          Save location: <code style="font-family:var(--mono);font-size:12px">/Volumes/WP/06 Claude Code/runcino/ios/</code><br>
+          Save location: <code style="font-family:var(--mono);font-size:12px">/Volumes/WP/06 Claude Code/faff/ios/</code><br>
           For signing — pick your personal Apple ID team. No paid account needed.
         </div>
         <div class="task-exit">Project opens in Xcode with no errors on the navigator</div>
@@ -530,16 +530,16 @@
       <div class="task-body">
         <div class="task-id">1.2 · Add Swift files</div>
         <div class="task-text">
-          <strong>First:</strong> delete Xcode's generated <code style="font-family:var(--mono);font-size:12px">ContentView.swift</code> and <code style="font-family:var(--mono);font-size:12px">RuncinoApp.swift</code> (right-click → Delete → Move to Trash)<br><br>
-          In the project navigator, right-click the <strong>Runcino</strong> group → <strong>Add Files to "Runcino"</strong><br>
+          <strong>First:</strong> delete Xcode's generated <code style="font-family:var(--mono);font-size:12px">ContentView.swift</code> and <code style="font-family:var(--mono);font-size:12px">faff.runApp.swift</code> (right-click → Delete → Move to Trash)<br><br>
+          In the project navigator, right-click the <strong>faff.run</strong> group → <strong>Add Files to "faff.run"</strong><br>
           Turn <strong>OFF</strong> "Copy items if needed"<br>
           Add these 6 files:<br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/RuncinoApp.swift</code><br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Models/RuncinoPlan.swift</code><br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/ContentView.swift</code><br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/ImportView.swift</code><br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Views/PlanView.swift</code><br>
-          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/Runcino/Workout/WorkoutBuilder.swift</code>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/faff.runApp.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/Models/FaffPlan.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/Views/ContentView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/Views/ImportView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/Views/PlanView.swift</code><br>
+          &nbsp;&nbsp;• <code style="font-family:var(--mono);font-size:12px">ios/faff.run/Workout/WorkoutBuilder.swift</code>
         </div>
         <div class="task-exit">All 6 files visible in navigator, no duplicates</div>
       </div>
@@ -550,7 +550,7 @@
       <div class="task-body">
         <div class="task-id">1.3 · Add capabilities + hit ⌘B</div>
         <div class="task-text">
-          Click the top-level <strong>Runcino</strong> target → <strong>Signing &amp; Capabilities</strong> tab<br>
+          Click the top-level <strong>faff.run</strong> target → <strong>Signing &amp; Capabilities</strong> tab<br>
           Click <strong>+ Capability</strong> → add <strong>WorkoutKit</strong><br>
           Click <strong>+ Capability</strong> → add <strong>HealthKit</strong><br><br>
           Press <strong>⌘B</strong> to build.<br><br>
@@ -573,7 +573,7 @@
       <div class="task-check" onclick="toggle(this)"><span class="check-mark">✓</span></div>
       <div class="task-body">
         <div class="task-id">1.5</div>
-        <div class="task-text">AirDrop web/public/big-sur-3-50.runcino.json → iPhone → "Open in Runcino"</div>
+        <div class="task-text">AirDrop web/public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__ → iPhone → "Open in faff.run"</div>
         <div class="task-exit">Plan renders — all 6 phases visible with pace targets</div>
       </div>
       <div class="task-meta"><span class="badge badge-blocker">Blocker</span></div>
@@ -1117,7 +1117,7 @@
 
 <!-- ─── Footer ─────────────────────────────── -->
 <div class="footer">
-  <span>Runcino · claude/build-runcino-app-OIRJr · <a href="https://github.com/DavidNitzsche/runcino/pull/1" target="_blank">PR #1</a></span>
+  <span>faff.run · claude/build-faff-app-OIRJr · <a href="https://github.com/DavidNitzsche/faff/pull/1" target="_blank">PR #1</a></span>
   <span id="last-saved"></span>
 </div>
 
@@ -1150,7 +1150,7 @@
   }
 
   // ─── Persist to localStorage ─────────────
-  const STORE_KEY = 'runcino-tracker-v2';
+  const STORE_KEY = 'faff-tracker-v2';
 
   function save() {
     const state = {};

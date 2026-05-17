@@ -1,5 +1,5 @@
 /**
- * Coach — single entry point for every coaching judgment in Runcino.
+ * Coach — single entry point for every coaching judgment in faff.run.
  *
  * Layer 2 of the architecture in docs/COACH_BUILD_PLAN.md. The
  * application doesn't compute pace strategies, prescribe workouts,

@@ -19,7 +19,7 @@
  */
 
 import { getRaceDB, saveRaceDB } from '../../../../../lib/race-store';
-import type { RuncinoPlan } from '../../../../../lib/types';
+import type { FaffPlan } from '../../../../../lib/types';
 
 interface RebuildBody {
   raceName?: string;
@@ -93,7 +93,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return new Response(`Rebuild failed: ${buildRes.status} ${txt.slice(0, 200)}`, { status: 500 });
   }
   const data = await buildRes.json() as { planJsonText: string; summary: { raceName: string; courseSlug: string; goalDisplay: string } };
-  const plan = JSON.parse(data.planJsonText) as RuncinoPlan;
+  const plan = JSON.parse(data.planJsonText) as FaffPlan;
 
   // Persist — preserve actualResult, refresh plan + meta.
   await saveRaceDB({

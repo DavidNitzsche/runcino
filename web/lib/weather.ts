@@ -9,7 +9,7 @@
  * prompt (or to render on the UI directly).
  */
 
-const USER_AGENT = 'runcino/0.1 (personal use; david nitzsche)';
+const USER_AGENT = 'faff/0.1 (personal use; david nitzsche)';
 
 export interface WeatherSummary {
   location: { lat: number; lon: number; city?: string };

@@ -57,7 +57,7 @@ function ampResearch(): string {
 // stable prefix is cached independently.
 
 const COACH_SYSTEM_INSTRUCTIONS = `\
-You are the Runcino Coach.
+You are the faff.run Coach.
 
 You return STRUCTURED JSON only. No prose outside the JSON object. Every
 response must match exactly this shape:

@@ -1,0 +1,1518 @@
+<!-- ─────────────────────────────────────────────────────────────────────
+     WEB MOCKUPS · BATCH 1 · 5 surfaces
+     Overview · Training · Workout detail · Pace zones · Races
+     Reuses tokens from deck.html (--l0..l5, --t0..t3, --corporate, --attention,
+     --success, --warning, --xp, --aqua, --orange, --f-display, --f-body, --f-data).
+     ───────────────────────────────────────────────────────────────────── */ -->
+<style>
+  /* ── Mockup-fragment local styles ─────────────────────────────────────
+     Scoped via .web-frame so we don't bleed into the surrounding deck. */
+  .web-frame *, .web-frame *::before, .web-frame *::after { box-sizing:border-box; margin:0; padding:0; }
+  .web-frame { color:var(--t0); font-family:var(--f-body); -webkit-font-smoothing:antialiased; letter-spacing:.005em; }
+
+  /* nav */
+  .wf-nav { display:flex; align-items:center; justify-content:space-between; padding:14px 22px; border-bottom:1px solid var(--l4); }
+  .wf-nav-l { display:flex; align-items:center; gap:22px; }
+  .wf-brand { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg, var(--xp), var(--corporate)); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:18px; }
+  .wf-tabs { display:flex; gap:2px; align-items:center; padding:3px; border-radius:100px; background:var(--l1); border:1px solid var(--l4); }
+  .wf-tab { padding:6px 12px; border-radius:100px; font-size:11.5px; font-weight:600; color:var(--t2); letter-spacing:-.005em; }
+  .wf-tab.active { background:var(--l3); color:var(--t0); font-weight:700; }
+  .wf-nav-r { display:flex; gap:8px; align-items:center; }
+  .wf-nav-ic { width:28px; height:28px; border-radius:50%; background:var(--l1); color:var(--t2); border:1px solid var(--l4); display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .wf-avatar { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--corporate),var(--aqua)); }
+
+  /* utilities */
+  .wf-cap { font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .wf-cap b { color:var(--t1); font-weight:800; }
+  .wf-mono { font-family:var(--f-data); font-variant-numeric:tabular-nums; }
+  .wf-divider { height:1px; background:var(--l4); width:100%; }
+
+  /* greeting block (overview) */
+  .wf-greet { display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
+  .wf-greet-hi { font-family:var(--f-data); font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .wf-greet-nm { font-family:var(--f-display); font-size:108px; font-weight:700; letter-spacing:-.01em; line-height:.85; color:var(--t0); text-transform:uppercase; }
+  .wf-greet-hl { display:inline-block; background:var(--attention); color:var(--l0); font-family:var(--f-display); font-weight:700; font-size:22px; letter-spacing:.01em; text-transform:uppercase; padding:5px 12px 6px; line-height:1; }
+  .wf-greet-sub { font-family:var(--f-body); font-size:13.5px; color:var(--t2); font-weight:500; }
+  .wf-greet-sub b { color:var(--t1); font-weight:700; }
+
+  /* stat cards (overview) */
+  .wf-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .wf-stat { border-radius:13px; padding:18px 20px; min-height:158px; display:flex; flex-direction:column; justify-content:space-between; background:var(--l1); border:1px solid var(--l4); }
+  .wf-stat-top { display:flex; justify-content:space-between; align-items:center; }
+  .wf-stat-lbl { font-family:var(--f-data); font-size:10px; letter-spacing:1.7px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .wf-stat-num { font-family:var(--f-display); font-weight:800; font-size:54px; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; color:var(--t0); }
+  .wf-stat-num small { font-size:.3em; opacity:.5; font-weight:700; margin-left:3px; }
+  .wf-stat-dt { font-family:var(--f-data); font-size:11px; font-weight:700; color:var(--t1); letter-spacing:.5px; margin-top:8px; }
+  .wf-stat--recovery { background:linear-gradient(135deg, rgba(62,189,65,.28) 0%, rgba(62,189,65,.08) 100%); border:1px solid rgba(62,189,65,.35); }
+  .wf-stat--recovery .wf-stat-num { color:var(--success); }
+  .wf-stat--prescribed { background:var(--corporate); border:0; }
+  .wf-stat--prescribed .wf-stat-lbl, .wf-stat--prescribed .wf-stat-dt { color:rgba(255,255,255,.78); }
+  .wf-stat--prescribed .wf-stat-num { color:#fff; font-size:36px; line-height:1.05; }
+  .wf-stat--miles { background:linear-gradient(135deg, rgba(0,143,236,.22) 0%, rgba(0,143,236,.05) 100%); border:1px solid rgba(0,143,236,.3); }
+  .wf-stat--race { background:linear-gradient(135deg, rgba(243,173,59,.28) 0%, rgba(243,173,59,.06) 100%); border:1px solid rgba(243,173,59,.45); position:relative; overflow:hidden; }
+  .wf-stat--race::after { content:""; position:absolute; top:-50%; right:-30%; width:170px; height:170px; border-radius:50%; background:radial-gradient(circle, rgba(243,173,59,.18) 0%, transparent 60%); pointer-events:none; }
+  .wf-stat--race .wf-stat-num { color:var(--attention); }
+  .wf-stat--race .wf-stat-dt { color:var(--attention); }
+
+  /* week strip */
+  .wf-wkdays { display:flex; flex-direction:column; gap:3px; }
+  .wf-wkday { display:grid; grid-template-columns:54px 70px 1fr auto; gap:14px; align-items:center; padding:14px 16px; border-radius:9px; border:1px solid transparent; }
+  .wf-wkday .dow { font-family:var(--f-data); font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t2); font-weight:700; }
+  .wf-wkday .dist { font-family:var(--f-display); font-weight:800; font-size:30px; letter-spacing:-.02em; color:var(--t0); line-height:1; }
+  .wf-wkday .dist small { font-size:11px; font-weight:500; color:var(--t2); margin-left:3px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase; }
+  .wf-wkday .kind { font-size:14.5px; font-weight:500; color:var(--t1); letter-spacing:-.005em; }
+  .wf-wkday .tag { font-family:var(--f-data); font-size:10px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; color:var(--t3); }
+  .wf-wkday.done { background:rgba(62,189,65,.08); }
+  .wf-wkday.done .dow, .wf-wkday.done .tag { color:var(--success); }
+  .wf-wkday.now { background:var(--corporate); }
+  .wf-wkday.now .dow { color:rgba(255,255,255,.75); }
+  .wf-wkday.now .dist, .wf-wkday.now .kind, .wf-wkday.now .tag { color:#fff; }
+  .wf-wkday.now .dist small { color:rgba(255,255,255,.65); }
+  .wf-wkday.rest { opacity:.55; }
+  .wf-wkday.rest .dist { color:var(--t3); font-size:24px; }
+  .wf-wkday.rest .kind { color:var(--t3); font-style:italic; }
+  .wf-wkday.race { background:rgba(243,173,59,.08); border-color:rgba(243,173,59,.35); }
+  .wf-wkday.race .dow, .wf-wkday.race .dist, .wf-wkday.race .tag { color:var(--attention); }
+  .wf-wkday.race .kind { color:var(--attention); font-weight:700; }
+
+  /* generic tile (used in many surfaces) */
+  .wf-tile { border-radius:13px; padding:18px 20px; background:var(--l1); border:1px solid var(--l4); display:flex; flex-direction:column; gap:12px; }
+  .wf-tile-h { display:flex; justify-content:space-between; align-items:flex-start; }
+  .wf-tile-lbl { font-size:16px; font-weight:700; letter-spacing:-.01em; color:var(--t0); }
+  .wf-tile-sub { font-family:var(--f-data); font-size:10px; letter-spacing:1.7px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:5px; }
+
+  /* coach voice block */
+  .wf-coach { padding:14px 16px; background:var(--l3); border-left:2px solid var(--corporate); border-radius:0 8px 8px 0; display:flex; flex-direction:column; gap:10px; }
+  .wf-coach-eyebrow { font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-bottom:4px; }
+  .wf-coach-body { font-size:12.5px; line-height:1.5; color:var(--t1); }
+  .wf-coach--attention { border-left-color:var(--attention); }
+  .wf-coach--attention .wf-coach-eyebrow { color:var(--attention); }
+  .wf-coach--corporate .wf-coach-eyebrow { color:var(--corporate); }
+
+  /* page-head */
+  .wf-pagehead { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--l4); }
+  .wf-pagehead h1 { font-family:var(--f-display); font-size:64px; font-weight:700; letter-spacing:-.005em; line-height:.9; text-transform:uppercase; }
+  .wf-pagehead .eyebrow { font-family:var(--f-data); font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-bottom:8px; }
+  .wf-pagehead .sub { font-size:13px; color:var(--t2); font-weight:500; margin-top:10px; max-width:520px; }
+  .wf-pagehead .sub b { color:var(--t1); font-weight:700; }
+  .wf-actions { display:flex; gap:8px; align-items:center; }
+  .wf-btn { border-radius:100px; padding:9px 14px; font-size:12px; font-weight:700; letter-spacing:.005em; border:1px solid var(--l4); background:var(--l2); color:var(--t1); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .wf-btn--primary { background:var(--corporate); border-color:var(--corporate); color:#fff; }
+  .wf-btn--ghost { background:transparent; }
+
+  /* training calendar */
+  .wf-cycle-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--l3); margin-top:12px; }
+  .wf-cycle-bar > div { height:100%; }
+  .wf-week-row { display:grid; grid-template-columns:90px repeat(7, 1fr); gap:6px; padding:8px 0; }
+  .wf-week-meta { display:flex; flex-direction:column; justify-content:center; padding:6px 10px; border-radius:8px; background:var(--l2); border:1px solid var(--l4); }
+  .wf-week-meta.cur { background:rgba(0,143,236,.14); border-color:rgba(0,143,236,.4); }
+  .wf-week-meta .wn { font-family:var(--f-display); font-size:22px; font-weight:700; line-height:1; color:var(--t0); }
+  .wf-week-meta .ph { font-family:var(--f-data); font-size:8.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:4px; }
+  .wf-week-meta.cur .ph { color:var(--corporate); }
+  .wf-day-cell { border-radius:8px; background:var(--l1); border:1px solid var(--l4); padding:8px 8px 7px; min-height:70px; display:flex; flex-direction:column; gap:3px; }
+  .wf-day-cell .dn { font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .wf-day-cell .pill { font-family:var(--f-data); font-size:9.5px; letter-spacing:.8px; font-weight:700; padding:3px 5px; border-radius:4px; line-height:1.2; display:inline-block; align-self:flex-start; }
+  .wf-day-cell .miles { font-family:var(--f-display); font-weight:800; font-size:18px; line-height:1; color:var(--t0); margin-top:auto; }
+  .wf-day-cell .miles small { font-size:9px; font-weight:500; color:var(--t2); margin-left:2px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase; }
+  .wf-day-cell.done { background:rgba(62,189,65,.06); }
+  .wf-day-cell.done .dn { color:var(--success); }
+  .wf-day-cell.cur { background:var(--corporate); border-color:var(--corporate); }
+  .wf-day-cell.cur .dn, .wf-day-cell.cur .miles { color:#fff; }
+  .wf-day-cell.cur .miles small { color:rgba(255,255,255,.7); }
+  .wf-day-cell.race { background:rgba(243,173,59,.1); border-color:rgba(243,173,59,.45); }
+  .wf-day-cell.race .dn { color:var(--attention); }
+  .wf-day-cell.race .miles { color:var(--attention); }
+  .wf-day-cell.rest { opacity:.45; }
+  .wf-day-cell.rest .miles { font-size:13px; color:var(--t3); font-style:italic; }
+  .wf-day-cell.sel { box-shadow:0 0 0 2px var(--xp); border-color:var(--xp); }
+
+  .wf-pill-easy { background:rgba(39,132,224,.18); color:#7ab6f0; }
+  .wf-pill-tempo { background:rgba(39,224,135,.18); color:var(--aqua); }
+  .wf-pill-long { background:rgba(34,100,227,.22); color:#5b8df0; }
+  .wf-pill-int { background:rgba(144,19,254,.18); color:#b873ff; }
+  .wf-pill-rest { background:var(--l3); color:var(--t3); }
+  .wf-pill-race { background:var(--attention); color:var(--l0); }
+  .wf-pill-cur-light { background:rgba(255,255,255,.18); color:#fff; }
+
+  /* zones / vdot table */
+  .wf-zones-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .wf-zones-tbl th { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); font-weight:700; text-align:left; padding:9px 12px; border-bottom:1px solid var(--l4); }
+  .wf-zones-tbl td { padding:13px 12px; border-bottom:1px solid var(--l4); color:var(--t1); vertical-align:middle; }
+  .wf-zones-tbl tr:last-child td { border-bottom:0; }
+  .wf-zones-tbl .zk { font-family:var(--f-display); font-weight:800; font-size:22px; letter-spacing:-.02em; color:var(--t0); line-height:1; }
+  .wf-zones-tbl .znum { font-family:var(--f-data); font-variant-numeric:tabular-nums; color:var(--t0); font-weight:700; }
+  .wf-zone-dot { width:10px; height:10px; border-radius:3px; display:inline-block; vertical-align:middle; margin-right:9px; }
+
+  /* race rows */
+  .wf-race-row { display:grid; grid-template-columns:auto 1fr auto auto; gap:18px; align-items:center; padding:18px 20px; border-radius:11px; background:var(--l1); border:1px solid var(--l4); }
+  .wf-race-row.featured { background:linear-gradient(135deg, rgba(243,173,59,.16) 0%, rgba(243,173,59,.04) 100%); border-color:rgba(243,173,59,.4); }
+  .wf-race-name { font-family:var(--f-display); font-size:28px; font-weight:700; letter-spacing:-.005em; line-height:1; text-transform:uppercase; color:var(--t0); }
+  .wf-race-row.featured .wf-race-name { color:var(--attention); }
+  .wf-race-meta { font-family:var(--f-data); font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:6px; }
+  .wf-race-time { font-family:var(--f-display); font-weight:800; font-size:34px; letter-spacing:-.025em; color:var(--t0); line-height:1; }
+  .wf-race-row.featured .wf-race-time { color:var(--attention); }
+  .wf-race-time-lbl { font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--t3); font-weight:700; margin-top:5px; text-align:right; }
+</style>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     1 · WEB OVERVIEW · faff.app/
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="mockup-section" id="mockup-web-overview">
+  <div class="mockup-h">Web · Overview · Race-week state</div>
+  <div class="mockup-name">Hub — Race Week</div>
+  <div class="mockup-job">The brand artifact. Identity-forward greeting, four readiness stats, the seven-day strip pivoting toward Sunday's race, and the conditions tile that doubles as a final-prep checklist.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/</span>
+      </div>
+
+      <div class="wf-nav">
+        <div class="wf-nav-l">
+          <div class="wf-brand">R</div>
+          <div class="wf-tabs">
+            <span class="wf-tab active">Overview</span>
+            <span class="wf-tab">Training</span>
+            <span class="wf-tab">Races</span>
+            <span class="wf-tab">Health</span>
+            <span class="wf-tab">Log</span>
+          </div>
+        </div>
+        <div class="wf-nav-r">
+          <div class="wf-nav-ic">⌕</div>
+          <div class="wf-nav-ic">◎</div>
+          <div class="wf-avatar"></div>
+        </div>
+      </div>
+
+      <div style="padding:24px 26px 28px;">
+
+        <!-- Greeting + stats grid -->
+        <div style="display:grid; grid-template-columns:1.05fr 2fr; gap:24px; align-items:end; margin-bottom:14px;">
+          <div class="wf-greet" style="padding:0 16px;">
+            <div class="wf-greet-hi">Tuesday morning · Apr 21</div>
+            <div class="wf-greet-nm">David</div>
+            <div class="wf-greet-hl">Race week</div>
+            <div class="wf-greet-sub"><b>5 days to Big Sur</b> · taper holds, legs freshening</div>
+          </div>
+          <div class="wf-stats">
+            <div class="wf-stat wf-stat--recovery">
+              <div class="wf-stat-top"><div class="wf-stat-lbl">Recovery</div><span class="chip chip--success">READY</span></div>
+              <div><div class="wf-stat-num">78<small>/100</small></div><div class="wf-stat-dt">HRV 64ms · sleep 7:38</div></div>
+            </div>
+            <div class="wf-stat wf-stat--prescribed">
+              <div class="wf-stat-top"><div class="wf-stat-lbl">Today</div><span class="chip" style="background:rgba(255,255,255,.18); color:#fff; border-color:rgba(255,255,255,.25);">EASY</span></div>
+              <div><div class="wf-stat-num">5<small style="color:rgba(255,255,255,.55);">mi</small></div><div class="wf-stat-dt">8:00–8:30 / mi · Z2</div></div>
+            </div>
+            <div class="wf-stat wf-stat--miles">
+              <div class="wf-stat-top"><div class="wf-stat-lbl">Week · loaded</div><span class="chip chip--corporate">TAPER</span></div>
+              <div><div class="wf-stat-num">22<small>mi</small></div><div class="wf-stat-dt">of 30 planned</div></div>
+            </div>
+            <div class="wf-stat wf-stat--race">
+              <div class="wf-stat-top"><div class="wf-stat-lbl">Days to race</div><span class="chip chip--attention">A · 3:05</span></div>
+              <div><div class="wf-stat-num">5</div><div class="wf-stat-dt">Big Sur Marathon · Apr 26</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two-column: 7-day strip + side column (conditions, focus, fitness check) -->
+        <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:10px; margin-top:14px;">
+
+          <!-- Race-week 7-day strip -->
+          <div class="wf-tile">
+            <div class="wf-tile-h">
+              <div>
+                <div class="wf-tile-lbl" style="font-family:var(--f-display); font-weight:700; font-size:32px; text-transform:uppercase; letter-spacing:.005em; line-height:.95;">Race week</div>
+                <div class="wf-tile-sub">Mon 20 – Sun 26 Apr · Wk 16 / 16</div>
+              </div>
+              <span class="chip chip--attention">FINAL WEEK</span>
+            </div>
+
+            <div style="display:flex; align-items:baseline; gap:14px; margin-top:14px;">
+              <div style="font-family:var(--f-display); font-weight:800; font-size:58px; letter-spacing:-.03em; line-height:1;">35.2<small style="font-size:12px; font-weight:500; color:var(--t2); margin-left:10px; font-family:var(--f-data); letter-spacing:1.4px; text-transform:uppercase;">mi planned</small></div>
+            </div>
+            <div class="wf-cycle-bar" style="margin:6px 0 16px;">
+              <div style="background:var(--success); flex:9"></div>
+              <div style="background:var(--corporate); flex:5"></div>
+              <div style="background:var(--l4); flex:5"></div>
+              <div style="background:var(--attention); flex:262"></div>
+            </div>
+
+            <div class="wf-wkdays">
+              <div class="wf-wkday done">
+                <span class="dow">Mon 20</span>
+                <span class="dist">4<small>mi</small></span>
+                <span class="kind">Easy shakeout</span>
+                <span class="tag">Done</span>
+              </div>
+              <div class="wf-wkday done">
+                <span class="dow">Tue 21*</span>
+                <span class="dist">5<small>mi</small></span>
+                <span class="kind">Easy + 4×100m strides</span>
+                <span class="tag">Today</span>
+              </div>
+              <div class="wf-wkday">
+                <span class="dow">Wed 22</span>
+                <span class="dist">5<small>mi</small></span>
+                <span class="kind">Easy · Z2 only</span>
+                <span class="tag">Easy</span>
+              </div>
+              <div class="wf-wkday">
+                <span class="dow">Thu 23</span>
+                <span class="dist">3<small>mi</small></span>
+                <span class="kind">Pre-race shakeout · 2 strides</span>
+                <span class="tag">Tune</span>
+              </div>
+              <div class="wf-wkday rest">
+                <span class="dow">Fri 24</span>
+                <span class="dist">—</span>
+                <span class="kind">Rest · travel to Monterey</span>
+                <span class="tag">Rest</span>
+              </div>
+              <div class="wf-wkday rest">
+                <span class="dow">Sat 25</span>
+                <span class="dist">2<small>mi</small></span>
+                <span class="kind">Race-fueling prep · feet up</span>
+                <span class="tag">Prep</span>
+              </div>
+              <div class="wf-wkday race">
+                <span class="dow">Sun 26</span>
+                <span class="dist">26.2<small>mi</small></span>
+                <span class="kind">Big Sur Marathon · A goal 3:05</span>
+                <span class="tag">Race</span>
+              </div>
+            </div>
+
+            <!-- Focus / coach voice -->
+            <div class="wf-coach wf-coach--attention" style="margin-top:8px;">
+              <div>
+                <div class="wf-coach-eyebrow">Focus · race week</div>
+                <div class="wf-coach-body">Carbs tonight. Sleep is the high-leverage move now. The work is banked — trust it. Phantom aches in the legs are normal Wednesday and Thursday; resist the urge to test fitness.</div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding-top:10px; border-top:1px solid var(--l4);">
+                <div>
+                  <div class="wf-coach-eyebrow" style="color:var(--success);">Trust</div>
+                  <div class="wf-coach-body" style="font-size:11.5px;">Peak hit Apr 5 (54mi). 22-mile long run logged. Aerobic decoupling 3.4% — strong base.</div>
+                </div>
+                <div>
+                  <div class="wf-coach-eyebrow" style="color:var(--caution);">Watch for</div>
+                  <div class="wf-coach-body" style="font-size:11.5px;">If Wed easy creeps under 8:00/mi, dial back. Fresh legs lie. Save it for Sunday.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column: Conditions + race-day brief + fitness pulse -->
+          <div style="display:flex; flex-direction:column; gap:10px;">
+
+            <!-- Race-day conditions -->
+            <div class="wf-tile" style="background:linear-gradient(135deg, var(--l2) 0%, var(--l1) 100%);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Race-day brief</div>
+                  <div class="wf-tile-sub">Big Sur · Sun Apr 26 · 06:45 start</div>
+                </div>
+                <span class="chip chip--attention">5 DAYS</span>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:14px; padding:8px 0;">
+                <svg width="44" height="44" viewBox="0 0 32 32" fill="none" style="flex-shrink:0;">
+                  <path d="M 8 18 a 5 5 0 0 1 9.5 -2 a 4 4 0 0 1 5.5 4 H 8 z" fill="var(--corporate)" opacity=".7"/>
+                  <circle cx="11" cy="13" r="4" fill="var(--attention)"/>
+                </svg>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:38px; line-height:1; letter-spacing:-.025em; color:var(--t0);">52°<small style="font-size:14px; font-weight:500; color:var(--t2); margin-left:6px; font-family:var(--f-data); letter-spacing:1.4px; text-transform:uppercase;">F</small></div>
+                  <div class="wf-cap" style="margin-top:6px;">High 58° · Low 49° · Cloudy AM clearing</div>
+                </div>
+              </div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:10px; border-top:1px solid var(--l4);">
+                <div>
+                  <div class="wf-cap">Wind</div>
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:18px; line-height:1.2; margin-top:4px;">8 mph NW <span style="font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700;">tail-cross</span></div>
+                </div>
+                <div>
+                  <div class="wf-cap">Sunrise</div>
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:18px; line-height:1.2; margin-top:4px;">06:45 <span style="font-family:var(--f-data); font-size:11px; color:var(--t2); font-weight:700;">at gun</span></div>
+                </div>
+                <div>
+                  <div class="wf-cap">Suggested shoe</div>
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:16px; line-height:1.2; margin-top:4px;">Vaporfly 4 <span style="font-family:var(--f-data); font-size:10px; color:var(--success); font-weight:700;">FRESH 12mi</span></div>
+                </div>
+                <div>
+                  <div class="wf-cap">Fueling</div>
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:16px; line-height:1.2; margin-top:4px;">5 gels <span style="font-family:var(--f-data); font-size:10px; color:var(--t2); font-weight:700;">@ 4 8 14 19 23</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pace targets -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Pace targets · race</div>
+                  <div class="wf-tile-sub">Daniels VDOT 53 · last calibrated Salinas Half</div>
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:6px 0;">
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:26px; letter-spacing:-.02em; line-height:1; color:var(--xp);">7:05</div>
+                  <div class="wf-cap" style="margin-top:5px;">Goal · 3:05</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:26px; letter-spacing:-.02em; line-height:1; color:var(--corporate);">7:25</div>
+                  <div class="wf-cap" style="margin-top:5px;">M · steady</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:26px; letter-spacing:-.02em; line-height:1; color:var(--attention);">7:18</div>
+                  <div class="wf-cap" style="margin-top:5px;">Hurricane mile</div>
+                </div>
+              </div>
+              <div class="wf-divider"></div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="wf-cap"><b>VDOT 53</b> · ↑ 1.2 since Jan</span>
+                <span class="wf-cap" style="color:var(--corporate);">View zones →</span>
+              </div>
+            </div>
+
+            <!-- Last run snapshot -->
+            <div class="wf-tile" style="background:var(--l2);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Last run</div>
+                  <div class="wf-tile-sub">Mon · 8.2 mi @ 7:55 avg</div>
+                </div>
+                <span class="chip chip--success">CLEAN</span>
+              </div>
+              <svg viewBox="0 0 280 40" preserveAspectRatio="none" style="width:100%; height:40px;">
+                <defs><linearGradient id="g-lr" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#27E087" stop-opacity=".4"/><stop offset="100%" stop-color="#27E087" stop-opacity="0"/></linearGradient></defs>
+                <path d="M 0 22 L 28 18 L 56 24 L 84 17 L 112 21 L 140 16 L 168 19 L 196 14 L 224 18 L 252 13 L 280 16 L 280 40 L 0 40 Z" fill="url(#g-lr)"/>
+                <path d="M 0 22 L 28 18 L 56 24 L 84 17 L 112 21 L 140 16 L 168 19 L 196 14 L 224 18 L 252 13 L 280 16" stroke="var(--aqua)" stroke-width="1.6" fill="none"/>
+              </svg>
+              <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t2); font-weight:700;">
+                <span>HR 142 avg</span><span>Cad 176 spm</span><span style="color:var(--success);">Decouple 2.1%</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Race-week variant of hub. The "Today" stat card is solid corporate blue (today is the only thing screaming) and the days-to-race orange card pushes Sunday into the eye. Coach voice block uses the attention/orange accent stripe to keep the race-context tonally distinct from a normal training week.</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     2 · WEB TRAINING · faff.app/training
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="mockup-section" id="mockup-web-training">
+  <div class="mockup-h">Web · Training · Multi-week calendar</div>
+  <div class="mockup-name">Training — Cycle View</div>
+  <div class="mockup-job">Four-week window of the build cycle with day cells, workout pills, and a drilled-in detail panel. Drag-to-reschedule affordance shown subtly on hover.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/training</span>
+      </div>
+
+      <div class="wf-nav">
+        <div class="wf-nav-l">
+          <div class="wf-brand">R</div>
+          <div class="wf-tabs">
+            <span class="wf-tab">Overview</span>
+            <span class="wf-tab active">Training</span>
+            <span class="wf-tab">Races</span>
+            <span class="wf-tab">Health</span>
+            <span class="wf-tab">Log</span>
+          </div>
+        </div>
+        <div class="wf-nav-r">
+          <div class="wf-nav-ic">⌕</div>
+          <div class="wf-nav-ic">◎</div>
+          <div class="wf-avatar"></div>
+        </div>
+      </div>
+
+      <div style="padding:24px 26px 28px;">
+
+        <!-- Cycle header -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:18px; border-bottom:1px solid var(--l4); margin-bottom:18px;">
+          <div>
+            <div class="wf-cap" style="margin-bottom:8px;">Cycle · 16 weeks · Pfitzinger 18/55 derived</div>
+            <div style="display:flex; align-items:baseline; gap:18px;">
+              <h1 style="font-family:var(--f-display); font-size:54px; font-weight:700; line-height:.9; letter-spacing:-.005em; text-transform:uppercase;">Big Sur 2026</h1>
+              <span class="chip chip--attention">RACE WEEK</span>
+            </div>
+            <div style="font-size:13px; color:var(--t2); margin-top:10px;">Week <b style="color:var(--t1); font-weight:700;">16 of 16</b> · taper · A goal <b style="color:var(--t1);">3:05:00</b> · 5 days out</div>
+            <!-- Cycle progress bar -->
+            <div class="wf-cycle-bar" style="width:380px; margin-top:14px;">
+              <div style="background:rgba(180,195,215,.45); flex:5"></div>
+              <div style="background:var(--success); flex:5"></div>
+              <div style="background:var(--xp); flex:3"></div>
+              <div style="background:var(--corporate); flex:2"></div>
+              <div style="background:var(--attention); flex:1"></div>
+              <div style="background:var(--l4); flex:0"></div>
+            </div>
+            <div style="display:flex; gap:14px; margin-top:8px; font-family:var(--f-data); font-size:9px; letter-spacing:1.4px; color:var(--t2); font-weight:700; text-transform:uppercase;">
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:rgba(180,195,215,.45); margin-right:5px; vertical-align:middle;"></span>Base · 5</span>
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--success); margin-right:5px; vertical-align:middle;"></span>Build · 5</span>
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--xp); margin-right:5px; vertical-align:middle;"></span>Peak · 3</span>
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--corporate); margin-right:5px; vertical-align:middle;"></span>Taper · 2</span>
+              <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--attention); margin-right:5px; vertical-align:middle;"></span>Race · 1</span>
+            </div>
+          </div>
+          <div class="wf-actions">
+            <button class="wf-btn wf-btn--ghost"><span style="opacity:.6;">←</span> Cycle list</button>
+            <button class="wf-btn">Export .ics</button>
+            <button class="wf-btn wf-btn--primary">Edit plan</button>
+          </div>
+        </div>
+
+        <!-- Calendar + selected-day detail -->
+        <div style="display:grid; grid-template-columns:1.6fr 1fr; gap:14px;">
+
+          <!-- Calendar weeks -->
+          <div style="display:flex; flex-direction:column; gap:8px;">
+
+            <!-- Day-of-week header -->
+            <div class="wf-week-row" style="padding:0; margin-bottom:-2px;">
+              <div></div>
+              <div class="wf-cap" style="text-align:center;">Mon</div>
+              <div class="wf-cap" style="text-align:center;">Tue</div>
+              <div class="wf-cap" style="text-align:center;">Wed</div>
+              <div class="wf-cap" style="text-align:center;">Thu</div>
+              <div class="wf-cap" style="text-align:center;">Fri</div>
+              <div class="wf-cap" style="text-align:center;">Sat</div>
+              <div class="wf-cap" style="text-align:center;">Sun</div>
+            </div>
+
+            <!-- Week 12 -->
+            <div class="wf-week-row">
+              <div class="wf-week-meta">
+                <div class="wn">12</div>
+                <div class="ph">Build · 36 mi</div>
+              </div>
+              <div class="wf-day-cell done"><div class="dn">M 23</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 24</div><span class="pill wf-pill-tempo">TEMPO 6 @ T</span><div class="miles">6<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">W 25</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 26</div><span class="pill wf-pill-rest">REST</span><div class="miles">—</div></div>
+              <div class="wf-day-cell done"><div class="dn">F 27</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 28</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 29</div><span class="pill wf-pill-long">LONG 12 MP-7</span><div class="miles">12<small>mi</small></div></div>
+            </div>
+
+            <!-- Week 13 -->
+            <div class="wf-week-row">
+              <div class="wf-week-meta">
+                <div class="wn">13</div>
+                <div class="ph">Peak · 50 mi</div>
+              </div>
+              <div class="wf-day-cell done"><div class="dn">M 30</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 31</div><span class="pill wf-pill-int">5×1K @ I</span><div class="miles">7<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">W 1</div><span class="pill wf-pill-easy">EASY</span><div class="miles">6<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 2</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">F 3</div><span class="pill wf-pill-rest">REST</span><div class="miles">—</div></div>
+              <div class="wf-day-cell done"><div class="dn">S 4</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 5</div><span class="pill wf-pill-long">LONG 22 PEAK</span><div class="miles">22<small>mi</small></div></div>
+            </div>
+
+            <!-- Week 14 -->
+            <div class="wf-week-row">
+              <div class="wf-week-meta">
+                <div class="wn">14</div>
+                <div class="ph">Taper · 42 mi</div>
+              </div>
+              <div class="wf-day-cell done"><div class="dn">M 6</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 7</div><span class="pill wf-pill-tempo">5×1mi @ T</span><div class="miles">8<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">W 8</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 9</div><span class="pill wf-pill-rest">REST</span><div class="miles">—</div></div>
+              <div class="wf-day-cell done"><div class="dn">F 10</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 11</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 12</div><span class="pill wf-pill-long">LONG 15 MP-5</span><div class="miles">15<small>mi</small></div></div>
+            </div>
+
+            <!-- Week 15 -->
+            <div class="wf-week-row">
+              <div class="wf-week-meta">
+                <div class="wn">15</div>
+                <div class="ph">Taper · 32 mi</div>
+              </div>
+              <div class="wf-day-cell done"><div class="dn">M 13</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 14</div><span class="pill wf-pill-tempo">3×1mi @ T</span><div class="miles">7<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">W 15</div><span class="pill wf-pill-easy">EASY</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">T 16</div><span class="pill wf-pill-rest">REST</span><div class="miles">—</div></div>
+              <div class="wf-day-cell done"><div class="dn">F 17</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 18</div><span class="pill wf-pill-easy">EASY</span><div class="miles">3<small>mi</small></div></div>
+              <div class="wf-day-cell done"><div class="dn">S 19</div><span class="pill wf-pill-long">LONG 9 MP-3</span><div class="miles">9<small>mi</small></div></div>
+            </div>
+
+            <!-- Week 16 — current -->
+            <div class="wf-week-row" style="background:rgba(0,143,236,.06); border-radius:10px; padding:8px;">
+              <div class="wf-week-meta cur">
+                <div class="wn">16</div>
+                <div class="ph">Race · 35 mi</div>
+              </div>
+              <div class="wf-day-cell done"><div class="dn">M 20</div><span class="pill wf-pill-easy">EASY</span><div class="miles">4<small>mi</small></div></div>
+              <div class="wf-day-cell cur sel"><div class="dn">T 21 · today</div><span class="pill wf-pill-cur-light">EASY +4×100</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell"><div class="dn">W 22</div><span class="pill wf-pill-easy">EASY · Z2</span><div class="miles">5<small>mi</small></div></div>
+              <div class="wf-day-cell"><div class="dn">T 23</div><span class="pill wf-pill-easy">SHAKEOUT</span><div class="miles">3<small>mi</small></div></div>
+              <div class="wf-day-cell rest"><div class="dn">F 24</div><span class="pill wf-pill-rest">REST · TRAVEL</span><div class="miles">—</div></div>
+              <div class="wf-day-cell"><div class="dn">S 25</div><span class="pill wf-pill-easy">PREP · 2mi</span><div class="miles">2<small>mi</small></div></div>
+              <div class="wf-day-cell race"><div class="dn">S 26 · A</div><span class="pill wf-pill-race">BIG SUR 26.2</span><div class="miles">26<small>mi</small></div></div>
+            </div>
+
+            <!-- Drag affordance footer -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 4px; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">
+              <span>↕ Drag a workout to reschedule</span>
+              <span><b style="color:var(--t1);">Cmd-K</b> to insert · <b style="color:var(--t1);">⌫</b> to delete</span>
+            </div>
+
+          </div>
+
+          <!-- Detail panel (selected: Tue 21) -->
+          <div class="wf-tile" style="background:var(--l2); border-color:rgba(144,19,254,.4); align-self:flex-start;">
+            <div class="wf-tile-h">
+              <div>
+                <div class="wf-cap" style="margin-bottom:6px;">Tuesday · April 21 · today</div>
+                <div style="font-family:var(--f-display); font-weight:700; font-size:38px; line-height:.95; text-transform:uppercase; letter-spacing:.005em;">Easy + Strides</div>
+                <div class="wf-tile-sub">5.0 mi · 40min · Z2 + 4×100m</div>
+              </div>
+              <span class="chip chip--corporate">WK16 · D2</span>
+            </div>
+
+            <!-- KPIs -->
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:12px 0; border-top:1px solid var(--l4); border-bottom:1px solid var(--l4);">
+              <div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.025em; line-height:1;">5.0<small style="font-size:11px; color:var(--t2); margin-left:3px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase;">mi</small></div>
+                <div class="wf-cap" style="margin-top:5px;">Distance</div>
+              </div>
+              <div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.025em; line-height:1;">8:15<small style="font-size:11px; color:var(--t2); margin-left:3px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase;">/mi</small></div>
+                <div class="wf-cap" style="margin-top:5px;">Avg pace</div>
+              </div>
+              <div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:24px; letter-spacing:-.025em; line-height:1;">~135<small style="font-size:11px; color:var(--t2); margin-left:3px; font-family:var(--f-data); letter-spacing:1.2px; text-transform:uppercase;">bpm</small></div>
+                <div class="wf-cap" style="margin-top:5px;">Target HR</div>
+              </div>
+            </div>
+
+            <!-- Structure -->
+            <div>
+              <div class="wf-cap" style="margin-bottom:8px;">Structure</div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:9px 11px; background:var(--l1); border-radius:6px;">
+                  <span class="wf-mono" style="font-size:10.5px; color:var(--t2); font-weight:700;">0:00</span>
+                  <span style="font-size:13px; color:var(--t1);">Easy 4.5 mi @ E</span>
+                  <span class="wf-mono" style="font-size:11px; color:var(--t1); font-weight:700;">8:00–8:30</span>
+                </div>
+                <div style="display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:9px 11px; background:rgba(144,19,254,.1); border:1px solid rgba(144,19,254,.25); border-radius:6px;">
+                  <span class="wf-mono" style="font-size:10.5px; color:#b873ff; font-weight:700;">0:36</span>
+                  <span style="font-size:13px; color:#b873ff; font-weight:700;">4 × 100m strides @ R · full rec</span>
+                  <span class="wf-mono" style="font-size:11px; color:#b873ff; font-weight:700;">~5:30</span>
+                </div>
+                <div style="display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:9px 11px; background:var(--l1); border-radius:6px;">
+                  <span class="wf-mono" style="font-size:10.5px; color:var(--t2); font-weight:700;">0:42</span>
+                  <span style="font-size:13px; color:var(--t1);">Cool-down jog · 0.3 mi</span>
+                  <span class="wf-mono" style="font-size:11px; color:var(--t1); font-weight:700;">9:00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Coach voice -->
+            <div class="wf-coach wf-coach--corporate">
+              <div>
+                <div class="wf-coach-eyebrow">Why</div>
+                <div class="wf-coach-body">Final neuromuscular ping before race. Strides keep your stride open without depleting glycogen. Easy pace is non-negotiable today — sub-8:00 is a sign your taper is working, not permission to push.</div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <button class="wf-btn wf-btn--primary" style="flex:1;">Send to watch ↗</button>
+              <button class="wf-btn">Swap</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Five-week scrolling window with current week visually shifted (light blue tint, accent meta cell, today selected with XP-purple ring). Pills carry workout types in single-glance colors. Detail panel right-anchors to the selected cell and shows the same coach-voice block from the Overview, ensuring consistency across pages.</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     3 · WEB WORKOUT DETAIL · faff.app/workout/2026-04-14
+     We pick the Tue Apr 14 threshold session — visually richer than the easy run
+     while still on-brand for a marathon build.
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="mockup-section" id="mockup-web-workout-detail">
+  <div class="mockup-h">Web · Workout detail · Single session</div>
+  <div class="mockup-name">Workout — Threshold 5×1mi</div>
+  <div class="mockup-job">A single workout, fully briefed: name, why, structure, target zones, conditions, suggested shoe, fueling note, and one big "Send to Watch" button. Past attempts at this workout type stripped along the bottom.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/workout/2026-04-14</span>
+      </div>
+
+      <div class="wf-nav">
+        <div class="wf-nav-l">
+          <div class="wf-brand">R</div>
+          <div class="wf-tabs">
+            <span class="wf-tab">Overview</span>
+            <span class="wf-tab active">Training</span>
+            <span class="wf-tab">Races</span>
+            <span class="wf-tab">Health</span>
+            <span class="wf-tab">Log</span>
+          </div>
+        </div>
+        <div class="wf-nav-r">
+          <div class="wf-nav-ic">⌕</div>
+          <div class="wf-nav-ic">◎</div>
+          <div class="wf-avatar"></div>
+        </div>
+      </div>
+
+      <div style="padding:24px 26px 28px;">
+
+        <!-- Breadcrumb -->
+        <div style="display:flex; align-items:center; gap:8px; font-family:var(--f-data); font-size:10px; letter-spacing:1.6px; color:var(--t3); font-weight:700; text-transform:uppercase; margin-bottom:14px;">
+          <span>Training</span><span>/</span>
+          <span>Big Sur 2026</span><span>/</span>
+          <span>Wk 14 · taper</span><span>/</span>
+          <span style="color:var(--t1);">Tue Apr 14 · threshold</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1.6fr 1fr; gap:14px;">
+
+          <!-- LEFT — workout body -->
+          <div style="display:flex; flex-direction:column; gap:14px;">
+
+            <!-- Hero: title + KPIs + chips -->
+            <div class="wf-tile" style="padding:24px 26px; background:linear-gradient(135deg, var(--l2) 0%, rgba(0,143,236,.08) 100%); border-color:rgba(0,143,236,.25);">
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <span class="chip chip--corporate">THRESHOLD · LT2</span>
+                <span class="chip">WK 14 · D2</span>
+                <span class="chip chip--success">PEAK BLOCK</span>
+              </div>
+              <div style="font-family:var(--f-display); font-weight:700; font-size:64px; line-height:.92; letter-spacing:-.005em; text-transform:uppercase; margin-top:8px;">Threshold<br/>5 × 1 mi</div>
+              <div style="font-size:14px; color:var(--t2); margin-top:6px; max-width:520px;">Five mile-repeats at lactate-threshold pace, 90s float recovery. The hardest session of the build and the truest fitness test before taper.</div>
+
+              <!-- KPI strip -->
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:18px 0 4px; border-top:1px solid var(--l4); margin-top:14px;">
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1;">8.0<small style="font-size:13px; color:var(--t2); margin-left:4px; font-family:var(--f-data); letter-spacing:1.3px; text-transform:uppercase;">mi</small></div>
+                  <div class="wf-cap" style="margin-top:6px;">Total distance</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1;">~58<small style="font-size:13px; color:var(--t2); margin-left:4px; font-family:var(--f-data); letter-spacing:1.3px; text-transform:uppercase;">min</small></div>
+                  <div class="wf-cap" style="margin-top:6px;">Duration</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1; color:var(--corporate);">6:30<small style="font-size:13px; color:rgba(0,143,236,.6); margin-left:4px; font-family:var(--f-data); letter-spacing:1.3px; text-transform:uppercase;">/mi</small></div>
+                  <div class="wf-cap" style="margin-top:6px; color:var(--corporate);">T pace · target</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1;">160<small style="font-size:13px; color:var(--t2); margin-left:4px; font-family:var(--f-data); letter-spacing:1.3px; text-transform:uppercase;">bpm</small></div>
+                  <div class="wf-cap" style="margin-top:6px;">LTHR · ceiling</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Coach voice (immediately under title, per spec) -->
+            <div class="wf-coach wf-coach--corporate" style="background:var(--l2); border-radius:13px; padding:18px 20px;">
+              <div>
+                <div class="wf-coach-eyebrow" style="font-size:10px; margin-bottom:8px;">Why this workout</div>
+                <div class="wf-coach-body" style="font-size:14px; line-height:1.55;">You've absorbed last weekend's 22-miler clean — decoupling held at 3.4%, HR settled by Sunday night. Threshold work at the end of a peak block consolidates the aerobic ceiling you spent twelve weeks building. <b style="color:var(--t0);">Ride the line, don't cross it</b> — the moment your shoulders tighten on rep three, you're past T pace.</div>
+              </div>
+            </div>
+
+            <!-- Structure -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div class="wf-tile-lbl">Structure</div>
+                <span class="wf-cap"><b>Total · 8.0 mi</b> · ~58 min</span>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <!-- Warm-up -->
+                <div style="display:grid; grid-template-columns:60px 1fr auto auto; gap:14px; align-items:center; padding:14px 16px; background:var(--l3); border-radius:8px; border-left:3px solid var(--lt-blue);">
+                  <span class="wf-mono" style="font-size:11px; color:var(--t2); font-weight:700;">0:00</span>
+                  <div>
+                    <div style="font-size:14px; font-weight:600; color:var(--t1);">Warm-up · 1.5 mi @ E</div>
+                    <div class="wf-cap" style="margin-top:3px;">Easy aerobic · drills + 4×30s strides at end</div>
+                  </div>
+                  <span class="wf-mono" style="font-size:13px; color:var(--t1); font-weight:700;">8:30/mi</span>
+                  <span class="wf-mono" style="font-size:11px; color:var(--t2);">~13min</span>
+                </div>
+
+                <!-- Main set: 5 reps -->
+                <div style="display:grid; grid-template-columns:60px 1fr auto auto; gap:14px; align-items:center; padding:14px 16px; background:rgba(0,143,236,.1); border:1px solid rgba(0,143,236,.3); border-radius:8px; border-left:3px solid var(--corporate);">
+                  <span class="wf-mono" style="font-size:11px; color:var(--corporate); font-weight:700;">0:13</span>
+                  <div>
+                    <div style="font-size:14px; font-weight:700; color:var(--corporate);">5 × 1 mile @ T · 90s float recovery</div>
+                    <div class="wf-cap" style="margin-top:3px; color:var(--corporate);">Target 6:25–6:35 · HR ≤ 162 · Float jog 9:30/mi</div>
+                  </div>
+                  <span class="wf-mono" style="font-size:13px; color:var(--corporate); font-weight:700;">6:30/mi</span>
+                  <span class="wf-mono" style="font-size:11px; color:rgba(0,143,236,.7);">~38min</span>
+                </div>
+
+                <!-- Per-rep breakdown -->
+                <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:6px; padding:0 4px;">
+                  <div style="background:var(--l3); border-radius:6px; padding:9px 10px; text-align:center;">
+                    <div class="wf-cap" style="margin-bottom:4px;">Rep 1</div>
+                    <div class="wf-mono" style="font-size:13px; font-weight:700; color:var(--t1);">6:30</div>
+                  </div>
+                  <div style="background:var(--l3); border-radius:6px; padding:9px 10px; text-align:center;">
+                    <div class="wf-cap" style="margin-bottom:4px;">Rep 2</div>
+                    <div class="wf-mono" style="font-size:13px; font-weight:700; color:var(--t1);">6:30</div>
+                  </div>
+                  <div style="background:var(--l3); border-radius:6px; padding:9px 10px; text-align:center;">
+                    <div class="wf-cap" style="margin-bottom:4px;">Rep 3</div>
+                    <div class="wf-mono" style="font-size:13px; font-weight:700; color:var(--t1);">6:30</div>
+                  </div>
+                  <div style="background:var(--l3); border-radius:6px; padding:9px 10px; text-align:center;">
+                    <div class="wf-cap" style="margin-bottom:4px;">Rep 4</div>
+                    <div class="wf-mono" style="font-size:13px; font-weight:700; color:var(--t1);">6:30</div>
+                  </div>
+                  <div style="background:var(--l3); border-radius:6px; padding:9px 10px; text-align:center; border:1px solid rgba(243,173,59,.3);">
+                    <div class="wf-cap" style="margin-bottom:4px; color:var(--attention);">Rep 5</div>
+                    <div class="wf-mono" style="font-size:13px; font-weight:700; color:var(--attention);">≤ 6:30</div>
+                  </div>
+                </div>
+
+                <!-- Cool-down -->
+                <div style="display:grid; grid-template-columns:60px 1fr auto auto; gap:14px; align-items:center; padding:14px 16px; background:var(--l3); border-radius:8px; border-left:3px solid var(--lt-blue);">
+                  <span class="wf-mono" style="font-size:11px; color:var(--t2); font-weight:700;">0:51</span>
+                  <div>
+                    <div style="font-size:14px; font-weight:600; color:var(--t1);">Cool-down · 1.0 mi @ E</div>
+                    <div class="wf-cap" style="margin-top:3px;">Hands on hips, drop HR below 130</div>
+                  </div>
+                  <span class="wf-mono" style="font-size:13px; color:var(--t1); font-weight:700;">9:00/mi</span>
+                  <span class="wf-mono" style="font-size:11px; color:var(--t2);">~9min</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- History strip: past attempts -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Past attempts at this type</div>
+                  <div class="wf-tile-sub">5 × 1 mi @ T · last 6 sessions</div>
+                </div>
+                <span class="chip chip--success">↘ −11s/mi · 12 wk</span>
+              </div>
+              <table class="wf-zones-tbl">
+                <thead>
+                  <tr><th>Date</th><th>Avg T pace</th><th>HR avg</th><th>Decouple</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="wf-mono">2026.01.21</td><td class="znum">6:51</td><td class="wf-mono">158</td><td class="wf-mono" style="color:var(--success);">+2.1%</td><td>Cold start · windy</td></tr>
+                  <tr><td class="wf-mono">2026.02.04</td><td class="znum">6:48</td><td class="wf-mono">159</td><td class="wf-mono" style="color:var(--success);">+1.8%</td><td>Solid</td></tr>
+                  <tr><td class="wf-mono">2026.02.25</td><td class="znum">6:44</td><td class="wf-mono">160</td><td class="wf-mono" style="color:var(--success);">+1.5%</td><td>Race week before Salinas</td></tr>
+                  <tr><td class="wf-mono">2026.03.10</td><td class="znum">6:41</td><td class="wf-mono">160</td><td class="wf-mono" style="color:var(--success);">+1.2%</td><td>Track · windless</td></tr>
+                  <tr style="background:rgba(0,143,236,.05);"><td class="wf-mono" style="color:var(--corporate);">2026.04.14</td><td class="znum" style="color:var(--corporate);">— · scheduled</td><td>—</td><td>—</td><td style="color:var(--corporate);">Today's session</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+          <!-- RIGHT — context column -->
+          <div style="display:flex; flex-direction:column; gap:14px;">
+
+            <!-- Send to watch (CTA) -->
+            <div style="background:var(--corporate); border-radius:13px; padding:20px 22px; color:#fff; display:flex; flex-direction:column; gap:14px; position:relative; overflow:hidden;">
+              <div style="position:absolute; top:-30px; right:-30px; width:140px; height:140px; border-radius:50%; background:rgba(255,255,255,.06);"></div>
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                  <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.7px; font-weight:700; text-transform:uppercase; opacity:.75;">Ready when you are</div>
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:30px; line-height:1; letter-spacing:.005em; text-transform:uppercase; margin-top:8px;">Send to watch</div>
+                </div>
+                <div style="width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center;">↗</div>
+              </div>
+              <div style="font-size:12.5px; line-height:1.5; opacity:.85;">Workout file pushed via Garmin Connect IQ. Active workout view loads on watch with per-rep targets and audio cues.</div>
+              <div style="display:flex; gap:8px;">
+                <button class="wf-btn" style="background:rgba(255,255,255,.16); color:#fff; border-color:rgba(255,255,255,.18); flex:1;">Send</button>
+                <button class="wf-btn" style="background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.18);">.fit</button>
+              </div>
+              <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; opacity:.6; padding-top:8px; border-top:1px solid rgba(255,255,255,.18);">Last sync · Garmin · 14 min ago</div>
+            </div>
+
+            <!-- Conditions -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Conditions · run window</div>
+                  <div class="wf-tile-sub">Tue 6:30 AM · Kezar Loop</div>
+                </div>
+                <span class="chip chip--success">IDEAL</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px;">
+                <svg width="46" height="46" viewBox="0 0 32 32" fill="none">
+                  <circle cx="16" cy="16" r="6" fill="var(--attention)"/>
+                  <g stroke="var(--attention)" stroke-width="2" stroke-linecap="round">
+                    <line x1="16" y1="3" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="29"/>
+                    <line x1="3" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="29" y2="16"/>
+                    <line x1="6.5" y1="6.5" x2="8.5" y2="8.5"/><line x1="23.5" y1="23.5" x2="25.5" y2="25.5"/>
+                    <line x1="6.5" y1="25.5" x2="8.5" y2="23.5"/><line x1="23.5" y1="8.5" x2="25.5" y2="6.5"/>
+                  </g>
+                </svg>
+                <div style="flex:1;">
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:36px; line-height:1; letter-spacing:-.025em;">54°<small style="font-size:13px; color:var(--t2); font-weight:500; margin-left:5px; font-family:var(--f-data); letter-spacing:1.3px; text-transform:uppercase;">F</small></div>
+                  <div class="wf-cap" style="margin-top:5px;">Clear · 4 mph SE · 60% hum</div>
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:10px; border-top:1px solid var(--l4);">
+                <div><div class="wf-cap">Dew point</div><div class="wf-mono" style="font-size:14px; color:var(--t1); font-weight:700; margin-top:3px;">42° · low</div></div>
+                <div><div class="wf-cap">Air quality</div><div class="wf-mono" style="font-size:14px; color:var(--success); font-weight:700; margin-top:3px;">AQI 28</div></div>
+              </div>
+            </div>
+
+            <!-- Suggested shoe -->
+            <div class="wf-tile" style="background:var(--l2);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Suggested shoe</div>
+                  <div class="wf-tile-sub">For tempo / threshold sessions</div>
+                </div>
+                <span class="chip chip--success">FRESH</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px;">
+                <div style="width:64px; height:42px; border-radius:8px; background:linear-gradient(135deg, #0c1827, #1d3656); border:1px solid var(--l5); display:flex; align-items:center; justify-content:center;">
+                  <svg width="40" height="22" viewBox="0 0 40 22" fill="none">
+                    <path d="M2 16 Q5 10 12 11 L26 9 Q34 9 38 14 L38 18 H2 Z" fill="#fff" opacity=".85"/>
+                    <path d="M14 12 L20 11 L24 11" stroke="#008FEC" stroke-width="1.5"/>
+                  </svg>
+                </div>
+                <div style="flex:1;">
+                  <div style="font-family:var(--f-display); font-weight:700; font-size:18px; line-height:1.05; letter-spacing:-.005em;">Nike Pegasus 41</div>
+                  <div class="wf-cap" style="margin-top:5px;">Daily trainer · 212 mi</div>
+                  <div style="height:5px; background:var(--l4); border-radius:3px; margin-top:8px; overflow:hidden;">
+                    <div style="height:100%; width:53%; background:linear-gradient(90deg, var(--success), var(--caution));"></div>
+                  </div>
+                  <div class="wf-cap" style="margin-top:5px;">53% used · 188 mi remaining</div>
+                </div>
+              </div>
+              <div class="wf-divider"></div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--t2);">
+                <span>Vaporfly 4 reserved for Big Sur</span>
+                <span style="color:var(--corporate); font-weight:700;">Change →</span>
+              </div>
+            </div>
+
+            <!-- Fueling -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Fueling note</div>
+                  <div class="wf-tile-sub">Pre-session · 60min out</div>
+                </div>
+              </div>
+              <div style="font-size:13px; line-height:1.55; color:var(--t1);">Workout sits at threshold for ~38 minutes — glycogen-dependent. <b style="color:var(--t0);">200–250 cal carb</b> 60 min pre (oats + banana). Caffeine optional. Skip the gel mid-workout; this is a flushing rep, not a fuel test.</div>
+              <div class="wf-divider"></div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t2); font-weight:700; text-transform:uppercase;">
+                <span>Hydration</span>
+                <b style="color:var(--t1);">16 oz · 30 min pre</b>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Workout name occupies the visual hero. The "Why" coach block sits immediately under the title — never buried below structure. Send-to-watch is a saturated corporate-blue pane on the right rail; nothing else competes with it. Per-rep cells call out the final rep in attention orange to nudge the runner not to fade.</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     4 · WEB PACE ZONES · faff.app/zones
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="mockup-section" id="mockup-web-pace-zones">
+  <div class="mockup-h">Web · Pace zones · VDOT view</div>
+  <div class="mockup-name">Pace Zones — VDOT 53</div>
+  <div class="mockup-job">A single source of truth for pace. Hero VDOT number, race-distance predictions, Daniels zone table, and a cross-walk to Pfitzinger / McMillan / Hansons systems for runners migrating plans.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/zones</span>
+      </div>
+
+      <div class="wf-nav">
+        <div class="wf-nav-l">
+          <div class="wf-brand">R</div>
+          <div class="wf-tabs">
+            <span class="wf-tab">Overview</span>
+            <span class="wf-tab">Training</span>
+            <span class="wf-tab">Races</span>
+            <span class="wf-tab active">Health</span>
+            <span class="wf-tab">Log</span>
+          </div>
+        </div>
+        <div class="wf-nav-r">
+          <div class="wf-nav-ic">⌕</div>
+          <div class="wf-nav-ic">◎</div>
+          <div class="wf-avatar"></div>
+        </div>
+      </div>
+
+      <div style="padding:24px 26px 28px;">
+
+        <!-- Page head: hero VDOT + race predictions -->
+        <div style="display:grid; grid-template-columns:1fr 2fr; gap:30px; align-items:end; padding-bottom:22px; border-bottom:1px solid var(--l4); margin-bottom:22px;">
+          <div>
+            <div class="wf-cap" style="margin-bottom:10px;">Daniels VDOT · current</div>
+            <div style="display:flex; align-items:flex-start; gap:14px;">
+              <div style="font-family:var(--f-display); font-weight:700; font-size:160px; line-height:.85; letter-spacing:-.02em; color:var(--t0);">53</div>
+              <div style="display:flex; flex-direction:column; gap:6px; padding-top:14px;">
+                <span class="chip chip--success">↗ +1.2</span>
+                <span class="chip chip--corporate">SINCE JAN</span>
+              </div>
+            </div>
+            <div style="font-family:var(--f-data); font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:var(--t2); font-weight:700; margin-top:14px;">VO₂max ≈ 56 ml/kg/min</div>
+            <div style="font-size:13px; color:var(--t2); margin-top:14px; max-width:340px;">Calibrated from your last 90 days of races and threshold sessions. The number faff.run uses to compute every pace target.</div>
+          </div>
+
+          <div>
+            <div class="wf-cap" style="margin-bottom:14px;">Race-distance predictions · at current VDOT</div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
+              <div class="wf-tile" style="padding:14px 16px; gap:6px;">
+                <div class="wf-cap">5K</div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1;">19:24</div>
+                <div class="wf-mono" style="font-size:10px; color:var(--success); font-weight:700;">↘ 18s vs Jan</div>
+              </div>
+              <div class="wf-tile" style="padding:14px 16px; gap:6px;">
+                <div class="wf-cap">10K</div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1;">40:18</div>
+                <div class="wf-mono" style="font-size:10px; color:var(--success); font-weight:700;">↘ 35s vs Jan</div>
+              </div>
+              <div class="wf-tile" style="padding:14px 16px; gap:6px; background:rgba(62,189,65,.08); border-color:rgba(62,189,65,.3);">
+                <div class="wf-cap" style="color:var(--success);">Half · current</div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1; color:var(--success);">1:29:00</div>
+                <div class="wf-mono" style="font-size:10px; color:var(--success); font-weight:700;">PR · last race</div>
+              </div>
+              <div class="wf-tile" style="padding:14px 16px; gap:6px; background:rgba(243,173,59,.08); border-color:rgba(243,173,59,.4);">
+                <div class="wf-cap" style="color:var(--attention);">Marathon · A goal</div>
+                <div style="font-family:var(--f-display); font-weight:800; font-size:36px; letter-spacing:-.025em; line-height:1; color:var(--attention);">3:07:00</div>
+                <div class="wf-mono" style="font-size:10px; color:var(--attention); font-weight:700;">Big Sur · 5d</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two-column: Daniels zone table + system cross-walk -->
+        <div style="display:grid; grid-template-columns:1.45fr 1fr; gap:14px;">
+
+          <!-- Daniels zone table -->
+          <div class="wf-tile">
+            <div class="wf-tile-h">
+              <div>
+                <div class="wf-tile-lbl">Daniels pace zones</div>
+                <div class="wf-tile-sub">5 zones · easy → repetition</div>
+              </div>
+              <span class="chip chip--corporate">VDOT 53</span>
+            </div>
+            <table class="wf-zones-tbl">
+              <thead>
+                <tr><th>Zone</th><th>Pace · /mi</th><th>Pace · /km</th><th>HR · % LTHR</th><th>Use</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="wf-zone-dot" style="background:var(--lt-blue);"></span><span class="zk">E</span><div class="wf-cap" style="margin-top:3px;">Easy</div></td>
+                  <td class="znum">8:00–8:30</td>
+                  <td class="znum">4:58–5:17</td>
+                  <td class="wf-mono">68–78%</td>
+                  <td>Recovery · base mileage</td>
+                </tr>
+                <tr>
+                  <td><span class="wf-zone-dot" style="background:var(--corporate);"></span><span class="zk">M</span><div class="wf-cap" style="margin-top:3px;">Marathon</div></td>
+                  <td class="znum">7:25</td>
+                  <td class="znum">4:36</td>
+                  <td class="wf-mono">82–87%</td>
+                  <td>Long-run finish · race rehearsal</td>
+                </tr>
+                <tr style="background:rgba(0,143,236,.06);">
+                  <td><span class="wf-zone-dot" style="background:var(--corporate); box-shadow:0 0 0 2px var(--l1), 0 0 0 4px var(--corporate);"></span><span class="zk" style="color:var(--corporate);">T</span><div class="wf-cap" style="margin-top:3px; color:var(--corporate);">Threshold</div></td>
+                  <td class="znum" style="color:var(--corporate);">6:55</td>
+                  <td class="znum" style="color:var(--corporate);">4:18</td>
+                  <td class="wf-mono" style="color:var(--corporate);">88–92%</td>
+                  <td style="color:var(--corporate);">Tempo · 4–8mi cruise · LT2</td>
+                </tr>
+                <tr>
+                  <td><span class="wf-zone-dot" style="background:var(--xp);"></span><span class="zk" style="color:#b873ff;">I</span><div class="wf-cap" style="margin-top:3px;">Interval</div></td>
+                  <td class="znum">6:20</td>
+                  <td class="znum">3:56</td>
+                  <td class="wf-mono">95–100%</td>
+                  <td>VO₂max · 1km / 1200 reps</td>
+                </tr>
+                <tr>
+                  <td><span class="wf-zone-dot" style="background:var(--warning);"></span><span class="zk" style="color:#ff8085;">R</span><div class="wf-cap" style="margin-top:3px;">Repetition</div></td>
+                  <td class="znum">5:42</td>
+                  <td class="znum">1:25/400m</td>
+                  <td class="wf-mono">Max</td>
+                  <td>Strides · 200/400 reps</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Time-in-zone bar -->
+            <div class="wf-divider" style="margin-top:6px;"></div>
+            <div>
+              <div class="wf-cap" style="margin-bottom:10px;">Time in zone · last 28 days</div>
+              <div style="display:flex; height:24px; border-radius:5px; overflow:hidden; background:var(--l3);">
+                <div style="background:var(--lt-blue); flex:78; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:10px; font-weight:700; color:#fff;">78%</div>
+                <div style="background:var(--corporate); flex:9; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:10px; font-weight:700; color:#fff;">9%</div>
+                <div style="background:var(--corporate); flex:7; opacity:.85; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:10px; font-weight:700; color:#fff;">7%</div>
+                <div style="background:var(--xp); flex:4; display:flex; align-items:center; justify-content:center; font-family:var(--f-data); font-size:9px; font-weight:700; color:#fff;">4%</div>
+                <div style="background:var(--warning); flex:2;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px; font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t3); font-weight:700; text-transform:uppercase;">
+                <span><b style="color:var(--t1);">E · 78%</b> textbook polarized</span>
+                <span>284 mi total</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- System cross-walk -->
+          <div style="display:flex; flex-direction:column; gap:14px;">
+
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">System cross-walk</div>
+                  <div class="wf-tile-sub">Daniels ↔ Pfitz ↔ McMillan ↔ Hansons</div>
+                </div>
+              </div>
+              <table class="wf-zones-tbl">
+                <thead>
+                  <tr><th>Daniels</th><th>Pfitz</th><th>McMillan</th><th>Hansons</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="zk" style="font-size:16px;">E</span></td>
+                    <td class="wf-mono" style="font-size:12px;">GA / Recov</td>
+                    <td class="wf-mono" style="font-size:12px;">Easy / LR</td>
+                    <td class="wf-mono" style="font-size:12px;">Easy A/B</td>
+                  </tr>
+                  <tr>
+                    <td><span class="zk" style="font-size:16px;">M</span></td>
+                    <td class="wf-mono" style="font-size:12px;">MP</td>
+                    <td class="wf-mono" style="font-size:12px;">Steady</td>
+                    <td class="wf-mono" style="font-size:12px;">MP / Strength</td>
+                  </tr>
+                  <tr>
+                    <td><span class="zk" style="font-size:16px; color:var(--corporate);">T</span></td>
+                    <td class="wf-mono" style="font-size:12px;">LT</td>
+                    <td class="wf-mono" style="font-size:12px;">Tempo</td>
+                    <td class="wf-mono" style="font-size:12px;">Tempo · SOS</td>
+                  </tr>
+                  <tr>
+                    <td><span class="zk" style="font-size:16px; color:#b873ff;">I</span></td>
+                    <td class="wf-mono" style="font-size:12px;">VO₂max</td>
+                    <td class="wf-mono" style="font-size:12px;">Speed</td>
+                    <td class="wf-mono" style="font-size:12px;">Strength rev</td>
+                  </tr>
+                  <tr>
+                    <td><span class="zk" style="font-size:16px; color:#ff8085;">R</span></td>
+                    <td class="wf-mono" style="font-size:12px;">Reps</td>
+                    <td class="wf-mono" style="font-size:12px;">Sprint</td>
+                    <td class="wf-mono" style="font-size:12px;">Strides</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Source / recalibrate -->
+            <div class="wf-tile" style="background:var(--l2);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Calibration source</div>
+                  <div class="wf-tile-sub">Last update · 90 days ago</div>
+                </div>
+                <span class="chip chip--success">FRESH</span>
+              </div>
+              <div style="background:var(--l1); border-radius:8px; padding:14px 16px; border-left:3px solid var(--success);">
+                <div class="wf-cap" style="margin-bottom:6px; color:var(--success);">Race · half marathon</div>
+                <div style="font-family:var(--f-display); font-weight:700; font-size:24px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">Salinas Half</div>
+                <div style="display:flex; gap:14px; margin-top:8px; font-family:var(--f-data); font-size:11px; font-weight:700; color:var(--t1);">
+                  <span>2026.02.14</span>
+                  <span style="color:var(--t3);">·</span>
+                  <span style="color:var(--success);">1:32:14</span>
+                  <span style="color:var(--t3);">·</span>
+                  <span>21st OA</span>
+                </div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px;">
+                <span class="wf-cap">Auto-recal on next A-effort</span>
+                <button class="wf-btn">Recalibrate now</button>
+              </div>
+            </div>
+
+            <!-- Aged training paces -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">VDOT trend · 12 mo</div>
+                  <div class="wf-tile-sub">+3.4 from baseline</div>
+                </div>
+                <span class="chip chip--success">CLIMBING</span>
+              </div>
+              <svg viewBox="0 0 320 90" preserveAspectRatio="none" style="width:100%; height:90px;">
+                <defs><linearGradient id="g-vdot" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3EBD41" stop-opacity=".4"/><stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/></linearGradient></defs>
+                <line x1="0" y1="40" x2="320" y2="40" stroke="var(--l4)" stroke-width="1" stroke-dasharray="3 4"/>
+                <text x="2" y="38" font-family="JetBrains Mono, monospace" font-size="8" fill="var(--t3)" font-weight="700">53</text>
+                <path d="M 0 70 L 30 68 L 60 65 L 90 60 L 120 56 L 150 52 L 180 48 L 210 44 L 240 40 L 270 36 L 300 32 L 320 30 L 320 90 L 0 90 Z" fill="url(#g-vdot)"/>
+                <path d="M 0 70 L 30 68 L 60 65 L 90 60 L 120 56 L 150 52 L 180 48 L 210 44 L 240 40 L 270 36 L 300 32 L 320 30" stroke="var(--success)" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <circle cx="320" cy="30" r="3.5" fill="var(--success)"/>
+              </svg>
+              <div style="display:flex; justify-content:space-between; font-family:var(--f-data); font-size:9px; letter-spacing:1.3px; color:var(--t3); font-weight:700; text-transform:uppercase;">
+                <span>May '25 · 49.6</span>
+                <span>Now · 53</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Massive VDOT numeral on the left replaces a generic page title — VDOT *is* the title here. Threshold row is highlighted because it's the most-referenced zone in marathon plans. Cross-walk uses the same letter token ("T", "I") as the primary table so muscle-memory transfers across pages.</div>
+</div>
+
+
+<!-- ─────────────────────────────────────────────────────────────────────
+     5 · WEB RACES · faff.app/races
+     ───────────────────────────────────────────────────────────────────── -->
+<div class="mockup-section" id="mockup-web-races">
+  <div class="mockup-h">Web · Races · Calendar + archive</div>
+  <div class="mockup-name">Races — Calendar</div>
+  <div class="mockup-job">Big Sur looms in attention orange at the top, the rest of the year stacked under, past races graded by goal-tier, multi-year archive tucked at the bottom for perspective.</div>
+  <div class="mockup-frame">
+    <div class="web-frame">
+      <div class="web-chrome">
+        <span class="dot red"></span><span class="dot ylw"></span><span class="dot grn"></span>
+        <span class="url">faff.app/races</span>
+      </div>
+
+      <div class="wf-nav">
+        <div class="wf-nav-l">
+          <div class="wf-brand">R</div>
+          <div class="wf-tabs">
+            <span class="wf-tab">Overview</span>
+            <span class="wf-tab">Training</span>
+            <span class="wf-tab active">Races</span>
+            <span class="wf-tab">Health</span>
+            <span class="wf-tab">Log</span>
+          </div>
+        </div>
+        <div class="wf-nav-r">
+          <div class="wf-nav-ic">⌕</div>
+          <div class="wf-nav-ic">◎</div>
+          <div class="wf-avatar"></div>
+        </div>
+      </div>
+
+      <div style="padding:24px 26px 28px;">
+
+        <!-- Page head -->
+        <div class="wf-pagehead">
+          <div>
+            <div class="eyebrow">2026 · 4 races scheduled · 2 done</div>
+            <h1>Races</h1>
+            <div class="sub">Your race calendar — <b>upcoming</b>, recently raced, and the full archive. Calibration source for VDOT lives here.</div>
+          </div>
+          <div class="wf-actions">
+            <select class="wf-btn" style="appearance:none; padding-right:24px;">
+              <option>2026</option><option>2025</option><option>2024</option>
+            </select>
+            <select class="wf-btn" style="appearance:none; padding-right:24px;">
+              <option>All distances</option><option>Marathon</option><option>Half</option><option>10K / 5K</option>
+            </select>
+            <button class="wf-btn wf-btn--primary">+ Add a race</button>
+          </div>
+        </div>
+
+        <!-- Two-col: races list / sidebar -->
+        <div style="display:grid; grid-template-columns:2.6fr 1fr; gap:14px;">
+
+          <!-- LEFT — race list -->
+          <div style="display:flex; flex-direction:column; gap:18px;">
+
+            <!-- UPCOMING section -->
+            <div>
+              <div class="wf-cap" style="margin-bottom:12px;"><b>Upcoming</b> · 2 races · next in 5 days</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+
+                <!-- BIG SUR — featured A goal -->
+                <div class="wf-race-row featured" style="grid-template-columns:auto 1fr auto; padding:24px 26px;">
+                  <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; gap:6px;">
+                      <span class="chip chip--attention">A GOAL</span>
+                      <span class="chip">MARATHON</span>
+                      <span class="chip" style="background:var(--attention); color:var(--l0); border-color:var(--attention);">5 DAYS</span>
+                    </div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:48px; line-height:.9; letter-spacing:-.005em; text-transform:uppercase; color:var(--attention);">Big Sur Marathon</div>
+                    <div class="wf-mono" style="font-size:11px; letter-spacing:1.5px; color:var(--t1); font-weight:700; text-transform:uppercase;">Sun Apr 26 · Carmel Highlands · 06:45 start</div>
+                  </div>
+                  <div></div>
+                  <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                    <div class="wf-race-time" style="color:var(--attention); font-size:48px;">3:05:00</div>
+                    <div class="wf-race-time-lbl" style="color:var(--attention);">A goal · 7:05/mi</div>
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                      <button class="wf-btn" style="font-size:11px; padding:7px 12px;">Race plan</button>
+                      <button class="wf-btn wf-btn--primary" style="font-size:11px; padding:7px 12px;">Open brief →</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mt. Tam Marathon — B goal future -->
+                <div class="wf-race-row">
+                  <div style="display:flex; gap:6px; align-self:flex-start; padding-top:6px;">
+                    <span class="chip chip--corporate">B GOAL</span>
+                  </div>
+                  <div>
+                    <div class="wf-race-name">Mt. Tam Trail 50K</div>
+                    <div class="wf-race-meta">Sat Sep 12 · Marin · 140 days · A→B trail · 6,200ft gain</div>
+                  </div>
+                  <div>
+                    <div class="wf-race-time" style="font-size:26px;">5:30</div>
+                    <div class="wf-race-time-lbl">target · 10:34/mi</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Reg · paid</div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- PAST section -->
+            <div>
+              <div class="wf-cap" style="margin-bottom:12px;"><b>Past · 2026</b> · 2 races · 2 PRs</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+
+                <!-- Salinas Half -->
+                <div class="wf-race-row">
+                  <div style="display:flex; gap:6px; align-self:flex-start; padding-top:6px; flex-direction:column;">
+                    <span class="chip chip--success">A · HIT</span>
+                    <span class="chip">HALF</span>
+                  </div>
+                  <div>
+                    <div class="wf-race-name">Salinas Half Marathon</div>
+                    <div class="wf-race-meta">Sat Feb 14 · Salinas · 21st OA · 4th AG</div>
+                    <div style="font-size:13px; color:var(--t1); margin-top:8px; max-width:480px; line-height:1.5;">Negative split, second half 7:00/mi. Calibration race for current VDOT 53. Conditions ideal — 47°F clear.</div>
+                  </div>
+                  <div>
+                    <div class="wf-race-time" style="color:var(--success);">1:32:14</div>
+                    <div class="wf-race-time-lbl" style="color:var(--success);">PR ↘ −1:46</div>
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
+                    <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--t1); font-weight:700;">7:02/mi</span>
+                    <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--success); font-weight:700;">VDOT SOURCE</span>
+                  </div>
+                </div>
+
+                <!-- Kezar Mile -->
+                <div class="wf-race-row">
+                  <div style="display:flex; gap:6px; align-self:flex-start; padding-top:6px; flex-direction:column;">
+                    <span class="chip chip--success">A · HIT</span>
+                    <span class="chip">1 MI</span>
+                  </div>
+                  <div>
+                    <div class="wf-race-name">Kezar Stadium Mile</div>
+                    <div class="wf-race-meta">Sun Apr 5 · SF · 1500m heat 2 · 9th OA</div>
+                  </div>
+                  <div>
+                    <div class="wf-race-time" style="color:var(--success);">5:42</div>
+                    <div class="wf-race-time-lbl" style="color:var(--success);">PR ↘ −4s</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Tune-up</div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- 2025 archive -->
+            <div>
+              <div class="wf-cap" style="margin-bottom:12px;"><b>Past · 2025</b> · 5 races</div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+
+                <!-- CIM 2025 — B goal positive split -->
+                <div class="wf-race-row" style="padding:14px 18px; grid-template-columns:auto auto 1fr auto auto;">
+                  <span class="chip chip--caution">B · MISSED A</span>
+                  <span class="chip">MARATHON</span>
+                  <div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:20px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">CIM 2025</div>
+                    <div class="wf-race-meta" style="margin-top:5px;">Dec 7 · Sacramento · positive split · cramps mile 22</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:18px; font-weight:700; color:var(--t0);">3:09:42</div>
+                  <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--caution); font-weight:700; text-transform:uppercase;">A was 3:05</span>
+                </div>
+
+                <!-- SF Marathon — A hit -->
+                <div class="wf-race-row" style="padding:14px 18px; grid-template-columns:auto auto 1fr auto auto;">
+                  <span class="chip chip--success">A · HIT</span>
+                  <span class="chip">MARATHON</span>
+                  <div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:20px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">SF Marathon</div>
+                    <div class="wf-race-meta" style="margin-top:5px;">Jul 27 · Embarcadero · BQ qualifier · 14th AG</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:18px; font-weight:700; color:var(--success);">3:08:14</div>
+                  <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--success); font-weight:700; text-transform:uppercase;">PR · BQ</span>
+                </div>
+
+                <!-- Bay to Breakers — fun -->
+                <div class="wf-race-row" style="padding:14px 18px; grid-template-columns:auto auto 1fr auto auto;">
+                  <span class="chip">FUN</span>
+                  <span class="chip">12K</span>
+                  <div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:20px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">Bay to Breakers</div>
+                    <div class="wf-race-meta" style="margin-top:5px;">May 17 · SF · ran with crew · costumes · no goal</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:18px; font-weight:700; color:var(--t1);">52:40</div>
+                  <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--t3); font-weight:700; text-transform:uppercase;">Fun</span>
+                </div>
+
+                <!-- Kaiser Half — PR -->
+                <div class="wf-race-row" style="padding:14px 18px; grid-template-columns:auto auto 1fr auto auto;">
+                  <span class="chip chip--success">A · HIT</span>
+                  <span class="chip">HALF</span>
+                  <div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:20px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">Kaiser Half</div>
+                    <div class="wf-race-meta" style="margin-top:5px;">Feb 8 · GG Park · negative split · 28th OA</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:18px; font-weight:700; color:var(--success);">1:34:00</div>
+                  <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--success); font-weight:700; text-transform:uppercase;">PR then</span>
+                </div>
+
+                <!-- Crissy 5K -->
+                <div class="wf-race-row" style="padding:14px 18px; grid-template-columns:auto auto 1fr auto auto;">
+                  <span class="chip chip--caution">B · MISSED</span>
+                  <span class="chip">5K</span>
+                  <div>
+                    <div style="font-family:var(--f-display); font-weight:700; font-size:20px; line-height:1; letter-spacing:-.005em; text-transform:uppercase;">Crissy 5K</div>
+                    <div class="wf-race-meta" style="margin-top:5px;">Mar 22 · Presidio · windy · went out too hard</div>
+                  </div>
+                  <div class="wf-mono" style="font-size:18px; font-weight:700; color:var(--t0);">19:48</div>
+                  <span class="wf-mono" style="font-size:10px; letter-spacing:1.4px; color:var(--caution); font-weight:700; text-transform:uppercase;">+24s</span>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Multi-year archive collapsed -->
+            <div class="wf-tile" style="background:var(--l2); padding:14px 18px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div class="wf-cap"><b>Archive · 2024 and earlier</b></div>
+                  <div style="font-size:13px; color:var(--t2); margin-top:5px;">23 races · first race Aug 2019 · all-time PR marathon 3:08:14</div>
+                </div>
+                <button class="wf-btn">Expand archive ↓</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT — sidebar tools -->
+          <div style="display:flex; flex-direction:column; gap:14px;">
+
+            <!-- Stats summary -->
+            <div class="wf-tile" style="background:var(--l2);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Career · races</div>
+                  <div class="wf-tile-sub">Since 2019 · 30 starts</div>
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:8px 0;">
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:42px; letter-spacing:-.025em; line-height:1;">30</div>
+                  <div class="wf-cap" style="margin-top:6px;">Starts</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:42px; letter-spacing:-.025em; line-height:1; color:var(--success);">22</div>
+                  <div class="wf-cap" style="margin-top:6px;">A goals hit · 73%</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:42px; letter-spacing:-.025em; line-height:1;">5</div>
+                  <div class="wf-cap" style="margin-top:6px;">Marathons · 1 BQ</div>
+                </div>
+                <div>
+                  <div style="font-family:var(--f-display); font-weight:800; font-size:42px; letter-spacing:-.025em; line-height:1;">0</div>
+                  <div class="wf-cap" style="margin-top:6px;">DNFs</div>
+                </div>
+              </div>
+              <div class="wf-divider"></div>
+              <div style="font-family:var(--f-data); font-size:10px; letter-spacing:1.4px; color:var(--t2); font-weight:700; text-transform:uppercase;">First race · <b style="color:var(--t1);">Bay to Breakers · May 19, 2019 · 1:14:32</b></div>
+            </div>
+
+            <!-- Add a race shortcut -->
+            <div class="wf-tile" style="background:linear-gradient(135deg, rgba(0,143,236,.12) 0%, rgba(0,143,236,.02) 100%); border-color:rgba(0,143,236,.3);">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">Add a race</div>
+                  <div class="wf-tile-sub">Manual · or paste a URL</div>
+                </div>
+                <span style="width:34px; height:34px; border-radius:9px; background:var(--corporate); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--f-display); font-weight:700; font-size:22px; line-height:1;">+</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="background:var(--l1); border:1px solid var(--l4); border-radius:8px; padding:10px 12px; font-family:var(--f-data); font-size:11px; color:var(--t3);">Paste URL · raceroster, ultrasignup, RunSignUp…</div>
+                <button class="wf-btn wf-btn--primary" style="justify-content:center;">Manual entry</button>
+              </div>
+              <div class="wf-divider"></div>
+              <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--t2); font-weight:700; text-transform:uppercase;">Imports · <b style="color:var(--t1);">2 from Strava</b> last 30d</div>
+            </div>
+
+            <!-- PR board -->
+            <div class="wf-tile">
+              <div class="wf-tile-h">
+                <div>
+                  <div class="wf-tile-lbl">PR board</div>
+                  <div class="wf-tile-sub">Standing best · all distances</div>
+                </div>
+                <span class="chip chip--success">2 PRS THIS YEAR</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:grid; grid-template-columns:50px 1fr auto; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--l4);">
+                  <span style="font-family:var(--f-display); font-weight:800; font-size:16px;">1 mi</span>
+                  <span class="wf-cap">Kezar · Apr '26</span>
+                  <span class="wf-mono" style="font-size:14px; font-weight:700;">5:42</span>
+                </div>
+                <div style="display:grid; grid-template-columns:50px 1fr auto; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--l4);">
+                  <span style="font-family:var(--f-display); font-weight:800; font-size:16px;">5K</span>
+                  <span class="wf-cap">Crissy · Mar '25</span>
+                  <span class="wf-mono" style="font-size:14px; font-weight:700;">19:48</span>
+                </div>
+                <div style="display:grid; grid-template-columns:50px 1fr auto; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--l4);">
+                  <span style="font-family:var(--f-display); font-weight:800; font-size:16px;">10K</span>
+                  <span class="wf-cap">SFM · Feb '25</span>
+                  <span class="wf-mono" style="font-size:14px; font-weight:700;">39:20</span>
+                </div>
+                <div style="display:grid; grid-template-columns:50px 1fr auto; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--l4);">
+                  <span style="font-family:var(--f-display); font-weight:800; font-size:16px; color:var(--success);">Half</span>
+                  <span class="wf-cap" style="color:var(--success);">Salinas · Feb '26</span>
+                  <span class="wf-mono" style="font-size:14px; font-weight:700; color:var(--success);">1:32:14</span>
+                </div>
+                <div style="display:grid; grid-template-columns:50px 1fr auto; gap:10px; align-items:baseline; padding:6px 0;">
+                  <span style="font-family:var(--f-display); font-weight:800; font-size:16px;">Mar</span>
+                  <span class="wf-cap">SF · Jul '25</span>
+                  <span class="wf-mono" style="font-size:14px; font-weight:700;">3:08:14</span>
+                </div>
+              </div>
+              <div class="wf-divider"></div>
+              <div style="font-family:var(--f-data); font-size:9.5px; letter-spacing:1.4px; color:var(--attention); font-weight:700; text-transform:uppercase;">Marathon · pending update Sun</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup-notes"><b>Notes:</b> Big Sur takes the visual oxygen — only race rendered at 48px display weight. Past 2026 races use canonical chip-time finish (success green = "A goal hit"). Calibration source for VDOT is surfaced inline on the Salinas Half row, tying this page to the Pace Zones surface. CIM 2025's "+missed A" tag is honest, not punishing.</div>
+</div>

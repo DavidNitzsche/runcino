@@ -11,12 +11,12 @@ fires on race day that I haven't personally verified.
 - [ ] On your Mac, copy your 2024 Big Sur GPX into the repo:
       ```
       cp ~/Downloads/gpx_20240428_id8679_race1_20250117093547.gpx \
-         "/Volumes/WP/06 Claude Code/runcino/web/public/sample-bigsur.gpx"
+         "/Volumes/WP/06 Claude Code/faff/web/public/sample-bigsur.gpx"
       ```
 
 - [ ] Commit it:
       ```
-      cd "/Volumes/WP/06 Claude Code/runcino"
+      cd "/Volumes/WP/06 Claude Code/faff"
       git add web/public/sample-bigsur.gpx
       git commit -m "Swap in real Big Sur 2024 GPX (course unchanged for 2026)"
       git push
@@ -48,7 +48,7 @@ fires on race day that I haven't personally verified.
   - Landmarks: 5 (Hurricane begins, summit, Bixby, Strawberry, last climb)
   - Check: drift from goal should be 0 seconds
 
-- [ ] Open `web/public/big-sur-3-50.runcino.json` and eyeball the
+- [ ] Open `web/public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__` and eyeball the
   `claude_rationale` (should say `null` — goal-setting happens on web
   before export if you use Claude) and the `intervals` array.
 
@@ -123,8 +123,8 @@ If boundaries drift from the PDF, edit
 ## Part F · Rebuild the final JSON (5 min)
 
 - [ ] Import the updated plan into the iOS app:
-  1. Email yourself `web/public/big-sur-3-50.runcino.json`
-  2. Open in iPhone → share sheet → "Open in Runcino"
+  1. Email yourself `web/public/big-sur-3-50__KEEP_DOT_FAFF.RUN_JSON__`
+  2. Open in iPhone → share sheet → "Open in faff.run"
   3. Tap "Add to Apple Watch"
   4. Confirm the workout shows on your Apple Watch in the Workout app
 
