@@ -18,7 +18,9 @@ const RouteMap = dynamic(() => import('@/app/log/RouteMap'), {
 
 interface Props {
   coords: Array<[number, number]>;
-  height?: number;
+  /** Pass "100%" to fill the parent (useful inside a stretching grid
+   *  cell where the parent has a defined height). */
+  height?: number | string;
 }
 
 export function RouteMapIsland({ coords, height = 300 }: Props) {

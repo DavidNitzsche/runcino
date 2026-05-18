@@ -19,6 +19,7 @@ import { ProfileModalsIsland } from './ProfileModalsIsland';
 import { MaxHrIsland } from './MaxHrIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -114,6 +115,13 @@ export default async function ProfilePage() {
   const activeShoes = shoes.filter((s) => !s.retired);
   const initials = user.name?.trim().split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'R';
 
+  // Resolve max HR (manual override → computed peak) so the zones
+  // strip can show real bpm ranges, not "—". The MaxHrIsland below
+  // hits the same API client-side for its provenance UI; we mirror
+  // the value here for fast server render of the zone ranges.
+  const resolvedMaxHr = await resolveEffectiveMaxHr(auth.id);
+  const maxHr = resolvedMaxHr.value;
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -165,14 +173,18 @@ export default async function ProfilePage() {
     { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
   ];
 
-  // HR zones — require user_uuid stored max HR, which we don't compute
-  // yet. Until then, show the buckets but no ranges.
+  // HR zones — populated from the user's resolved max HR. Daniels-style
+  // %max bands: Z1 50-60, Z2 60-70, Z3 70-80, Z4 80-90, Z5 90-100.
+  const zoneRange = (loPct: number, hiPct: number): string => {
+    if (!maxHr) return '—';
+    return `${Math.round(maxHr * loPct)}–${Math.round(maxHr * hiPct)}`;
+  };
   const HR_ZONES = [
-    { tier: 'z1', name: 'Z1 · Recovery',  range: '—', pct: '50–60% max' },
-    { tier: 'z2', name: 'Z2 · Easy',      range: '—', pct: '60–70% max' },
-    { tier: 'z3', name: 'Z3 · Steady',    range: '—', pct: '70–80% max' },
-    { tier: 'z4', name: 'Z4 · Threshold', range: '—', pct: '80–90% max' },
-    { tier: 'z5', name: 'Z5 · VO₂max',    range: '—', pct: '90–100% max' },
+    { tier: 'z1', name: 'Z1 · Recovery',  range: zoneRange(0.50, 0.60), pct: '50–60% max' },
+    { tier: 'z2', name: 'Z2 · Easy',      range: zoneRange(0.60, 0.70), pct: '60–70% max' },
+    { tier: 'z3', name: 'Z3 · Steady',    range: zoneRange(0.70, 0.80), pct: '70–80% max' },
+    { tier: 'z4', name: 'Z4 · Threshold', range: zoneRange(0.80, 0.90), pct: '80–90% max' },
+    { tier: 'z5', name: 'Z5 · VO₂max',    range: zoneRange(0.90, 1.00), pct: '90–100% max' },
   ];
 
   const bioBits: string[] = [];
@@ -261,10 +273,14 @@ export default async function ProfilePage() {
             <div className="card-title-group">
               <div className="card-title">Heart Rate Zones</div>
               <div className="card-sub" style={{ color: 'rgba(13,15,18,.55)' }}>
-                No data — log your max HR + recent race to populate
+                {maxHr
+                  ? `Daniels %max bands · used for every HR read in your debriefs`
+                  : 'No data — log your max HR + recent race to populate'}
               </div>
             </div>
-            <div className="card-meta" style={{ color: 'rgba(13,15,18,.45)' }}>Max HR · —</div>
+            <div className="card-meta" style={{ color: maxHr ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+              Max HR · {maxHr ? <strong>{maxHr}</strong> : '—'}
+            </div>
           </div>
           <div className="hr-grid">
             {HR_ZONES.map((z) => (

@@ -74,20 +74,47 @@
   box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
   padding: 40px; margin-top: 16px;
 }
-.race-plan-v4-page .a-race-hero-grid {
+/* Two-column hero: left stacks title + stats (narrow), right gets the
+   big map. align-items: stretch makes the map cell match the left
+   column's content height. */
+.race-plan-v4-page .a-race-hero-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 1.15fr);
   gap: 32px;
-  align-items: start;
+  align-items: stretch;
 }
-.race-plan-v4-page .a-race-hero-text { min-width: 0; }
+.race-plan-v4-page .a-race-hero-left {
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+.race-plan-v4-page .a-race-hero-text {
+  flex: 1; min-width: 0;
+}
 .race-plan-v4-page .a-race-hero-map {
   border-radius: 12px;
   overflow: hidden;
-  align-self: stretch;
+  background: rgba(13,15,18,.04);
+  min-height: 420px;
+}
+.race-plan-v4-page .a-race-hero-map :global(> div) {
+  height: 100% !important;
+}
+/* Stacked path-stats: 1 column inside the narrower left column.
+   The base .path-stats grid below is overridden by this class. */
+.race-plan-v4-page .path-stats-stacked {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.race-plan-v4-page .path-stats-stacked .path-stat,
+.race-plan-v4-page .path-stats-stacked .path-stat-btn {
+  padding: 12px 18px;
+}
+.race-plan-v4-page .path-stats-stacked .path-stat-value {
+  font-size: 28px;
 }
 @media (max-width: 960px) {
-  .race-plan-v4-page .a-race-hero-grid { grid-template-columns: 1fr; }
+  .race-plan-v4-page .a-race-hero-split { grid-template-columns: 1fr; }
+  .race-plan-v4-page .a-race-hero-map { min-height: 240px; }
 }
 .race-plan-v4-page .a-race-eyebrow {
   font-family: 'Inter', sans-serif; font-size: 12px;
@@ -96,8 +123,8 @@
 }
 .race-plan-v4-page .a-race-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(72px, 11vw, 140px); line-height: 0.86;
-  letter-spacing: -3px; color: #0D0F12; margin-left: -4px;
+  font-size: clamp(64px, 9vw, 120px); line-height: 0.86;
+  letter-spacing: -3px; color: #0D0F12; margin-left: -3px;
   text-transform: uppercase;
 }
 .race-plan-v4-page .a-race-sub {

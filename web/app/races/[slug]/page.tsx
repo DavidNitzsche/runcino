@@ -334,40 +334,43 @@ export default async function RacePlanPage({ params }: PageProps) {
 
         {/* ── A-RACE HERO ── */}
         <div className="a-race-card">
-          <div className="a-race-hero-grid">
-            <div className="a-race-hero-text">
-              <div className="a-race-eyebrow">
-                {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'} · GOAL TIME {race.meta.goalDisplay}
+          <div className="a-race-hero-split">
+            <div className="a-race-hero-left">
+              <div className="a-race-hero-text">
+                <div className="a-race-eyebrow">
+                  {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'} · GOAL TIME {race.meta.goalDisplay}
+                </div>
+                <div className="a-race-title">
+                  {hero.line1}{hero.line2 && <><br />{hero.line2}</>}
+                </div>
+                <div className="a-race-sub">{race.meta.name} · {fmtShortMonthDay(race.meta.date)}</div>
               </div>
-              <div className="a-race-title">
-                {hero.line1}{hero.line2 && <><br />{hero.line2}</>}
+
+              <div className="path-stats path-stats-stacked">
+                <GoalEditIsland
+                  slug={race.slug}
+                  goalDisplay={race.meta.goalDisplay}
+                  goalFinishS={goalFinishS}
+                  raceDistanceMi={race.meta.distanceMi}
+                />
+                <div className="path-stat">
+                  <div className="path-stat-label">Predicted</div>
+                  <div className="path-stat-value orange">—</div>
+                  <div className="path-stat-sub">No data — set your VDOT</div>
+                </div>
+                <div className="path-stat">
+                  <div className="path-stat-label">Strategy</div>
+                  <div className="path-stat-value green">{race.plan?.goal?.strategy ?? 'Even Effort'}</div>
+                  <div className="path-stat-sub">±{race.plan?.tolerance?.pace_s_per_mi ?? 10} s/mi tolerance</div>
+                </div>
               </div>
-              <div className="a-race-sub">{race.meta.name} · {fmtShortMonthDay(race.meta.date)}</div>
             </div>
+
             {routeCoords.length > 1 && (
               <div className="a-race-hero-map">
-                <RouteMapIsland coords={routeCoords} height={300} />
+                <RouteMapIsland coords={routeCoords} height="100%" />
               </div>
             )}
-          </div>
-
-          <div className="path-stats">
-            <GoalEditIsland
-              slug={race.slug}
-              goalDisplay={race.meta.goalDisplay}
-              goalFinishS={goalFinishS}
-              raceDistanceMi={race.meta.distanceMi}
-            />
-            <div className="path-stat">
-              <div className="path-stat-label">Predicted</div>
-              <div className="path-stat-value orange">—</div>
-              <div className="path-stat-sub">No data — set your VDOT</div>
-            </div>
-            <div className="path-stat">
-              <div className="path-stat-label">Strategy</div>
-              <div className="path-stat-value green">{race.plan?.goal?.strategy ?? 'Even Effort'}</div>
-              <div className="path-stat-sub">±{race.plan?.tolerance?.pace_s_per_mi ?? 10} s/mi tolerance</div>
-            </div>
           </div>
         </div>
 

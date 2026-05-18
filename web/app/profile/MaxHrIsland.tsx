@@ -25,7 +25,12 @@ interface ComputedSource {
   workoutType: number | null;
   distanceMi: number;
 }
-interface ComputedMaxHr { value: number; source: ComputedSource }
+interface TopReading extends ComputedSource { hr: number }
+interface ComputedMaxHr {
+  value: number;
+  source: ComputedSource;
+  topReadings?: TopReading[];
+}
 interface State {
   value: number | null;
   source: 'manual' | 'computed' | 'none';
@@ -115,9 +120,32 @@ export function MaxHrIsland() {
             {state.source === 'manual' && <>Set manually</>}
             {state.source === 'computed' && state.computed && (
               <>
-                Peak from <strong>{state.computed.source.name}</strong>
-                {state.computed.source.date && <> · {fmtDate(state.computed.source.date)}</>}
-                {state.computed.source.workoutType === 1 && ' · race'}
+                {(() => {
+                  const reads = state.computed.topReadings ?? [];
+                  // How many readings are within 3 bpm of the peak? Those
+                  // are corroborating evidence the peak is real, not a glitch.
+                  const close = reads.filter((r) => r.hr >= state.computed!.value - 3).length;
+                  if (close >= 3) {
+                    return (
+                      <>
+                        Confirmed across <strong>{close} runs</strong> within 3 bpm of {state.computed.value}.
+                        Peak from <strong>{state.computed.source.name}</strong>
+                        {state.computed.source.date && <> · {fmtDate(state.computed.source.date)}</>}
+                        {state.computed.source.workoutType === 1 && ' · race'}.
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      Peak from <strong>{state.computed.source.name}</strong>
+                      {state.computed.source.date && <> · {fmtDate(state.computed.source.date)}</>}
+                      {state.computed.source.workoutType === 1 && ' · race'}
+                      {reads.length > 1 && (
+                        <> · also seen at {reads.filter((r) => r.id !== state.computed!.source.id).slice(0, 2).map((r) => `${r.hr} (${r.name})`).join(', ')}</>
+                      )}
+                    </>
+                  );
+                })()}
               </>
             )}
             {state.source === 'none' && (

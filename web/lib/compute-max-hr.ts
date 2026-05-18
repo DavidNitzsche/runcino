@@ -33,6 +33,16 @@ export interface ComputedMaxHr {
     workoutType: number | null;
     distanceMi: number;
   };
+  /** Top-N peak HR readings — for showing "confirmed across N runs"
+   *  in the UI. Empty if only one or two valid sources. */
+  topReadings: Array<{
+    id: string;
+    name: string;
+    date: string;
+    workoutType: number | null;
+    distanceMi: number;
+    hr: number;
+  }>;
 }
 
 interface ActivityRow {
@@ -48,6 +58,7 @@ interface ActivityRow {
 }
 
 export async function computeMaxHrFromActivities(userId: string): Promise<ComputedMaxHr | null> {
+  // Pull more candidates so multi-source confirmation is meaningful.
   const rows = await query<ActivityRow>(
     `SELECT id::text AS id, data
        FROM strava_activities
@@ -56,7 +67,7 @@ export async function computeMaxHrFromActivities(userId: string): Promise<Comput
         AND (data->>'maxHr')::NUMERIC >= 140
         AND (data->>'maxHr')::NUMERIC <= 220
       ORDER BY (data->>'maxHr')::NUMERIC DESC
-      LIMIT 5`,
+      LIMIT 25`,
     [userId],
   );
   if (rows.length === 0) return null;
@@ -76,8 +87,27 @@ export async function computeMaxHrFromActivities(userId: string): Promise<Comput
   }
 
   const d = best.data;
+  // Build top-N readings list — useful for "confirmed across N runs"
+  // confidence UI. Only include readings within 8 bpm of the peak
+  // (anything further is a different effort level, not a peak).
+  const bestHr = Math.round(Number(d.maxHr) || 0);
+  const topReadings = rows
+    .filter((r) => {
+      const hr = Number(r.data.maxHr) || 0;
+      return hr >= bestHr - 8;
+    })
+    .slice(0, 8)
+    .map((r) => ({
+      id: r.id,
+      name: r.data.name || 'Run',
+      date: r.data.date || (r.data.startLocal || '').slice(0, 10),
+      workoutType: r.data.workoutType ?? null,
+      distanceMi: Number(r.data.distanceMi) || 0,
+      hr: Math.round(Number(r.data.maxHr) || 0),
+    }));
+
   return {
-    value: Math.round(Number(d.maxHr) || 0),
+    value: bestHr,
     source: {
       id: best.id,
       name: d.name || 'Run',
@@ -85,6 +115,7 @@ export async function computeMaxHrFromActivities(userId: string): Promise<Comput
       workoutType: d.workoutType ?? null,
       distanceMi: Number(d.distanceMi) || 0,
     },
+    topReadings,
   };
 }
 
