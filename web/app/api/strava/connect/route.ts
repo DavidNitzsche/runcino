@@ -85,7 +85,11 @@ export async function GET(req: Request) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'read,activity:read_all,profile:read_all',
+    // activity:write lets us push workout name + description back to
+    // Strava when a planned workout completes (faff.run names the run
+    // for you). Required for the writeback feature; existing connections
+    // need to re-auth once after this scope is added.
+    scope: 'read,activity:read_all,profile:read_all,activity:write',
     approval_prompt: 'auto',
     state: stateValue,
   });

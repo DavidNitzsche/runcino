@@ -42,6 +42,9 @@ import {
   deleteActivityForUser,
   markDeauthorized,
 } from '@/lib/sync-strava-user';
+import { query } from '@/lib/db';
+import { buildSyntheticPlan } from '@/lib/synthetic-plan';
+import { pushWorkoutNameToStrava } from '@/lib/strava-writeback';
 
 function verifyToken(): string {
   return process.env.STRAVA_WEBHOOK_VERIFY_TOKEN || 'faff-run-strava-webhook';
@@ -100,8 +103,16 @@ async function handleEvent(event: StravaEvent): Promise<void> {
       const result = await syncSingleActivity(userId, event.object_id);
       if (!result.ok) {
         console.error('[strava webhook] syncSingleActivity failed', userId, event.object_id, result.error);
-      } else {
-        console.log('[strava webhook] activity', event.aspect_type, event.object_id, 'for user', userId);
+        return;
+      }
+      console.log('[strava webhook] activity', event.aspect_type, event.object_id, 'for user', userId);
+
+      // Writeback: only on CREATE (never on update — manual edits stick).
+      // Pull the just-synced activity from our DB to know its date +
+      // current name/description + actual stats, then push the planned
+      // workout name + description back to Strava if all guards pass.
+      if (event.aspect_type === 'create') {
+        await tryWriteback(userId, event.object_id);
       }
     } else if (event.aspect_type === 'delete') {
       await deleteActivityForUser(userId, event.object_id);
@@ -120,4 +131,67 @@ async function handleEvent(event: StravaEvent): Promise<void> {
     }
     return;
   }
+}
+
+/**
+ * Look up the just-synced activity, match it to a planned workout,
+ * and push the planned name + description back to Strava. Caller is
+ * the webhook create handler; this is fire-and-forget after the
+ * activity row is already in strava_activities.
+ */
+async function tryWriteback(userId: string, activityId: number): Promise<void> {
+  interface ActRow {
+    data: {
+      name?: string;
+      description?: string | null;
+      startLocal?: string;
+      date?: string;
+      distanceMi?: number;
+      movingTimeS?: number;
+      avgHr?: number;
+    };
+  }
+  const rows = await query<ActRow>(
+    `SELECT data FROM strava_activities WHERE id = $1 LIMIT 1`,
+    [activityId],
+  );
+  const row = rows[0];
+  if (!row?.data) return;
+
+  const dateISO = row.data.date || (row.data.startLocal || '').slice(0, 10);
+  if (!dateISO) return;
+
+  // Find the planned day in the synthetic plan that matches this activity's date.
+  const weeks = buildSyntheticPlan();
+  let matchedDay = null;
+  let matchedWeek = null;
+  for (const w of weeks) {
+    const d = w.days.find((d) => d.date === dateISO);
+    if (d) { matchedDay = d; matchedWeek = w; break; }
+  }
+  if (!matchedDay || !matchedWeek) {
+    console.log('[strava-writeback] no plan match for', dateISO, '— skip');
+    return;
+  }
+
+  // Phase week index = position of this week among its phase peers
+  const phaseWeeks = weeks.filter((w) => w.phase === matchedWeek!.phase);
+  const phaseWeekIdx = phaseWeeks.findIndex((w) => w === matchedWeek) + 1;
+
+  const distanceMi = Number(row.data.distanceMi) || 0;
+  const movingS = Number(row.data.movingTimeS) || 0;
+  const paceSPerMi = distanceMi > 0 ? Math.round(movingS / distanceMi) : 0;
+  const avgHr = row.data.avgHr ? Number(row.data.avgHr) : null;
+
+  const result = await pushWorkoutNameToStrava({
+    userId,
+    activityId,
+    currentName: row.data.name || null,
+    currentDescription: row.data.description ?? null,
+    day: matchedDay,
+    phase: matchedWeek.phase,
+    phaseWeek: phaseWeekIdx,
+    actual: { distanceMi, paceSPerMi, avgHr },
+  });
+  console.log('[strava-writeback]', activityId, result.pushed ? 'PUSHED' : `skipped: ${result.reason}`);
 }

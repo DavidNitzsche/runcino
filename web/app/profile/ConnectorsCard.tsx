@@ -61,6 +61,7 @@ export function ConnectorsCard() {
   const [connectors, setConnectors] = useState<ConnectorRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [writeback, setWriteback] = useState<boolean | null>(null);
 
   async function load() {
     try {
@@ -72,7 +73,29 @@ export function ConnectorsCard() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  async function loadWriteback() {
+    try {
+      const res = await fetch('/api/profile/writeback');
+      const j = await res.json();
+      setWriteback(!!j.enabled);
+    } catch { setWriteback(true); }
+  }
+
+  useEffect(() => { load(); loadWriteback(); }, []);
+
+  async function toggleWriteback() {
+    const next = !writeback;
+    setWriteback(next);
+    try {
+      await fetch('/api/profile/writeback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+    } catch {
+      setWriteback(!next); // revert
+    }
+  }
 
   async function disconnect(provider: string) {
     if (!confirm(`Disconnect ${PROVIDER_INFO[provider]?.name || provider}? Your run history stays — re-connect any time to resume syncing.`)) return;
@@ -131,6 +154,7 @@ export function ConnectorsCard() {
         {/* Strava row — either connected (with sync info + disconnect) or
             available (with connect button). */}
         {stravaConn ? (
+          <>
           <div className="faff-conn-row connected">
             <div className="faff-conn-icon strava">S</div>
             <div>
@@ -147,6 +171,22 @@ export function ConnectorsCard() {
               <button className="faff-conn-btn danger" type="button" disabled={busy} onClick={() => disconnect('strava')}>Disconnect</button>
             </div>
           </div>
+          {/* Writeback toggle — auto-names Strava activities to match the planned workout */}
+          <div className="faff-conn-subrow">
+            <label className="faff-writeback-toggle">
+              <input
+                type="checkbox"
+                checked={writeback === null ? true : writeback}
+                disabled={writeback === null}
+                onChange={toggleWriteback}
+              />
+              <span>
+                <strong>Auto-name Strava activities</strong>
+                <span className="faff-writeback-sub">When you post a run that matches a planned workout, faff.run renames the Strava activity (e.g. <em>“Threshold · Cruise Intervals · Base Week 2”</em>) and adds the plan/actual breakdown to the description. Skips races and anything you&rsquo;ve manually named.</span>
+              </span>
+            </label>
+          </div>
+          </>
         ) : (
           <div className="faff-conn-row">
             <div className="faff-conn-icon strava">S</div>
@@ -286,6 +326,24 @@ export function ConnectorsCard() {
         .faff-conn-btn.danger:hover { background: rgba(244,63,94,.06); color: #F43F5E; }
 
         .faff-conn-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+        .faff-conn-subrow {
+          padding: 0 4px 4px 8px;
+        }
+        .faff-writeback-toggle {
+          display: flex; align-items: flex-start; gap: 12px;
+          padding: 14px 18px;
+          background: rgba(13,15,18,.02);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 10px;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif; font-size: 13px;
+          color: rgba(13,15,18,.85);
+        }
+        .faff-writeback-toggle input { margin-top: 3px; width: 16px; height: 16px; cursor: pointer; accent-color: #FC4C02; }
+        .faff-writeback-toggle strong { display: block; font-weight: 600; color: #0D0F12; margin-bottom: 3px; font-size: 13px; }
+        .faff-writeback-sub { display: block; font-size: 12px; color: rgba(13,15,18,.55); line-height: 1.5; font-weight: 400; }
+        .faff-writeback-sub em { font-style: italic; color: rgba(13,15,18,.75); }
         .faff-conn-loading {
           padding: 16px 20px; text-align: center;
           font-family: 'Inter', sans-serif; font-size: 12px;

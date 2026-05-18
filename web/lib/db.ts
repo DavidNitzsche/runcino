@@ -382,6 +382,11 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id) ON DELETE SET NULL;
     `);
+    // Auto-rename Strava activities to match the planned workout. On by
+    // default. Toggle from /profile Connectors card.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS strava_writeback BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
     // Auto-promote the legacy owner to admin + active on every boot so

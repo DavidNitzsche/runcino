@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
       [
         userId,
         athleteId,
-        'read,activity:read_all,profile:read_all',
+        'read,activity:read_all,profile:read_all,activity:write',
         tokens.access_token,
         tokens.refresh_token,
         expiresAt,
