@@ -113,37 +113,65 @@ export default async function ProfilePage() {
   const activeShoes = shoes.filter((s) => !s.retired);
   const initials = user.name?.trim().split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'R';
 
-  // Lifetime KPI seed values — these will switch to aggregated queries
-  // once strava_activities is populated for the user. Sample defaults
-  // shown for new users mirror the design mockup but should NOT lie:
-  // until activity data is real, render zeros for new accounts.
-  // For the legacy backfill owner (dnitch85@me.com), keep the seeded
-  // numbers — they reflect imported Strava history.
-  const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
-  const KPIS = isLegacy
-    ? [
-        { label: 'Lifetime mi',  value: '638', unit: 'mi', sub: 'All time' },
-        { label: 'Races',         value: '6',   sub: '2 × marathon · 4 × half' },
-        { label: 'Days run',      value: '79',  sub: '79 unique days' },
-        { label: 'Peak year',     value: '638', unit: 'mi', sub: '2026 · on track' },
-        { label: 'Lifetime elev', value: '16K', unit: 'ft', sub: '0.54× Everest' },
-      ]
-    : [
-        { label: 'Lifetime mi',  value: '—', sub: 'Connect Strava to populate' },
-        { label: 'Races',         value: '—', sub: 'No races yet' },
-        { label: 'Days run',      value: '—', sub: '—' },
-        { label: 'Peak year',     value: '—', sub: '—' },
-        { label: 'Lifetime elev', value: '—', sub: '—' },
-      ];
+  // Real lifetime KPIs computed from strava_activities. Until activity
+  // data is present, every cell reads "No data" — no more seeded mockups.
+  interface KpiRow {
+    lifetime_mi: string | null;
+    races: string | null;
+    days_run: string | null;
+    elev_ft: string | null;
+    peak_year: string | null;
+    peak_year_mi: string | null;
+  }
+  const kpiRows = await query<KpiRow>(
+    `WITH acts AS (
+      SELECT (data->>'distanceMi')::NUMERIC AS mi,
+             COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+             LEFT(COALESCE(data->>'date', data->>'startLocal'), 4) AS yr,
+             (data->>'elevGainFt')::NUMERIC AS elev,
+             data->>'type' AS type
+        FROM strava_activities
+       WHERE user_uuid = $1 OR user_uuid IS NULL
+    )
+    SELECT
+      COALESCE(SUM(mi), 0)::int::text AS lifetime_mi,
+      COUNT(*) FILTER (WHERE LOWER(type) = 'race')::text AS races,
+      COUNT(DISTINCT day)::text AS days_run,
+      COALESCE(SUM(elev), 0)::int::text AS elev_ft,
+      (SELECT yr  FROM acts WHERE yr IS NOT NULL GROUP BY yr ORDER BY SUM(mi) DESC LIMIT 1) AS peak_year,
+      (SELECT SUM(mi)::int::text FROM acts WHERE yr IS NOT NULL GROUP BY yr ORDER BY SUM(mi) DESC LIMIT 1) AS peak_year_mi
+    FROM acts`,
+    [auth.id],
+  );
+  const k = kpiRows[0] ?? null;
+  const lifetimeMi = k && parseInt(k.lifetime_mi ?? '0', 10) > 0 ? parseInt(k.lifetime_mi!, 10) : null;
+  const racesCount = k && parseInt(k.races ?? '0', 10) > 0 ? parseInt(k.races!, 10) : null;
+  const daysRun = k && parseInt(k.days_run ?? '0', 10) > 0 ? parseInt(k.days_run!, 10) : null;
+  const elevFt = k && parseInt(k.elev_ft ?? '0', 10) > 0 ? parseInt(k.elev_ft!, 10) : null;
+  const peakYear = k?.peak_year ?? null;
+  const peakYearMi = k?.peak_year_mi ? parseInt(k.peak_year_mi, 10) : null;
 
-  // HR zone defaults (will switch to a real per-user computation once
-  // VDOT anchor + max-HR estimation wire through).
+  function fmtElev(ft: number): string {
+    if (ft >= 1000) return `${(ft / 1000).toFixed(0)}K`;
+    return String(ft);
+  }
+
+  const KPIS = [
+    { label: 'Lifetime mi',  value: lifetimeMi !== null ? String(lifetimeMi) : '—',                  unit: lifetimeMi !== null ? 'mi' : undefined, sub: lifetimeMi !== null ? 'All time' : 'No data' },
+    { label: 'Races',        value: racesCount !== null ? String(racesCount) : '—',                  sub: racesCount !== null ? 'From Strava history' : 'No data' },
+    { label: 'Days run',     value: daysRun !== null    ? String(daysRun)    : '—',                  sub: daysRun !== null ? `${daysRun} unique days` : 'No data' },
+    { label: 'Peak year',    value: peakYearMi !== null ? String(peakYearMi) : '—',                  unit: peakYearMi !== null ? 'mi' : undefined, sub: peakYear ? `${peakYear} · biggest year` : 'No data' },
+    { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
+  ];
+
+  // HR zones — require user_uuid stored max HR, which we don't compute
+  // yet. Until then, show the buckets but no ranges.
   const HR_ZONES = [
-    { tier: 'z1', name: 'Z1 · Recovery',  range: '93–111',  pct: '50–60% max' },
-    { tier: 'z2', name: 'Z2 · Easy',      range: '112–129', pct: '60–70% max' },
-    { tier: 'z3', name: 'Z3 · Steady',    range: '130–148', pct: '70–80% max' },
-    { tier: 'z4', name: 'Z4 · Threshold', range: '149–167', pct: '80–90% max' },
-    { tier: 'z5', name: 'Z5 · VO₂max',    range: '168–185', pct: '90–100% max' },
+    { tier: 'z1', name: 'Z1 · Recovery',  range: '—', pct: '50–60% max' },
+    { tier: 'z2', name: 'Z2 · Easy',      range: '—', pct: '60–70% max' },
+    { tier: 'z3', name: 'Z3 · Steady',    range: '—', pct: '70–80% max' },
+    { tier: 'z4', name: 'Z4 · Threshold', range: '—', pct: '80–90% max' },
+    { tier: 'z5', name: 'Z5 · VO₂max',    range: '—', pct: '90–100% max' },
   ];
 
   const bioBits: string[] = [];
@@ -231,11 +259,11 @@ export default async function ProfilePage() {
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Heart Rate Zones</div>
-              <div className="card-sub">
-                <strong>VDOT 48.1</strong> · derived from your Powered by the Mouse Half (3 mo ago)
+              <div className="card-sub" style={{ color: 'rgba(13,15,18,.55)' }}>
+                No data — log your max HR + recent race to populate
               </div>
             </div>
-            <div className="card-meta">Max HR · <strong>185</strong> est · age-based</div>
+            <div className="card-meta" style={{ color: 'rgba(13,15,18,.45)' }}>Max HR · —</div>
           </div>
           <div className="hr-grid">
             {HR_ZONES.map((z) => (

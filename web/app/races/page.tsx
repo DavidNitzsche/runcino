@@ -41,36 +41,13 @@ interface RecentRace {
 export default async function RacesPage() {
   const auth = await requireActiveUser();
 
-  const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
-
-  // Seed values from designs/faff-store.js for the legacy owner.
-  // New users get empty lists with helpful prompts.
-  const upcoming: UpcomingRace[] = isLegacy ? [
-    { name: 'Americas Finest City', date: 'Aug 16, 2026',  daysAway: 91,  distanceLabel: 'Half Marathon · 13.24 mi · San Diego', goal: '1:35:00', priority: 'A', slug: 'afc-2026' },
-    { name: 'Dodgers 10K',           date: 'Sep 26, 2026',  daysAway: 132, distanceLabel: '10K · 6.17 mi · Los Angeles',          goal: '45:00',   priority: 'C' },
-    { name: 'Run Malibu',            date: 'Nov 8, 2026',   daysAway: 175, distanceLabel: 'Half Marathon · 13.12 mi · Malibu',    goal: '1:30:00', priority: 'B' },
-    { name: 'CIM',                   date: 'Dec 6, 2026',   daysAway: 203, distanceLabel: 'Marathon',                              goal: '3:00:00', priority: 'A' },
-    { name: 'LA Marathon',           date: 'Mar 7, 2027',   daysAway: 294, distanceLabel: 'Marathon · 26.41 mi · Los Angeles',    goal: '3:31:00', priority: 'A' },
-  ] : [];
-
-  const recent: RecentRace[] = isLegacy ? [
-    { date: '2026-05-03', name: 'Sombrero Half Marathon',         distanceLabel: 'Half Marathon',                    finish: '1:40:57', pace: '7:40/mi', priority: 'C' },
-    { date: '2026-04-26', name: 'Big Sur Marathon',                distanceLabel: 'Marathon · 2,140 ft climb',        finish: '3:36:55', pace: '8:17/mi', priority: 'A' },
-    { date: '2026-04-18', name: 'Point Magu Half Marathon',        distanceLabel: 'Half Marathon · trail',            finish: '2:09:02', pace: '9:33/mi', priority: 'C' },
-    { date: '2026-03-15', name: 'Los Angeles Marathon',            distanceLabel: 'Marathon',                          finish: '3:31:00', pace: '8:03/mi', priority: 'A', note: 'marathon PR' },
-    { date: '2026-02-01', name: 'Powered by the Mouse for a PR',   distanceLabel: 'Half Marathon',                    finish: '1:34:54', pace: '7:05/mi', priority: 'A', note: 'VDOT 48.1 · current anchor', currentAnchor: true },
-    { date: '2026-01-18', name: 'Rose Bowl Half Marathon',         distanceLabel: 'Half Marathon',                    finish: '1:38:38', pace: '7:24/mi', priority: 'A', note: 'VDOT 46' },
-  ] : [];
-
+  // No more seeded mockup data — every section starts empty until the
+  // runner adds real races. PRs come from Strava activity history once
+  // we wire the best_efforts lookup.
+  const upcoming: UpcomingRace[] = [];
+  const recent: RecentRace[] = [];
   const aRace = upcoming.find((r) => r.priority === 'A');
-  const PRs = isLegacy ? [
-    { distance: '5K',          time: '21:34',   when: 'Burbank Track · Nov 2025' },
-    { distance: '10K',         time: '45:12',   when: 'Long Beach · Oct 2025' },
-    { distance: '13.1 (HM)',   time: '1:34:54', when: 'Mouse Half · Feb 2026', current: true },
-    { distance: '26.2',        time: '3:31:00', when: 'LA Marathon · Mar 2026', current: true },
-    { distance: '20-mile run', time: '2:48:30', when: 'Apr 2026 (training)' },
-    { distance: '50K',         time: '—',       when: 'Not yet attempted' },
-  ] : [];
+  const PRs: Array<{ distance: string; time: string; when: string; current?: boolean }> = [];
 
   return (
     <div className="races-v4-page">
@@ -100,12 +77,12 @@ export default async function RacesPage() {
           <div className="vdot-anchor-card">
             <div className="vdot-anchor-label">Your VDOT</div>
             <div className="vdot-anchor-row">
-              <span className="vdot-anchor-num">{isLegacy ? '48.1' : '—'}</span>
+              <span className="vdot-anchor-num" style={{ color: 'rgba(13,15,18,.32)' }}>—</span>
             </div>
             <div className="vdot-anchor-fresh">
-              <span className="vdot-anchor-fresh-dot"></span>
-              <span className="vdot-anchor-fresh-text">
-                {isLegacy ? <><strong>Fresh</strong> · 26d to refresh</> : 'Log a race to set'}
+              <span className="vdot-anchor-fresh-dot" style={{ background: 'rgba(13,15,18,.25)' }}></span>
+              <span className="vdot-anchor-fresh-text" style={{ color: 'rgba(13,15,18,.55)' }}>
+                No data · log a race to set
               </span>
             </div>
           </div>
@@ -119,26 +96,25 @@ export default async function RacesPage() {
               <div className="a-race-title">AFC<br />HALF</div>
               <div className="a-race-sub">{aRace.name} · {aRace.date.replace(', 2026', '')}</div>
               <p className="a-race-explainer">
-                The full 14-week plan points here. Goal of <strong>{aRace.goal}</strong> is at 7:15/mi —
-                about 8 seconds per mile faster than your current threshold pace. Closeable with
-                disciplined work.
+                The full 14-week plan points here. Once a recent race finish is logged we&apos;ll
+                show your current fitness, the gap to {aRace.goal}, and the feasibility read.
               </p>
 
               <div className="path-stats">
                 <div className="path-stat">
                   <div className="path-stat-label">Current Fitness</div>
-                  <div className="path-stat-value">1:36:42</div>
-                  <div className="path-stat-sub">VDOT 48.1 · Riegel to 13.1</div>
+                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                  <div className="path-stat-sub">No data</div>
                 </div>
                 <div className="path-stat">
                   <div className="path-stat-label">Gap to Goal</div>
-                  <div className="path-stat-value orange">−8<span style={{ fontSize: 18, color: 'var(--t2)', marginLeft: 6 }}>s/mi</span></div>
-                  <div className="path-stat-sub">≈ 1:42 over the half</div>
+                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                  <div className="path-stat-sub">No data</div>
                 </div>
                 <div className="path-stat">
                   <div className="path-stat-label">Feasibility</div>
-                  <div className="path-stat-value green">On track</div>
-                  <div className="path-stat-sub">~0.5 VDOT/wk closes it</div>
+                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                  <div className="path-stat-sub">No data</div>
                 </div>
               </div>
             </div>

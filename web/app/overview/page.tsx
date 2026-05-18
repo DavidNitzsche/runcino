@@ -188,7 +188,7 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayDay?.distanceMi}</span><span className="stat-unit">mi</span></div><div className="stat-label">Distance</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayPace}</span><span className="stat-unit">/mi</span></div><div className="stat-label">Pace</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
-                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">≤145</span><span className="stat-unit">bpm</span></div><div className="stat-label">Heart Rate</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
                 <div className="hero-buttons">
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
@@ -201,25 +201,30 @@ export default async function OverviewPage() {
             <div className="readiness-section">
               <div className="readiness-header">
                 <span className="readiness-label-text">Readiness</span>
-                <span className="badge-ready">Ready</span>
+                <span className="badge-ready" style={{ background: 'rgba(13,15,18,.05)', color: 'rgba(13,15,18,.45)' }}>No data</span>
               </div>
               <div className="readiness-ring-wrap">
                 <svg width="300" height="300" viewBox="0 0 300 300">
-                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="612.61 204.20" strokeLinecap="round" transform="rotate(135 150 150)" />
-                  <circle cx="150" cy="150" r="130" fill="none" stroke="#2CA82F" strokeWidth="16" strokeDasharray="539.10 277.70" strokeLinecap="round" transform="rotate(135 150 150)" />
-                  <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="96" fill="#0D0F12" textAnchor="middle">88</text>
-                  <text x="150" y="188" fontFamily="'Inter', sans-serif" fontSize="13" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">/ 100</text>
+                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
+                  <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(13,15,18,.32)" textAnchor="middle">—</text>
+                  <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
                 </svg>
               </div>
-              <div className="readiness-building">Building</div>
+              <div className="readiness-building" style={{ color: 'rgba(13,15,18,.45)' }}>Waiting on data</div>
             </div>
 
+            {/* Mileage is the one trend we CAN compute — actual vs planned this week. */}
             <div className="trend-rows">
-              <TrendRow label="Effort"    value="+0.25"   tone="green" width={65} />
-              <TrendRow label="Load"      value="1.01"    tone="green" width={50} />
-              <TrendRow label="Mileage"   value="On plan" tone="green" width={50} />
-              <TrendRow label="Easy Pace" value="+0.25"   tone="green" width={60} />
-              <TrendRow label="Strain"    value="−0.25"   tone="amber" width={35} />
+              <TrendRow
+                label="Mileage"
+                value={`${thisWeekSoFar.totalMi} / ${currentWeek.plannedMi} mi`}
+                tone={thisWeekSoFar.totalMi >= currentWeek.plannedMi * 0.7 ? 'green' : 'amber'}
+                width={Math.min(100, Math.round((thisWeekSoFar.totalMi / Math.max(1, currentWeek.plannedMi)) * 100))}
+              />
+              <TrendRow label="Effort"    value="No data" tone="amber" width={0} />
+              <TrendRow label="Load"      value="No data" tone="amber" width={0} />
+              <TrendRow label="Easy Pace" value="No data" tone="amber" width={0} />
+              <TrendRow label="Strain"    value="No data" tone="amber" width={0} />
             </div>
 
             {/* Today's Intensity — rest-day variant hides gradient bar */}

@@ -110,25 +110,15 @@ export default async function TrainingPage() {
     isRace: w.phase === 'RACE_WEEK',
   }));
 
-  // Plan Adapted feed — for v1, render the three sample adjustments
-  // from the mockup. Real adaptation logging will land when /api/plan
-  // mutation history wires through.
-  const ADAPTED_ITEMS = [
-    { dir: 'down', date: 'Wed May 14', change: <>Tuesday&rsquo;s tempo moved to <strong>Wednesday recovery</strong>.</>, why: 'Three poor check-ins last week (energy 3 · soreness 8 · stress 8) — Decision Matrix says suppress quality.' },
-    { dir: 'up',   date: 'Mon May 12', change: <>Long-run cap lifted to <strong>10 mi</strong>.</>, why: 'Last Saturday’s 9 mi felt comfortably aerobic at 9:15/mi — the engine is absorbing volume. +10% rule allows the bump.' },
-    { dir: 'down', date: 'Sun May 11', change: <>Week 4 cutback depth deepened to <strong>−20%</strong>.</>, why: 'Three consecutive weeks of climbing volume — doctrine says deepen the cutback past 15% to flush.' },
-  ] as const;
+  // Plan Adapted feed — real entries will come from plan_mutations
+  // once the engine wires through. For now: empty unless populated.
+  const ADAPTED_ITEMS: ReadonlyArray<{ dir: 'up' | 'down'; date: string; change: React.ReactNode; why: string }> = [];
 
-  // VDOT-derived pace zones — pull the anchor VDOT once a real value
-  // lands; for v1, use the seed value matching the mockup.
-  const VDOT = 48.1;
-  const PACES = [
-    { zone: 'E · Easy',        pace: '9:25', when: 'Conversational. 75-90% of your weekly miles live here.' },
-    { zone: 'M · Marathon',    pace: '7:52', when: 'Marathon goal pace. Used in long runs with M segments.',  cls: 'm' },
-    { zone: 'T · Threshold',   pace: '7:18', when: 'Comfortably hard. Tempo runs, cruise intervals.',         cls: 't' },
-    { zone: 'I · Intervals',   pace: '6:42', when: 'VO2max work. 3-5 min reps with equal-time recovery.',     cls: 'i' },
-    { zone: 'R · Repetition',  pace: '6:18', when: 'Speed + economy. 200-400m reps with full recoveries.',    cls: 'r' },
-  ];
+  // VDOT-derived pace zones — only populated once the runner logs a
+  // recent race finish (we anchor VDOT off race results). Until then,
+  // we don't fake training paces.
+  const VDOT: number | null = null;
+  const PACES: Array<{ zone: string; pace: string; when: string; cls?: string }> = [];
 
   return (
     <div className="training-v4-page">
@@ -341,18 +331,25 @@ export default async function TrainingPage() {
             <span className="adapted-pin">Doctrine driven</span>
           </div>
           <div className="adapted-items">
-            {ADAPTED_ITEMS.map((item, i) => (
-              <div key={i} className="adapted-item">
-                <span className={`adapted-direction ${item.dir}`} title={item.dir === 'up' ? 'Coach stepped the plan up' : 'Coach softened the plan'}>
-                  {item.dir === 'up' ? '↑' : '↓'}
-                </span>
-                <div className="adapted-date">{item.date}</div>
-                <div>
-                  <div className="adapted-change">{item.change}</div>
-                  <div className="adapted-why">{item.why}</div>
-                </div>
+            {ADAPTED_ITEMS.length === 0 ? (
+              <div style={{ padding: '24px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+                No adjustments yet. As you log check-ins and runs, the coach engine will surface
+                plan changes here with the reasoning behind each one.
               </div>
-            ))}
+            ) : (
+              ADAPTED_ITEMS.map((item, i) => (
+                <div key={i} className="adapted-item">
+                  <span className={`adapted-direction ${item.dir}`} title={item.dir === 'up' ? 'Coach stepped the plan up' : 'Coach softened the plan'}>
+                    {item.dir === 'up' ? '↑' : '↓'}
+                  </span>
+                  <div className="adapted-date">{item.date}</div>
+                  <div>
+                    <div className="adapted-change">{item.change}</div>
+                    <div className="adapted-why">{item.why}</div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -361,21 +358,26 @@ export default async function TrainingPage() {
           <div className="paces-header">
             <div className="paces-title-group">
               <div className="paces-title">Your Paces</div>
-              <div className="paces-sub"><strong>VDOT {VDOT}</strong> · Daniels training zones</div>
-            </div>
-            <div className="paces-meta">
-              Source · <strong>Powered by the Mouse Half</strong> · 1:34:54 · 3 mo ago
+              <div className="paces-sub">{VDOT ? <><strong>VDOT {VDOT}</strong> · Daniels training zones</> : 'No data — log a recent race to anchor your training paces'}</div>
             </div>
           </div>
-          <div className="paces-grid">
-            {PACES.map((p) => (
-              <div key={p.zone} className={`pace-cell ${p.cls ?? ''}`}>
-                <div className="pace-cell-zone">{p.zone}</div>
-                <div className="pace-cell-pace">{p.pace}<span className="pace-cell-pace-unit">/mi</span></div>
-                <div className="pace-cell-when">{p.when}</div>
-              </div>
-            ))}
-          </div>
+          {PACES.length === 0 ? (
+            <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              We compute easy / marathon / threshold / interval / repetition paces from your
+              VDOT, which we anchor off a recent race result. Once a race finish is logged,
+              this card fills in.
+            </div>
+          ) : (
+            <div className="paces-grid">
+              {PACES.map((p) => (
+                <div key={p.zone} className={`pace-cell ${p.cls ?? ''}`}>
+                  <div className="pace-cell-zone">{p.zone}</div>
+                  <div className="pace-cell-pace">{p.pace}<span className="pace-cell-pace-unit">/mi</span></div>
+                  <div className="pace-cell-when">{p.when}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
