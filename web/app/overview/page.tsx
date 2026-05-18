@@ -25,6 +25,7 @@ import {
   userTimezone,
   type PlanWeek,
 } from '@/lib/synthetic-plan';
+import { getCompletedDates } from '@/lib/completed-runs';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -68,9 +69,15 @@ export default async function OverviewPage() {
   const phaseWeeks = weeks.filter((w) => w.phase === currentWeek.phase);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
 
-  // Compute simple session-progress: 'X of Y sessions logged this week'
+  // Look up which dates this user actually has a logged Strava activity
+  // for. A workout is only "done" when there's evidence — date alone is
+  // not enough.
+  const completed = await getCompletedDates(user.id, currentWeek.startDate, today);
+  const isComplete = (dateISO: string) => completed.has(dateISO);
+
+  // Session-progress: count days the user actually has an activity for.
   const weekDaysWithWork = currentWeek.days.filter((d) => !d.isRest);
-  const sessionsDone = weekDaysWithWork.filter((d) => d.date < today).length;
+  const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date)).length;
   const sessionsTotal = weekDaysWithWork.length;
 
   // Approximate duration from distance + paceMin
@@ -218,7 +225,10 @@ export default async function OverviewPage() {
           <div className="day-grid">
             {currentWeek.days.map((d) => {
               const isToday = d.date === today;
-              const isDone = !isToday && d.date < today && !d.isRest;
+              // DONE only if there's an actual logged Strava activity on
+              // that date. Workouts in the past with no matching run stay
+              // "missed" (just dim, no DONE label).
+              const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date);
               const dateNum = parseInt(d.date.slice(-2), 10);
               return (
                 <div key={d.date} className={`day-col${isToday ? ' today' : ''}`}>
