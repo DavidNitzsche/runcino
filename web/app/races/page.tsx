@@ -17,6 +17,7 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { computeAggregateVdot } from '@/lib/compute-vdot';
 import './races-v4.css';
 
 interface UpcomingRace {
@@ -158,6 +159,12 @@ export default async function RacesPage() {
 
   const aRace = upcoming.find((r) => r.priority === 'A');
 
+  // Aggregate VDOT from this year's Strava history (best-effort per
+  // canonical distance, recency-weighted, top 3 averaged). Coach uses
+  // this as the STARTING POINT — specific training runs nudge it
+  // forward from here as the cycle progresses.
+  const vdotAgg = await computeAggregateVdot(auth.id);
+
   // ── 3. PRs by canonical distance from strava canonical bests ──
   interface BestRow { canonical_label: string; finish_s: number; date: string }
   const bestRows = await query<BestRow>(
@@ -213,15 +220,53 @@ export default async function RacesPage() {
           <div className="vdot-anchor-card">
             <div className="vdot-anchor-label">Your VDOT</div>
             <div className="vdot-anchor-row">
-              <span className="vdot-anchor-num" style={{ color: 'rgba(13,15,18,.32)' }}>—</span>
+              <span
+                className="vdot-anchor-num"
+                style={{ color: vdotAgg ? '#0D0F12' : 'rgba(13,15,18,.32)' }}
+              >
+                {vdotAgg ? vdotAgg.value.toFixed(1) : '—'}
+              </span>
             </div>
             <div className="vdot-anchor-fresh">
-              <span className="vdot-anchor-fresh-dot" style={{ background: 'rgba(13,15,18,.25)' }}></span>
-              <span className="vdot-anchor-fresh-text" style={{ color: 'rgba(13,15,18,.55)' }}>
-                No data · log a race to set
+              <span
+                className="vdot-anchor-fresh-dot"
+                style={{ background: vdotAgg ? '#2CA82F' : 'rgba(13,15,18,.25)' }}
+              />
+              <span
+                className="vdot-anchor-fresh-text"
+                style={{ color: 'rgba(13,15,18,.55)' }}
+              >
+                {vdotAgg
+                  ? `Aggregate · ${vdotAgg.sourceCount} ${vdotAgg.sourceCount === 1 ? 'effort' : 'efforts'} (${vdotAgg.windowLabel})`
+                  : 'No data · sync Strava or log a race'}
               </span>
             </div>
           </div>
+        </div>
+
+        {/* ── ADD RACE CTA ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '12px 0 8px' }}>
+          <a
+            href="/races/new"
+            className="add-race-cta"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              fontFamily: 'Oswald, sans-serif',
+              fontWeight: 600,
+              fontSize: 11,
+              letterSpacing: 1.6,
+              textTransform: 'uppercase',
+              padding: '10px 16px',
+              background: '#0D0F12',
+              color: '#fff',
+              borderRadius: 8,
+              textDecoration: 'none',
+            }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add a race (GPX)
+          </a>
         </div>
 
         {/* ── A-RACE HERO ── */}

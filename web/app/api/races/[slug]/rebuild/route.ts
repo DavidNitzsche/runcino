@@ -19,6 +19,8 @@
  */
 
 import { getRaceDB, saveRaceDB } from '../../../../../lib/race-store';
+import { resolveGelSpec } from '../../../../../lib/gel-lookup';
+import { coachCarbRate } from '../../../../../lib/coach-carb-rate';
 import type { FaffPlan } from '../../../../../lib/types';
 
 interface RebuildBody {
@@ -28,13 +30,14 @@ interface RebuildBody {
   strategy?: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi?: number;
   distanceMi?: number;
-  // Fueling overrides — when present, the rebuild uses these to
-  // regenerate the gel plan. Anything omitted falls back to the
-  // existing plan's value (or the planner default if there's no
-  // existing fueling block).
+  // Fueling — the user types ONLY which gel they're using. The coach
+  // figures out carbs per serving (via known-gel cache → Claude
+  // lookup) and the right carb rate (driven by race effort, not the
+  // user). Sending `null` for gelCarbsG or carbTargetGPerHr clears
+  // any prior override so the coach reruns the math.
   gelBrand?: string;
-  gelCarbsG?: number;
-  carbTargetGPerHr?: number;
+  gelCarbsG?: number | null;
+  carbTargetGPerHr?: number | null;
 }
 
 function parseGoalHMS(s: string): number | null {
@@ -62,11 +65,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const toleranceSPerMi = body.toleranceSPerMi ?? 10;
   const headlineDistance = body.distanceMi ?? existing.meta.distanceMi;
 
-  // Fueling overrides — pick up from body, then fall back to the existing plan
+  // Fueling — let the coach figure it out from the brand alone.
+  //   - When the user types a brand, look it up (cache → Claude) to get
+  //     carbs per serving. The user never types carbs.
+  //   - When the user explicitly sends gelCarbsG (legacy/admin path),
+  //     honor it. Same for carbTargetGPerHr.
+  //   - When neither is set, fall back to whatever's in the existing
+  //     plan, then planner defaults.
   const existingFuel = existing.plan?.fueling;
   const gelBrand = body.gelBrand ?? existingFuel?.gel_brand;
-  const gelCarbsG = body.gelCarbsG ?? existingFuel?.gel_carbs_g;
-  const carbTargetGPerHr = body.carbTargetGPerHr ?? existingFuel?.carb_target_g_per_hr;
+  let gelCarbsG: number | undefined =
+    body.gelCarbsG === null ? undefined                    // explicit clear
+    : body.gelCarbsG ?? existingFuel?.gel_carbs_g;          // fall through
+  if (gelCarbsG === undefined && gelBrand) {
+    // Coach-resolved: look up the gel's spec by brand name.
+    const spec = await resolveGelSpec(gelBrand, process.env.ANTHROPIC_API_KEY);
+    gelCarbsG = spec.carbsG;
+  }
+  let carbTargetGPerHr: number | undefined =
+    body.carbTargetGPerHr === null ? undefined
+    : body.carbTargetGPerHr ?? existingFuel?.carb_target_g_per_hr;
+  if (carbTargetGPerHr === undefined) {
+    // Coach-resolved: rate scales with effort duration.
+    carbTargetGPerHr = coachCarbRate(goalFinishS);
+  }
 
   // Reuse the build-plan endpoint over loopback so we don't duplicate
   // its assembly logic. On Railway, req.url's origin is the internal

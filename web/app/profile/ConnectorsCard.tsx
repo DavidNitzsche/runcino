@@ -17,7 +17,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Card, CardHeader, CardLabel, CardPin } from '@/app/components';
 
 interface ConnectorRow {
@@ -202,33 +201,6 @@ export function ConnectorsCard() {
             </div>
           </div>
         )}
-
-        {/* Always-on entries */}
-        <div className="faff-conn-row">
-          <div className="faff-conn-icon manual">✎</div>
-          <div>
-            <div className="faff-conn-name">Manual entry</div>
-            <div className="faff-conn-meta">
-              <span className="faff-dot green" />Always on · log runs from /log when you want
-            </div>
-          </div>
-          <div className="faff-conn-actions">
-            <Link className="faff-conn-btn" href="/log">Open log →</Link>
-          </div>
-        </div>
-
-        <div className="faff-conn-row">
-          <div className="faff-conn-icon gpx">GPX</div>
-          <div>
-            <div className="faff-conn-name">GPX / FIT upload</div>
-            <div className="faff-conn-meta">
-              <span className="faff-dot amber" />Soon · upload a watch export to backfill or correct a missing run
-            </div>
-          </div>
-          <div className="faff-conn-actions">
-            <button className="faff-conn-btn" disabled>Notify me</button>
-          </div>
-        </div>
 
         {/* Compact future-connectors */}
         <div className="faff-conn-section-label">Coming soon · activity sources</div>
