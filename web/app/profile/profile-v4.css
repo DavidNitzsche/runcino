@@ -306,3 +306,29 @@
 .profile-v4-page .shoe-purpose-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.2px; text-align: center; padding: 11px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
 .profile-v4-page .shoe-purpose-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
 .profile-v4-page .shoe-purpose-pill.selected { background: rgba(13,15,18,.92); color: #fff; border-color: var(--t0); }
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 960px) {
+  .profile-v4-page .navbar-inner,
+  .profile-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .profile-v4-page .identity-card { grid-template-columns: auto 1fr; gap: 24px; padding: 28px; }
+  .profile-v4-page .identity-card > :nth-child(3) { grid-column: 1 / -1; }
+  .profile-v4-page .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+  .profile-v4-page .prefs-grid { grid-template-columns: repeat(2, 1fr); padding: 0 24px 24px; }
+  .profile-v4-page .hr-grid { grid-template-columns: repeat(3, 1fr); padding: 0 24px 24px; }
+  .profile-v4-page .shoes-grid { grid-template-columns: 1fr; padding: 0 24px 24px; }
+}
+@media (max-width: 640px) {
+  .profile-v4-page .navbar-inner,
+  .profile-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .profile-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .profile-v4-page .nav-links { display: none; }
+  .profile-v4-page .identity-card { grid-template-columns: 1fr; text-align: center; }
+  .profile-v4-page .identity-card > :nth-child(3) { text-align: center; }
+  .profile-v4-page .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  .profile-v4-page .hr-grid { grid-template-columns: repeat(2, 1fr); padding: 0 16px 24px; }
+  .profile-v4-page .prefs-grid { padding: 0 16px 24px; }
+  .profile-v4-page .modal-card { max-width: calc(100vw - 32px); padding: 24px; }
+}

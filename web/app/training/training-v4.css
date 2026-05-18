@@ -775,3 +775,25 @@
   font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2);
   line-height: 1.45; margin-top: 8px;
 }
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 960px) {
+  .training-v4-page .navbar-inner,
+  .training-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .training-v4-page .hero-card,
+  .training-v4-page .race-hero { grid-template-columns: 1fr; }
+  .training-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .training-v4-page .coach-strip > * { flex: 1 1 auto; }
+  .training-v4-page .week-cells,
+  .training-v4-page .week-row { overflow-x: auto; }
+}
+@media (max-width: 640px) {
+  .training-v4-page .navbar-inner,
+  .training-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .training-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .training-v4-page .nav-links { display: none; }
+  .training-v4-page .hero-left,
+  .training-v4-page .race-hero-left { padding: 24px; }
+}

@@ -335,3 +335,21 @@
 .races-v4-page .races-timeline-station.placement-above .races-timeline-pace { order: 3; margin-top: 2px; }
 .races-v4-page .races-timeline-station.placement-above .races-timeline-name { order: 4; margin-top: 8px; }
 .races-v4-page .races-timeline-station.placement-above .races-timeline-date { order: 5; margin-top: 6px; }
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 960px) {
+  .races-v4-page .navbar-inner,
+  .races-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .races-v4-page .a-race-hero { grid-template-columns: 1fr; }
+  .races-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .races-v4-page .coach-strip > * { flex: 1 1 auto; }
+}
+@media (max-width: 640px) {
+  .races-v4-page .navbar-inner,
+  .races-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .races-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .races-v4-page .nav-links { display: none; }
+  .races-v4-page .a-race-explainer { max-width: 100%; }
+}

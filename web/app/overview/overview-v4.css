@@ -1191,3 +1191,28 @@
   background: var(--green);
   pointer-events: none;
 }
+
+/* ══════════════════════════
+   RESPONSIVE — viewport collapse
+   <960px: hero collapses to single column; nav padding tightens.
+   <640px: most multi-col grids collapse; tighter page padding.
+══════════════════════════ */
+@media (max-width: 960px) {
+  .overview-v4-page .navbar-inner,
+  .overview-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .overview-v4-page .hero-card { grid-template-columns: 1fr; }
+  .overview-v4-page .hero-right { border-left: none; border-top: 1px solid var(--divider); }
+  .overview-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .overview-v4-page .coach-strip > * { flex: 1 1 auto; }
+  .overview-v4-page .trends-table { font-size: 12px; }
+}
+@media (max-width: 640px) {
+  .overview-v4-page .navbar-inner,
+  .overview-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .overview-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .overview-v4-page .nav-links { display: none; }
+  .overview-v4-page .hero-left { padding: 24px; }
+  .overview-v4-page .intensity-row { grid-template-columns: 56px 1fr 22px !important; }
+  .overview-v4-page .week-strip { grid-template-columns: repeat(7, 1fr); }
+  .overview-v4-page .trends-row { grid-template-columns: 90px 1fr 60px !important; }
+}

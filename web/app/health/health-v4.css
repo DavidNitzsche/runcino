@@ -212,3 +212,29 @@
 .health-v4-page .source-pill-dot.dim { background: var(--t3); }
 .health-v4-page .source-pill-name { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--t0); }
 .health-v4-page .source-pill-state { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 960px) {
+  .health-v4-page .navbar-inner,
+  .health-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .health-v4-page .health-hero { grid-template-columns: 1fr; }
+  .health-v4-page .health-hero-right { border-left: none; border-top: 1px solid var(--divider); }
+  .health-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .health-v4-page .coach-strip > * { flex: 1 1 auto; }
+  .health-v4-page .vitals-grid,
+  .health-v4-page .vitals-grid.five { grid-template-columns: repeat(2, 1fr); }
+  .health-v4-page .form-stats { grid-template-columns: repeat(3, 1fr); padding: 0 24px 20px; }
+}
+@media (max-width: 640px) {
+  .health-v4-page .navbar-inner,
+  .health-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .health-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .health-v4-page .nav-links { display: none; }
+  .health-v4-page .health-hero-left { padding: 24px; }
+  .health-v4-page .vitals-grid,
+  .health-v4-page .vitals-grid.five { grid-template-columns: 1fr 1fr; padding: 0 16px 24px; }
+  .health-v4-page .form-stats { grid-template-columns: 1fr; padding: 0 16px 20px; }
+  .health-v4-page .checkin-timeline { grid-template-columns: repeat(7, 1fr); padding: 0 16px 24px; }
+}

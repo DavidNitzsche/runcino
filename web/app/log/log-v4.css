@@ -308,3 +308,33 @@
 .log-v4-page .run-num { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--t0); line-height: 1; text-align: right; }
 .log-v4-page .run-num-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 3px; text-align: right; }
 .log-v4-page .run-strength { width: 18px; height: 18px; border-radius: 50%; background: var(--t0); color: #FACC15; display: inline-flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; line-height: 1; margin-left: auto; }
+
+/* ══════════════════════════
+   RESPONSIVE
+══════════════════════════ */
+@media (max-width: 960px) {
+  .log-v4-page .navbar-inner,
+  .log-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .log-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .log-v4-page .coach-strip > * { flex: 1 1 auto; }
+  .log-v4-page .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .log-v4-page .run-row,
+  .log-v4-page .run-row-header { grid-template-columns: 90px 90px 1fr 90px 80px; }
+  .log-v4-page .run-shoe-cell { display: none; }
+  .log-v4-page .monthly-bars,
+  .log-v4-page .month-axis { padding: 0 16px; }
+}
+@media (max-width: 640px) {
+  .log-v4-page .navbar-inner,
+  .log-v4-page .page { padding-left: 16px; padding-right: 16px; }
+  .log-v4-page .page { padding-top: 20px; padding-bottom: 48px; }
+  .log-v4-page .nav-links { display: none; }
+  .log-v4-page .strava-stats { grid-template-columns: 1fr; }
+  .log-v4-page .hero-stats { grid-template-columns: 1fr 1fr; }
+  .log-v4-page .run-row,
+  .log-v4-page .run-row-header { grid-template-columns: 80px 1fr 70px; }
+  .log-v4-page .run-row > :nth-child(2),
+  .log-v4-page .run-row-header > :nth-child(2),
+  .log-v4-page .run-row > :nth-child(5),
+  .log-v4-page .run-row-header > :nth-child(5) { display: none; }
+}
