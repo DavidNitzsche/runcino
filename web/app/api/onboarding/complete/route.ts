@@ -37,6 +37,7 @@ interface Body {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.status !== 'active') return NextResponse.json({ error: 'Account pending approval' }, { status: 403 });
 
   let body: Body;
   try { body = await req.json(); }

@@ -18,10 +18,9 @@
  * an earlier mockup). Backup at page.tsx.pre-v4-port-bak.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import './training-v4.css';
 
@@ -42,8 +41,7 @@ const PHASES: PhaseSpec[] = [
 ];
 
 export default async function TrainingPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect('/login?next=/training');
+  const user = await requireActiveUser();
 
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
@@ -123,7 +121,7 @@ export default async function TrainingPage() {
 
   return (
     <div className="training-v4-page">
-      <Topbar activeTab="training" />
+      <Topbar activeTab="training" showAdmin={user.is_admin} />
       <ConnectBannerIsland />
 
       <div className="page">

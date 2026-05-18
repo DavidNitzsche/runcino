@@ -365,6 +365,34 @@ async function bootstrap(): Promise<void> {
       );
     `);
 
+    // Approval gate — private beta until SIGNUP_REQUIRES_APPROVAL=false.
+    // New signups land as 'pending' (unless email matches LEGACY_OWNER_EMAIL,
+    // which auto-approves + auto-admins). Existing rows default to 'active'
+    // so anyone already signed up doesn't get locked out by the rollout.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('pending','active','denied'));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id) ON DELETE SET NULL;
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
+
+    // Auto-promote the legacy owner to admin + active on every boot so
+    // we can never lock the founder out of the admin panel.
+    const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+    await client.query(
+      `UPDATE users SET is_admin = TRUE, status = 'active', approved_at = COALESCE(approved_at, NOW())
+       WHERE LOWER(email) = $1;`,
+      [legacyOwner],
+    );
+
     // sessions — cookie-token lookup (server-side session store)
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (

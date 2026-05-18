@@ -12,11 +12,10 @@
  * page.tsx.pre-v4-port-bak.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInIsland } from './CheckInIsland';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import {
   buildSyntheticPlan,
   todayISO,
@@ -51,8 +50,7 @@ function lenBucket(label: string): 'xs' | 'sm' | 'md' | 'lg' | 'xl' {
 }
 
 export default async function OverviewPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect('/login?next=/overview');
+  const user = await requireActiveUser();
 
   // Compute "today" in the user's timezone (inferred from location, default LA)
   // so the page matches their wall clock, not UTC.
@@ -101,7 +99,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="overview-v4-page">
-      <Topbar activeTab="overview" />
+      <Topbar activeTab="overview" showAdmin={user.is_admin} />
       <ConnectBannerIsland />
 
       <div className="page">

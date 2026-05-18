@@ -13,11 +13,10 @@
  * in /races. Replaces 1700-line pre-v4 implementation.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectorsCard } from './ConnectorsCard';
 import { ProfileModalsIsland } from './ProfileModalsIsland';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import './profile-v4.css';
 
@@ -106,8 +105,7 @@ async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes:
 }
 
 export default async function ProfilePage() {
-  const auth = await getCurrentUser();
-  if (!auth) redirect('/login?next=/profile');
+  const auth = await requireActiveUser();
 
   const { user, shoes } = await loadProfile(auth.id);
   const activeShoes = shoes.filter((s) => !s.retired);
@@ -153,7 +151,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="profile-v4-page">
-      <Topbar activeTab="profile" />
+      <Topbar activeTab="profile" showAdmin={auth.is_admin} />
 
       <div className="page">
 

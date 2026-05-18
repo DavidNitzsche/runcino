@@ -12,11 +12,10 @@
  * Replaces the 786-line May-2026 implementation.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './log-v4.css';
@@ -216,8 +215,7 @@ function daysInMonth(year: number, monthIdx: number): number {
 }
 
 export default async function LogPage() {
-  const auth = await getCurrentUser();
-  if (!auth) redirect('/login?next=/log');
+  const auth = await requireActiveUser();
 
   const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
   const today = todayISO(userTimezone(auth.location));
@@ -230,7 +228,7 @@ export default async function LogPage() {
 
   return (
     <div className="log-v4-page">
-      <Topbar activeTab="log" />
+      <Topbar activeTab="log" showAdmin={auth.is_admin} />
       <ConnectBannerIsland />
 
       <div className="page">

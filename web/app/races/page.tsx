@@ -13,10 +13,9 @@
  * race CRUD wiring is a follow-up.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import './races-v4.css';
 
 interface UpcomingRace {
@@ -40,8 +39,7 @@ interface RecentRace {
 }
 
 export default async function RacesPage() {
-  const auth = await getCurrentUser();
-  if (!auth) redirect('/login?next=/races');
+  const auth = await requireActiveUser();
 
   const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
 
@@ -76,7 +74,7 @@ export default async function RacesPage() {
 
   return (
     <div className="races-v4-page">
-      <Topbar activeTab="races" />
+      <Topbar activeTab="races" showAdmin={auth.is_admin} />
       <ConnectBannerIsland />
 
       <div className="page">

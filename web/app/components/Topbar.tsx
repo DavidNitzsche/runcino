@@ -21,6 +21,10 @@ export interface TopbarProps {
   clock?: ReactNode;
   /** Hide the brand mark entirely (rare — used on the very first onboarding screen). */
   hideBrand?: boolean;
+  /** If true, appends a small "Admin" link at the end of the tab row. Render this only for admin users. */
+  showAdmin?: boolean;
+  /** Optional user prop (name/email) used by some standalone pages (e.g. /admin). Ignored on tabbed pages. */
+  user?: { name?: string; email?: string };
 }
 
 const TAB_LABELS: Record<TopbarTab, string> = {
@@ -41,7 +45,7 @@ const TAB_HREFS: Record<TopbarTab, string> = {
   profile:  '/profile',
 };
 
-export function Topbar({ activeTab, back, clock, hideBrand = false }: TopbarProps) {
+export function Topbar({ activeTab, back, clock, hideBrand = false, showAdmin = false }: TopbarProps) {
   return (
     <div className="topbar">
       {back && (
@@ -64,6 +68,17 @@ export function Topbar({ activeTab, back, clock, hideBrand = false }: TopbarProp
             {TAB_LABELS[key]}
           </a>
         ))}
+        {showAdmin && (
+          <a
+            className="topbar-tab topbar-tab-admin"
+            href="/admin"
+            role="tab"
+            title="Private-beta gatekeeper"
+            style={{ color: '#C73E0B' }}
+          >
+            Admin
+          </a>
+        )}
       </div>
       {clock !== undefined && <div className="clock">{clock}</div>}
     </div>

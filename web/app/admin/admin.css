@@ -1,0 +1,98 @@
+/* Admin panel — minimal beta gatekeeper UI. Scoped under .admin-page
+   so it can't leak into the public auth pages or app v4 pages. */
+
+.admin-page {
+  background: var(--bg, #EEECEA);
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+  color: #0D0F12;
+}
+
+.admin-page .admin-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+.admin-page .admin-header { margin-bottom: 32px; }
+.admin-page .admin-eyebrow {
+  font-size: 12px; letter-spacing: 2.5px;
+  color: rgba(13,15,18,.45);
+  text-transform: uppercase; margin-bottom: 8px;
+}
+.admin-page .admin-title {
+  font-family: 'Bebas Neue', sans-serif; font-style: italic;
+  font-size: 56px; line-height: 1; letter-spacing: 1px;
+  background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.admin-page .admin-sub {
+  font-size: 14px; color: rgba(13,15,18,.55); margin-top: 8px; max-width: 640px;
+}
+
+.admin-page .admin-section { margin-top: 28px; background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); overflow: hidden; }
+.admin-page .admin-section-head { padding: 20px 24px 12px; }
+.admin-page .admin-section-title { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 2px; text-transform: uppercase; }
+.admin-page .admin-count { display: inline-block; margin-left: 8px; font-size: 12px; color: rgba(13,15,18,.45); letter-spacing: 1.5px; }
+
+.admin-page .admin-empty { padding: 20px 24px 24px; color: rgba(13,15,18,.45); font-size: 14px; }
+
+.admin-page .admin-table { display: flex; flex-direction: column; }
+.admin-page .admin-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 16px; align-items: center;
+  padding: 14px 24px;
+  border-top: 1px solid rgba(13,15,18,.06);
+}
+.admin-page .admin-row-head {
+  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: rgba(13,15,18,.4);
+  border-top: none; padding-top: 8px; padding-bottom: 8px;
+}
+.admin-page .admin-row-pending { background: rgba(252,156,30,.04); }
+.admin-page .admin-row-denied  { background: rgba(13,15,18,.02); opacity: 0.7; }
+
+.admin-page .admin-name { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.admin-page .admin-email { font-size: 13px; color: rgba(13,15,18,.55); margin-top: 2px; }
+.admin-page .admin-meta  { font-size: 13px; color: rgba(13,15,18,.55); }
+
+.admin-page .admin-badge {
+  font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(252,76,2,.10); color: #C73E0B;
+}
+.admin-page .admin-badge-self {
+  background: rgba(13,15,18,.08); color: rgba(13,15,18,.55);
+}
+
+.admin-page .admin-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.admin-page .admin-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.admin-page .admin-btn {
+  font-family: 'Oswald', sans-serif; font-weight: 600;
+  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+.admin-page .admin-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.admin-page .admin-btn-approve { background: #2CA82F; color: #fff; }
+.admin-page .admin-btn-approve:hover:not(:disabled) { background: #248F26; }
+
+.admin-page .admin-btn-deny { background: transparent; color: #B00020; border-color: rgba(176,0,32,.30); }
+.admin-page .admin-btn-deny:hover:not(:disabled) { background: rgba(176,0,32,.08); }
+
+.admin-page .admin-btn-ghost { background: transparent; color: rgba(13,15,18,.65); border-color: rgba(13,15,18,.18); }
+.admin-page .admin-btn-ghost:hover:not(:disabled) { background: rgba(13,15,18,.04); color: #0D0F12; }
+
+.admin-page .admin-err { font-size: 12px; color: #B00020; }
+
+@media (max-width: 760px) {
+  .admin-page .admin-wrap { padding: 24px 16px 60px; }
+  .admin-page .admin-row { grid-template-columns: 1fr; }
+  .admin-page .admin-row-head { display: none; }
+  .admin-page .admin-row-actions { justify-content: flex-start; }
+}

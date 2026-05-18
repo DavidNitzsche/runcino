@@ -22,6 +22,7 @@ const PUBLIC_PATHS = new Set<string>([
   '/landing',
   '/signup',
   '/login',
+  '/pending',          // approval waiting room — gated by getCurrentUser internally
   '/forgot-password',
   '/reset-password',
 ]);

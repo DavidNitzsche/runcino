@@ -51,7 +51,13 @@ function LoginInner() {
         setBusy(false);
         return;
       }
-      router.push(nextPath);
+      // Pending or denied users get sent to /pending regardless of `next`
+      // so they don't bounce into a protected page that will redirect anyway.
+      if (data.user?.status && data.user.status !== 'active') {
+        router.push('/pending');
+      } else {
+        router.push(nextPath);
+      }
     } catch {
       setError('Network error — please try again');
       setBusy(false);

@@ -15,24 +15,22 @@
  * happens when HealthKit / Strava streams hook in.
  */
 
-import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInMiniIsland } from './CheckInMiniIsland';
-import { getCurrentUser } from '@/lib/auth';
+import { requireActiveUser } from '@/lib/auth';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './health-v4.css';
 
 export default async function HealthPage() {
-  const auth = await getCurrentUser();
-  if (!auth) redirect('/login?next=/health');
+  const auth = await requireActiveUser();
 
   const today = todayISO(userTimezone(auth.location));
   const todayLabel = new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
 
   return (
     <div className="health-v4-page">
-      <Topbar activeTab="health" />
+      <Topbar activeTab="health" showAdmin={auth.is_admin} />
       <ConnectBannerIsland />
 
       <div className="page">

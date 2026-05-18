@@ -48,7 +48,13 @@ export default function SignupPage() {
         setBusy(false);
         return;
       }
-      router.push('/onboarding');
+      // Pending users land on /pending; only auto-approved users proceed
+      // straight to onboarding.
+      if (data.user?.status && data.user.status !== 'active') {
+        router.push('/pending');
+      } else {
+        router.push('/onboarding');
+      }
     } catch {
       setError('Network error — please try again');
       setBusy(false);

@@ -14,6 +14,7 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { query, maybeBackfillLegacyOwner } from './db';
 import { SESSION_COOKIE } from './auth-constants';
 
@@ -21,6 +22,21 @@ import { SESSION_COOKIE } from './auth-constants';
 export { SESSION_COOKIE };
 const SESSION_TTL_DAYS = 30;
 const BCRYPT_COST = 12;
+
+// Approval gate. When SIGNUP_REQUIRES_APPROVAL is unset OR truthy,
+// new signups land as 'pending' and need admin approval. The legacy
+// owner (LEGACY_OWNER_EMAIL) is always auto-approved + auto-admin'd.
+// Flip to "false" to open up self-serve signup.
+function signupRequiresApproval(): boolean {
+  const v = (process.env.SIGNUP_REQUIRES_APPROVAL ?? 'true').toLowerCase();
+  return v !== 'false' && v !== '0' && v !== 'no';
+}
+
+function legacyOwnerEmail(): string {
+  return (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+}
+
+export type UserStatus = 'pending' | 'active' | 'denied';
 
 // ── Types ─────────────────────────────────────────────────────
 export interface AuthUser {
@@ -31,6 +47,8 @@ export interface AuthUser {
   /** From the users.location text field; pages use this to compute
    *  the user's timezone for "today" math. */
   location: string | null;
+  status: UserStatus;
+  is_admin: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -78,12 +96,20 @@ export async function signupUser(email: string, password: string, name: string):
 
   const passwordHash = await hashPassword(password);
 
+  // Approval gate. The legacy owner is always active + admin so they can
+  // never lock themselves out of the admin panel. Everyone else is
+  // 'pending' until an admin approves them (unless approval is disabled).
+  const isLegacyOwner = normalizedEmail === legacyOwnerEmail();
+  const status: UserStatus = (isLegacyOwner || !signupRequiresApproval()) ? 'active' : 'pending';
+  const isAdmin = isLegacyOwner;
+  const approvedAt = status === 'active' ? new Date() : null;
+
   // Insert returning the new row. Conflicts on email will throw.
   const rows = await query<AuthUser>(
-    `INSERT INTO users (email, password_hash, name)
-     VALUES ($1, $2, $3)
-     RETURNING id, email, name, onboarding_complete, location;`,
-    [normalizedEmail, passwordHash, name.trim()],
+    `INSERT INTO users (email, password_hash, name, status, is_admin, approved_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, email, name, onboarding_complete, location, status, is_admin;`,
+    [normalizedEmail, passwordHash, name.trim(), status, isAdmin, approvedAt],
   );
   const user = rows[0];
   if (!user) throw new Error('Failed to create user');
@@ -98,6 +124,9 @@ export async function signupUser(email: string, password: string, name: string):
     console.error('[auth] backfill failed:', e);
   }
 
+  // Set the cookie even for pending users so they land on /pending
+  // signed-in (don't need to type credentials a second time). The page
+  // gate decides where to send them based on status.
   await createSessionCookie(user.id);
   await query(`UPDATE users SET last_login_at = NOW() WHERE id = $1;`, [user.id]);
 
@@ -112,7 +141,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   const normalizedEmail = email.trim().toLowerCase();
 
   const rows = await query<AuthUser & { password_hash: string }>(
-    `SELECT id, email, name, onboarding_complete, location, password_hash
+    `SELECT id, email, name, onboarding_complete, location, status, is_admin, password_hash
      FROM users WHERE email = $1 LIMIT 1;`,
     [normalizedEmail],
   );
@@ -125,7 +154,11 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   await createSessionCookie(u.id);
   await query(`UPDATE users SET last_login_at = NOW() WHERE id = $1;`, [u.id]);
 
-  return { id: u.id, email: u.email, name: u.name, onboarding_complete: u.onboarding_complete, location: u.location };
+  return {
+    id: u.id, email: u.email, name: u.name,
+    onboarding_complete: u.onboarding_complete,
+    location: u.location, status: u.status, is_admin: u.is_admin,
+  };
 }
 
 /**
@@ -161,7 +194,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!token) return null;
 
   const rows = await query<AuthUser>(
-    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location
+    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.session_token = $1 AND s.expires_at > NOW()
@@ -185,6 +218,34 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 export async function requireUser(): Promise<AuthUser> {
   const u = await getCurrentUser();
   if (!u) throw new Error('Unauthorized');
+  return u;
+}
+
+/**
+ * Page-level gate for app pages (overview/training/log/etc).
+ * - No session → /login
+ * - Session but status !== 'active' → /pending (waiting room)
+ * - Active → returns the user
+ *
+ * Use this anywhere a logged-in user should see protected content.
+ * For the admin panel use requireAdmin() instead.
+ */
+export async function requireActiveUser(): Promise<AuthUser> {
+  const u = await getCurrentUser();
+  if (!u) redirect('/login');
+  if (u.status !== 'active') redirect('/pending');
+  return u;
+}
+
+/**
+ * Page-level gate for /admin and admin API routes. Anyone non-admin
+ * gets bounced to /overview (active users) or /login (signed out).
+ */
+export async function requireAdmin(): Promise<AuthUser> {
+  const u = await getCurrentUser();
+  if (!u) redirect('/login');
+  if (u.status !== 'active') redirect('/pending');
+  if (!u.is_admin) redirect('/overview');
   return u;
 }
 
