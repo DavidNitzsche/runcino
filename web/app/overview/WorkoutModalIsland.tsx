@@ -363,8 +363,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             )}
 
-            {/* Variant C: top row → vs-plan left, route map right */}
-            <div className="wm-debrief-grid">
+            {/* Horizontal 3-col layout: vs Plan · Route · Splits */}
+            <div className="wm-debrief-grid-3col">
               <div className="wm-debrief-col">
                 <div className="wm-sub-label">vs Plan</div>
                 <div className="wm-vs-plan">
@@ -403,7 +403,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                     polyline={actual.summaryPolyline}
                     startLatLng={actual.startLatLng}
                     endLatLng={actual.endLatLng}
-                    height={260}
+                    height={300}
                   />
                 ) : (
                   <div className="wm-no-map">
@@ -411,54 +411,58 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                   </div>
                 )}
               </div>
+
+              <div className="wm-debrief-col">
+                <div className="wm-sub-label">Per-mile splits</div>
+                {actual.splits.length > 0 ? (
+                  <div className="wm-splits">
+                    <div className="wm-splits-head">
+                      <span>Mi</span>
+                      <span>Pace</span>
+                      <span className="right">HR</span>
+                      <span className="right">Elev</span>
+                    </div>
+                    {actual.splits.map((s) => {
+                      const allPaces = actual.splits.map((x) => x.paceSPerMi);
+                      const fastest = Math.min(...allPaces);
+                      const slowest = Math.max(...allPaces);
+                      const tone =
+                        s.paceSPerMi === fastest ? 'fast' :
+                        s.paceSPerMi === slowest ? 'slow' : '';
+                      return (
+                        <div key={s.mile} className={`wm-split-row ${tone}`}>
+                          <span className="wm-split-num">{s.mile}</span>
+                          <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
+                          <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
+                          <span className="wm-split-elev">
+                            {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="wm-split-legend">
+                      <span><span className="dot fast"></span>fastest</span>
+                      <span><span className="dot slow"></span>slowest</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="wm-no-splits">
+                    No mile splits yet — Strava is still processing the activity.
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Splits — full width below */}
-            <div className="wm-sub-label" style={{ marginTop: 22 }}>Per-mile splits</div>
-            {actual.splits.length > 0 ? (
-              <div className="wm-splits">
-                <div className="wm-splits-head">
-                  <span>Mi</span>
-                  <span>Pace</span>
-                  <span className="right">HR</span>
-                  <span className="right">Elev</span>
-                </div>
-                {actual.splits.map((s) => {
-                  const allPaces = actual.splits.map((x) => x.paceSPerMi);
-                  const fastest = Math.min(...allPaces);
-                  const slowest = Math.max(...allPaces);
-                  const tone =
-                    s.paceSPerMi === fastest ? 'fast' :
-                    s.paceSPerMi === slowest ? 'slow' : '';
-                  return (
-                    <div key={s.mile} className={`wm-split-row ${tone}`}>
-                      <span className="wm-split-num">{s.mile}</span>
-                      <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
-                      <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
-                      <span className="wm-split-elev">
-                        {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
-                      </span>
-                    </div>
-                  );
-                })}
-                <div className="wm-split-legend">
-                  <span><span className="dot fast"></span>fastest</span>
-                  <span><span className="dot slow"></span>slowest</span>
-                </div>
+            {/* Coach notes — single line under the columns */}
+            <div className="wm-debrief-footer">
+              <div className="wm-debrief-footer-notes">
+                <span className="wm-debrief-footer-label">Coach take</span>
+                <span className="wm-debrief-footer-copy">{desc.effort}</span>
               </div>
-            ) : (
-              <div className="wm-no-splits">
-                No mile splits available yet. They appear once Strava finishes processing the activity (usually within a few minutes).
-              </div>
-            )}
-
-            <div className="wm-sub-label" style={{ marginTop: 22 }}>Coach notes</div>
-            <p className="wm-copy" style={{ marginBottom: 6 }}>{desc.effort}</p>
-            <p className="wm-copy" style={{ fontSize: 12, color: 'rgba(13,15,18,.55)' }}>{desc.why}</p>
-
-            <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
-              View full activity on Strava ↗
-            </a>
+              <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
+                View full activity on Strava ↗
+              </a>
+            </div>
           </>
         )}
 
@@ -574,9 +578,9 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           box-shadow: 0 30px 80px rgba(0,0,0,.25);
           max-height: 92vh; overflow-y: auto;
         }
-        /* Wider variant when showing a completed-run debrief (2 cols) */
+        /* Wider variant for completed-run debrief — 3-column horizontal */
         .wm-card.wm-card-wide {
-          max-width: 820px;
+          max-width: 1180px;
         }
         .wm-close {
           position: absolute; top: 14px; right: 16px;
@@ -859,10 +863,59 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           gap: 28px;
           margin-bottom: 18px;
         }
+        /* Horizontal 3-col layout for the wide debrief modal */
+        .wm-debrief-grid-3col {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+          gap: 20px;
+          margin-bottom: 22px;
+        }
+        @media (max-width: 960px) {
+          .wm-debrief-grid-3col {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          }
+          .wm-debrief-grid-3col > .wm-debrief-col:nth-child(2) {
+            grid-column: 1 / -1;
+            order: -1;
+          }
+        }
         @media (max-width: 700px) {
           .wm-debrief-grid { grid-template-columns: 1fr; }
+          .wm-debrief-grid-3col { grid-template-columns: 1fr; }
+          .wm-debrief-grid-3col > .wm-debrief-col:nth-child(2) { order: 0; }
         }
         .wm-debrief-col { min-width: 0; }
+
+        /* Footer row with coach take + Strava link */
+        .wm-debrief-footer {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 24px;
+          padding-top: 18px;
+          border-top: 1px solid rgba(13,15,18,.06);
+          margin-top: 8px;
+        }
+        .wm-debrief-footer-notes { flex: 1; min-width: 0; }
+        .wm-debrief-footer-label {
+          display: block;
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 10px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: rgba(13,15,18,.45);
+          margin-bottom: 4px;
+        }
+        .wm-debrief-footer-copy {
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          line-height: 1.5;
+          color: rgba(13,15,18,.75);
+        }
+        @media (max-width: 700px) {
+          .wm-debrief-footer { flex-direction: column; }
+        }
 
         /* Mile splits */
         .wm-splits {

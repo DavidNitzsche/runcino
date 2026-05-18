@@ -88,11 +88,14 @@ export default function RouteMap({ polyline, startLatLng, endLatLng, height = 26
       });
       mapRef.current = map;
 
-      // CartoDB Voyager tiles — clean, readable, free, no API key.
+      // CartoDB Voyager tiles — clean, readable, free.
+      // Attribution suppressed in the visual; OSM/CARTO require it per
+      // ToS for production use — keep their credit somewhere in the UI
+      // (footer / about page) before going public.
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',
         maxZoom: 19,
-        attribution: '© OpenStreetMap · © CARTO',
+        attribution: '',
       }).addTo(map);
 
       // The route trace
@@ -115,9 +118,6 @@ export default function RouteMap({ polyline, startLatLng, endLatLng, height = 26
       }).addTo(map);
 
       map.fitBounds(trace.getBounds(), { padding: [16, 16] });
-
-      // Tiny attribution credit
-      L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
     })();
 
     return () => {
