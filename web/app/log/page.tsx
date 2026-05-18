@@ -16,6 +16,7 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
 import { requireActiveUser } from '@/lib/auth';
+import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './log-v4.css';
@@ -229,6 +230,8 @@ function daysInMonth(year: number, monthIdx: number): number {
 
 export default async function LogPage() {
   const auth = await requireActiveUser();
+  // Pull fresh Strava data if it's been more than 5 min since last sync.
+  await syncStravaIfStale(auth.id);
 
   const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
   const today = todayISO(userTimezone(auth.location));

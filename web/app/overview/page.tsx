@@ -27,6 +27,7 @@ import {
 } from '@/lib/synthetic-plan';
 import { getCompletedDates, getWeekStats } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
+import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import './overview-v4.css';
 
@@ -56,6 +57,12 @@ function lenBucket(label: string): 'xs' | 'sm' | 'md' | 'lg' | 'xl' {
 
 export default async function OverviewPage() {
   const user = await requireActiveUser();
+
+  // Auto-sync Strava if it's been more than 5 min since last refresh.
+  // Awaited so the user always sees current data — no manual Sync Now
+  // button click required. Failures fall through silently; we show
+  // whatever's in the DB regardless.
+  await syncStravaIfStale(user.id);
 
   // Compute "today" in the user's timezone (inferred from location, default LA)
   // so the page matches their wall clock, not UTC.

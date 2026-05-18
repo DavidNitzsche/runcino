@@ -19,11 +19,13 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInMiniIsland } from './CheckInMiniIsland';
 import { requireActiveUser } from '@/lib/auth';
+import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './health-v4.css';
 
 export default async function HealthPage() {
   const auth = await requireActiveUser();
+  await syncStravaIfStale(auth.id);
 
   const today = todayISO(userTimezone(auth.location));
   const todayLabel = new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();

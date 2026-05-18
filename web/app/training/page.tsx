@@ -21,6 +21,7 @@
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
+import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { getCompletedDates } from '@/lib/completed-runs';
 import './training-v4.css';
@@ -43,6 +44,7 @@ const PHASES: PhaseSpec[] = [
 
 export default async function TrainingPage() {
   const user = await requireActiveUser();
+  await syncStravaIfStale(user.id);
 
   const tz = userTimezone(user.location);
   const today = todayISO(tz);

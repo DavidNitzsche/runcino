@@ -35,6 +35,39 @@ export interface SyncError {
   needsReconnect?: boolean;
 }
 
+/**
+ * Returns `null` if the user isn't connected, the existing sync stats
+ * are still fresh (within ttlSeconds), or sync would otherwise no-op.
+ * Otherwise calls syncStravaForUser() and returns its result.
+ *
+ * Page loaders call this awaited at the top so the user sees current
+ * data without needing to hit the "Sync now" button. The 5-min TTL
+ * means a typical session never triggers more than one sync per page,
+ * and a refresh inside that window is free.
+ */
+export async function syncStravaIfStale(userId: string, ttlSeconds = 300): Promise<SyncResult | SyncError | null> {
+  const rows = await query<{ last_sync_at: Date | null }>(
+    `SELECT last_sync_at
+       FROM connector_tokens
+      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+      LIMIT 1`,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const lastSyncMs = row.last_sync_at ? new Date(row.last_sync_at).getTime() : 0;
+  if (lastSyncMs > 0) {
+    const ageSec = (Date.now() - lastSyncMs) / 1000;
+    if (ageSec < ttlSeconds) return null;
+  }
+  try {
+    return await syncStravaForUser(userId);
+  } catch (e) {
+    console.error('[sync-strava-user] stale-sync threw for', userId, ':', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'sync threw' };
+  }
+}
+
 interface TokenRow {
   access_token: string;
   refresh_token: string | null;
