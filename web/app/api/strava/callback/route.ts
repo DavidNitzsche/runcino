@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCode } from '../../../../lib/strava';
 import { query } from '../../../../lib/db';
 import { getCurrentUser } from '../../../../lib/auth';
+import { syncStravaForUser } from '../../../../lib/sync-strava-user';
 
 const STATE_COOKIE = 'faff_strava_oauth_state';
 
@@ -108,6 +109,21 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     console.error('[strava callback] failed to persist tokens:', e);
     return NextResponse.redirect(`${origin}/profile?connect=error&reason=persist_failed`);
+  }
+
+  // Kick off the initial activity backfill. Synchronous wait so the
+  // user lands on /profile with their runs already loaded (no "0 of N
+  // activities" placeholder state). 4000-activity cap + 200/page ⇒ ~20
+  // Strava requests worst case, ~1-2s for a typical YTD pull.
+  try {
+    const result = await syncStravaForUser(userId);
+    if (!result.ok) {
+      console.error('[strava callback] initial sync failed:', result.error);
+      // Tokens are persisted — the user can hit "Sync now" from /profile.
+      // Don't redirect to error; the connection itself succeeded.
+    }
+  } catch (e) {
+    console.error('[strava callback] initial sync threw:', e);
   }
 
   // Clear the state cookie + redirect home

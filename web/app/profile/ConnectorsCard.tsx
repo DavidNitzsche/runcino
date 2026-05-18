@@ -60,6 +60,7 @@ function timeAgo(iso: string | null): string {
 export function ConnectorsCard() {
   const [connectors, setConnectors] = useState<ConnectorRow[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -79,6 +80,32 @@ export function ConnectorsCard() {
     try {
       await fetch(`/api/connectors/${provider}/disconnect`, { method: 'POST' });
       await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function syncStrava() {
+    if (busy) return;
+    setBusy(true);
+    setSyncMsg('Syncing…');
+    try {
+      const res = await fetch('/api/strava/sync-me', { method: 'POST' });
+      const j = await res.json();
+      if (!res.ok) {
+        if (j?.needsReconnect) {
+          setSyncMsg('Token expired — reconnect Strava');
+        } else {
+          setSyncMsg(j?.error || 'Sync failed');
+        }
+      } else {
+        setSyncMsg(`Synced · ${j.totalAfter} activities`);
+        await load();
+        // Hard reload after a beat so /log and /overview re-read activities.
+        setTimeout(() => { window.location.reload(); }, 500);
+      }
+    } catch {
+      setSyncMsg('Network error');
     } finally {
       setBusy(false);
     }
@@ -112,10 +139,11 @@ export function ConnectorsCard() {
                 <span className="faff-dot green" />
                 <strong>Syncing</strong> · last sync {timeAgo(stravaConn.last_sync_at)}
                 {stravaConn.activities_count > 0 && <> · <strong>{stravaConn.activities_count}</strong> activities pulled</>}
+                {syncMsg && <> · <em>{syncMsg}</em></>}
               </div>
             </div>
             <div className="faff-conn-actions">
-              <button className="faff-conn-btn" type="button" disabled={busy}>Sync now</button>
+              <button className="faff-conn-btn" type="button" disabled={busy} onClick={syncStrava}>{busy ? 'Syncing…' : 'Sync now'}</button>
               <button className="faff-conn-btn danger" type="button" disabled={busy} onClick={() => disconnect('strava')}>Disconnect</button>
             </div>
           </div>
