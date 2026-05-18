@@ -16,6 +16,7 @@
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
+import { query } from '@/lib/db';
 import './races-v4.css';
 
 interface UpcomingRace {
@@ -38,16 +39,151 @@ interface RecentRace {
   currentAnchor?: boolean;
 }
 
+function fmtMonthDay(iso: string): string {
+  const d = new Date(iso + (iso.length === 10 ? 'T12:00:00Z' : ''));
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+function fmtTime(sec: number): string {
+  if (!sec || sec <= 0) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+function fmtPace(sPerMi: number): string {
+  if (!sPerMi || sPerMi <= 0) return '—';
+  const m = Math.floor(sPerMi / 60);
+  const s = sPerMi % 60;
+  return `${m}:${String(s).padStart(2, '0')}/mi`;
+}
+
 export default async function RacesPage() {
   const auth = await requireActiveUser();
 
-  // No more seeded mockup data — every section starts empty until the
-  // runner adds real races. PRs come from Strava activity history once
-  // we wire the best_efforts lookup.
-  const upcoming: UpcomingRace[] = [];
-  const recent: RecentRace[] = [];
+  const todayMs = Date.now();
+
+  // ── 1. Upcoming + saved races from the `races` table ──
+  interface RaceRow { slug: string; meta: { name: string; date: string; distanceMi: number; goalDisplay?: string; priority?: 'A'|'B'|'C' }; actual_result: { finishS?: number; paceSPerMi?: number } | null }
+  const savedRaces = await query<RaceRow>(
+    `SELECT slug, meta, actual_result
+       FROM races
+      WHERE user_uuid = $1 OR user_uuid IS NULL`,
+    [auth.id],
+  );
+
+  const upcoming: UpcomingRace[] = savedRaces
+    .filter((r) => Date.parse(r.meta.date) >= todayMs)
+    .sort((a, b) => Date.parse(a.meta.date) - Date.parse(b.meta.date))
+    .map((r) => {
+      const daysAway = Math.max(0, Math.round((Date.parse(r.meta.date) - todayMs) / 86400000));
+      const dist = r.meta.distanceMi;
+      const distLabel = dist >= 26.1 ? `Marathon · ${dist.toFixed(2)} mi`
+        : dist >= 13.0 ? `Half Marathon · ${dist.toFixed(2)} mi`
+        : dist >= 6.1 ? `10K · ${dist.toFixed(2)} mi`
+        : dist >= 3.0 ? `5K · ${dist.toFixed(2)} mi`
+        : `${dist.toFixed(1)} mi`;
+      return {
+        name: r.meta.name,
+        date: fmtMonthDay(r.meta.date),
+        daysAway,
+        distanceLabel: distLabel,
+        goal: r.meta.goalDisplay || '—',
+        priority: r.meta.priority ?? 'A',
+        slug: r.slug,
+      };
+    });
+
+  // ── 2. Recent races: union of races-table finishes + strava-tagged Race activities ──
+  interface RaceActivityRow { id: string; data: { name?: string; startLocal?: string; date?: string; distanceMi?: number; movingTimeS?: number; paceSPerMi?: number; workoutType?: number; canonicalFinishS?: number | null; canonicalDistanceMi?: number | null; canonicalLabel?: string | null } }
+  const raceActivities = await query<RaceActivityRow>(
+    `SELECT id::text AS id, data
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND (data->>'workoutType')::int = 1
+      ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC
+      LIMIT 50`,
+    [auth.id],
+  );
+
+  const recent: RecentRace[] = [
+    // First: races-table entries that have an actualResult (the user logged a finish)
+    ...savedRaces
+      .filter((r) => r.actual_result && Date.parse(r.meta.date) < todayMs)
+      .map((r): RecentRace => {
+        const dist = r.meta.distanceMi;
+        const finishS = Number(r.actual_result?.finishS) || 0;
+        const paceSec = Number(r.actual_result?.paceSPerMi) || (finishS > 0 && dist > 0 ? Math.round(finishS / dist) : 0);
+        const distLabel = dist >= 26.1 ? 'Marathon'
+          : dist >= 13.0 ? 'Half Marathon'
+          : dist >= 6.1 ? '10K'
+          : dist >= 3.0 ? '5K'
+          : `${dist.toFixed(1)} mi`;
+        return {
+          date: r.meta.date,
+          name: r.meta.name,
+          distanceLabel: distLabel,
+          finish: fmtTime(finishS),
+          pace: fmtPace(paceSec),
+          priority: r.meta.priority ?? 'A',
+        };
+      }),
+    // Then: Strava activities tagged as Race that aren't already in saved races (best-effort dedupe by date)
+    ...raceActivities.map((a): RecentRace => {
+      const dist = Number(a.data.distanceMi) || 0;
+      const finishS = Number(a.data.canonicalFinishS ?? a.data.movingTimeS) || 0;
+      const canonMi = Number(a.data.canonicalDistanceMi) || dist;
+      const paceSec = canonMi > 0 ? Math.round(finishS / canonMi) : 0;
+      const distLabel = a.data.canonicalLabel
+        || (dist >= 26.1 ? 'Marathon'
+          : dist >= 13.0 ? 'Half Marathon'
+          : dist >= 6.1 ? '10K'
+          : dist >= 3.0 ? '5K'
+          : `${dist.toFixed(1)} mi`);
+      return {
+        date: a.data.date || (a.data.startLocal || '').slice(0, 10),
+        name: a.data.name || 'Race',
+        distanceLabel: distLabel,
+        finish: fmtTime(finishS),
+        pace: fmtPace(paceSec),
+        priority: 'A',
+      };
+    }),
+  ]
+    // De-duplicate: if the same date appears in saved races + activities, keep the saved-race entry
+    .filter((r, i, arr) => arr.findIndex((x) => x.date === r.date) === i)
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .slice(0, 12);
+
   const aRace = upcoming.find((r) => r.priority === 'A');
-  const PRs: Array<{ distance: string; time: string; when: string; current?: boolean }> = [];
+
+  // ── 3. PRs by canonical distance from strava canonical bests ──
+  interface BestRow { canonical_label: string; finish_s: number; date: string }
+  const bestRows = await query<BestRow>(
+    `WITH bests AS (
+       SELECT data->>'canonicalLabel'                    AS canonical_label,
+              (data->>'canonicalFinishS')::NUMERIC       AS finish_s,
+              COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS date,
+              ROW_NUMBER() OVER (PARTITION BY data->>'canonicalLabel'
+                                 ORDER BY (data->>'canonicalFinishS')::NUMERIC ASC) AS rn
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND data->>'canonicalLabel' IS NOT NULL
+          AND (data->>'canonicalFinishS')::NUMERIC > 0
+     )
+     SELECT canonical_label, finish_s::int AS finish_s, date
+       FROM bests WHERE rn = 1
+       ORDER BY canonical_label`,
+    [auth.id],
+  );
+  const PRs: Array<{ distance: string; time: string; when: string; current?: boolean }> = bestRows.map((b) => ({
+    distance: b.canonical_label === 'Half' ? '13.1 (HM)'
+      : b.canonical_label === 'Marathon' ? '26.2'
+      : b.canonical_label,
+    time: fmtTime(b.finish_s),
+    when: b.date ? fmtMonthDay(b.date) : '',
+  }));
 
   return (
     <div className="races-v4-page">
