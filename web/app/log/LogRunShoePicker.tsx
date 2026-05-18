@@ -24,7 +24,7 @@ interface Props {
 }
 
 const PURPOSE_LABEL: Record<string, string> = {
-  easy: 'Easy', recovery: 'Recovery', long: 'Long', threshold: 'Threshold',
+  easy: 'Easy', recovery: 'Easy', long: 'Long', threshold: 'Threshold',
   intervals: 'Intervals', race: 'Race', trail: 'Trail', daily: 'Daily',
 };
 

@@ -73,12 +73,12 @@
 .health-v4-page .form-chart-legend-dot.race { background: transparent; border: 1.5px dashed var(--orange); }
 
 /* ── Health hero — 2-column big-title pattern matching /overview · /races ── */
-.health-v4-page .health-hero { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); display: grid; grid-template-columns: 1fr 460px; margin-top: 16px; overflow: hidden; }
+.health-v4-page .health-hero { background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow); display: grid; grid-template-columns: minmax(0, 1fr) 400px; margin-top: 16px; overflow: hidden; }
 
 /* Left column — eyebrow, huge Bebas title, stat pills, coach take */
-.health-v4-page .health-hero-left { padding: 40px; display: flex; flex-direction: column; }
+.health-v4-page .health-hero-left { padding: 40px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .health-v4-page .health-hero-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
-.health-v4-page .health-hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 280px; line-height: 0.86; letter-spacing: -4px; color: var(--t0); margin-left: -6px; text-transform: uppercase; }
+.health-v4-page .health-hero-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(96px, 16vw, 200px); line-height: 0.86; letter-spacing: -3px; color: var(--t0); margin-left: -6px; text-transform: uppercase; }
 .health-v4-page .health-hero-stats { display: flex; gap: 10px; margin-top: 28px; }
 .health-v4-page .health-hero-stat { padding: 14px 18px; background: rgba(13,15,18,.025); border-radius: 12px; flex: 1; }
 .health-v4-page .health-hero-stat-row { display: flex; align-items: baseline; gap: 4px; }

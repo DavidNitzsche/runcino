@@ -19,7 +19,10 @@ export type PlanPhase = 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'RACE_WEEK';
 export interface PlanWeekDay {
   dow: string;            // 'Mon' | 'Tue' | …
   date: string;           // YYYY-MM-DD
-  type: 'easy' | 'recovery' | 'long' | 'quality' | 'race' | 'rest';
+  /** Workout type. 'recovery' was rolled into 'easy' in 2026-05;
+   *  the legacy literal stays in the union only so older saved
+   *  payloads still type-check. Render code should treat it as easy. */
+  type: 'easy' | 'long' | 'quality' | 'race' | 'rest' | 'recovery';
   label: string;          // human-readable workout name
   distanceMi: number;
   isRest?: boolean;
@@ -38,11 +41,13 @@ export interface PlanWeek {
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const TEMPLATE: ([string, string, number, boolean?] | null)[][] = [
-  // BASE — 4 weeks
-  [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5,true],null,['long','Long',10.5]],
-  [['recovery','Recovery',5.5],['quality','Threshold · Cruise Intervals',7.5],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Hill Strides',5.5,true],null,['long','Long',11]],
-  [['recovery','Recovery',4.5],['quality','Threshold · Cruise Intervals',6],['easy','Easy + Strides',4.5],['easy','Easy',4.5,true],['easy','Easy',4.5,true],null,['long','Long',11.5]],
-  [['recovery','Recovery',6],['quality','Threshold · Cruise Intervals',8],['easy','Easy + Strides',6],['easy','Easy',6,true],['easy','Hill Strides',6,true],null,['long','Long',12]],
+  // BASE — 4 weeks. Mondays used to be 'recovery'; consolidated into
+  // 'easy' (2026-05) so there's only one easy-aerobic bucket instead
+  // of a recovery-vs-easy distinction the runner had to keep track of.
+  [['easy','Easy',5.5],['quality','Threshold · Cruise Intervals',7],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Easy',5.5,true],null,['long','Long',10.5]],
+  [['easy','Easy',5.5],['quality','Threshold · Cruise Intervals',7.5],['easy','Easy + Strides',5.5],['easy','Easy',5.5,true],['easy','Hill Strides',5.5,true],null,['long','Long',11]],
+  [['easy','Easy',4.5],['quality','Threshold · Cruise Intervals',6],['easy','Easy + Strides',4.5],['easy','Easy',4.5,true],['easy','Easy',4.5,true],null,['long','Long',11.5]],
+  [['easy','Easy',6],['quality','Threshold · Cruise Intervals',8],['easy','Easy + Strides',6],['easy','Easy',6,true],['easy','Hill Strides',6,true],null,['long','Long',12]],
   // BUILD — 4 weeks
   [['easy','Easy',6.5,true],['quality','Threshold · HM Blocks',7.5],['easy','Easy',6.5],['quality','Intervals',6],['easy','Easy',6.5,true],null,['long','Long Run · HM Finish',12.5]],
   [['easy','Easy',5,true],['quality','Threshold · HM Cruise',6.5],['easy','Easy',5],['quality','Intervals',5],['easy','Easy',5,true],null,['long','Long',11.5]],

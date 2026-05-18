@@ -31,8 +31,10 @@ const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface IntensityCfg { pos: number; label: string; color: string; copy: string; }
 const INTENSITY_CFG: Record<string, IntensityCfg> = {
-  recovery: { pos: 10, label: 'Recovery · Zone 1', color: 'var(--green)',  copy: 'Very easy — clearing the legs, not building anything. Effort below conversational.' },
+  // Easy bucket covers everything that used to be "recovery" too —
+  // they're the same physiological zone (Z1/Z2 conversational pace).
   easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+  recovery: { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
   long:     { pos: 30, label: 'Long · Zone 2',     color: 'var(--green)',  copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed.' },
   quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain.' },
   race:     { pos: 88, label: 'Race · Zone 4–5',   color: 'var(--orange)', copy: 'Race day. Execute the plan; conserve early, commit late.' },

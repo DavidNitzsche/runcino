@@ -265,7 +265,7 @@
   border-radius: 20px;
   box-shadow: var(--card-shadow);
   display: grid;
-  grid-template-columns: 1fr 460px;
+  grid-template-columns: minmax(0, 1fr) 400px;
   margin-top: 16px;
   overflow: hidden;
 }
@@ -275,6 +275,8 @@
   padding: 40px;
   display: flex;
   flex-direction: column;
+  min-width: 0;            /* lets the column actually shrink when text is huge */
+  overflow: hidden;        /* and clips anything that still doesn't fit */
 }
 
 .overview-v4-page .hero-eyebrow {
@@ -294,20 +296,20 @@
   margin-left: -6px; /* correct Bebas Neue side-bearing so ink aligns with eyebrow text */
   text-transform: uppercase;
   overflow-wrap: break-word;
-  /* Default — sized for 'EASY RUN'-length workout names */
-  font-size: 300px;
-  letter-spacing: -4px;
+  /* Default — sized for 'EASY'-length workout names. Uses clamp() so
+     long words like 'THRESHOLD' shrink on narrower viewports instead
+     of pushing the readiness column off-screen. */
+  font-size: clamp(96px, 16vw, 220px);
+  letter-spacing: -3px;
 }
-/* Workout-title size buckets. Engine sets data-len based on the
-   character count of the workout name. Each bucket keeps the title
-   feeling hero-sized while preventing layout breakage on long titles.
-   Engine should also drop any hardcoded <br> for md+ since longer
-   titles wrap naturally at word boundaries. */
-.overview-v4-page .hero-title[data-len="xs"] { font-size: 320px; letter-spacing: -5px; } /* ≤6: REST, EASY */
-.overview-v4-page .hero-title[data-len="sm"] { font-size: 300px; letter-spacing: -4px; } /* 7-12: EASY RUN, LONG RUN, TEMPO */
-.overview-v4-page .hero-title[data-len="md"] { font-size: 180px; letter-spacing: -3px; } /* 13-20: EASY + STRIDES, LONG RUN · HM */
-.overview-v4-page .hero-title[data-len="lg"] { font-size: 120px; letter-spacing: -2px; } /* 21-30: THRESHOLD · CRUISE INTERVALS */
-.overview-v4-page .hero-title[data-len="xl"] { font-size: 80px;  letter-spacing: -1px; } /* 31+: fallback for novellas */
+/* Workout-title size buckets. The hero is in a `1fr 400px` grid where
+   the 1fr column has min-width:0, so the title can shrink to fit. The
+   buckets give us tighter control per name-length. */
+.overview-v4-page .hero-title[data-len="xs"] { font-size: clamp(120px, 18vw, 240px); letter-spacing: -4px; } /* ≤6: REST, EASY, LONG */
+.overview-v4-page .hero-title[data-len="sm"] { font-size: clamp(96px, 16vw, 200px); letter-spacing: -3px; }  /* 7-12: RECOVERY, TEMPO */
+.overview-v4-page .hero-title[data-len="md"] { font-size: clamp(64px, 11vw, 140px); letter-spacing: -2px; }  /* 13-20: EASY + STRIDES */
+.overview-v4-page .hero-title[data-len="lg"] { font-size: clamp(48px, 8vw,  100px); letter-spacing: -2px; }  /* 21-30: THRESHOLD · CRUISE INTERVALS */
+.overview-v4-page .hero-title[data-len="xl"] { font-size: clamp(36px, 6vw,  72px);  letter-spacing: -1px; }  /* 31+: fallback */
 
 .overview-v4-page .coach-note-inline {
   font-family: 'Inter', sans-serif;

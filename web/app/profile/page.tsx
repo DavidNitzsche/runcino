@@ -56,8 +56,10 @@ const DOW_LABEL: Record<string, string> = {
   mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
 };
 
+// Shoe-purpose labels. 'recovery' rolls into 'easy' but we keep the
+// legacy key so old shoe records still render.
 const PURPOSE_LABEL: Record<string, string> = {
-  easy: 'Easy', recovery: 'Recovery', long: 'Long', threshold: 'Threshold',
+  easy: 'Easy', recovery: 'Easy', long: 'Long', threshold: 'Threshold',
   intervals: 'Intervals', race: 'Race', trail: 'Trail', daily: 'Daily',
 };
 

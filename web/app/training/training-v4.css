@@ -151,18 +151,19 @@
   border-radius: 20px;
   box-shadow: var(--card-shadow);
   display: grid;
-  grid-template-columns: 1fr 460px;
+  grid-template-columns: minmax(0, 1fr) 400px;
   margin-top: 16px;
   overflow: hidden;
 }
-.training-v4-page .hero-left { padding: 40px; display: flex; flex-direction: column; }
+.training-v4-page .hero-left { padding: 40px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .training-v4-page .hero-eyebrow {
   font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px;
   color: var(--t2); text-transform: uppercase; margin-bottom: 20px;
 }
 .training-v4-page .hero-title {
-  font-family: 'Bebas Neue', sans-serif; font-size: 300px; line-height: 0.86;
-  letter-spacing: -4px; color: var(--t0); flex: 0 0 auto; margin-left: -6px;
+  font-family: 'Bebas Neue', sans-serif; font-size: clamp(96px, 16vw, 200px); line-height: 0.86;
+  letter-spacing: -3px; color: var(--t0); flex: 0 0 auto; margin-left: -6px;
+  text-transform: uppercase;
 }
 .training-v4-page .hero-sub {
   font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px;

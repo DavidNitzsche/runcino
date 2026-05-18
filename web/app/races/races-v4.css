@@ -58,12 +58,12 @@
 /* ── A-race hero ────────────────────────────────────────── */
 .races-v4-page .a-race-card {
   background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow);
-  display: grid; grid-template-columns: 1fr 460px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 400px;
   margin-top: 16px; overflow: hidden;
 }
-.races-v4-page .a-race-left { padding: 40px; display: flex; flex-direction: column; }
+.races-v4-page .a-race-left { padding: 40px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .races-v4-page .a-race-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
-.races-v4-page .a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: 110px; line-height: 0.86; letter-spacing: -3px; color: var(--t0); flex: 0 0 auto; margin-left: -6px; }
+.races-v4-page .a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(56px, 9vw, 110px); line-height: 0.86; letter-spacing: -3px; color: var(--t0); flex: 0 0 auto; margin-left: -6px; }
 .races-v4-page .a-race-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--orange); margin-top: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
 .races-v4-page .a-race-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 16px; max-width: 540px; }
 
