@@ -222,15 +222,15 @@ export default async function OverviewPage() {
               const dateNum = parseInt(d.date.slice(-2), 10);
               return (
                 <div key={d.date} className={`day-col${isToday ? ' today' : ''}`}>
-                  <div className="day-dow">{d.dow}</div>
+                  <div className="day-name">{d.dow}</div>
                   <div className={`day-date${isToday ? ' amber' : ''}`}>{dateNum}</div>
                   {d.isRest ? (
                     <div className="day-rest">Rest</div>
                   ) : (
                     <>
-                      <div className="day-type">{d.label}</div>
-                      <div className="day-dist">{d.distanceMi}<small>mi</small></div>
-                      {isDone && <div className="day-done">DONE</div>}
+                      <div className="day-workout-name">{d.label}</div>
+                      <div className="day-distance">{d.distanceMi}<small>mi</small></div>
+                      {isDone && <div className="day-status-done">DONE</div>}
                       {d.hasStrength && !isDone && <span className="day-strength" title="Strength training">S</span>}
                     </>
                   )}
