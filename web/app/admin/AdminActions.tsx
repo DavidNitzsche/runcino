@@ -26,8 +26,9 @@ export function AdminActions({ userId, kind, isAdmin, isSelf }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function act(action: 'approve' | 'deny' | 'promote' | 'demote' | 'reapprove') {
+  async function act(action: 'approve' | 'deny' | 'promote' | 'demote' | 'reapprove' | 'delete') {
     if (busy) return;
+    if (action === 'delete' && !confirm('Permanently delete this user? This removes their account, sessions, and connector tokens. This cannot be undone.')) return;
     setBusy(action);
     setErr(null);
     try {
@@ -57,6 +58,16 @@ export function AdminActions({ userId, kind, isAdmin, isSelf }: Props) {
             onClick={() => act('approve')}
           >
             {busy === 'approve' ? '…' : 'Approve'}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-deny"
+            disabled={!!busy}
+            onClick={() => act('delete')}
+            title="Permanently delete this user"
+            style={{ marginLeft: 4 }}
+          >
+            {busy === 'delete' ? '…' : 'Delete'}
           </button>
           <button
             type="button"
@@ -104,18 +115,40 @@ export function AdminActions({ userId, kind, isAdmin, isSelf }: Props) {
               {busy === 'deny' ? '…' : 'Revoke'}
             </button>
           )}
+          {!isSelf && !isAdmin && (
+            <button
+              type="button"
+              className="admin-btn admin-btn-deny"
+              disabled={!!busy}
+              onClick={() => act('delete')}
+              title="Permanently delete this user"
+            >
+              {busy === 'delete' ? '…' : 'Delete'}
+            </button>
+          )}
         </>
       )}
 
       {kind === 'denied' && (
-        <button
-          type="button"
-          className="admin-btn admin-btn-approve"
-          disabled={!!busy}
-          onClick={() => act('reapprove')}
-        >
-          {busy === 'reapprove' ? '…' : 'Reapprove'}
-        </button>
+        <>
+          <button
+            type="button"
+            className="admin-btn admin-btn-approve"
+            disabled={!!busy}
+            onClick={() => act('reapprove')}
+          >
+            {busy === 'reapprove' ? '…' : 'Reapprove'}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-deny"
+            disabled={!!busy}
+            onClick={() => act('delete')}
+            title="Permanently delete this user"
+          >
+            {busy === 'delete' ? '…' : 'Delete'}
+          </button>
+        </>
       )}
 
       {err && <span className="admin-err">{err}</span>}

@@ -16,8 +16,8 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { query } from '@/lib/db';
 
-type Action = 'approve' | 'reapprove' | 'deny' | 'promote' | 'demote';
-const ACTIONS: Action[] = ['approve', 'reapprove', 'deny', 'promote', 'demote'];
+type Action = 'approve' | 'reapprove' | 'deny' | 'promote' | 'demote' | 'delete';
+const ACTIONS: Action[] = ['approve', 'reapprove', 'deny', 'promote', 'demote', 'delete'];
 
 export async function POST(
   _req: Request,
@@ -89,6 +89,20 @@ export async function POST(
         [id],
       );
       return NextResponse.json({ ok: true });
+    }
+
+    case 'delete': {
+      // Hard delete. Refuses to wipe yourself OR an admin (demote first).
+      // Cascade drops sessions + connector_tokens + any rows keyed on
+      // user_uuid via ON DELETE CASCADE in the schema.
+      if (target.id === me.id) {
+        return NextResponse.json({ error: "You can't delete your own account" }, { status: 400 });
+      }
+      if (target.is_admin) {
+        return NextResponse.json({ error: 'Demote the user from admin before deleting' }, { status: 400 });
+      }
+      await query(`DELETE FROM users WHERE id = $1;`, [id]);
+      return NextResponse.json({ ok: true, deleted: true });
     }
   }
 }
