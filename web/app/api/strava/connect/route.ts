@@ -45,14 +45,17 @@ export async function GET(req: Request) {
     return new Response('Missing STRAVA_CLIENT_ID — set it in Railway Variables', { status: 500 });
   }
 
+  // Resolve the public origin first — we use it for both the OAuth
+  // redirect_uri and the "not logged in → /login" bounce. Using raw
+  // req.url here gave us `http://0.0.0.0:8080/login` on Railway.
+  const origin = publicOrigin(req);
+  const redirectUri = `${origin}/api/strava/callback`;
+
   // Require login
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.redirect(new URL('/login', new URL(req.url).origin));
+    return NextResponse.redirect(`${origin}/login?next=/profile`);
   }
-
-  const origin = publicOrigin(req);
-  const redirectUri = `${origin}/api/strava/callback`;
 
   // Debug hatch
   const url = new URL(req.url);
