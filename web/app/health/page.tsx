@@ -20,6 +20,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInMiniIsland } from './CheckInMiniIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
+import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './health-v4.css';
 
@@ -29,6 +30,31 @@ export default async function HealthPage() {
 
   const today = todayISO(userTimezone(auth.location));
   const todayLabel = new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
+
+  // Today's check-in (from /api/checkin POST). Used by the "What's
+  // driving it" panel — was hardcoded "Not logged" in the v4 mockup.
+  interface CheckinRow { energy: number; soreness: number; stress: number }
+  const checkinRows = await query<CheckinRow>(
+    `SELECT energy, soreness, stress
+       FROM daily_checkin
+      WHERE date = $1 AND (user_uuid = $2 OR (user_uuid IS NULL AND user_id = 'me'))
+      ORDER BY user_uuid NULLS LAST
+      LIMIT 1`,
+    [today, auth.id],
+  );
+  const checkin = checkinRows[0] ?? null;
+
+  // Composite freshness score: avg of energy + inverted soreness + inverted
+  // stress, scaled 0-100 for the bar width.
+  let checkinValue = 'Not logged';
+  let checkinTone: 'green' | 'amber' | 'dim' = 'dim';
+  let checkinWidth = 0;
+  if (checkin) {
+    const score = (checkin.energy + (11 - checkin.soreness) + (11 - checkin.stress)) / 3;
+    checkinValue = `${checkin.energy} energy · ${checkin.soreness} sore · ${checkin.stress} stress`;
+    checkinTone = score >= 7 ? 'green' : score >= 5 ? 'amber' : 'amber';
+    checkinWidth = Math.round((score / 10) * 100);
+  }
 
   return (
     <div className="health-v4-page">
@@ -116,7 +142,7 @@ export default async function HealthPage() {
               <HealthTrendRow label="Resting HR" value="−2 bpm"       tone="green" width={55} />
               <HealthTrendRow label="HRV"        value="+4 ms"        tone="green" width={62} />
               <HealthTrendRow label="Strain 7d"  value="11.4 · Moderate" tone="amber" width={45} />
-              <HealthTrendRow label="Check-In"   value="Not logged"   tone="dim"   width={0} />
+              <HealthTrendRow label="Check-In"   value={checkinValue} tone={checkinTone} width={checkinWidth} />
             </div>
           </div>
         </div>
