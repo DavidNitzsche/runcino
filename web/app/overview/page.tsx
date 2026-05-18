@@ -25,7 +25,8 @@ import {
   userTimezone,
   type PlanWeek,
 } from '@/lib/synthetic-plan';
-import { getCompletedDates } from '@/lib/completed-runs';
+import { getCompletedDates, getWeekStats } from '@/lib/completed-runs';
+import { generateBriefing } from '@/lib/coach-briefing';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import './overview-v4.css';
 
@@ -76,6 +77,23 @@ export default async function OverviewPage() {
   const completed = await getCompletedDates(user.id, currentWeek.startDate, today);
   const isComplete = (dateISO: string) => completed.has(dateISO);
 
+  // Stats the coach briefing references: previous calendar week +
+  // current week through yesterday. Done as two ranged queries.
+  const previousWeek = weeks[weeks.findIndex((w) => w === currentWeek) - 1] ?? null;
+  const lastWeekStats = previousWeek
+    ? await getWeekStats(user.id, previousWeek.startDate, previousWeek.endDate)
+    : { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
+
+  // Yesterday's date string for "this week so far" cutoff.
+  const yesterdayISO = (() => {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const thisWeekSoFar = yesterdayISO >= currentWeek.startDate
+    ? await getWeekStats(user.id, currentWeek.startDate, yesterdayISO)
+    : { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
+
   // Session-progress: count days the user actually has an activity for.
   const weekDaysWithWork = currentWeek.days.filter((d) => !d.isRest);
   const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date)).length;
@@ -97,6 +115,21 @@ export default async function OverviewPage() {
   // Race countdown — race is week 14, last day
   const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
+
+  // Build the coach briefing using real last-week + this-week data.
+  // Monday reflects on last week; weekend days frame the long run;
+  // mid-week days reference current-week mileage banked so far.
+  const briefing = generateBriefing({
+    firstName: user.name?.split(' ')[0] || '',
+    today,
+    daysToRace,
+    raceLabel: 'AFC Half',
+    currentWeek,
+    previousWeek,
+    lastWeekStats,
+    thisWeekSoFar,
+    todayDay,
+  });
 
   // Today's Intensity config
   const intensity = isRest
@@ -123,13 +156,7 @@ export default async function OverviewPage() {
               <span className="dot-green"></span>
               COACH · {new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
             </div>
-            <p className="coach-briefing">
-              {isRest ? (
-                <>Good morning, {user.name?.split(' ')[0] || 'there'}. <strong>{sessionsDone} of {sessionsTotal} sessions down</strong>, body absorbing the load. Today is rest &mdash; use it. <strong>{daysToRace} days to AFC.</strong></>
-              ) : (
-                <>Today is <strong>{todayDay?.label?.toLowerCase() || 'an easy run'}</strong> at {todayDay?.distanceMi} mi. {todayDay?.type === 'easy' && 'Conversational throughout; the work is built on the easy days.'}{todayDay?.type === 'long' && 'Time on feet is the stimulus; pace is conversational.'}{todayDay?.type === 'quality' && 'Threshold dose &mdash; comfortably hard, controlled.'}{' '}<strong>{daysToRace} days to AFC.</strong></>
-              )}
-            </p>
+            <p className="coach-briefing">{briefing}</p>
           </div>
 
           {/* Check-In is interactive (client island) */}
