@@ -84,13 +84,24 @@ export function formatPlanDescription(
   if (actual.avgHr && actual.avgHr > 0) actualBits.push(`· ${Math.round(actual.avgHr)} avg HR`);
   const actualLine = actualBits.join(' ');
 
-  // Build a compact text version of the step table for the Strava
-  // description (which is plain text — can't render the modal's grid).
+  // Build a compact text version of the recipe for the Strava
+  // description (plain text — no nested formatting).
   const stepLines = desc.steps.length === 0
     ? []
-    : ['', 'WORKOUT', ...desc.steps.flatMap((s) => {
-        const main = `  ${s.name} — ${s.duration} @ ${s.pace}`;
-        return s.note ? [main, `    (${s.note})`] : [main];
+    : ['', 'WORKOUT', ...desc.steps.flatMap((s, i) => {
+        const num = `${i + 1}.`;
+        if (s.kind === 'simple') {
+          return [`  ${num} ${s.name} — ${s.duration} at ${s.pace} (${s.zone})`];
+        }
+        const lines = [`  ${num} ${s.name}`, `      ${s.times} rounds of:`];
+        for (const item of s.items) {
+          const parts = [`${item.verb} ${item.duration}`];
+          if (item.pace) parts.push(`at ${item.pace}`);
+          if (item.zone) parts.push(`(${item.zone})`);
+          if (item.suffix) parts.push(item.suffix);
+          lines.push(`        · ${parts.join(' ')}`);
+        }
+        return lines;
       })];
 
   const tail = [

@@ -1,49 +1,74 @@
 /**
- * Workout descriptions — structured breakdown for each named workout.
+ * Workout descriptions — clean recipe-style breakdown per workout.
  *
- * Replaces the prose paragraphs with a chart-friendly shape:
- *   - steps[]   : table rows for the modal — name + duration + pace + note
- *   - effort    : 1-2 sentence "how it should feel" cue
- *   - why       : 1 sentence purpose statement
+ * Each workout is a numbered list of steps. A step is either:
  *
- * Each "step" is one phase of the workout. For a threshold session
- * that's warm up → intervals → cool down. For an easy run it's
- * a single row covering the whole distance.
+ *   SIMPLE — single phase, one line of info
+ *     "Warm Up — 15 min at 9:00–9:30/mi (easy)"
  *
- * The modal renders these as a small table + two short sections —
- * scannable, no wall of text.
+ *   LOOP — repeating phase with sub-items
+ *     "Cruise Intervals
+ *      5 ROUNDS OF:
+ *        · Run 7 min at 7:20–7:40/mi (threshold)
+ *        · Jog 90 sec easy to recover"
  *
- * Pace numbers are estimates anchored to a sub-1:45 half-marathon
- * goal. When per-user VDOT/HR zones land later, these get computed
- * from the runner's own training paces instead of hardcoded ranges.
+ * The modal renders these as a numbered recipe so the repetition
+ * structure is unambiguous. Pace numbers anchored to a sub-1:45
+ * half-marathon goal — will switch to user VDOT once we compute it.
  */
 
-export interface WorkoutStep {
-  /** Phase name shown in the leftmost column (UPPERCASE in render). */
+export interface SimpleStep {
+  kind: 'simple';
+  /** Phase name in caps: "Warm Up", "Cool Down", "Long Run". */
   name: string;
-  /** Duration / structure — "15 min", "4–5 × 6–8 min", "Final mile". */
+  /** Duration or distance: "15 min", "Most of the run", "Final 3-4 mi". */
   duration: string;
-  /** Pace target for this phase — "9:00–9:30/mi", "Hard", "Walk back". */
+  /** Pace target: "9:00–9:30/mi" or "Half-marathon goal pace". */
   pace: string;
-  /** Optional sub-note shown beneath the row in italic small text. */
-  note?: string;
+  /** Zone label shown in parentheses at end: "easy", "threshold", "HM goal". */
+  zone: string;
 }
 
+export interface LoopItem {
+  /** Action verb: "Run", "Jog", "Walk", "Sprint". */
+  verb: string;
+  /** Duration of this sub-item: "7 min", "90 sec". */
+  duration: string;
+  /** Pace target. Optional for recovery items where pace doesn't matter. */
+  pace?: string;
+  /** Zone label in parentheses: "threshold", "easy". */
+  zone?: string;
+  /** Free-text suffix shown after the pace, e.g. "to recover". */
+  suffix?: string;
+}
+
+export interface LoopStep {
+  kind: 'loop';
+  /** Phase name in caps: "Cruise Intervals", "Hill Strides". */
+  name: string;
+  /** Number of rounds to complete. */
+  times: number;
+  /** What happens in each round, in order. Typically [work, recovery]. */
+  items: LoopItem[];
+}
+
+export type WorkoutStep = SimpleStep | LoopStep;
+
 export interface WorkoutDescription {
-  /** Headline zone label, e.g. "Threshold · Zone 4" */
+  /** Zone tag: "Threshold · Zone 4" — shown as a chip at the top. */
   zone: string;
-  /** Stat-block primary pace string — see lib/strava-writeback.ts. */
+  /** Display pace used in the modal stat block + Strava description. */
   paceTarget: string;
-  /** Workout steps, top to bottom. Empty for rest day. */
+  /** Recipe steps, top to bottom. Empty for rest. */
   steps: WorkoutStep[];
-  /** "How it should feel" — concrete body-aware cue. */
+  /** Concrete feel cue. */
   effort: string;
   /** Why this workout exists in the plan. */
   why: string;
 }
 
 /* ───────────────────────────────────────────────────────────────────
- * Exact-label lookups (case-sensitive, matches lib/synthetic-plan.ts)
+ * Exact-label lookups
  * ─────────────────────────────────────────────────────────────────── */
 
 const BY_LABEL: Record<string, WorkoutDescription> = {
@@ -52,17 +77,25 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Easy · Zone 2',
     paceTarget: '9:00 – 9:30 per mile',
     steps: [
-      { name: 'Run', duration: 'Full distance', pace: '9:00–9:30/mi' },
+      { kind: 'simple', name: 'Easy Run', duration: 'Full distance', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Conversational — you should be able to hold a full sentence the whole way. If breathing makes that hard, slow down.',
-    why: 'Easy days are where your aerobic engine actually builds. Protect them from creeping into "medium-hard."',
+    why: 'Easy days are where your aerobic engine builds. Protect them from creeping into "medium-hard."',
   },
   'Easy + Strides': {
     zone: 'Easy · Zone 2 + Strides',
     paceTarget: '9:00 – 9:30 per mile · strides at mile pace',
     steps: [
-      { name: 'Easy run',     duration: 'Most of the run', pace: '9:00–9:30/mi' },
-      { name: 'Strides',      duration: '8 strides · 15 sec each', pace: 'Near mile pace',  note: 'In the final mile · flat ground · quick, smooth turnover · walk 45–60 sec between each' },
+      { kind: 'simple', name: 'Easy Run', duration: 'Most of the run', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'Strides at the end',
+        times: 8,
+        items: [
+          { verb: 'Run', duration: '15 sec', pace: 'near mile pace', zone: 'fast' },
+          { verb: 'Walk', duration: '45–60 sec', suffix: 'to recover' },
+        ],
+      },
     ],
     effort: 'Easy throughout the run. Strides are quick and smooth — not sprints. Focus on form and turnover.',
     why: 'Strides keep your legs feeling fast and your turnover sharp without adding fatigue.',
@@ -71,8 +104,16 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Easy · Zone 2 + Hill Strides',
     paceTarget: '9:00 – 9:30 per mile · strides hard uphill',
     steps: [
-      { name: 'Easy run',    duration: 'Most of the run', pace: '9:00–9:30/mi' },
-      { name: 'Hill strides',duration: '8 strides · 10 sec each',   pace: 'Hard uphill', note: 'Moderate-grade hill (4–8%) · walk back down to fully recover before each next stride' },
+      { kind: 'simple', name: 'Easy Run', duration: 'Most of the run', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'Hill Strides at the end',
+        times: 8,
+        items: [
+          { verb: 'Run uphill', duration: '10 sec', pace: 'hard', zone: 'powerful' },
+          { verb: 'Walk back down', duration: 'to base', suffix: 'fully recover' },
+        ],
+      },
     ],
     effort: 'Easy on the flat. Strides are powerful and controlled — drive your knees, stay tall. Don\'t sprint.',
     why: 'Sharpens leg power and tendon stiffness without the volume cost of intervals.',
@@ -83,17 +124,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Long · Zone 2',
     paceTarget: '9:00 – 9:45 per mile',
     steps: [
-      { name: 'Long run', duration: 'Full distance', pace: '9:00–9:45/mi', note: 'Last 20 min can drift slightly faster if it feels natural' },
+      { kind: 'simple', name: 'Long Run', duration: 'Full distance', pace: '9:00–9:45/mi', zone: 'easy' },
     ],
-    effort: 'Conversational throughout. Time on feet is the stimulus — don\'t chase pace.',
+    effort: 'Conversational throughout. Time on feet is the stimulus — don\'t chase pace. Last 20 min can drift slightly faster if it feels natural.',
     why: 'Endurance builds through duration, not speed.',
   },
   'Long Run · HM Finish': {
     zone: 'Long · Zone 2 → Race Pace',
     paceTarget: '9:30 easy → half-marathon goal pace',
     steps: [
-      { name: 'Easy', duration: 'First ⅔ of run', pace: '9:30/mi' },
-      { name: 'HM finish', duration: 'Final 3–4 mi', pace: '7:30–7:50/mi', note: 'Goal half-marathon pace — don\'t go faster even if it feels easy' },
+      { kind: 'simple', name: 'Easy Aerobic', duration: 'First ⅔ of run', pace: '9:30/mi', zone: 'easy' },
+      { kind: 'simple', name: 'HM Finish',    duration: 'Final 3–4 mi',  pace: '7:30–7:50/mi', zone: 'half-marathon goal' },
     ],
     effort: 'Easy for two-thirds. Then disciplined race pace through the finish — same fatigue you\'ll have on race day.',
     why: 'Practice goal pace on tired legs. Pacing discipline is the work.',
@@ -102,9 +143,9 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Long · Zone 2 → Zone 3',
     paceTarget: '9:45 → 8:30 per mile across the run',
     steps: [
-      { name: 'Opening third',  duration: 'First ⅓',  pace: '9:45/mi' },
-      { name: 'Middle third',   duration: 'Middle ⅓', pace: '9:10/mi' },
-      { name: 'Final third',    duration: 'Last ⅓',   pace: '8:30/mi', note: '15–20 sec/mi faster than opening — controlled, not a sprint finish' },
+      { kind: 'simple', name: 'Opening Third', duration: 'First ⅓',  pace: '9:45/mi', zone: 'easy' },
+      { kind: 'simple', name: 'Middle Third',  duration: 'Middle ⅓', pace: '9:10/mi', zone: 'steady' },
+      { kind: 'simple', name: 'Final Third',   duration: 'Last ⅓',   pace: '8:30/mi', zone: 'progressing' },
     ],
     effort: 'Steady, controlled increase. You should feel stronger as the run develops, not blown out at the end.',
     why: 'Teaches you to push tempo as fatigue builds — race-day pacing without the race.',
@@ -113,7 +154,7 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Long · Zone 2',
     paceTarget: '9:00 – 9:30 per mile',
     steps: [
-      { name: 'Long run', duration: 'Full distance', pace: '9:00–9:30/mi', note: 'Fully easy throughout' },
+      { kind: 'simple', name: 'Long Run', duration: 'Full distance', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Fully easy. This is sharpening, not building.',
     why: 'Preserves the long-run feel without adding fatigue. Volume drops to set up race week.',
@@ -124,9 +165,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4',
     paceTarget: '7:20 – 7:40 per mile',
     steps: [
-      { name: 'Warm up',           duration: '15 min',                  pace: '9:00–9:30/mi · easy' },
-      { name: 'Cruise intervals',  duration: '5 intervals · 7 min each', pace: '7:20–7:40/mi',  note: 'Recover with 90 sec easy jog between each' },
-      { name: 'Cool down',         duration: '10 min',                  pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '15 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'Cruise Intervals',
+        times: 5,
+        items: [
+          { verb: 'Run', duration: '7 min',   pace: '7:20–7:40/mi', zone: 'threshold' },
+          { verb: 'Jog', duration: '90 sec',  pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Comfortably hard — roughly your 10K race pace. You can say 2–3 words at a time, but not a full sentence.',
     why: 'Controlled, sustainable threshold work. Stay steady at the edge of comfortable; don\'t push harder.',
@@ -135,9 +184,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4',
     paceTarget: '7:30 – 7:50 per mile (half-marathon goal)',
     steps: [
-      { name: 'Warm up', duration: '15 min',                       pace: '9:00–9:30/mi · easy' },
-      { name: 'Blocks',  duration: '3 blocks · 13 min each',       pace: '7:30–7:50/mi', note: 'Half-marathon goal pace · recover with 3 min easy jog between each block' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '15 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'HM-Pace Blocks',
+        times: 3,
+        items: [
+          { verb: 'Run', duration: '13 min', pace: '7:30–7:50/mi', zone: 'half-marathon goal' },
+          { verb: 'Jog', duration: '3 min',  pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Goal half-marathon pace — sustainable but pressing. Steady, not surging.',
     why: 'Race-specific endurance. Teaches your body to hold goal pace for extended chunks.',
@@ -146,9 +203,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4',
     paceTarget: '7:30 – 7:50 per mile (half-marathon pace)',
     steps: [
-      { name: 'Warm up', duration: '15 min',                       pace: '9:00–9:30/mi · easy' },
-      { name: 'Cruise',  duration: '3 intervals · 10 min each',    pace: '7:30–7:50/mi', note: 'Half-marathon pace · recover with 2 min easy jog between each' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '15 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'HM-Pace Cruise',
+        times: 3,
+        items: [
+          { verb: 'Run', duration: '10 min', pace: '7:30–7:50/mi', zone: 'half-marathon pace' },
+          { verb: 'Jog', duration: '2 min',  pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Steady half-marathon pace — feels like work but never out of control.',
     why: 'Solid threshold dose at race pace. Long enough to feel like work, short enough not to overreach.',
@@ -157,9 +222,9 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4',
     paceTarget: '7:30 – 7:50 per mile (half-marathon goal)',
     steps: [
-      { name: 'Warm up', duration: '15 min',                       pace: '9:00–9:30/mi · easy' },
-      { name: 'Tempo',   duration: '25 min continuous',            pace: '7:30–7:50/mi', note: 'No breaks · stay locked at goal half-marathon pace the whole way' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up',  duration: '15 min',    pace: '9:00–9:30/mi', zone: 'easy' },
+      { kind: 'simple', name: 'HM Tempo', duration: '25 min',    pace: '7:30–7:50/mi', zone: 'half-marathon goal · continuous' },
+      { kind: 'simple', name: 'Cool Down',duration: '10 min',    pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'The hardest sustained effort of the week. If pace slips, finish controlled — don\'t blow up.',
     why: 'Pure race-day specificity. Practice holding goal pace under fatigue.',
@@ -168,9 +233,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4 (taper)',
     paceTarget: '7:20 – 7:40 per mile',
     steps: [
-      { name: 'Warm up',  duration: '10 min',                      pace: '9:00–9:30/mi · easy' },
-      { name: 'Intervals', duration: '3 intervals · 4 min each',   pace: '7:20–7:40/mi', note: '10K race pace · recover with 90 sec easy jog between each' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'Threshold Touch',
+        times: 3,
+        items: [
+          { verb: 'Run', duration: '4 min',  pace: '7:20–7:40/mi', zone: '10K pace' },
+          { verb: 'Jog', duration: '90 sec', pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Comfortably hard. Brief — should feel sharp, not depleted.',
     why: 'Reminds your body what hard feels like during taper without compromising race day.',
@@ -179,9 +252,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Threshold · Zone 4 (race week)',
     paceTarget: '7:40 – 8:00 per mile',
     steps: [
-      { name: 'Warm up',  duration: '10 min',                      pace: '9:00–9:30/mi · easy' },
-      { name: 'Tune',     duration: '2 intervals · 6 min each',    pace: '7:40–8:00/mi', note: '~10 sec/mi slower than half-marathon goal · 2 min easy jog between' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'Race-Week Tune',
+        times: 2,
+        items: [
+          { verb: 'Run', duration: '6 min', pace: '7:40–8:00/mi', zone: '~10 sec/mi slower than HM goal' },
+          { verb: 'Jog', duration: '2 min', pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Sharp but easy. Wake the system up.',
     why: 'Race-week primer. Don\'t leave anything on the table — save it for race day.',
@@ -192,9 +273,17 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'VO₂max · Zone 5',
     paceTarget: '6:30 – 7:00 per mile',
     steps: [
-      { name: 'Warm up',   duration: '15 min',                     pace: '9:00–9:30/mi · easy' },
-      { name: 'Intervals', duration: '6 intervals · 3 min each',   pace: '6:30–7:00/mi', note: 'Faster than 5K race pace · recover with 2 min easy jog between each' },
-      { name: 'Cool down', duration: '10 min',                     pace: '9:00–9:30/mi · easy' },
+      { kind: 'simple', name: 'Warm Up', duration: '15 min', pace: '9:00–9:30/mi', zone: 'easy' },
+      {
+        kind: 'loop',
+        name: 'VO₂max Intervals',
+        times: 6,
+        items: [
+          { verb: 'Run', duration: '3 min', pace: '6:30–7:00/mi', zone: 'faster than 5K pace' },
+          { verb: 'Jog', duration: '2 min', pace: 'easy',         suffix: 'to recover' },
+        ],
+      },
+      { kind: 'simple', name: 'Cool Down', duration: '10 min', pace: '9:00–9:30/mi', zone: 'easy' },
     ],
     effort: 'Hard — faster than 5K pace. Breathing is the limiter, not your legs.',
     why: 'VO₂max work pushes your aerobic ceiling.',
@@ -205,8 +294,8 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Easy · Zone 1–2',
     paceTarget: '9:30 – 10:00 per mile',
     steps: [
-      { name: 'Easy jog', duration: '3 mi',                   pace: '9:30–10:00/mi', note: 'Fully conversational' },
-      { name: 'Strides',  duration: 'Optional · 3 strides',   pace: 'Brisk',         note: 'Only if you feel flat or stiff at the end of the jog' },
+      { kind: 'simple', name: 'Easy Jog', duration: '3 mi',        pace: '9:30–10:00/mi', zone: 'fully conversational' },
+      { kind: 'simple', name: 'Optional Strides', duration: '3 strides at the end', pace: 'brisk', zone: 'only if you feel flat' },
     ],
     effort: 'Easy and relaxed. Get out, get back.',
     why: 'Loosen up, not train. Save the legs for race day.',
@@ -215,9 +304,9 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
     zone: 'Race · Zone 4–5',
     paceTarget: 'Half-marathon goal pace',
     steps: [
-      { name: 'Conservative',   duration: 'Miles 1–3',     pace: '~10 sec/mi slower than goal', note: 'Should feel almost too easy' },
-      { name: 'Settle in',      duration: 'Miles 4–10',    pace: 'Goal pace',                    note: 'Lock in and hold' },
-      { name: 'Commit',         duration: 'Mile 10 → finish', pace: 'Goal pace or faster',       note: 'The last 5K is where the race is won' },
+      { kind: 'simple', name: 'Conservative Open', duration: 'Miles 1–3',  pace: '~10 sec/mi slower than goal', zone: 'should feel almost too easy' },
+      { kind: 'simple', name: 'Settle In',         duration: 'Miles 4–10', pace: 'goal pace',                   zone: 'lock in and hold' },
+      { kind: 'simple', name: 'Commit',            duration: 'Mile 10 → finish', pace: 'goal pace or faster',   zone: 'the last 5K is where the race is won' },
     ],
     effort: 'Race effort. Trust the training — your legs know what to do.',
     why: 'Race day. Execute the plan; conserve early, commit late.',
@@ -234,22 +323,18 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
 };
 
 /* ───────────────────────────────────────────────────────────────────
- * Type fallbacks — used when a label isn't in BY_LABEL
+ * Type fallbacks
  * ─────────────────────────────────────────────────────────────────── */
 
 const BY_TYPE: Record<string, WorkoutDescription> = {
   easy:     BY_LABEL['Easy'],
-  recovery: BY_LABEL['Easy'],     // recovery folded into easy 2026-05
+  recovery: BY_LABEL['Easy'],
   long:     BY_LABEL['Long'],
   quality:  BY_LABEL['Threshold · Cruise Intervals'],
   race:     BY_LABEL['AFC Half'],
   rest:     BY_LABEL['Rest'],
 };
 
-/**
- * Look up the workout description. Prefers exact-label match; falls
- * back to type-based default; final fallback is the generic Easy copy.
- */
 export function describeWorkout(label: string, type: string): WorkoutDescription {
   return BY_LABEL[label] ?? BY_TYPE[type] ?? BY_LABEL['Easy'];
 }

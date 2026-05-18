@@ -275,19 +275,49 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
-            <div className="wm-section-label">{desc.zone}</div>
+            <span className="wm-zone-chip">{desc.zone}</span>
 
             {desc.steps.length > 0 && (
-              <div className="wm-steps">
+              <ol className="wm-recipe">
                 {desc.steps.map((s, i) => (
-                  <div className="wm-step-row" key={i}>
-                    <div className="wm-step-name">{s.name}</div>
-                    <div className="wm-step-duration">{s.duration}</div>
-                    <div className="wm-step-pace">{s.pace}</div>
-                    {s.note && <div className="wm-step-note">{s.note}</div>}
-                  </div>
+                  <li className="wm-recipe-item" key={i}>
+                    <span className="wm-recipe-num">{i + 1}</span>
+                    <div className="wm-recipe-body">
+                      {s.kind === 'simple' ? (
+                        <div className="wm-recipe-line">
+                          <strong className="wm-step-name">{s.name}</strong>
+                          {' — '}
+                          <strong>{s.duration}</strong>
+                          {' at '}
+                          <strong>{s.pace}</strong>
+                          {' '}
+                          <span className="wm-zone-suffix">({s.zone})</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="wm-recipe-line">
+                            <strong className="wm-step-name">{s.name}</strong>
+                          </div>
+                          <div className="wm-loop-header">
+                            <span className="wm-loop-num">{s.times}</span> rounds of:
+                          </div>
+                          <ul className="wm-loop-items">
+                            {s.items.map((it, j) => (
+                              <li key={j} className="wm-loop-item">
+                                {it.verb}{' '}
+                                <strong>{it.duration}</strong>
+                                {it.pace && <> at <strong>{it.pace}</strong></>}
+                                {it.zone && <> <span className="wm-zone-suffix">({it.zone})</span></>}
+                                {it.suffix && <> {it.suffix}</>}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             )}
 
             <div className="wm-sub-label">How it should feel</div>
@@ -392,49 +422,102 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           color: rgba(13,15,18,.75);
           margin: 0 0 16px;
         }
-        /* Step table — clean compact breakdown of the workout */
-        .wm-steps {
-          background: rgba(13,15,18,.025);
-          border: 1px solid rgba(13,15,18,.06);
-          border-radius: 10px;
-          padding: 4px 0;
-          margin: 0 0 20px;
+        /* Zone chip at the top of the recipe */
+        .wm-zone-chip {
+          display: inline-block;
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 11px;
+          letter-spacing: 1.5px;
+          color: #C97000;
+          text-transform: uppercase;
+          padding: 4px 10px;
+          border: 1px solid rgba(201,112,0,.25);
+          border-radius: 999px;
+          background: rgba(201,112,0,.06);
+          margin-bottom: 20px;
         }
-        .wm-step-row {
+
+        /* Recipe — numbered list, no boxes inside */
+        .wm-recipe {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 28px;
+          display: flex; flex-direction: column;
+          gap: 22px;
+        }
+        .wm-recipe-item {
           display: grid;
-          grid-template-columns: minmax(110px, 1fr) minmax(90px, 1fr) minmax(120px, 1fr);
+          grid-template-columns: 28px 1fr;
           gap: 14px;
-          padding: 10px 16px;
-          align-items: center;
+          align-items: baseline;
         }
-        .wm-step-row + .wm-step-row { border-top: 1px solid rgba(13,15,18,.05); }
-        .wm-step-name {
-          font-family: 'Oswald', sans-serif; font-weight: 600;
-          font-size: 12px; letter-spacing: 0.8px;
-          color: #0D0F12; text-transform: uppercase;
+        .wm-recipe-num {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 700;
+          font-size: 22px;
+          line-height: 1;
+          color: #0D0F12;
         }
-        .wm-step-duration {
-          font-family: 'Inter', sans-serif; font-weight: 500;
-          font-size: 13px; color: rgba(13,15,18,.85);
-        }
-        .wm-step-pace {
-          font-family: 'JetBrains Mono', 'Inter', monospace;
-          font-size: 12px; color: #0D0F12;
-          font-weight: 500;
-          text-align: right;
-        }
-        .wm-step-note {
-          grid-column: 1 / -1;
+        .wm-recipe-body { min-width: 0; }
+        .wm-recipe-line {
           font-family: 'Inter', sans-serif;
-          font-size: 11.5px; font-style: italic;
-          color: rgba(13,15,18,.55);
-          line-height: 1.4;
-          margin-top: 2px;
+          font-size: 14.5px;
+          color: rgba(13,15,18,.85);
+          line-height: 1.5;
         }
-        @media (max-width: 520px) {
-          .wm-step-row { grid-template-columns: 1fr 1fr; }
-          .wm-step-pace { grid-column: 1 / -1; text-align: left; }
+        .wm-recipe-line strong { color: #0D0F12; font-weight: 600; }
+        .wm-recipe-line .wm-step-name {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 700;
+          font-size: 15px;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+          color: #0D0F12;
         }
+        .wm-zone-suffix {
+          color: rgba(13,15,18,.45);
+          font-weight: 400;
+        }
+
+        /* "5 ROUNDS OF:" header above the loop body */
+        .wm-loop-header {
+          margin-top: 8px;
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 12px;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #C97000;
+        }
+        .wm-loop-num {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 700;
+          font-size: 17px;
+          margin-right: 1px;
+        }
+        .wm-loop-items {
+          list-style: none;
+          padding: 8px 0 0 18px;
+          margin: 0;
+          display: flex; flex-direction: column; gap: 5px;
+        }
+        .wm-loop-item {
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          color: rgba(13,15,18,.75);
+          line-height: 1.5;
+          position: relative;
+        }
+        .wm-loop-item::before {
+          content: '·';
+          position: absolute;
+          left: -14px; top: -2px;
+          color: rgba(13,15,18,.25);
+          font-weight: 700;
+          font-size: 20px;
+        }
+        .wm-loop-item strong { color: #0D0F12; font-weight: 600; }
         .wm-actions {
           display: flex; justify-content: flex-end;
           gap: 8px; margin-top: 8px;
