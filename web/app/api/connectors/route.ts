@@ -26,13 +26,29 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Active connectors — what the banner check reads
+  // Active connectors — what the banner check reads.
+  //
+  // last_sync_at + activities_count on connector_tokens aren't populated
+  // by the legacy env-var sync path (it writes to strava_sync_state +
+  // strava_activities directly). So we COALESCE with the real values:
+  //   - activities_count → COUNT(*) over strava_activities for this user
+  //   - last_sync_at     → MAX(fetched_at) over strava_activities
+  // That way the Connectors card stops saying "last sync never" when
+  // the underlying data clearly says otherwise.
   const rows = await query<ConnectorPublic>(
-    `SELECT provider, provider_user_id, connected_at, disconnected_at,
-            last_sync_at, last_sync_status, activities_count
-     FROM connector_tokens
-     WHERE user_id = $1 AND disconnected_at IS NULL
-     ORDER BY connected_at DESC;`,
+    `SELECT
+        ct.provider, ct.provider_user_id, ct.connected_at, ct.disconnected_at,
+        COALESCE(ct.last_sync_at, sa.last_fetched) AS last_sync_at,
+        ct.last_sync_status,
+        GREATEST(ct.activities_count, COALESCE(sa.cnt, 0)) AS activities_count
+       FROM connector_tokens ct
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS cnt, MAX(fetched_at) AS last_fetched
+           FROM strava_activities
+          WHERE user_uuid = ct.user_id
+       ) sa ON TRUE
+      WHERE ct.user_id = $1 AND ct.disconnected_at IS NULL
+      ORDER BY ct.connected_at DESC;`,
     [user.id],
   );
 
