@@ -61,7 +61,21 @@ export function ConnectBanner({ show = true }: Props) {
           background: linear-gradient(90deg, rgba(252,76,2,.06) 0%, rgba(252,76,2,.02) 100%);
           border: 1px solid rgba(252,76,2,.18);
           border-radius: 14px;
-          margin-bottom: 16px;
+          margin: 16px auto 16px;
+          max-width: 1440px;
+          width: calc(100% - 80px);
+        }
+        @media (max-width: 960px) {
+          .faff-connect-banner {
+            width: calc(100% - 48px);
+            grid-template-columns: 1fr;
+            text-align: center;
+          }
+          .faff-connect-banner-icon { justify-self: center; }
+          .faff-connect-banner-actions { justify-content: center; }
+        }
+        @media (max-width: 640px) {
+          .faff-connect-banner { width: calc(100% - 32px); }
         }
         .faff-connect-banner-icon {
           width: 44px; height: 44px; border-radius: 11px;

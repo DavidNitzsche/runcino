@@ -10,7 +10,7 @@
 }
 
 .log-v4-page .navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
-.log-v4-page .navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.log-v4-page .navbar-inner { max-width: 1440px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
 .log-v4-page .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .log-v4-page .nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
 .log-v4-page .nav-links { display: flex; align-items: center; gap: 36px; }
@@ -19,7 +19,7 @@
 .log-v4-page .nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px;; overflow: hidden }
 .log-v4-page .nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.log-v4-page .page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+.log-v4-page .page { max-width: 1440px; margin: 0 auto; padding: 36px 40px 80px; }
 
 /* Coach strip */
 .log-v4-page .coach-strip { display: flex; align-items: stretch; justify-content: space-between; min-height: 160px; margin-bottom: 16px; }
