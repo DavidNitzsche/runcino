@@ -1,0 +1,361 @@
+/* Race plan detail v4 — extracted from designs/race-plan-v4.html.
+   Scoped to .race-plan-v4-page so it can't leak into other v4 pages. */
+
+.race-plan-v4-page { background: var(--bg, #EEECEA); min-height: 100vh; font-family: 'Inter', sans-serif; color: #0D0F12; }
+.race-plan-v4-page .page { max-width: 1440px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* Breadcrumb */
+.race-plan-v4-page .crumb {
+  display: flex; align-items: center; gap: 8px;
+  font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: rgba(13,15,18,.35); margin-bottom: 22px;
+}
+.race-plan-v4-page .crumb a { color: rgba(13,15,18,.35); text-decoration: none; }
+.race-plan-v4-page .crumb a:hover { color: #0D0F12; }
+.race-plan-v4-page .crumb-sep { color: rgba(13,15,18,.20); }
+
+/* Coach strip + countdown */
+.race-plan-v4-page .coach-strip {
+  display: flex; align-items: stretch; justify-content: space-between;
+  min-height: 160px; margin-bottom: 16px;
+}
+.race-plan-v4-page .coach-left {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+}
+.race-plan-v4-page .coach-label {
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  letter-spacing: 2.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; margin-bottom: 14px;
+}
+.race-plan-v4-page .coach-label .dot-orange {
+  width: 7px; height: 7px; border-radius: 50%; background: #E85D26; flex-shrink: 0;
+}
+.race-plan-v4-page .coach-briefing {
+  font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5;
+  color: #0D0F12; font-weight: 400; max-width: 760px;
+}
+.race-plan-v4-page .coach-briefing strong { font-weight: 700; }
+
+.race-plan-v4-page .countdown-card {
+  flex-shrink: 0; margin-left: 48px; width: 300px;
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 20px; padding: 22px 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+.race-plan-v4-page .countdown-label {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: rgba(13,15,18,.35); text-transform: uppercase;
+}
+.race-plan-v4-page .countdown-row {
+  display: flex; align-items: baseline; gap: 12px; margin-top: 14px;
+}
+.race-plan-v4-page .countdown-num {
+  font-family: 'Bebas Neue', sans-serif; font-size: 88px; line-height: 0.86;
+  color: #E85D26; letter-spacing: -2px;
+}
+.race-plan-v4-page .countdown-unit {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); letter-spacing: 1.5px; text-transform: uppercase;
+  font-weight: 600; line-height: 1.3;
+}
+.race-plan-v4-page .countdown-meta {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.55); margin-top: 18px; line-height: 1.55;
+}
+.race-plan-v4-page .countdown-meta strong { color: #0D0F12; font-weight: 600; }
+.race-plan-v4-page .countdown-divider {
+  height: 1px; background: rgba(13,15,18,.08); margin: 14px 0;
+}
+
+/* A-race hero */
+.race-plan-v4-page .a-race-card {
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  padding: 40px; margin-top: 16px;
+}
+.race-plan-v4-page .a-race-eyebrow {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  letter-spacing: 2.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; margin-bottom: 20px;
+}
+.race-plan-v4-page .a-race-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(96px, 16vw, 200px); line-height: 0.86;
+  letter-spacing: -3px; color: #0D0F12; margin-left: -6px;
+  text-transform: uppercase;
+}
+.race-plan-v4-page .a-race-sub {
+  font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px;
+  color: #E85D26; margin-top: 10px; letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.race-plan-v4-page .path-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin-top: 32px;
+}
+.race-plan-v4-page .path-stat {
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 18px 22px;
+}
+.race-plan-v4-page .path-stat-label {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  letter-spacing: 2px; color: rgba(13,15,18,.35);
+  text-transform: uppercase; font-weight: 600;
+}
+.race-plan-v4-page .path-stat-value {
+  font-family: 'Bebas Neue', sans-serif; font-size: 36px;
+  line-height: 1; color: #0D0F12; margin-top: 6px;
+}
+.race-plan-v4-page .path-stat-value.green  { color: #2CA82F; }
+.race-plan-v4-page .path-stat-value.orange { color: #E85D26; }
+.race-plan-v4-page .path-stat-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); margin-top: 4px;
+}
+
+/* Generic card */
+.race-plan-v4-page .card {
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  margin-top: 16px;
+}
+.race-plan-v4-page .card-header {
+  padding: 28px 40px 20px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+}
+.race-plan-v4-page .card-title-group {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.race-plan-v4-page .card-title {
+  font-family: 'Inter', sans-serif; font-weight: 700;
+  font-size: 22px; color: #0D0F12; line-height: 1.1;
+}
+.race-plan-v4-page .card-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); letter-spacing: 0.3px;
+}
+.race-plan-v4-page .card-sub strong { color: rgba(13,15,18,.55); font-weight: 600; }
+.race-plan-v4-page .card-meta {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); text-align: right;
+}
+.race-plan-v4-page .card-meta strong { color: #0D0F12; font-weight: 700; }
+
+/* Course profile chart */
+.race-plan-v4-page .profile-wrap { padding: 0 40px 28px; }
+.race-plan-v4-page .profile-svg-wrap { position: relative; width: 100%; }
+.race-plan-v4-page .profile-svg { display: block; width: 100%; height: auto; }
+.race-plan-v4-page .profile-phase-labels {
+  display: grid; margin-top: 14px;
+}
+.race-plan-v4-page .profile-phase-cell {
+  font-family: 'Oswald', sans-serif; font-weight: 600;
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 10px 8px 0; border-top: 2px solid;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.race-plan-v4-page .profile-phase-cell .pcell-name  { color: #0D0F12; }
+.race-plan-v4-page .profile-phase-cell .pcell-mi {
+  font-family: 'Inter', sans-serif; font-weight: 500;
+  font-size: 11px; color: rgba(13,15,18,.35);
+  letter-spacing: 0.3px; text-transform: none;
+}
+.race-plan-v4-page .profile-phase-cell.amber  { border-color: #D4900A; }
+.race-plan-v4-page .profile-phase-cell.blue   { border-color: #2563EB; }
+.race-plan-v4-page .profile-phase-cell.green  { border-color: #2CA82F; }
+.race-plan-v4-page .profile-phase-cell.orange { border-color: #E85D26; }
+.race-plan-v4-page .profile-phase-cell .pcell-grade {
+  font-family: 'Bebas Neue', sans-serif; font-size: 18px;
+  line-height: 1; letter-spacing: 0; margin-top: 2px;
+}
+.race-plan-v4-page .profile-phase-cell.amber  .pcell-grade { color: #D4900A; }
+.race-plan-v4-page .profile-phase-cell.blue   .pcell-grade { color: #2563EB; }
+.race-plan-v4-page .profile-phase-cell.green  .pcell-grade { color: #2CA82F; }
+.race-plan-v4-page .profile-phase-cell.orange .pcell-grade { color: #E85D26; }
+
+/* Phase-by-phase plan */
+.race-plan-v4-page .phase-list {
+  padding: 8px 40px 32px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.race-plan-v4-page .phase-card {
+  position: relative;
+  border-radius: 14px;
+  padding: 22px 26px 22px 30px;
+  display: grid;
+  grid-template-columns: 70px 1fr 130px 110px;
+  align-items: start; gap: 24px;
+}
+.race-plan-v4-page .phase-card::before {
+  content: ''; position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 4px; border-radius: 2px;
+}
+.race-plan-v4-page .phase-card.amber  { background: rgba(212,144,10,.08); }
+.race-plan-v4-page .phase-card.amber::before  { background: #D4900A; }
+.race-plan-v4-page .phase-card.blue   { background: rgba(37,99,235,.07); }
+.race-plan-v4-page .phase-card.blue::before   { background: #2563EB; }
+.race-plan-v4-page .phase-card.green  { background: rgba(44,168,47,.06); }
+.race-plan-v4-page .phase-card.green::before  { background: #2CA82F; }
+.race-plan-v4-page .phase-card.orange { background: rgba(232,93,38,.08); }
+.race-plan-v4-page .phase-card.orange::before { background: #E85D26; }
+.race-plan-v4-page .phase-num {
+  font-family: 'Bebas Neue', sans-serif; font-size: 48px;
+  line-height: 0.86; letter-spacing: -1px; color: #0D0F12;
+}
+.race-plan-v4-page .phase-num small {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); font-weight: 600; letter-spacing: 1px;
+}
+.race-plan-v4-page .phase-body {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.race-plan-v4-page .phase-name {
+  font-family: 'Inter', sans-serif; font-weight: 700;
+  font-size: 18px; color: #0D0F12;
+}
+.race-plan-v4-page .phase-range {
+  font-family: 'Oswald', sans-serif; font-weight: 500;
+  font-size: 12px; color: rgba(13,15,18,.35);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.race-plan-v4-page .phase-range .grade-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: none;
+}
+.race-plan-v4-page .phase-range .grade-pill.amber  { background: rgba(212,144,10,.14); color: #D4900A; }
+.race-plan-v4-page .phase-range .grade-pill.blue   { background: rgba(37,99,235,.12);  color: #2563EB; }
+.race-plan-v4-page .phase-range .grade-pill.green  { background: rgba(44,168,47,.14);  color: #2CA82F; }
+.race-plan-v4-page .phase-range .grade-pill.orange { background: rgba(232,93,38,.14);  color: #E85D26; }
+.race-plan-v4-page .phase-elev {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); letter-spacing: 0.3px; margin-top: 2px;
+}
+.race-plan-v4-page .phase-elev .up   { color: #E85D26; font-weight: 600; }
+.race-plan-v4-page .phase-elev .down { color: #2563EB; font-weight: 600; }
+.race-plan-v4-page .phase-note {
+  font-family: 'Inter', sans-serif; font-size: 13.5px;
+  line-height: 1.55; color: rgba(13,15,18,.55);
+  margin-top: 8px; max-width: 720px;
+}
+.race-plan-v4-page .phase-note strong { color: #0D0F12; font-weight: 700; }
+.race-plan-v4-page .phase-pace { text-align: right; }
+.race-plan-v4-page .phase-pace-num {
+  font-family: 'Bebas Neue', sans-serif; font-size: 42px;
+  line-height: 0.86; letter-spacing: -1px; color: #0D0F12;
+}
+.race-plan-v4-page .phase-pace-unit {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); letter-spacing: 1px;
+  text-transform: uppercase; font-weight: 600; margin-top: 4px;
+}
+.race-plan-v4-page .phase-cum { text-align: right; }
+.race-plan-v4-page .phase-cum-label {
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  color: rgba(13,15,18,.35); letter-spacing: 1.5px;
+  text-transform: uppercase; font-weight: 600;
+}
+.race-plan-v4-page .phase-cum-time {
+  font-family: 'Bebas Neue', sans-serif; font-size: 28px;
+  line-height: 1; color: #0D0F12; margin-top: 6px; letter-spacing: -0.5px;
+}
+
+/* Race-day brief (empty state) */
+.race-plan-v4-page .brief-empty {
+  padding: 32px 40px 36px;
+  display: flex; gap: 18px; align-items: flex-start;
+  background: rgba(212,144,10,.05); border-radius: 14px;
+  margin: 0 40px 32px;
+  border: 1px dashed rgba(212,144,10,.30);
+}
+.race-plan-v4-page .brief-empty-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #D4900A; margin-top: 8px; flex-shrink: 0;
+}
+.race-plan-v4-page .brief-empty-body { flex: 1; }
+.race-plan-v4-page .brief-empty-title {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 2px; color: #D4900A; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.race-plan-v4-page .brief-empty-text {
+  font-family: 'Inter', sans-serif; font-size: 15px;
+  line-height: 1.55; color: rgba(13,15,18,.55);
+}
+.race-plan-v4-page .brief-empty-text strong { color: #0D0F12; font-weight: 700; }
+.race-plan-v4-page .brief-empty-when {
+  display: inline-block; margin-top: 12px;
+  font-family: 'Oswald', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; color: #D4900A; text-transform: uppercase;
+}
+
+/* Linked workouts */
+.race-plan-v4-page .linked-workouts { padding: 8px 40px 30px; }
+.race-plan-v4-page .linked-row {
+  display: grid;
+  grid-template-columns: 90px 130px 1fr 110px 90px;
+  align-items: center; gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(13,15,18,.08);
+}
+.race-plan-v4-page .linked-row:last-child { padding-bottom: 0; }
+.race-plan-v4-page .linked-week {
+  font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px;
+  letter-spacing: 1.5px; color: rgba(13,15,18,.35);
+  text-transform: uppercase;
+}
+.race-plan-v4-page .linked-date {
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px;
+  color: #0D0F12; line-height: 1;
+}
+.race-plan-v4-page .linked-name {
+  font-family: 'Inter', sans-serif; font-weight: 600;
+  font-size: 14px; color: #0D0F12;
+}
+.race-plan-v4-page .linked-name-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.35); margin-top: 2px;
+}
+.race-plan-v4-page .linked-pace {
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px;
+  color: #0D0F12; text-align: right; line-height: 1;
+}
+.race-plan-v4-page .linked-pace-sub {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.35); margin-top: 3px; text-align: right;
+}
+.race-plan-v4-page .linked-tag {
+  font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 6px; text-align: center;
+}
+.race-plan-v4-page .linked-tag.threshold { background: rgba(212,144,10,.14); color: #D4900A; }
+.race-plan-v4-page .linked-tag.long      { background: rgba(44,168,47,.14);  color: #2CA82F; }
+.race-plan-v4-page .linked-tag.race-sim  { background: rgba(232,93,38,.14);  color: #E85D26; }
+
+/* Responsive */
+@media (max-width: 960px) {
+  .race-plan-v4-page .page { padding-left: 24px; padding-right: 24px; }
+  .race-plan-v4-page .coach-strip { flex-direction: column; align-items: stretch; }
+  .race-plan-v4-page .countdown-card { margin-left: 0; width: 100%; }
+  .race-plan-v4-page .path-stats { grid-template-columns: 1fr; }
+  .race-plan-v4-page .phase-card { grid-template-columns: 56px 1fr; }
+  .race-plan-v4-page .phase-pace, .race-plan-v4-page .phase-cum {
+    grid-column: 1 / -1; text-align: left;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .race-plan-v4-page .linked-row { grid-template-columns: 60px 90px 1fr 80px; }
+  .race-plan-v4-page .linked-row > :last-child { display: none; }
+}
+@media (max-width: 640px) {
+  .race-plan-v4-page .page { padding-left: 16px; padding-right: 16px; padding-top: 20px; }
+  .race-plan-v4-page .card-header,
+  .race-plan-v4-page .profile-wrap,
+  .race-plan-v4-page .phase-list,
+  .race-plan-v4-page .linked-workouts { padding-left: 20px; padding-right: 20px; }
+}
