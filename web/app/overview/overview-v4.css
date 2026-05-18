@@ -1246,3 +1246,41 @@
   .overview-v4-page .week-strip { grid-template-columns: repeat(7, 1fr); }
   .overview-v4-page .trends-row { grid-template-columns: 90px 1fr 60px !important; }
 }
+
+/* ══════════════════════════
+   COACH INSIGHTS — weekly pattern detection
+══════════════════════════ */
+.overview-v4-page .coach-insights {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.overview-v4-page .coach-insight {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 14px;
+  background: rgba(13,15,18,.03);
+  border-radius: 8px;
+  border-left: 3px solid;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(13,15,18,.85);
+}
+.overview-v4-page .coach-insight.green { border-left-color: #2CA82F; }
+.overview-v4-page .coach-insight.amber { border-left-color: #D4900A; }
+.overview-v4-page .coach-insight.blue  { border-left-color: #2563EB; }
+.overview-v4-page .coach-insight-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  transform: translateY(-1px);
+}
+.overview-v4-page .coach-insight.green .coach-insight-dot { background: #2CA82F; opacity: 1; }
+.overview-v4-page .coach-insight.amber .coach-insight-dot { background: #D4900A; opacity: 1; }
+.overview-v4-page .coach-insight.blue  .coach-insight-dot { background: #2563EB; opacity: 1; }

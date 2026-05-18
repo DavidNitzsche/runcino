@@ -27,6 +27,7 @@ import {
 } from '@/lib/synthetic-plan';
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
+import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import './overview-v4.css';
@@ -140,6 +141,11 @@ export default async function OverviewPage() {
     todayDay,
   });
 
+  // Weekly insights — pattern detection across the last 28 days.
+  // Empty when there's not enough history; surfaces actionable
+  // observations (easy-pace creep, volume jumps, long-run trend).
+  const insights = await generateWeeklyInsights(user.id, today);
+
   // Today's Intensity config
   const intensity = isRest
     ? null
@@ -166,6 +172,16 @@ export default async function OverviewPage() {
               COACH · {new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
             </div>
             <p className="coach-briefing">{briefing}</p>
+            {insights.length > 0 && (
+              <div className="coach-insights">
+                {insights.map((ins, i) => (
+                  <div key={i} className={`coach-insight ${ins.tone}`}>
+                    <span className="coach-insight-dot" />
+                    <span>{ins.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Check-In is interactive (client island) */}

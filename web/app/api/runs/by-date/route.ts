@@ -107,8 +107,12 @@ export async function GET(req: NextRequest) {
     // Splits stay empty; the rest of the response still works
   }
 
+  // Pull user's max HR so the modal can do %max zone math in the debrief
+  const hrRows = await query<{ max_hr: number | null }>(`SELECT max_hr FROM users WHERE id = $1 LIMIT 1`, [user.id]);
+
   return NextResponse.json({
     ok: true,
+    maxHr: hrRows[0]?.max_hr ?? null,
     run: {
       id: row.id,
       name: d.name || 'Untitled run',

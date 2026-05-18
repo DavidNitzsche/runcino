@@ -387,6 +387,16 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS strava_writeback BOOLEAN NOT NULL DEFAULT TRUE;
     `);
+    // Heart-rate inputs for personalized debrief + training-load math.
+    // Both nullable; coach falls back to qualitative bands when unset.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr INTEGER
+        CHECK (max_hr IS NULL OR (max_hr >= 100 AND max_hr <= 230));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS resting_hr INTEGER
+        CHECK (resting_hr IS NULL OR (resting_hr >= 30 AND resting_hr <= 100));
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
     // Auto-promote the legacy owner to admin + active on every boot so

@@ -294,12 +294,17 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
 
   // Fetch the actual run for this date (if any) — only for today + past
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
+  const [userMaxHr, setUserMaxHr] = useState<number | null>(null);
   useEffect(() => {
     if (!canHaveActual) { setActual(null); return; }
     let cancelled = false;
     fetch(`/api/runs/by-date?date=${day.date}`)
       .then((r) => r.json())
-      .then((j) => { if (!cancelled) setActual(j.run ?? null); })
+      .then((j) => {
+        if (cancelled) return;
+        setActual(j.run ?? null);
+        setUserMaxHr(j.maxHr ?? null);
+      })
       .catch(() => { if (!cancelled) setActual(null); });
     return () => { cancelled = true; };
   }, [day.date, canHaveActual]);
@@ -469,6 +474,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 actualDistanceMi: actual.distanceMi,
                 actualPaceSPerMi: actual.paceSPerMi,
                 actualAvgHr: actual.avgHr,
+                splits: actual.splits.map((s) => ({ mile: s.mile, paceSPerMi: s.paceSPerMi, avgHr: s.avgHr })),
+                maxHr: userMaxHr,
               });
               return (
                 <div className="wm-debrief-footer">

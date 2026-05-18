@@ -10,6 +10,12 @@
  * the runner actually executed.
  */
 
+export interface DebriefSplit {
+  mile: number;
+  paceSPerMi: number;
+  avgHr: number | null;
+}
+
 export interface DebriefInput {
   /** Planned workout label, e.g. "Long" / "Threshold · Cruise Intervals". */
   planLabel: string;
@@ -24,6 +30,11 @@ export interface DebriefInput {
   actualDistanceMi: number;
   actualPaceSPerMi: number;
   actualAvgHr: number | null;
+  /** Per-mile splits from Strava. Empty when not available yet. */
+  splits?: DebriefSplit[];
+  /** User's max HR (bpm). When set, HR commentary uses %max zones
+   *  instead of qualitative ranges. */
+  maxHr?: number | null;
 }
 
 function fmtPace(s: number): string {
@@ -47,10 +58,45 @@ export function parsePaceBounds(paceTarget: string): [number | null, number | nu
   return [Math.min(...matches), Math.max(...matches)];
 }
 
+/**
+ * Analyze per-mile splits against an interval pace target to detect
+ * which miles were "working" (interval pace held) vs "recovery".
+ * Returns null when splits are missing or there's no numeric target.
+ */
+function analyzeIntervalSplits(
+  splits: DebriefSplit[],
+  paceLow: number,
+  paceHigh: number,
+): {
+  workingMiles: number;
+  workingPaceAvg: number;       // average pace across working miles
+  workingPaceLow: number;       // fastest working mile
+  workingPaceHigh: number;      // slowest working mile
+  totalMiles: number;
+} | null {
+  if (splits.length === 0) return null;
+  // "Working" = pace within (paceLow - 30s, paceHigh + 30s).
+  // Generous on the slow side because the first/last mile of a working
+  // interval often shows mixed pace (the warm-up tail bleeds in).
+  const lo = paceLow - 30;
+  const hi = paceHigh + 30;
+  const working = splits.filter((s) => s.paceSPerMi >= lo && s.paceSPerMi <= hi);
+  if (working.length === 0) return null;
+  const paces = working.map((s) => s.paceSPerMi);
+  return {
+    workingMiles: working.length,
+    workingPaceAvg: Math.round(paces.reduce((a, b) => a + b, 0) / paces.length),
+    workingPaceLow: Math.min(...paces),
+    workingPaceHigh: Math.max(...paces),
+    totalMiles: splits.length,
+  };
+}
+
 export function generateRunDebrief(input: DebriefInput): string {
   const {
     planType, planDistanceMi, paceLow, paceHigh,
     actualDistanceMi, actualPaceSPerMi, actualAvgHr,
+    splits = [], maxHr,
   } = input;
 
   const sentences: string[] = [];
@@ -103,32 +149,75 @@ export function generateRunDebrief(input: DebriefInput): string {
       }
     }
   } else if (planType === 'quality' && actualPaceSPerMi > 0) {
-    // For threshold/intervals — avg pace isn't a direct comparison
-    if (paceLow && actualPaceSPerMi > paceLow + 90) {
-      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi suggests the interval targets weren't hit — check the splits to confirm.`);
-    } else if (paceLow && actualPaceSPerMi < paceLow + 30) {
-      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi across the session is on the fast end — splits will show how the intervals landed.`);
+    // For threshold/intervals: avg pace IS misleading (includes warm/
+    // cool down). Look at the actual splits to decide if intervals
+    // landed on target.
+    const ivl = paceLow && paceHigh ? analyzeIntervalSplits(splits, paceLow, paceHigh) : null;
+    if (ivl) {
+      const range = ivl.workingPaceLow === ivl.workingPaceHigh
+        ? `${fmtPace(ivl.workingPaceLow)}/mi`
+        : `${fmtPace(ivl.workingPaceLow)}–${fmtPace(ivl.workingPaceHigh)}/mi`;
+      sentences.push(
+        `${ivl.workingMiles} working mile${ivl.workingMiles === 1 ? '' : 's'} at ${range} — intervals landed on target.`,
+      );
+    } else if (splits.length > 0 && paceLow && paceHigh) {
+      // Splits exist but none fall in the interval band — workout didn't land
+      const fastestSplit = Math.min(...splits.map((s) => s.paceSPerMi));
+      sentences.push(
+        `Intervals didn't land — fastest split was ${fmtPace(fastestSplit)}/mi vs the ${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi target. Either you bailed or the pace target's too aggressive.`,
+      );
+    } else if (paceLow && actualPaceSPerMi > paceLow + 90) {
+      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi suggests the interval targets weren't hit — check splits to confirm.`);
     } else {
-      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi. The splits column shows how each interval landed.`);
+      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi. Splits column shows the per-mile detail.`);
     }
   } else if (planType === 'race' && actualPaceSPerMi > 0) {
     sentences.push(`Race pace: ${fmtPace(actualPaceSPerMi)}/mi.`);
   }
 
   // ── HEART RATE ──────────────────────────────────────────────
-  // Without user max HR, just give a qualitative feel based on
-  // typical aerobic zone (130-145), moderate (145-160), hard (160+).
+  // With max HR available, use %max for exact zone labels.
+  // Without it, fall back to qualitative bands (works for most
+  // recreational runners but not personalized).
   if (actualAvgHr && actualAvgHr > 0) {
-    if (isContinuous) {
-      if (actualAvgHr < 145) {
-        sentences.push(`HR averaged ${actualAvgHr} — clean aerobic effort.`);
-      } else if (actualAvgHr < 160) {
-        sentences.push(`HR averaged ${actualAvgHr} — moderate effort, on the upper edge of easy.`);
-      } else {
-        sentences.push(`HR averaged ${actualAvgHr} — high for an easy day. The pace was probably the cause.`);
+    const pct = maxHr && maxHr > 0 ? Math.round((actualAvgHr / maxHr) * 100) : null;
+    if (pct !== null) {
+      // Personalized: %max zones
+      const zone =
+        pct < 60 ? 'Z1' :
+        pct < 70 ? 'Z2' :
+        pct < 80 ? 'Z3' :
+        pct < 90 ? 'Z4' : 'Z5';
+      if (isContinuous) {
+        if (zone === 'Z1' || zone === 'Z2') {
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — clean aerobic effort.`);
+        } else if (zone === 'Z3') {
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — moderate effort, above the easy zone.`);
+        } else {
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — high for an easy day.`);
+        }
+      } else if (planType === 'quality') {
+        if (zone === 'Z4' || zone === 'Z5') {
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — the work showed up.`);
+        } else {
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — lower than expected for threshold work.`);
+        }
+      } else if (planType === 'race') {
+        sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}).`);
       }
-    } else if (planType === 'quality' || planType === 'race') {
-      sentences.push(`Avg HR ${actualAvgHr}${actualAvgHr >= 160 ? ' — the work showed up' : ''}.`);
+    } else {
+      // Fallback: qualitative bands
+      if (isContinuous) {
+        if (actualAvgHr < 145) {
+          sentences.push(`HR averaged ${actualAvgHr} — clean aerobic effort.`);
+        } else if (actualAvgHr < 160) {
+          sentences.push(`HR averaged ${actualAvgHr} — moderate effort, on the upper edge of easy.`);
+        } else {
+          sentences.push(`HR averaged ${actualAvgHr} — high for an easy day.`);
+        }
+      } else if (planType === 'quality' || planType === 'race') {
+        sentences.push(`Avg HR ${actualAvgHr}${actualAvgHr >= 160 ? ' — the work showed up' : ''}.`);
+      }
     }
   }
 
