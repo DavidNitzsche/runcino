@@ -84,7 +84,7 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
   },
   'Easy + Strides': {
     zone: 'Easy · Zone 2 + Strides',
-    paceTarget: '9:00 – 9:30 per mile · strides at mile pace',
+    paceTarget: '9:00 – 9:30 per mile · strides at 1-mile race pace',
     steps: [
       { kind: 'simple', name: 'Easy Run', duration: 'Most of the run', pace: '9:00–9:30/mi', zone: 'easy' },
       {
@@ -92,12 +92,12 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
         name: 'Strides at the end',
         times: 8,
         items: [
-          { verb: 'Run', duration: '15 sec', pace: 'near mile pace', zone: 'fast' },
+          { verb: 'Run', duration: '15 sec', pace: '1-mile race pace', zone: 'fast' },
           { verb: 'Walk', duration: '45–60 sec', suffix: 'to recover' },
         ],
       },
     ],
-    effort: 'Easy throughout the run. Strides are quick and smooth — not sprints. Focus on form and turnover.',
+    effort: 'Easy throughout the run. Strides are quick and smooth — about the speed you could just barely hold for a full mile race. Focus on form and turnover.',
     why: 'Strides keep your legs feeling fast and your turnover sharp without adding fatigue.',
   },
   'Hill Strides': {
@@ -239,7 +239,7 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
         name: 'Threshold Touch',
         times: 3,
         items: [
-          { verb: 'Run', duration: '4 min',  pace: '7:20–7:40/mi', zone: '10K pace' },
+          { verb: 'Run', duration: '4 min',  pace: '7:20–7:40/mi', zone: '10K race pace' },
           { verb: 'Jog', duration: '90 sec', pace: 'easy',         suffix: 'to recover' },
         ],
       },
@@ -279,7 +279,7 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
         name: 'VO₂max Intervals',
         times: 6,
         items: [
-          { verb: 'Run', duration: '3 min', pace: '6:30–7:00/mi', zone: 'faster than 5K pace' },
+          { verb: 'Run', duration: '3 min', pace: '6:30–7:00/mi', zone: 'faster than 5K race pace' },
           { verb: 'Jog', duration: '2 min', pace: 'easy',         suffix: 'to recover' },
         ],
       },
