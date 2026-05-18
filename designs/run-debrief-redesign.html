@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>faff.run — completed run debrief redesign</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #EEECEA;
+    --card: #FFFFFF;
+    --t0: #0D0F12;
+    --t1: rgba(13,15,18,.55);
+    --t2: rgba(13,15,18,.35);
+    --t3: rgba(13,15,18,.20);
+    --divider: rgba(13,15,18,.08);
+    --green: #2CA82F;
+    --orange: #E85D26;
+    --amber: #D4900A;
+    --strava: #FC4C02;
+  }
+  body { background: var(--bg); font-family: 'Inter', sans-serif; color: var(--t0); padding: 40px 24px 80px; min-height: 100vh; }
+  .container { max-width: 920px; margin: 0 auto; }
+
+  .label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; margin-bottom: 16px; }
+  .heading { font-family: 'Bebas Neue', sans-serif; font-size: 38px; letter-spacing: -0.5px; line-height: 1; margin-bottom: 6px; }
+  .sub { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); margin-bottom: 32px; }
+
+  .card { background: var(--card); border-radius: 18px; padding: 36px 40px 32px; box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 8px 30px rgba(0,0,0,.04); margin-bottom: 48px; }
+
+  /* Shared header */
+  .h-eyebrow {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; letter-spacing: 2.5px;
+    color: rgba(13,15,18,.45);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .h-pill {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 9px; letter-spacing: 1.5px;
+    padding: 2px 8px; border-radius: 4px;
+    color: #fff;
+  }
+  .h-pill.long { background: var(--green); }
+
+  .h-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 44px; line-height: 0.95;
+    letter-spacing: -1px; color: var(--t0);
+    margin: 0 0 18px;
+  }
+
+  /* Stats row */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: rgba(13,15,18,.03);
+    border-radius: 10px;
+    padding: 14px 12px 12px;
+  }
+  .stat-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px; line-height: 1;
+    color: var(--t0);
+    letter-spacing: -0.5px;
+  }
+  .stat-val small {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px; font-weight: 500;
+    color: rgba(13,15,18,.55);
+    margin-left: 3px;
+  }
+  .stat-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px; letter-spacing: 1.2px;
+    color: rgba(13,15,18,.45);
+    text-transform: uppercase;
+    margin-top: 6px;
+    font-weight: 600;
+  }
+
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(13,15,18,.06);
+    margin-bottom: 22px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; color: rgba(13,15,18,.55);
+  }
+  .meta-row strong { color: var(--t0); font-weight: 600; }
+
+  .sub-label {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(13,15,18,.55);
+    margin-bottom: 8px;
+  }
+
+  /* Splits table (clean version, only full miles) */
+  .splits {
+    background: rgba(13,15,18,.025);
+    border: 1px solid rgba(13,15,18,.06);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .splits-head {
+    display: grid;
+    grid-template-columns: 32px 1fr 50px 40px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(13,15,18,.04);
+    font-family: 'Inter', sans-serif;
+    font-size: 10px; letter-spacing: 1.2px;
+    color: rgba(13,15,18,.45);
+    text-transform: uppercase; font-weight: 600;
+  }
+  .splits-head .right { text-align: right; }
+  .split-row {
+    display: grid;
+    grid-template-columns: 32px 1fr 50px 40px;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: rgba(13,15,18,.85);
+  }
+  .split-row + .split-row { border-top: 1px solid rgba(13,15,18,.05); }
+  .split-row.fast { background: rgba(44,168,47,.06); }
+  .split-row.slow { background: rgba(212,144,10,.05); }
+  .split-num {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 12px; color: rgba(13,15,18,.55);
+    text-align: center;
+  }
+  .split-pace {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; color: var(--t0);
+    font-size: 13px;
+  }
+  .split-pace small {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px; color: rgba(13,15,18,.45);
+    font-weight: 500; margin-left: 2px;
+  }
+  .split-hr, .split-elev {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: rgba(13,15,18,.55);
+    text-align: right;
+  }
+  .splits-legend {
+    display: flex; gap: 14px;
+    padding: 8px 12px;
+    background: rgba(13,15,18,.015);
+    border-top: 1px solid rgba(13,15,18,.05);
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px; color: rgba(13,15,18,.45);
+    letter-spacing: 0.5px;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .splits-legend .dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 5px; vertical-align: middle;
+  }
+  .splits-legend .dot.fast { background: var(--green); }
+  .splits-legend .dot.slow { background: var(--amber); }
+
+  /* Map placeholder — would be a real polyline SVG */
+  .map-placeholder {
+    background: linear-gradient(135deg, #DCE6D5, #C8D8BE);
+    border-radius: 10px;
+    border: 1px solid rgba(13,15,18,.08);
+    height: 280px;
+    position: relative;
+    overflow: hidden;
+  }
+  .map-placeholder.tall { height: 340px; }
+  .map-route {
+    position: absolute;
+    inset: 12px;
+  }
+  .map-route svg { width: 100%; height: 100%; }
+  .map-pin {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .map-pin.start { background: var(--green); top: 50%; left: 20%; }
+  .map-pin.end { background: var(--strava); top: 32%; right: 18%; }
+  .map-meta {
+    position: absolute;
+    bottom: 10px; left: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px; color: rgba(13,15,18,.55);
+    background: rgba(255,255,255,.85);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+
+  /* Layout variants */
+  .layout-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .layout-side-map {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 1.4fr;
+    gap: 24px;
+  }
+  .layout-hero-map { display: flex; flex-direction: column; gap: 22px; }
+
+  /* vs Plan card */
+  .vs-plan {
+    background: rgba(13,15,18,.025);
+    border: 1px solid rgba(13,15,18,.06);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .vs-status {
+    display: inline-block;
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 10px; letter-spacing: 1.5px;
+    padding: 4px 10px; border-radius: 999px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    background: rgba(44,168,47,.15); color: var(--green);
+  }
+  .vs-row {
+    display: grid;
+    grid-template-columns: minmax(95px, auto) 1fr;
+    gap: 12px;
+    padding: 6px 0;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    border-top: 1px solid rgba(13,15,18,.05);
+  }
+  .vs-row:first-of-type { border-top: none; }
+  .vs-key { color: rgba(13,15,18,.55); font-weight: 500; }
+  .vs-val { color: var(--t0); font-weight: 600; text-align: right; }
+  .vs-muted { color: rgba(13,15,18,.45); font-weight: 500; margin-left: 4px; }
+
+  .coach-notes {
+    margin-top: 18px;
+  }
+  .coach-notes p {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px; line-height: 1.55;
+    color: rgba(13,15,18,.75);
+    margin: 0 0 8px;
+  }
+
+  .strava-link {
+    display: inline-block;
+    margin-top: 16px;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600; font-size: 10.5px;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--strava);
+    text-decoration: none;
+  }
+
+  .design-note {
+    background: rgba(13,15,18,.04);
+    border-left: 3px solid var(--orange);
+    padding: 12px 16px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    color: rgba(13,15,18,.75);
+    line-height: 1.5;
+    margin-bottom: 24px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ════════════════════════════════════════════════════
+       Variant A — Strava-style: splits left, big map right
+       ════════════════════════════════════════════════════ -->
+
+  <div class="label">Variant A — Splits left, Map right (Strava-style)</div>
+  <div class="heading">LONG</div>
+  <div class="sub">Sunday, May 17, 2026 · Completed</div>
+
+  <div class="design-note">
+    <strong>Fixes:</strong> 8 splits → 7 (filter partials &lt;0.95 mi).
+    Map shows the route trace with start/end markers. Layout: splits + vs-plan stacked
+    on the left, map fills the right column.
+  </div>
+
+  <div class="card">
+    <div class="h-eyebrow">
+      Sunday · May 17, 2026 · Completed
+      <span class="h-pill long">LONG</span>
+    </div>
+    <h2 class="h-title">LONG</h2>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-val">6.9<small>mi</small></div><div class="stat-label">Distance</div></div>
+      <div class="stat"><div class="stat-val">54:50</div><div class="stat-label">Time</div></div>
+      <div class="stat"><div class="stat-val">7:57<small>/mi</small></div><div class="stat-label">Avg pace</div></div>
+      <div class="stat"><div class="stat-val">148.7<small>bpm</small></div><div class="stat-label">Avg HR</div></div>
+    </div>
+
+    <div class="meta-row">
+      <span><strong>247</strong> ft elev</span>
+      <span><strong>164</strong> max HR</span>
+      <span>Morning Run</span>
+    </div>
+
+    <div class="layout-side-map">
+      <!-- Left: splits + vs plan -->
+      <div>
+        <div class="sub-label">Per-mile splits</div>
+        <div class="splits">
+          <div class="splits-head">
+            <span>Mi</span>
+            <span>Pace</span>
+            <span class="right">HR</span>
+            <span class="right">Elev</span>
+          </div>
+          <div class="split-row"><span class="split-num">1</span><span class="split-pace">7:41<small>/mi</small></span><span class="split-hr">128</span><span class="split-elev">+3</span></div>
+          <div class="split-row fast"><span class="split-num">2</span><span class="split-pace">6:47<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">-21</span></div>
+          <div class="split-row"><span class="split-num">3</span><span class="split-pace">8:03<small>/mi</small></span><span class="split-hr">154</span><span class="split-elev">+14</span></div>
+          <div class="split-row"><span class="split-num">4</span><span class="split-pace">8:24<small>/mi</small></span><span class="split-hr">148</span><span class="split-elev">-14</span></div>
+          <div class="split-row"><span class="split-num">5</span><span class="split-pace">8:18<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">+16</span></div>
+          <div class="split-row"><span class="split-num">6</span><span class="split-pace">7:25<small>/mi</small></span><span class="split-hr">153</span><span class="split-elev">0</span></div>
+          <div class="split-row slow"><span class="split-num">7</span><span class="split-pace">7:43<small>/mi</small></span><span class="split-hr">156</span><span class="split-elev">-3</span></div>
+          <div class="splits-legend">
+            <span><span class="dot fast"></span>fastest</span>
+            <span><span class="dot slow"></span>slowest</span>
+          </div>
+        </div>
+
+        <div class="sub-label" style="margin-top:22px;">vs Plan</div>
+        <div class="vs-plan">
+          <div class="vs-status">76% OF PLAN</div>
+          <div class="vs-row"><span class="vs-key">Workout</span><span class="vs-val">Long</span></div>
+          <div class="vs-row"><span class="vs-key">Planned</span><span class="vs-val">9.0 mi at 9:00–9:45/mi</span></div>
+          <div class="vs-row"><span class="vs-key">Actual</span><span class="vs-val">6.9 mi at 7:57/mi <em class="vs-muted">(76%)</em></span></div>
+        </div>
+      </div>
+
+      <!-- Right: map -->
+      <div>
+        <div class="sub-label">Route</div>
+        <div class="map-placeholder tall">
+          <div class="map-route">
+            <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet">
+              <!-- Faux trace of the loop in the screenshot -->
+              <path d="M 90,160 C 110,140 130,135 165,135 L 230,135 C 260,135 280,140 290,145 L 310,150 C 325,148 335,140 340,128 L 348,108 C 350,98 345,85 332,80 L 290,72 C 270,72 250,76 230,84 L 210,95 C 190,108 178,128 178,148 L 178,170 C 178,190 188,205 205,210 L 250,225 C 275,230 295,225 305,215 L 320,200 C 330,185 332,168 326,155"
+                    fill="none" stroke="#FC4C02" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <span class="map-pin start"></span>
+          <span class="map-pin end"></span>
+          <div class="map-meta">6.9 mi loop · Sepulveda Basin</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="coach-notes">
+      <div class="sub-label">Coach notes</div>
+      <p>Conversational throughout. Time on feet is the stimulus — don't chase pace.</p>
+    </div>
+
+    <a class="strava-link" href="#">View full activity on Strava ↗</a>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════
+       Variant B — Map hero on top, splits + vs-plan below
+       ════════════════════════════════════════════════════ -->
+
+  <div class="label">Variant B — Map hero on top, two columns below</div>
+
+  <div class="card">
+    <div class="h-eyebrow">
+      Sunday · May 17, 2026 · Completed
+      <span class="h-pill long">LONG</span>
+    </div>
+    <h2 class="h-title">LONG</h2>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-val">6.9<small>mi</small></div><div class="stat-label">Distance</div></div>
+      <div class="stat"><div class="stat-val">54:50</div><div class="stat-label">Time</div></div>
+      <div class="stat"><div class="stat-val">7:57<small>/mi</small></div><div class="stat-label">Avg pace</div></div>
+      <div class="stat"><div class="stat-val">148.7<small>bpm</small></div><div class="stat-label">Avg HR</div></div>
+    </div>
+
+    <div class="meta-row">
+      <span><strong>247</strong> ft elev</span>
+      <span><strong>164</strong> max HR</span>
+      <span>Morning Run</span>
+    </div>
+
+    <!-- Map hero -->
+    <div class="map-placeholder" style="margin-bottom: 22px;">
+      <div class="map-route">
+        <svg viewBox="0 0 800 250" preserveAspectRatio="xMidYMid meet">
+          <path d="M 130,150 C 170,120 220,115 280,115 L 390,115 C 440,115 480,120 500,128 L 540,135 C 570,130 590,118 600,100 L 615,68 C 620,52 605,38 580,32 L 510,28 C 470,30 430,38 400,55 L 360,75 C 320,98 300,128 300,165 L 300,200 C 305,228 325,248 360,250 L 440,255 C 490,255 530,245 555,230 L 590,205 C 605,180 605,152 590,128"
+                fill="none" stroke="#FC4C02" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <span class="map-pin start" style="top:60%; left:14%;"></span>
+      <span class="map-pin end" style="top:46%; left:69%;"></span>
+      <div class="map-meta">6.9 mi loop · Sepulveda Basin</div>
+    </div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="sub-label">Per-mile splits</div>
+        <div class="splits">
+          <div class="splits-head">
+            <span>Mi</span>
+            <span>Pace</span>
+            <span class="right">HR</span>
+            <span class="right">Elev</span>
+          </div>
+          <div class="split-row"><span class="split-num">1</span><span class="split-pace">7:41<small>/mi</small></span><span class="split-hr">128</span><span class="split-elev">+3</span></div>
+          <div class="split-row fast"><span class="split-num">2</span><span class="split-pace">6:47<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">-21</span></div>
+          <div class="split-row"><span class="split-num">3</span><span class="split-pace">8:03<small>/mi</small></span><span class="split-hr">154</span><span class="split-elev">+14</span></div>
+          <div class="split-row"><span class="split-num">4</span><span class="split-pace">8:24<small>/mi</small></span><span class="split-hr">148</span><span class="split-elev">-14</span></div>
+          <div class="split-row"><span class="split-num">5</span><span class="split-pace">8:18<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">+16</span></div>
+          <div class="split-row"><span class="split-num">6</span><span class="split-pace">7:25<small>/mi</small></span><span class="split-hr">153</span><span class="split-elev">0</span></div>
+          <div class="split-row slow"><span class="split-num">7</span><span class="split-pace">7:43<small>/mi</small></span><span class="split-hr">156</span><span class="split-elev">-3</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="sub-label">vs Plan</div>
+        <div class="vs-plan">
+          <div class="vs-status">76% OF PLAN</div>
+          <div class="vs-row"><span class="vs-key">Workout</span><span class="vs-val">Long</span></div>
+          <div class="vs-row"><span class="vs-key">Planned</span><span class="vs-val">9.0 mi</span></div>
+          <div class="vs-row"><span class="vs-key">Pace target</span><span class="vs-val">9:00–9:45/mi</span></div>
+          <div class="vs-row"><span class="vs-key">Actual pace</span><span class="vs-val">7:57/mi</span></div>
+        </div>
+        <div class="coach-notes">
+          <div class="sub-label">Coach notes</div>
+          <p>Conversational throughout. Time on feet is the stimulus — don't chase pace.</p>
+        </div>
+      </div>
+    </div>
+
+    <a class="strava-link" href="#">View full activity on Strava ↗</a>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════
+       Variant C — Compact: Map left of stats, splits below
+       ════════════════════════════════════════════════════ -->
+
+  <div class="label">Variant C — Compact: map under stats, splits scrollable</div>
+
+  <div class="card">
+    <div class="h-eyebrow">
+      Sunday · May 17, 2026 · Completed
+      <span class="h-pill long">LONG</span>
+    </div>
+    <h2 class="h-title">LONG</h2>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-val">6.9<small>mi</small></div><div class="stat-label">Distance</div></div>
+      <div class="stat"><div class="stat-val">54:50</div><div class="stat-label">Time</div></div>
+      <div class="stat"><div class="stat-val">7:57<small>/mi</small></div><div class="stat-label">Avg pace</div></div>
+      <div class="stat"><div class="stat-val">148.7<small>bpm</small></div><div class="stat-label">Avg HR</div></div>
+    </div>
+
+    <div class="meta-row">
+      <span><strong>247</strong> ft elev</span>
+      <span><strong>164</strong> max HR</span>
+      <span>Morning Run</span>
+    </div>
+
+    <div class="layout-side-map">
+      <div>
+        <div class="sub-label">vs Plan</div>
+        <div class="vs-plan">
+          <div class="vs-status">76% OF PLAN</div>
+          <div class="vs-row"><span class="vs-key">Workout</span><span class="vs-val">Long</span></div>
+          <div class="vs-row"><span class="vs-key">Planned</span><span class="vs-val">9.0 mi</span></div>
+          <div class="vs-row"><span class="vs-key">Pace target</span><span class="vs-val">9:00–9:45/mi</span></div>
+          <div class="vs-row"><span class="vs-key">Actual pace</span><span class="vs-val">7:57/mi</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="sub-label">Route</div>
+        <div class="map-placeholder">
+          <div class="map-route">
+            <svg viewBox="0 0 500 250" preserveAspectRatio="xMidYMid meet">
+              <path d="M 100,140 C 130,110 165,108 220,108 L 290,108 C 320,108 340,115 350,125 L 365,135 C 380,130 388,118 392,98 L 398,68 C 400,52 388,40 365,38 L 300,38 C 270,40 240,50 218,68 L 200,90 C 178,115 168,142 178,170 L 200,205 C 220,225 248,230 280,225 L 330,215 C 360,205 380,188 388,165"
+                    fill="none" stroke="#FC4C02" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <span class="map-pin start" style="top:55%; left:18%;"></span>
+          <span class="map-pin end" style="top:45%; left:78%;"></span>
+          <div class="map-meta">6.9 mi loop · Sepulveda Basin</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sub-label" style="margin-top:22px;">Per-mile splits</div>
+    <div class="splits">
+      <div class="splits-head">
+        <span>Mi</span>
+        <span>Pace</span>
+        <span class="right">HR</span>
+        <span class="right">Elev</span>
+      </div>
+      <div class="split-row"><span class="split-num">1</span><span class="split-pace">7:41<small>/mi</small></span><span class="split-hr">128</span><span class="split-elev">+3</span></div>
+      <div class="split-row fast"><span class="split-num">2</span><span class="split-pace">6:47<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">-21</span></div>
+      <div class="split-row"><span class="split-num">3</span><span class="split-pace">8:03<small>/mi</small></span><span class="split-hr">154</span><span class="split-elev">+14</span></div>
+      <div class="split-row"><span class="split-num">4</span><span class="split-pace">8:24<small>/mi</small></span><span class="split-hr">148</span><span class="split-elev">-14</span></div>
+      <div class="split-row"><span class="split-num">5</span><span class="split-pace">8:18<small>/mi</small></span><span class="split-hr">150</span><span class="split-elev">+16</span></div>
+      <div class="split-row"><span class="split-num">6</span><span class="split-pace">7:25<small>/mi</small></span><span class="split-hr">153</span><span class="split-elev">0</span></div>
+      <div class="split-row slow"><span class="split-num">7</span><span class="split-pace">7:43<small>/mi</small></span><span class="split-hr">156</span><span class="split-elev">-3</span></div>
+    </div>
+
+    <div class="coach-notes">
+      <div class="sub-label">Coach notes</div>
+      <p>Conversational throughout. Time on feet is the stimulus — don't chase pace.</p>
+    </div>
+
+    <a class="strava-link" href="#">View full activity on Strava ↗</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -67,12 +67,24 @@ export async function GET(req: NextRequest) {
     pace_zone?: number;
   }
   let splits: Array<{ mile: number; paceSPerMi: number; paceDisplay: string; avgHr: number | null; elevDeltaFt: number }> = [];
+  let summaryPolyline: string | null = (d as { summaryPolyline?: string | null }).summaryPolyline ?? null;
+  let startLatLng: [number, number] | null = null;
+  let endLatLng: [number, number] | null = null;
   try {
     const detail = await getActivityDetail(user.id, row.id);
-    const std = (detail as unknown as { splits_standard?: StravaSplit[] } | null)?.splits_standard;
+    const detailTyped = detail as unknown as {
+      splits_standard?: StravaSplit[];
+      map?: { summary_polyline?: string };
+      start_latlng?: [number, number];
+      end_latlng?: [number, number];
+    } | null;
+    const std = detailTyped?.splits_standard;
     if (std && Array.isArray(std)) {
       splits = std
-        .filter((s) => s.distance > 0 && s.moving_time > 0)
+        // Only count splits that covered at least 0.95 of a mile. Strava
+        // emits a final partial row for the last fractional mile which
+        // would otherwise show as a "9th split" of 0.1 mi at slow pace.
+        .filter((s) => s.distance >= 1609.344 * 0.95 && s.moving_time > 0)
         .map((s) => {
           const distMi = s.distance / 1609.344;
           const paceSPerMi = Math.round(s.moving_time / Math.max(distMi, 0.0001));
@@ -87,6 +99,9 @@ export async function GET(req: NextRequest) {
           };
         });
     }
+    if (detailTyped?.map?.summary_polyline) summaryPolyline = detailTyped.map.summary_polyline;
+    if (detailTyped?.start_latlng && detailTyped.start_latlng.length === 2) startLatLng = detailTyped.start_latlng;
+    if (detailTyped?.end_latlng && detailTyped.end_latlng.length === 2) endLatLng = detailTyped.end_latlng;
   } catch (e) {
     console.warn('[api/runs/by-date] detail fetch failed for', row.id, e);
     // Splits stay empty; the rest of the response still works
@@ -109,6 +124,9 @@ export async function GET(req: NextRequest) {
       type: d.type || 'Run',
       workoutType: d.workoutType ?? null,
       splits,
+      summaryPolyline,
+      startLatLng,
+      endLatLng,
     },
   });
 }

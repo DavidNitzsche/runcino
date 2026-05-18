@@ -18,7 +18,10 @@
  */
 
 import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { describeWorkout } from '@/lib/workout-descriptions';
+
+const RouteMap = dynamic(() => import('@/app/log/RouteMap'), { ssr: false, loading: () => <div style={{ height: 260, borderRadius: 10, background: 'rgba(13,15,18,.04)' }} /> });
 
 export interface WorkoutDay {
   dow: string;
@@ -245,6 +248,9 @@ interface ActualRun {
   elevGainFt: number;
   workoutType: number | null;
   splits: ActualSplit[];
+  summaryPolyline: string | null;
+  startLatLng: [number, number] | null;
+  endLatLng: [number, number] | null;
 }
 
 function fmtPaceMS(sPerMi: number): string {
@@ -357,43 +363,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             )}
 
-            {/* 2-column layout: splits left, plan comparison right */}
+            {/* Variant C: top row → vs-plan left, route map right */}
             <div className="wm-debrief-grid">
-              <div className="wm-debrief-col">
-                <div className="wm-sub-label">Per-mile splits</div>
-                {actual.splits.length > 0 ? (
-                  <div className="wm-splits">
-                    {actual.splits.map((s) => {
-                      // Highlight fastest / slowest miles
-                      const allPaces = actual.splits.map((x) => x.paceSPerMi);
-                      const fastest = Math.min(...allPaces);
-                      const slowest = Math.max(...allPaces);
-                      const tone =
-                        s.paceSPerMi === fastest ? 'fast' :
-                        s.paceSPerMi === slowest ? 'slow' : '';
-                      return (
-                        <div key={s.mile} className={`wm-split-row ${tone}`}>
-                          <span className="wm-split-num">{s.mile}</span>
-                          <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
-                          <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
-                          <span className="wm-split-elev">
-                            {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    <div className="wm-split-legend">
-                      <span><span className="dot fast"></span>fastest</span>
-                      <span><span className="dot slow"></span>slowest</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="wm-no-splits">
-                    No mile splits available yet. They appear once Strava finishes processing the activity (usually within a few minutes).
-                  </div>
-                )}
-              </div>
-
               <div className="wm-debrief-col">
                 <div className="wm-sub-label">vs Plan</div>
                 <div className="wm-vs-plan">
@@ -405,12 +376,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                     <span className="wm-vs-val">{day.label}</span>
                   </div>
                   <div className="wm-vs-row">
-                    <span className="wm-vs-key">Planned dist.</span>
+                    <span className="wm-vs-key">Planned</span>
                     <span className="wm-vs-val">{day.distanceMi} mi</span>
-                  </div>
-                  <div className="wm-vs-row">
-                    <span className="wm-vs-key">Actual dist.</span>
-                    <span className="wm-vs-val">{actual.distanceMi.toFixed(1)} mi {planComparison && <em className="wm-vs-muted">({planComparison.ranPct}%)</em>}</span>
                   </div>
                   <div className="wm-vs-row">
                     <span className="wm-vs-key">Pace target</span>
@@ -420,13 +387,74 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                     <span className="wm-vs-key">Actual pace</span>
                     <span className="wm-vs-val">{fmtPaceMS(actual.paceSPerMi)}/mi</span>
                   </div>
+                  {planComparison && (
+                    <div className="wm-vs-row">
+                      <span className="wm-vs-key">% of plan</span>
+                      <span className="wm-vs-val">{planComparison.ranPct}%</span>
+                    </div>
+                  )}
                 </div>
+              </div>
 
-                <div className="wm-sub-label" style={{ marginTop: 18 }}>Coach notes</div>
-                <p className="wm-copy" style={{ marginBottom: 10 }}>{desc.effort}</p>
-                <p className="wm-copy" style={{ fontSize: 12, color: 'rgba(13,15,18,.55)' }}>{desc.why}</p>
+              <div className="wm-debrief-col">
+                <div className="wm-sub-label">Route</div>
+                {actual.summaryPolyline ? (
+                  <RouteMap
+                    polyline={actual.summaryPolyline}
+                    startLatLng={actual.startLatLng}
+                    endLatLng={actual.endLatLng}
+                    height={260}
+                  />
+                ) : (
+                  <div className="wm-no-map">
+                    No GPS data — looks like this run was logged from a treadmill or as a manual entry.
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Splits — full width below */}
+            <div className="wm-sub-label" style={{ marginTop: 22 }}>Per-mile splits</div>
+            {actual.splits.length > 0 ? (
+              <div className="wm-splits">
+                <div className="wm-splits-head">
+                  <span>Mi</span>
+                  <span>Pace</span>
+                  <span className="right">HR</span>
+                  <span className="right">Elev</span>
+                </div>
+                {actual.splits.map((s) => {
+                  const allPaces = actual.splits.map((x) => x.paceSPerMi);
+                  const fastest = Math.min(...allPaces);
+                  const slowest = Math.max(...allPaces);
+                  const tone =
+                    s.paceSPerMi === fastest ? 'fast' :
+                    s.paceSPerMi === slowest ? 'slow' : '';
+                  return (
+                    <div key={s.mile} className={`wm-split-row ${tone}`}>
+                      <span className="wm-split-num">{s.mile}</span>
+                      <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
+                      <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
+                      <span className="wm-split-elev">
+                        {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="wm-split-legend">
+                  <span><span className="dot fast"></span>fastest</span>
+                  <span><span className="dot slow"></span>slowest</span>
+                </div>
+              </div>
+            ) : (
+              <div className="wm-no-splits">
+                No mile splits available yet. They appear once Strava finishes processing the activity (usually within a few minutes).
+              </div>
+            )}
+
+            <div className="wm-sub-label" style={{ marginTop: 22 }}>Coach notes</div>
+            <p className="wm-copy" style={{ marginBottom: 6 }}>{desc.effort}</p>
+            <p className="wm-copy" style={{ fontSize: 12, color: 'rgba(13,15,18,.55)' }}>{desc.why}</p>
 
             <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
               View full activity on Strava ↗
@@ -843,12 +871,24 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           border-radius: 10px;
           overflow: hidden;
         }
+        .wm-splits-head {
+          display: grid;
+          grid-template-columns: 32px 1fr 50px 50px;
+          gap: 8px;
+          padding: 8px 14px;
+          background: rgba(13,15,18,.04);
+          font-family: 'Inter', sans-serif;
+          font-size: 10px; letter-spacing: 1.2px;
+          color: rgba(13,15,18,.45);
+          text-transform: uppercase; font-weight: 600;
+        }
+        .wm-splits-head .right { text-align: right; }
         .wm-split-row {
           display: grid;
-          grid-template-columns: 28px 1fr 50px 40px;
+          grid-template-columns: 32px 1fr 50px 50px;
           gap: 8px;
           align-items: center;
-          padding: 8px 12px;
+          padding: 8px 14px;
           font-family: 'Inter', sans-serif;
           font-size: 13px;
           color: rgba(13,15,18,.85);
@@ -901,7 +941,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         }
         .wm-split-legend .dot.fast { background: #2CA82F; }
         .wm-split-legend .dot.slow { background: #D4900A; }
-        .wm-no-splits {
+        .wm-no-splits, .wm-no-map {
           padding: 14px 16px;
           background: rgba(13,15,18,.025);
           border: 1px solid rgba(13,15,18,.06);
@@ -910,6 +950,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 12px;
           color: rgba(13,15,18,.55);
           line-height: 1.5;
+        }
+        .wm-no-map {
+          height: 260px;
+          display: flex; align-items: center; justify-content: center;
+          text-align: center;
         }
 
         /* vs Plan table */
