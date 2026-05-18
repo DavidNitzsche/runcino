@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 interface Props {
@@ -22,6 +22,15 @@ interface Props {
 
 export function ConnectBanner({ show = true }: Props) {
   const [dismissed, setDismissed] = useState(false);
+
+  // If the URL has ?connect=success (just back from Strava OAuth), hide
+  // the banner immediately even before the connector status fetch lands.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('connect') === 'success') {
+      setDismissed(true);
+    }
+  }, []);
+
   if (!show || dismissed) return null;
 
   return (

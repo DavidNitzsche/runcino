@@ -22,7 +22,7 @@ import { redirect } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { getCurrentUser } from '@/lib/auth';
-import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, type PlanWeek } from '@/lib/synthetic-plan';
+import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import './training-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -45,7 +45,8 @@ export default async function TrainingPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?next=/training');
 
-  const today = todayISO();
+  const tz = userTimezone(user.location);
+  const today = todayISO(tz);
   const weeks = buildSyntheticPlan();
   const currentWeek = weeks.find((w) => w.days.some((d) => d.date === today)) ?? weeks[0];
   const phaseKey = currentWeek.phase;

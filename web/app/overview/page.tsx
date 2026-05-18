@@ -23,6 +23,7 @@ import {
   daysBetween,
   findCurrentWeek,
   findTodayWorkout,
+  userTimezone,
   type PlanWeek,
 } from '@/lib/synthetic-plan';
 import './overview-v4.css';
@@ -53,7 +54,10 @@ export default async function OverviewPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login?next=/overview');
 
-  const today = todayISO();
+  // Compute "today" in the user's timezone (inferred from location, default LA)
+  // so the page matches their wall clock, not UTC.
+  const tz = userTimezone(user.location);
+  const today = todayISO(tz);
   const weeks = buildSyntheticPlan();
   const currentWeek = findCurrentWeek(weeks, today);
   const todayDay = findTodayWorkout(weeks, today);
@@ -107,7 +111,7 @@ export default async function OverviewPage() {
           <div className="coach-left">
             <div className="coach-label">
               <span className="dot-green"></span>
-              COACH · {new Date(today + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
+              COACH · {new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
             </div>
             <p className="coach-briefing">
               {isRest ? (

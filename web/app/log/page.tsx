@@ -18,7 +18,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { todayISO } from '@/lib/synthetic-plan';
+import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -220,7 +220,7 @@ export default async function LogPage() {
   if (!auth) redirect('/login?next=/log');
 
   const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
-  const today = todayISO();
+  const today = todayISO(userTimezone(auth.location));
   const todayMonthIdx = parseInt(today.slice(5, 7), 10) - 1;
   const data = await loadLogPageData(auth.id, isLegacy);
 

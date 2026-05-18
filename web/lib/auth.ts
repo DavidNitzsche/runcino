@@ -28,6 +28,9 @@ export interface AuthUser {
   email: string;
   name: string;
   onboarding_complete: boolean;
+  /** From the users.location text field; pages use this to compute
+   *  the user's timezone for "today" math. */
+  location: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -76,10 +79,10 @@ export async function signupUser(email: string, password: string, name: string):
   const passwordHash = await hashPassword(password);
 
   // Insert returning the new row. Conflicts on email will throw.
-  const rows = await query<{ id: string; email: string; name: string; onboarding_complete: boolean }>(
+  const rows = await query<AuthUser>(
     `INSERT INTO users (email, password_hash, name)
      VALUES ($1, $2, $3)
-     RETURNING id, email, name, onboarding_complete;`,
+     RETURNING id, email, name, onboarding_complete, location;`,
     [normalizedEmail, passwordHash, name.trim()],
   );
   const user = rows[0];
@@ -108,14 +111,8 @@ export async function signupUser(email: string, password: string, name: string):
 export async function loginUser(email: string, password: string): Promise<AuthUser> {
   const normalizedEmail = email.trim().toLowerCase();
 
-  const rows = await query<{
-    id: string;
-    email: string;
-    name: string;
-    onboarding_complete: boolean;
-    password_hash: string;
-  }>(
-    `SELECT id, email, name, onboarding_complete, password_hash
+  const rows = await query<AuthUser & { password_hash: string }>(
+    `SELECT id, email, name, onboarding_complete, location, password_hash
      FROM users WHERE email = $1 LIMIT 1;`,
     [normalizedEmail],
   );
@@ -128,7 +125,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   await createSessionCookie(u.id);
   await query(`UPDATE users SET last_login_at = NOW() WHERE id = $1;`, [u.id]);
 
-  return { id: u.id, email: u.email, name: u.name, onboarding_complete: u.onboarding_complete };
+  return { id: u.id, email: u.email, name: u.name, onboarding_complete: u.onboarding_complete, location: u.location };
 }
 
 /**
@@ -163,8 +160,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const rows = await query<{ id: string; email: string; name: string; onboarding_complete: boolean }>(
-    `SELECT u.id, u.email, u.name, u.onboarding_complete
+  const rows = await query<AuthUser>(
+    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.session_token = $1 AND s.expires_at > NOW()

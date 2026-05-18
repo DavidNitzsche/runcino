@@ -89,8 +89,37 @@ export function buildSyntheticPlan(startDate = '2026-05-11'): PlanWeek[] {
   });
 }
 
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Today's date in the given timezone (YYYY-MM-DD).
+ *
+ * Without a timezone, the server defaults to UTC — which means at 6 PM
+ * Sunday in LA, the page shows Monday because UTC is already 1 AM.
+ * Pages should pass the user's tz (derived from their location) so
+ * "today" matches what's on their wall clock.
+ *
+ * Default: America/Los_Angeles since that's the legacy owner's tz.
+ * Will switch to a per-user `timezone` column once Edit Profile lands.
+ */
+export function todayISO(timezone = 'America/Los_Angeles'): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: timezone });
+}
+
+/** Infer a timezone from a user's location string. Best-effort. */
+export function userTimezone(location?: string | null): string {
+  if (!location) return 'America/Los_Angeles';
+  const loc = location.toLowerCase();
+  // US west
+  if (/(los angeles|san francisco|seattle|portland|san diego|oakland|sacramento|las vegas)/.test(loc)) return 'America/Los_Angeles';
+  // US mountain
+  if (/(denver|phoenix|salt lake|albuquerque)/.test(loc)) return 'America/Denver';
+  // US central
+  if (/(chicago|austin|dallas|houston|minneapolis)/.test(loc)) return 'America/Chicago';
+  // US east
+  if (/(new york|boston|miami|atlanta|washington|philadelphia)/.test(loc)) return 'America/New_York';
+  // UK / EU
+  if (/(london|dublin|edinburgh)/.test(loc)) return 'Europe/London';
+  if (/(paris|berlin|madrid|amsterdam)/.test(loc)) return 'Europe/Paris';
+  return 'America/Los_Angeles';
 }
 
 export function daysBetween(fromISO: string, toISO: string): number {

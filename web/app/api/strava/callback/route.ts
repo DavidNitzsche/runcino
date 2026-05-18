@@ -12,15 +12,15 @@
  * fire-and-forget but the user lands back in the app immediately.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCode } from '../../../../lib/strava';
 import { query } from '../../../../lib/db';
 import { getCurrentUser } from '../../../../lib/auth';
 
 const STATE_COOKIE = 'faff_strava_oauth_state';
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
+export async function GET(req: NextRequest) {
+  const url = req.nextUrl;
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
@@ -41,10 +41,18 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${origin}/profile?connect=error&reason=missing_params`);
   }
 
-  // Verify state cookie matches state param (CSRF + user_id thread)
-  const cookieJar = req.headers.get('cookie') || '';
-  const stateCookie = cookieJar.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${STATE_COOKIE}=`))?.split('=')[1];
+  // Verify state cookie matches state param (CSRF + user_id thread).
+  // Using NextRequest.cookies handles URL-encoded values cleanly,
+  // unlike splitting the raw Cookie header on '=' (which breaks if the
+  // cookie value contains '=' padding).
+  const stateCookie = req.cookies.get(STATE_COOKIE)?.value;
   if (!stateCookie || stateCookie !== state) {
+    console.error('[strava callback] state mismatch', {
+      hasCookie: !!stateCookie,
+      cookieLen: stateCookie?.length,
+      stateLen: state.length,
+      match: stateCookie === state,
+    });
     return NextResponse.redirect(`${origin}/profile?connect=error&reason=state_mismatch`);
   }
   const [, userId] = state.split(':');
