@@ -24,6 +24,8 @@ import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { getCompletedMileageByDate, isWorkoutComplete } from '@/lib/completed-runs';
+import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
+import { TrainingCell } from './TrainingCellIsland';
 import './training-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -121,6 +123,7 @@ export default async function TrainingPage() {
   const PACES: Array<{ zone: string; pace: string; when: string; cls?: string }> = [];
 
   return (
+    <WorkoutModalProvider today={today}>
     <div className="training-v4-page">
       <Topbar activeTab="training" showAdmin={user.is_admin} />
       <ConnectBannerIsland />
@@ -288,27 +291,27 @@ export default async function TrainingPage() {
                   // miles cover ≥60% of the planned distance.
                   const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date, d.distanceMi);
                   const classes = `cal-cell ${d.type}${d.hasStrength ? ' has-str' : ''}${isDone ? ' done' : ''}${isToday ? ' today' : ''}`;
-                  if (d.isRest) {
-                    rows.push(
-                      <div key={`d-${d.date}`} className={classes}>
-                        <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
-                          {isToday ? 'Rest · Today' : 'Rest'}
-                        </span>
-                        <span className="cal-cell-rest-dash">—</span>
-                      </div>
-                    );
-                  } else {
-                    rows.push(
-                      <div key={`d-${d.date}`} className={classes}>
-                        {isDone && <span className="cal-cell-done">✓</span>}
-                        <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
-                          {d.label}{isToday ? ' · Today' : ''}
-                        </span>
-                        <span className="cal-cell-dist">{d.distanceMi}<span className="cal-cell-dist-unit">mi</span></span>
-                        {d.hasStrength && !isDone && <span className="cal-cell-strength" title="Strength training">S</span>}
-                      </div>
-                    );
-                  }
+                  rows.push(
+                    <TrainingCell key={`d-${d.date}`} day={d as WorkoutDay} className={classes}>
+                      {d.isRest ? (
+                        <>
+                          <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
+                            {isToday ? 'Rest · Today' : 'Rest'}
+                          </span>
+                          <span className="cal-cell-rest-dash">—</span>
+                        </>
+                      ) : (
+                        <>
+                          {isDone && <span className="cal-cell-done">✓</span>}
+                          <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
+                            {d.label}{isToday ? ' · Today' : ''}
+                          </span>
+                          <span className="cal-cell-dist">{d.distanceMi}<span className="cal-cell-dist-unit">mi</span></span>
+                          {d.hasStrength && !isDone && <span className="cal-cell-strength" title="Strength training">S</span>}
+                        </>
+                      )}
+                    </TrainingCell>
+                  );
                 });
                 rows.push(
                   <div key={`mi-${w.weekNum}`} className="cal-mileage-cell">
@@ -382,5 +385,6 @@ export default async function TrainingPage() {
 
       </div>
     </div>
+    </WorkoutModalProvider>
   );
 }

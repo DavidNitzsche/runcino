@@ -64,7 +64,7 @@ export function WorkoutModalProvider({ children, today }: { children: ReactNode;
   );
 }
 
-function useModal(): ModalContextValue {
+export function useModal(): ModalContextValue {
   const ctx = useContext(ModalContext);
   if (!ctx) throw new Error('Wrap consumers in <WorkoutModalProvider>');
   return ctx;
