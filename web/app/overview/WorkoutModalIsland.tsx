@@ -202,6 +202,30 @@ export function WeekStripCells({
  * Modal
  * ─────────────────────────────────────────────────────────────────── */
 
+/** Parse the paceTarget string into a display-friendly { primary, unit }.
+ *  Handles ranges ("7:20 – 7:40 per mile"), progressive ("9:45 → 8:30
+ *  per mile"), mixed ("9:30 easy → half-marathon goal pace"), and
+ *  text-only ("Half-marathon goal pace", "—"). */
+function parsePaceTarget(paceTarget: string): { primary: string; unit: string } {
+  if (!paceTarget || paceTarget === '—') return { primary: '—', unit: '' };
+  // Range with the same unit on the end: "7:20 – 7:40 per mile"
+  const range = paceTarget.match(/^(\d+:\d{2})\s*[–-]\s*(\d+:\d{2})\s*per\s*mile/i);
+  if (range) return { primary: `${range[1]}–${range[2]}`, unit: '/mi' };
+  // Progressive numeric: "9:45 → 8:30 per mile across the run"
+  const prog = paceTarget.match(/^(\d+:\d{2})\s*[→]\s*(\d+:\d{2})\s*per\s*mile/i);
+  if (prog) return { primary: `${prog[1]}→${prog[2]}`, unit: '/mi' };
+  // Numeric → text: "9:30 easy → half-marathon goal pace"
+  if (/easy\s*→\s*half/i.test(paceTarget)) {
+    const start = paceTarget.match(/^(\d+:\d{2})/);
+    return { primary: start ? `${start[1]}→HM` : 'Easy→HM', unit: 'pace' };
+  }
+  // Single numeric: "9:00 – 9:30 per mile" already covered above. Lone "9:30 per mile"
+  const single = paceTarget.match(/^(\d+:\d{2})\s*per\s*mile/i);
+  if (single) return { primary: single[1], unit: '/mi' };
+  // Text-only ("Half-marathon goal pace", "Race pace")
+  return { primary: paceTarget, unit: '' };
+}
+
 function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string; onClose: () => void }) {
   const isRest = !!day.isRest || day.distanceMi === 0;
   const isToday = day.date === today;
@@ -210,14 +234,17 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   // copy if the label isn't in the lookup (e.g. for an ad-hoc workout).
   const desc = describeWorkout(day.label, day.type);
   const paceTarget = isRest ? '' : desc.paceTarget;
+  const paceDisplay = parsePaceTarget(paceTarget);
 
-  // Rough duration estimate from distance + the FIRST pace number in the
-  // target (covers ranges like "9:00 – 9:30/mi" or progressive workouts).
+  // Duration estimate using the mid-point of any pace range we can find.
+  // For "7:20 – 7:40" we average to ~7:30; for single values we use that.
   const paceMid = (() => {
     if (!paceTarget) return 0;
-    const m = paceTarget.match(/(\d+):(\d+)/);
-    if (!m) return 0;
-    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    const matches = [...paceTarget.matchAll(/(\d+):(\d{2})/g)].map((m) =>
+      parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
+    );
+    if (matches.length === 0) return 0;
+    return Math.round(matches.reduce((a, b) => a + b, 0) / matches.length);
   })();
   const durMin = paceMid > 0 ? Math.round((paceMid * day.distanceMi) / 60) : 0;
 
@@ -239,7 +266,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 <div className="wm-stat-label">Distance</div>
               </div>
               <div className="wm-stat">
-                <div className="wm-stat-val">{paceTarget.split(' ')[0]}<small>/mi</small></div>
+                <div className="wm-stat-val wm-stat-pace">{paceDisplay.primary}{paceDisplay.unit && <small>{paceDisplay.unit}</small>}</div>
                 <div className="wm-stat-label">Pace target</div>
               </div>
               <div className="wm-stat">
@@ -249,7 +276,25 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
             </div>
 
             <div className="wm-section-label">{desc.zone}</div>
-            <p className="wm-copy">{desc.copy}</p>
+
+            {desc.steps.length > 0 && (
+              <div className="wm-steps">
+                {desc.steps.map((s, i) => (
+                  <div className="wm-step-row" key={i}>
+                    <div className="wm-step-name">{s.name}</div>
+                    <div className="wm-step-duration">{s.duration}</div>
+                    <div className="wm-step-pace">{s.pace}</div>
+                    {s.note && <div className="wm-step-note">{s.note}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="wm-sub-label">How it should feel</div>
+            <p className="wm-copy">{desc.effort}</p>
+
+            <div className="wm-sub-label">Why this workout</div>
+            <p className="wm-copy">{desc.why}</p>
 
             {day.hasStrength && (
               <>
@@ -333,13 +378,62 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px;
           color: #2CA82F; text-transform: uppercase;
+          margin: 0 0 10px;
+        }
+        .wm-sub-label {
+          font-family: 'Oswald', sans-serif; font-weight: 600;
+          font-size: 10px; letter-spacing: 1.5px;
+          color: rgba(13,15,18,.55); text-transform: uppercase;
           margin: 0 0 6px;
         }
         .wm-copy {
           font-family: 'Inter', sans-serif;
-          font-size: 14px; line-height: 1.55;
+          font-size: 13px; line-height: 1.55;
           color: rgba(13,15,18,.75);
-          margin: 0 0 18px;
+          margin: 0 0 16px;
+        }
+        /* Step table — clean compact breakdown of the workout */
+        .wm-steps {
+          background: rgba(13,15,18,.025);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 10px;
+          padding: 4px 0;
+          margin: 0 0 20px;
+        }
+        .wm-step-row {
+          display: grid;
+          grid-template-columns: minmax(110px, 1fr) minmax(90px, 1fr) minmax(120px, 1fr);
+          gap: 14px;
+          padding: 10px 16px;
+          align-items: center;
+        }
+        .wm-step-row + .wm-step-row { border-top: 1px solid rgba(13,15,18,.05); }
+        .wm-step-name {
+          font-family: 'Oswald', sans-serif; font-weight: 600;
+          font-size: 12px; letter-spacing: 0.8px;
+          color: #0D0F12; text-transform: uppercase;
+        }
+        .wm-step-duration {
+          font-family: 'Inter', sans-serif; font-weight: 500;
+          font-size: 13px; color: rgba(13,15,18,.85);
+        }
+        .wm-step-pace {
+          font-family: 'JetBrains Mono', 'Inter', monospace;
+          font-size: 12px; color: #0D0F12;
+          font-weight: 500;
+          text-align: right;
+        }
+        .wm-step-note {
+          grid-column: 1 / -1;
+          font-family: 'Inter', sans-serif;
+          font-size: 11.5px; font-style: italic;
+          color: rgba(13,15,18,.55);
+          line-height: 1.4;
+          margin-top: 2px;
+        }
+        @media (max-width: 520px) {
+          .wm-step-row { grid-template-columns: 1fr 1fr; }
+          .wm-step-pace { grid-column: 1 / -1; text-align: left; }
         }
         .wm-actions {
           display: flex; justify-content: flex-end;

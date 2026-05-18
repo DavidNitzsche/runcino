@@ -84,7 +84,23 @@ export function formatPlanDescription(
   if (actual.avgHr && actual.avgHr > 0) actualBits.push(`· ${Math.round(actual.avgHr)} avg HR`);
   const actualLine = actualBits.join(' ');
 
-  const block = [head, planLine, actualLine, '', desc.copy].join('\n');
+  // Build a compact text version of the step table for the Strava
+  // description (which is plain text — can't render the modal's grid).
+  const stepLines = desc.steps.length === 0
+    ? []
+    : ['', 'WORKOUT', ...desc.steps.flatMap((s) => {
+        const main = `  ${s.name} — ${s.duration} @ ${s.pace}`;
+        return s.note ? [main, `    (${s.note})`] : [main];
+      })];
+
+  const tail = [
+    '',
+    `EFFORT: ${desc.effort}`,
+    '',
+    `WHY: ${desc.why}`,
+  ];
+
+  const block = [head, planLine, actualLine, ...stepLines, ...tail].join('\n');
 
   const existing = (existingDescription || '').trim();
   if (!existing) return block;

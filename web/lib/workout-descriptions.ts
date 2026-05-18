@@ -1,26 +1,45 @@
 /**
- * Workout descriptions — proper, physiologically-accurate copy for
- * each named workout in the synthetic plan template.
+ * Workout descriptions — structured breakdown for each named workout.
  *
- * The modal previously fell back to a generic "Easy · Zone 2" copy
- * for every easy-typed workout (including HILL STRIDES, EASY +
- * STRIDES, etc.), which is wrong — those have specific structures.
+ * Replaces the prose paragraphs with a chart-friendly shape:
+ *   - steps[]   : table rows for the modal — name + duration + pace + note
+ *   - effort    : 1-2 sentence "how it should feel" cue
+ *   - why       : 1 sentence purpose statement
  *
- * Keyed by the exact workout `label` string from synthetic-plan.ts
- * TEMPLATE. Fallback to type-based defaults if no match.
+ * Each "step" is one phase of the workout. For a threshold session
+ * that's warm up → intervals → cool down. For an easy run it's
+ * a single row covering the whole distance.
  *
- * Source: standard endurance methodology (Daniels Running Formula,
- * Pfitzinger, Hudson) — distilled to the structure faff.run plans
- * actually emit.
+ * The modal renders these as a small table + two short sections —
+ * scannable, no wall of text.
+ *
+ * Pace numbers are estimates anchored to a sub-1:45 half-marathon
+ * goal. When per-user VDOT/HR zones land later, these get computed
+ * from the runner's own training paces instead of hardcoded ranges.
  */
+
+export interface WorkoutStep {
+  /** Phase name shown in the leftmost column (UPPERCASE in render). */
+  name: string;
+  /** Duration / structure — "15 min", "4–5 × 6–8 min", "Final mile". */
+  duration: string;
+  /** Pace target for this phase — "9:00–9:30/mi", "Hard", "Walk back". */
+  pace: string;
+  /** Optional sub-note shown beneath the row in italic small text. */
+  note?: string;
+}
 
 export interface WorkoutDescription {
   /** Headline zone label, e.g. "Threshold · Zone 4" */
   zone: string;
-  /** Full workout copy — structure + intent. 2–4 sentences. */
-  copy: string;
-  /** Recommended pace target as displayed in the modal stat block. */
+  /** Stat-block primary pace string — see lib/strava-writeback.ts. */
   paceTarget: string;
+  /** Workout steps, top to bottom. Empty for rest day. */
+  steps: WorkoutStep[];
+  /** "How it should feel" — concrete body-aware cue. */
+  effort: string;
+  /** Why this workout exists in the plan. */
+  why: string;
 }
 
 /* ───────────────────────────────────────────────────────────────────
@@ -31,98 +50,186 @@ const BY_LABEL: Record<string, WorkoutDescription> = {
   // ── Easy / aerobic ────────────────────────────────────────────
   'Easy': {
     zone: 'Easy · Zone 2',
-    copy: 'Run at a pace where you could comfortably hold a conversation the whole way. If you find yourself breathing too hard to say a full sentence, slow down. Easy days are where your aerobic fitness actually builds, so don\'t let them creep into "medium-hard" — protect them.',
     paceTarget: '9:00 – 9:30 per mile',
+    steps: [
+      { name: 'Run', duration: 'Full distance', pace: '9:00–9:30/mi' },
+    ],
+    effort: 'Conversational — you should be able to hold a full sentence the whole way. If breathing makes that hard, slow down.',
+    why: 'Easy days are where your aerobic engine actually builds. Protect them from creeping into "medium-hard."',
   },
   'Easy + Strides': {
     zone: 'Easy · Zone 2 + Strides',
-    copy: 'Run at an easy, conversational pace for the full distance. In the final mile, add 6 to 8 strides on flat ground — each one is a 15-second pickup at near-mile-race pace, focused on quick, smooth turnover (not a sprint). Walk for 45 to 60 seconds between strides to fully recover. Strides keep your legs feeling fast without adding fatigue.',
     paceTarget: '9:00 – 9:30 per mile · strides at mile pace',
+    steps: [
+      { name: 'Easy run',     duration: 'First 4.5 mi',  pace: '9:00–9:30/mi' },
+      { name: 'Strides',      duration: '6–8 × 15 sec',  pace: 'Near mile pace',  note: 'Flat ground · quick, smooth turnover · 45–60 sec walk between each' },
+    ],
+    effort: 'Easy throughout the run. Strides are quick and smooth — not sprints. Focus on form and turnover.',
+    why: 'Strides keep your legs feeling fast and your turnover sharp without adding fatigue.',
   },
   'Hill Strides': {
     zone: 'Easy · Zone 2 + Hill Strides',
-    copy: 'Run easy and conversational for most of the distance. Then find a moderate-grade hill (a 4–8% incline you can run, not climb) and do 8 strides up it — each one is 10 seconds of powerful, controlled effort. Walk back down to fully recover before the next one. The point is sharpening your legs\' power and stiffness, not lung work. Focus on form: drive your knees, stay tall, don\'t sprint.',
-    paceTarget: '9:00 – 9:30 per mile · strides hard',
+    paceTarget: '9:00 – 9:30 per mile · strides hard uphill',
+    steps: [
+      { name: 'Easy run',    duration: 'First 4.5 mi', pace: '9:00–9:30/mi' },
+      { name: 'Hill strides',duration: '8 × 10 sec',   pace: 'Hard uphill', note: '4–8% grade · walk back down to fully recover before next' },
+    ],
+    effort: 'Easy on the flat. Strides are powerful and controlled — drive your knees, stay tall. Don\'t sprint.',
+    why: 'Sharpens leg power and tendon stiffness without the volume cost of intervals.',
   },
 
   // ── Long ──────────────────────────────────────────────────────
   'Long': {
     zone: 'Long · Zone 2',
-    copy: 'Stay easy and conversational for the full distance. The goal is time on your feet, not speed. If the last 20 minutes naturally feel like flowing a bit faster, that\'s fine — let your body lead. But don\'t force a fast finish if it isn\'t there. Long runs build endurance through duration, not pace.',
     paceTarget: '9:00 – 9:45 per mile',
+    steps: [
+      { name: 'Long run', duration: 'Full distance', pace: '9:00–9:45/mi', note: 'Last 20 min can drift slightly faster if it feels natural' },
+    ],
+    effort: 'Conversational throughout. Time on feet is the stimulus — don\'t chase pace.',
+    why: 'Endurance builds through duration, not speed.',
   },
   'Long Run · HM Finish': {
     zone: 'Long · Zone 2 → Race Pace',
-    copy: 'Start easy and conversational for the first two-thirds of the run. With 3 to 4 miles left, pick it up to your goal half-marathon pace and hold it to the finish. The point is practicing race pace on tired legs — the same fatigue you\'ll feel in the second half on race day. Stay disciplined: don\'t go faster than goal pace even if it feels easy.',
     paceTarget: '9:30 easy → half-marathon goal pace',
+    steps: [
+      { name: 'Easy', duration: 'First ⅔ of run', pace: '9:30/mi' },
+      { name: 'HM finish', duration: 'Final 3–4 mi', pace: '7:30–7:50/mi', note: 'Goal half-marathon pace — don\'t go faster even if it feels easy' },
+    ],
+    effort: 'Easy for two-thirds. Then disciplined race pace through the finish — same fatigue you\'ll have on race day.',
+    why: 'Practice goal pace on tired legs. Pacing discipline is the work.',
   },
   'Long Run · Progression': {
     zone: 'Long · Zone 2 → Zone 3',
-    copy: 'Start at an easy, conversational pace and gradually pick it up so you finish the last third of the run 15 to 20 seconds per mile faster than the opening. This isn\'t a sprint finish — it\'s a steady, controlled progression that teaches you to push tempo as fatigue builds. You should feel stronger and faster as the run develops, not blown out at the end.',
     paceTarget: '9:45 → 8:30 per mile across the run',
+    steps: [
+      { name: 'Opening third',  duration: 'First ⅓',  pace: '9:45/mi' },
+      { name: 'Middle third',   duration: 'Middle ⅓', pace: '9:10/mi' },
+      { name: 'Final third',    duration: 'Last ⅓',   pace: '8:30/mi', note: '15–20 sec/mi faster than opening — controlled, not a sprint finish' },
+    ],
+    effort: 'Steady, controlled increase. You should feel stronger as the run develops, not blown out at the end.',
+    why: 'Teaches you to push tempo as fatigue builds — race-day pacing without the race.',
   },
   'Long Run · Taper': {
     zone: 'Long · Zone 2',
-    copy: 'A shorter long run, kept fully easy and conversational throughout. The point is preserving the long-run feeling without adding more fatigue — we\'re tapering, not building. Treat this as a relaxed weekend run that keeps your aerobic system sharp for race day.',
     paceTarget: '9:00 – 9:30 per mile',
+    steps: [
+      { name: 'Long run', duration: 'Full distance', pace: '9:00–9:30/mi', note: 'Fully easy throughout' },
+    ],
+    effort: 'Fully easy. This is sharpening, not building.',
+    why: 'Preserves the long-run feel without adding fatigue. Volume drops to set up race week.',
   },
 
   // ── Threshold (Zone 4) ────────────────────────────────────────
   'Threshold · Cruise Intervals': {
     zone: 'Threshold · Zone 4',
-    copy: 'Warm up easy for 15 minutes. Then run 4 to 5 "cruise intervals" — each one is 6 to 8 minutes at a comfortably hard pace, roughly your 10K race pace. You should be able to say 2 or 3 words at a time, but not a full sentence. Between intervals, jog easy for 90 seconds. Finish with a 10-minute easy cooldown. This is controlled, sustainable work — not a race. Stay steady at the edge of comfortable; don\'t push harder.',
     paceTarget: '7:20 – 7:40 per mile',
+    steps: [
+      { name: 'Warm up',           duration: '15 min',           pace: '9:00–9:30/mi · easy' },
+      { name: 'Cruise intervals',  duration: '4–5 × 6–8 min',    pace: '7:20–7:40/mi',  note: 'Recover 90 sec easy jog between each' },
+      { name: 'Cool down',         duration: '10 min',           pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Comfortably hard — roughly your 10K race pace. You can say 2–3 words at a time, but not a full sentence.',
+    why: 'Controlled, sustainable threshold work. Stay steady at the edge of comfortable; don\'t push harder.',
   },
   'Threshold · HM Blocks': {
     zone: 'Threshold · Zone 4',
-    copy: 'Warm up easy for 15 minutes. Then run 2 to 3 blocks at your goal half-marathon pace — each block is 12 to 15 minutes, with 3 minutes of easy jogging between them. Finish with 10 minutes easy. These longer blocks build race-specific endurance: they teach your body to hold goal pace for extended chunks of time, which is exactly what race day demands.',
     paceTarget: '7:30 – 7:50 per mile (half-marathon goal)',
+    steps: [
+      { name: 'Warm up', duration: '15 min',         pace: '9:00–9:30/mi · easy' },
+      { name: 'Blocks',  duration: '2–3 × 12–15 min', pace: '7:30–7:50/mi', note: 'Half-marathon goal pace · 3 min easy jog between blocks' },
+      { name: 'Cool down', duration: '10 min',       pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Goal half-marathon pace — sustainable but pressing. Steady, not surging.',
+    why: 'Race-specific endurance. Teaches your body to hold goal pace for extended chunks.',
   },
   'Threshold · HM Cruise': {
     zone: 'Threshold · Zone 4',
-    copy: 'Warm up easy for 15 minutes. Then run 3 intervals at your goal half-marathon pace — 10 minutes each, with 2 minutes of easy jogging between. Finish with 10 minutes easy. A solid threshold dose at race pace: long enough to feel like work, short enough not to overreach.',
     paceTarget: '7:30 – 7:50 per mile (half-marathon pace)',
+    steps: [
+      { name: 'Warm up', duration: '15 min',     pace: '9:00–9:30/mi · easy' },
+      { name: 'Cruise',  duration: '3 × 10 min', pace: '7:30–7:50/mi', note: 'Half-marathon pace · 2 min easy jog between' },
+      { name: 'Cool down', duration: '10 min',   pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Steady half-marathon pace — feels like work but never out of control.',
+    why: 'Solid threshold dose at race pace. Long enough to feel like work, short enough not to overreach.',
   },
   'Threshold · HM Tempo': {
     zone: 'Threshold · Zone 4',
-    copy: 'Warm up easy for 15 minutes. Then run 20 to 30 minutes continuously at your goal half-marathon pace — no breaks. Finish with a 10-minute easy cooldown. This is the hardest sustained effort of the week. Hold your goal pace steady; if you can\'t, slow down and finish controlled rather than blowing up.',
     paceTarget: '7:30 – 7:50 per mile (half-marathon goal)',
+    steps: [
+      { name: 'Warm up', duration: '15 min',          pace: '9:00–9:30/mi · easy' },
+      { name: 'Tempo',   duration: '20–30 min',       pace: '7:30–7:50/mi', note: 'Continuous — no breaks. Goal half-marathon pace' },
+      { name: 'Cool down', duration: '10 min',        pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'The hardest sustained effort of the week. If pace slips, finish controlled — don\'t blow up.',
+    why: 'Pure race-day specificity. Practice holding goal pace under fatigue.',
   },
   'Threshold Touch': {
     zone: 'Threshold · Zone 4 (taper)',
-    copy: 'A brief threshold workout to stay sharp during taper week. Warm up easy for 10 minutes. Then run 3 intervals of 4 minutes each at threshold pace — comfortably hard, about your 10K pace — with 90 seconds of easy jogging between. Finish with 10 minutes easy. The point is to remind your body what hard feels like without adding fatigue that would compromise race day.',
     paceTarget: '7:20 – 7:40 per mile',
+    steps: [
+      { name: 'Warm up',  duration: '10 min',     pace: '9:00–9:30/mi · easy' },
+      { name: 'Intervals', duration: '3 × 4 min', pace: '7:20–7:40/mi', note: '10K pace · 90 sec easy jog between' },
+      { name: 'Cool down', duration: '10 min',    pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Comfortably hard. Brief — should feel sharp, not depleted.',
+    why: 'Reminds your body what hard feels like during taper without compromising race day.',
   },
   'Threshold · Race Week Tune': {
     zone: 'Threshold · Zone 4 (race week)',
-    copy: 'A race-week wake-up workout. Warm up easy for 10 minutes. Then run 2 intervals of 6 minutes each at threshold pace — about 10 seconds per mile slower than your half-marathon goal pace — with 2 minutes of easy jogging between. Finish with 10 minutes easy. This is meant to feel sharp but easy: wake the system up, don\'t leave anything on the table for race day.',
     paceTarget: '7:40 – 8:00 per mile',
+    steps: [
+      { name: 'Warm up',  duration: '10 min',     pace: '9:00–9:30/mi · easy' },
+      { name: 'Tune',     duration: '2 × 6 min',  pace: '7:40–8:00/mi', note: '~10 sec/mi slower than HM goal · 2 min easy jog between' },
+      { name: 'Cool down', duration: '10 min',    pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Sharp but easy. Wake the system up.',
+    why: 'Race-week primer. Don\'t leave anything on the table — save it for race day.',
   },
 
   // ── VO₂max / Intervals ────────────────────────────────────────
   'Intervals': {
     zone: 'VO₂max · Zone 5',
-    copy: 'Warm up easy for 15 minutes. Then run 5 to 6 intervals of 3 minutes each at a hard pace — faster than your 5K race pace, where breathing is the limiter, not your legs. Take 2 minutes of easy jogging between each interval to recover. Finish with 10 minutes easy. This is VO₂max work: short, hard, and meant to push your aerobic ceiling. You should feel it in your lungs.',
     paceTarget: '6:30 – 7:00 per mile',
+    steps: [
+      { name: 'Warm up',  duration: '15 min',     pace: '9:00–9:30/mi · easy' },
+      { name: 'Intervals', duration: '5–6 × 3 min', pace: '6:30–7:00/mi', note: 'Faster than 5K pace · 2 min easy jog between' },
+      { name: 'Cool down', duration: '10 min',    pace: '9:00–9:30/mi · easy' },
+    ],
+    effort: 'Hard — faster than 5K pace. Breathing is the limiter, not your legs.',
+    why: 'VO₂max work pushes your aerobic ceiling.',
   },
 
   // ── Race week ─────────────────────────────────────────────────
   'Shake-out': {
     zone: 'Easy · Zone 1–2',
-    copy: 'A short, easy jog 1 to 2 days before your race — about 3 miles at a fully conversational pace. If you feel flat or stiff, add 2 or 3 strides at the end to wake up your legs. The goal is to loosen up and stay relaxed, not to train. Get out, get back, save the legs for race day.',
     paceTarget: '9:30 – 10:00 per mile',
+    steps: [
+      { name: 'Easy jog', duration: '3 mi',      pace: '9:30–10:00/mi', note: 'Fully conversational' },
+      { name: 'Strides',  duration: 'Optional · 2–3', pace: 'Brisk',     note: 'Only if you feel flat or stiff' },
+    ],
+    effort: 'Easy and relaxed. Get out, get back.',
+    why: 'Loosen up, not train. Save the legs for race day.',
   },
   'AFC Half': {
     zone: 'Race · Zone 4–5',
-    copy: 'Race day. Start conservatively — the first 3 miles should feel almost too easy. Settle into your goal pace from miles 4 through 10. Then commit fully from mile 10 to the finish; the last 5K is where the race is won or lost. Trust the training. Your legs know what to do.',
     paceTarget: 'Half-marathon goal pace',
+    steps: [
+      { name: 'Conservative',   duration: 'Miles 1–3',     pace: '~10 sec/mi slower than goal', note: 'Should feel almost too easy' },
+      { name: 'Settle in',      duration: 'Miles 4–10',    pace: 'Goal pace',                    note: 'Lock in and hold' },
+      { name: 'Commit',         duration: 'Mile 10 → finish', pace: 'Goal pace or faster',       note: 'The last 5K is where the race is won' },
+    ],
+    effort: 'Race effort. Trust the training — your legs know what to do.',
+    why: 'Race day. Execute the plan; conserve early, commit late.',
   },
 
   // ── Rest ──────────────────────────────────────────────────────
   'Rest': {
     zone: 'Rest',
-    copy: 'No run today. Use the day for full recovery — sleep, hydrate, do some gentle mobility if you want. If you feel restless, a non-running cross-train (light cycling, easy swim, walk) is fine. Rest is when your body actually absorbs the work and gets stronger. You\'ve earned it — take it.',
     paceTarget: '—',
+    steps: [],
+    effort: 'Sleep, hydrate, gentle mobility if you want. Cross-train lightly only if you feel restless.',
+    why: 'Rest is when your body absorbs the work and gets stronger. Take it.',
   },
 };
 
