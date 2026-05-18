@@ -97,7 +97,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
   if (isLegacy) {
     try {
       // strava_activities.data is written by normalizeActivity() in lib/strava.ts
-      // → camelCase keys: distanceMi, finishS, startLocal (ISO datetime), avgHr.
+      // → camelCase keys: distanceMi, movingTimeS, startLocal (ISO datetime), avgHr.
       // The page used to read snake_case (distance_mi, moving_time_sec, date)
       // which silently returned NULL, making every metric show 0.
       const acts = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
@@ -107,9 +107,9 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           LIMIT 19`,
       );
       recentRuns = acts.map((a) => {
-        const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; finishS?: number; type?: string; description?: string; avgHr?: number };
+        const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; movingTimeS?: number; type?: string; description?: string; avgHr?: number };
         const mi = Number(d.distanceMi) || 0;
-        const moving = Number(d.finishS) || 0;
+        const moving = Number(d.movingTimeS) || 0;
         const paceSec = mi > 0 ? Math.round(moving / mi) : 0;
         const paceM = Math.floor(paceSec / 60);
         const paceS = paceSec % 60;
