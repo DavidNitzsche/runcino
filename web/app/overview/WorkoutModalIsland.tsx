@@ -17,7 +17,8 @@
  * `<WorkoutModalProvider>` wrapper.
  */
 
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
+import { describeWorkout } from '@/lib/workout-descriptions';
 
 export interface WorkoutDay {
   dow: string;
@@ -33,14 +34,6 @@ interface ModalContextValue {
   openFor: (d: WorkoutDay) => void;
 }
 const ModalContext = createContext<ModalContextValue | null>(null);
-
-const TYPE_INTENSITY: Record<string, { zone: string; copy: string; paceTarget: string }> = {
-  easy:     { zone: 'Easy · Zone 2',      copy: 'Conversational pace throughout. If you can\'t hold a sentence, slow down. The aerobic engine gets built on the easy days — protect them.', paceTarget: '9:00 – 9:30/mi' },
-  recovery: { zone: 'Easy · Zone 2',      copy: 'Conversational pace throughout. If you can\'t hold a sentence, slow down. The aerobic engine gets built on the easy days — protect them.', paceTarget: '9:00 – 9:30/mi' },
-  long:     { zone: 'Long · Zone 2',      copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed. Last 20 minutes can drift slightly faster if it feels natural.', paceTarget: '9:00 – 9:45/mi' },
-  quality:  { zone: 'Threshold · Zone 4', copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain. Warm up 15 min easy, run the work, cool down 10 min easy.', paceTarget: '7:00 – 7:30/mi' },
-  race:     { zone: 'Race · Zone 4–5',    copy: 'Race day. Execute the plan; conserve early, commit late.', paceTarget: 'Race pace' },
-};
 
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -210,10 +203,13 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const isRest = !!day.isRest || day.distanceMi === 0;
   const isToday = day.date === today;
   const isPast = !isToday && day.date < today;
-  const intensity = isRest ? null : (TYPE_INTENSITY[day.type] ?? TYPE_INTENSITY.easy);
-  const paceTarget = intensity?.paceTarget ?? '';
+  // Look up the label-specific description. Falls back to type-based
+  // copy if the label isn't in the lookup (e.g. for an ad-hoc workout).
+  const desc = describeWorkout(day.label, day.type);
+  const paceTarget = isRest ? '' : desc.paceTarget;
 
-  // Rough duration estimate from distance + pace mid-point
+  // Rough duration estimate from distance + the FIRST pace number in the
+  // target (covers ranges like "9:00 – 9:30/mi" or progressive workouts).
   const paceMid = (() => {
     if (!paceTarget) return 0;
     const m = paceTarget.match(/(\d+):(\d+)/);
@@ -249,12 +245,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
-            {intensity && (
-              <>
-                <div className="wm-section-label">{intensity.zone}</div>
-                <p className="wm-copy">{intensity.copy}</p>
-              </>
-            )}
+            <div className="wm-section-label">{desc.zone}</div>
+            <p className="wm-copy">{desc.copy}</p>
 
             {day.hasStrength && (
               <>
