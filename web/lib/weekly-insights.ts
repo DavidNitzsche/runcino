@@ -1,18 +1,22 @@
 /**
- * Weekly insights — pattern detection across recent training history.
+ * Weekly insights — plan-aware pattern detection.
  *
- * The coach briefing on /overview surfaces these when there's enough
- * data to support a meaningful observation. Each insight is a 1-sentence
- * actionable read, not a chart or a number dump.
+ * Earlier version compared actuals to prior 4-week behavior, which got
+ * the framing exactly backward: the coach IS the plan, so adherence
+ * should be measured against the plan, not against the runner's past
+ * (especially when "past" includes a taper / race / recovery week
+ * where mileage was deliberately low and pace was deliberately fast).
  *
- * Triggers we look for:
- *   - "Easy-pace creep": easy-day pace this week vs the 4-week median
- *   - "Quality completion": % of planned quality sessions actually run
- *     in the past 4 weeks
- *   - "Long-run trend": longest run trending up vs flat vs dropping
- *   - "Volume jump": this week's mileage > 1.25× 4-week median (red flag)
+ * Current rubric:
+ *   1. Easy pace vs PLANNED easy band — flag when actual is faster
+ *      than target (real "creep"). Slowdown toward target = good
+ *      adherence, not a fatigue flag.
+ *   2. Mileage vs PLANNED weekly mileage — flag when actual is
+ *      meaningfully ABOVE plan. Below plan is just a missed session.
+ *   3. Long-run trend — actual long miles climbing across recent
+ *      weeks is positive (healthy progression).
  *
- * Returns 0-3 of the most relevant insights for the briefing context.
+ * Insight = 1 sentence, actionable, cites numbers, no hedging.
  */
 
 import { query } from './db';
@@ -22,6 +26,16 @@ export interface WeeklyInsight {
   text: string;
   /** Visual tone — controls the dot color in the UI. */
   tone: 'green' | 'amber' | 'blue';
+}
+
+export interface PlanContext {
+  /** Planned mileage for the current calendar week. */
+  thisWeekPlannedMi: number;
+  /** Easy-pace band the plan prescribes, in seconds per mile. */
+  easyPaceLowSec: number;
+  easyPaceHighSec: number;
+  /** Current phase, used to soften flags during taper/race week. */
+  phase: 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'RACE_WEEK';
 }
 
 interface ActivityRow {
@@ -44,12 +58,17 @@ function median(nums: number[]): number {
 }
 
 /**
- * Compute weekly insights for a user given a "today" anchor.
+ * Compute weekly insights for a user given a "today" anchor + plan context.
  *
- * Loads the user's last 4 calendar weeks of activities and looks for
- * meaningful patterns. Empty array when there's not enough history.
+ * planContext is REQUIRED — the coach measures adherence against the plan,
+ * not against prior weeks. Without it, insights would (and did) misread
+ * recovery weeks as red flags.
  */
-export async function generateWeeklyInsights(userId: string, todayISO: string): Promise<WeeklyInsight[]> {
+export async function generateWeeklyInsights(
+  userId: string,
+  todayISO: string,
+  planContext: PlanContext,
+): Promise<WeeklyInsight[]> {
   // Look back 28 days from today
   const lookbackStart = (() => {
     const d = new Date(todayISO + 'T00:00:00Z');
@@ -74,76 +93,65 @@ export async function generateWeeklyInsights(userId: string, todayISO: string): 
     [userId, lookbackStart, todayISO],
   );
 
-  if (rows.length < 3) return []; // not enough data
+  if (rows.length === 0) return [];
 
-  // Bucket into "this week" (last 7d) vs "prior 3 weeks" (8-28d ago)
   const thisWeek = rows.filter((r) => r.day >= weekStart);
   const prior = rows.filter((r) => r.day < weekStart);
 
   const insights: WeeklyInsight[] = [];
+  const { thisWeekPlannedMi, easyPaceLowSec, easyPaceHighSec, phase } = planContext;
 
-  // ── 1. Easy-pace creep ──────────────────────────────────────
-  // Find runs that look "easy" (long, slow-ish pace) and compare
-  // this week's median pace to the prior 3-week median.
-  const easyPaces = (set: ActivityRow[]) => set
+  // ── 1. Easy pace vs PLANNED easy band ──────────────────────
+  // Find easy-looking runs (3+ mi, slower than typical threshold).
+  // Compare median to the plan's prescribed easy pace band.
+  const easyPaces = thisWeek
     .filter((r) => {
       const mi = Number(r.mi) || 0;
       const pace = Number(r.pace_s) || 0;
-      // Heuristic: not a race, ≥3 mi, pace slower than ~7:30 (430s)
-      // Avoids counting intervals/threshold workouts as "easy".
-      return mi >= 3 && pace >= 430 && (r.type || '').toLowerCase() !== 'race';
+      return mi >= 3 && pace >= 360 && (r.type || '').toLowerCase() !== 'race';
     })
     .map((r) => Number(r.pace_s));
 
-  const thisEasyPaces = easyPaces(thisWeek);
-  const priorEasyPaces = easyPaces(prior);
-
-  if (thisEasyPaces.length >= 2 && priorEasyPaces.length >= 4) {
-    const thisMed = median(thisEasyPaces);
-    const priorMed = median(priorEasyPaces);
-    const delta = thisMed - priorMed;
-    if (delta < -20) {
-      // Easy days are 20+ sec/mi faster than the 4-week norm
+  if (easyPaces.length >= 2) {
+    const thisMed = median(easyPaces);
+    if (thisMed < easyPaceLowSec - 15) {
+      // Faster than the easy band's fast edge — real "creep"
+      const delta = easyPaceLowSec - thisMed;
       insights.push({
-        text: `Easy pace has crept ${Math.abs(Math.round(delta))} sec/mi faster this week (${fmtPace(thisMed)} vs ${fmtPace(priorMed)} 4-week median). Watch it — easy days work best when they stay easy.`,
+        text: `Easy pace this week is ${fmtPace(thisMed)} — ${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} plan target. Easy days work best when they stay easy.`,
         tone: 'amber',
       });
-    } else if (delta > 30) {
+    } else if (thisMed > easyPaceHighSec + 30 && phase !== 'TAPER' && phase !== 'RACE_WEEK') {
+      // Slower than the easy band's slow edge (outside taper/race week)
       insights.push({
-        text: `Easy pace has slowed ${Math.round(delta)} sec/mi this week (${fmtPace(thisMed)} vs ${fmtPace(priorMed)} 4-week median). Could be fatigue accumulating — worth a heads-up check-in.`,
+        text: `Easy pace this week is ${fmtPace(thisMed)} — ${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. Could be fatigue, heat, or terrain — worth a check-in.`,
         tone: 'amber',
       });
+    } else if (thisMed >= easyPaceLowSec && thisMed <= easyPaceHighSec) {
+      // Right in the band — quiet positive note (only show occasionally)
+      // Skip to avoid noise; user already knows they're on plan.
     }
   }
 
-  // ── 2. Volume jump (acute red flag) ─────────────────────────
+  // ── 2. Mileage vs PLANNED weekly mileage ───────────────────
   const totalThis = thisWeek.reduce((s, r) => s + (Number(r.mi) || 0), 0);
-  const weeklyMileages = (() => {
-    // Bucket prior 3 weeks by their week (Mon-Sun) — approximate with
-    // 7-day chunks from todayISO going back.
-    const buckets: number[] = [0, 0, 0];
-    for (const r of prior) {
-      const daysAgo = Math.floor(
-        (Date.parse(todayISO + 'T00:00:00Z') - Date.parse(r.day + 'T00:00:00Z')) / 86400000,
-      );
-      const idx = Math.floor((daysAgo - 7) / 7); // 0 = week-2, 1 = week-3, 2 = week-4
-      if (idx >= 0 && idx < 3) buckets[idx] += Number(r.mi) || 0;
-    }
-    return buckets;
-  })();
-  const priorMedianMi = median(weeklyMileages);
 
-  if (priorMedianMi > 5 && totalThis > priorMedianMi * 1.25) {
-    const jumpPct = Math.round(((totalThis - priorMedianMi) / priorMedianMi) * 100);
-    insights.push({
-      text: `Mileage is up ${jumpPct}% this week (${totalThis.toFixed(0)} mi vs ${priorMedianMi.toFixed(0)} 4-week median). Above the +10% rule — consider a cutback next week.`,
-      tone: 'amber',
-    });
-  } else if (priorMedianMi > 0 && totalThis > 0 && totalThis < priorMedianMi * 0.5) {
-    insights.push({
-      text: `Mileage is well below the 4-week norm (${totalThis.toFixed(0)} mi vs ${priorMedianMi.toFixed(0)} median). Cutback week, off week, or missed sessions worth investigating.`,
-      tone: 'blue',
-    });
+  if (thisWeekPlannedMi > 0 && totalThis > 0) {
+    const overPct = Math.round(((totalThis - thisWeekPlannedMi) / thisWeekPlannedMi) * 100);
+    if (overPct >= 25) {
+      // Real over-plan jump
+      insights.push({
+        text: `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (+${overPct}%). Over plan — back off the extra running on easy days to leave room for the quality work.`,
+        tone: 'amber',
+      });
+    } else if (overPct <= -40) {
+      // Significantly under plan
+      const pct = Math.abs(overPct);
+      insights.push({
+        text: `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). Missed sessions adding up — check back in or adjust next week's plan.`,
+        tone: 'amber',
+      });
+    }
   }
 
   // ── 3. Long-run trend ──────────────────────────────────────
@@ -162,14 +170,13 @@ export async function generateWeeklyInsights(userId: string, todayISO: string): 
   const longestPriorMedian = median(longestPriorWeeks);
   if (longestThis > 0 && longestPriorMedian > 0) {
     const delta = longestThis - longestPriorMedian;
-    if (delta >= 2 && longestThis >= 8) {
+    if (delta >= 2 && longestThis >= 8 && phase !== 'TAPER' && phase !== 'RACE_WEEK') {
       insights.push({
-        text: `Long-run distance is climbing — ${longestThis.toFixed(1)} mi this week vs ${longestPriorMedian.toFixed(1)} 4-week median. Healthy progression.`,
+        text: `Long run climbing — ${longestThis.toFixed(1)} mi this week vs ${longestPriorMedian.toFixed(1)} 4-week median. Healthy progression.`,
         tone: 'green',
       });
     }
   }
 
-  // Return up to 3 most actionable insights
   return insights.slice(0, 3);
 }

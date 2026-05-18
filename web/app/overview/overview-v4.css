@@ -1248,10 +1248,14 @@
 }
 
 /* ══════════════════════════
-   COACH INSIGHTS — weekly pattern detection
+   COACH INSIGHTS — weekly pattern detection.
+   Sits as its own band between the coach strip and the hero card.
+   Do NOT nest inside .coach-left — that stretches .coach-right and
+   creates the layout overlap David caught.
 ══════════════════════════ */
 .overview-v4-page .coach-insights {
-  margin-top: 16px;
+  margin-top: 12px;
+  margin-bottom: 4px;
   display: flex;
   flex-direction: column;
   gap: 8px;

@@ -141,10 +141,15 @@ export default async function OverviewPage() {
     todayDay,
   });
 
-  // Weekly insights — pattern detection across the last 28 days.
-  // Empty when there's not enough history; surfaces actionable
-  // observations (easy-pace creep, volume jumps, long-run trend).
-  const insights = await generateWeeklyInsights(user.id, today);
+  // Weekly insights — plan-aware pattern detection. The coach measures
+  // adherence vs the PLAN, not vs the runner's past behavior (so coming
+  // off a recovery week with low volume isn't a 'spike' next week).
+  const insights = await generateWeeklyInsights(user.id, today, {
+    thisWeekPlannedMi: currentWeek.plannedMi,
+    easyPaceLowSec: 9 * 60 + 0,   // 9:00/mi
+    easyPaceHighSec: 9 * 60 + 30, // 9:30/mi
+    phase: currentWeek.phase,
+  });
 
   // Today's Intensity config
   const intensity = isRest
@@ -172,21 +177,24 @@ export default async function OverviewPage() {
               COACH · {new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
             </div>
             <p className="coach-briefing">{briefing}</p>
-            {insights.length > 0 && (
-              <div className="coach-insights">
-                {insights.map((ins, i) => (
-                  <div key={i} className={`coach-insight ${ins.tone}`}>
-                    <span className="coach-insight-dot" />
-                    <span>{ins.text}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Check-In is interactive (client island) */}
           <CheckInIsland today={today} />
         </div>
+
+        {/* Insights row — its own band, sits BETWEEN coach strip and the
+            hero card so it doesn't stretch the check-in card. */}
+        {insights.length > 0 && (
+          <div className="coach-insights">
+            {insights.map((ins, i) => (
+              <div key={i} className={`coach-insight ${ins.tone}`}>
+                <span className="coach-insight-dot" />
+                <span>{ins.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── SECTION 2 · HERO CARD ── */}
         <div className="hero-card">
