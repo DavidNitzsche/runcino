@@ -14,8 +14,12 @@
 import { useEffect, useRef } from 'react';
 
 interface Props {
-  /** Strava `summary_polyline` (encoded with Google polyline algo). */
-  polyline: string;
+  /** Strava `summary_polyline` (encoded with Google polyline algo).
+   *  Optional — pass either this or `coords`. */
+  polyline?: string;
+  /** Pre-decoded coordinates as [lat, lon] pairs. Used when we have
+   *  direct GPX trackpoint data instead of an encoded polyline. */
+  coords?: Array<[number, number]>;
   startLatLng?: [number, number] | null;
   endLatLng?: [number, number] | null;
   height?: number | string;
@@ -53,7 +57,7 @@ function decodePolyline(encoded: string): Array<[number, number]> {
   return points;
 }
 
-export default function RouteMap({ polyline, startLatLng, endLatLng, height = 260 }: Props) {
+export default function RouteMap({ polyline, coords: coordsProp, startLatLng, endLatLng, height = 260 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<unknown>(null);
 
@@ -77,7 +81,9 @@ export default function RouteMap({ polyline, startLatLng, endLatLng, height = 26
       }
       if (cancelled || !containerRef.current) return;
 
-      const coords = decodePolyline(polyline);
+      const coords = coordsProp && coordsProp.length > 0
+        ? coordsProp
+        : polyline ? decodePolyline(polyline) : [];
       if (coords.length === 0) return;
 
       const map = L.map(containerRef.current, {
@@ -129,7 +135,7 @@ export default function RouteMap({ polyline, startLatLng, endLatLng, height = 26
         mapRef.current = null;
       }
     };
-  }, [polyline, startLatLng, endLatLng]);
+  }, [polyline, coordsProp, startLatLng, endLatLng]);
 
   return (
     <div

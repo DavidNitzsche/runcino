@@ -74,6 +74,21 @@
   box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
   padding: 40px; margin-top: 16px;
 }
+.race-plan-v4-page .a-race-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 32px;
+  align-items: start;
+}
+.race-plan-v4-page .a-race-hero-text { min-width: 0; }
+.race-plan-v4-page .a-race-hero-map {
+  border-radius: 12px;
+  overflow: hidden;
+  align-self: stretch;
+}
+@media (max-width: 960px) {
+  .race-plan-v4-page .a-race-hero-grid { grid-template-columns: 1fr; }
+}
 .race-plan-v4-page .a-race-eyebrow {
   font-family: 'Inter', sans-serif; font-size: 12px;
   letter-spacing: 2.5px; color: rgba(13,15,18,.35);
@@ -81,8 +96,8 @@
 }
 .race-plan-v4-page .a-race-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(96px, 16vw, 200px); line-height: 0.86;
-  letter-spacing: -3px; color: #0D0F12; margin-left: -6px;
+  font-size: clamp(72px, 11vw, 140px); line-height: 0.86;
+  letter-spacing: -3px; color: #0D0F12; margin-left: -4px;
   text-transform: uppercase;
 }
 .race-plan-v4-page .a-race-sub {

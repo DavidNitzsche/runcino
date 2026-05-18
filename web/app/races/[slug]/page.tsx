@@ -21,7 +21,10 @@ import { Topbar } from '@/app/components';
 import { requireActiveUser } from '@/lib/auth';
 import { getRaceDB } from '@/lib/race-store';
 import { buildSyntheticPlan, todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
+import { GoalEditIsland } from './GoalEditIsland';
+import { RouteMapIsland } from './RouteMapIsland';
 import './race-plan-v4.css';
 
 export const dynamic = 'force-dynamic';
@@ -77,56 +80,135 @@ function heroTitle(name: string, distanceMi: number): { line1: string; line2: st
   return { line1: initials, line2: distLine };
 }
 
-/** Generate SVG polyline points for the elevation profile from phase data.
- *  Each phase contributes a smooth segment based on its grade + start/end
- *  elevation derived from gain/loss running totals. */
-function buildElevationPath(phases: FaffPlan['phases']): {
+/** Build a smooth elevation profile from raw GPX trackpoints.
+ *  Resamples to ~80 distance-evenly-spaced bins for a clean curve,
+ *  then renders as straight segments between samples (dense enough
+ *  that it reads as smooth). Falls back to phase-derived synthesis
+ *  if the GPX can't be parsed. */
+function buildElevationPath(
+  phases: FaffPlan['phases'],
+  gpxText: string | null,
+): {
   pathD: string;
   areaD: string;
   ticks: number[];
   totalMi: number;
   yMaxFt: number;
   yMinFt: number;
+  yLabels: Array<{ ft: number; y: number }>;
 } {
-  if (phases.length === 0) {
-    return { pathD: '', areaD: '', ticks: [], totalMi: 0, yMaxFt: 0, yMinFt: 0 };
-  }
-  // Reconstruct elevation samples from gain/loss per phase
-  let elev = 0;
-  const samples: Array<{ mi: number; ft: number }> = [{ mi: 0, ft: 0 }];
-  for (const p of phases) {
-    // Net delta = gain - loss
-    const net = (p.elevation_gain_ft || 0) - (p.elevation_loss_ft || 0);
-    elev += net;
-    samples.push({ mi: p.end_mi, ft: elev });
-  }
-  // Normalize so min is 0
-  const minFt = Math.min(...samples.map((s) => s.ft));
-  const maxFt = Math.max(...samples.map((s) => s.ft));
-  const span = Math.max(1, maxFt - minFt);
-  const totalMi = phases[phases.length - 1].end_mi;
-
   const VIEW_W = 1180;
   const VIEW_H = 280;
   const TOP_PAD = 20;
   const BOTTOM_PAD = 40;
   const plotH = VIEW_H - TOP_PAD - BOTTOM_PAD;
+  const FT_PER_M = 3.28084;
+
+  let samples: Array<{ mi: number; ft: number }> = [];
+  let totalMi = phases.length > 0 ? phases[phases.length - 1].end_mi : 0;
+
+  // Try to use raw GPX trackpoints first — smoother + truer
+  if (gpxText && gpxText.length > 50) {
+    try {
+      const track = parseGpx(gpxText, { smoothWindow: 5 });
+      const pts = track.points;
+      if (pts.length > 2) {
+        const totalM = track.totalDistanceM;
+        totalMi = totalM / 1609.344;
+        // Resample to 80 evenly-spaced distance bins
+        const BINS = 80;
+        const targetDistM = (idx: number) => (idx / BINS) * totalM;
+        let ptIdx = 0;
+        for (let i = 0; i <= BINS; i++) {
+          const target = targetDistM(i);
+          while (ptIdx < pts.length - 1 && pts[ptIdx + 1].distM < target) ptIdx++;
+          const p = pts[ptIdx];
+          const mi = p.distM / 1609.344;
+          // Use DEM elevation if injected, else GPS elevation
+          const eleM = p.demEleM ?? p.eleM;
+          samples.push({ mi, ft: eleM * FT_PER_M });
+        }
+      }
+    } catch {
+      // fall through to phase-based synthesis
+    }
+  }
+
+  // Fallback: synthesize from phase gain/loss (less smooth, but always works)
+  if (samples.length === 0 && phases.length > 0) {
+    let elev = 0;
+    samples = [{ mi: 0, ft: 0 }];
+    for (const p of phases) {
+      const net = (p.elevation_gain_ft || 0) - (p.elevation_loss_ft || 0);
+      elev += net;
+      samples.push({ mi: p.end_mi, ft: elev });
+    }
+  }
+  if (samples.length === 0) {
+    return { pathD: '', areaD: '', ticks: [], totalMi: 0, yMaxFt: 0, yMinFt: 0, yLabels: [] };
+  }
+
+  const minFt = Math.min(...samples.map((s) => s.ft));
+  const maxFt = Math.max(...samples.map((s) => s.ft));
+  // Normalize so the chart's y-axis starts at zero relative to course minimum
+  const relSamples = samples.map((s) => ({ mi: s.mi, ft: s.ft - minFt }));
+  const relMax = Math.max(1, maxFt - minFt);
 
   function x(mi: number): number { return (mi / Math.max(0.01, totalMi)) * VIEW_W; }
   function y(ft: number): number {
-    const norm = (ft - minFt) / span;       // 0..1
-    return TOP_PAD + (1 - norm) * plotH;    // higher elev = smaller y
+    const norm = ft / relMax;                // 0..1 (relative to course)
+    return TOP_PAD + (1 - norm) * plotH;
   }
 
-  const pts = samples.map((s) => `${x(s.mi).toFixed(2)},${y(s.ft).toFixed(2)}`);
+  const pts = relSamples.map((s) => `${x(s.mi).toFixed(1)},${y(s.ft).toFixed(1)}`);
   const pathD = `M ${pts.join(' L ')}`;
   const areaD = `${pathD} L ${VIEW_W},${VIEW_H - BOTTOM_PAD} L 0,${VIEW_H - BOTTOM_PAD} Z`;
 
-  // Mile ticks every mile
+  // Mile ticks
   const ticks: number[] = [];
   for (let mi = 1; mi <= totalMi; mi++) ticks.push(mi);
 
-  return { pathD, areaD, ticks, totalMi, yMaxFt: maxFt, yMinFt: minFt };
+  // Y-axis labels — pick rounded ft values across the range
+  const yLabels: Array<{ ft: number; y: number }> = [];
+  const niceStep = (range: number) => {
+    if (range <= 50)   return 10;
+    if (range <= 150)  return 25;
+    if (range <= 300)  return 50;
+    if (range <= 600)  return 100;
+    if (range <= 1200) return 200;
+    return 500;
+  };
+  const step = niceStep(relMax);
+  for (let ft = 0; ft <= relMax + step / 2; ft += step) {
+    yLabels.push({ ft: Math.round(ft + minFt), y: y(ft) });
+  }
+
+  return { pathD, areaD, ticks, totalMi, yMaxFt: maxFt, yMinFt: minFt, yLabels };
+}
+
+/** Downsample GPX trackpoints into a coords array for Leaflet. */
+function buildRouteCoords(gpxText: string | null): Array<[number, number]> {
+  if (!gpxText || gpxText.length < 50) return [];
+  try {
+    const track = parseGpx(gpxText, { smoothWindow: 1 });
+    const pts = track.points;
+    if (pts.length === 0) return [];
+    const TARGET = 400;
+    const step = Math.max(1, Math.floor(pts.length / TARGET));
+    const coords: Array<[number, number]> = [];
+    for (let i = 0; i < pts.length; i += step) {
+      coords.push([pts[i].lat, pts[i].lon]);
+    }
+    // Always include the last point so the route closes correctly
+    const last = pts[pts.length - 1];
+    const tail = coords[coords.length - 1];
+    if (!tail || tail[0] !== last.lat || tail[1] !== last.lon) {
+      coords.push([last.lat, last.lon]);
+    }
+    return coords;
+  } catch {
+    return [];
+  }
 }
 
 export default async function RacePlanPage({ params }: PageProps) {
@@ -151,9 +233,11 @@ export default async function RacePlanPage({ params }: PageProps) {
   // Hero title pieces
   const hero = heroTitle(race.meta.name, race.meta.distanceMi);
 
-  // Elevation profile from plan phases
+  // Elevation profile from raw GPX (with phase-derived fallback)
   const phases = race.plan?.phases ?? [];
-  const profile = buildElevationPath(phases);
+  const profile = buildElevationPath(phases, race.gpxText ?? null);
+  // Route polyline coords for the map
+  const routeCoords = buildRouteCoords(race.gpxText ?? null);
 
   // Total elev gain / loss
   const totalGainFt = phases.reduce((s, p) => s + (p.elevation_gain_ft || 0), 0);
@@ -249,24 +333,30 @@ export default async function RacePlanPage({ params }: PageProps) {
 
         {/* ── A-RACE HERO ── */}
         <div className="a-race-card">
-          <div className="a-race-eyebrow">
-            {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'} · GOAL TIME {race.meta.goalDisplay}
+          <div className="a-race-hero-grid">
+            <div className="a-race-hero-text">
+              <div className="a-race-eyebrow">
+                {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'} · GOAL TIME {race.meta.goalDisplay}
+              </div>
+              <div className="a-race-title">
+                {hero.line1}{hero.line2 && <><br />{hero.line2}</>}
+              </div>
+              <div className="a-race-sub">{race.meta.name} · {fmtShortMonthDay(race.meta.date)}</div>
+            </div>
+            {routeCoords.length > 1 && (
+              <div className="a-race-hero-map">
+                <RouteMapIsland coords={routeCoords} height={300} />
+              </div>
+            )}
           </div>
-          <div className="a-race-title">
-            {hero.line1}{hero.line2 && <><br />{hero.line2}</>}
-          </div>
-          <div className="a-race-sub">{race.meta.name} · {fmtShortMonthDay(race.meta.date)}</div>
 
           <div className="path-stats">
-            <div className="path-stat">
-              <div className="path-stat-label">Goal Time</div>
-              <div className="path-stat-value">{race.meta.goalDisplay}</div>
-              <div className="path-stat-sub">
-                {goalFinishS > 0 && race.meta.distanceMi > 0
-                  ? `${fmtTime(Math.round(goalFinishS / race.meta.distanceMi))}/mi avg`
-                  : 'Target pace · TBD'}
-              </div>
-            </div>
+            <GoalEditIsland
+              slug={race.slug}
+              goalDisplay={race.meta.goalDisplay}
+              goalFinishS={goalFinishS}
+              raceDistanceMi={race.meta.distanceMi}
+            />
             <div className="path-stat">
               <div className="path-stat-label">Predicted</div>
               <div className="path-stat-value orange">—</div>
@@ -318,6 +408,13 @@ export default async function RacePlanPage({ params }: PageProps) {
                     const x = (mi / Math.max(0.01, profile.totalMi)) * 1180;
                     return <line key={`tick-${mi}`} x1={x} y1={240} x2={x} y2={245} stroke="rgba(13,15,18,.06)" strokeWidth="1" />;
                   })}
+                  {/* Y-axis elevation gridlines + labels */}
+                  {profile.yLabels.map((label, i) => (
+                    <g key={`yl-${i}`}>
+                      <line x1={40} y1={label.y} x2={1180} y2={label.y} stroke="rgba(13,15,18,.05)" strokeWidth="1" />
+                      <text x={6} y={label.y + 3} fontFamily="Inter, sans-serif" fontSize="10" fill="rgba(13,15,18,.40)" fontWeight="500">{label.ft} ft</text>
+                    </g>
+                  ))}
                   {/* Elevation area + line */}
                   {profile.areaD && <path d={profile.areaD} fill="rgba(13,15,18,.05)" />}
                   {profile.pathD && <path d={profile.pathD} fill="none" stroke="#0D0F12" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
