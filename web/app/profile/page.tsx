@@ -16,6 +16,7 @@
 import { Topbar } from '@/app/components';
 import { ConnectorsCard } from './ConnectorsCard';
 import { ProfileModalsIsland } from './ProfileModalsIsland';
+import { MaxHrIsland } from './MaxHrIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import './profile-v4.css';
@@ -274,10 +275,7 @@ export default async function ProfilePage() {
               </div>
             ))}
           </div>
-          <div className="hr-source">
-            Max HR is estimated (208 − 0.7 × age = 180 baseline, lifted to 185 from your race-day peaks).
-            Set a measured value any time — it overrides the estimate.
-          </div>
+          <MaxHrIsland />
         </div>
 
         {/* ── SHOE ROTATION ── */}

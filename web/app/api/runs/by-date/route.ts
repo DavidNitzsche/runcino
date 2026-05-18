@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { getActivityDetail } from '@/lib/sync-strava-user';
+import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 
 interface ActivityRow {
   id: string;
@@ -107,12 +108,15 @@ export async function GET(req: NextRequest) {
     // Splits stay empty; the rest of the response still works
   }
 
-  // Pull user's max HR so the modal can do %max zone math in the debrief
-  const hrRows = await query<{ max_hr: number | null }>(`SELECT max_hr FROM users WHERE id = $1 LIMIT 1`, [user.id]);
+  // Max HR — prefer the user's manual override, fall back to the
+  // value computed from their activity history (peak max_heartrate
+  // across runs). null when neither is available.
+  const maxHr = await resolveEffectiveMaxHr(user.id);
 
   return NextResponse.json({
     ok: true,
-    maxHr: hrRows[0]?.max_hr ?? null,
+    maxHr: maxHr.value,
+    maxHrSource: maxHr.source,
     run: {
       id: row.id,
       name: d.name || 'Untitled run',
