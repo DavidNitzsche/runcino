@@ -15,6 +15,8 @@
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
+import { RunDetailModalProvider } from './RunDetailModal';
+import { RunRowIsland } from './RunRowIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
@@ -243,6 +245,7 @@ export default async function LogPage() {
     : 0;
 
   return (
+    <RunDetailModalProvider>
     <div className="log-v4-page">
       <Topbar activeTab="log" showAdmin={auth.is_admin} />
       <ConnectBannerIsland />
@@ -423,7 +426,7 @@ export default async function LogPage() {
               </div>
             ) : (
               data.recentRuns.map((r) => (
-                <div key={r.id} className="run-row" data-run-id={r.id}>
+                <RunRowIsland key={r.id} runId={r.id}>
                   <div className="run-date">{r.dateLabel}</div>
                   <span className={`run-tag ${r.tag}`}>{r.tagLabel}</span>
                   <div>
@@ -445,7 +448,7 @@ export default async function LogPage() {
                     <div className="run-num">{r.mi}<span style={{ fontSize: 12, color: 'var(--t2)' }}>mi</span></div>
                     <div className="run-num-unit">{r.pace}</div>
                   </div>
-                </div>
+                </RunRowIsland>
               ))
             )}
           </div>
@@ -453,5 +456,6 @@ export default async function LogPage() {
 
       </div>
     </div>
+    </RunDetailModalProvider>
   );
 }
