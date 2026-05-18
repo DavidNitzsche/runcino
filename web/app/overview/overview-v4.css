@@ -809,39 +809,67 @@
   border-top: 2px solid var(--amber);
 }
 
+/* Day name + number share a single thin line at the top of the cell —
+   it's metadata, not the focus. Workout name + distance are what the
+   runner needs to see when scanning the week. */
 .overview-v4-page .day-name {
   font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   letter-spacing: 1.5px;
   color: var(--t2);
   text-transform: uppercase;
 }
 
 .overview-v4-page .day-date {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 28px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 13px;
   line-height: 1;
-  color: var(--t0);
+  color: var(--t2);
+  letter-spacing: 0;
+  margin-top: 2px;
+  margin-bottom: 6px;
 }
 
+/* Today gets a small amber accent on the date — it's the marker, not
+   a giant numeral. */
 .overview-v4-page .day-date.amber {
   color: var(--amber);
+  font-weight: 600;
 }
 
+/* Workout name is the headline. Oswald 700, bigger, sits above
+   distance as the dominant element in the cell. */
 .overview-v4-page .day-workout-name {
   font-family: 'Oswald', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.5px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
   color: var(--t0);
   text-transform: uppercase;
   margin-top: 4px;
 }
 
+/* Distance is secondary but still substantial — runner needs the
+   number at a glance. */
 .overview-v4-page .day-distance {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--t0);
+  letter-spacing: -0.5px;
+  margin-top: auto;   /* pin to bottom */
+}
+.overview-v4-page .day-distance small {
   font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  color: var(--t1);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t2);
+  margin-left: 3px;
+  letter-spacing: 0.5px;
+  text-transform: lowercase;
 }
 
 .overview-v4-page .day-status-done {
