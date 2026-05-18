@@ -96,17 +96,24 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
 
   if (isLegacy) {
     try {
+      // strava_activities.data is written by normalizeActivity() in lib/strava.ts
+      // → camelCase keys: distanceMi, finishS, startLocal (ISO datetime), avgHr.
+      // The page used to read snake_case (distance_mi, moving_time_sec, date)
+      // which silently returned NULL, making every metric show 0.
       const acts = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
-        `SELECT id, data, shoe_id FROM strava_activities ORDER BY (data->>'date') DESC LIMIT 19`,
+        `SELECT id, data, shoe_id
+           FROM strava_activities
+          ORDER BY (data->>'startLocal') DESC
+          LIMIT 19`,
       );
       recentRuns = acts.map((a) => {
-        const d = a.data as { name?: string; date?: string; distance_mi?: number; moving_time_sec?: number; type?: string; description?: string; avg_hr?: number };
-        const mi = Number(d.distance_mi) || 0;
-        const moving = Number(d.moving_time_sec) || 0;
+        const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; finishS?: number; type?: string; description?: string; avgHr?: number };
+        const mi = Number(d.distanceMi) || 0;
+        const moving = Number(d.finishS) || 0;
         const paceSec = mi > 0 ? Math.round(moving / mi) : 0;
         const paceM = Math.floor(paceSec / 60);
         const paceS = paceSec % 60;
-        const dateStr = d.date ?? '';
+        const dateStr = (d.startLocal || '').slice(0, 10);
         const dt = dateStr ? new Date(dateStr + 'T00:00:00Z') : null;
         const dateLabel = dt
           ? dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
@@ -123,17 +130,18 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           mi: Math.round(mi * 10) / 10,
           min: Math.round(moving / 60),
           pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '—',
-          avgHr: Number(d.avg_hr) || 0,
+          avgHr: Number(d.avgHr) || 0,
           shoeId: a.shoe_id,
         };
       });
 
       // Aggregate YTD
       const ytdRows = await query<{ count: string; total_mi: string; max_mi: string }>(
-        `SELECT COUNT(*) AS count, COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS total_mi,
-                COALESCE(MAX((data->>'distance_mi')::NUMERIC), 0) AS max_mi
-         FROM strava_activities
-         WHERE (data->>'date') LIKE '2026-%'`,
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS total_mi,
+                COALESCE(MAX((data->>'distanceMi')::NUMERIC), 0) AS max_mi
+           FROM strava_activities
+          WHERE LEFT(data->>'startLocal', 4) = '2026'`,
       );
       totalRuns = parseInt(ytdRows[0]?.count ?? '0', 10);
       totalMiles = Math.round(Number(ytdRows[0]?.total_mi ?? 0));
@@ -141,34 +149,39 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
       if (maxMi > 0) {
         const longRow = await query<{ data: Record<string, unknown> }>(
           `SELECT data FROM strava_activities
-           WHERE (data->>'date') LIKE '2026-%' AND (data->>'distance_mi')::NUMERIC = $1
-           LIMIT 1`,
+            WHERE LEFT(data->>'startLocal', 4) = '2026'
+              AND (data->>'distanceMi')::NUMERIC = $1
+            LIMIT 1`,
           [maxMi],
         );
-        const ld = longRow[0]?.data as { name?: string; date?: string } | undefined;
-        longestRun = { mi: Math.round(maxMi * 10) / 10, name: ld?.name || 'Longest run', date: ld?.date || '' };
+        const ld = longRow[0]?.data as { name?: string; startLocal?: string } | undefined;
+        longestRun = {
+          mi: Math.round(maxMi * 10) / 10,
+          name: ld?.name || 'Longest run',
+          date: (ld?.startLocal || '').slice(0, 10),
+        };
       }
 
       // Monthly volume aggregation
       const monthRows = await query<{ month: string; mi: string }>(
-        `SELECT SUBSTRING((data->>'date') FROM 6 FOR 2) AS month,
-                COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS mi
-         FROM strava_activities
-         WHERE (data->>'date') LIKE '2026-%'
-         GROUP BY month`,
+        `SELECT SUBSTRING(data->>'startLocal' FROM 6 FOR 2) AS month,
+                COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS mi
+           FROM strava_activities
+          WHERE LEFT(data->>'startLocal', 4) = '2026'
+          GROUP BY month`,
       );
       monthRows.forEach((r) => {
         const m = parseInt(r.month, 10) - 1;
         if (m >= 0 && m < 12) monthlyMi[m] = Math.round(Number(r.mi));
       });
 
-      // Heatmap — sum per date
+      // Heatmap — sum per date (YYYY-MM-DD prefix of startLocal)
       const heatRows = await query<{ date: string; mi: string }>(
-        `SELECT (data->>'date') AS date,
-                COALESCE(SUM((data->>'distance_mi')::NUMERIC), 0) AS mi
-         FROM strava_activities
-         WHERE (data->>'date') LIKE '2026-%'
-         GROUP BY (data->>'date')`,
+        `SELECT LEFT(data->>'startLocal', 10) AS date,
+                COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS mi
+           FROM strava_activities
+          WHERE LEFT(data->>'startLocal', 4) = '2026'
+          GROUP BY date`,
       );
       heatRows.forEach((r) => { if (r.date) heatmapByDate[r.date] = Number(r.mi); });
     } catch (e) {
