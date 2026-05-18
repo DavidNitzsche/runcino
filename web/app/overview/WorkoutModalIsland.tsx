@@ -20,6 +20,7 @@
 import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { describeWorkout } from '@/lib/workout-descriptions';
+import { generateRunDebrief, parsePaceBounds } from '@/lib/run-debrief';
 
 const RouteMap = dynamic(() => import('@/app/log/RouteMap'), { ssr: false, loading: () => <div style={{ height: 260, borderRadius: 10, background: 'rgba(13,15,18,.04)' }} /> });
 
@@ -453,16 +454,31 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
-            {/* Coach notes — single line under the columns */}
-            <div className="wm-debrief-footer">
-              <div className="wm-debrief-footer-notes">
-                <span className="wm-debrief-footer-label">Coach take</span>
-                <span className="wm-debrief-footer-copy">{desc.effort}</span>
-              </div>
-              <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
-                View full activity on Strava ↗
-              </a>
-            </div>
+            {/* Coach take — dynamic response based on actuals vs plan */}
+            {(() => {
+              const [paceLow, paceHigh] = parsePaceBounds(desc.paceTarget);
+              const debrief = generateRunDebrief({
+                planLabel: day.label,
+                planType: day.type,
+                planDistanceMi: day.distanceMi,
+                paceLow,
+                paceHigh,
+                actualDistanceMi: actual.distanceMi,
+                actualPaceSPerMi: actual.paceSPerMi,
+                actualAvgHr: actual.avgHr,
+              });
+              return (
+                <div className="wm-debrief-footer">
+                  <div className="wm-debrief-footer-notes">
+                    <span className="wm-debrief-footer-label">Coach take</span>
+                    <span className="wm-debrief-footer-copy">{debrief}</span>
+                  </div>
+                  <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
+                    View full activity on Strava ↗
+                  </a>
+                </div>
+              );
+            })()}
           </>
         )}
 
