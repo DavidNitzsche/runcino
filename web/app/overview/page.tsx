@@ -26,6 +26,7 @@ import {
   type PlanWeek,
 } from '@/lib/synthetic-plan';
 import { getCompletedDates } from '@/lib/completed-runs';
+import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -102,14 +103,16 @@ export default async function OverviewPage() {
     ? null
     : INTENSITY_CFG[todayDay?.type ?? 'easy'] ?? INTENSITY_CFG.easy;
 
-  // Week-progress bar fill — pretty-approximation based on day-of-week.
-  const weekProgressDays = currentWeek.days.filter((d) => d.date <= today).length;
-  const weekProgressPct = Math.round((weekProgressDays / 7) * 100);
+  // Week-progress bar — % of planned sessions actually completed this
+  // week (matching Strava activity present), NOT % of days that have
+  // ticked by. An empty week reads 0%, not 60% just because it's Friday.
+  const weekProgressPct = sessionsTotal > 0 ? Math.round((sessionsDone / sessionsTotal) * 100) : 0;
 
   return (
     <div className="overview-v4-page">
       <Topbar activeTab="overview" showAdmin={user.is_admin} />
       <ConnectBannerIsland />
+      <WorkoutModalProvider today={today}>
 
       <div className="page">
 
@@ -152,8 +155,7 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">≤145</span><span className="stat-unit">bpm</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
                 <div className="hero-buttons">
-                  <button className="btn-primary" type="button">▶&nbsp;&nbsp;OPEN WORKOUT</button>
-                  <button className="btn-ghost" type="button">SKIP TODAY</button>
+                  <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
                 </div>
               </>
             )}
@@ -222,34 +224,14 @@ export default async function OverviewPage() {
             </div>
           </div>
 
-          <div className="day-grid">
-            {currentWeek.days.map((d) => {
-              const isToday = d.date === today;
-              // DONE only if there's an actual logged Strava activity on
-              // that date. Workouts in the past with no matching run stay
-              // "missed" (just dim, no DONE label).
-              const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date);
-              const dateNum = parseInt(d.date.slice(-2), 10);
-              return (
-                <div key={d.date} className={`day-col${isToday ? ' today' : ''}`}>
-                  <div className="day-name">{d.dow}</div>
-                  <div className={`day-date${isToday ? ' amber' : ''}`}>{dateNum}</div>
-                  {d.isRest ? (
-                    <div className="day-rest">Rest</div>
-                  ) : (
-                    <>
-                      <div className="day-workout-name">{d.label}</div>
-                      <div className="day-distance">{d.distanceMi}<small>mi</small></div>
-                      {isDone && <div className="day-status-done">DONE</div>}
-                      {d.hasStrength && !isDone && <span className="day-strength" title="Strength training">S</span>}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <WeekStripCells
+            days={currentWeek.days as WorkoutDay[]}
+            today={today}
+            completed={Array.from(completed)}
+          />
         </div>
       </div>
+      </WorkoutModalProvider>
     </div>
   );
 }
