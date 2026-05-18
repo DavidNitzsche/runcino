@@ -45,6 +45,126 @@ export interface SyncError {
  * means a typical session never triggers more than one sync per page,
  * and a refresh inside that window is free.
  */
+/**
+ * Resolve the faff.run user_id for a Strava athlete_id (the `owner_id`
+ * field on webhook events). Returns null if we don't have a connected
+ * Strava account for that athlete.
+ */
+export async function findUserByStravaAthleteId(athleteId: number | string): Promise<string | null> {
+  const rows = await query<{ user_id: string }>(
+    `SELECT user_id::text AS user_id
+       FROM connector_tokens
+      WHERE provider = 'strava'
+        AND provider_user_id = $1
+        AND disconnected_at IS NULL
+      LIMIT 1`,
+    [String(athleteId)],
+  );
+  return rows[0]?.user_id ?? null;
+}
+
+/**
+ * Refresh a single activity for a user (used by webhook create/update
+ * events). Refreshes the token if needed, fetches just the one activity,
+ * upserts it, and updates connector_tokens.last_sync_at. Avoids
+ * re-pulling 200+ activities for a single new run.
+ */
+export async function syncSingleActivity(userId: string, activityId: number): Promise<{ ok: boolean; error?: string }> {
+  const rows = await query<TokenRow>(
+    `SELECT access_token, refresh_token, expires_at
+       FROM connector_tokens
+      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+      LIMIT 1`,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row?.refresh_token) return { ok: false, error: 'no token' };
+
+  let accessToken: string;
+  try {
+    const t = await refreshAccessToken(row.refresh_token);
+    accessToken = t.accessToken;
+    await query(
+      `UPDATE connector_tokens
+          SET access_token = $2, refresh_token = $3, expires_at = $4, updated_at = NOW()
+        WHERE user_id = $1 AND provider = 'strava'`,
+      [userId, t.accessToken, t.refreshToken, new Date(t.expiresAt * 1000)],
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'token refresh failed' };
+  }
+
+  let activity: StravaActivity | null;
+  try {
+    activity = await fetchActivityById(accessToken, activityId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'activity fetch failed' };
+  }
+  if (!activity) return { ok: false, error: 'activity not found (404)' };
+
+  const norm = normalizeActivity(activity);
+  await query(
+    `INSERT INTO strava_activities (id, data, fetched_at, user_uuid)
+          VALUES ($1, $2::jsonb, NOW(), $3)
+     ON CONFLICT (id) DO UPDATE
+        SET data       = EXCLUDED.data,
+            fetched_at = EXCLUDED.fetched_at,
+            user_uuid  = COALESCE(strava_activities.user_uuid, EXCLUDED.user_uuid)`,
+    [activity.id, JSON.stringify(norm), userId],
+  );
+
+  // Bump connector stats
+  const [{ cnt }] = await query<{ cnt: string }>(
+    `SELECT COUNT(*)::int AS cnt FROM strava_activities WHERE user_uuid = $1`,
+    [userId],
+  );
+  await query(
+    `UPDATE connector_tokens
+        SET last_sync_at = NOW(), last_sync_status = 'success', activities_count = $2, updated_at = NOW()
+      WHERE user_id = $1 AND provider = 'strava'`,
+    [userId, parseInt(cnt, 10)],
+  );
+
+  return { ok: true };
+}
+
+/**
+ * Webhook delete event — remove the activity from strava_activities.
+ * Idempotent: missing row is a no-op.
+ */
+export async function deleteActivityForUser(userId: string, activityId: number): Promise<void> {
+  await query(
+    `DELETE FROM strava_activities WHERE id = $1 AND (user_uuid = $2 OR user_uuid IS NULL)`,
+    [activityId, userId],
+  );
+  const [{ cnt }] = await query<{ cnt: string }>(
+    `SELECT COUNT(*)::int AS cnt FROM strava_activities WHERE user_uuid = $1`,
+    [userId],
+  );
+  await query(
+    `UPDATE connector_tokens SET activities_count = $2, updated_at = NOW()
+      WHERE user_id = $1 AND provider = 'strava'`,
+    [userId, parseInt(cnt, 10)],
+  );
+}
+
+/**
+ * Webhook deauth — Strava sends an athlete update with
+ * `authorized: false` when the user revokes access from their Strava
+ * settings page. Mark the connector disconnected so the app stops
+ * trying to use a dead token.
+ */
+export async function markDeauthorized(userId: string): Promise<void> {
+  await query(
+    `UPDATE connector_tokens
+        SET disconnected_at = NOW(),
+            last_sync_status = 'error',
+            last_sync_error  = 'Athlete deauthorized via Strava settings'
+      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL`,
+    [userId],
+  );
+}
+
 export async function syncStravaIfStale(userId: string, ttlSeconds = 300): Promise<SyncResult | SyncError | null> {
   const rows = await query<{ last_sync_at: Date | null }>(
     `SELECT last_sync_at
@@ -95,6 +215,17 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: 
   }
   const j = (await res.json()) as { access_token: string; refresh_token: string; expires_at: number };
   return { accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: j.expires_at };
+}
+
+async function fetchActivityById(accessToken: string, activityId: number): Promise<StravaActivity | null> {
+  const url = `https://www.strava.com/api/v3/activities/${activityId}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Strava activity ${activityId} fetch failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  return (await res.json()) as StravaActivity;
 }
 
 async function fetchYtdActivities(accessToken: string): Promise<StravaActivity[]> {

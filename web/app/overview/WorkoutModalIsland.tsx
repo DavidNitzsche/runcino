@@ -139,20 +139,23 @@ export function HeroActions({ today, todayDay }: { today: string; todayDay: Work
 export function WeekStripCells({
   days,
   today,
-  completed,
+  completedMileage,
 }: {
   days: WorkoutDay[];
   today: string;
-  completed: string[];
+  /** Map YYYY-MM-DD → actual miles run that day. A day is "done" only
+   *  when actual is ≥ 60% of planned. Serialized from a Map at the
+   *  server-component boundary. */
+  completedMileage: Record<string, number>;
 }) {
   const { openFor } = useModal();
-  const completedSet = useMemo(() => new Set(completed), [completed]);
 
   return (
     <div className="day-grid">
       {days.map((d) => {
         const isToday = d.date === today;
-        const isDone = !isToday && d.date < today && !d.isRest && completedSet.has(d.date);
+        const actual = completedMileage[d.date] ?? 0;
+        const isDone = !isToday && d.date < today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
         const dateNum = parseInt(d.date.slice(-2), 10);
         return (
           <button

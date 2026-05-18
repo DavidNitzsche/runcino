@@ -16,6 +16,7 @@ import { Topbar } from '@/app/components';
 import { requireAdmin } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { AdminActions } from './AdminActions';
+import { StravaWebhookPanel } from './StravaWebhookPanel';
 import './admin.css';
 
 export const dynamic = 'force-dynamic';
@@ -157,6 +158,13 @@ export default async function AdminPage() {
             </div>
           </section>
         )}
+
+        <section className="admin-section">
+          <div className="admin-section-head">
+            <h2 className="admin-section-title">Strava Webhook</h2>
+          </div>
+          <StravaWebhookPanel />
+        </section>
       </div>
     </div>
   );

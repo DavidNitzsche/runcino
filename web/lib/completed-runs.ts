@@ -27,6 +27,50 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
   return new Set(rows.map((r) => r.day).filter(Boolean));
 }
 
+/**
+ * Stronger completion check: returns a Map from YYYY-MM-DD → total
+ * miles actually logged that day. Pages use this to gate "DONE" not
+ * just on "any activity exists" but on "an activity that's at least
+ * 60% of the planned distance" — so a 3-mi shake-out doesn't mark
+ * a 10-mi long run complete.
+ */
+export async function getCompletedMileageByDate(userId: string, fromISO: string, toISO: string): Promise<Map<string, number>> {
+  interface Row { day: string; mi: string }
+  const rows = await query<Row>(
+    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+            SUM((data->>'distanceMi')::NUMERIC) AS mi
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
+      GROUP BY day`,
+    [userId, fromISO, toISO],
+  );
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (r.day) out.set(r.day, Math.round(Number(r.mi) * 10) / 10);
+  }
+  return out;
+}
+
+/**
+ * Did the runner complete the planned workout on `dateISO`?
+ *
+ * Rule: actual total miles for that date must be ≥ 60% of plannedMi.
+ * Rest days (plannedMi=0) are auto-true. Tolerance is loose on
+ * purpose — a slightly-short long run is still a long run; we don't
+ * want to penalize a runner for ending at 9.4 mi instead of 10.5.
+ */
+export function isWorkoutComplete(
+  dateISO: string,
+  plannedMi: number,
+  completedMileageByDate: Map<string, number>,
+): boolean {
+  if (plannedMi <= 0) return false;
+  const actual = completedMileageByDate.get(dateISO) ?? 0;
+  if (actual <= 0) return false;
+  return actual >= plannedMi * 0.6;
+}
+
 export interface WeekStats {
   totalMi: number;
   runDays: number;

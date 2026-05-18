@@ -23,7 +23,7 @@ import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
-import { getCompletedDates } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, isWorkoutComplete } from '@/lib/completed-runs';
 import './training-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -51,12 +51,13 @@ export default async function TrainingPage() {
   const weeks = buildSyntheticPlan();
   const currentWeek = weeks.find((w) => w.days.some((d) => d.date === today)) ?? weeks[0];
 
-  // DONE only when there's evidence — a Strava activity on that date.
-  // Bracket the full 14-week plan so every cell can be checked.
+  // DONE only when actual miles ≥ 60% of planned. Bracket the full
+  // 14-week plan so every cell can be checked.
   const planStart = weeks[0]?.startDate ?? today;
   const planEnd   = weeks[weeks.length - 1]?.endDate ?? today;
-  const completed = await getCompletedDates(user.id, planStart, planEnd);
-  const isComplete = (dateISO: string) => completed.has(dateISO);
+  const completedMileage = await getCompletedMileageByDate(user.id, planStart, planEnd);
+  const isComplete = (dateISO: string, plannedMi: number) =>
+    isWorkoutComplete(dateISO, plannedMi, completedMileage);
   const phaseKey = currentWeek.phase;
   const phaseWeeks = weeks.filter((w) => w.phase === phaseKey);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
@@ -293,9 +294,9 @@ export default async function TrainingPage() {
                 );
                 w.days.forEach((d) => {
                   const isToday = d.date === today;
-                  // Workouts past their date stay un-DONE unless a logged
-                  // Strava activity matches that date.
-                  const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date);
+                  // Workouts past their date stay un-DONE unless logged
+                  // miles cover ≥60% of the planned distance.
+                  const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date, d.distanceMi);
                   const classes = `cal-cell ${d.type}${d.hasStrength ? ' has-str' : ''}${isDone ? ' done' : ''}${isToday ? ' today' : ''}`;
                   if (d.isRest) {
                     rows.push(

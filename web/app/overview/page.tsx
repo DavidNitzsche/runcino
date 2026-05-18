@@ -25,7 +25,7 @@ import {
   userTimezone,
   type PlanWeek,
 } from '@/lib/synthetic-plan';
-import { getCompletedDates, getWeekStats } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
@@ -78,11 +78,12 @@ export default async function OverviewPage() {
   const phaseWeeks = weeks.filter((w) => w.phase === currentWeek.phase);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
 
-  // Look up which dates this user actually has a logged Strava activity
-  // for. A workout is only "done" when there's evidence — date alone is
-  // not enough.
-  const completed = await getCompletedDates(user.id, currentWeek.startDate, today);
-  const isComplete = (dateISO: string) => completed.has(dateISO);
+  // Per-date mileage map so a workout is only "done" if the actual
+  // activity covered at least 60% of the planned distance — a 3-mi
+  // shake-out doesn't complete a 10-mi long-run day.
+  const completedMileage = await getCompletedMileageByDate(user.id, currentWeek.startDate, today);
+  const isComplete = (dateISO: string, plannedMi: number) =>
+    isWorkoutComplete(dateISO, plannedMi, completedMileage);
 
   // Stats the coach briefing references: previous calendar week +
   // current week through yesterday. Done as two ranged queries.
@@ -101,9 +102,10 @@ export default async function OverviewPage() {
     ? await getWeekStats(user.id, currentWeek.startDate, yesterdayISO)
     : { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
 
-  // Session-progress: count days the user actually has an activity for.
+  // Session-progress: a session counts as done only when the actual
+  // miles logged that day are ≥ 60% of the planned distance.
   const weekDaysWithWork = currentWeek.days.filter((d) => !d.isRest);
-  const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date)).length;
+  const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date, d.distanceMi)).length;
   const sessionsTotal = weekDaysWithWork.length;
 
   // Approximate duration from distance + paceMin
@@ -261,7 +263,7 @@ export default async function OverviewPage() {
           <WeekStripCells
             days={currentWeek.days as WorkoutDay[]}
             today={today}
-            completed={Array.from(completed)}
+            completedMileage={Object.fromEntries(completedMileage)}
           />
         </div>
       </div>
