@@ -30,21 +30,17 @@ export function TrainingCell({ day, className, children }: Props) {
     >
       {children}
       <style jsx>{`
+        /* Override browser button defaults but leave padding/background/border
+           to the .cal-cell rules in training-v4.css. The button is the cell. */
         button.cal-cell-btn {
-          background: inherit;
-          border: none;
           font: inherit;
           color: inherit;
           text-align: inherit;
           cursor: pointer;
           width: 100%;
-          padding: inherit;
-          transition: background 120ms ease;
-          position: relative;
+          transition: filter 120ms ease;
         }
-        button.cal-cell-btn:hover {
-          filter: brightness(0.97);
-        }
+        button.cal-cell-btn:hover { filter: brightness(0.97); }
         button.cal-cell-btn:focus-visible {
           outline: 2px solid var(--amber, #D4900A);
           outline-offset: -2px;
