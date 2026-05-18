@@ -329,7 +329,10 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           {actual?.workoutType === 2 && <span className="wm-pill long">LONG</span>}
           {actual?.workoutType === 3 && <span className="wm-pill workout">WORKOUT</span>}
         </div>
-        <h2 className="wm-title">{isRest ? 'Rest' : day.label}</h2>
+        <div className="wm-title-block">
+          <h2 className="wm-title">{isRest ? 'Rest' : day.label.toUpperCase()}</h2>
+          {!isRest && <div className="wm-title-sub">{desc.zone}</div>}
+        </div>
 
         {/* ════════════════════════════════════════════════
             DEBRIEF MODE — Completed run with actual data
@@ -509,8 +512,6 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
-            <span className="wm-zone-chip">{desc.zone}</span>
-
             {desc.steps.length > 0 && (
               <ol className="wm-recipe">
                 {desc.steps.map((s, i) => (
@@ -611,12 +612,37 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           color: rgba(13,15,18,.45);
           text-transform: uppercase; margin-bottom: 8px;
         }
+        /* Title block — workout name + zone subtitle.
+           Bebas Neue + italic for stronger faff.run brand match.
+           Clamps grow on wide modal, shrink on narrow viewports. */
+        .wm-title-block {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin: 0 0 26px;
+        }
         .wm-title {
           font-family: 'Bebas Neue', sans-serif;
-          font-size: 64px; line-height: 0.9;
-          letter-spacing: -1px; color: #0D0F12;
-          margin: 0 0 20px;
+          font-style: italic;
+          font-size: clamp(56px, 7.5vw, 88px);
+          line-height: 0.88;
+          letter-spacing: -1.5px;
+          color: #0D0F12;
+          margin: 0;
+          /* Subtle gradient on the bottom — faff brand accent without overdoing it */
+          background: linear-gradient(135deg, #0D0F12 0%, #0D0F12 70%, #E85D26 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .wm-title-sub {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 11px;
+          letter-spacing: 2px;
           text-transform: uppercase;
+          color: rgba(13,15,18,.55);
+          margin-top: 6px;
         }
         .wm-stats {
           display: grid; grid-template-columns: repeat(3, 1fr);
