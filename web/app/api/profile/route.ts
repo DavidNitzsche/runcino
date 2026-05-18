@@ -269,6 +269,8 @@ interface ProfileApiOk {
   /** Per-signal freshness map — drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
+  /** User-chosen brand accent (`#RRGGBB`). null = default Runcino blue. */
+  accentColor: string | null;
 }
 
 interface ProfileApiErr {
@@ -359,6 +361,7 @@ export async function GET(): Promise<Response> {
       shoeWarnLabel,
       engine,
       freshness,
+      accentColor: profileRow?.accent_color ?? null,
     };
     return Response.json(body);
   } catch (e) {

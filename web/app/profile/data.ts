@@ -64,6 +64,7 @@ export interface ProfileData {
   shoes: ProfileApiShoeRow[];
   shoeWarnLabel: string | null;
   engine: ProfileApiEngineBlock;
+  accentColor: string | null;
 }
 
 interface ProfileApiOk {
@@ -85,6 +86,7 @@ interface ProfileApiOk {
   shoes: ProfileApiShoeRow[];
   shoeWarnLabel: string | null;
   engine: ProfileApiEngineBlock;
+  accentColor: string | null;
 }
 
 interface ProfileApiErr {
@@ -119,6 +121,7 @@ export async function loadProfileData(): Promise<ProfileData> {
     shoes: api.shoes,
     shoeWarnLabel: api.shoeWarnLabel,
     engine: api.engine,
+    accentColor: api.accentColor,
   };
 }
 

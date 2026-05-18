@@ -23,6 +23,9 @@ export interface ProfileRow {
   hrmax: number | null;
   /** Resting HR — requires HealthKit or manual entry. null today. */
   rhr: number | null;
+  /** User-chosen brand accent, stored as a `#RRGGBB` hex string. null
+   *  falls back to the canonical Runcino blue (`#008FEC`). */
+  accent_color: string | null;
 }
 
 export interface ProfileInput {
@@ -34,6 +37,7 @@ export interface ProfileInput {
   since_year?: number | string | null;
   hrmax?: number | string | null;
   rhr?: number | string | null;
+  accent_color?: string | null;
 }
 
 /** Allowed sex values. 'Other' and 'Prefer not to say' coexist with
@@ -51,6 +55,19 @@ export interface ValidatedProfile {
   since_year: number | null;
   hrmax: number | null;
   rhr: number | null;
+  accent_color: string | null;
+}
+
+/** Validate a `#RRGGBB` hex color. Returns the normalized uppercase
+ *  form, or null when the input is empty / unset. Throws on invalid
+ *  shapes so the modal can surface a precise error. */
+export function validateAccentColor(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(trimmed);
+  if (!m) throw new Error('Accent color must be a 6-digit hex like #008FEC.');
+  return `#${m[1].toUpperCase()}`;
 }
 
 /** Pure validator — exported so unit tests can exercise it without a
@@ -92,6 +109,8 @@ export function validateProfileInput(input: ProfileInput): ValidatedProfile {
     throw new Error('Resting HR must be between 30 and 100 bpm.');
   }
 
+  const accent_color = validateAccentColor(input.accent_color);
+
   return {
     full_name: nameRaw,
     sex,
@@ -101,6 +120,7 @@ export function validateProfileInput(input: ProfileInput): ValidatedProfile {
     since_year,
     hrmax,
     rhr,
+    accent_color,
   };
 }
 

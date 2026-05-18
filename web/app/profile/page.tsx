@@ -44,6 +44,10 @@ import {
 } from '@/app/components';
 import { AddGoalModal } from '@/app/components/AddGoalModal';
 import { EditProfileModal } from '@/app/components/EditProfileModal';
+import { EditShoeModal } from '@/app/components/EditShoeModal';
+import { AccentColorModal } from '@/app/components/AccentColorModal';
+import { ACCENT_SWATCHES, DEFAULT_ACCENT_HEX } from '@/app/components/accent-presets';
+import type { Shoe } from '@/lib/shoe-utils';
 import {
   loadProfileData,
   formatTopbarClock,
@@ -215,7 +219,10 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
       </Row>
       <Row>
         <ConnectionsCard data={data} />
-        <ShoeRotationCard data={data} />
+        <ShoeRotationCard data={data} onRefresh={onRefresh} />
+      </Row>
+      <Row>
+        <BrandAccentCard data={data} />
       </Row>
       <Row>
         <CoachEngineCard data={data} />
@@ -1259,26 +1266,72 @@ function ConnectionRow({ conn }: { conn: Connection }) {
 // ROW 4 · Shoe rotation (span 8)
 // ─────────────────────────────────────────────────────────────────────
 
-function ShoeRotationCard({ data }: { data: ProfileData }) {
+function ShoeRotationCard({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
   const hasShoes = data.shoes.length > 0;
+  const [editingId, setEditingId] = useState<number | 'new' | null>(null);
+  const [loadedShoe, setLoadedShoe] = useState<Shoe | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
+  useEffect(() => {
+    if (editingId === null || editingId === 'new') {
+      setLoadedShoe(null);
+      setLoadingEdit(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingEdit(true);
+    fetch(`/api/shoes/${editingId}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json: { shoe?: Shoe; error?: string }) => {
+        if (cancelled) return;
+        if (json.shoe) setLoadedShoe(json.shoe);
+        setLoadingEdit(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadingEdit(false);
+      });
+    return () => { cancelled = true; };
+  }, [editingId]);
+
+  const modalOpen = editingId === 'new' || (typeof editingId === 'number' && loadedShoe != null);
+
   return (
     <Card span={8}>
       <CardHeader>
         <CardLabel>SHOE ROTATION · {data.shoes.length} ACTIVE</CardLabel>
-        {!hasShoes ? (
-          <CardPin variant="muted">NO DATA</CardPin>
-        ) : data.shoeWarnLabel ? (
-          <CardPin variant="warn">{data.shoeWarnLabel}</CardPin>
-        ) : (
-          <CardPin variant="green">ALL HEALTHY</CardPin>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!hasShoes ? (
+            <CardPin variant="muted">NO DATA</CardPin>
+          ) : data.shoeWarnLabel ? (
+            <CardPin variant="warn">{data.shoeWarnLabel}</CardPin>
+          ) : (
+            <CardPin variant="green">ALL HEALTHY</CardPin>
+          )}
+          <button
+            type="button"
+            className="card-pin muted"
+            style={{ border: 0, cursor: 'pointer' }}
+            onClick={() => setEditingId('new')}
+          >
+            + ADD SHOE
+          </button>
+        </div>
       </CardHeader>
       {hasShoes ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-          {data.shoes.map((s) => <ShoeRotationRow key={s.id} shoe={s} />)}
+          {data.shoes.map((s) => (
+            <ShoeRotationRow
+              key={s.id}
+              shoe={s}
+              onEdit={() => setEditingId(s.id)}
+            />
+          ))}
         </div>
       ) : (
-        <div
+        <button
+          type="button"
+          onClick={() => setEditingId('new')}
           className="mono-sm"
           style={{
             marginTop: 10,
@@ -1290,13 +1343,16 @@ function ShoeRotationCard({ data }: { data: ProfileData }) {
             color: 'var(--t3)',
             fontWeight: 700,
             textAlign: 'center',
+            background: 'transparent',
+            cursor: 'pointer',
+            width: '100%',
           }}
         >
           NO SHOES LOGGED — ADD YOUR FIRST
-        </div>
+        </button>
       )}
       <CardFoot
-        left="+ ADD SHOE · MANAGE RETIRED"
+        left={loadingEdit ? 'Loading shoe…' : 'Tap a shoe to edit · retire from the modal'}
         right={
           hasShoes ? (
             <span style={{ color: 'var(--good)' }}>
@@ -1305,15 +1361,24 @@ function ShoeRotationCard({ data }: { data: ProfileData }) {
           ) : null
         }
       />
+      <EditShoeModal
+        open={modalOpen}
+        initialShoe={editingId === 'new' ? null : loadedShoe}
+        onClose={() => setEditingId(null)}
+        onSaved={() => { setEditingId(null); onRefresh(); }}
+      />
     </Card>
   );
 }
 
-function ShoeRotationRow({ shoe }: { shoe: ShoeRow }) {
+function ShoeRotationRow({ shoe, onEdit }: { shoe: ShoeRow; onEdit: () => void }) {
   const accent = accentVar(shoe.accent);
   const filledPct = Math.min(100, shoe.fraction * 100);
   return (
-    <div
+    <button
+      type="button"
+      onClick={onEdit}
+      className="path-stat-btn"
       style={{
         display: 'grid',
         gridTemplateColumns: '3px 1.6fr 90px 1fr 110px',
@@ -1322,6 +1387,12 @@ function ShoeRotationRow({ shoe }: { shoe: ShoeRow }) {
         padding: '11px 14px 11px 0',
         background: shoe.isRetiring ? 'rgba(252,77,100,.04)' : 'var(--l2)',
         borderRadius: 8,
+        border: 0,
+        cursor: 'pointer',
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+        width: '100%',
       }}
     >
       <div
@@ -1423,7 +1494,228 @@ function ShoeRotationRow({ shoe }: { shoe: ShoeRow }) {
       <div style={{ textAlign: 'right' }}>
         <CardPin variant={shoe.pinTone}>{shoe.statusPin}</CardPin>
       </div>
-    </div>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ROW · Brand accent picker (span 12)
+// ─────────────────────────────────────────────────────────────────────
+
+function BrandAccentCard({ data }: { data: ProfileData }) {
+  const [editing, setEditing] = useState(false);
+  const current = data.accentColor ?? DEFAULT_ACCENT_HEX;
+  const isCustom = !ACCENT_SWATCHES.some((s) => s.hex.toUpperCase() === current.toUpperCase());
+  const matchedSwatch = ACCENT_SWATCHES.find((s) => s.hex.toUpperCase() === current.toUpperCase());
+
+  return (
+    <Card span={12} padding="22px 26px">
+      <CardHeader>
+        <div>
+          <CardLabel>BRAND ACCENT · APPLIED EVERYWHERE</CardLabel>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 22,
+              fontWeight: 600,
+              marginTop: 4,
+              lineHeight: 1.05,
+              letterSpacing: '-.005em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Pick the color the app paints with
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <CardPin variant={data.accentColor ? 'coach' : 'muted'}>
+            {data.accentColor ? 'CUSTOM' : 'DEFAULT'}
+          </CardPin>
+          <button
+            type="button"
+            className="card-pin muted"
+            style={{ border: 0, cursor: 'pointer' }}
+            onClick={() => setEditing(true)}
+          >
+            EDIT →
+          </button>
+        </div>
+      </CardHeader>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '160px 1fr',
+          gap: 22,
+          alignItems: 'center',
+          marginTop: 14,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="path-stat-btn"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
+            padding: '16px 12px',
+            background: 'var(--l2)',
+            border: 0,
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+          title="Open accent picker"
+        >
+          <span
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              background: current,
+              boxShadow: '0 4px 12px rgba(0,0,0,.2)',
+              border: '2px solid var(--l0)',
+            }}
+            aria-hidden="true"
+          />
+          <span
+            className="mono-sm"
+            style={{
+              fontFamily: 'var(--f-data)',
+              fontSize: 11,
+              letterSpacing: '1.2px',
+              color: 'var(--t1)',
+              fontWeight: 700,
+            }}
+          >
+            {(matchedSwatch?.label ?? 'CUSTOM').toUpperCase()}
+          </span>
+          <span
+            className="mono-sm"
+            style={{ fontSize: 10, color: 'var(--t3)', letterSpacing: '.5px' }}
+          >
+            {current}
+          </span>
+        </button>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)',
+              fontSize: 14,
+              color: 'var(--t2)',
+              lineHeight: 1.55,
+            }}
+          >
+            Tap any swatch below to swap the accent — it overrides the canonical
+            blue across buttons, pins, the identity hero, plan accents, and pace tables.
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(8, 1fr)',
+              gap: 8,
+            }}
+          >
+            {ACCENT_SWATCHES.map((s) => {
+              const active = current.toUpperCase() === s.hex.toUpperCase();
+              return (
+                <SwatchQuickPick
+                  key={s.hex}
+                  label={s.label}
+                  hex={s.hex}
+                  active={active}
+                  onPick={() => {
+                    // Quick-pick uses the same API as the modal. Reload
+                    // after save so the root layout re-renders <html>
+                    // with the new accent — an /api/profile refresh
+                    // alone wouldn't repaint the CSS variable.
+                    fetch('/api/profile/accent', {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ accent_color: s.hex }),
+                    }).then(() => {
+                      if (typeof window !== 'undefined') window.location.reload();
+                    });
+                  }}
+                />
+              );
+            })}
+          </div>
+          {isCustom && (
+            <div
+              className="mono-sm"
+              style={{ fontSize: 10, color: 'var(--t3)', letterSpacing: '1.2px', fontWeight: 700 }}
+            >
+              CUSTOM HEX · {current} — TAP EDIT TO CHANGE
+            </div>
+          )}
+        </div>
+      </div>
+
+      <CardFoot
+        left="Saved in profile.accent_color · rendered server-side so the color is correct on first paint."
+      />
+
+      <AccentColorModal
+        open={editing}
+        initialColor={data.accentColor}
+        onClose={() => setEditing(false)}
+        onSaved={() => {
+          setEditing(false);
+          // Hard reload — the root layout reads accent server-side, so a
+          // soft refresh of /api/profile alone wouldn't repaint <html>.
+          if (typeof window !== 'undefined') window.location.reload();
+        }}
+      />
+    </Card>
+  );
+}
+
+function SwatchQuickPick({
+  label, hex, active, onPick,
+}: {
+  label: string;
+  hex: string;
+  active: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      title={`${label} · ${hex}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 6,
+        padding: '10px 4px',
+        background: active ? 'var(--l2)' : 'transparent',
+        border: active ? `2px solid ${hex}` : '2px solid transparent',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontFamily: 'var(--f-data)',
+        fontSize: 9.5,
+        letterSpacing: '1.2px',
+        color: active ? 'var(--t0)' : 'var(--t2)',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+      }}
+    >
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 14,
+          background: hex,
+          border: '1px solid rgba(0,0,0,.08)',
+        }}
+        aria-hidden="true"
+      />
+      {label}
+    </button>
   );
 }
 

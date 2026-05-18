@@ -188,6 +188,9 @@ async function bootstrap(): Promise<void> {
       );
     `);
     await client.query(`
+      ALTER TABLE profile ADD COLUMN IF NOT EXISTS accent_color TEXT;
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS user_prefs (
         user_id        TEXT PRIMARY KEY DEFAULT 'me',
         long_run_day   TEXT,
