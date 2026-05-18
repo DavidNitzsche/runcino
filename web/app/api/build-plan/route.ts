@@ -39,6 +39,10 @@ type Body = {
   strategy: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi: number;
   weatherText?: string;
+  /** Optional fueling overrides — defaults: Maurten / 40g / 60 g/hr */
+  gelBrand?: string;
+  gelCarbsG?: number;
+  carbTargetGPerHr?: number;
   fitness: {
     baselineName: string;
     baselineFinish: string;
@@ -128,8 +132,17 @@ export async function POST(req: Request) {
         apiKey,
         weather: body.weatherText,
         aidStationMiles,
+        gelBrand: body.gelBrand,
+        gelCarbsG: body.gelCarbsG,
+        carbTargetGPerHr: body.carbTargetGPerHr,
       })
-    : planFueling({ phases, finishS: body.goalFinishS });
+    : planFueling({
+        phases,
+        finishS: body.goalFinishS,
+        gelBrand: body.gelBrand,
+        gelCarbsG: body.gelCarbsG,
+        carbTargetGPerHr: body.carbTargetGPerHr,
+      });
   const landmarks = shippableLandmarks(facts).map(l => ({ atMi: l.at_mi, label: l.label }));
 
   const fitnessSummary: FitnessSummary = {

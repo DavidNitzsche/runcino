@@ -100,6 +100,12 @@ export function generateRunDebrief(input: DebriefInput): string {
   } = input;
 
   const sentences: string[] = [];
+  // Track whether the pace sentence already cited HR + %max so we don't
+  // restate it in the dedicated HR sentence. When this is true we
+  // either skip the HR line entirely (zone already mentioned in pace
+  // sentence) or replace it with a TARGET-HR sentence telling the
+  // runner where their HR should have been.
+  let paceSentenceHadHr = false;
 
   // ── DISTANCE ────────────────────────────────────────────────
   if (planDistanceMi > 0) {
@@ -160,6 +166,10 @@ export function generateRunDebrief(input: DebriefInput): string {
     const pace = fmtPace(actualPaceSPerMi);
     const target = `${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi`;
     const hr = actualAvgHr ?? 0;
+    // Any pace sentence that interpolates `${hrPctSuffix}` will mention
+    // HR with %max — set the flag so the HR section knows the data is
+    // already in the response.
+    if (hr > 0 && hrPctSuffix) paceSentenceHadHr = true;
 
     // Cross-referenced narrative
     if (paceStatus === 'on-target') {
@@ -228,31 +238,62 @@ export function generateRunDebrief(input: DebriefInput): string {
   }
 
   // ── HEART RATE ──────────────────────────────────────────────
-  // With max HR available, use %max for exact zone labels.
-  // Without it, fall back to qualitative bands (works for most
-  // recreational runners but not personalized).
+  // With max HR available, use %max for exact zone labels and add a
+  // TARGET-HR sentence telling the runner where their HR should have
+  // been (eg "Easy target: Z2 / 122–140 bpm"). Without it, fall back
+  // to qualitative bands (works for most recreational runners but not
+  // personalized).
+  //
+  // If the pace sentence above ALREADY mentioned HR + %max, suppress
+  // the duplicate `HR averaged X (Y% max · Zn)` sentence and replace
+  // it with the target-HR reference — that's the missing info.
   if (actualAvgHr && actualAvgHr > 0) {
     const pct = maxHr && maxHr > 0 ? Math.round((actualAvgHr / maxHr) * 100) : null;
-    if (pct !== null) {
+    if (pct !== null && maxHr) {
       // Personalized: %max zones
       const zone =
         pct < 60 ? 'Z1' :
         pct < 70 ? 'Z2' :
         pct < 80 ? 'Z3' :
         pct < 90 ? 'Z4' : 'Z5';
+
+      // Target zone for this workout type
+      const easyTargetLow = Math.round(maxHr * 0.60);
+      const easyTargetHigh = Math.round(maxHr * 0.70);
+      const longTargetLow = Math.round(maxHr * 0.65);
+      const longTargetHigh = Math.round(maxHr * 0.75);
+
       if (isContinuous) {
-        if (zone === 'Z1' || zone === 'Z2') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — clean aerobic effort.`);
-        } else if (zone === 'Z3') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — moderate effort, above the easy zone.`);
+        const isEasy = planType === 'easy' || planType === 'recovery';
+        const tgtLow = isEasy ? easyTargetLow : longTargetLow;
+        const tgtHigh = isEasy ? easyTargetHigh : longTargetHigh;
+        const tgtZone = isEasy ? 'Z1–Z2' : 'Z2 (low Z3 ok)';
+
+        if (paceSentenceHadHr) {
+          // Pace sentence already said the HR + %max + qualitative read.
+          // Just provide the target reference.
+          if (zone === 'Z1' || zone === 'Z2') {
+            sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm) — landed it.`);
+          } else {
+            sentences.push(`Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm. You ran ${actualAvgHr - tgtHigh > 0 ? `+${actualAvgHr - tgtHigh}` : `${actualAvgHr - tgtHigh}`} bpm over the easy ceiling.`);
+          }
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — high for an easy day.`);
+          // Pace sentence didn't include HR — give the full HR read.
+          if (zone === 'Z1' || zone === 'Z2') {
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
+          } else if (zone === 'Z3') {
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+          } else {
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+          }
         }
       } else if (planType === 'quality') {
+        const tLow = Math.round(maxHr * 0.85);
+        const tHigh = Math.round(maxHr * 0.92);
         if (zone === 'Z4' || zone === 'Z5') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — the work showed up.`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — lower than expected for threshold work.`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
         }
       } else if (planType === 'race') {
         sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}).`);

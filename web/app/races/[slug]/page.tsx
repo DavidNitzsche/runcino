@@ -25,6 +25,7 @@ import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
 import { GoalEditIsland } from './GoalEditIsland';
 import { RouteMapIsland } from './RouteMapIsland';
+import { FuelEditIsland } from './FuelEditIsland';
 import './race-plan-v4.css';
 
 export const dynamic = 'force-dynamic';
@@ -507,28 +508,16 @@ export default async function RacePlanPage({ params }: PageProps) {
               <div className="card-meta">Coach-tuned for {race.meta.goalDisplay} effort</div>
             </div>
 
-            <div className="fuel-summary">
-              <div className="fuel-cell">
-                <div className="fuel-cell-label">Brand</div>
-                <div className="fuel-cell-value">{fueling.gel_brand || '—'}</div>
-                <div className="fuel-cell-sub">Gel</div>
-              </div>
-              <div className="fuel-cell">
-                <div className="fuel-cell-label">Gels</div>
-                <div className="fuel-cell-value">{fueling.gel_count}</div>
-                <div className="fuel-cell-sub">{fueling.gel_carbs_g} g each</div>
-              </div>
-              <div className="fuel-cell">
-                <div className="fuel-cell-label">Total Carbs</div>
-                <div className="fuel-cell-value">{fueling.total_carbs_g} g</div>
-                <div className="fuel-cell-sub">across {race.meta.goalDisplay}</div>
-              </div>
-              <div className="fuel-cell">
-                <div className="fuel-cell-label">Rate</div>
-                <div className="fuel-cell-value">{fueling.carb_target_g_per_hr.toFixed(1)}<span style={{ fontSize: 18, color: 'rgba(13,15,18,.35)' }}>g/hr</span></div>
-                <div className="fuel-cell-sub">target rate</div>
-              </div>
-            </div>
+            <FuelEditIsland
+              slug={race.slug}
+              gelBrand={fueling.gel_brand}
+              gelCount={fueling.gel_count}
+              gelCarbsG={fueling.gel_carbs_g}
+              totalCarbsG={fueling.total_carbs_g}
+              carbRateGPerHr={goalFinishS > 0 ? (fueling.total_carbs_g / (goalFinishS / 3600)) : fueling.carb_target_g_per_hr}
+              carbTargetGPerHr={fueling.carb_target_g_per_hr}
+              goalDisplay={race.meta.goalDisplay}
+            />
 
             {fuelMarkers.length > 0 && (
               <div className="fuel-timeline">

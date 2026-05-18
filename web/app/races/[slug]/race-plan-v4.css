@@ -353,6 +353,66 @@
 .race-plan-v4-page .linked-tag.long      { background: rgba(44,168,47,.14);  color: #2CA82F; }
 .race-plan-v4-page .linked-tag.race-sim  { background: rgba(232,93,38,.14);  color: #E85D26; }
 
+/* ── Fueling plan ────────────────────────────────────────── */
+.race-plan-v4-page .fuel-summary {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 0 40px 22px;
+}
+.race-plan-v4-page .fuel-cell {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 16px 20px;
+}
+.race-plan-v4-page .fuel-cell-label {
+  font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px;
+  color: rgba(13,15,18,.55); text-transform: uppercase; font-weight: 600;
+}
+.race-plan-v4-page .fuel-cell-value {
+  font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1;
+  color: #0D0F12; margin-top: 8px;
+}
+.race-plan-v4-page .fuel-cell-sub {
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(13,15,18,.55); margin-top: 4px;
+}
+.race-plan-v4-page .fuel-timeline { padding: 24px 40px 32px; }
+.race-plan-v4-page .fuel-timeline-track {
+  position: relative; height: 110px; margin-top: 8px;
+}
+.race-plan-v4-page .fuel-timeline-line {
+  position: absolute; left: 0; right: 0; top: 40px; height: 2px;
+  background: linear-gradient(to right, rgba(13,15,18,.10), rgba(13,15,18,.20), rgba(13,15,18,.10));
+}
+.race-plan-v4-page .fuel-timeline-tick {
+  position: absolute; top: 32px;
+  width: 2px; height: 18px;
+  background: rgba(13,15,18,.10);
+  transform: translateX(-1px);
+}
+.race-plan-v4-page .fuel-marker {
+  position: absolute; top: 22px;
+  display: flex; flex-direction: column; align-items: center;
+  transform: translateX(-50%);
+}
+.race-plan-v4-page .fuel-marker-dot {
+  width: 38px; height: 38px;
+  background: #E85D26;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px;
+  box-shadow: 0 2px 8px rgba(232,93,38,.35);
+  border: 3px solid #fff;
+}
+.race-plan-v4-page .fuel-marker-meta {
+  margin-top: 8px;
+  text-align: center;
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(13,15,18,.55);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.race-plan-v4-page .fuel-marker-meta strong { color: #0D0F12; font-weight: 700; }
+
 /* Responsive */
 @media (max-width: 960px) {
   .race-plan-v4-page .page { padding-left: 24px; padding-right: 24px; }

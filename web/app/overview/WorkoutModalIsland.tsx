@@ -295,6 +295,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   // Fetch the actual run for this date (if any) — only for today + past
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
   const [userMaxHr, setUserMaxHr] = useState<number | null>(null);
+  const [userMaxHrSource, setUserMaxHrSource] = useState<string | null>(null);
   useEffect(() => {
     if (!canHaveActual) { setActual(null); return; }
     let cancelled = false;
@@ -304,6 +305,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         if (cancelled) return;
         setActual(j.run ?? null);
         setUserMaxHr(j.maxHr ?? null);
+        setUserMaxHrSource(j.maxHrSource ?? null);
       })
       .catch(() => { if (!cancelled) setActual(null); });
     return () => { cancelled = true; };
@@ -477,11 +479,15 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 splits: actual.splits.map((s) => ({ mile: s.mile, paceSPerMi: s.paceSPerMi, avgHr: s.avgHr })),
                 maxHr: userMaxHr,
               });
+              const maxHrLabel = userMaxHr
+                ? `Max HR ${userMaxHr} · ${userMaxHrSource === 'manual' ? 'manual' : userMaxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
+                : 'Max HR not set — using generic HR bands. Set yours on /profile for personalized zones.';
               return (
                 <div className="wm-debrief-footer">
                   <div className="wm-debrief-footer-notes">
                     <span className="wm-debrief-footer-label">Coach take</span>
                     <span className="wm-debrief-footer-copy">{debrief}</span>
+                    <span className="wm-debrief-footer-meta">{maxHrLabel}</span>
                   </div>
                   <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
                     View full activity on Strava ↗
@@ -961,6 +967,15 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 13px;
           line-height: 1.5;
           color: rgba(13,15,18,.75);
+          display: block;
+        }
+        .wm-debrief-footer-meta {
+          display: block;
+          margin-top: 8px;
+          font-family: 'Inter', sans-serif;
+          font-size: 11px;
+          color: rgba(13,15,18,.45);
+          font-style: italic;
         }
         @media (max-width: 700px) {
           .wm-debrief-footer { flex-direction: column; }

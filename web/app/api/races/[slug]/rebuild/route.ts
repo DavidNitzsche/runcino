@@ -28,6 +28,13 @@ interface RebuildBody {
   strategy?: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi?: number;
   distanceMi?: number;
+  // Fueling overrides — when present, the rebuild uses these to
+  // regenerate the gel plan. Anything omitted falls back to the
+  // existing plan's value (or the planner default if there's no
+  // existing fueling block).
+  gelBrand?: string;
+  gelCarbsG?: number;
+  carbTargetGPerHr?: number;
 }
 
 function parseGoalHMS(s: string): number | null {
@@ -55,6 +62,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const toleranceSPerMi = body.toleranceSPerMi ?? 10;
   const headlineDistance = body.distanceMi ?? existing.meta.distanceMi;
 
+  // Fueling overrides — pick up from body, then fall back to the existing plan
+  const existingFuel = existing.plan?.fueling;
+  const gelBrand = body.gelBrand ?? existingFuel?.gel_brand;
+  const gelCarbsG = body.gelCarbsG ?? existingFuel?.gel_carbs_g;
+  const carbTargetGPerHr = body.carbTargetGPerHr ?? existingFuel?.carb_target_g_per_hr;
+
   // Reuse the build-plan endpoint over loopback so we don't duplicate
   // its assembly logic. On Railway, req.url's origin is the internal
   // 0.0.0.0:$PORT host which isn't reachable via fetch from inside
@@ -73,6 +86,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       goalFinishS,
       strategy,
       toleranceSPerMi,
+      gelBrand,
+      gelCarbsG,
+      carbTargetGPerHr,
       // Manual flow: pass neutral fitness defaults like /races/new does.
       fitness: {
         baselineName: 'Self-reported',
