@@ -17,7 +17,7 @@
  * `<WorkoutModalProvider>` wrapper.
  */
 
-import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
 import { describeWorkout } from '@/lib/workout-descriptions';
 
 export interface WorkoutDay {
@@ -226,10 +226,38 @@ function parsePaceTarget(paceTarget: string): { primary: string; unit: string } 
   return { primary: paceTarget, unit: '' };
 }
 
+interface ActualRun {
+  id: string;
+  name: string;
+  distanceMi: number;
+  movingTimeS: number;
+  paceSPerMi: number;
+  avgHr: number | null;
+  maxHr: number | null;
+  elevGainFt: number;
+  workoutType: number | null;
+}
+
+function fmtPaceMS(sPerMi: number): string {
+  if (!sPerMi || sPerMi <= 0) return '—';
+  const m = Math.floor(sPerMi / 60);
+  const s = sPerMi % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function fmtTime(sec: number): string {
+  if (!sec || sec <= 0) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string; onClose: () => void }) {
   const isRest = !!day.isRest || day.distanceMi === 0;
   const isToday = day.date === today;
   const isPast = !isToday && day.date < today;
+  const canHaveActual = day.date <= today; // today or past
   // Look up the label-specific description. Falls back to type-based
   // copy if the label isn't in the lookup (e.g. for an ad-hoc workout).
   const desc = describeWorkout(day.label, day.type);
@@ -248,18 +276,96 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   })();
   const durMin = paceMid > 0 ? Math.round((paceMid * day.distanceMi) / 60) : 0;
 
+  // Fetch the actual run for this date (if any) — only for today + past
+  const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
+  useEffect(() => {
+    if (!canHaveActual) { setActual(null); return; }
+    let cancelled = false;
+    fetch(`/api/runs/by-date?date=${day.date}`)
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setActual(j.run ?? null); })
+      .catch(() => { if (!cancelled) setActual(null); });
+    return () => { cancelled = true; };
+  }, [day.date, canHaveActual]);
+
+  // Plan vs actual: percentage of planned distance + status badge
+  const planComparison = (() => {
+    if (!actual || isRest || day.distanceMi <= 0) return null;
+    const ranPct = Math.round((actual.distanceMi / day.distanceMi) * 100);
+    const status =
+      ranPct >= 90 && ranPct <= 110 ? { label: 'ON PLAN', tone: 'green' as const } :
+      ranPct >= 60 ? { label: `${ranPct}% OF PLAN`, tone: 'amber' as const } :
+      { label: `BELOW PLAN`, tone: 'amber' as const };
+    return { ranPct, status };
+  })();
+
   return (
     <div className="wm-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="wm-card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wm-close" onClick={onClose} aria-label="Close">×</button>
 
         <div className="wm-eyebrow">
-          {fmtFullDate(day.date)} {isToday && '· TODAY'} {isPast && '· PAST'}
+          {fmtFullDate(day.date)}
+          {isToday && ' · TODAY'}
+          {isPast && actual && ' · COMPLETED'}
+          {isPast && !actual && actual !== undefined && ' · MISSED'}
+          {actual?.workoutType === 1 && <span className="wm-pill race">RACE</span>}
+          {actual?.workoutType === 2 && <span className="wm-pill long">LONG</span>}
+          {actual?.workoutType === 3 && <span className="wm-pill workout">WORKOUT</span>}
         </div>
         <h2 className="wm-title">{isRest ? 'Rest' : day.label}</h2>
 
+        {/* ──── ACTUAL RESULTS (when we have a matching Strava activity) ──── */}
+        {actual && !isRest && (
+          <div className="wm-actual">
+            <div className="wm-actual-head">
+              <span className="wm-actual-label">What you ran</span>
+              {planComparison && (
+                <span className={`wm-actual-status ${planComparison.status.tone}`}>{planComparison.status.label}</span>
+              )}
+            </div>
+            <div className="wm-actual-name">{actual.name}</div>
+            <div className="wm-stats wm-stats-actual">
+              <div className="wm-stat">
+                <div className="wm-stat-val">{actual.distanceMi.toFixed(1)}<small>mi</small></div>
+                <div className="wm-stat-label">Distance</div>
+              </div>
+              <div className="wm-stat">
+                <div className="wm-stat-val">{fmtTime(actual.movingTimeS)}</div>
+                <div className="wm-stat-label">Time</div>
+              </div>
+              <div className="wm-stat">
+                <div className="wm-stat-val">{fmtPaceMS(actual.paceSPerMi)}<small>/mi</small></div>
+                <div className="wm-stat-label">Pace</div>
+              </div>
+              <div className="wm-stat">
+                <div className="wm-stat-val">{actual.avgHr ?? '—'}<small>bpm</small></div>
+                <div className="wm-stat-label">Avg HR</div>
+              </div>
+            </div>
+            {(actual.elevGainFt > 0 || actual.maxHr) && (
+              <div className="wm-actual-meta">
+                {actual.elevGainFt > 0 && <span><strong>{actual.elevGainFt}</strong> ft elev</span>}
+                {actual.maxHr && <span><strong>{actual.maxHr}</strong> max HR</span>}
+              </div>
+            )}
+            <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
+              View on Strava ↗
+            </a>
+          </div>
+        )}
+
+        {/* Missed: past date but no matching run logged */}
+        {!actual && actual !== undefined && isPast && !isRest && (
+          <div className="wm-missed">
+            No run logged for this date — the planned workout was missed or hasn&rsquo;t synced yet.
+          </div>
+        )}
+
         {!isRest && (
           <>
+            {actual && <div className="wm-plan-header">The plan:</div>}
+
             <div className="wm-stats">
               <div className="wm-stat">
                 <div className="wm-stat-val">{day.distanceMi}<small>mi</small></div>
@@ -423,6 +529,95 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin: 0 0 16px;
         }
         /* Zone chip at the top of the recipe */
+        /* Workout-type pill in the eyebrow */
+        .wm-pill {
+          font-family: 'Oswald', sans-serif; font-weight: 700;
+          font-size: 9px; letter-spacing: 1.5px;
+          padding: 2px 8px; border-radius: 4px;
+          color: #fff;
+          margin-left: 8px;
+        }
+        .wm-pill.race    { background: #E85D26; }
+        .wm-pill.long    { background: #2CA82F; }
+        .wm-pill.workout { background: #C97000; }
+
+        /* What you ran — surfaced ABOVE the plan when a matching activity exists */
+        .wm-actual {
+          background: rgba(44,168,47,.05);
+          border: 1px solid rgba(44,168,47,.20);
+          border-radius: 12px;
+          padding: 18px 20px 16px;
+          margin-bottom: 24px;
+        }
+        .wm-actual-head {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 4px;
+        }
+        .wm-actual-label {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 10px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: #2CA82F;
+        }
+        .wm-actual-status {
+          font-family: 'Oswald', sans-serif; font-weight: 700;
+          font-size: 9.5px; letter-spacing: 1.5px;
+          padding: 3px 9px; border-radius: 999px;
+          text-transform: uppercase;
+        }
+        .wm-actual-status.green { background: rgba(44,168,47,.15); color: #2CA82F; }
+        .wm-actual-status.amber { background: rgba(212,144,10,.15); color: #C97000; }
+        .wm-actual-name {
+          font-family: 'Inter', sans-serif;
+          font-weight: 600; font-size: 14px;
+          color: #0D0F12;
+          margin-bottom: 14px;
+        }
+        .wm-stats-actual { margin-bottom: 8px; }
+        .wm-actual-meta {
+          display: flex; gap: 12px; flex-wrap: wrap;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px; color: rgba(13,15,18,.55);
+          padding-top: 6px;
+        }
+        .wm-actual-meta strong { color: #0D0F12; font-weight: 600; }
+        .wm-strava-link {
+          display: inline-block;
+          margin-top: 10px;
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600; font-size: 10.5px;
+          letter-spacing: 1.5px; text-transform: uppercase;
+          color: #FC4C02;
+          text-decoration: none;
+        }
+        .wm-strava-link:hover { text-decoration: underline; }
+
+        /* Missed-day note */
+        .wm-missed {
+          padding: 14px 18px;
+          background: rgba(212,144,10,.06);
+          border: 1px solid rgba(212,144,10,.18);
+          border-radius: 10px;
+          margin-bottom: 24px;
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          color: rgba(13,15,18,.65);
+        }
+
+        /* "The plan:" header — appears above the planned stats block
+           when actuals are present, so the plan becomes the secondary view */
+        .wm-plan-header {
+          font-family: 'Oswald', sans-serif;
+          font-weight: 600;
+          font-size: 10px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          color: rgba(13,15,18,.45);
+          margin-bottom: 8px;
+        }
+
         .wm-zone-chip {
           display: inline-block;
           font-family: 'Oswald', sans-serif;
