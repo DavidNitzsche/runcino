@@ -129,6 +129,70 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
 }
 
 /**
+ * Lazy-fetch + cache the FULL Strava activity detail (laps, splits,
+ * best_efforts, polyline geometry) for a single activity.
+ *
+ * The summary sync stores a normalized snapshot via /athlete/activities,
+ * which doesn't include per-mile splits. For the run-detail modal we
+ * want the splits_standard array. This helper:
+ *
+ *   1. Looks up the cached detail in strava_activities.detail
+ *   2. If missing OR older than 30 days, refreshes the access token
+ *      and fetches /activities/{id} fresh
+ *   3. Writes the new detail + detail_at back to the row
+ *   4. Returns the raw Strava activity object
+ *
+ * Throws on token failure or Strava 4xx/5xx.
+ */
+export async function getActivityDetail(userId: string, activityId: number | string): Promise<StravaActivity | null> {
+  // 1. Cached?
+  const cached = await query<{ detail: StravaActivity | null; detail_at: Date | null }>(
+    `SELECT detail, detail_at FROM strava_activities WHERE id = $1 LIMIT 1`,
+    [activityId],
+  );
+  const row = cached[0];
+  const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1000;
+  const fresh = row?.detail && row.detail_at && (Date.now() - new Date(row.detail_at).getTime()) < THIRTY_DAYS_MS;
+  if (fresh && row?.detail) return row.detail;
+
+  // 2. Refresh token + fetch
+  const tokenRows = await query<TokenRow>(
+    `SELECT access_token, refresh_token, expires_at
+       FROM connector_tokens
+      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+      LIMIT 1`,
+    [userId],
+  );
+  const t = tokenRows[0];
+  if (!t?.refresh_token) return null;
+
+  let accessToken: string;
+  try {
+    const fresh = await refreshAccessToken(t.refresh_token);
+    accessToken = fresh.accessToken;
+    await query(
+      `UPDATE connector_tokens
+          SET access_token = $2, refresh_token = $3, expires_at = $4, updated_at = NOW()
+        WHERE user_id = $1 AND provider = 'strava'`,
+      [userId, fresh.accessToken, fresh.refreshToken, new Date(fresh.expiresAt * 1000)],
+    );
+  } catch (e) {
+    console.error('[strava-detail] refresh failed:', e);
+    return row?.detail ?? null; // fall back to stale cache if available
+  }
+
+  const detail = await fetchActivityById(accessToken, Number(activityId));
+  if (!detail) return null;
+
+  // 3. Cache it back
+  await query(
+    `UPDATE strava_activities SET detail = $2::jsonb, detail_at = NOW() WHERE id = $1`,
+    [activityId, JSON.stringify(detail)],
+  );
+  return detail;
+}
+
+/**
  * Webhook delete event — remove the activity from strava_activities.
  * Idempotent: missing row is a no-op.
  */

@@ -226,6 +226,14 @@ function parsePaceTarget(paceTarget: string): { primary: string; unit: string } 
   return { primary: paceTarget, unit: '' };
 }
 
+interface ActualSplit {
+  mile: number;
+  paceSPerMi: number;
+  paceDisplay: string;
+  avgHr: number | null;
+  elevDeltaFt: number;
+}
+
 interface ActualRun {
   id: string;
   name: string;
@@ -236,6 +244,7 @@ interface ActualRun {
   maxHr: number | null;
   elevGainFt: number;
   workoutType: number | null;
+  splits: ActualSplit[];
 }
 
 function fmtPaceMS(sPerMi: number): string {
@@ -301,7 +310,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
 
   return (
     <div className="wm-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="wm-card" onClick={(e) => e.stopPropagation()}>
+      <div className={`wm-card${actual && !isRest ? ' wm-card-wide' : ''}`} onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wm-close" onClick={onClose} aria-label="Close">×</button>
 
         <div className="wm-eyebrow">
@@ -315,17 +324,13 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         </div>
         <h2 className="wm-title">{isRest ? 'Rest' : day.label}</h2>
 
-        {/* ──── ACTUAL RESULTS (when we have a matching Strava activity) ──── */}
+        {/* ════════════════════════════════════════════════
+            DEBRIEF MODE — Completed run with actual data
+            ════════════════════════════════════════════════ */}
         {actual && !isRest && (
-          <div className="wm-actual">
-            <div className="wm-actual-head">
-              <span className="wm-actual-label">What you ran</span>
-              {planComparison && (
-                <span className={`wm-actual-status ${planComparison.status.tone}`}>{planComparison.status.label}</span>
-              )}
-            </div>
-            <div className="wm-actual-name">{actual.name}</div>
-            <div className="wm-stats wm-stats-actual">
+          <>
+            {/* Headline stats — full width across the top */}
+            <div className="wm-stats wm-stats-debrief">
               <div className="wm-stat">
                 <div className="wm-stat-val">{actual.distanceMi.toFixed(1)}<small>mi</small></div>
                 <div className="wm-stat-label">Distance</div>
@@ -336,23 +341,97 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
               <div className="wm-stat">
                 <div className="wm-stat-val">{fmtPaceMS(actual.paceSPerMi)}<small>/mi</small></div>
-                <div className="wm-stat-label">Pace</div>
+                <div className="wm-stat-label">Avg pace</div>
               </div>
               <div className="wm-stat">
                 <div className="wm-stat-val">{actual.avgHr ?? '—'}<small>bpm</small></div>
                 <div className="wm-stat-label">Avg HR</div>
               </div>
             </div>
+
             {(actual.elevGainFt > 0 || actual.maxHr) && (
-              <div className="wm-actual-meta">
+              <div className="wm-debrief-meta">
                 {actual.elevGainFt > 0 && <span><strong>{actual.elevGainFt}</strong> ft elev</span>}
                 {actual.maxHr && <span><strong>{actual.maxHr}</strong> max HR</span>}
+                <span>{actual.name}</span>
               </div>
             )}
+
+            {/* 2-column layout: splits left, plan comparison right */}
+            <div className="wm-debrief-grid">
+              <div className="wm-debrief-col">
+                <div className="wm-sub-label">Per-mile splits</div>
+                {actual.splits.length > 0 ? (
+                  <div className="wm-splits">
+                    {actual.splits.map((s) => {
+                      // Highlight fastest / slowest miles
+                      const allPaces = actual.splits.map((x) => x.paceSPerMi);
+                      const fastest = Math.min(...allPaces);
+                      const slowest = Math.max(...allPaces);
+                      const tone =
+                        s.paceSPerMi === fastest ? 'fast' :
+                        s.paceSPerMi === slowest ? 'slow' : '';
+                      return (
+                        <div key={s.mile} className={`wm-split-row ${tone}`}>
+                          <span className="wm-split-num">{s.mile}</span>
+                          <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
+                          <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
+                          <span className="wm-split-elev">
+                            {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="wm-split-legend">
+                      <span><span className="dot fast"></span>fastest</span>
+                      <span><span className="dot slow"></span>slowest</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="wm-no-splits">
+                    No mile splits available yet. They appear once Strava finishes processing the activity (usually within a few minutes).
+                  </div>
+                )}
+              </div>
+
+              <div className="wm-debrief-col">
+                <div className="wm-sub-label">vs Plan</div>
+                <div className="wm-vs-plan">
+                  {planComparison && (
+                    <div className={`wm-vs-status ${planComparison.status.tone}`}>{planComparison.status.label}</div>
+                  )}
+                  <div className="wm-vs-row">
+                    <span className="wm-vs-key">Workout</span>
+                    <span className="wm-vs-val">{day.label}</span>
+                  </div>
+                  <div className="wm-vs-row">
+                    <span className="wm-vs-key">Planned dist.</span>
+                    <span className="wm-vs-val">{day.distanceMi} mi</span>
+                  </div>
+                  <div className="wm-vs-row">
+                    <span className="wm-vs-key">Actual dist.</span>
+                    <span className="wm-vs-val">{actual.distanceMi.toFixed(1)} mi {planComparison && <em className="wm-vs-muted">({planComparison.ranPct}%)</em>}</span>
+                  </div>
+                  <div className="wm-vs-row">
+                    <span className="wm-vs-key">Pace target</span>
+                    <span className="wm-vs-val">{paceTarget}</span>
+                  </div>
+                  <div className="wm-vs-row">
+                    <span className="wm-vs-key">Actual pace</span>
+                    <span className="wm-vs-val">{fmtPaceMS(actual.paceSPerMi)}/mi</span>
+                  </div>
+                </div>
+
+                <div className="wm-sub-label" style={{ marginTop: 18 }}>Coach notes</div>
+                <p className="wm-copy" style={{ marginBottom: 10 }}>{desc.effort}</p>
+                <p className="wm-copy" style={{ fontSize: 12, color: 'rgba(13,15,18,.55)' }}>{desc.why}</p>
+              </div>
+            </div>
+
             <a className="wm-strava-link" href={`https://www.strava.com/activities/${actual.id}`} target="_blank" rel="noreferrer">
-              View on Strava ↗
+              View full activity on Strava ↗
             </a>
-          </div>
+          </>
         )}
 
         {/* Missed: past date but no matching run logged */}
@@ -362,10 +441,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           </div>
         )}
 
-        {!isRest && (
+        {/* ════════════════════════════════════════════════
+            PLAN MODE — Future / today / missed: show the recipe
+            ════════════════════════════════════════════════ */}
+        {!isRest && !actual && (
           <>
-            {actual && <div className="wm-plan-header">The plan:</div>}
-
             <div className="wm-stats">
               <div className="wm-stat">
                 <div className="wm-stat-val">{day.distanceMi}<small>mi</small></div>
@@ -464,6 +544,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           padding: 36px 40px 32px;
           position: relative;
           box-shadow: 0 30px 80px rgba(0,0,0,.25);
+          max-height: 92vh; overflow-y: auto;
+        }
+        /* Wider variant when showing a completed-run debrief (2 cols) */
+        .wm-card.wm-card-wide {
+          max-width: 820px;
         }
         .wm-close {
           position: absolute; top: 14px; right: 16px;
@@ -725,6 +810,145 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           border: 1px solid rgba(13,15,18,.16);
         }
         .wm-btn-ghost:hover { background: rgba(13,15,18,.04); color: #0D0F12; }
+
+        /* ════ DEBRIEF MODE styles (completed-run modal) ════ */
+        .wm-stats-debrief {
+          margin-bottom: 12px;
+        }
+        .wm-debrief-meta {
+          display: flex; flex-wrap: wrap; gap: 14px;
+          padding-bottom: 18px;
+          border-bottom: 1px solid rgba(13,15,18,.06);
+          margin-bottom: 22px;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px; color: rgba(13,15,18,.55);
+        }
+        .wm-debrief-meta strong { color: #0D0F12; font-weight: 600; }
+
+        .wm-debrief-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 28px;
+          margin-bottom: 18px;
+        }
+        @media (max-width: 700px) {
+          .wm-debrief-grid { grid-template-columns: 1fr; }
+        }
+        .wm-debrief-col { min-width: 0; }
+
+        /* Mile splits */
+        .wm-splits {
+          background: rgba(13,15,18,.025);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 10px;
+          overflow: hidden;
+        }
+        .wm-split-row {
+          display: grid;
+          grid-template-columns: 28px 1fr 50px 40px;
+          gap: 8px;
+          align-items: center;
+          padding: 8px 12px;
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          color: rgba(13,15,18,.85);
+        }
+        .wm-split-row + .wm-split-row { border-top: 1px solid rgba(13,15,18,.05); }
+        .wm-split-row.fast { background: rgba(44,168,47,.06); }
+        .wm-split-row.slow { background: rgba(212,144,10,.05); }
+        .wm-split-num {
+          font-family: 'Oswald', sans-serif; font-weight: 600;
+          font-size: 12px; color: rgba(13,15,18,.55);
+          letter-spacing: 0.5px;
+          text-align: center;
+        }
+        .wm-split-pace {
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 600; color: #0D0F12;
+          font-size: 13px;
+        }
+        .wm-split-pace small {
+          font-family: 'Inter', sans-serif;
+          font-size: 10px; color: rgba(13,15,18,.45); font-weight: 500;
+          margin-left: 2px;
+        }
+        .wm-split-hr {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 12px; color: rgba(13,15,18,.55);
+          text-align: right;
+        }
+        .wm-split-elev {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 11px; color: rgba(13,15,18,.45);
+          text-align: right;
+        }
+        .wm-split-legend {
+          display: flex; gap: 14px;
+          padding: 8px 12px;
+          background: rgba(13,15,18,.015);
+          border-top: 1px solid rgba(13,15,18,.05);
+          font-family: 'Inter', sans-serif;
+          font-size: 10.5px; color: rgba(13,15,18,.45);
+          letter-spacing: 0.5px;
+          text-transform: uppercase; font-weight: 600;
+        }
+        .wm-split-legend .dot {
+          display: inline-block;
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          margin-right: 5px;
+          vertical-align: middle;
+        }
+        .wm-split-legend .dot.fast { background: #2CA82F; }
+        .wm-split-legend .dot.slow { background: #D4900A; }
+        .wm-no-splits {
+          padding: 14px 16px;
+          background: rgba(13,15,18,.025);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 10px;
+          font-family: 'Inter', sans-serif;
+          font-size: 12px;
+          color: rgba(13,15,18,.55);
+          line-height: 1.5;
+        }
+
+        /* vs Plan table */
+        .wm-vs-plan {
+          background: rgba(13,15,18,.025);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 10px;
+          padding: 14px 16px;
+        }
+        .wm-vs-status {
+          display: inline-block;
+          font-family: 'Oswald', sans-serif; font-weight: 700;
+          font-size: 10px; letter-spacing: 1.5px;
+          padding: 4px 10px; border-radius: 999px;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+        }
+        .wm-vs-status.green { background: rgba(44,168,47,.15); color: #2CA82F; }
+        .wm-vs-status.amber { background: rgba(212,144,10,.15); color: #C97000; }
+        .wm-vs-row {
+          display: grid;
+          grid-template-columns: minmax(95px, auto) 1fr;
+          gap: 12px;
+          padding: 6px 0;
+          font-family: 'Inter', sans-serif;
+          font-size: 13px;
+          border-top: 1px solid rgba(13,15,18,.05);
+        }
+        .wm-vs-row:first-of-type { border-top: none; }
+        .wm-vs-key {
+          color: rgba(13,15,18,.55);
+          font-weight: 500;
+        }
+        .wm-vs-val {
+          color: #0D0F12;
+          font-weight: 600;
+          text-align: right;
+        }
+        .wm-vs-muted { color: rgba(13,15,18,.45); font-style: normal; font-weight: 500; margin-left: 4px; }
       `}</style>
     </div>
   );

@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { getActivityDetail } from '@/lib/sync-strava-user';
 
 interface ActivityRow {
   id: string;
@@ -53,6 +54,44 @@ export async function GET(req: NextRequest) {
     elevGainFt?: number; type?: string; workoutType?: number | null;
   };
 
+  // Lazy-fetch the activity detail to extract per-mile splits.
+  // splits_standard = imperial-mile splits from Strava.
+  interface StravaSplit {
+    split: number;
+    distance: number;        // meters
+    elapsed_time: number;    // seconds
+    moving_time: number;
+    average_speed: number;   // m/s
+    average_heartrate?: number;
+    elevation_difference?: number;
+    pace_zone?: number;
+  }
+  let splits: Array<{ mile: number; paceSPerMi: number; paceDisplay: string; avgHr: number | null; elevDeltaFt: number }> = [];
+  try {
+    const detail = await getActivityDetail(user.id, row.id);
+    const std = (detail as unknown as { splits_standard?: StravaSplit[] } | null)?.splits_standard;
+    if (std && Array.isArray(std)) {
+      splits = std
+        .filter((s) => s.distance > 0 && s.moving_time > 0)
+        .map((s) => {
+          const distMi = s.distance / 1609.344;
+          const paceSPerMi = Math.round(s.moving_time / Math.max(distMi, 0.0001));
+          const m = Math.floor(paceSPerMi / 60);
+          const sec = paceSPerMi % 60;
+          return {
+            mile: s.split,
+            paceSPerMi,
+            paceDisplay: `${m}:${String(sec).padStart(2, '0')}`,
+            avgHr: s.average_heartrate ? Math.round(s.average_heartrate) : null,
+            elevDeltaFt: s.elevation_difference != null ? Math.round(s.elevation_difference * 3.28084) : 0,
+          };
+        });
+    }
+  } catch (e) {
+    console.warn('[api/runs/by-date] detail fetch failed for', row.id, e);
+    // Splits stay empty; the rest of the response still works
+  }
+
   return NextResponse.json({
     ok: true,
     run: {
@@ -69,6 +108,7 @@ export async function GET(req: NextRequest) {
       elevGainFt: Number(d.elevGainFt) || 0,
       type: d.type || 'Run',
       workoutType: d.workoutType ?? null,
+      splits,
     },
   });
 }
