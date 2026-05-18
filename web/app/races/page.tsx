@@ -225,12 +225,26 @@ export default async function RacesPage() {
         </div>
 
         {/* ── A-RACE HERO ── */}
-        {aRace && (
-          <div className="a-race-card">
+        {aRace && (() => {
+          // Build a short Bebas title from the race name initials when 3+ words,
+          // otherwise just use the name. AFC HALF for "Americas Finest City" etc.
+          const words = aRace.name.split(/\s+/);
+          const titleText = words.length >= 3
+            ? words.map((w) => w[0]).join('').toUpperCase().slice(0, 4)
+            : aRace.name.toUpperCase();
+          const distSub = aRace.distanceLabel.includes('Half') ? 'HALF'
+            : aRace.distanceLabel.includes('Marathon') ? 'MARATHON'
+            : aRace.distanceLabel.includes('10K') ? '10K'
+            : aRace.distanceLabel.includes('5K') ? '5K' : '';
+          const HeroWrap = aRace.slug
+            ? ({ children }: { children: React.ReactNode }) => <a href={`/races/${aRace.slug}`} className="a-race-card" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>{children}</a>
+            : ({ children }: { children: React.ReactNode }) => <div className="a-race-card">{children}</div>;
+          return (
+          <HeroWrap>
             <div className="a-race-left">
-              <div className="a-race-eyebrow">A-RACE · GOAL TIME {aRace.goal}</div>
-              <div className="a-race-title">AFC<br />HALF</div>
-              <div className="a-race-sub">{aRace.name} · {aRace.date.replace(', 2026', '')}</div>
+              <div className="a-race-eyebrow">A-RACE · GOAL TIME {aRace.goal}{aRace.slug && ' · CLICK FOR FULL PLAN'}</div>
+              <div className="a-race-title">{titleText}{distSub && <><br />{distSub}</>}</div>
+              <div className="a-race-sub">{aRace.name} · {aRace.date.replace(/, \d{4}$/, '')}</div>
               <p className="a-race-explainer">
                 The full 14-week plan points here. Once a recent race finish is logged we&apos;ll
                 show your current fitness, the gap to {aRace.goal}, and the feasibility read.
@@ -282,8 +296,9 @@ export default async function RacesPage() {
                 <strong>Trust the easy.</strong> The race is won in the workouts you didn&apos;t try to win.
               </p>
             </div>
-          </div>
-        )}
+          </HeroWrap>
+          );
+        })()}
 
         {/* ── UPCOMING RACES TIMELINE ── */}
         <div className="card">
@@ -294,32 +309,52 @@ export default async function RacesPage() {
           </div>
 
           <div className="races-timeline">
-            <div className="races-timeline-track-area">
-              <div className="races-timeline-track-line"></div>
-              {upcoming.length === 0 ? (
-                <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
-                  No upcoming races on the calendar.
+            {upcoming.length === 0 ? (
+              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+                No upcoming races on the calendar.
+              </div>
+            ) : (
+              <div className="races-timeline-track-area">
+                <div className="races-timeline-track-line"></div>
+                {/* "TODAY" marker at the left edge */}
+                <div className="races-timeline-now">
+                  <div className="races-timeline-now-dot" />
+                  <div className="races-timeline-now-info">
+                    <div className="races-timeline-now-label">Today</div>
+                  </div>
                 </div>
-              ) : (
-                upcoming.map((race, i) => {
-                  const maxDays = Math.max(...upcoming.map((r) => r.daysAway));
+                {upcoming.map((race, i) => {
+                  const maxDays = Math.max(...upcoming.map((r) => r.daysAway), 1);
                   const pos = (race.daysAway / maxDays) * 100;
                   const above = i % 2 === 0;
+                  const isLast = i === upcoming.length - 1 && pos > 90;
+                  const priorityClass =
+                    race.priority === 'A' ? 'a' :
+                    race.priority === 'B' ? 'b' : 'c';
+                  const stationCls = [
+                    'races-timeline-station',
+                    above ? 'placement-above' : 'placement-below',
+                    `priority-${priorityClass}`,
+                    isLast ? 'is-last' : '',
+                  ].filter(Boolean).join(' ');
+                  const Wrapper = race.slug
+                    ? ({ children }: { children: React.ReactNode }) => <a href={`/races/${race.slug}`} className={stationCls} style={{ left: `${pos}%`, textDecoration: 'none', color: 'inherit' }}>{children}</a>
+                    : ({ children }: { children: React.ReactNode }) => <div className={stationCls} style={{ left: `${pos}%` }}>{children}</div>;
                   return (
-                    <div key={race.name} className={`race-station ${above ? 'above' : 'below'} ${race.priority === 'A' ? 'a-race' : race.priority === 'B' ? 'b-race' : 'c-race'}`} style={{ left: `${pos}%` }}>
-                      <div className="race-station-dot"></div>
-                      <div className="race-station-label">
-                        <div className="race-station-priority">{race.priority}</div>
-                        <div className="race-station-name">{race.name}</div>
-                        <div className="race-station-meta">{race.date}</div>
-                        <div className="race-station-meta">{race.distanceLabel}</div>
-                        <div className="race-station-meta">Goal: {race.goal} · {race.daysAway}d away</div>
+                    <Wrapper key={`${race.name}-${race.date}`}>
+                      <div className={`races-timeline-tag ${priorityClass}`}>{race.priority}</div>
+                      <div className="races-timeline-station-info">
+                        <div className="races-timeline-date">{race.date}</div>
+                        <div className="races-timeline-name">{race.name}</div>
+                        <div className="races-timeline-pace">{race.distanceLabel}</div>
+                        <div className="races-timeline-goal">{race.goal !== '—' ? race.goal : ''}</div>
+                        <div className="races-timeline-away">{race.daysAway}d away</div>
                       </div>
-                    </div>
+                    </Wrapper>
                   );
-                })
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -336,17 +371,17 @@ export default async function RacesPage() {
               No past races logged. Add a recent race finish to seed your VDOT anchor.
             </div>
           ) : (
-            <div>
+            <div className="races-recent-list">
               {recent.map((r) => (
-                <div key={`${r.date}-${r.name}`} className={`recent-row ${r.currentAnchor ? 'current-anchor' : ''}`}>
-                  <div className="recent-date">{r.date.slice(5).replace('-', '/')}</div>
-                  <span className={`recent-priority ${r.priority === 'A' ? 'a-race' : r.priority === 'B' ? 'b-race' : 'c-race'}`}>{r.priority}</span>
-                  <div>
-                    <div className="recent-name">{r.name}</div>
-                    <div className="recent-meta">{r.distanceLabel}{r.note ? ` · ${r.note}` : ''}</div>
+                <div key={`${r.date}-${r.name}`} className={`races-recent-row ${r.currentAnchor ? 'is-anchor' : ''}`}>
+                  <div className="races-recent-date">{r.date.slice(5).replace('-', '/')}</div>
+                  <span className={`races-recent-priority p-${r.priority.toLowerCase()}`}>{r.priority}</span>
+                  <div className="races-recent-info">
+                    <div className="races-recent-name">{r.name}</div>
+                    <div className="races-recent-meta">{r.distanceLabel}{r.note ? ` · ${r.note}` : ''}</div>
                   </div>
-                  <div className="recent-time">{r.finish}</div>
-                  <div className="recent-pace">{r.pace}</div>
+                  <div className="races-recent-time">{r.finish}</div>
+                  <div className="races-recent-pace">{r.pace}</div>
                 </div>
               ))}
             </div>
@@ -362,21 +397,21 @@ export default async function RacesPage() {
             </div>
           </div>
 
-          <div className="pr-grid">
-            {PRs.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
-                No PRs yet — log past races to populate.
-              </div>
-            ) : (
-              PRs.map((pr) => (
-                <div key={pr.distance} className={`pr-card ${pr.current ? 'current' : ''}`}>
+          {PRs.length === 0 ? (
+            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              No PRs yet — log past races to populate.
+            </div>
+          ) : (
+            <div className="races-pr-grid">
+              {PRs.map((pr) => (
+                <div key={pr.distance} className={`pr-cell ${pr.current ? 'is-current' : ''}`}>
                   <div className="pr-distance">{pr.distance}</div>
                   <div className="pr-time">{pr.time}</div>
-                  <div className="pr-when">{pr.when}</div>
+                  <div className="pr-meta">{pr.when}</div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>

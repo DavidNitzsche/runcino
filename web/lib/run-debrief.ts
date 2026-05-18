@@ -119,33 +119,85 @@ export function generateRunDebrief(input: DebriefInput): string {
     sentences.push(`Ran ${actualDistanceMi.toFixed(1)} mi off plan.`);
   }
 
-  // ── PACE ────────────────────────────────────────────────────
+  // ── PACE + HR (cross-referenced for easy/long) ──────────────
   // Different logic per workout type:
-  //   - easy/long: avg pace IS the pace — compare directly to range
-  //   - quality (threshold/intervals): avg pace includes warm/cool, so
-  //     it's misleading; just flag if it's way off the easy band
-  //   - race: comment on whether goal pace held
+  //   - easy/long: pace + HR cross-referenced into ONE narrative
+  //     (so we don't say "ran too fast" AND "clean aerobic" — those
+  //     contradict; the joint read is "fitness gain, target needs
+  //     to update")
+  //   - quality: avg pace is misleading, look at splits instead
+  //   - race: comment on goal pace
   const isContinuous = planType === 'easy' || planType === 'long' || planType === 'recovery';
 
   if (isContinuous && paceLow && paceHigh && actualPaceSPerMi > 0) {
-    if (actualPaceSPerMi >= paceLow && actualPaceSPerMi <= paceHigh) {
-      sentences.push(`Pace held in the target band at ${fmtPace(actualPaceSPerMi)}/mi.`);
-    } else if (actualPaceSPerMi < paceLow) {
+    // Compute pace status
+    type PaceStatus = 'on-target' | 'slightly-fast' | 'fast' | 'very-fast' | 'slightly-slow' | 'slow';
+    let paceStatus: PaceStatus;
+    if (actualPaceSPerMi >= paceLow && actualPaceSPerMi <= paceHigh) paceStatus = 'on-target';
+    else if (actualPaceSPerMi < paceLow) {
       const delta = paceLow - actualPaceSPerMi;
-      if (delta < 20) {
-        sentences.push(`Slightly quick at ${fmtPace(actualPaceSPerMi)}/mi — within reason.`);
-      } else if (delta < 60) {
-        sentences.push(`Ran ${fmtPace(actualPaceSPerMi)}/mi — ${delta} sec/mi below easy target. Watch that creep; aerobic days work best when they stay aerobic.`);
-      } else {
-        sentences.push(`Ran ${fmtPace(actualPaceSPerMi)}/mi — way faster than the ${fmtPace(paceLow)}/mi floor. That's a tempo, not an easy day. Recovery tomorrow.`);
-      }
+      paceStatus = delta < 20 ? 'slightly-fast' : delta < 60 ? 'fast' : 'very-fast';
     } else {
-      // slower than paceHigh
       const delta = actualPaceSPerMi - paceHigh;
-      if (delta < 30) {
-        sentences.push(`Slightly slower than target at ${fmtPace(actualPaceSPerMi)}/mi — probably terrain or freshness.`);
+      paceStatus = delta < 30 ? 'slightly-slow' : 'slow';
+    }
+
+    // Compute HR status (uses max_hr when available, otherwise qualitative)
+    type HrStatus = 'unknown' | 'aerobic' | 'moderate' | 'elevated';
+    let hrStatus: HrStatus = 'unknown';
+    let hrPctSuffix = '';
+    if (actualAvgHr && actualAvgHr > 0) {
+      if (maxHr && maxHr > 0) {
+        const pct = Math.round((actualAvgHr / maxHr) * 100);
+        hrPctSuffix = ` (${pct}% max)`;
+        hrStatus = pct < 70 ? 'aerobic' : pct < 80 ? 'moderate' : 'elevated';
       } else {
-        sentences.push(`Slower than target at ${fmtPace(actualPaceSPerMi)}/mi — possibly fatigue, heat, or terrain. Worth a check.`);
+        // Qualitative bands without max HR
+        hrStatus = actualAvgHr < 145 ? 'aerobic' : actualAvgHr < 160 ? 'moderate' : 'elevated';
+      }
+    }
+
+    const pace = fmtPace(actualPaceSPerMi);
+    const target = `${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi`;
+    const hr = actualAvgHr ?? 0;
+
+    // Cross-referenced narrative
+    if (paceStatus === 'on-target') {
+      if (hrStatus === 'aerobic') {
+        sentences.push(`${pace}/mi at HR ${hr}${hrPctSuffix} — textbook easy execution.`);
+      } else if (hrStatus === 'moderate') {
+        sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix} — moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
+      } else if (hrStatus === 'elevated') {
+        sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — possible heat, fatigue, or sleep deficit. Worth a check.`);
+      } else {
+        sentences.push(`Pace held in the target band at ${pace}/mi.`);
+      }
+    } else if (paceStatus === 'slightly-fast') {
+      sentences.push(`Slightly quick at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — within reason.`);
+    } else if (paceStatus === 'fast') {
+      if (hrStatus === 'aerobic') {
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — well below the ${target} target but HR stayed firmly aerobic. That reads as a fitness gain, not "running too fast." Time to update your training paces — log a recent race to recalibrate.`);
+      } else if (hrStatus === 'moderate') {
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — faster than easy target with moderate HR. Borderline aerobic; recovery should still be normal but watch for cumulative fatigue.`);
+      } else if (hrStatus === 'elevated') {
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — that's a tempo, not an easy day. Recovery will take longer than a normal easy run.`);
+      } else {
+        sentences.push(`Ran ${pace}/mi — below the ${target} target. Easy days work best when they stay easy; watch that creep.`);
+      }
+    } else if (paceStatus === 'very-fast') {
+      if (hrStatus === 'aerobic') {
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — way faster than the ${target} target but HR stayed aerobic. The pace target is clearly out of sync with your fitness. Update it.`);
+      } else {
+        sentences.push(`Ran ${pace}/mi${hr ? ` at HR ${hr}${hrPctSuffix}` : ''} — way faster than the ${target} target. That's a hard workout, not an easy day. Recovery tomorrow.`);
+      }
+    } else if (paceStatus === 'slightly-slow') {
+      sentences.push(`Slightly slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — probably terrain or freshness.`);
+    } else {
+      // slow
+      if (hrStatus === 'elevated') {
+        sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — strong signal of an off day. Sleep, hydration, or accumulated fatigue. Real recovery needed.`);
+      } else {
+        sentences.push(`Slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — possibly fatigue, heat, or terrain. Worth a check.`);
       }
     }
   } else if (planType === 'quality' && actualPaceSPerMi > 0) {
