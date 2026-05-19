@@ -327,8 +327,23 @@ export default async function RacesPage() {
                 <>
                   <strong>{aRace.name} is {aRace.daysAway} days out</strong> — your A-race for this cycle and the only one that counts on the fitness ledger. You&apos;re in week 1 of 14, banking base miles. First half-pace work lands at week 5 — that&apos;s where the <strong>{aRace.goal} starts to feel real</strong>. No tune-up B-race on the calendar yet; we&apos;ll slot one around week 10 if you want a dress rehearsal.
                 </>
+              ) : recent.length > 0 ? (
+                /* E3 · no-upcoming-race + has-past-races state.
+                   Acknowledges the most recent finish and prompts the
+                   runner to anchor the next training cycle. */
+                <>
+                  Your most recent race was <strong>{recent[0].name} on {recent[0].date}</strong>. Without a new A-race on the calendar, training defaults to maintaining current fitness — no progression, no taper math, no race-specific work.{' '}
+                  <strong>Set a new goal race to anchor your next cycle.</strong>{' '}
+                  <a href="/races/add" style={{ color: 'var(--orange, #E85D26)', textDecoration: 'underline' }}>Add a race →</a>
+                </>
               ) : (
-                <>No upcoming races yet. Add your A-race in onboarding or from this page to start the race-pointed plan.</>
+                /* E3 · no-upcoming-race + no-past-races state.
+                   Cold-start prompt with clear next action. */
+                <>
+                  <strong>No upcoming race set.</strong> Plan defaults to maintaining fitness — aerobic base, no progression toward a specific finish line, no race-specific intensity work.{' '}
+                  <strong>Set a goal race to anchor training.</strong>{' '}
+                  <a href="/races/add" style={{ color: 'var(--orange, #E85D26)', textDecoration: 'underline' }}>Add a race →</a>
+                </>
               )}
             </p>
           </div>

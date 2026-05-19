@@ -28,7 +28,11 @@ interface Row {
 
 export async function GET(req: NextRequest) {
   const admin = await requireAdminOrOpToken(req);
-  const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+  const url = new URL(req.url);
+  const sinceParam = url.searchParams.get('since');
+  const cutoff = sinceParam && /^\d{4}-\d{2}-\d{2}$/.test(sinceParam)
+    ? sinceParam
+    : new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
   const rows = await query<Row>(
     `SELECT id::text AS id,
             data->>'date'                AS date,
@@ -59,6 +63,7 @@ export async function GET(req: NextRequest) {
         splitsPresent: splits != null,
         splitCount: splits?.length ?? 0,
         sampleSplit: splits?.[0] ?? null,
+        allSplits: splits ?? null,
         splitsWithGap: splits?.filter((s) => s.gapSPerMi != null).length ?? 0,
         splitsWithHr: splits?.filter((s) => s.avgHr != null).length ?? 0,
         detailHasSplitsStd: r.detail_has_splits_standard,
