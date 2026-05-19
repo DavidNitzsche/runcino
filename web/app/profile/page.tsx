@@ -27,6 +27,7 @@ import { validateMaxHr } from '@/lib/validate-max-hr';
 import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
 import { computeVdotShiftFinding } from '@/lib/vdot-shift';
+import { computeZ2Sparkline } from '@/lib/z2-sparkline';
 import { buildHrZonesBundle } from '@/lib/hr-zones';
 import './profile-v4.css';
 
@@ -209,6 +210,16 @@ export default async function ProfilePage() {
     fitness.vdot.value,
     today,
   ).catch(() => null);
+
+  // C2 · Z2 pace sparkline — 8-week trend at fixed HR. Reads same
+  // data Signal 2 uses, rolled up per ISO week. Renders only when
+  // ≥3 populated weeks (hasSignal=true).
+  const z2SparklineData = await computeZ2Sparkline(
+    auth.id,
+    new Date(),
+    fitness.maxHr.value,
+    fitness.restingHr.value,
+  ).catch(() => null);
   const vdotShiftForUI = (vdotShiftFinding?.shouldRender
       && vdotShiftFinding.currentVdot != null
       && vdotShiftFinding.lastReviewed != null
@@ -343,6 +354,7 @@ export default async function ProfilePage() {
             paceMigrationAckAt={user.pace_migration_ack_at}
             adaptiveVdotVerdict={adaptiveVdotForUI}
             vdotShift={vdotShiftForUI}
+            z2Sparkline={z2SparklineData}
           />
         </div>
 

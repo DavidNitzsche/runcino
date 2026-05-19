@@ -16,6 +16,8 @@ import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 import { PaceMigrationBanner } from './PaceMigrationBanner';
 import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdotBanner';
 import { VdotShiftBanner, type VdotShiftBannerProps } from './VdotShiftBanner';
+import { Z2Sparkline } from './Z2Sparkline';
+import type { Z2SparklineResult } from '@/lib/z2-sparkline';
 import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
@@ -106,6 +108,7 @@ export function CoachReadsCard({
   paceMigrationAckAt,
   adaptiveVdotVerdict,
   vdotShift,
+  z2Sparkline,
 }: {
   fitness: ResolvedFitness;
   maxHrVerdict?: MaxHrValidationVerdict | null;
@@ -123,6 +126,9 @@ export function CoachReadsCard({
    *  L7 banner — represents aggregate-level review, not per-workout
    *  evidence. */
   vdotShift?: VdotShiftBannerProps | null;
+  /** C2 · 8-week Z2 pace trend. Renders under the HR section when
+   *  hasSignal=true (≥3 weeks with Z2 splits). */
+  z2Sparkline?: Z2SparklineResult | null;
 }) {
   const explainer = aggregateExplainer(fitness.vdot);
   const needsMigrationAck = !paceMigrationAckAt;
@@ -388,6 +394,9 @@ export function CoachReadsCard({
             the runner's actual race / peak data, surface the verdict
             with Apply / Keep current actions + a falsifier line. */}
         {maxHrVerdict && <MaxHrValidationBanner verdict={maxHrVerdict} />}
+        {/* C2 · Z2 pace sparkline · 8-week trend at fixed HR. Renders
+            only when hasSignal=true (≥3 populated weeks). */}
+        {z2Sparkline && <Z2Sparkline data={z2Sparkline} />}
       </div>
 
       <style>{`
