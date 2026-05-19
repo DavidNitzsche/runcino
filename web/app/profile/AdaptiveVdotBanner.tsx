@@ -26,6 +26,10 @@ type Evidence = {
   prescribedPaceS: number | null;
   actualPaceS: number | null;
   actualAvgHr: number | null;
+  /** Temperature at workout start in °F. When present and ≤78°F,
+   *  shown beside HR as confirmation the evidence passed the heat
+   *  filter. null when location unknown — display omits the chip. */
+  temperatureF: number | null;
 };
 
 export type AdaptiveVdotVerdictForUI = {
@@ -164,6 +168,7 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
                 {' '}vs{' '}
                 <span style={{ color: 'rgba(13,15,18,.55)' }}>{fmtPace(e.prescribedPaceS)}</span>
                 {e.actualAvgHr != null && <> · {e.actualAvgHr} bpm</>}
+                {e.temperatureF != null && <> · {e.temperatureF}°F</>}
               </span>
             </div>
           ))}

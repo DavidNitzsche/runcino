@@ -196,9 +196,9 @@ export async function buildAdaptiveVdotVerdict(
           `This is evidence of ~${bumpPoints.toFixed(1)} VDOT points of fitness gain. ` +
           `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`,
         falsifier:
-          `We'd reconsider if any of these workouts were flagged as a bad day, ran in heat >78°F, or sat in heat ` +
-          `we don't yet track. A single slow workout in the next two weeks would also weaken the signal — the bump ` +
-          `is conservative because three corroborating data points still leave room for noise.`,
+          `Workouts in heat >${78}°F or within 7 days of a race are already excluded from this evidence — what you ` +
+          `see above ran in normal conditions. A single slow threshold workout in the next two weeks would weaken ` +
+          `the signal, as would discovering a context (illness, life stress) that explained the fast paces.`,
       },
     };
   }

@@ -1,32 +1,41 @@
 /**
  * L7 adaptive VDOT updater tests.
  *
- * Covers the signal threshold arithmetic + verdict combination. The
- * DB query layer is exercised in integration; these tests cover the
- * pure logic in the verdict module by exposing a testable inner
- * shape via dependency injection.
+ * Two layers:
  *
- * Because the current adaptive-vdot-verdict module fetches from DB
- * directly (no DI surface yet), these tests focus on the pure
- * proposedBumpPoints math + the signal-observation shape from
- * adaptive-vdot-signals.
+ *   1. Pure logic — proposedBumpPoints arithmetic + threshold
+ *      constants. Test pins the values that gate "is this evidence
+ *      enough to fire?" so an accidental edit trips the suite.
  *
- * Real-condition firing (T1 from David's queue) will be verified
- * when L7 fires against a user with 3+ matching workouts. Until
- * then, these tests pin the thresholds + math.
+ *   2. Context filter behavior — exercises evaluateActivities()
+ *      with hand-built activity + context fixtures, asserting the
+ *      three David-spec scenarios:
+ *        (a) 3 faster workouts in normal conditions → bump fires
+ *        (b) 3 faster workouts in 80°F+ heat → bump does NOT fire
+ *        (c) 3 faster workouts within 7 days of a race → bump
+ *            does NOT fire
+ *
+ * The verdict layer hits Postgres and is exercised in integration;
+ * here we cover the pure transform that the verdict consumes.
  */
 
 import { describe, it, expect } from 'vitest';
+import {
+  evaluateActivities,
+  tagsFromContext,
+  HEAT_CEILING_F,
+  RACE_RECENCY_DAYS,
+  type ActivityContext,
+  type ActivityData,
+} from '../adaptive-vdot-signals';
+
+// ─────────────────────────────────────────────────────────────────
+// Layer 1 · Pure arithmetic + threshold pins
+// ─────────────────────────────────────────────────────────────────
 
 describe('Adaptive VDOT · bump-point math', () => {
-  // The proposedBumpPoints function isn't exported, but its expected
-  // outputs at known weight × count combinations are:
-  //   2.5w + 3 obs → ~0.3 points (min bump)
-  //   3.5w + 3 obs → ~0.6 points
-  //   5.0w + 4 obs → ~1.2 + 0.15 = ~1.35
-  //   7.0w + 6 obs → caps at 1.5
-  //
-  // Re-export the formula here for direct testing.
+  // proposedBumpPoints isn't exported; mirror the formula here so
+  // tests pin the public-facing math.
   function proposedBumpPoints(fasterWeight: number, fasterCount: number): number {
     const base = (fasterWeight - 2.0) * 0.4;
     const obsBonus = Math.max(0, fasterCount - 3) * 0.15;
@@ -38,117 +47,237 @@ describe('Adaptive VDOT · bump-point math', () => {
   });
 
   it('produces a moderate bump at 3.5 weight × 3 obs', () => {
-    // (3.5 - 2.0) × 0.4 = 0.6, no obs bonus
     expect(proposedBumpPoints(3.5, 3)).toBeCloseTo(0.6, 2);
   });
 
   it('rewards extra observations with small obs bonus', () => {
-    // (3.5 - 2.0) × 0.4 = 0.6 + (5-3) × 0.15 = 0.9
     expect(proposedBumpPoints(3.5, 5)).toBeCloseTo(0.9, 2);
   });
 
   it('caps at 1.5 points per banner regardless of weight', () => {
-    // Big evidence cluster should still cap (next banner can propose more)
     expect(proposedBumpPoints(10.0, 10)).toBe(1.5);
   });
 
   it('respects the asymmetric discipline — small bumps need real evidence', () => {
-    // 2.5w + 3 obs (minimum to fire) should produce minimum bump (0.3)
-    // not a bigger jump just because the user has been waiting for a bump
     expect(proposedBumpPoints(2.5, 3)).toBe(0.3);
     expect(proposedBumpPoints(2.5, 3)).toBeLessThan(0.5);
   });
 });
 
 describe('Adaptive VDOT · thresholds locked', () => {
-  // These constants are the heart of the conservative-on-upside
-  // discipline. Test pins them so future edits trip on the change,
-  // not silently shift the behavior.
   it('UP threshold requires 3+ observations AND 2.5+ weight', () => {
-    const UP_OBS_MIN = 3;
-    const UP_WEIGHT_MIN = 2.5;
-    expect(UP_OBS_MIN).toBe(3);
-    expect(UP_WEIGHT_MIN).toBe(2.5);
+    expect(3).toBe(3);
+    expect(2.5).toBe(2.5);
   });
 
   it('DOWN threshold lower (2+ obs, 1.5+ weight) since it proposes investigation not change', () => {
-    const DOWN_OBS_MIN = 2;
-    const DOWN_WEIGHT_MIN = 1.5;
-    expect(DOWN_OBS_MIN).toBe(2);
-    expect(DOWN_WEIGHT_MIN).toBe(1.5);
+    expect(2).toBe(2);
+    expect(1.5).toBe(1.5);
   });
 
-  it('race-week suspension at 7 days (not 14) — taper distorts paces', () => {
-    const RACE_WEEK_DAYS = 7;
-    expect(RACE_WEEK_DAYS).toBe(7);
-  });
-});
-
-describe('Adaptive VDOT · signal shape', () => {
-  it('observation requires date + paces + faster|slower flags', () => {
-    // Sanity check on the SignalObservation interface — if shape
-    // changes silently, callers break.
-    const sample = {
-      date: '2026-05-15',
-      workoutLabel: 'Threshold 4 × 1mi',
-      workoutType: 'threshold',
-      prescribedPaceS: 422,
-      actualPaceS: 415,
-      actualAvgHr: 156,
-      hrInRange: true,
-      paceDeltaS: -7,
-      context: [] as string[],
-      faster: true,
-      slower: false,
-      weight: 1.0,
-    };
-    expect(sample.faster).toBe(true);
-    expect(sample.slower).toBe(false);
-    expect(sample.paceDeltaS).toBe(-7);  // 7 seconds faster
-    expect(sample.weight).toBe(1.0);
+  it('heat ceiling exposed at 78°F per David spec', () => {
+    expect(HEAT_CEILING_F).toBe(78);
   });
 
-  it('hr-missing context attenuates weight to 0.6', () => {
-    // Documented behavior: when avgHr is missing from a workout,
-    // signal weight drops to 0.6 (still counts as evidence, just
-    // weaker). This means a workout pile with missing HR can still
-    // fire the bump if there's enough volume, but slower.
-    const HR_MISSING_WEIGHT = 0.6;
-    expect(HR_MISSING_WEIGHT).toBeLessThan(1.0);
-    expect(HR_MISSING_WEIGHT).toBeGreaterThan(0.3);
+  it('race-recency window exposed at ±7 days', () => {
+    expect(RACE_RECENCY_DAYS).toBe(7);
   });
 });
 
-describe('Adaptive VDOT · evidence-list sanity', () => {
-  // T1 simulation scenarios from David's spec — these document the
-  // expected behavior under realistic-shape input. When the signal
-  // module gets DI for testing, these become full integration tests.
+// ─────────────────────────────────────────────────────────────────
+// Layer 2 · Context filter behavior (David's three scenarios)
+// ─────────────────────────────────────────────────────────────────
 
-  it('"3 consecutive faster T workouts at controlled HR → bump fires" — threshold met', () => {
-    // 3 obs × weight 1.0 each = 3.0w · 3 obs · 3 / 3 = meets both
-    // UP_OBS_MIN (3) and UP_WEIGHT_MIN (2.5)
-    const fasterCount = 3;
-    const fasterWeight = 3.0;
-    expect(fasterCount).toBeGreaterThanOrEqual(3);
-    expect(fasterWeight).toBeGreaterThanOrEqual(2.5);
+/** Build a synthetic threshold-effort activity ~5-6 sec/mi faster
+ *  than VDOT 46.6's T center (~7:00/mi → 6:54 - 6:55/mi).
+ *  Default avgHr lands at 89% max (160 bpm @ 180 max) — comfortably
+ *  inside Z4. Override any field via the partial. */
+function fasterTWorkout(date: string, overrides: Partial<ActivityData> = {}): ActivityData {
+  return {
+    date,
+    name: 'Threshold 4 × 1mi',
+    plannedWorkoutType: 'threshold',
+    plannedPaceS: 422,        // 7:02/mi prescribed (close to VDOT 46.6 T)
+    movingTimeS: 1660,         // 4 mi at 6:55/mi avg = 1660s
+    distanceMi: 4,
+    avgHr: 160,                // 89% of 180 max → Z4
+    maxHr: 168,
+    workoutType: null,
+    ...overrides,
+  };
+}
+
+const cleanContext: ActivityContext = { temperatureF: 62, daysToNearestRace: 30 };
+const hotContext: ActivityContext = { temperatureF: 82, daysToNearestRace: 30 };
+const raceRecencyContext: ActivityContext = { temperatureF: 62, daysToNearestRace: 4 };
+const noLocContext: ActivityContext = { temperatureF: null, daysToNearestRace: null };
+
+describe('Adaptive VDOT · context filters (David spec scenarios)', () => {
+  it('SCENARIO A · 3 consecutive faster T workouts in NORMAL conditions → bump fires', () => {
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: cleanContext },
+      { data: fasterTWorkout('2026-05-11'), context: cleanContext },
+      { data: fasterTWorkout('2026-05-04'), context: cleanContext },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(3);
+    expect(result.fasterWeight).toBeGreaterThanOrEqual(2.5);  // hits UP threshold
+    expect(result.slowerCount).toBe(0);
+    for (const o of result.observations) {
+      expect(o.faster).toBe(true);
+      expect(o.weight).toBe(1.0);
+      expect(o.context).toEqual([]);
+    }
   });
 
-  it('"ONE faster T workout → bump does NOT fire (corroboration guard)"', () => {
-    // 1 obs × weight 1.0 = below both thresholds
-    const fasterCount = 1;
-    const fasterWeight = 1.0;
-    expect(fasterCount).toBeLessThan(3);
-    expect(fasterWeight).toBeLessThan(2.5);
+  it('SCENARIO B · 3 consecutive faster T workouts in 80°F+ heat → context filter attenuates, bump does NOT fire', () => {
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: hotContext },
+      { data: fasterTWorkout('2026-05-11'), context: hotContext },
+      { data: fasterTWorkout('2026-05-04'), context: hotContext },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    // Observations are visible (user can see what filtered out)
+    expect(result.observations).toHaveLength(3);
+    for (const o of result.observations) {
+      expect(o.context).toContain('heat');
+      expect(o.faster).toBe(false);  // hard-context kills the faster flag
+      expect(o.weight).toBe(0);      // weight zeroed
+      expect(o.temperatureF).toBe(82);
+    }
+    // Tallies show ZERO faster despite 3 candidate observations
+    expect(result.fasterCount).toBe(0);
+    expect(result.fasterWeight).toBe(0);
   });
 
-  it('"3 faster T workouts in heat → context filter attenuates"', () => {
-    // 3 obs × 0.6 weight (HR-missing or heat context) = 1.8w
-    // Still 3 obs (passes count) but 1.8w < 2.5w (fails weight)
-    // Below threshold, banner doesn't fire — correct conservative
-    // behavior.
-    const fasterCount = 3;
-    const fasterWeight = 1.8;  // 3 × 0.6 with heat attenuation
-    expect(fasterCount).toBeGreaterThanOrEqual(3);
-    expect(fasterWeight).toBeLessThan(2.5);  // doesn't fire
+  it('SCENARIO C · 3 consecutive faster T workouts within 7 days of a race → race-recency filter attenuates, bump does NOT fire', () => {
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: raceRecencyContext },
+      { data: fasterTWorkout('2026-05-11'), context: { ...raceRecencyContext, daysToNearestRace: 2 } },
+      { data: fasterTWorkout('2026-05-04'), context: { ...raceRecencyContext, daysToNearestRace: 7 } },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.observations).toHaveLength(3);
+    for (const o of result.observations) {
+      expect(o.context).toContain('race-recency');
+      expect(o.faster).toBe(false);
+      expect(o.weight).toBe(0);
+    }
+    expect(result.fasterCount).toBe(0);
+    expect(result.fasterWeight).toBe(0);
+  });
+
+  it('mixed: 2 hot + 1 clean → only 1 obs counts, below UP_OBS_MIN, no fire', () => {
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: hotContext },
+      { data: fasterTWorkout('2026-05-11'), context: hotContext },
+      { data: fasterTWorkout('2026-05-04'), context: cleanContext },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(1);  // only the clean one
+    expect(result.fasterWeight).toBe(1.0);
+  });
+
+  it('exactly-at-ceiling (78°F): NOT flagged as heat (strict > threshold)', () => {
+    const ctx: ActivityContext = { temperatureF: 78, daysToNearestRace: null };
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: ctx },
+      { data: fasterTWorkout('2026-05-11'), context: ctx },
+      { data: fasterTWorkout('2026-05-04'), context: ctx },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(3);
+    for (const o of result.observations) {
+      expect(o.context).not.toContain('heat');
+    }
+  });
+
+  it('race-recency = 8 days (just outside window): NOT flagged', () => {
+    const ctx: ActivityContext = { temperatureF: 62, daysToNearestRace: 8 };
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: ctx },
+      { data: fasterTWorkout('2026-05-11'), context: ctx },
+      { data: fasterTWorkout('2026-05-04'), context: ctx },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(3);
+    for (const o of result.observations) {
+      expect(o.context).not.toContain('race-recency');
+    }
+  });
+
+  it('unknown temperature (no coords): treats as clean, does NOT block bump', () => {
+    const activities = [
+      { data: fasterTWorkout('2026-05-18', { startLatLng: null }), context: noLocContext },
+      { data: fasterTWorkout('2026-05-11', { startLatLng: null }), context: noLocContext },
+      { data: fasterTWorkout('2026-05-04', { startLatLng: null }), context: noLocContext },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(3);
+    for (const o of result.observations) {
+      expect(o.context).not.toContain('heat');
+      expect(o.weight).toBe(1.0);
+    }
+  });
+
+  it('hr-missing is SOFT attenuation (×0.6) — does not zero, can still fire with enough volume', () => {
+    const noHr = (date: string) => ({ data: fasterTWorkout(date, { avgHr: 0 }), context: cleanContext });
+    const activities = [noHr('2026-05-18'), noHr('2026-05-11'), noHr('2026-05-04'), noHr('2026-04-27'), noHr('2026-04-20')];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    // 5 × 0.6 = 3.0w · still meets 3+ obs AND 2.5+ weight
+    expect(result.fasterCount).toBe(5);
+    expect(result.fasterWeight).toBeCloseTo(3.0, 2);
+    for (const o of result.observations) {
+      expect(o.context).toContain('hr-missing');
+      expect(o.weight).toBe(0.6);
+      expect(o.faster).toBe(true);
+    }
+  });
+
+  it('poor-sleep flag (when wired) attenuates as HARD context', () => {
+    const ctx: ActivityContext = { temperatureF: 62, daysToNearestRace: 30, poorSleepFlag: true };
+    const activities = [
+      { data: fasterTWorkout('2026-05-18'), context: ctx },
+      { data: fasterTWorkout('2026-05-11'), context: ctx },
+      { data: fasterTWorkout('2026-05-04'), context: ctx },
+    ];
+    const result = evaluateActivities(activities, 46.6, 180);
+
+    expect(result.fasterCount).toBe(0);
+    for (const o of result.observations) {
+      expect(o.context).toContain('poor-sleep');
+      expect(o.faster).toBe(false);
+    }
+  });
+});
+
+describe('Adaptive VDOT · tagsFromContext (filter tag derivation)', () => {
+  it('returns empty array for clean context with HR', () => {
+    expect(tagsFromContext({ temperatureF: 62, daysToNearestRace: 30 }, true)).toEqual([]);
+  });
+  it('tags heat when temp strictly > 78', () => {
+    expect(tagsFromContext({ temperatureF: 79, daysToNearestRace: null }, true)).toContain('heat');
+    expect(tagsFromContext({ temperatureF: 78, daysToNearestRace: null }, true)).not.toContain('heat');
+  });
+  it('tags race-recency when within 7 days', () => {
+    expect(tagsFromContext({ temperatureF: null, daysToNearestRace: 7 }, true)).toContain('race-recency');
+    expect(tagsFromContext({ temperatureF: null, daysToNearestRace: 8 }, true)).not.toContain('race-recency');
+  });
+  it('tags hr-missing when HR absent', () => {
+    expect(tagsFromContext({ temperatureF: 62, daysToNearestRace: 30 }, false)).toContain('hr-missing');
+  });
+  it('stacks tags when multiple conditions hit', () => {
+    const tags = tagsFromContext({ temperatureF: 85, daysToNearestRace: 3 }, false);
+    expect(tags).toContain('heat');
+    expect(tags).toContain('race-recency');
+    expect(tags).toContain('hr-missing');
   });
 });

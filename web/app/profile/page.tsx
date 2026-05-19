@@ -192,6 +192,7 @@ export default async function ProfilePage() {
           prescribedPaceS: e.prescribedPaceS,
           actualPaceS: e.actualPaceS,
           actualAvgHr: e.actualAvgHr,
+          temperatureF: e.temperatureF,
         })),
         reason: adaptiveVdotVerdict.recommendation.reason,
         falsifier: adaptiveVdotVerdict.recommendation.falsifier,

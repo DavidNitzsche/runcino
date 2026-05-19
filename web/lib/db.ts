@@ -479,6 +479,24 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS adaptive_vdot_dismissed_at TIMESTAMPTZ;
     `);
+
+    // L7 Signal 1 context filters · workout weather cache
+    //
+    // Caches Open-Meteo historical archive lookups for (lat, lon, date)
+    // triples so the adaptive-VDOT signal evaluator doesn't refetch
+    // weather every render. lat/lon are stored rounded to 0.1° (~10 km
+    // grid) — workouts near each other share a row, neighbourhood noise
+    // collapses to a single cache entry. See lib/workout-weather.ts.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workout_weather_cache (
+        lat_round       NUMERIC(4,1) NOT NULL,
+        lon_round       NUMERIC(5,1) NOT NULL,
+        date            DATE NOT NULL,
+        temperature_f   INTEGER,
+        fetched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (lat_round, lon_round, date)
+      );
+    `);
     // Adaptive-recommendation dismissals — when the user clicks
     // "Keep current" on a max-HR validation prompt, the timestamp
     // here suppresses the banner for 30 days OR until new evidence
