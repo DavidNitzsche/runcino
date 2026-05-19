@@ -592,6 +592,27 @@ async function bootstrap(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions (user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);`);
 
+    // Native token auth (S6/iPhone-bridge phase 1) · extend sessions
+    // to support three token kinds:
+    //   · 'cookie'  · existing web cookie session · 30d TTL
+    //   · 'access'  · native Bearer token · 24h TTL
+    //   · 'refresh' · native refresh token · 90d TTL
+    //
+    // All three are opaque 32-byte tokens stored hashed at rest.  No
+    // JWT, no separate table — single auth machinery serves all three
+    // surfaces.  revoked_at marks a token as no longer valid (refresh
+    // rotation, logout, suspected leak).
+    //
+    // Existing 'cookie' rows have kind='cookie' via the DEFAULT.  No
+    // backfill needed.
+    await client.query(`
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'cookie';
+    `);
+    await client.query(`
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_user_kind ON sessions (user_id, kind);`);
+
     // connector_tokens — per-user OAuth credentials for every source
     await client.query(`
       CREATE TABLE IF NOT EXISTS connector_tokens (

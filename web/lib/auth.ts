@@ -192,10 +192,51 @@ async function createSessionCookie(userId: string): Promise<void> {
 }
 
 /**
- * Look up the currently-logged-in user from the session cookie.
- * Returns null if no cookie, expired session, or session not found.
+ * Look up the currently-logged-in user.
+ *
+ * Two paths:
+ *   · COOKIE PATH (web) · reads the `faff_session` cookie, matches
+ *     against sessions where kind='cookie' (or kind unset for legacy
+ *     rows · default 'cookie' was added in the S6 migration).
+ *   · BEARER PATH (native) · optional req param.  When provided +
+ *     contains `Authorization: Bearer <token>`, matches against
+ *     sessions where kind='access' and not revoked.
+ *
+ * Native clients call routes with the request object; web routes
+ * still call this with no args.  When both are present, BEARER wins
+ * (explicit > implicit).  Returns null if neither resolves.
  */
-export async function getCurrentUser(): Promise<AuthUser | null> {
+export async function getCurrentUser(req?: { headers: Headers } | Request): Promise<AuthUser | null> {
+  // ── Bearer path · native clients ────────────────────────────
+  if (req) {
+    const authHeader = req.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const bearer = authHeader.slice('Bearer '.length).trim();
+      if (bearer.length >= 16) {
+        const rows = await query<AuthUser>(
+          `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color
+             FROM sessions s
+             JOIN users u ON u.id = s.user_id
+            WHERE s.session_token = $1
+              AND s.kind = 'access'
+              AND s.expires_at > NOW()
+              AND s.revoked_at IS NULL
+            LIMIT 1;`,
+          [bearer],
+        );
+        if (rows[0]) {
+          query(`UPDATE sessions SET last_used_at = NOW() WHERE session_token = $1;`, [bearer]).catch(() => {});
+          return rows[0];
+        }
+        // Bearer present but invalid — don't fall through to cookie;
+        // an invalid bearer should fail explicitly, not silently
+        // succeed via an unrelated cookie session.
+        return null;
+      }
+    }
+  }
+
+  // ── Cookie path · web (unchanged) ──────────────────────────
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -204,7 +245,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color
      FROM sessions s
      JOIN users u ON u.id = s.user_id
-     WHERE s.session_token = $1 AND s.expires_at > NOW()
+     WHERE s.session_token = $1 AND s.expires_at > NOW() AND s.revoked_at IS NULL
      LIMIT 1;`,
     [token],
   );
