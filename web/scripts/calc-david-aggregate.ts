@@ -11,7 +11,10 @@ const cycleStart = new Date('2026-01-27T00:00:00Z');
 const bests: RaceBest[] = [
   { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: '17250968534', source: 'races', priority: 'A' },
   { label: 'Marathon', canonicalMi: 26.219, finishS: 12700, date: '2026-03-08', activityId: '17654375467', source: 'races', priority: 'A' },
-  { label: 'Marathon', canonicalMi: 26.219, finishS: 13015, date: '2026-04-26', activityId: '18270567015', source: 'races', priority: 'A' },
+  // David flipped Big Sur to hilly-excluded on 2026-05-19 round 2
+  { label: 'Marathon', canonicalMi: 26.219, finishS: 13015, date: '2026-04-26', activityId: '18270567015', source: 'races', priority: 'hilly-excluded' },
+  // Rose Bowl Half (auto-migration backfilled) — assume 1:38:38 (5918s) per David's note
+  { label: 'Half', canonicalMi: 13.109, finishS: 5918, date: '2026-01-18', activityId: 'rose-bowl', source: 'races', priority: 'A' },
   // David flipped Sombrero to C (tune-up) on 2026-05-19
   { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: '18362267811', source: 'races', priority: 'C' },
 ];

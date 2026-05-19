@@ -556,7 +556,12 @@ function getSeasonTimeline(all: SavedRace[], today: string): SeasonTimeline {
 
   const markers: SeasonMarker[] = inYear.map((r) => {
     const inPast = r.meta.date < today;
-    const priority: 'A' | 'B' | 'C' = r.meta.priority ?? 'A';
+    // meta.priority expanded to 6 levels (A/B/C/tune-up/training-run/
+    // hilly-excluded) for compute-vdot weighting; collapse to A/B/C
+    // for the season-strip visual treatment. Non-A/B levels render
+    // as C-tier dots since they're all "less than primary goal".
+    const rawPriority = r.meta.priority ?? 'A';
+    const priority: 'A' | 'B' | 'C' = rawPriority === 'A' ? 'A' : rawPriority === 'B' ? 'B' : 'C';
     const isPR = !!r.actualResult?.isPR || r.slug === prSlug;
     const pct = dayOfYearPct(r.meta.date, year);
 

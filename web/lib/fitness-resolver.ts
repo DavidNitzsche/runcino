@@ -86,7 +86,10 @@ async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
 async function getActiveRace(today: string, userId?: string): Promise<FitnessActiveRace | null> {
   let races;
   try { races = await listRacesDB(userId); } catch { return null; }
-  const priorityRank = (p: 'A' | 'B' | 'C' | undefined): number =>
+  // meta.priority can be A/B/C or one of the new effort levels
+  // (tune-up/training-run/hilly-excluded). For tiebreak ranking, the
+  // new levels all rank with C since they're sub-A intents.
+  const priorityRank = (p: string | undefined): number =>
     p === 'A' ? 0 : p === 'B' ? 1 : 2;
   const candidates = races
     .filter((r) => r.meta.date >= today)

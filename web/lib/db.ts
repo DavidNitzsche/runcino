@@ -563,7 +563,14 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
   //      user. Sim sweep was clean; David said "ship the pace band
   //      migration based on it" — so set users.pace_migration_ack_at
   //      automatically rather than requiring a click.
-  const MIG_NAME = '2026-05-19-race-priorities-and-rose-bowl';
+  // Round 2 extension (David 2026-05-19): "Big Sur still at 17%
+  // weight, VDOT 42.9 — eats ~0.7 VDOT points. L2 (hilly-course
+  // exclusion) remains the highest-leverage remaining unlock. Ship
+  // it." The UI for hilly-excluded was shipped in ec5d5b6; this
+  // migration also applies it for Big Sur so David doesn't have to
+  // click. Bumping the migration name to force the new block to
+  // run after the first migration already recorded.
+  const MIG_NAME = '2026-05-19-race-priorities-and-rose-bowl-r2';
   const already = await client.query<{ name: string }>(
     `SELECT name FROM data_migrations WHERE name = $1 LIMIT 1`,
     [MIG_NAME],
@@ -583,6 +590,15 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
       `UPDATE races
           SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{priority}', '"C"'::jsonb)
         WHERE slug = 'sombrero-half'`,
+    );
+    // 1c. Big Sur → hilly-excluded (round 2: David authorized this
+    //     directly; Big Sur was eating 17% of aggregate at VDOT
+    //     42.9 because of elevation-distorted finish time, not
+    //     fitness).
+    await client.query(
+      `UPDATE races
+          SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{priority}', '"hilly-excluded"'::jsonb)
+        WHERE slug = 'big-sur-marathon'`,
     );
 
     // 2. Rose Bowl seed — only if not already present.

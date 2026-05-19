@@ -677,7 +677,14 @@ function toNextRace(r: SavedRace): NextRace {
     distanceMi: r.meta.distanceMi,
     goalDisplay: r.meta.goalDisplay,
     goalFinishS: parseGoalHMS(r.meta.goalDisplay),
-    priority: r.meta.priority ?? 'A',
+    // meta.priority can be A/B/C/tune-up/training-run/hilly-excluded
+    // (compute-vdot effort levels); CoachActiveRace only models A/B/C
+    // for plan-building. Collapse the new levels to C since they're
+    // sub-A-race intents that the macrocycle treats similarly to C.
+    priority: (() => {
+      const p = r.meta.priority ?? 'A';
+      return p === 'A' || p === 'B' || p === 'C' ? p : 'C';
+    })(),
     daysAway,
   };
 }
