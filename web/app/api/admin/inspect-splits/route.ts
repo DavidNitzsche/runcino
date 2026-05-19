@@ -21,6 +21,9 @@ interface Row {
   name: string;
   dist: string;
   splits: unknown;
+  detail_has_splits_standard: boolean | null;
+  detail_splits_standard_len: number | null;
+  data_keys: string[];
 }
 
 export async function GET(req: NextRequest) {
@@ -31,7 +34,10 @@ export async function GET(req: NextRequest) {
             data->>'date'                AS date,
             COALESCE(data->>'name', '')  AS name,
             (data->>'distanceMi')::TEXT  AS dist,
-            data->'splits'               AS splits
+            data->'splits'               AS splits,
+            (detail->'splits_standard' IS NOT NULL) AS detail_has_splits_standard,
+            jsonb_array_length(COALESCE(detail->'splits_standard', '[]'::jsonb)) AS detail_splits_standard_len,
+            (SELECT array_agg(key) FROM jsonb_object_keys(data) AS key) AS data_keys
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'date') >= $2
@@ -55,6 +61,9 @@ export async function GET(req: NextRequest) {
         sampleSplit: splits?.[0] ?? null,
         splitsWithGap: splits?.filter((s) => s.gapSPerMi != null).length ?? 0,
         splitsWithHr: splits?.filter((s) => s.avgHr != null).length ?? 0,
+        detailHasSplitsStd: r.detail_has_splits_standard,
+        detailSplitsStdLen: r.detail_splits_standard_len,
+        dataKeys: r.data_keys,
       };
     }),
   });
