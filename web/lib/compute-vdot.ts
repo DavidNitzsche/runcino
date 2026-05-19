@@ -322,99 +322,75 @@ export function aggregateVdotFromInputs(inputs: AggregateInputs): AggregateVdot 
 
 // ── Public API: fetch + aggregate ────────────────────────────────
 
+interface RaceRow {
+  slug: string;
+  date: string;
+  distance_mi: number | null;
+  finish_s: number | null;
+  activity_id: string | null;
+  result_source: string | null;
+  name: string | null;
+}
+
 export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
   const today = new Date();
   const yearAgoIso = new Date(today.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
 
-  // Option-B JOIN: pull strava_activities LEFT JOIN races (linked by
-  // stravaActivityId stored in races.actual_result). When a race row
-  // exists with a curated finishS, it supersedes Strava's value.
-  const rows = await query<ActivityRow>(
+  // STRICT OPTION-B: aggregate reads ONLY from the curated races table.
+  // Strava activities not linked to a races entry never enter the
+  // aggregate — this prevents auto-detected best-effort segments
+  // (e.g. a 5K split inside a long run) from being mistreated as
+  // race performances. Per David's review of the Coach Reads card on
+  // 2026-05-19: a phantom 5K at VDOT 33.6 was pulled from raw Strava
+  // data and dragged the aggregate down ~0.4 points. Strict Option-B
+  // fixes the noise floor.
+  //
+  // Also: no dedup by canonical distance. Multiple HMs (e.g. Disney
+  // HM + Sombrero) and multiple marathons (LA + Big Sur) each
+  // contribute as independent signals. The cycle-aware weighting
+  // handles ordering — fastest doesn't have to be the only one.
+  const rows = await query<RaceRow>(
     `SELECT
-        sa.id::text AS id,
-        sa.data,
-        r.actual_result AS race_actual_result,
-        r.slug AS race_slug
-       FROM strava_activities sa
-       LEFT JOIN races r
-              ON (r.actual_result->>'stravaActivityId')::BIGINT = sa.id::BIGINT
-             AND (r.user_uuid = sa.user_uuid OR r.user_uuid IS NULL OR sa.user_uuid IS NULL)
-      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
-        AND (sa.data->>'date') >= $2
-        AND (
-          (sa.data->>'workoutType')::INTEGER = 1
-          OR sa.data->>'canonicalLabel' IS NOT NULL
-          OR (sa.data->>'distanceMi')::NUMERIC BETWEEN 2.95 AND 27.3
-        )
-        AND (sa.data->>'movingTimeS')::NUMERIC > 0
-      ORDER BY (sa.data->>'date') DESC
-      LIMIT 250`,
+        slug,
+        meta->>'date' AS date,
+        COALESCE((meta->>'distanceMi')::NUMERIC, (meta->>'distance_mi')::NUMERIC) AS distance_mi,
+        (actual_result->>'finishS')::NUMERIC AS finish_s,
+        actual_result->>'stravaActivityId' AS activity_id,
+        actual_result->>'source' AS result_source,
+        meta->>'name' AS name
+       FROM races
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND actual_result IS NOT NULL
+        AND (actual_result->>'finishS')::NUMERIC > 0
+        AND (meta->>'date') >= $2
+      ORDER BY (meta->>'date') DESC
+      LIMIT 50`,
     [userId, yearAgoIso],
   );
   if (rows.length === 0) return null;
 
-  // Group by canonical distance, taking the fastest in each bucket.
-  // Option-B: prefer races.actual_result.finishS when present.
-  const bestsMap = new Map<string, RaceBest>();
+  const bests: RaceBest[] = [];
   for (const r of rows) {
-    const d = r.data;
-    let label: string | undefined;
-    let canonMi = 0;
-    let finishS = 0;
-    let source: 'races' | 'strava' = 'strava';
+    const distMi = Number(r.distance_mi ?? 0);
+    const finishS = Number(r.finish_s ?? 0);
+    if (distMi <= 0 || finishS <= 0) continue;
 
-    // Option-B preference: curated chip time wins over Strava's.
-    const curated = r.race_actual_result?.finishS;
-    if (curated && curated > 0) {
-      finishS = Number(curated);
-      source = 'races';
-      // Distance from Strava data (curated finishS is paired with the
-      // Strava activity by stravaActivityId; the distance comes from
-      // the underlying activity).
-      const inferDist = Number(d.distanceMi) || 0;
-      if (d.canonicalLabel) {
-        label = d.canonicalLabel;
-        const matched = inferCanonical(label === 'Half' ? 13.109 : label === 'Marathon' ? 26.219 : inferDist);
-        canonMi = matched?.canonicalMi ?? inferDist;
-      } else if (inferDist > 0) {
-        const matched = inferCanonical(inferDist);
-        if (matched) { label = matched.label; canonMi = matched.canonicalMi; }
-      }
-    } else if (d.canonicalLabel && d.canonicalFinishS && d.canonicalFinishS > 0) {
-      label = d.canonicalLabel;
-      finishS = Number(d.canonicalFinishS);
-      const matched = inferCanonical(label === 'Half' ? 13.109 : label === 'Marathon' ? 26.219 : Number(d.distanceMi) || 0);
-      canonMi = matched?.canonicalMi ?? (Number(d.distanceMi) || 0);
-    } else if (Number(d.distanceMi)) {
-      const matched = inferCanonical(Number(d.distanceMi));
-      if (matched) {
-        label = matched.label;
-        canonMi = matched.canonicalMi;
-        finishS = Number(d.movingTimeS) || 0;
-      }
-    }
-    if (!label || finishS <= 0 || canonMi <= 0) continue;
+    const matched = inferCanonical(distMi);
+    // If the race distance doesn't match any canonical bucket within
+    // 5%, skip it — vdotFromRace can't map non-canonical distances
+    // to VDOT. Common case: trail / ultra / unusual-length races.
+    if (!matched) continue;
 
-    const prior = bestsMap.get(label);
-    // When two activities map to the same distance bucket, prefer:
-    //   1. The one with curated source (races) over strava
-    //   2. The faster finish (when source tier is equal)
-    if (
-      !prior ||
-      (source === 'races' && prior.source === 'strava') ||
-      (source === prior.source && finishS < prior.finishS)
-    ) {
-      bestsMap.set(label, {
-        label,
-        canonicalMi: canonMi,
-        finishS,
-        date: d.date || '',
-        activityId: r.id,
-        source,
-      });
-    }
+    bests.push({
+      label: matched.label,
+      canonicalMi: matched.canonicalMi,
+      finishS,
+      date: r.date ?? '',
+      activityId: r.activity_id ?? r.slug,
+      source: 'races' as const,
+    });
   }
-  if (bestsMap.size === 0) return null;
+  if (bests.length === 0) return null;
 
   // Resolve cycle window + goal race
   const [cycleStart, goalRace] = await Promise.all([
@@ -423,7 +399,7 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
   ]);
 
   return aggregateVdotFromInputs({
-    bests: Array.from(bestsMap.values()),
+    bests,
     cycleStart,
     goalTier: goalRace?.tier ?? null,
     today,

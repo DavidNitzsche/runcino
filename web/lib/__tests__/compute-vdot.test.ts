@@ -146,18 +146,23 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
     expect(result!.sources[0].source).toBe('races');  // Option-B curated
   });
 
-  it('produces VDOT 47.4 in scenario without 10K data point', () => {
-    // Prior hand-calc assumed HM 1:34:54 → exactly VDOT 48.0, but the
-    // lookup table brackets it between VDOT 48 (halfS=5701) and VDOT
-    // 50 (halfS=5495). 5694s is faster than VDOT 48 by 7 seconds, so
-    // the interpolated VDOT is 48 + (7/206)×2 = 48.07 → rounds to
-    // 48.1. With HM at 48.1 and Marathon at 44.2, the HM-only-plus-M
-    // aggregate lands at 47.4 (not 47.3 as the prior hand-calc said).
-    // This 0.1-point precision drift was the test catching the
-    // rounding error in my earlier worked example.
+  it('produces ~45.8 with full curated race set (no dedup by canonical distance)', () => {
+    // Real-world scenario after the 2026-05-19 strict Option-B fix:
+    // David's curated races table holds 4 past races. None get deduped
+    // by canonical distance — both HMs (Disney + Sombrero) and both
+    // marathons (LA + Big Sur) each contribute. The aggregate lands
+    // around 45.8 with the Sombrero tune-up pulling it down from the
+    // Disney HM peak. Tomorrow's race-effort-level flag will let
+    // tune-ups carry lower weight; for now, all races weighted normal.
     const bests: RaceBest[] = [
+      // Disney HM 2026-02-01 — 1:34:54 chip, goal-tier exempt
       { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: '17250968534', source: 'races' },
+      // LA Marathon 2026-03-08 — 3:31:40 chip, adjacent tier
       { label: 'Marathon', canonicalMi: 26.219, finishS: 12700, date: '2026-03-08', activityId: '17654375467', source: 'races' },
+      // Big Sur Marathon 2026-04-26 — 3:36:55, adjacent tier
+      { label: 'Marathon', canonicalMi: 26.219, finishS: 13015, date: '2026-04-26', activityId: '18270567015', source: 'races' },
+      // Sombrero Half 2026-05-03 — 1:40:57, goal-tier exempt (most recent)
+      { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: '18362267811', source: 'races' },
     ];
 
     const result = aggregateVdotFromInputs({
@@ -167,7 +172,21 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
       today: TODAY,
     });
 
-    expect(result!.value).toBeCloseTo(47.4, 1);
+    expect(result).not.toBeNull();
+    expect(result!.sourceCount).toBe(4);
+    // Two HMs (goal-tier exempt, full weight) + two marathons (decay).
+    // Hand-computed aggregate lands at 45.8 ±0.2 depending on rounding.
+    expect(result!.value).toBeGreaterThanOrEqual(45.5);
+    expect(result!.value).toBeLessThanOrEqual(46.1);
+
+    // Both HMs should be exempt (full recency weight).
+    const hms = result!.sources.filter((s) => s.canonicalLabel === 'Half');
+    expect(hms.length).toBe(2);
+    for (const hm of hms) {
+      expect(hm.isGoalTier).toBe(true);
+      expect(hm.isInCycle).toBe(true);
+      expect(hm.weightBreakdown.recency).toBe(1.0);
+    }
   });
 
   it('returns null when no bests provided', () => {

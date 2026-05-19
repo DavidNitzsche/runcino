@@ -73,10 +73,20 @@ function aggregateExplainer(vdot: FitnessVdot): string | null {
     );
   }
 
-  // Other contributors summary
+  // Other contributors summary — no asterisks; provenance is in the
+  // per-contributor badge row below the explainer. Inlining "(chip
+  // time)" reads as confirmation of curated source without dragging
+  // an unexplained * into the prose.
   if (others.length > 0 && othersPct > 0) {
+    // Group by name so two HMs collapse to one mention.
+    const seen = new Set<string>();
     const labels = others
-      .map((c) => `${c.name}${c.source === 'races' ? '*' : ''}`)
+      .filter((c) => {
+        if (seen.has(c.name)) return false;
+        seen.add(c.name);
+        return true;
+      })
+      .map((c) => c.name)
       .join(', ');
     parts.push(
       ` ${labels} contribute the remaining **${othersPct}%** via adjacent-tier recency decay.`,
@@ -262,7 +272,10 @@ export function CoachReadsCard({
 
       {/* ── DERIVED PACE BANDS (canonical Daniels) ── */}
       <div className="coach-reads-section">
-        <div className="coach-reads-label">Pace Bands · canonical Daniels for VDOT {fitness.vdot.value.toFixed(0)}</div>
+        <div className="coach-reads-label">
+          Pace Bands · canonical Daniels for VDOT {fitness.vdot.value.toFixed(1)}
+          {Number.isInteger(fitness.vdot.value) ? '' : ' (interpolated)'}
+        </div>
         <div className="coach-reads-pace-grid">
           <div className="coach-reads-pace-cell">
             <div className="coach-reads-pace-zone">E · Easy</div>

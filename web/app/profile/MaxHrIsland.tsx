@@ -122,16 +122,24 @@ export function MaxHrIsland() {
               <>
                 {(() => {
                   const reads = state.computed.topReadings ?? [];
-                  // How many readings are within 3 bpm of the peak? Those
-                  // are corroborating evidence the peak is real, not a glitch.
+                  // How many readings are within 3 bpm of the peak?
+                  //
+                  // INVERTED COPY (David review 2026-05-19): hitting
+                  // near-max across multiple sustained runs is evidence
+                  // the stored max is TOO LOW, not confirmation that
+                  // it's correct. A true physiological max is a rare,
+                  // brief reading from a terminal effort — not a value
+                  // routinely reached on threshold or HM races.
+                  //
+                  // When the ceiling cluster is suspiciously dense
+                  // (≥3 readings within 3 bpm), surface it as suspect.
+                  // Lone peak from a terminal-effort race remains
+                  // honest framing.
                   const close = reads.filter((r) => r.hr >= state.computed!.value - 3).length;
                   if (close >= 3) {
                     return (
                       <>
-                        Confirmed across <strong>{close} runs</strong> within 3 bpm of {state.computed.value}.
-                        Peak from <strong>{state.computed.source.name}</strong>
-                        {state.computed.source.date && <> · {fmtDate(state.computed.source.date)}</>}
-                        {state.computed.source.workoutType === 1 && ' · race'}.
+                        <strong style={{ color: '#b3450a' }}>⚠ Suspect ceiling</strong> — hit within 3 bpm of {state.computed.value} on <strong>{close} runs</strong>. A true max usually appears on ONE terminal-effort reading, not regularly during sustained races. Investigate avg-HR-to-peak ratio before trusting; your true max may be higher.
                       </>
                     );
                   }
