@@ -278,13 +278,18 @@ interface ProfileApiErr {
 
 export async function GET(): Promise<Response> {
   try {
-    const state = await gatherCoachState();
+    let userId: string | undefined;
+    try {
+      const { requireActiveUser } = await import('../../../lib/auth');
+      userId = (await requireActiveUser()).id;
+    } catch { /* anon ok */ }
+    const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
     const year = Number(today.slice(0, 4));
 
     // ── Data sources (real where we can). ─────────────────────
     const [cache, dbShoes, profileRow, prefsRow, goalRows] = await Promise.all([
-      getCachedActivities().catch(
+      getCachedActivities(userId).catch(
         () => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 }),
       ),
       listShoes().catch(() => [] as Shoe[]),

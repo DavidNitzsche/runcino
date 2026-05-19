@@ -80,7 +80,12 @@ export async function refreshActivities(): Promise<{ activities: StravaActivity[
  *  canonicalFinishS = 1:32:37 (chip time at exactly 13.10 mi) and
  *  canonicalDistanceMi = 13.10. For activities without detail, the
  *  canonical fields stay null and consumers fall back to movingTimeS. */
-export async function getCachedActivities(): Promise<{ activities: NormalizedActivity[]; fetchedAt: number }> {
+/** Pull cached Strava activities, optionally scoped to a user.
+ *  Multi-tenant pattern matches races: when userId is supplied, returns
+ *  rows where user_uuid matches OR user_uuid IS NULL (un-migrated legacy
+ *  rows still visible — no regression). Without userId, returns all
+ *  activities (admin/back-compat). */
+export async function getCachedActivities(userId?: string): Promise<{ activities: NormalizedActivity[]; fetchedAt: number }> {
   const state = await getSyncState();
   const lastAt = state.lastFetchedAt ? Date.parse(state.lastFetchedAt) : 0;
   const stale = !lastAt || Date.now() - lastAt > TTL_MS;
@@ -93,9 +98,16 @@ export async function getCachedActivities(): Promise<{ activities: NormalizedAct
     }
   }
 
-  const rows = await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
-    `SELECT data, detail, fetched_at FROM strava_activities ORDER BY (data->>'startLocal') DESC`,
-  );
+  const rows = userId
+    ? await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
+        `SELECT data, detail, fetched_at FROM strava_activities
+          WHERE user_uuid = $1 OR user_uuid IS NULL
+          ORDER BY (data->>'startLocal') DESC`,
+        [userId],
+      )
+    : await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
+        `SELECT data, detail, fetched_at FROM strava_activities ORDER BY (data->>'startLocal') DESC`,
+      );
   // Re-normalize from detail when we have it, so canonical-distance
   // best_efforts surface in the listing. Falls back to the stored
   // summary normalization otherwise.

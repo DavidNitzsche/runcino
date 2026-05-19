@@ -89,12 +89,17 @@ interface RacesApiErr {
 
 export async function GET(): Promise<Response> {
   try {
-    const state = await gatherCoachState();
+    let userId: string | undefined;
+    try {
+      const { requireActiveUser } = await import('../../../lib/auth');
+      userId = (await requireActiveUser()).id;
+    } catch { /* anon ok */ }
+    const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 
     // No races yet → empty array. The /races page handles the empty case
     // with a "NO RACES YET — ADD ONE" CTA; we never synthesize fake races.
-    const rawRaces = await listRacesDB().catch(() => []);
+    const rawRaces = await listRacesDB(userId).catch(() => []);
     const allRaces = rawRaces;
     const upcoming = allRaces.filter((r) => r.meta.date >= today);
     const nextA = upcoming.find((r) => (r.meta.priority ?? 'A') === 'A') ?? null;

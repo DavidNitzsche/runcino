@@ -422,7 +422,12 @@ interface HealthApiErr {
 
 export async function GET(): Promise<Response> {
   try {
-    const state = await gatherCoachState();
+    let userId: string | undefined;
+    try {
+      const { requireActiveUser } = await import('../../../lib/auth');
+      userId = (await requireActiveUser()).id;
+    } catch { /* anon ok */ }
+    const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 
     // Coach methods we actually call. bodySystems is the centerpiece;

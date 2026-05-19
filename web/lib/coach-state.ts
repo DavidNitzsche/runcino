@@ -262,13 +262,17 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     // When userId is provided, races scoped to that user (legacy rows with
     // null user_uuid stay visible for now — additive migration).
     listRacesDB(opts.userId).catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
-    getCachedActivities().catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
+    getCachedActivities(opts.userId).catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
     // gatherCheckinAggregate swallows DB failures internally so this
     // resolves to a 0-rows aggregate when Postgres is unavailable.
     gatherCheckinAggregate(todayISO),
     // Prefs are optional — when the user_prefs table is unreachable or
     // has no row, parsePrefsRow(null) returns the engine-wide defaults.
-    getUserPrefs('me').catch(() => null),
+    // Prefs are user-scoped via user_id text (legacy 'me' for single-
+    // tenant rows). prefs-store accepts a string user_id; passing the
+    // resolved userId when available, otherwise falls back to 'me' so
+    // existing single-tenant data still reads.
+    getUserPrefs(opts.userId ?? 'me').catch(() => null),
     // Skips are optional — empty list when the table is unreachable or
     // when the runner hasn't ever clicked Skip Today.
     listRecentSkips({ sinceISO: isoDateOffset(today, -14) }).catch(

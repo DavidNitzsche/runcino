@@ -16,6 +16,7 @@
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
+import { requireActiveUser } from '../../../lib/auth';
 import { coach } from '../../../coach/coach';
 import type {
   CoachDecision,
@@ -108,10 +109,12 @@ interface TrainingApiErr {
 
 export async function GET(): Promise<Response> {
   try {
-    const state = await gatherCoachState();
+    let userId: string | undefined;
+    try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+    const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 
-    const allRaces = await listRacesDB().catch(() => []);
+    const allRaces = await listRacesDB(userId).catch(() => []);
     const upcoming = allRaces
       .filter((r) => r.meta.date >= today)
       .sort((a, b) => a.meta.date.localeCompare(b.meta.date));
