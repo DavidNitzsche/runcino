@@ -129,6 +129,17 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE strava_activities
         ADD COLUMN IF NOT EXISTS shoe_id INTEGER REFERENCES shoes(id);
     `);
+    // Auto-assign attribution: when syncSingleActivity's shoe-picker
+    // assigned the row, the timestamp is set here. Manual user picks
+    // CLEAR this column — once the user touches the field, the row
+    // is no longer auto-attributed even if they pick the same shoe.
+    // The /runs/[id] UI reads `auto_assigned = (shoe_auto_assigned_at
+    // IS NOT NULL)` to render the "auto-assigned as your easy-day
+    // shoe" caption.
+    await client.query(`
+      ALTER TABLE strava_activities
+        ADD COLUMN IF NOT EXISTS shoe_auto_assigned_at TIMESTAMPTZ;
+    `);
     await client.query(`
       ALTER TABLE shoes
         ADD COLUMN IF NOT EXISTS preferred BOOLEAN NOT NULL DEFAULT TRUE;

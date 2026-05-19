@@ -170,6 +170,49 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
     console.warn('[sync-strava-user] writeback failed', activity.id, e);
   }
 
+  // Shoe auto-assign — ported from dev branch commit 29887d6
+  // ("feat(sync): shoe-picker with preferred-wins + ambiguity
+  // bailout"). Pick a shoe IF the planned workout type maps to
+  // a single clear choice in the rotation; bail out otherwise.
+  //
+  // Gated on the row's CURRENT shoe_id being NULL — never overwrite
+  // a manual pick. Re-fire safety: the COALESCE check inside the
+  // UPDATE handles concurrent writes from the manual /shoe endpoint.
+  try {
+    const { pickShoeForWorkout } = await import('./shoe-picker');
+    const { buildSyntheticPlan } = await import('./synthetic-plan');
+    const dateISO = norm.date || (norm.startLocal || '').slice(0, 10);
+    if (dateISO) {
+      const weeks = buildSyntheticPlan();
+      let matchedDay = null;
+      for (const w of weeks) {
+        const d = w.days.find((dd) => dd.date === dateISO);
+        if (d) { matchedDay = d; break; }
+      }
+      if (matchedDay && !matchedDay.isRest) {
+        const shoeId = await pickShoeForWorkout(userId, matchedDay.type);
+        if (shoeId != null) {
+          const result = await query<{ assigned: boolean }>(
+            `UPDATE strava_activities
+                SET shoe_id = $2,
+                    shoe_auto_assigned_at = NOW()
+              WHERE id = $1
+                AND shoe_id IS NULL
+              RETURNING TRUE AS assigned`,
+            [activity.id, shoeId],
+          );
+          console.log('[sync-strava-user] shoe',
+            result.length > 0 ? `auto-assigned ${shoeId}` : 'skipped (already set)');
+        } else {
+          console.log('[sync-strava-user] shoe skipped (ambiguous or no match)');
+        }
+      }
+    }
+  } catch (e) {
+    // Auto-assign is best-effort — never block the sync.
+    console.warn('[sync-strava-user] shoe auto-assign failed', activity.id, e);
+  }
+
   return { ok: true };
 }
 

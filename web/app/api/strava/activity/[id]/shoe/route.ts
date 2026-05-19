@@ -1,17 +1,25 @@
 import { query } from '../../../../../../lib/db';
 import { addMileage } from '../../../../../../lib/shoe-store';
 
-/** GET — return current shoe_id for this activity */
+/** GET — return current shoe_id for this activity plus an
+ *  `auto_assigned` flag (true iff the row was set by the sync-time
+ *  shoe-picker and never touched by the user). The UI uses
+ *  auto_assigned to render an "auto-assigned as your easy-day shoe"
+ *  caption that disappears once the user manually changes the field. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const rows = await query<{ shoe_id: number | null }>(
-      `SELECT shoe_id FROM strava_activities WHERE id = $1`,
+    const rows = await query<{ shoe_id: number | null; shoe_auto_assigned_at: Date | null }>(
+      `SELECT shoe_id, shoe_auto_assigned_at FROM strava_activities WHERE id = $1`,
       [Number(id)],
     );
-    return Response.json({ shoe_id: rows[0]?.shoe_id ?? null });
+    const row = rows[0];
+    return Response.json({
+      shoe_id: row?.shoe_id ?? null,
+      auto_assigned: row?.shoe_auto_assigned_at != null,
+    });
   } catch (e) {
-    return Response.json({ shoe_id: null, error: String(e) });
+    return Response.json({ shoe_id: null, auto_assigned: false, error: String(e) });
   }
 }
 
@@ -44,9 +52,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       await addMileage(shoe_id, distanceMi);
     }
 
-    // Update the activity
+    // Update the activity. Clear shoe_auto_assigned_at — once the
+    // user touches the field manually, the row is no longer auto-
+    // attributed (even if they pick the same shoe). The "auto-assigned
+    // as your easy-day shoe" caption disappears.
     await query(
-      `UPDATE strava_activities SET shoe_id = $1 WHERE id = $2`,
+      `UPDATE strava_activities
+          SET shoe_id = $1,
+              shoe_auto_assigned_at = NULL
+        WHERE id = $2`,
       [shoe_id, activityId],
     );
 
