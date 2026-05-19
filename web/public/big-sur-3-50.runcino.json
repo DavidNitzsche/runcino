@@ -1,0 +1,287 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-05-04T21:18:41.308Z",
+  "generator": "faff-web@0.1.0",
+  "race": {
+    "name": "Big Sur Marathon",
+    "date": "2026-04-26",
+    "distance_mi": 26.22,
+    "distance_m": 42199,
+    "total_gain_ft": 1015,
+    "total_loss_ft": 1233
+  },
+  "goal": {
+    "finish_time_s": 13800,
+    "finish_time_display": "3:50:00",
+    "strategy": "even_effort",
+    "flat_pace_s_per_mi": 526,
+    "warmup": {
+      "enabled": false,
+      "distance_mi": 0,
+      "pace_s_per_mi": null
+    },
+    "claude_rationale": null
+  },
+  "fitness_summary": {
+    "baseline_race": {
+      "name": "manual",
+      "finish_s": 0,
+      "months_ago": 0
+    },
+    "weekly_mileage": 0,
+    "weekly_mileage_trend_6wk": 0,
+    "longest_recent_long_run_mi": 0,
+    "longest_recent_long_run_age_wk": 0,
+    "resting_hr_bpm": 0,
+    "resting_hr_trend_8wk": 0,
+    "age": null,
+    "weight_lb": null,
+    "source": "manual"
+  },
+  "tolerance": {
+    "pace_s_per_mi": 10
+  },
+  "phases": [
+    {
+      "index": 0,
+      "label": "Opening miles",
+      "start_mi": 0,
+      "end_mi": 4,
+      "distance_mi": 4,
+      "target_pace_s_per_mi": 525,
+      "target_pace_display": "8:45/mi",
+      "mean_grade_pct": -0.6,
+      "elevation_gain_ft": 39,
+      "elevation_loss_ft": 176,
+      "cumulative_time_s": 2100,
+      "cumulative_time_display": "0:35:00",
+      "note": "Flat redwood corridor. Hold back. Crowded, easy to run too fast — clock goal pace, don't chase."
+    },
+    {
+      "index": 1,
+      "label": "Rolling approach",
+      "start_mi": 4,
+      "end_mi": 10,
+      "distance_mi": 6,
+      "target_pace_s_per_mi": 540,
+      "target_pace_display": "9:00/mi",
+      "mean_grade_pct": 0.5,
+      "elevation_gain_ft": 135,
+      "elevation_loss_ft": 108,
+      "cumulative_time_s": 5340,
+      "cumulative_time_display": "1:29:00",
+      "note": "Rolling hills to the base of Hurricane Point. Headwind possible. Effort over pace. Eat gel #1 at mile 6 before things get hard."
+    },
+    {
+      "index": 2,
+      "label": "Hurricane Point climb",
+      "start_mi": 10,
+      "end_mi": 12,
+      "distance_mi": 2,
+      "target_pace_s_per_mi": 615,
+      "target_pace_display": "10:15/mi",
+      "mean_grade_pct": 2.5,
+      "elevation_gain_ft": 457,
+      "elevation_loss_ft": 0,
+      "cumulative_time_s": 6570,
+      "cumulative_time_display": "1:49:30",
+      "note": "The hardest 2 miles of your year. Shorten stride, lift cadence, walk if HR > 172. Drums at the top."
+    },
+    {
+      "index": 3,
+      "label": "Hurricane descent",
+      "start_mi": 12,
+      "end_mi": 15,
+      "distance_mi": 3,
+      "target_pace_s_per_mi": 495,
+      "target_pace_display": "8:15/mi",
+      "mean_grade_pct": -2.5,
+      "elevation_gain_ft": 30,
+      "elevation_loss_ft": 257,
+      "cumulative_time_s": 8055,
+      "cumulative_time_display": "2:14:15",
+      "note": "Long sweeping descent off Hurricane Point. Don't hammer — quads need to last. Gel #3 at the top of the drop."
+    },
+    {
+      "index": 4,
+      "label": "Bluffs · exposed miles",
+      "start_mi": 15,
+      "end_mi": 24,
+      "distance_mi": 9,
+      "target_pace_s_per_mi": 515,
+      "target_pace_display": "8:35/mi",
+      "mean_grade_pct": 0.2,
+      "elevation_gain_ft": 312,
+      "elevation_loss_ft": 382,
+      "cumulative_time_s": 12690,
+      "cumulative_time_display": "3:31:30",
+      "note": "Open ocean bluffs — headwind exposure is high. Tuck behind other runners if it picks up. Gels at 17 and 21."
+    },
+    {
+      "index": 5,
+      "label": "Final push",
+      "start_mi": 24,
+      "end_mi": 26.22,
+      "distance_mi": 2.22,
+      "target_pace_s_per_mi": 500,
+      "target_pace_display": "8:20/mi",
+      "mean_grade_pct": -0.1,
+      "elevation_gain_ft": 41,
+      "elevation_loss_ft": 52,
+      "cumulative_time_s": 13800,
+      "cumulative_time_display": "3:50:00",
+      "note": "Carmel is close. Empty the tank from mile 25. You've trained for this — the crowds carry you to the line."
+    }
+  ],
+  "intervals": [
+    {
+      "index": 0,
+      "phase_idx": 0,
+      "kind": "pace",
+      "at_mi": 0,
+      "distance_mi": 4,
+      "target_pace_s_per_mi": 525,
+      "tolerance_s_per_mi": 10,
+      "label": "Opening miles"
+    },
+    {
+      "index": 1,
+      "phase_idx": 1,
+      "kind": "fuel",
+      "at_mi": 6,
+      "duration_s": 30,
+      "item": "Maurten gel · water",
+      "gel_number": 1,
+      "label": "Gel 1"
+    },
+    {
+      "index": 2,
+      "phase_idx": 1,
+      "kind": "pace",
+      "at_mi": 4,
+      "distance_mi": 6,
+      "target_pace_s_per_mi": 540,
+      "tolerance_s_per_mi": 10,
+      "label": "Rolling approach"
+    },
+    {
+      "index": 3,
+      "phase_idx": 1,
+      "kind": "landmark",
+      "at_mi": 10,
+      "duration_s": 10,
+      "label": "Hurricane Point climb begins"
+    },
+    {
+      "index": 4,
+      "phase_idx": 2,
+      "kind": "pace",
+      "at_mi": 10,
+      "distance_mi": 2,
+      "target_pace_s_per_mi": 615,
+      "tolerance_s_per_mi": 10,
+      "label": "Hurricane Point climb"
+    },
+    {
+      "index": 5,
+      "phase_idx": 2,
+      "kind": "landmark",
+      "at_mi": 12,
+      "duration_s": 10,
+      "label": "Hurricane Point summit"
+    },
+    {
+      "index": 6,
+      "phase_idx": 3,
+      "kind": "fuel",
+      "at_mi": 12,
+      "duration_s": 30,
+      "item": "Maurten gel · water",
+      "gel_number": 3,
+      "label": "Gel 3"
+    },
+    {
+      "index": 7,
+      "phase_idx": 3,
+      "kind": "pace",
+      "at_mi": 12,
+      "distance_mi": 3,
+      "target_pace_s_per_mi": 495,
+      "tolerance_s_per_mi": 10,
+      "label": "Hurricane descent"
+    },
+    {
+      "index": 8,
+      "phase_idx": 3,
+      "kind": "landmark",
+      "at_mi": 13.1,
+      "duration_s": 10,
+      "label": "Bixby Bridge · halfway"
+    },
+    {
+      "index": 9,
+      "phase_idx": 4,
+      "kind": "pace",
+      "at_mi": 15,
+      "distance_mi": 9,
+      "target_pace_s_per_mi": 515,
+      "tolerance_s_per_mi": 10,
+      "label": "Bluffs · exposed miles"
+    },
+    {
+      "index": 10,
+      "phase_idx": 4,
+      "kind": "fuel",
+      "at_mi": 17,
+      "duration_s": 30,
+      "item": "Maurten gel · water",
+      "gel_number": 4,
+      "label": "Gel 4"
+    },
+    {
+      "index": 11,
+      "phase_idx": 4,
+      "kind": "fuel",
+      "at_mi": 21,
+      "duration_s": 30,
+      "item": "Maurten gel · water",
+      "gel_number": 5,
+      "label": "Gel 5"
+    },
+    {
+      "index": 12,
+      "phase_idx": 4,
+      "kind": "landmark",
+      "at_mi": 23.2,
+      "duration_s": 10,
+      "label": "Strawberry Station"
+    },
+    {
+      "index": 13,
+      "phase_idx": 5,
+      "kind": "pace",
+      "at_mi": 24,
+      "distance_mi": 2.22,
+      "target_pace_s_per_mi": 500,
+      "tolerance_s_per_mi": 10,
+      "label": "Final push"
+    },
+    {
+      "index": 14,
+      "phase_idx": 5,
+      "kind": "landmark",
+      "at_mi": 25,
+      "duration_s": 10,
+      "label": "Last real climb"
+    }
+  ],
+  "fueling": {
+    "carb_target_g_per_hr": 60,
+    "total_carbs_g": 200,
+    "gel_count": 5,
+    "gel_carbs_g": 40,
+    "gel_brand": "Maurten",
+    "notes": "Gels anchored to phase boundaries, not clock. 5 × 40 g = 200 g carbs total (52 g/hr)."
+  },
+  "brief": null
+}
