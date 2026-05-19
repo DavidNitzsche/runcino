@@ -119,7 +119,7 @@ function CheckInCard() {
   // Pre-load today's check-in if it exists.
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/health/checkin')
+    fetch('/api/checkin')
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
@@ -143,7 +143,7 @@ function CheckInCard() {
     setSubmitting(true);
     setError(null);
     try {
-      const r = await fetch('/api/health/checkin', {
+      const r = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vals),
