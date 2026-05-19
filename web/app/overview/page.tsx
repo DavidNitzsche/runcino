@@ -32,6 +32,8 @@ import { resolveFitness } from '@/lib/fitness-resolver';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
+import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
+import { PreWorkoutBriefingCard } from './PreWorkoutBriefing';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -136,6 +138,14 @@ export default async function OverviewPage() {
   })();
   const durMin = todayDay && !todayDay.isRest && todayDay.distanceMi && paceSec > 0
     ? Math.round((paceSec * todayDay.distanceMi) / 60) : null;
+
+  // V1 · Pre-workout briefing — coach's morning note (weather, shoe,
+  // last similar). Server-side data fetch on the SSR pass. Renders
+  // below the pace guidance, above the hero buttons. Skipped on rest
+  // days (no workout = no briefing). hasContent gates the render.
+  const preWorkoutBriefing = !isRest && todayDay
+    ? await buildPreWorkoutBriefing(user.id, today, todayDay.type).catch(() => null)
+    : null;
 
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
@@ -267,6 +277,13 @@ export default async function OverviewPage() {
                     <strong style={{ color: '#0D0F12' }}>Target {todayPace}/mi if feeling good.</strong>{' '}
                     Back off toward the slower end of the range if legs are heavy, HR drifts above your Z2 ceiling, or temp pushes past 75°F. Easy days are about absorbing yesterday's work — the slow end of the range is the right answer most of the time.
                   </div>
+                )}
+                {preWorkoutBriefing && (
+                  <PreWorkoutBriefingCard
+                    briefing={preWorkoutBriefing}
+                    todayPaceLabel={todayPace ?? ''}
+                    workoutType={todayDay?.type ?? 'easy'}
+                  />
                 )}
                 <div className="hero-buttons">
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
