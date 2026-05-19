@@ -112,8 +112,8 @@ Each PR card on `/races` carries a context-aware coaching line:
 **C6 · Daily readiness score** (commit `7fdb7d8`)
 Three-state ring on `/overview` hero right column. 0-100 composite from yesterday's load + last-7d hard sessions + Signal 2 HR-pace drift. Three states: 80+ green ("hit prescription as written"), 60-79 yellow ("watch effort"), <60 red ("swap for easy or recovery"). Surface-only — never auto-modifies plan. Suspended when injured.
 
-**C7 · Miles-in-the-bank badge** (commit `daead4b`)
-Small badge above the weekly Mileage trend row on `/overview`. Cumulative actual mileage minus cumulative prescribed since training block start. "+12.3 mi in the bank" (green) or "-8.5 mi behind plan" (orange). Hidden when |bank| < 0.5 mi.
+**C7 · Miles-in-the-bank chip** (commit `daead4b`, relocated in `9ffee04`)
+Small chip in the Full Schedule header on `/training`, next to "Total X mi · Peak week Y mi". Cumulative actual mileage (from `strava_activities`) since the training block started, minus cumulative prescribed (full prior weeks at `plannedMi` + current week pro-rated by days-elapsed). "+12.3 mi ahead of plan" (green) or "-1.8 mi behind plan" (orange). Hidden when |bank| < 0.5 mi. Originally shipped on `/overview` next to the weekly Mileage trend row; moved to `/training` after the chip showed up in David's first read of `/overview` and didn't pass the "is this a daily-touch thing?" test — block-level adherence belongs alongside the 14-week volume curve, not the today card.
 
 **C8 · Workout substitution menu** (commit `adf2136`)
 "⇄ Substitute" button next to HeroActions on `/overview`. Per-class menus (long-run, quality, easy, race) with 2-3 substitution options. Each option lists PRESERVES + SACRIFICES — honest trade-offs, no silent auto-modification.
@@ -192,7 +192,7 @@ Per-finding context filter matrix locked in `docs/simulations/s2-cross-surface-f
 3. **PostRaceCard** (E2) — silent today (outside recovery window)
 4. **Hero TodayCard**:
    - Left: workout title + **? Why tooltip** (C1) · stat pills (distance/pace/duration/HR) · V2 conditional pace guidance · **V1 pre-workout briefing** · **V5 Z2 stimulus check** (firing on David's data) · HeroActions + **⇄ Substitute** button (C8)
-   - Right: **C6 readiness score** with three-state ring (replaces "No data" placeholder) · trend rows including **C7 miles-in-the-bank badge**
+   - Right: **C6 readiness score** with three-state ring (replaces "No data" placeholder) · weekly Mileage trend row
 5. Week strip
 
 ### `/races`
@@ -227,7 +227,7 @@ Available now for "did this migration actually run?" / "how many activities have
 - **L7 Signal 1+2+3+4** as evidence accumulates (Signal 4 fires on 2+ race PRs in 8 weeks)
 - **V3 trajectory** state shifts as L7 signals fire
 - **Shift guard** if any race result moves aggregate >2pts
-- **C7 miles-in-the-bank** updates daily as runs accumulate
+- **C7 miles-in-the-bank chip** (on `/training`) updates daily as runs accumulate
 - **S3 elevation adjustment** fires when next hilly race is logged
 
 ## Closing observation
