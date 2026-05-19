@@ -87,21 +87,25 @@ Pre-overnight context (already on `main` going in):
   - 5 verdicts upgraded vs round 2 (A4, D6, A3, F3, audits)
   - 0 verdicts downgraded
   - Tracks "framework → real fire" pattern week over week
-- **L7 unit tests** — `web/lib/__tests__/adaptive-vdot.test.ts` — 13 new tests pass (bump-points math, thresholds, signal shape, T1 scenarios)
-- **NEXT 4 WEEKS monotone check** — `web/lib/__tests__/no-monotone-easy-stretches.test.ts` — 7 tests pass across 30/50 mpw base mode + post-race (HM/marathon) + BUILD + REBUILD + 4-fixture matrix
-- **Full suite snapshot** — 158/158 passing (1 pre-existing failure on missing `big-sur-3-50.runcino.json` fixture, unrelated)
-- **TypeScript** — `tsc --noEmit` clean
+- **L7 unit tests** — `web/lib/__tests__/adaptive-vdot.test.ts` — 13 new tests pass (bump-points math, thresholds, signal shape, T1 scenarios). Exercises `lib/adaptive-vdot-signals.ts` + `lib/adaptive-vdot-verdict.ts`; surfaces `/profile` Coach Reads card via `AdaptiveVdotBanner`.
+- **Full suite snapshot** — 158/158 passing (1 pre-existing failure on missing `big-sur-3-50.runcino.json` fixture, unrelated). `npm test`.
+- **TypeScript** — `tsc --noEmit` clean. `npx tsc --noEmit -p tsconfig.json`.
+
+**Removed from this list** (was: "NEXT 4 WEEKS monotone check"): that test (`no-monotone-easy-stretches.test.ts`) is **worktree-only** — it exercises `simulateNext30Days()` in `coach-engine.ts`, which doesn't exist on main. Even if it did, `data.nextFourWeeks` (built at `app/training/data.ts:610`) is **dead code on main** — its only consumer is `app/training/page.tsx.pre-v4-port-bak`. The v4 port of `/training` replaced that card with the "Full Schedule" (14-bar volume curve + 14-week calendar grid) and "Plan Arc · 14 Weeks Total" timeline. No user-visible surface this overnight verifies "NEXT 4 WEEKS" anything.
 
 ## 🟢 Confirmed working
 
-- L7 framework wired end-to-end; banner renders if Signal 1 fires (awaiting real-data fire)
-- Max HR Apply flow — both surfaces now show same value
-- Migration banner before/after table renders for users with VDOT drift
-- HR zones single source of truth across `/profile` + fitness-resolver
-- Adaptive banner shape consistency (suspect-ceiling template) across all surfaces
-- Source-of-truth discipline: race results read from `races.actual_result`; HR/sync from `strava_activities`
-- Effort-multiplier honored: A=1.0, B=0.7, C=0.4, tune-up=0.4, training-run=0.2, hilly-excluded=0.0
-- `NEXT 4 WEEKS` never shows monotone easy stretches (engine post-processes via `enforceStreakCap`)
+All claims surface-attributed. If you can't see it in the app at the listed path, it's not in this list.
+
+- **L7 framework wired end-to-end** — `AdaptiveVdotBanner.tsx` on `/profile` Coach Reads card; banner renders only when Signal 1 fires (awaiting real-data fire)
+- **Max HR Apply flow** — `/profile` page: `MaxHrIsland` (top "Max HR" tile) and `CoachReadsCard` (Heart Rate row) both show the same value after Apply
+- **Migration banner before/after table** — `PaceMigrationBanner.tsx` on `/profile` Coach Reads; renders if user has VDOT drift requiring migration (mostly historical now)
+- **HR zones single source of truth** — `lib/hr-zones.ts` consumed by both `lib/fitness-resolver.ts` (powers `/overview` + `/workout/[date]` + Coach Reads) and `/profile` page's HR Zones tile
+- **Adaptive banner shape consistency** — `MaxHrValidationBanner.tsx` (max HR drift) + `AdaptiveVdotBanner.tsx` (L7 VDOT) on `/profile` Coach Reads both follow the suspect-ceiling template (evidence + reasoning + math + recommendation + falsifier + agency)
+- **Source-of-truth discipline** — verified across 11 components in L6 audit (`docs/simulations/race-data-source-audit-L6.md`): race results read from `races.actual_result` (Personal Records card on `/races`, Recent Races strip on `/races`, hero on `/races/[slug]`, chip-time banner on `/races/[slug]`, etc.); HR readings + sync correctly use `strava_activities`
+- **Effort-multiplier honored** — A=1.0, B=0.7, C=0.4, tune-up=0.4, training-run=0.2, hilly-excluded=0.0; applied in `lib/compute-vdot.ts` `aggregateVdotFromInputs`; visible on `/profile` Coach Reads VDOT contributors list (`Disney HM (A) 53.3%`, `Big Sur (hilly-excluded) 0.0%`, etc.)
+
+**Previously listed but removed**: "NEXT 4 WEEKS never shows monotone easy stretches" — that was worktree-only code testing a surface that's dead on main (see Tests section above for the full trace).
 
 ## 🟡 Built but not yet fired with real data
 
@@ -221,6 +225,11 @@ In strict order:
 
 - **State desync across rendering boundaries**: when an Apply flow touches both server-rendered and client-island surfaces showing the same data, `router.refresh()` alone leaves client `useState` stale. Pattern fix: either pass SSR initial state to the island, or use `window.location.reload()` on success. The max HR validator was the inconsistency tonight; flag this whenever a new Apply flow lands.
 - **"Framework → live → fires" transition**: L7 Signal 1 is now in the same phase suspect-ceiling was in 24h ago. The pattern is repeatable. Banner UIs ship before real data fires them, and the gating logic is what gets verified between ship and first-fire.
+- **Status docs must attribute features to surfaces**: A feature name without a surface path is meaningless context — the reader can't verify, contextualize, or check it. Going forward: every feature reference includes a path (`/profile` Coach Reads card) or component name (`AdaptiveVdotBanner.tsx`). Caught this turn on the "NEXT 4 WEEKS" reference, which turned out to be testing dead code in a worktree branch. If I can't name where a user sees it, the claim shouldn't be in the status doc.
+
+## 🧹 Surfaced as cleanup candidate
+
+- **Dead `nextFourWeeks` code on main** — `getNextFourWeeks()` at `app/training/data.ts:610` still builds the `NextFourWeeksSnapshot` and populates `data.nextFourWeeks` (`data.ts:81, 312, 375`), but the only consumer is `page.tsx.pre-v4-port-bak`. The v4 port replaced that card with Full Schedule + Plan Arc. Worth deleting in a cleanup pass so future searches don't find a "feature" that isn't shipped. Not urgent.
 
 ## 📁 Doc index
 
