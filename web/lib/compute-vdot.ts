@@ -69,12 +69,15 @@ export interface AggregateVdot {
     /** Total weight applied to this contributor. */
     weight: number;
     /** Components of weight for transparency. */
-    weightBreakdown: { recency: number; length: number; tier: number };
+    weightBreakdown: { recency: number; length: number; tier: number; effort: number };
     /** True when this race matched the goal tier. */
     isGoalTier: boolean;
     /** True when this race fell inside the cycle window (so goal-tier
      *  races skip the recency decay). */
     isInCycle: boolean;
+    /** Race priority from meta.priority — A=full weight, B=0.6×,
+     *  C=0.3×. Defaults to 'A' when unset. */
+    priority: 'A' | 'B' | 'C';
   }>;
   /** Human-readable description of the aggregation window. */
   windowLabel: string;
@@ -254,6 +257,10 @@ export interface RaceBest {
   date: string;
   activityId: string;
   source: 'races' | 'strava';
+  /** Race priority from meta.priority — drives the effort-level
+   *  weight multiplier in the aggregate (A=1.0, B=0.6, C=0.3).
+   *  Defaults to 'A' when unset (full weight, prior behavior). */
+  priority?: 'A' | 'B' | 'C';
 }
 
 export interface AggregateInputs {
@@ -282,7 +289,11 @@ export function aggregateVdotFromInputs(inputs: AggregateInputs): AggregateVdot 
       const rFactor = recencyFactor(raceDate, today, isGoalTier, cycleStart);
       const lFactor = lengthFactor(km);
       const tFactor = goalTier ? tierFactor(raceTier, goalTier) : 1.0;
-      const weight = rFactor * lFactor * tFactor;
+      // Race-effort multiplier from meta.priority. Default 'A' (full
+      // weight) when unset so legacy contributors keep their prior
+      // weight; explicit 'C' marks a tune-up that gets ~30% weight.
+      const eFactor = PRIORITY_WEIGHT[b.priority ?? 'A'];
+      const weight = rFactor * lFactor * tFactor * eFactor;
 
       return {
         canonicalLabel: b.label,
@@ -293,9 +304,10 @@ export function aggregateVdotFromInputs(inputs: AggregateInputs): AggregateVdot 
         vdot: Math.round(vdot * 10) / 10,
         source: b.source,
         weight,
-        weightBreakdown: { recency: rFactor, length: lFactor, tier: tFactor },
+        weightBreakdown: { recency: rFactor, length: lFactor, tier: tFactor, effort: eFactor },
         isGoalTier,
         isInCycle,
+        priority: b.priority ?? 'A',
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -330,7 +342,27 @@ interface RaceRow {
   activity_id: string | null;
   result_source: string | null;
   name: string | null;
+  priority: 'A' | 'B' | 'C' | null;
 }
+
+/** Priority → weight multiplier. Race-effort-level expressed via the
+ *  existing meta.priority field (no new schema). The aggregate uses
+ *  these multipliers to honor user intent:
+ *    A (primary goal effort)        — full weight
+ *    B (secondary checkpoint)       — moderate weight
+ *    C (drop-in / tune-up race)     — light weight, so a sub-effort
+ *                                     race doesn't drag the aggregate
+ *                                     toward a value the runner
+ *                                     didn't actually compete to.
+ *
+ *  Locked with David 2026-05-19: Sombrero=C at full weight was
+ *  pulling his VDOT from 48 (Disney HM) down to 44.7 even though he
+ *  ran Sombrero as a tune-up. Priority-aware weighting fixes that. */
+const PRIORITY_WEIGHT: Record<'A' | 'B' | 'C', number> = {
+  A: 1.0,
+  B: 0.6,
+  C: 0.3,
+};
 
 export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
   const today = new Date();
@@ -357,7 +389,8 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
         (actual_result->>'finishS')::NUMERIC AS finish_s,
         actual_result->>'stravaActivityId' AS activity_id,
         actual_result->>'source' AS result_source,
-        meta->>'name' AS name
+        meta->>'name' AS name,
+        meta->>'priority' AS priority
        FROM races
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND actual_result IS NOT NULL
@@ -381,6 +414,10 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
     // to VDOT. Common case: trail / ultra / unusual-length races.
     if (!matched) continue;
 
+    // Normalize priority — default to 'A' when unset (legacy rows
+    // without an explicit priority get full weight, prior behavior).
+    const pri = (r.priority === 'A' || r.priority === 'B' || r.priority === 'C') ? r.priority : 'A';
+
     bests.push({
       label: matched.label,
       canonicalMi: matched.canonicalMi,
@@ -388,6 +425,7 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
       date: r.date ?? '',
       activityId: r.activity_id ?? r.slug,
       source: 'races' as const,
+      priority: pri,
     });
   }
   if (bests.length === 0) return null;

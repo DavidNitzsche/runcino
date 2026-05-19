@@ -211,6 +211,44 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
   });
 });
 
+describe('aggregateVdotFromInputs · priority-aware weighting (race-effort-level)', () => {
+  const cycleStart = new Date('2026-01-27T00:00:00Z');
+
+  it('priority C (tune-up) reduces weight to 0.3× vs priority A', () => {
+    const bestsAA: RaceBest[] = [
+      { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: 'd', source: 'races', priority: 'A' },
+      { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: 's', source: 'races', priority: 'A' },
+    ];
+    const bestsAC: RaceBest[] = [
+      { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: 'd', source: 'races', priority: 'A' },
+      { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: 's', source: 'races', priority: 'C' },
+    ];
+    const aa = aggregateVdotFromInputs({ bests: bestsAA, cycleStart, goalTier: 'HM_ISH', today: TODAY });
+    const ac = aggregateVdotFromInputs({ bests: bestsAC, cycleStart, goalTier: 'HM_ISH', today: TODAY });
+    // Disney HM (48.1) is higher VDOT than Sombrero (44.7). When
+    // Sombrero is downgraded to C, its weight drops and the aggregate
+    // shifts toward Disney HM's anchor.
+    expect(ac!.value).toBeGreaterThan(aa!.value);
+
+    // Verify the effort multiplier landed: Sombrero C weight should be
+    // 0.3× of what it would be at A.
+    const sombreroAC = ac!.sources.find((s) => s.activityId === 's')!;
+    const sombreroAA = aa!.sources.find((s) => s.activityId === 's')!;
+    expect(sombreroAC.weight).toBeCloseTo(sombreroAA.weight * 0.3, 3);
+    expect(sombreroAC.weightBreakdown.effort).toBe(0.3);
+    expect(sombreroAA.weightBreakdown.effort).toBe(1.0);
+  });
+
+  it('defaults to A (full weight) when priority is unset', () => {
+    const bests: RaceBest[] = [
+      { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: 'd', source: 'races' },
+    ];
+    const result = aggregateVdotFromInputs({ bests, cycleStart, goalTier: 'HM_ISH', today: TODAY });
+    expect(result!.sources[0].weightBreakdown.effort).toBe(1.0);
+    expect(result!.sources[0].priority).toBe('A');
+  });
+});
+
 describe('aggregateVdotFromInputs · marathon chip-time correction', () => {
   // The whole point of Option-B: when curated chip time replaces
   // Strava elapsed time, the aggregate VDOT shifts slightly.

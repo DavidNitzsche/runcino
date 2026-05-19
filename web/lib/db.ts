@@ -523,8 +523,179 @@ async function bootstrap(): Promise<void> {
     ]) {
       await client.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS user_uuid UUID REFERENCES users(id) ON DELETE CASCADE;`);
     }
+
+    // Data-migration tracking table — guards one-shot data fixups so
+    // they run exactly once across deploys.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS data_migrations (
+        name        TEXT PRIMARY KEY,
+        applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // ── Run one-time data migrations ────────────────────────────
+    await runDataMigrations(client);
   } finally {
     client.release();
+  }
+}
+
+/** One-shot data migrations run after schema bootstrap. Each named
+ *  migration runs exactly once (guarded by `data_migrations` table)
+ *  so deploys don't keep re-applying them. */
+async function runDataMigrations(client: PoolClient): Promise<void> {
+  // ── 2026-05-19 · race priorities + Rose Bowl seed + pace-ack ──
+  //
+  // David's overnight review on 2026-05-19 produced three corrections
+  // that should apply automatically on the next deploy (he explicitly
+  // asked NOT to click admin endpoints to apply them):
+  //
+  //   1. Race priorities:
+  //      la-marathon-2026     → 'A'   (was B)
+  //      big-sur-marathon     → 'A'   (David trained for the elevation)
+  //      disney-half-2026     → 'A'   (was B)
+  //      sombrero-half        → 'C'   (tune-up race, not goal-tier effort)
+  //
+  //   2. Rose Bowl Half (David's Jan 18 race that wasn't in the curated
+  //      table). Auto-detected from strava_activities by date+distance.
+  //
+  //   3. Auto-acknowledge the pace migration banner for the admin
+  //      user. Sim sweep was clean; David said "ship the pace band
+  //      migration based on it" — so set users.pace_migration_ack_at
+  //      automatically rather than requiring a click.
+  const MIG_NAME = '2026-05-19-race-priorities-and-rose-bowl';
+  const already = await client.query<{ name: string }>(
+    `SELECT name FROM data_migrations WHERE name = $1 LIMIT 1`,
+    [MIG_NAME],
+  );
+  if (already.rows.length > 0) return;
+
+  try {
+    // 1a. Priority bumps. Match by slug (primary key) — works without
+    //     user_uuid scoping because slugs are globally unique.
+    await client.query(
+      `UPDATE races
+          SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{priority}', '"A"'::jsonb)
+        WHERE slug IN ('la-marathon-2026', 'big-sur-marathon', 'disney-half-2026')`,
+    );
+    // 1b. Sombrero → C
+    await client.query(
+      `UPDATE races
+          SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{priority}', '"C"'::jsonb)
+        WHERE slug = 'sombrero-half'`,
+    );
+
+    // 2. Rose Bowl seed — only if not already present.
+    const roseExists = await client.query<{ slug: string }>(
+      `SELECT slug FROM races WHERE slug = 'rose-bowl-half-2026' LIMIT 1`,
+    );
+    if (roseExists.rows.length === 0) {
+      // Find the Strava activity around 2026-01-18 with HM distance.
+      const candidates = await client.query<{
+        id: string; date: string; name: string;
+        distance_mi: string; canonical_finish_s: string | null;
+        moving_time_s: string; avg_hr: string | null;
+      }>(
+        `SELECT
+            id::text                                  AS id,
+            data->>'date'                             AS date,
+            COALESCE(data->>'name', '')               AS name,
+            (data->>'distanceMi')::NUMERIC::TEXT      AS distance_mi,
+            data->>'canonicalFinishS'                 AS canonical_finish_s,
+            (data->>'movingTimeS')::NUMERIC::TEXT     AS moving_time_s,
+            data->>'avgHr'                            AS avg_hr
+           FROM strava_activities
+          WHERE (data->>'date') BETWEEN '2026-01-13' AND '2026-01-23'
+            AND (data->>'distanceMi')::NUMERIC BETWEEN 12.5 AND 13.7
+            AND (data->>'movingTimeS')::NUMERIC > 0
+          ORDER BY ABS((data->>'date')::DATE - DATE '2026-01-18') ASC
+          LIMIT 1`,
+      );
+      const pick = candidates.rows[0];
+      if (pick) {
+        const finishS = pick.canonical_finish_s != null
+          ? Math.round(Number(pick.canonical_finish_s))
+          : Math.round(Number(pick.moving_time_s));
+        const distMi = 13.109;
+        const paceSPerMi = finishS / distMi;
+        const fmtFinish = (s: number) => {
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const sec = s % 60;
+          return h > 0
+            ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+            : `${m}:${String(sec).padStart(2, '0')}`;
+        };
+        const fmtPace = (sPerMi: number) => {
+          const m = Math.floor(sPerMi / 60);
+          const s = Math.round(sPerMi % 60);
+          return `${m}:${String(s).padStart(2, '0')}/mi`;
+        };
+        const actualResult = {
+          finishS,
+          finishDisplay: fmtFinish(finishS),
+          paceSPerMi: Math.round(paceSPerMi),
+          paceDisplay: fmtPace(paceSPerMi),
+          recordedAt: new Date().toISOString(),
+          source: 'manual',
+          stravaActivityId: Number(pick.id),
+          avgHr: pick.avg_hr != null ? Math.round(Number(pick.avg_hr)) : null,
+        };
+        const plan = {
+          meta: {
+            name: 'Rose Bowl Half', date: pick.date, distanceMi: distMi,
+            goalDisplay: actualResult.finishDisplay, courseSlug: 'rose-bowl-half-2026',
+          },
+          miles: [], segments: [],
+        };
+        const meta = {
+          name: 'Rose Bowl Half', date: pick.date, distanceMi: distMi,
+          goalDisplay: actualResult.finishDisplay, courseSlug: 'rose-bowl-half-2026',
+          priority: 'A',
+        };
+        // Scope to the admin user (David). If no admin found yet, leave
+        // user_uuid NULL; the existing query pattern still picks it up.
+        const adminRows = await client.query<{ id: string }>(
+          `SELECT id FROM users WHERE is_admin = TRUE ORDER BY created_at ASC LIMIT 1`,
+        );
+        const adminId = adminRows.rows[0]?.id ?? null;
+        await client.query(
+          `INSERT INTO races (slug, plan, gpx_text, meta, actual_result, user_uuid, saved_at)
+           VALUES ($1, $2::jsonb, $3, $4::jsonb, $5::jsonb, $6, NOW())
+           ON CONFLICT (slug) DO NOTHING`,
+          [
+            'rose-bowl-half-2026',
+            JSON.stringify(plan),
+            '',
+            JSON.stringify(meta),
+            JSON.stringify(actualResult),
+            adminId,
+          ],
+        );
+      }
+    }
+
+    // 3. Auto-acknowledge pace migration for the admin user. The sim
+    //    sweep (docs/2026-05-19-sim-sweep.md) cleared the canonical
+    //    Daniels migration — David said "ship it based on the sim
+    //    sweep alone" so we apply the ack automatically rather than
+    //    waiting for a click.
+    await client.query(
+      `UPDATE users
+          SET pace_migration_ack_at = COALESCE(pace_migration_ack_at, NOW())
+        WHERE is_admin = TRUE`,
+    );
+
+    // Record the migration so it doesn't run again.
+    await client.query(
+      `INSERT INTO data_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+      [MIG_NAME],
+    );
+  } catch (e) {
+    // Don't crash the bootstrap on migration failure — log and skip.
+    // If the migration fails partially, the next request will retry
+    // (since data_migrations name wasn't recorded).
+    console.error('[data-migrations] 2026-05-19 migration failed:', e);
   }
 }
 

@@ -46,6 +46,10 @@ export interface FitnessVdot {
     tierFactor?: number;
     /** Length component (sqrt(km/10)). */
     lengthFactor?: number;
+    /** Race-effort multiplier (1.0 A / 0.6 B / 0.3 C). */
+    effortFactor?: number;
+    /** Race priority from meta.priority. */
+    priority?: 'A' | 'B' | 'C';
   }>;
   /** Goal race tier used for tier-factor scoring in the aggregate. */
   goalTier?: 'SPRINT' | 'TEN_K_ISH' | 'HM_ISH' | 'M_ISH' | null;

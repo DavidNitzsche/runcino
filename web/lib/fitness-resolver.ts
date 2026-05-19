@@ -186,6 +186,8 @@ async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> 
         recency: s.weightBreakdown.recency,
         tierFactor: s.weightBreakdown.tier,
         lengthFactor: s.weightBreakdown.length,
+        effortFactor: s.weightBreakdown.effort,
+        priority: s.priority,
       })),
       goalTier: agg.goalTier,
       cycleStartIso: agg.cycleStartIso,
