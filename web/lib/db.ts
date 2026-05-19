@@ -556,6 +556,14 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr_validation_dismissed_at TIMESTAMPTZ;
     `);
+    // V7 item 4 · timestamp of last max HR change.  Used by the Z2
+    // sparkline cross-reference to detect whether recent zone-data
+    // reflects a recalibration (zones changed mid-window vs. settled
+    // history vs. fully in new framework).  Set by the max-hr Apply
+    // endpoint; null when max HR has never been set.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr_updated_at TIMESTAMPTZ;
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
     // Auto-promote the legacy owner to admin + active on every boot so

@@ -14,6 +14,7 @@
 
 import { query } from './db';
 import { buildFitnessHrZones } from './hr-zones';
+import { formatCrossReference, type CrossReference } from './coach-voice';
 
 export const SPARKLINE_WEEKS = 8;
 
@@ -36,6 +37,67 @@ export interface Z2SparklineResult {
   paceRange: { min: number; max: number } | null;
   /** True when the data tells a meaningful story (≥3 weeks with data). */
   hasSignal: boolean;
+  /** V7 cross-reference to the max HR validation surface when the
+   *  sparkline window overlaps with a recalibration event. */
+  crossRef?: CrossReference;
+  /** Optional hedge text shown alongside the sparkline when the data
+   *  spans a recalibration mid-window.  Empty when the window is fully
+   *  post-recalibration (clean) or pre-recalibration (no overlap). */
+  recalibrationHedge?: string;
+}
+
+/**
+ * V7 item 4 · Resolve the sparkline ↔ max HR recalibration relationship.
+ *
+ * Three cases (per David's V7 brief):
+ *   1. Recalibration PREDATES the window entirely → null cross-ref;
+ *      the runner is looking at settled history in the new framework.
+ *   2. Recalibration falls INSIDE the window's recent half (most of
+ *      the data is still in the OLD framework) → hedged cross-ref
+ *      noting the mixed-framework reality.
+ *   3. Recalibration falls AT the window's starting boundary or in
+ *      its older half (most data is already post-recalibration) →
+ *      clean 'tied to' cross-reference.
+ *
+ * Earned-not-decorative: when max HR has never been set, or
+ * recalibration is outside the window, no cross-reference fires.
+ */
+export function resolveSparklineRecalibrationRef(
+  windowStartIso: string,
+  windowEndIso: string,
+  maxHrUpdatedAt: Date | null,
+): { crossRef?: CrossReference; recalibrationHedge?: string } {
+  if (!maxHrUpdatedAt) return {};
+
+  const windowStartMs = Date.parse(windowStartIso + 'T00:00:00Z');
+  const windowEndMs = Date.parse(windowEndIso + 'T23:59:59Z');
+  const recalibMs = maxHrUpdatedAt.getTime();
+
+  // Case 1: recalibration predates window → settled history → no cross-ref.
+  if (recalibMs < windowStartMs) return {};
+
+  // Recalibration is at-or-after window start.  Split the window in
+  // two; if recalibration falls into the SECOND half (more recent),
+  // most of the window is OLD-framework data → hedge.
+  const windowMidMs = windowStartMs + (windowEndMs - windowStartMs) / 2;
+  const inSecondHalf = recalibMs > windowMidMs;
+
+  const baseRef = formatCrossReference({
+    relatedLabel: 'max HR validation',
+    surface: '/profile',
+    anchor: 'max-hr-validation',
+    relation: 'tied to',
+  });
+
+  if (inSecondHalf) {
+    return {
+      crossRef: baseRef,
+      recalibrationHedge:
+        'Zones recalibrated mid-window; the older weeks in this trend reflect mixed framework data.',
+    };
+  }
+
+  return { crossRef: baseRef };
 }
 
 interface ActivityRow {
@@ -71,6 +133,7 @@ export async function computeZ2Sparkline(
   today: Date,
   maxHr: number | null,
   restingHr: number | null,
+  maxHrUpdatedAt: Date | null = null,
 ): Promise<Z2SparklineResult> {
   const empty: Z2SparklineResult = {
     z2Band: null,
@@ -150,10 +213,22 @@ export async function computeZ2Sparkline(
   const weeksWithData = points.filter((p) => p.paceSPerMi != null).length;
   const hasSignal = weeksWithData >= 3;
 
+  // V7 cross-reference · only fires when there's enough signal to
+  // show the chart in the first place (no point pointing at empty data).
+  const recalibrationRef = hasSignal
+    ? resolveSparklineRecalibrationRef(
+        weeks[0],
+        weeks[weeks.length - 1],
+        maxHrUpdatedAt,
+      )
+    : {};
+
   return {
     z2Band: { lo: z2.lowBpm, hi: z2.highBpm },
     points,
     paceRange,
     hasSignal,
+    crossRef: recalibrationRef.crossRef,
+    recalibrationHedge: recalibrationRef.recalibrationHedge,
   };
 }

@@ -64,10 +64,16 @@ export async function POST(req: NextRequest) {
   if ('maxHr' in body) {
     const v = body.maxHr;
     if (v === null) {
-      await query(`UPDATE users SET max_hr = NULL WHERE id = $1`, [admin.id]);
+      await query(
+        `UPDATE users SET max_hr = NULL, max_hr_updated_at = NULL WHERE id = $1`,
+        [admin.id],
+      );
       changes.push('max_hr → null (cleared)');
     } else if (typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 230) {
-      await query(`UPDATE users SET max_hr = $2 WHERE id = $1`, [admin.id, v]);
+      await query(
+        `UPDATE users SET max_hr = $2, max_hr_updated_at = NOW() WHERE id = $1`,
+        [admin.id, v],
+      );
       changes.push(`max_hr → ${v}`);
     } else {
       errors.push(`maxHr must be 100-230 or null, got ${JSON.stringify(v)}`);

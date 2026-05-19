@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
             -- so the user can be re-prompted if their stored value
             -- diverges from race data in the future.
             max_hr_validation_dismissed_at = NULL,
+            -- V7 item 4 · stamp max HR change so the Z2 sparkline
+            -- cross-reference can detect recalibration within its
+            -- window.  Cleared (NULL) when max HR is cleared too.
+            max_hr_updated_at = CASE WHEN $2 IS NULL THEN NULL ELSE NOW() END,
             updated_at = NOW()
       WHERE id = $1`,
     [user.id, v ?? null],

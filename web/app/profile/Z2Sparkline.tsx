@@ -152,6 +152,41 @@ export function Z2Sparkline({ data }: Props) {
         Pace your Z2 splits average at fixed HR. Faster at fixed HR = aerobic gain.
         {' '}<span style={{ color: 'rgba(13,15,18,.42)' }}>Inverted: faster pace renders higher.</span>
       </div>
+
+      {data.crossRef && (
+        <div style={{
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: '1px solid rgba(13,15,18,.06)',
+          fontSize: 11,
+          color: 'rgba(13,15,18,.62)',
+          lineHeight: 1.45,
+        }}>
+          {data.recalibrationHedge ? (
+            <>
+              {data.recalibrationHedge}{' '}
+              <a
+                href={data.crossRef.href}
+                style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+              >
+                {data.crossRef.text}
+              </a>
+              {'.'}
+            </>
+          ) : (
+            <>
+              Zones recalibrated this window — {' '}
+              <a
+                href={data.crossRef.href}
+                style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+              >
+                {data.crossRef.text}
+              </a>
+              {'.'}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

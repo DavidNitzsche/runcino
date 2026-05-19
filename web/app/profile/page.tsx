@@ -214,6 +214,14 @@ export default async function ProfilePage() {
     today,
   ).catch(() => null);
 
+  // V7 item 4 · pull max_hr_updated_at so the sparkline can detect
+  // whether a recalibration falls within its 8-week window (clean vs
+  // hedged vs no-cross-ref per resolveSparklineRecalibrationRef).
+  const maxHrUpdatedAt = await query<{ at: string | null }>(
+    `SELECT max_hr_updated_at AS at FROM users WHERE id = $1 LIMIT 1`,
+    [auth.id],
+  ).then((rows) => rows[0]?.at ? new Date(rows[0].at) : null).catch(() => null);
+
   // C2 · Z2 pace sparkline — 8-week trend at fixed HR. Reads same
   // data Signal 2 uses, rolled up per ISO week. Renders only when
   // ≥3 populated weeks (hasSignal=true).
@@ -222,6 +230,7 @@ export default async function ProfilePage() {
     new Date(),
     fitness.maxHr.value,
     fitness.restingHr.value,
+    maxHrUpdatedAt,
   ).catch(() => null);
   const vdotShiftForUI = (vdotShiftFinding?.shouldRender
       && vdotShiftFinding.currentVdot != null
@@ -467,7 +476,9 @@ export default async function ProfilePage() {
               </div>
             ))}
           </div>
-          <MaxHrIsland initial={{ value: fitness.maxHr.value, source: fitness.maxHr.source }} />
+          <div id="max-hr-validation">
+            <MaxHrIsland initial={{ value: fitness.maxHr.value, source: fitness.maxHr.source }} />
+          </div>
           <RestingHrIsland />
         </div>
 
