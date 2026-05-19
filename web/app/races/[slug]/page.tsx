@@ -20,6 +20,7 @@ import { redirect, notFound } from 'next/navigation';
 import { Topbar } from '@/app/components';
 import { requireActiveUser } from '@/lib/auth';
 import { getRaceDB } from '@/lib/race-store';
+import { query } from '@/lib/db';
 import { buildSyntheticPlan, todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
@@ -307,6 +308,45 @@ export default async function RacePlanPage({ params }: PageProps) {
   }
   const linkedTop = linkedWorkouts.slice(0, 4);
 
+  // ── Chip-time vs Strava divergence ─────────────────────────────
+  // When the curated actualResult.finishS differs from the matched
+  // Strava activity's canonicalFinishS / movingTimeS, surface a
+  // banner so the user can see WHY the aggregate VDOT is using a
+  // different finish time than what Strava shows. Option-B locked
+  // races.actual_result as the source of truth; this banner makes
+  // the divergence visible at the race-detail level.
+  let divergence: { chipS: number; stravaS: number; deltaS: number; chipDisplay: string; stravaDisplay: string } | null = null;
+  if (race.actualResult?.finishS && race.actualResult?.stravaActivityId && race.actualResult?.source === 'manual') {
+    try {
+      const rows = await query<{ canonical_finish_s: number | null; moving_time_s: number | null }>(
+        `SELECT
+            (data->>'canonicalFinishS')::NUMERIC AS canonical_finish_s,
+            (data->>'movingTimeS')::NUMERIC AS moving_time_s
+           FROM strava_activities
+          WHERE id::BIGINT = $1
+          LIMIT 1`,
+        [race.actualResult.stravaActivityId],
+      );
+      const sa = rows[0];
+      if (sa) {
+        const stravaS = sa.canonical_finish_s != null ? Number(sa.canonical_finish_s) : Number(sa.moving_time_s ?? 0);
+        const chipS = race.actualResult.finishS;
+        const deltaS = chipS - stravaS;
+        if (stravaS > 0 && Math.abs(deltaS) >= 2) {
+          divergence = {
+            chipS,
+            stravaS,
+            deltaS,
+            chipDisplay: fmtTime(chipS),
+            stravaDisplay: fmtTime(stravaS),
+          };
+        }
+      }
+    } catch {
+      // Fail-soft: if the lookup errors, just skip the banner.
+    }
+  }
+
   return (
     <div className="race-plan-v4-page">
       <Topbar activeTab="races" showAdmin={auth.is_admin} />
@@ -319,6 +359,65 @@ export default async function RacePlanPage({ params }: PageProps) {
           <span className="crumb-sep">/</span>
           <span>{race.meta.name}</span>
         </div>
+
+        {/* ── CHIP-TIME DIVERGENCE BANNER ── */}
+        {divergence && (
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(80, 40, 180, 0.06), rgba(80, 40, 180, 0.02))',
+              border: '1px solid rgba(80, 40, 180, 0.25)',
+              borderRadius: 12,
+              padding: '14px 18px',
+              marginBottom: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'Oswald, sans-serif',
+                fontWeight: 700,
+                fontSize: 10,
+                letterSpacing: 1.5,
+                color: '#5028b4',
+                textTransform: 'uppercase',
+              }}
+            >
+              ⏱ Chip time used · Strava elapsed differs
+            </div>
+            <div
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: 'rgba(13,15,18,.85)',
+              }}
+            >
+              Your <strong>chip time</strong> of <strong>{divergence.chipDisplay}</strong> is what
+              the coach uses for VDOT computation (Option-B source-of-truth: curated chip
+              time wins over Strava elapsed). The matched Strava activity shows{' '}
+              <strong>{divergence.stravaDisplay}</strong> —{' '}
+              <strong>
+                {divergence.deltaS > 0 ? `${divergence.deltaS}s slower` : `${-divergence.deltaS}s faster`}
+              </strong>
+              {' '}than your watch recorded.
+            </div>
+            <div
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: 'rgba(13,15,18,.55)',
+              }}
+            >
+              The gap is usually start-corral walking before the chip mat (gun-to-mat lag) or
+              GPS drift through tall buildings. Chip time is the official race result; we use
+              it for fitness math, but your training analysis below still reads from the
+              Strava activity&apos;s splits and HR data.
+            </div>
+          </div>
+        )}
 
         {/* ── COACH STRIP + COUNTDOWN ── */}
         <div className="coach-strip">
