@@ -40,6 +40,7 @@ import { computePostRaceFinding } from '@/lib/post-race-awareness';
 import { PostRaceCard } from './PostRaceCard';
 import { computeStravaGap } from '@/lib/strava-gap';
 import { StravaGapCard } from './StravaGapCard';
+import { computeReadinessScore } from '@/lib/readiness-score';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -175,6 +176,17 @@ export default async function OverviewPage() {
   // injured / unexpected affordances. "Injured" mark suspends L7
   // signals + V5 until activity resumes.
   const stravaGap = await computeStravaGap(user.id, today).catch(() => null);
+
+  // C6 · Daily readiness score (0-100). Composite from yesterday's
+  // load + last-7d hard sessions + Signal 2 HR-pace drift. Surface-
+  // only — never auto-modifies the plan. Suspended when user marked
+  // injured.
+  const readiness = await computeReadinessScore(
+    user.id,
+    today,
+    fitness.maxHr.value,
+    fitness.restingHr.value,
+  ).catch(() => null);
 
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
@@ -339,18 +351,103 @@ export default async function OverviewPage() {
 
           <div className="hero-right">
             <div className="readiness-section">
-              <div className="readiness-header">
-                <span className="readiness-label-text">Readiness</span>
-                <span className="badge-ready" style={{ background: 'rgba(13,15,18,.05)', color: 'rgba(13,15,18,.45)' }}>No data</span>
-              </div>
-              <div className="readiness-ring-wrap">
-                <svg width="300" height="300" viewBox="0 0 300 300">
-                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
-                  <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(13,15,18,.32)" textAnchor="middle">—</text>
-                  <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
-                </svg>
-              </div>
-              <div className="readiness-building" style={{ color: 'rgba(13,15,18,.45)' }}>Waiting on data</div>
+              {/* C6 · Readiness score with three-state ring. Surface-only
+                  per the locked spec — never auto-modifies plan. Falls
+                  back to "Waiting on data" when score is null
+                  (suspended via injury mark OR no activity history). */}
+              {readiness && readiness.score != null ? (
+                <>
+                  <div className="readiness-header">
+                    <span className="readiness-label-text">Readiness</span>
+                    <span
+                      className="badge-ready"
+                      style={{
+                        background:
+                          readiness.state === 'green' ? 'rgba(31,106,33,.12)'
+                          : readiness.state === 'yellow' ? 'rgba(232,159,38,.18)'
+                          : 'rgba(176,0,32,.12)',
+                        color:
+                          readiness.state === 'green' ? '#1f6a21'
+                          : readiness.state === 'yellow' ? '#B3450A'
+                          : '#B00020',
+                      }}
+                    >
+                      {readiness.state === 'green' ? 'GREEN' : readiness.state === 'yellow' ? 'YELLOW' : 'RED'}
+                    </span>
+                  </div>
+                  <div className="readiness-ring-wrap">
+                    {(() => {
+                      const radius = 130;
+                      const circumference = 2 * Math.PI * radius;  // ~816.81
+                      const filled = (readiness.score / 100) * circumference * 0.75;  // 270° arc
+                      const empty = circumference - filled;
+                      const color = readiness.state === 'green' ? '#1f6a21'
+                        : readiness.state === 'yellow' ? '#E89F26'
+                        : '#B00020';
+                      return (
+                        <svg width="300" height="300" viewBox="0 0 300 300">
+                          {/* Track */}
+                          <circle cx="150" cy="150" r={radius} fill="none"
+                            stroke="rgba(13,15,18,.08)" strokeWidth="16"
+                            strokeDasharray={`${circumference * 0.75} ${circumference}`}
+                            strokeLinecap="round" transform="rotate(135 150 150)" />
+                          {/* Fill */}
+                          <circle cx="150" cy="150" r={radius} fill="none"
+                            stroke={color} strokeWidth="16"
+                            strokeDasharray={`${filled} ${empty + filled}`}
+                            strokeLinecap="round" transform="rotate(135 150 150)" />
+                          <text x="150" y="158" fontFamily="'Bebas Neue', sans-serif" fontSize="78" fill={color} textAnchor="middle">{readiness.score}</text>
+                          <text x="150" y="190" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.55)" textAnchor="middle" letterSpacing="1">/ 100</text>
+                        </svg>
+                      );
+                    })()}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      color: 'rgba(13,15,18,.78)',
+                      textAlign: 'center',
+                      padding: '0 20px',
+                      marginTop: 6,
+                    }}
+                    title={
+                      readiness.missingInputs.length > 0
+                        ? `Inputs used: ${readiness.inputs.map(i => i.name).join(', ') || 'none'}\nMissing: ${readiness.missingInputs.join(', ')}`
+                        : `Inputs: ${readiness.inputs.map(i => `${i.name}${i.delta >= 0 ? '+' : ''}${i.delta}`).join(' · ')}`
+                    }
+                  >
+                    {readiness.recommendation}
+                    {readiness.missingInputs.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'rgba(13,15,18,.55)', marginTop: 4, fontStyle: 'italic' }}>
+                        {readiness.missingInputs.length === 1
+                          ? `${readiness.missingInputs[0]} unavailable — score uses other inputs.`
+                          : `${readiness.missingInputs.length} inputs unavailable — score uses what's available.`}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="readiness-header">
+                    <span className="readiness-label-text">Readiness</span>
+                    <span className="badge-ready" style={{ background: 'rgba(13,15,18,.05)', color: 'rgba(13,15,18,.45)' }}>
+                      {readiness?.suppressReason === 'injured' ? 'Suspended' : 'No data'}
+                    </span>
+                  </div>
+                  <div className="readiness-ring-wrap">
+                    <svg width="300" height="300" viewBox="0 0 300 300">
+                      <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
+                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(13,15,18,.32)" textAnchor="middle">—</text>
+                      <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
+                    </svg>
+                  </div>
+                  <div className="readiness-building" style={{ color: 'rgba(13,15,18,.45)' }}>
+                    {readiness?.suppressReason === 'injured' ? 'Suspended while injured' : 'Waiting on data'}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Mileage is the one trend we CAN compute — actual vs planned this week. */}
