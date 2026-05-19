@@ -25,7 +25,6 @@
 import {
   VDOT_LOOKUP_TABLE,
   PACE_ZONE_WIDTH,
-  TRAINING_PACES_TABLE,
   type DanielsPace,
 } from '../coach/doctrine';
 import type { CoachState } from './coach-state';
@@ -134,95 +133,38 @@ export interface DanielsPaceSet {
   R: { lowS: number; highS: number };
 }
 
-/** Look up Daniels training paces directly from TRAINING_PACES_TABLE,
- *  interpolating between rows. Returns null when out of range.
- *
- *  THIS IS THE FIX for the P0 bug where pacesFromVdot was deriving
- *  bands from race times (T from 15K race pace, I from 5K race pace,
- *  M from marathon race pace / 26.219) — that math produced training
- *  paces 30-50 sec/mi slower than Daniels' canonical training paces
- *  at every VDOT tier from 30 to 85. The race times in
- *  VDOT_LOOKUP_TABLE are CORRECT (they match Daniels' equivalent
- *  race-time table). The error was using those race times as
- *  training paces — they're physiologically different intensities.
- *  Daniels publishes a SEPARATE training-paces table for a reason. */
-function trainingPaceRow(vdot: number): {
-  eLowS: number; eHighS: number; mS: number; tS: number; iS: number; rS: number;
-} | null {
-  const rows = TRAINING_PACES_TABLE.value;
-  if (vdot <= rows[0].vdot) return rows[0];
-  if (vdot >= rows[rows.length - 1].vdot) return rows[rows.length - 1];
-  for (let i = 0; i < rows.length - 1; i++) {
-    if (vdot >= rows[i].vdot && vdot <= rows[i + 1].vdot) {
-      const t = (vdot - rows[i].vdot) / (rows[i + 1].vdot - rows[i].vdot);
-      const lerp = (a: number, b: number) => Math.round(a + t * (b - a));
-      return {
-        eLowS:  lerp(rows[i].eLowS,  rows[i + 1].eLowS),
-        eHighS: lerp(rows[i].eHighS, rows[i + 1].eHighS),
-        mS:     lerp(rows[i].mS,     rows[i + 1].mS),
-        tS:     lerp(rows[i].tS,     rows[i + 1].tS),
-        iS:     lerp(rows[i].iS,     rows[i + 1].iS),
-        rS:     lerp(rows[i].rS,     rows[i + 1].rS),
-      };
-    }
-  }
-  return null;
-}
-
-/** Build Daniels pace bands from a VDOT. Reads directly from the
- *  canonical TRAINING_PACES_TABLE (which matches Daniels' published
- *  training pace tables); falls back to race-time derivation only
- *  if the table lookup fails (effectively never, but defensive).
- *
- *  PACE_ZONE_WIDTH provides the band half-width per zone:
- *    E = 30 sec/mi (Daniels: "Easy is a window, not a pace")
- *    M = 5 sec/mi (race-simulation lock-in)
- *    T = 3 sec/mi (narrow window for threshold adaptation)
- *    I = 3 sec/mi (lock by interval time, not pace)
- *    R = 2 sec/mi (lock by rep time)
- *
- *  E uses the published low/high directly (it's authored as a window
- *  in Daniels' table — no center pace exists for E). M/T/I/R are
- *  center paces and get the symmetric ±width applied. */
+/** Build Daniels pace bands from a VDOT. The math:
+ *  - M = marathon time / 26.219
+ *  - T = HM pace for sub-elite, 15K pace for slower runners
+ *  - I = 5K race pace (slightly slower for very long intervals)
+ *  - R = mile race pace (or ~6 sec faster than I per 400m)
+ *  - E = M + 60-90 sec/mi (Daniels' E is wide on purpose)
+ *  Bands use PACE_ZONE_WIDTH per zone. */
 export function pacesFromVdot(vdot: number): DanielsPaceSet | null {
-  // Tier 1 — canonical training paces table (preferred, accurate)
-  const tp = trainingPaceRow(vdot);
-  if (tp) {
-    const widthFor = (zone: DanielsPace): number =>
-      PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
-    const band = (centerS: number, zone: DanielsPace) => {
-      const half = widthFor(zone) / 2;
-      return { lowS: Math.round(centerS - half), highS: Math.round(centerS + half) };
-    };
-    return {
-      vdot,
-      // E is a window in Daniels' table — use the published low/high
-      // directly rather than applying a symmetric band around a center.
-      E: { lowS: tp.eLowS, highS: tp.eHighS },
-      M: band(tp.mS, 'M'),
-      T: band(tp.tS, 'T'),
-      I: band(tp.iS, 'I'),
-      R: band(tp.rS, 'R'),
-    };
-  }
-
-  // Tier 2 — legacy race-time derivation. Kept as a defensive fallback;
-  // produces paces ~30 sec/mi slower than Daniels canonical, so prefer
-  // the tier-1 path whenever possible. Reachable only if VDOT lookup
-  // succeeds but training-paces lookup fails (effectively never).
   const row = vdotRow(vdot);
   if (!row) return null;
+
+  // M pace (marathon) — center pace, 5 sec/mi band per Daniels
   const mCenterS = row.marathonS / 26.219;
+  // T pace — for vdot >= 50 use HM pace; below that use 15K pace
+  // (slower runners benefit from longer distance anchor per
+  // Pfitzinger/Daniels).
   const tCenterS = vdot >= 50 ? row.halfS / 13.109 : row.km15S / 9.321;
+  // I pace — 5K race pace
   const iCenterS = row.km5S / 3.107;
+  // R pace — mile race pace
   const rCenterS = row.mileS / 1;
+  // E pace — Daniels says E is 60-90 sec/mi slower than M; use 75
+  // as the center
   const eCenterS = mCenterS + 75;
-  const widthFor = (zone: DanielsPace): number =>
-    PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
+
+  const widthFor = (zone: DanielsPace): number => PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
+
   const band = (centerS: number, zone: DanielsPace) => {
     const half = widthFor(zone) / 2;
     return { lowS: Math.round(centerS - half), highS: Math.round(centerS + half) };
   };
+
   return {
     vdot,
     E: band(eCenterS, 'E'),
