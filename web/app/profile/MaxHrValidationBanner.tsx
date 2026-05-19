@@ -60,7 +60,13 @@ export function MaxHrValidationBanner({ verdict }: Props) {
         const j = await res.json().catch(() => ({}));
         setErr(j?.error || 'Save failed');
       } else {
-        router.refresh();  // re-render Coach Reads with new max + new zones
+        // Hard reload so the client-side MaxHrIsland re-mounts and
+        // re-fetches. router.refresh() only re-renders server
+        // components; client islands keep their useState from before
+        // and would show stale values. (David caught this 2026-05-19
+        // round 3 — top max HR card showed 175 while Coach Reads
+        // showed 181 after Apply.)
+        window.location.reload();
       }
     } catch { setErr('Network error'); }
     finally { setBusy(null); }

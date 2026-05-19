@@ -44,8 +44,22 @@ function fmtDate(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
-export function MaxHrIsland() {
-  const [state, setState] = useState<State | null>(null);
+export interface MaxHrInitialState {
+  value: number | null;
+  source: 'manual' | 'computed' | 'none';
+}
+
+/** Optional server-side initial state. When provided, the island
+ *  renders with the correct value on first paint (no flash of stale
+ *  data) and the useEffect still re-fetches on mount to pick up the
+ *  full computed-source detail. Catches the David 2026-05-19 round 3
+ *  bug where the top max HR card showed 175 while Coach Reads showed
+ *  181 after Apply — the island's useState lagged behind the
+ *  server-rendered cousin. */
+export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
+  const [state, setState] = useState<State | null>(
+    initial ? { value: initial.value, source: initial.source, computed: null } : null,
+  );
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -117,7 +131,7 @@ export function MaxHrIsland() {
             {state.value && <span className="max-hr-unit">bpm</span>}
           </div>
           <div className="max-hr-source">
-            {state.source === 'manual' && <>Set manually</>}
+            {state.source === 'manual' && <>Manual override · applies across the app</>}
             {state.source === 'computed' && state.computed && (
               <>
                 {(() => {

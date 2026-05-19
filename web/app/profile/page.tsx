@@ -426,7 +426,7 @@ export default async function ProfilePage() {
               </div>
             ))}
           </div>
-          <MaxHrIsland />
+          <MaxHrIsland initial={{ value: fitness.maxHr.value, source: fitness.maxHr.source }} />
           <RestingHrIsland />
         </div>
 
