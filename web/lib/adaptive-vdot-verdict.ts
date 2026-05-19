@@ -10,9 +10,27 @@
  *   - Falsifier (what would change our mind)
  *   - User agency (Apply / Keep current / 30D suppress)
  *
- * Thresholds locked with David round 2 spec:
- *   UP changes:   3+ corroborating observations AND total weight ≥ 2.5
- *   DOWN changes: 2+ observations AND total weight ≥ 1.5
+ * SIGNAL 1 thresholds (workout adherence):
+ *   UP:   3+ corroborating observations AND total weight ≥ 2.5
+ *   DOWN: 2+ observations AND total weight ≥ 1.5
+ *
+ * SIGNAL 2 thresholds (pace at fixed HR drift):
+ *   UP:   |Δ| ≤ -5 s/mi AND ≥3 workouts AND ≥10 Z2 splits per window
+ *   DOWN: |Δ| ≥ +5 s/mi AND same volume gates
+ *
+ * COMBINED RULE (locked 2026-05-19 round 4):
+ *   Either signal can fire its own banner on its own thresholds.
+ *   When BOTH fire in the same direction, they merge into one banner
+ *   with both evidence panels and bump = max(s1Bump, s2Bump) capped
+ *   at 1.5. Same direction corroborates confidence but doesn't
+ *   compound magnitude — the conservative-on-upside discipline says
+ *   evidence converges, not amplifies.
+ *
+ *   When they fire in OPPOSITE directions (rare: S1 says faster, S2
+ *   says slower, or vice versa), neither fires. Contradicting signals
+ *   are evidence of system noise, not real fitness movement. The
+ *   verdict returns 'no-finding' with a contradiction note so the
+ *   user can see the disagreement on the diagnostic surface.
  *
  * Asymmetric on purpose — bumping VDOT up has real workout-effect
  * (faster prescriptions = harder workouts = injury risk) so the
@@ -26,12 +44,22 @@
 
 import { query } from './db';
 import { computeAdaptiveSignals, type AdaptiveSignals, type SignalObservation } from './adaptive-vdot-signals';
+import { computeSignal2, type Signal2Result, type Signal2Workout } from './adaptive-vdot-signal2';
 
 const UP_OBS_MIN = 3;
 const UP_WEIGHT_MIN = 2.5;
 const DOWN_OBS_MIN = 2;
 const DOWN_WEIGHT_MIN = 1.5;
 const RACE_WEEK_SUSPEND_DAYS = 14;
+
+/** Map Signal 2's pace delta into a proposed VDOT bump. Conservative
+ *  mirror of Signal 1's proposedBumpPoints math. 5 s/mi → 0.3 (min),
+ *  10 s/mi → 0.8, 15 s/mi → 1.3, 20+ s/mi → 1.5 (capped). */
+function signal2BumpPoints(deltaSPerMi: number): number {
+  const magnitude = Math.abs(deltaSPerMi);
+  const base = 0.3 + (magnitude - 5) * 0.1;
+  return Math.min(1.5, Math.max(0.3, base));
+}
 
 export interface AdaptiveVdotVerdict {
   hasFinding: boolean;
@@ -42,12 +70,31 @@ export interface AdaptiveVdotVerdict {
     setAt: string;
   } | null;
   signals: AdaptiveSignals;
+  /** Signal 2 result, exposed alongside Signal 1's so the banner +
+   *  diagnostic can surface both evidence panels when both fire. */
+  signal2: Signal2Result;
   recommendation:
-    | { kind: 'no-finding'; reason: string }
+    | { kind: 'no-finding'; reason: string; contradiction?: { s1: 'up' | 'down' | 'none'; s2: 'up' | 'down' | 'none' } }
     | { kind: 'insufficient-data'; reason: string }
     | { kind: 'race-week-suspended'; reason: string; daysToRace: number }
-    | { kind: 'vdot-bump-suggested'; suggestedVdot: number; suggestedDeltaPoints: number; evidence: SignalObservation[]; reason: string; falsifier: string }
-    | { kind: 'vdot-downgrade-investigate'; evidence: SignalObservation[]; reason: string; falsifier: string };
+    | {
+        kind: 'vdot-bump-suggested';
+        suggestedVdot: number;
+        suggestedDeltaPoints: number;
+        evidence: SignalObservation[];
+        signal2Evidence?: Signal2Workout[];
+        signal2Delta?: number;
+        reason: string;
+        falsifier: string;
+      }
+    | {
+        kind: 'vdot-downgrade-investigate';
+        evidence: SignalObservation[];
+        signal2Evidence?: Signal2Workout[];
+        signal2Delta?: number;
+        reason: string;
+        falsifier: string;
+      };
 }
 
 /** Map total faster-weight delta into a proposed VDOT bump.
@@ -127,21 +174,40 @@ async function checkManualOverride(userId: string): Promise<AdaptiveVdotVerdict[
   }
 }
 
+async function fetchRestingHr(userId: string): Promise<number | null> {
+  try {
+    const rows = await query<{ resting_hr: number | null }>(
+      `SELECT resting_hr FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    return rows[0]?.resting_hr ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildAdaptiveVdotVerdict(
   userId: string,
   currentVdot: number,
   maxHr: number | null,
   today: Date = new Date(),
 ): Promise<AdaptiveVdotVerdict> {
-  const signals = await computeAdaptiveSignals(userId, today, currentVdot, maxHr);
-  const manualOverride = await checkManualOverride(userId);
+  const [signals, signal2, manualOverride, restingHr] = await Promise.all([
+    computeAdaptiveSignals(userId, today, currentVdot, maxHr),
+    // Signal 2 needs resting HR for HRR-framework Z2 detection.
+    fetchRestingHr(userId).then((rhr) => computeSignal2(userId, today, maxHr, rhr)),
+    checkManualOverride(userId),
+    fetchRestingHr(userId),
+  ]);
+  void restingHr;  // already passed into computeSignal2 via the chain above
   const dismissed = await checkDismissal(userId, signals);
 
-  const base: Pick<AdaptiveVdotVerdict, 'currentVdot' | 'dismissed' | 'manualOverride' | 'signals'> = {
+  const base: Pick<AdaptiveVdotVerdict, 'currentVdot' | 'dismissed' | 'manualOverride' | 'signals' | 'signal2'> = {
     currentVdot,
     dismissed,
     manualOverride,
     signals,
+    signal2,
   };
 
   // Race-week / taper suspension
@@ -161,27 +227,112 @@ export async function buildAdaptiveVdotVerdict(
   const t = signals.threshold;
   const totalObs = t.observations.length;
 
-  // Insufficient data
-  if (totalObs < UP_OBS_MIN) {
+  // Insufficient data: both signals lack the minimum to evaluate
+  const signal1HasEnough = totalObs >= UP_OBS_MIN;
+  const signal2HasEnough = signal2.enoughVolume;
+  if (!signal1HasEnough && !signal2HasEnough) {
     return {
       ...base,
       hasFinding: false,
       recommendation: {
         kind: 'insufficient-data',
-        reason: `Need ${UP_OBS_MIN}+ threshold-effort workouts in the last 6 weeks to detect fitness drift. Currently have ${totalObs}.`,
+        reason:
+          `Need ${UP_OBS_MIN}+ threshold workouts in the last 6 weeks (Signal 1) ` +
+          `OR 3+ easy workouts with 10+ Z2 splits per 4-week window (Signal 2) to detect drift. ` +
+          `Currently: Signal 1 ${totalObs} obs, Signal 2 ${signal2.windows.recent.workoutCount}+${signal2.windows.prior.workoutCount} workouts.`,
       },
     };
   }
 
-  // Bump-up rule
-  if (t.fasterCount >= UP_OBS_MIN && t.fasterWeight >= UP_WEIGHT_MIN) {
-    const bumpPoints = proposedBumpPoints(t.fasterWeight, t.fasterCount);
+  const s1FiresUp = t.fasterCount >= UP_OBS_MIN && t.fasterWeight >= UP_WEIGHT_MIN;
+  const s1FiresDown = t.slowerCount >= DOWN_OBS_MIN && t.slowerWeight >= DOWN_WEIGHT_MIN;
+  const s2FiresUp = signal2.firesUp;
+  const s2FiresDown = signal2.firesDown;
+
+  // Contradiction guard: signals firing opposite directions cancel.
+  // Real fitness movement should show as either-both-up or either-both-down.
+  // A clash is evidence the picture is noisy, not directional.
+  if ((s1FiresUp && s2FiresDown) || (s1FiresDown && s2FiresUp)) {
+    return {
+      ...base,
+      hasFinding: false,
+      recommendation: {
+        kind: 'no-finding',
+        reason:
+          `Adaptive signals disagree this period — Signal 1 ` +
+          `${s1FiresUp ? 'shows faster thresholds' : 'shows slower thresholds'} while Signal 2 ` +
+          `${s2FiresUp ? 'shows faster Z2 pace' : 'shows slower Z2 pace'}. When workout adherence and ` +
+          `pace-at-fixed-HR drift point opposite ways, the most likely explanation is one window had a ` +
+          `non-representative sample (illness, weather cluster, missed sessions). Holding off on any change.`,
+        contradiction: {
+          s1: s1FiresUp ? 'up' : 'down',
+          s2: s2FiresUp ? 'up' : 'down',
+        },
+      },
+    };
+  }
+
+  // Bump-up rule (either signal fires up alone, or both fire up together)
+  if (s1FiresUp || s2FiresUp) {
+    // Compute proposed bumps per signal that's firing
+    const s1Bump = s1FiresUp ? proposedBumpPoints(t.fasterWeight, t.fasterCount) : 0;
+    const s2Bump = (s2FiresUp && signal2.deltaSPerMi != null) ? signal2BumpPoints(signal2.deltaSPerMi) : 0;
+    // Both firing: corroboration, take the LARGER bump (capped). Single
+    // firing: that signal's bump alone.
+    const bumpPoints = Math.min(1.5, Math.max(s1Bump, s2Bump));
     const suggestedVdot = Math.round((currentVdot + bumpPoints) * 10) / 10;
-    const evidence = t.observations.filter((o) => o.faster).slice(0, 5);
-    const datesList = evidence
-      .slice(0, 3)
-      .map((o) => `${o.date} (${formatPace(o.actualPaceS)} vs prescribed ${formatPace(o.prescribedPaceS)}, HR ${o.actualAvgHr ?? '—'})`)
-      .join('; ');
+
+    const evidence = s1FiresUp ? t.observations.filter((o) => o.faster).slice(0, 5) : [];
+    const signal2Evidence = s2FiresUp
+      ? signal2.workouts.filter((w) => w.inWindow === 'recent').slice(0, 5)
+      : undefined;
+
+    let reason: string;
+    let falsifier: string;
+    if (s1FiresUp && s2FiresUp) {
+      // Combined fire — strongest evidence shape.
+      const s1Dates = evidence.slice(0, 3)
+        .map((o) => `${o.date} (${formatPace(o.actualPaceS)} vs prescribed ${formatPace(o.prescribedPaceS)})`)
+        .join('; ');
+      reason =
+        `Two corroborating signals point to fitness gain. ` +
+        `Signal 1 · ${t.fasterCount} threshold workouts trended faster at controlled HR (${s1Dates}). ` +
+        `Signal 2 · Z2 pace dropped ${Math.abs(signal2.deltaSPerMi!)} s/mi over the last 4 weeks vs the prior 4. ` +
+        `Combined evidence is ~${bumpPoints.toFixed(1)} VDOT points. ` +
+        `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`;
+      falsifier =
+        `Workouts in heat >78°F or within 7 days of a race are already excluded from both signal windows. ` +
+        `A single slow threshold workout OR a 5+ s/mi Z2 pace regression in the next two weeks would weaken ` +
+        `the case. The combined signal is more conservative than either alone — both must keep agreeing.`;
+    } else if (s1FiresUp) {
+      // Signal 1 alone
+      const datesList = evidence.slice(0, 3)
+        .map((o) => `${o.date} (${formatPace(o.actualPaceS)} vs prescribed ${formatPace(o.prescribedPaceS)}, HR ${o.actualAvgHr ?? '—'})`)
+        .join('; ');
+      reason =
+        `Your last ${t.fasterCount} threshold workouts (${datesList}) trended faster than prescribed at controlled HR. ` +
+        `Current VDOT ${currentVdot.toFixed(1)} prescribes T at ${formatPace(t.observations[0]?.prescribedPaceS || 0)}. ` +
+        `This is evidence of ~${bumpPoints.toFixed(1)} VDOT points of fitness gain. ` +
+        `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`;
+      falsifier =
+        `Workouts in heat >78°F or within 7 days of a race are already excluded from this evidence — what you ` +
+        `see above ran in normal conditions. A single slow threshold workout in the next two weeks would weaken ` +
+        `the signal, as would discovering a context (illness, life stress) that explained the fast paces.`;
+    } else {
+      // Signal 2 alone
+      reason =
+        `Pace at fixed HR has dropped ${Math.abs(signal2.deltaSPerMi!)} s/mi over the last 4 weeks vs the prior 4. ` +
+        `Z2 band (${signal2.z2BandBpm?.lo}-${signal2.z2BandBpm?.hi} bpm), ` +
+        `${signal2.windows.recent.workoutCount} workouts (${signal2.windows.recent.z2MileCount} Z2 splits) recent vs ` +
+        `${signal2.windows.prior.workoutCount} workouts (${signal2.windows.prior.z2MileCount} splits) prior. ` +
+        `This is evidence of ~${bumpPoints.toFixed(1)} VDOT points of aerobic-base improvement. ` +
+        `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`;
+      falsifier =
+        `Easy runs in heat >78°F or within 7 days of a race are already excluded from both windows. ` +
+        `A 5+ s/mi Z2 pace regression in the next two weeks would weaken the signal. Signal 1 (workout adherence) ` +
+        `did not corroborate this period — that's why the bump is conservative.`;
+    }
+
     return {
       ...base,
       hasFinding: true,
@@ -190,39 +341,62 @@ export async function buildAdaptiveVdotVerdict(
         suggestedVdot,
         suggestedDeltaPoints: bumpPoints,
         evidence,
-        reason:
-          `Your last ${t.fasterCount} threshold workouts (${datesList}) trended faster than prescribed at controlled HR. ` +
-          `Current VDOT ${currentVdot.toFixed(1)} prescribes T at ${formatPace((signals.threshold.observations[0]?.prescribedPaceS) || 0)}. ` +
-          `This is evidence of ~${bumpPoints.toFixed(1)} VDOT points of fitness gain. ` +
-          `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`,
-        falsifier:
-          `Workouts in heat >${78}°F or within 7 days of a race are already excluded from this evidence — what you ` +
-          `see above ran in normal conditions. A single slow threshold workout in the next two weeks would weaken ` +
-          `the signal, as would discovering a context (illness, life stress) that explained the fast paces.`,
+        signal2Evidence,
+        signal2Delta: s2FiresUp ? (signal2.deltaSPerMi ?? undefined) : undefined,
+        reason,
+        falsifier,
       },
     };
   }
 
-  // Downgrade-investigate rule
-  if (t.slowerCount >= DOWN_OBS_MIN && t.slowerWeight >= DOWN_WEIGHT_MIN) {
-    const evidence = t.observations.filter((o) => o.slower).slice(0, 5);
-    const datesList = evidence
-      .slice(0, 3)
-      .map((o) => `${o.date} (${formatPace(o.actualPaceS)} vs prescribed ${formatPace(o.prescribedPaceS)})`)
-      .join('; ');
+  // Downgrade-investigate rule (either signal fires down)
+  if (s1FiresDown || s2FiresDown) {
+    const evidence = s1FiresDown ? t.observations.filter((o) => o.slower).slice(0, 5) : [];
+    const signal2Evidence = s2FiresDown
+      ? signal2.workouts.filter((w) => w.inWindow === 'recent').slice(0, 5)
+      : undefined;
+
+    let reason: string;
+    let falsifier: string;
+    if (s1FiresDown && s2FiresDown) {
+      reason =
+        `Both signals point to a possible fitness regression. ` +
+        `Signal 1 · ${t.slowerCount} threshold workouts came in slow despite controlled HR. ` +
+        `Signal 2 · Z2 pace is ${signal2.deltaSPerMi} s/mi slower over the last 4 weeks. ` +
+        `Worth investigating: am I in a recovery week? Carrying extra fatigue? Illness?`;
+      falsifier =
+        `If you can identify a contextual reason — recovery week, poor sleep cluster, illness, life stress — ` +
+        `dismiss this. The investigate path is for when execution is honest and both signals still agree something's off.`;
+    } else if (s1FiresDown) {
+      const datesList = evidence.slice(0, 3)
+        .map((o) => `${o.date} (${formatPace(o.actualPaceS)} vs prescribed ${formatPace(o.prescribedPaceS)})`)
+        .join('; ');
+      reason =
+        `Your last ${t.slowerCount} threshold workouts (${datesList}) came in slow despite controlled HR ` +
+        `and no flagged context issues. Worth checking: am I in a recovery week? Carrying extra fatigue? Illness?`;
+      falsifier =
+        `If you can identify a contextual reason — recovery week, poor sleep cluster, illness, life stress — ` +
+        `dismiss this. The investigate path is for when execution is honest and the numbers still tell you ` +
+        `something's off.`;
+    } else {
+      reason =
+        `Z2 pace at fixed HR has slowed ${signal2.deltaSPerMi} s/mi over the last 4 weeks. ` +
+        `Signal 1 (threshold workouts) didn't corroborate — that's why this is investigate-only, not a downgrade recommendation.`;
+      falsifier =
+        `Easy-run pace can drift slow for many non-fitness reasons (warmer days, longer routes, less sleep). ` +
+        `If you can identify any of those, this isn't a fitness signal.`;
+    }
+
     return {
       ...base,
       hasFinding: true,
       recommendation: {
         kind: 'vdot-downgrade-investigate',
         evidence,
-        reason:
-          `Your last ${t.slowerCount} threshold workouts (${datesList}) came in slow despite controlled HR ` +
-          `and no flagged context issues. Worth checking: am I in a recovery week? Carrying extra fatigue? Illness?`,
-        falsifier:
-          `If you can identify a contextual reason — recovery week, poor sleep cluster, illness, life stress — ` +
-          `dismiss this. The investigate path is for when execution is honest and the numbers still tell you ` +
-          `something's off.`,
+        signal2Evidence,
+        signal2Delta: s2FiresDown ? (signal2.deltaSPerMi ?? undefined) : undefined,
+        reason,
+        falsifier,
       },
     };
   }
@@ -233,7 +407,7 @@ export async function buildAdaptiveVdotVerdict(
     recommendation: {
       kind: 'no-finding',
       reason:
-        `Threshold workouts (${totalObs} in the last 6 weeks) are tracking close to prescribed at controlled HR. ` +
+        `Signal 1 (${totalObs} threshold workouts) and Signal 2 (Z2 pace at fixed HR) are both tracking close to baseline. ` +
         `No fitness movement detected.`,
     },
   };

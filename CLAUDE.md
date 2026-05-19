@@ -80,6 +80,51 @@ The distinction is *what you're surfacing*: race performance → races table; tr
 
 ---
 
+## Operational vs decision vs external (locked 2026-05-19)
+
+The boundary that decides whether the agent acts, asks, or confirms before touching something. Three distinct buckets:
+
+### 1. Operational tasks · self-execute
+
+Run as part of the work. Surface results, not requests to trigger.
+
+- Backfills, internal data populations (e.g., `/api/admin/backfill-splits`)
+- Running diagnostics endpoints the agent built (`l7-signal-view`, `audit-races`, `race-hr-diagnostic`)
+- Invoking endpoints the agent built itself, including read-only admin routes
+- Test runs, typecheck, lint
+- Sync checks, status probes
+- Reading data that exists in the system to verify its own work
+
+The pattern is: agent built it → agent knows it's safe → agent has rate-limited it → agent runs it. The result goes in the status surface, not a "go run this" instruction. Buttons buried in status docs get missed when shipping fast.
+
+### 2. Decisions · explicitly flag as blockers
+
+Pause. Ask. Resume after answer.
+
+- Combined-rule shapes when multiple valid options exist (e.g., "either signal fires alone vs. softer combined threshold")
+- Threshold values where the right answer isn't physiologically obvious
+- Architectural splits where the trade-off is real (DI vs. direct DB, lazy vs. eager fetch)
+- Scope expansions beyond the explicit queue
+- Anything where two defensible answers exist and the wrong one creates structural debt
+
+The pattern is: state the decision, state the options, state the default if no answer, pause. Resume the moment an answer lands.
+
+### 3. Externally-consequential actions · require confirmation
+
+These touch the outside world or cost real money/trust. Confirm before each one.
+
+- Sending email
+- Deleting files, rows, or external resources
+- Spending money (API costs are usually fine; service-tier upgrades aren't)
+- Touching public-facing surfaces (production deploys, public posts, live data the user-facing app reads in a way the user can't undo)
+- Anything destructive that can't be reversed by running the inverse command
+
+The pattern is: name the action, name what it touches, name what reverses it, confirm.
+
+**Why this matters:** the bug class is "agent buries an action in a status doc → user misses it → expected outcome never happens → agent's report drifts from reality." Operating boundaries fix the bug class. Buttons in status docs get missed; decisions correctly flagged get answered; external actions correctly gated stay safe.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
