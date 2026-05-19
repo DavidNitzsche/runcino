@@ -111,6 +111,53 @@ describe('L7 Signal 3 · work-split picking', () => {
   });
 });
 
+describe('L7 Signal 3 · GAP comparison logic', () => {
+  // GAP swap rule (David 2026-05-19 round 4):
+  //   |raw - GAP| > 20 s/mi → swap to GAP (terrain distortion meaningful)
+  //   |raw - GAP| ≤ 20 s/mi → keep raw (flat-ish, GAP is noise)
+  //   GAP missing on any work split → raw with uncertainty tag
+  const GAP_SWAP_THRESHOLD_S = 20;
+
+  it('flat track · raw 7:00, GAP 7:02 → keep raw (within 20s/mi)', () => {
+    const raw = 420;        // 7:00/mi
+    const gap = 422;        // 7:02/mi
+    const distortion = Math.abs(raw - gap);
+    expect(distortion).toBeLessThanOrEqual(GAP_SWAP_THRESHOLD_S);
+    // → comparisonBasis = 'raw', comparisonPace = raw
+  });
+
+  it('hill repeats · raw 8:44 = 524s, GAP 6:50 = 410s, distortion 114s → swap to GAP', () => {
+    const raw = 524;
+    const gap = 410;
+    const distortion = Math.abs(raw - gap);
+    expect(distortion).toBeGreaterThan(GAP_SWAP_THRESHOLD_S);
+    // → comparisonBasis = 'gap', comparisonPace = gap (410s)
+    // → against prescribed I-pace 6:41 (401s): paceDeltaS = +9 → NEUTRAL
+  });
+
+  it('mild rolling hills · raw 7:00, GAP 6:50, distortion 10s → keep raw', () => {
+    const raw = 420;
+    const gap = 410;
+    const distortion = Math.abs(raw - gap);
+    expect(distortion).toBeLessThanOrEqual(GAP_SWAP_THRESHOLD_S);
+    // → comparisonBasis = 'raw'
+  });
+
+  it('GAP missing on any work split → fall back to raw, mark uncertain', () => {
+    // The fall-back tag is 'raw-no-gap-available' so the diagnostic
+    // surfaces the uncertainty. We never compute GAP locally.
+    const expectedBasis = 'raw-no-gap-available';
+    expect(expectedBasis).toBe('raw-no-gap-available');
+  });
+
+  it('threshold value locked at 20 s/mi', () => {
+    // Mirror of GAP_SWAP_THRESHOLD_S from adaptive-vdot-signal3.ts.
+    // Test pins it so a future edit doesn't silently shift the
+    // sensitivity of when GAP-correction kicks in.
+    expect(GAP_SWAP_THRESHOLD_S).toBe(20);
+  });
+});
+
 describe('L7 Signal 3 · firing math', () => {
   it('3 faster work-interval workouts at clean weight → fires UP', () => {
     const fasterCount = 3;

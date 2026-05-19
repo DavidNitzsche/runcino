@@ -52,6 +52,13 @@ export interface NormalizedActivity {
   splits?: Array<{
     mile: number;
     paceSPerMi: number;
+    /** Grade-adjusted pace (s/mi) from Strava's
+     *  average_grade_adjusted_speed. Null when Strava doesn't return
+     *  GAP for this split (older activities, missing GPS). When
+     *  present, |paceSPerMi - gapSPerMi| > 20 indicates meaningful
+     *  terrain distortion — L7 Signal 3 swaps to GAP for the
+     *  comparison in that case. */
+    gapSPerMi: number | null;
     avgHr: number | null;
     elevDeltaFt: number;
   }>;
@@ -74,9 +81,18 @@ export function normalizeActivity(a: StravaActivity): NormalizedActivity {
   const splits = a.splits_standard?.map((s) => {
     const splitMi = s.distance / 1609.344;
     const paceSPerMi = splitMi > 0 ? Math.round(s.elapsed_time / splitMi) : 0;
+    // Grade-adjusted pace from Strava's average_grade_adjusted_speed
+    // (m/s). Convert to s/mi: 1609.344 m/mi ÷ (m/s) = s/mi.
+    // Null when Strava doesn't return GAP (no GPS, treadmill, older
+    // activities). Don't compute locally — Strava's GAP uses proprietary
+    // grade-cost model, our approximation would diverge.
+    const gapSPerMi = s.average_grade_adjusted_speed != null && s.average_grade_adjusted_speed > 0
+      ? Math.round(1609.344 / s.average_grade_adjusted_speed)
+      : null;
     return {
       mile: s.split,
       paceSPerMi,
+      gapSPerMi,
       avgHr: s.average_heartrate != null ? Math.round(s.average_heartrate) : null,
       elevDeltaFt: s.elevation_difference != null
         ? Math.round(s.elevation_difference * 3.28084)

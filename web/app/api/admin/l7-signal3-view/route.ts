@@ -54,14 +54,18 @@ export async function GET(req: NextRequest) {
     observations: signal3.observations.map((o) => ({
       date: o.date,
       label: o.workoutLabel,
-      workIntervalPace: fmtPace(o.workIntervalPaceS),
+      workIntervalRawPace: fmtPace(o.workIntervalPaceS),
+      workIntervalGapPace: fmtPace(o.workIntervalGapS),
+      comparisonPace: fmtPace(o.comparisonPaceS),
+      comparisonBasis: o.comparisonBasis,
       prescribedIPace: fmtPace(o.prescribedPaceS),
       paceDeltaS: o.paceDeltaS,
       workAvgHr: o.workAvgHr,
       hrInRange: o.hrInRange,
       workSplits: o.workSplits.map((s) => ({
         mile: s.mile,
-        pace: fmtPace(s.paceSPerMi),
+        rawPace: fmtPace(s.paceSPerMi),
+        gapPace: fmtPace(s.gapSPerMi),
         avgHr: s.avgHr,
       })),
       temperatureF: o.temperatureF,
@@ -69,12 +73,12 @@ export async function GET(req: NextRequest) {
       context: o.context,
       weight: o.weight,
       verdict: o.faster
-        ? 'COUNTS · faster'
+        ? `COUNTS · faster (basis: ${o.comparisonBasis})`
         : o.slower
-        ? 'COUNTS · slower'
+        ? `COUNTS · slower (basis: ${o.comparisonBasis})`
         : o.context.some((t) => ['heat', 'race-recency', 'poor-sleep'].includes(t))
         ? `FILTERED · ${o.context.join(', ')}`
-        : 'NEUTRAL · within I-pace band',
+        : `NEUTRAL · within I-pace band (basis: ${o.comparisonBasis})`,
     })),
     skipped: signal3.candidatesSkipped,
     summary: {

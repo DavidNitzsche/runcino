@@ -42,14 +42,36 @@ export async function POST(req: NextRequest) {
   const sinceIso = sinceParam && /^\d{4}-\d{2}-\d{2}$/.test(sinceParam)
     ? sinceParam
     : new Date(Date.now() - 42 * 86_400_000).toISOString().slice(0, 10);
+  // `force=missing-gap` re-processes activities whose splits exist but
+  // don't yet carry gapSPerMi (added 2026-05-19 round 4 for Signal 3
+  // hill-grade comparison). Without this flag, default behavior only
+  // touches activities with no splits at all.
+  const force = url.searchParams.get('force');
 
-  // Find activities missing splits since the cutoff.
+  let pendingFilter = `(data->'splits' IS NULL OR jsonb_array_length(data->'splits') = 0)`;
+  if (force === 'missing-gap') {
+    // Reprocess if ANY split lacks a gapSPerMi key. Postgres jsonb path
+    // existence is the cheapest check; if even one split is missing the
+    // field, the activity is stale.
+    pendingFilter = `(
+      data->'splits' IS NULL
+      OR jsonb_array_length(data->'splits') = 0
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements(data->'splits') s
+         WHERE NOT (s ? 'gapSPerMi')
+      )
+    )`;
+  } else if (force === 'all') {
+    pendingFilter = `TRUE`;
+  }
+
+  // Find activities matching the pending filter since the cutoff.
   const pending = await query<PendingRow>(
     `SELECT id::text AS id, data->>'date' AS date
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'date') >= $2
-        AND (data->'splits' IS NULL OR jsonb_array_length(data->'splits') = 0)
+        AND ${pendingFilter}
       ORDER BY (data->>'date') DESC
       LIMIT $3`,
     [admin.id, sinceIso, limit],

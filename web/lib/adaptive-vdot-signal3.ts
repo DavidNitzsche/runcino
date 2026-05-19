@@ -54,18 +54,31 @@ export interface Signal3Observation {
   date: string;
   workoutLabel: string;
   workoutType: string;
-  /** Mean pace of the work-interval splits (s/mi). */
+  /** Mean raw pace of the work-interval splits (s/mi). */
   workIntervalPaceS: number;
+  /** Mean grade-adjusted pace of the work-interval splits (s/mi).
+   *  Null when no GAP available for any work split. */
+  workIntervalGapS: number | null;
+  /** The pace we ACTUALLY used for comparison — raw or GAP depending
+   *  on whether terrain distortion was significant (>20 s/mi gap). */
+  comparisonPaceS: number;
+  /** Tag explaining which pace fed the comparison + why. */
+  comparisonBasis: 'raw' | 'gap' | 'raw-no-gap-available';
   /** Prescribed I-pace center from VDOT (s/mi). */
   prescribedPaceS: number;
-  /** Δ in s/mi (positive = slower). */
+  /** Δ in s/mi using comparisonPaceS (positive = slower). */
   paceDeltaS: number;
   /** Average HR across the work-interval splits. */
   workAvgHr: number | null;
   /** True if work HR sat in Z4-Z5 territory. */
   hrInRange: boolean | null;
   /** Splits we identified as work intervals. */
-  workSplits: Array<{ mile: number; paceSPerMi: number; avgHr: number | null }>;
+  workSplits: Array<{
+    mile: number;
+    paceSPerMi: number;
+    gapSPerMi: number | null;
+    avgHr: number | null;
+  }>;
   context: string[];
   temperatureF: number | null;
   daysToNearestRace: number | null;
@@ -121,9 +134,21 @@ interface ActivityRow {
     startLatLng?: [number, number] | null;
     plannedWorkoutType?: string;
     plannedLabel?: string;
-    splits?: Array<{ mile: number; paceSPerMi: number; avgHr: number | null }>;
+    splits?: Array<{
+      mile: number;
+      paceSPerMi: number;
+      gapSPerMi?: number | null;
+      avgHr: number | null;
+    }>;
   };
 }
+
+/** Threshold for "meaningful terrain distortion." When raw and grade-
+ *  adjusted pace differ by more than this many seconds per mile,
+ *  Signal 3 swaps to GAP for the I-pace comparison. Below this gap,
+ *  the difference is noise and raw pace is the honest reading.
+ *  Locked with David 2026-05-19 round 4. */
+const GAP_SWAP_THRESHOLD_S = 20;
 
 function isIntervalCandidate(data: ActivityRow['data']): boolean {
   // Planned-workout tag is the most reliable signal
@@ -142,14 +167,21 @@ function isIntervalCandidate(data: ActivityRow['data']): boolean {
   return false;
 }
 
+type SplitWithOptionalGap = {
+  mile: number;
+  paceSPerMi: number;
+  gapSPerMi?: number | null;
+  avgHr: number | null;
+};
+
 /** Identify the "work" splits within an interval activity. Approach:
  *  find the fastest contiguous splits whose HR sat in Z4-Z5. Skip
  *  warmup (first mile usually slow) and cooldown (last mile often
  *  recovery jog). */
 function pickWorkSplits(
-  splits: Array<{ mile: number; paceSPerMi: number; avgHr: number | null }>,
+  splits: Array<SplitWithOptionalGap>,
   z4z5: { lo: number; hi: number },
-): Array<{ mile: number; paceSPerMi: number; avgHr: number | null }> {
+): Array<SplitWithOptionalGap> {
   if (splits.length === 0) return [];
   // Filter to splits with HR in Z4-Z5 range. If no HR data, fall
   // back to top-3 fastest splits.
@@ -254,13 +286,42 @@ export async function computeSignal3(
     const workIntervalPaceS = Math.round(
       workSplits.reduce((s, w) => s + w.paceSPerMi, 0) / workSplits.length,
     );
+
+    // GAP comparison logic · per David 2026-05-19 round 4 spec:
+    //   - If GAP is available for ALL work splits AND the mean
+    //     raw-vs-GAP gap exceeds GAP_SWAP_THRESHOLD_S (20 s/mi),
+    //     terrain is distorting the comparison — swap to GAP.
+    //   - If GAP is available but gap is < 20 s/mi, raw pace is
+    //     the honest reading (flat-ish terrain).
+    //   - If GAP missing on any split, fall back to raw with a
+    //     'raw-no-gap-available' tag so the diagnostic surfaces
+    //     the uncertainty. Don't compute GAP locally.
+    const gapSplits = workSplits.filter((w) => w.gapSPerMi != null && w.gapSPerMi > 0);
+    const allHaveGap = gapSplits.length === workSplits.length;
+    const workIntervalGapS = allHaveGap && gapSplits.length > 0
+      ? Math.round(gapSplits.reduce((s, w) => s + (w.gapSPerMi ?? 0), 0) / gapSplits.length)
+      : null;
+    const rawVsGapDistortionS = workIntervalGapS != null
+      ? Math.abs(workIntervalPaceS - workIntervalGapS)
+      : null;
+    let comparisonPaceS = workIntervalPaceS;
+    let comparisonBasis: Signal3Observation['comparisonBasis'] = 'raw';
+    if (workIntervalGapS == null) {
+      comparisonBasis = 'raw-no-gap-available';
+    } else if (rawVsGapDistortionS != null && rawVsGapDistortionS > GAP_SWAP_THRESHOLD_S) {
+      comparisonPaceS = workIntervalGapS;
+      comparisonBasis = 'gap';
+    } else {
+      comparisonBasis = 'raw';
+    }
+
     const hrSplits = workSplits.filter((w) => w.avgHr != null);
     const workAvgHr = hrSplits.length > 0
       ? Math.round(hrSplits.reduce((s, w) => s + (w.avgHr ?? 0), 0) / hrSplits.length)
       : null;
     const hrInRange = workAvgHr != null ? (workAvgHr >= z4z5.lo && workAvgHr <= z4z5.hi) : null;
 
-    const paceDeltaS = workIntervalPaceS - iPaceCenterS;
+    const paceDeltaS = comparisonPaceS - iPaceCenterS;
 
     // Resolve context (weather + race-recency).
     const context: string[] = [];
@@ -300,11 +361,19 @@ export async function computeSignal3(
       workoutLabel: d.plannedLabel || d.name || 'Interval workout',
       workoutType: d.plannedWorkoutType || 'intervals',
       workIntervalPaceS,
+      workIntervalGapS,
+      comparisonPaceS,
+      comparisonBasis,
       prescribedPaceS: iPaceCenterS,
       paceDeltaS,
       workAvgHr,
       hrInRange,
-      workSplits,
+      workSplits: workSplits.map((w) => ({
+        mile: w.mile,
+        paceSPerMi: w.paceSPerMi,
+        gapSPerMi: w.gapSPerMi ?? null,
+        avgHr: w.avgHr,
+      })),
       context,
       temperatureF,
       daysToNearestRace,
