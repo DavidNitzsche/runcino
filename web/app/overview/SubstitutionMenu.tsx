@@ -27,21 +27,21 @@ export function SubstitutionMenu({ menu }: Props) {
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 5,
-          padding: '8px 14px',
+          gap: 6,
+          padding: '14px 32px',
           background: 'transparent',
-          border: '1px solid rgba(13,15,18,.20)',
-          borderRadius: 6,
+          border: '1.5px solid rgba(13,15,18,.2)',
+          borderRadius: 10,
           fontFamily: 'Oswald, sans-serif',
-          fontSize: 11,
+          fontSize: 13,
           letterSpacing: 1.5,
           textTransform: 'uppercase',
           fontWeight: 600,
-          color: 'rgba(13,15,18,.70)',
+          color: '#0D0F12',
           cursor: 'pointer',
         }}
       >
-        {open ? '× Close substitutions' : '⇄ Substitute'}
+        {open ? '× Close' : '⇄ Substitute'}
       </button>
 
       {open && (
