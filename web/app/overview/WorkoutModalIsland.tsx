@@ -206,7 +206,12 @@ export function WeekStripCells({
       {days.map((d) => {
         const isToday = d.date === today;
         const actual = completedMileage[d.date] ?? 0;
-        const isDone = !isToday && d.date < today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
+        // Bug fix: TODAY counts as done too when the run is logged.
+        // Previously `!isToday && d.date < today` excluded today, so a
+        // completed run never showed ✓ on its own day — the runner
+        // had to wait until tomorrow for confirmation. Now: today
+        // shows DONE the moment actual ≥ 60% planned.
+        const isDone = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
         const dateNum = parseInt(d.date.slice(-2), 10);
         return (
           <button

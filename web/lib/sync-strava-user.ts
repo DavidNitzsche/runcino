@@ -125,6 +125,51 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
     [userId, parseInt(cnt, 10)],
   );
 
+  // Writeback: rename the Strava activity to match the planned
+  // workout. Previously this only fired from the webhook handler —
+  // if Strava's webhook had latency or dropped, the rename never
+  // happened. Now syncSingleActivity ALSO triggers writeback as a
+  // belt-and-suspenders path. The writeback function itself is
+  // idempotent — re-fire safety is handled inside pushWorkoutNameToStrava
+  // (skips when the name already looks like a runcino-set name).
+  try {
+    const { pushWorkoutNameToStrava } = await import('./strava-writeback');
+    const { buildSyntheticPlan } = await import('./synthetic-plan');
+    const dateISO = norm.date || (norm.startLocal || '').slice(0, 10);
+    if (dateISO) {
+      const weeks = buildSyntheticPlan();
+      let matchedDay = null;
+      let matchedWeek = null;
+      for (const w of weeks) {
+        const d = w.days.find((dd) => dd.date === dateISO);
+        if (d) { matchedDay = d; matchedWeek = w; break; }
+      }
+      if (matchedDay && matchedWeek) {
+        const phaseWeeks = weeks.filter((w) => w.phase === matchedWeek!.phase);
+        const phaseWeekIdx = phaseWeeks.findIndex((w) => w === matchedWeek) + 1;
+        const distanceMi = Number(norm.distanceMi) || 0;
+        const movingS = Number(norm.movingTimeS) || 0;
+        const paceSPerMi = distanceMi > 0 ? Math.round(movingS / distanceMi) : 0;
+        const avgHr = norm.avgHr ? Number(norm.avgHr) : null;
+        const result = await pushWorkoutNameToStrava({
+          userId,
+          activityId: Number(activity.id),
+          currentName: norm.name || null,
+          currentDescription: (norm as { description?: string | null }).description ?? null,
+          day: matchedDay,
+          phase: matchedWeek.phase,
+          phaseWeek: phaseWeekIdx,
+          actual: { distanceMi, paceSPerMi, avgHr },
+        });
+        console.log('[sync-strava-user] writeback', activity.id,
+          result.pushed ? 'PUSHED' : `skipped: ${result.reason}`);
+      }
+    }
+  } catch (e) {
+    // Writeback is best-effort — never block the sync on its failure.
+    console.warn('[sync-strava-user] writeback failed', activity.id, e);
+  }
+
   return { ok: true };
 }
 

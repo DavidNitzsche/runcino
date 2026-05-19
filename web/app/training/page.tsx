@@ -296,7 +296,12 @@ export default async function TrainingPage() {
                   const isToday = d.date === today;
                   // Workouts past their date stay un-DONE unless logged
                   // miles cover ≥60% of the planned distance.
-                  const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date, d.distanceMi);
+                  // Bug fix: TODAY counts as done too when the run is
+                  // logged. Previous `!isToday && d.date < today`
+                  // gated today out, so a completed run never showed
+                  // ✓ on its own day. Now: today shows ✓ when
+                  // isComplete fires.
+                  const isDone = d.date <= today && !d.isRest && isComplete(d.date, d.distanceMi);
                   const classes = `cal-cell ${d.type}${d.hasStrength ? ' has-str' : ''}${isDone ? ' done' : ''}${isToday ? ' today' : ''}`;
                   const cellDay: WorkoutDay = {
                     ...(d as WorkoutDay),
