@@ -17,7 +17,7 @@ export type { ProfileRow, ProfileInput } from './profile-types';
 export { VALID_SEX, validateProfileInput } from './profile-types';
 export type { Sex, ValidatedProfile } from './profile-types';
 
-const COLS = `user_id, full_name, sex, age, city, runner_id, since_year, hrmax, rhr`;
+const COLS = `user_id, full_name, sex, age, city, runner_id, since_year, hrmax, rhr, vo2max_apple, vo2max_apple_updated_at`;
 
 export async function getProfile(userId = 'me'): Promise<ProfileRow | null> {
   const rows = await query<ProfileRow>(

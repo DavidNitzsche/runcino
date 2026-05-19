@@ -32,6 +32,11 @@ import { listPersonalGoals, type GoalRow } from '../../../lib/goals-store';
 import { vdotSnapshot } from '../../../lib/vdot';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
+import {
+  buildVo2MaxApple,
+  checkVo2MaxDataQuality,
+  type Vo2MaxApple,
+} from '../../../lib/vo2max-apple';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes
@@ -163,6 +168,28 @@ export interface ProfileApiConnection {
   pinTone: 'green' | 'muted' | 'warn';
 }
 
+/** Apple Health VO2max — WELLNESS signal display block.
+ *
+ *  NEVER feeds pace prescription. Surfaced only for trend display +
+ *  cold-start fallback when no race exists. The `appleSuffix` naming
+ *  is deliberate so the UI can't accidentally render this as a peer
+ *  to VDOT. See lib/vo2max-apple.ts. */
+export interface ProfileApiVo2MaxApple {
+  /** Apple Health VO2max value (25-90). null when not entered. */
+  value: number | null;
+  /** Display label for the value's update timestamp, e.g.
+   *  "Updated MAY 14". null when no value. */
+  updatedLabel: string | null;
+  /** Source label ("MANUAL"). null when no value. */
+  sourceLabel: string | null;
+  /** Status line — always frames this as wellness, not training. */
+  statusLine: string;
+  /** Data-quality flag — present ONLY when the Apple↔VDOT gap exceeds
+   *  20 points (8-15 is normal for trained runners with low RHR). The
+   *  message NEVER suggests training implications. */
+  dataQualityWarning: string | null;
+}
+
 /** VDOT block. Every field is nullable — when there's no race history
  *  to derive a VDOT from, the entire block reads "NO DATA YET". */
 export interface ProfileApiVdot {
@@ -239,6 +266,22 @@ export interface ProfileApiEngineBlock {
     headline: string;
     body: string;
   } | null;
+  /** Apple Health VO2max informational row — sits UNDER the engine
+   *  tiles, deliberately styled away from VDOT to signal "wellness
+   *  data, not training data". Always present so the surface can
+   *  render an explicit "Not used for pace targets" disclosure even
+   *  when the user has no value yet. */
+  appleVo2MaxRow: {
+    /** Display value ("61.7 · MANUAL") or "NO DATA YET". */
+    valueLabel: string;
+    /** Updated stamp ("Updated MAY 14") or null. */
+    updatedLabel: string | null;
+    /** Status copy — explicitly frames as wellness, not training. */
+    statusLine: string;
+    /** Data-quality flag — present ONLY at >20pt gap. NEVER suggests
+     *  training implications. */
+    dataQualityWarning: string | null;
+  };
 }
 
 interface ProfileApiOk {
@@ -255,6 +298,8 @@ interface ProfileApiOk {
   /** Number of goals "on track" / "met". */
   goalsActive: number;
   vdot: ProfileApiVdot;
+  /** Apple Health VO2max — wellness signal, NOT used for pace. */
+  vo2MaxApple: ProfileApiVo2MaxApple;
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
@@ -315,6 +360,16 @@ export async function GET(): Promise<Response> {
     // valid recent race.
     const vdot = buildVdot(state);
 
+    // Apple Health VO2max — WELLNESS signal. Built into its own block
+    // for the VO2maxIsland on /profile and the Apple-row in the engine
+    // card. The data-quality check fires ONLY at >20pt gap from VDOT;
+    // 8-15 points is normal Apple over-estimation for trained runners.
+    const appleSnapshot = buildVo2MaxApple(
+      profileRow?.vo2max_apple ?? null,
+      profileRow?.vo2max_apple_updated_at ?? null,
+    );
+    const vo2MaxApple = buildVo2MaxApiBlock(appleSnapshot, vdot);
+
     // HR — profile-backed for measured HRmax; Tanaka estimate from age.
     // RHR + actual HRmax require HealthKit (M2) → null today.
     const hrBlock = buildHrBlock(profileRow);
@@ -340,7 +395,7 @@ export async function GET(): Promise<Response> {
     // Engine details — derived deterministic facts from state +
     // doctrine. Long-run cap reads state.volume.longestLast28Mi
     // and applies the 10% bump per Research/00a.
-    const engine = buildEngineBlock(state, vdot);
+    const engine = buildEngineBlock(state, vdot, vo2MaxApple);
 
     const freshness = await gatherFreshness({ state });
 
@@ -355,6 +410,7 @@ export async function GET(): Promise<Response> {
       goals,
       goalsActive,
       vdot,
+      vo2MaxApple,
       hrBlock,
       tier,
       prefs,
@@ -684,6 +740,55 @@ function buildVdot(state: CoachState): ProfileApiVdot {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Apple Health VO2max → wire block. Pure presentation; the underlying
+// snapshot + data-quality check live in lib/vo2max-apple.ts.
+// ─────────────────────────────────────────────────────────────────────
+
+function buildVo2MaxApiBlock(
+  apple: Vo2MaxApple,
+  vdot: ProfileApiVdot,
+): ProfileApiVo2MaxApple {
+  if (apple.value == null) {
+    return {
+      value: null,
+      updatedLabel: null,
+      sourceLabel: null,
+      statusLine:
+        'Add your Apple Health VO2max for a trend display. ' +
+        'NOT used for training pace — race results drive your pace bands.',
+      dataQualityWarning: null,
+    };
+  }
+
+  // VDOT-implied numeric. ProfileApiVdot.value is a display string
+  // ("49.2"); parse back to number for the gap check. parseFloat() on
+  // null returns NaN, which we coerce to null.
+  const vdotNumeric = vdot.value != null ? Number.parseFloat(vdot.value) : null;
+  const vdotForCheck = vdotNumeric != null && Number.isFinite(vdotNumeric)
+    ? vdotNumeric
+    : null;
+  const flag = checkVo2MaxDataQuality(apple, vdotForCheck);
+
+  let updatedLabel: string | null = null;
+  if (apple.updatedAt) {
+    const d = new Date(apple.updatedAt);
+    if (!Number.isNaN(d.getTime())) {
+      updatedLabel = `Updated ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+    }
+  }
+
+  return {
+    value: apple.value,
+    updatedLabel,
+    sourceLabel: 'MANUAL',
+    statusLine:
+      'Tracked for trend display only. Apple Watch over-estimates VO2max by ' +
+      '8-15 points for trained runners — NOT used for pace targets.',
+    dataQualityWarning: flag?.message ?? null,
+  };
+}
+
 function distanceLabel(distMi: number): string {
   if (Math.abs(distMi - 3.107) / 3.107 < 0.05) return '5K';
   if (Math.abs(distMi - 6.214) / 6.214 < 0.05) return '10K';
@@ -921,7 +1026,11 @@ function buildShoeRows(shoes: Shoe[]): ProfileApiShoeRow[] {
 // by Effort + marathon-specific recovery).
 // ─────────────────────────────────────────────────────────────────────
 
-function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEngineBlock {
+function buildEngineBlock(
+  state: CoachState,
+  vdot: ProfileApiVdot,
+  vo2MaxApple: ProfileApiVo2MaxApple,
+): ProfileApiEngineBlock {
   const inPostRace = state.recoveryWindowEndsISO != null
     && state.now <= state.recoveryWindowEndsISO;
   const longestTraining = state.volume.longestTrainingRunLast28Mi;
@@ -1009,10 +1118,20 @@ function buildEngineBlock(state: CoachState, vdot: ProfileApiVdot): ProfileApiEn
   // silently regressed.
   // TODO (Wave K — coach validation): wire to coach.engineDetails(state)
   // or count simulateWeek() outputs passing coach.weekValidation.
+  const appleValueLabel = vo2MaxApple.value != null
+    ? `${vo2MaxApple.value}${vo2MaxApple.sourceLabel ? ` · ${vo2MaxApple.sourceLabel}` : ''}`
+    : 'NO DATA YET';
+
   return {
     tiles,
     paceZones,
     integrity: null,
+    appleVo2MaxRow: {
+      valueLabel: appleValueLabel,
+      updatedLabel: vo2MaxApple.updatedLabel,
+      statusLine: vo2MaxApple.statusLine,
+      dataQualityWarning: vo2MaxApple.dataQualityWarning,
+    },
   };
 }
 

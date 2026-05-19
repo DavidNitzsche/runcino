@@ -23,6 +23,13 @@ export interface ProfileRow {
   hrmax: number | null;
   /** Resting HR — requires HealthKit or manual entry. null today. */
   rhr: number | null;
+  /** Apple Health VO2max estimate (manual entry today; HealthKit M2).
+   *  WELLNESS signal — physiological capacity. NEVER used for pace
+   *  prescription. Range 25-90. See lib/vo2max-apple.ts. */
+  vo2max_apple: number | null;
+  /** ISO timestamp the manual VO2max was last written. Drives the
+   *  trend display on /profile. */
+  vo2max_apple_updated_at: string | null;
 }
 
 export interface ProfileInput {

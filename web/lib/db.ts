@@ -209,6 +209,20 @@ async function bootstrap(): Promise<void> {
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    // Apple Health VO2max — WELLNESS signal (never a training signal).
+    // Range 25-90 covers untrained → elite. Stored manually because
+    // HealthKit integration is M2; written via /api/profile/vo2-max.
+    // NOT used by VDOT / pace / feasibility / zone code; only cold-start
+    // fallback when no race data exists. See lib/vo2max-apple.ts.
+    await client.query(`
+      ALTER TABLE profile
+        ADD COLUMN IF NOT EXISTS vo2max_apple INTEGER
+        CHECK (vo2max_apple IS NULL OR (vo2max_apple BETWEEN 25 AND 90));
+    `);
+    await client.query(`
+      ALTER TABLE profile
+        ADD COLUMN IF NOT EXISTS vo2max_apple_updated_at TIMESTAMPTZ;
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_prefs (
         user_id        TEXT PRIMARY KEY DEFAULT 'me',
