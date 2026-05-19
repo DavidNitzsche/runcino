@@ -14,7 +14,7 @@ import {
   type ProfileRow,
 } from './profile-types';
 
-const COLS = `user_id, full_name, sex, age, city, runner_id, since_year, hrmax, rhr, accent_color`;
+const COLS = `user_id, full_name, sex, age, city, runner_id, since_year, hrmax, rhr, accent_color, vo2max_apple, vo2max_apple_updated_at`;
 
 export async function saveProfile(
   input: ProfileInput,
@@ -73,4 +73,46 @@ export async function saveAccentColor(
     [userId, color],
   );
   return rows[0]?.accent_color ?? null;
+}
+
+/** Update only the Apple Health VO2max for a user. Mirrors
+ *  saveAccentColor — bypasses the full identity validator so the
+ *  VO2max island works before name/age are set.
+ *
+ *  Accepts an integer 25-90 or null (to clear). Throws on bad input
+ *  so the API route can surface a 400 with a precise message.
+ *  Stamps vo2max_apple_updated_at to NOW() when value is non-null;
+ *  to NULL when value is being cleared. */
+export async function saveVo2MaxApple(
+  raw: number | string | null | undefined,
+  userId = 'me',
+): Promise<{ value: number | null; updatedAt: string | null }> {
+  let value: number | null = null;
+  if (raw != null && raw !== '') {
+    const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+    if (!Number.isFinite(n)) {
+      throw new Error('VO2max must be a number between 25 and 90.');
+    }
+    const intN = Math.trunc(n);
+    if (intN < 25 || intN > 90) {
+      throw new Error('VO2max must be between 25 and 90.');
+    }
+    value = intN;
+  }
+
+  const rows = await query<{ vo2max_apple: number | null; vo2max_apple_updated_at: string | null }>(
+    `INSERT INTO profile (user_id, vo2max_apple, vo2max_apple_updated_at, updated_at)
+     VALUES ($1, $2, CASE WHEN $2::int IS NULL THEN NULL ELSE NOW() END, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       vo2max_apple = EXCLUDED.vo2max_apple,
+       vo2max_apple_updated_at = CASE WHEN EXCLUDED.vo2max_apple IS NULL THEN NULL ELSE NOW() END,
+       updated_at = NOW()
+     RETURNING vo2max_apple, vo2max_apple_updated_at`,
+    [userId, value],
+  );
+  const row = rows[0];
+  return {
+    value: row?.vo2max_apple ?? null,
+    updatedAt: row?.vo2max_apple_updated_at ?? null,
+  };
 }

@@ -218,6 +218,9 @@ function ProfileBody({ data, onRefresh }: { data: ProfileData; onRefresh: () => 
         <PrefsCard data={data} />
       </Row>
       <Row>
+        <VO2MaxIsland data={data} onRefresh={onRefresh} />
+      </Row>
+      <Row>
         <ConnectionsCard data={data} />
         <ShoeRotationCard data={data} onRefresh={onRefresh} />
       </Row>
@@ -1499,6 +1502,344 @@ function ShoeRotationRow({ shoe, onEdit }: { shoe: ShoeRow; onEdit: () => void }
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// ROW · Apple Health VO2max island (span 12)
+//
+// Deliberately styled as a WELLNESS card — dashed border + amber tint
+// — so it doesn't read as a peer to VDOT or the HR card. The Coach
+// NEVER reads this value for pace prescription. See
+// lib/vo2max-apple.ts.
+// ─────────────────────────────────────────────────────────────────────
+
+function VO2MaxIsland({ data, onRefresh }: { data: ProfileData; onRefresh: () => void }) {
+  const apple = data.vo2MaxApple;
+  const hasValue = apple.value != null;
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState<string>(hasValue ? String(apple.value) : '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEditing() {
+    setInputValue(hasValue ? String(apple.value) : '');
+    setError(null);
+    setEditing(true);
+  }
+
+  async function save() {
+    setError(null);
+    const trimmed = inputValue.trim();
+    if (!trimmed) {
+      setError('Enter a value between 25 and 90 (or use Clear to remove).');
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 25 || n > 90) {
+      setError('VO2max must be a number between 25 and 90.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/profile/vo2-max', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: n }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setEditing(false);
+      onRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearValue() {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/profile/vo2-max', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: null }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setEditing(false);
+      onRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      span={12}
+      padding="22px 26px"
+      style={{
+        // Wellness treatment — dashed border + amber background tint so
+        // it reads as "informational, not training" at a glance.
+        background: 'rgba(247,190,30,.04)',
+        border: '1px dashed rgba(247,190,30,.35)',
+      }}
+    >
+      <CardHeader>
+        <div>
+          <CardLabel>APPLE HEALTH · VO2MAX · WELLNESS SIGNAL</CardLabel>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 22,
+              fontWeight: 600,
+              marginTop: 4,
+              lineHeight: 1.05,
+              letterSpacing: '-.005em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Physiological capacity · not training pace
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <CardPin variant={hasValue ? 'amber' : 'muted'}>
+            {hasValue ? 'TRACKED' : 'NO DATA'}
+          </CardPin>
+          {!editing && (
+            <button
+              type="button"
+              className="card-pin muted"
+              style={{ border: 0, cursor: 'pointer' }}
+              onClick={startEditing}
+            >
+              {hasValue ? 'EDIT →' : '+ ADD VALUE'}
+            </button>
+          )}
+        </div>
+      </CardHeader>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '220px 1fr',
+          gap: 28,
+          alignItems: 'center',
+          marginTop: 16,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontWeight: 700,
+              fontSize: hasValue ? 72 : 22,
+              letterSpacing: '-.025em',
+              lineHeight: 0.95,
+              fontVariantNumeric: 'tabular-nums',
+              color: hasValue ? 'var(--t0)' : 'var(--t3)',
+            }}
+          >
+            {hasValue ? apple.value : 'NO DATA YET'}
+          </div>
+          <div
+            className="mono-sm"
+            style={{
+              fontSize: 10.5,
+              letterSpacing: '1.2px',
+              color: 'var(--t3)',
+              fontWeight: 700,
+              marginTop: 8,
+            }}
+          >
+            {hasValue
+              ? `${apple.sourceLabel ?? 'MANUAL'}${apple.updatedLabel ? ` · ${apple.updatedLabel.toUpperCase()}` : ''}`
+              : 'NOT YET ENTERED'}
+          </div>
+        </div>
+
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)',
+              fontSize: 14.5,
+              color: 'var(--t1)',
+              lineHeight: 1.55,
+            }}
+          >
+            <strong style={{ color: 'var(--t0)' }}>
+              Apple Health VO2max estimate — physiological capacity.
+            </strong>{' '}
+            <span style={{ color: 'var(--t2)' }}>
+              NOT used for training pace. Race results drive your pace bands. Apple Watch typically over-estimates VO2max by 8-15 points for trained runners with low resting heart rates, so this number sits next to your training data — never inside it.
+            </span>
+          </div>
+
+          {editing && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: '14px 16px',
+                background: 'var(--l1)',
+                border: '1px solid var(--bd)',
+                borderRadius: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              <label
+                className="mono-sm"
+                style={{ fontSize: 10.5, letterSpacing: '1.2px', color: 'var(--t2)', fontWeight: 700 }}
+              >
+                VO2MAX VALUE · 25-90
+              </label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={25}
+                  max={90}
+                  step={0.1}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={busy}
+                  style={{
+                    width: 140,
+                    padding: '10px 12px',
+                    fontFamily: 'var(--f-data)',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    border: '1px solid var(--bd)',
+                    background: 'var(--l0)',
+                    color: 'var(--t0)',
+                  }}
+                  placeholder="e.g. 47"
+                />
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={busy}
+                  style={{
+                    padding: '10px 18px',
+                    background: 'var(--corp)',
+                    color: '#fff',
+                    border: 0,
+                    borderRadius: 6,
+                    cursor: busy ? 'wait' : 'pointer',
+                    fontFamily: 'var(--f-data)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '1.2px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {busy ? 'Saving…' : 'Save'}
+                </button>
+                {hasValue && (
+                  <button
+                    type="button"
+                    onClick={clearValue}
+                    disabled={busy}
+                    style={{
+                      padding: '10px 14px',
+                      background: 'transparent',
+                      color: 'var(--t2)',
+                      border: '1px solid var(--bd)',
+                      borderRadius: 6,
+                      cursor: busy ? 'wait' : 'pointer',
+                      fontFamily: 'var(--f-data)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '1.2px',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setEditing(false); setError(null); }}
+                  disabled={busy}
+                  style={{
+                    padding: '10px 14px',
+                    background: 'transparent',
+                    color: 'var(--t3)',
+                    border: 0,
+                    borderRadius: 6,
+                    cursor: busy ? 'wait' : 'pointer',
+                    fontFamily: 'var(--f-data)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '1.2px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {error && (
+                <div
+                  className="mono-sm"
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: '.5px',
+                    color: 'var(--warn)',
+                    fontWeight: 700,
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
+
+          {apple.dataQualityWarning && !editing && (
+            <div
+              style={{
+                marginTop: 14,
+                padding: '12px 16px',
+                background: 'rgba(252,77,100,.06)',
+                border: '1px solid rgba(252,77,100,.25)',
+                borderRadius: 8,
+              }}
+            >
+              <div
+                className="mono-sm"
+                style={{
+                  fontSize: 10.5,
+                  letterSpacing: '1.2px',
+                  color: 'var(--warn)',
+                  fontWeight: 700,
+                }}
+              >
+                ⚠ DATA-QUALITY CHECK
+              </div>
+              <div
+                style={{
+                  fontFamily: 'var(--f-body)',
+                  fontSize: 13,
+                  color: 'var(--t1)',
+                  lineHeight: 1.55,
+                  marginTop: 4,
+                }}
+              >
+                {apple.dataQualityWarning}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <CardFoot
+        left={apple.statusLine}
+      />
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // ROW · Brand accent picker (span 12)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -1834,6 +2175,102 @@ function CoachEngineCard({ data }: { data: ProfileData }) {
           <CardPin variant="muted">PENDING</CardPin>
         </div>
       )}
+
+      {/* Apple Health VO2max row — sits UNDER the engine tiles + integrity.
+          Deliberately styled away from the rest of the card (dashed border,
+          amber tint) to signal "wellness data, not training data". The
+          status copy explicitly disclaims pace use. */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: '14px 18px',
+          background: 'rgba(247,190,30,.04)',
+          border: '1px dashed rgba(247,190,30,.35)',
+          borderRadius: 8,
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto',
+            gap: 12,
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <div
+              className="mono-sm"
+              style={{
+                fontSize: 10,
+                letterSpacing: '1.2px',
+                color: 'var(--att)',
+                fontWeight: 700,
+              }}
+            >
+              APPLE HEALTH VO2MAX · WELLNESS SIGNAL
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 13,
+                color: 'var(--t1)',
+                marginTop: 6,
+                lineHeight: 1.55,
+              }}
+            >
+              <strong>Value: {e.appleVo2MaxRow.valueLabel}</strong>
+              {e.appleVo2MaxRow.updatedLabel ? ` · ${e.appleVo2MaxRow.updatedLabel}` : ''}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 13,
+                color: 'var(--t2)',
+                marginTop: 4,
+                lineHeight: 1.55,
+              }}
+            >
+              Status: {e.appleVo2MaxRow.statusLine}
+            </div>
+          </div>
+          <CardPin variant="muted">NOT FOR PACE</CardPin>
+        </div>
+
+        {e.appleVo2MaxRow.dataQualityWarning && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '12px 14px',
+              background: 'rgba(252,77,100,.06)',
+              border: '1px solid rgba(252,77,100,.25)',
+              borderRadius: 6,
+            }}
+          >
+            <div
+              className="mono-sm"
+              style={{
+                fontSize: 10,
+                letterSpacing: '1.2px',
+                color: 'var(--warn)',
+                fontWeight: 700,
+              }}
+            >
+              ⚠ DATA-QUALITY CHECK
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 13,
+                color: 'var(--t1)',
+                marginTop: 4,
+                lineHeight: 1.5,
+              }}
+            >
+              {e.appleVo2MaxRow.dataQualityWarning}
+            </div>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
