@@ -127,12 +127,19 @@ async function fetchRaceDates(userId: string, startIso: string, endIso: string):
 
 /** Find the most recent threshold-effort workout that hit pace target
  *  but stayed below Z4 HR. The "downstream" observation in the V5
- *  surface — when easy runs are too hard, threshold can't reach Z4. */
+ *  surface — when easy runs are too hard, threshold can't reach Z4.
+ *
+ *  RACE-RECENCY GUARD · skips workouts within ±7 days of any race.
+ *  A pace-band-but-sub-Z4 workout 3 days before a race is intentional
+ *  taper conservation, not a fitness/freshness symptom. Without this
+ *  guard the under-reach observation would misattribute taper miles
+ *  to the easy-day-load story. */
 async function findThresholdUnderReach(
   userId: string,
   todayIso: string,
   z4FloorBpm: number,
   vdot: number,
+  raceDates: string[],
 ): Promise<Z2CoverageFinding['thresholdUnderReach']> {
   const paces = pacesFromVdot(vdot);
   if (!paces) return null;
@@ -169,6 +176,13 @@ async function findThresholdUnderReach(
     const hr = Math.round(Number(r.avg_hr));
     if (pace < tLow || pace > tHigh) continue;
     if (hr >= z4FloorBpm) continue;  // hit Z4 → not an under-reach
+    // Race-recency: skip if within ±7 days of any race in scope
+    const wMs = Date.parse(r.date + 'T12:00:00Z');
+    const inRaceWindow = raceDates.some((rd) => {
+      const rMs = Date.parse(rd + 'T12:00:00Z');
+      return Math.abs(Math.round((rMs - wMs) / 86_400_000)) <= RACE_RECENCY_DAYS;
+    });
+    if (inRaceWindow) continue;
     return {
       date: r.date,
       name: r.name || 'Threshold workout',
@@ -208,10 +222,12 @@ export async function computeZ2CoverageFinding(
   const z2 = zones.z2;
   const z4FloorBpm = zones.z4.lowBpm;
 
-  // Race-recency suppression: any race within ±7 days kills the surface.
+  // Pull race dates across the 28-day lookback window (plus padding).
+  // Used twice below: race-week suppression (today ± 7d) AND
+  // threshold-under-reach race-recency filtering (across the window).
   const startIso = new Date(Date.parse(todayIso + 'T00:00:00Z') - 28 * 86_400_000)
     .toISOString().slice(0, 10);
-  const raceDates = await fetchRaceDates(userId, todayIso, todayIso);
+  const raceDates = await fetchRaceDates(userId, startIso, todayIso);
   const todayMs = Date.parse(todayIso + 'T12:00:00Z');
   const inRaceWindow = raceDates.some((rd) => {
     const rMs = Date.parse(rd + 'T12:00:00Z');
@@ -327,8 +343,9 @@ export async function computeZ2CoverageFinding(
     };
   }
 
-  // Fires. Look up the second-order under-reach observation.
-  const thresholdUnderReach = await findThresholdUnderReach(userId, todayIso, z4FloorBpm, vdot);
+  // Fires. Look up the second-order under-reach observation, passing
+  // the race-dates we already fetched so taper workouts get filtered.
+  const thresholdUnderReach = await findThresholdUnderReach(userId, todayIso, z4FloorBpm, vdot, raceDates);
 
   return {
     shouldRender: true,
