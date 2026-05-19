@@ -566,6 +566,31 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
+    // health_samples — time-series storage for HealthKit ingest data
+    // (Phase 1 item 3 of the iPhone-bridge work).  Stores anything the
+    // iPhone bridge pushes from HealthKit: sleep hours per night,
+    // workout average HR, etc.  Dedicated columns (users.resting_hr,
+    // profile.vo2max_apple) remain the "latest value" cache for fast
+    // reads; this table is the durable time-series source.
+    //
+    // Idempotent ingest: UNIQUE(user_id, sample_type, sample_date)
+    // means re-sending the same sample (Apple Health reconnects can
+    // re-emit) UPSERTs rather than duplicating.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS health_samples (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        sample_type     TEXT NOT NULL,
+        value           NUMERIC NOT NULL,
+        sample_date     DATE NOT NULL,
+        source          TEXT NOT NULL DEFAULT 'apple_health',
+        metadata        JSONB,
+        recorded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, sample_type, sample_date)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_health_samples_user_type_date ON health_samples (user_id, sample_type, sample_date DESC);`);
+
     // Auto-promote the legacy owner to admin + active on every boot so
     // we can never lock the founder out of the admin panel.
     const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
