@@ -1,5 +1,18 @@
 # iPhone Integration Brief
 
+> ⚠ **REFRAMED · 2026-05-19 evening.**  Original brief (below) assumed
+> iPhone was the primary surface.  David's reframe clarified that
+> **Apple Watch is the primary product surface · iPhone is the bridge.**
+>
+> The endpoint catalog + tier mapping below remains accurate.  The
+> priority order shifted significantly · see:
+> - [`/docs/native/02-reframed-priority-order.md`](../native/02-reframed-priority-order.md) — new priority order
+> - [`/docs/native/01-watchos-scoping.md`](../native/01-watchos-scoping.md) — what the watch app does
+> - [`/docs/native/00-practical-setup.md`](../native/00-practical-setup.md) — Apple Developer + setup checklist
+>
+> Read the reframed docs first.  Use this brief as the endpoint
+> reference + tier-1-gap catalog.
+
 S6 deliverable 3 · what the iPhone app needs from the Runcino backend.
 
 This is the actionable output of the categorization.  It enumerates
