@@ -43,7 +43,7 @@ export interface Z2CoverageFinding {
   /** True when the surface should render. */
   shouldRender: boolean;
   /** Reason the finding didn't fire (for diagnostics). */
-  suppressReason?: 'no-hrr-framework' | 'too-few-runs' | 'z2-share-ok' | 'race-week' | 'post-race-recovery' | 'no-data';
+  suppressReason?: 'no-hrr-framework' | 'too-few-runs' | 'z2-share-ok' | 'race-week' | 'post-race-recovery' | 'no-data' | 'injured';
   /** Z2 HR ceiling (Z2 highBpm from hr-zones.ts). */
   z2CeilingBpm: number | null;
   /** Suggested E-pace range for the recommendation copy. */
@@ -253,7 +253,7 @@ export async function computeZ2CoverageFinding(
   try {
     const gap = await computeStravaGap(userId, todayIso);
     if (gap.signalsSuspended) {
-      return { ...empty, z2CeilingBpm: zones.z2.highBpm, suppressReason: 'no-data' };
+      return { ...empty, z2CeilingBpm: zones.z2.highBpm, suppressReason: 'injured' };
     }
   } catch { /* non-fatal */ }
   const z2 = zones.z2;

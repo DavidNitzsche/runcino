@@ -18,7 +18,7 @@ import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdo
 import { VdotShiftBanner, type VdotShiftBannerProps } from './VdotShiftBanner';
 import { Z2Sparkline } from './Z2Sparkline';
 import type { Z2SparklineResult } from '@/lib/z2-sparkline';
-import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
+import { FALSIFIER_PREFIX, INJURY_SUSPENDED } from '@/lib/coach-voice';
 import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
@@ -108,6 +108,7 @@ export function CoachReadsCard({
   raceFeasibility,
   paceMigrationAckAt,
   adaptiveVdotVerdict,
+  adaptiveSignalsSuspended,
   vdotShift,
   z2Sparkline,
 }: {
@@ -123,6 +124,12 @@ export function CoachReadsCard({
    *  'vdot-bump-suggested' or 'vdot-downgrade-investigate', the
    *  AdaptiveVdotBanner is rendered below the VDOT section. */
   adaptiveVdotVerdict?: AdaptiveVdotVerdictForUI | null;
+  /** V7 item 5 · true when the L7 verdict short-circuited because
+   *  the user has marked themselves injured.  Renders an explicit
+   *  "signals suspended" notice in place of the banner — coaching
+   *  voice acknowledging system state, so the runner never wonders
+   *  "why isn't the system firing?". */
+  adaptiveSignalsSuspended?: boolean;
   /** Ongoing large-shift guard. When set, banner renders above the
    *  L7 banner — represents aggregate-level review, not per-workout
    *  evidence. */
@@ -296,6 +303,28 @@ export function CoachReadsCard({
             adaptiveVdotVerdict.kind === 'vdot-downgrade-investigate'
           ) && (
             <AdaptiveVdotBanner verdict={adaptiveVdotVerdict} />
+          )}
+          {/* V7 item 5 · explicit suspension notice — the L7 verdict
+              short-circuited because the user marked themselves
+              injured.  Without this, the banner disappears silently
+              and the runner wonders why the system has gone quiet.
+              Coaching voice acknowledging system state. */}
+          {adaptiveSignalsSuspended && (
+            <div style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              background: 'rgba(13,15,18,.03)',
+              border: '1px dashed rgba(13,15,18,.20)',
+              borderRadius: 8,
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              color: 'rgba(13,15,18,.75)',
+            }}>
+              <strong style={{ color: '#0D0F12' }}>Adaptive signals suspended.</strong>{' '}
+              {INJURY_SUSPENDED}{' '}
+              Missed workouts during recovery shouldn't read as fitness regression.
+            </div>
           )}
 
           {/* Cycle-window explainer — small note explaining the C3

@@ -28,6 +28,7 @@ import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
 import { computeVdotShiftFinding } from '@/lib/vdot-shift';
 import { computeZ2Sparkline } from '@/lib/z2-sparkline';
+import { computeStravaGap } from '@/lib/strava-gap';
 import { buildHrZonesBundle } from '@/lib/hr-zones';
 import './profile-v4.css';
 
@@ -178,6 +179,12 @@ export default async function ProfilePage() {
     fitness.maxHr.value,
     new Date(today + 'T12:00:00Z'),
   );
+  // V7 item 5 · explicit suspension surfacing.  The verdict reuses
+  // kind === 'race-week-suspended' for BOTH race-week and injury
+  // suspension; distinguish by checking the strava gap directly.
+  const stravaGap = await computeStravaGap(auth.id, today).catch(() => null);
+  const adaptiveSignalsSuspended = Boolean(stravaGap?.signalsSuspended);
+
   const adaptiveVdotForUI = (adaptiveVdotVerdict.hasFinding && !adaptiveVdotVerdict.dismissed &&
     (adaptiveVdotVerdict.recommendation.kind === 'vdot-bump-suggested' ||
      adaptiveVdotVerdict.recommendation.kind === 'vdot-downgrade-investigate'))
@@ -365,6 +372,7 @@ export default async function ProfilePage() {
             raceFeasibility={raceFeasibility}
             paceMigrationAckAt={user.pace_migration_ack_at}
             adaptiveVdotVerdict={adaptiveVdotForUI}
+            adaptiveSignalsSuspended={adaptiveSignalsSuspended}
             vdotShift={vdotShiftForUI}
             z2Sparkline={z2SparklineData}
           />
