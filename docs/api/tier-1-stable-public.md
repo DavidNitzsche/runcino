@@ -321,10 +321,103 @@ Safe to call from a native iPhone client.
 
 ---
 
+---
+
+## Native auth · Bearer token (S6 watch-bridge phase)
+
+### POST /api/auth/token
+- **Auth** · public (email+password)
+- **Purpose** · exchange credentials for an access+refresh token pair
+- **Request** · `{ email, password }`
+- **Response** · `{ accessToken, refreshToken, expiresIn, user }`
+- **Consumers** · iPhone bridge login flow
+- **Audit** · ✅ generic auth-failure response (no enumeration)
+
+### POST /api/auth/token/refresh
+- **Auth** · refresh token in body
+- **Purpose** · rotate refresh + access · old refresh revoked atomically
+- **Request** · `{ refreshToken }`
+- **Response** · `{ accessToken, refreshToken, expiresIn }`
+
+### POST /api/auth/token/revoke
+- **Auth** · refresh token in body
+- **Purpose** · logout · revokes refresh + cascades to active access tokens
+- **Request** · `{ refreshToken }`
+- **Response** · `{ ok: true }`
+
+---
+
+## Watch app
+
+### GET /api/watch/today
+- **Auth** · Bearer (cookie also accepted for testing)
+- **Purpose** · today's structured workout in watchOS-consumable phases array
+- **Response** · `WatchWorkout` · `{ workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt }` — see `lib/watch-workout.ts`
+- **Consumers** · iPhone bridge (fetches, pushes to watch via WatchConnectivity)
+- **Audit** · ✅ reads from synthetic-plan (same source as web TodayCard); rest/race days return `{ workoutId: null, reason }`
+
+---
+
+## HealthKit ingest
+
+### POST /api/health/ingest
+- **Auth** · Bearer (cookie also accepted)
+- **Purpose** · batch ingest of HealthKit samples from the iPhone bridge
+- **Request** · `{ samples: [{ type, value, dateISO, source?, metadata? }] }` — types: `resting_hr` | `max_hr` | `vo2_max` | `sleep_hours` | `workout_hr_avg`
+- **Response** · `{ ok, ingested, skipped, errors, byType }`
+- **Consumers** · iPhone bridge (HKObserverQuery → POST batch)
+- **Audit** · ✅ idempotent UPSERT on (user_id, sample_type, sample_date); per-sample plausibility validation; updates `users.resting_hr` + `users.max_hr` + `max_hr_updated_at` as side effect of newer samples
+
+---
+
+## Tier-2-to-tier-1 lifts (S6 watch-bridge phase)
+
+Computations that previously ran inside Next.js SSR envelopes,
+extracted as standalone GET endpoints so native clients can compose
+without the envelope.  All take Bearer auth (cookie also accepted).
+
+### GET /api/profile/activity-gap
+- **Purpose** · E1/E4 gap state machine
+- **Response** · `StravaGapFinding` · `{ state, daysSinceLastRun, lastRunDate, mark, markedAt, signalsSuspended, plannedBreakActive }`
+
+### GET /api/health/readiness
+- **Purpose** · C6 readiness score with V5 cross-reference
+- **Response** · `ReadinessFinding` · `{ score, state, recommendation, inputs, missingInputs, suppressReason?, crossRef? }`
+- **Audit** · ✅ V5 → C6 cross-ref `consistent with` relation fires when fatigue-family inputs reduced the score
+
+### GET /api/health/z2-coverage
+- **Purpose** · V5 Z2 stimulus check
+- **Response** · `Z2CoverageFinding` · `{ shouldRender, suppressReason?, z2CeilingBpm, ePaceRangeDisplay, last7d, last28d, thresholdUnderReach }`
+
+### GET /api/health/z2-sparkline
+- **Purpose** · C2 8-week Z2 pace trend with recalibration cross-reference
+- **Response** · `Z2SparklineResult` · `{ z2Band, points, paceRange, hasSignal, crossRef?, recalibrationHedge? }`
+- **Audit** · ✅ V7 three-case recalibration window logic active
+
+### GET /api/races/[slug]/trajectory
+- **Purpose** · V3 race trajectory state (AHEAD / ON-TRACK / BEHIND / COLLECTING)
+- **Response** · `{ slug, state, signals, headline, falsifier }`
+- **Audit** · ✅ falsifier always present (Rule 2)
+
+### GET /api/races/[slug]/projection
+- **Purpose** · C9 race result projection chart data
+- **Response** · `{ slug, raceName, weeksToRace, currentVdot, goalVdot, goalFinishS, distanceMi, points, hasMeaningfulPlanTrajectory }`
+- **Error responses** · 404 race not found, 400 race has no parseable goal
+
+### GET /api/adaptive/vdot-verdict
+- **Purpose** · the L7 adaptive verdict (the most adaptive-state surface in the system)
+- **Response** · `AdaptiveVdotVerdict` · `{ currentVdot, dismissed, manualOverride, signals, signal2, signal3, signal4, hasFinding, recommendation: { kind, ... } }`
+- **Audit** · ✅ falsifier present on bump-suggested and downgrade-investigate; V7 Signal-4 → VDOT cross-reference present when Signal 4 contributed to bump
+- **Note** · `recommendation.kind` is the discriminated-union signal · iPhone client branches on it
+
+---
+
 ## Notes on auth
 
-All tier-1 routes use **cookie session auth** today.  For iPhone, this
-is the most-changing element of the contract: native clients can't
-share web cookies.  The [`iphone-integration-brief.md`](./iphone-integration-brief.md)
-companion file enumerates the token-based-auth work needed before
-iPhone integration.
+Tier 1 routes accept BOTH **cookie session** (web) and **Bearer
+access token** (native).  The dual-mode check happens in
+`getCurrentUser(req)` — Bearer is checked first when the request
+provides an Authorization header, cookie is the fallback.  Web flow
+is bit-for-bit unchanged; native flow has the new path.
+
+Token issuance / rotation / revocation live in `/api/auth/token{,/refresh,/revoke}`.
