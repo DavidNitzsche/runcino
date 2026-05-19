@@ -91,8 +91,6 @@ Pre-overnight context (already on `main` going in):
 - **Full suite snapshot** — 158/158 passing (1 pre-existing failure on missing `big-sur-3-50.runcino.json` fixture, unrelated). `npm test`.
 - **TypeScript** — `tsc --noEmit` clean. `npx tsc --noEmit -p tsconfig.json`.
 
-**Removed from this list** (was: "NEXT 4 WEEKS monotone check"): that test (`no-monotone-easy-stretches.test.ts`) is **worktree-only** — it exercises `simulateNext30Days()` in `coach-engine.ts`, which doesn't exist on main. Even if it did, `data.nextFourWeeks` (built at `app/training/data.ts:610`) is **dead code on main** — its only consumer is `app/training/page.tsx.pre-v4-port-bak`. The v4 port of `/training` replaced that card with the "Full Schedule" (14-bar volume curve + 14-week calendar grid) and "Plan Arc · 14 Weeks Total" timeline. No user-visible surface this overnight verifies "NEXT 4 WEEKS" anything.
-
 ## 🟢 Confirmed working
 
 All claims surface-attributed. If you can't see it in the app at the listed path, it's not in this list.
@@ -104,8 +102,6 @@ All claims surface-attributed. If you can't see it in the app at the listed path
 - **Adaptive banner shape consistency** — `MaxHrValidationBanner.tsx` (max HR drift) + `AdaptiveVdotBanner.tsx` (L7 VDOT) on `/profile` Coach Reads both follow the suspect-ceiling template (evidence + reasoning + math + recommendation + falsifier + agency)
 - **Source-of-truth discipline** — verified across 11 components in L6 audit (`docs/simulations/race-data-source-audit-L6.md`): race results read from `races.actual_result` (Personal Records card on `/races`, Recent Races strip on `/races`, hero on `/races/[slug]`, chip-time banner on `/races/[slug]`, etc.); HR readings + sync correctly use `strava_activities`
 - **Effort-multiplier honored** — A=1.0, B=0.7, C=0.4, tune-up=0.4, training-run=0.2, hilly-excluded=0.0; applied in `lib/compute-vdot.ts` `aggregateVdotFromInputs`; visible on `/profile` Coach Reads VDOT contributors list (`Disney HM (A) 53.3%`, `Big Sur (hilly-excluded) 0.0%`, etc.)
-
-**Previously listed but removed**: "NEXT 4 WEEKS never shows monotone easy stretches" — that was worktree-only code testing a surface that's dead on main (see Tests section above for the full trace).
 
 ## 🟡 Built but not yet fired with real data
 
@@ -189,7 +185,7 @@ The `claude/objective-black-8f3e69` worktree is **NOT a candidate for fast-forwa
 - **Worktree tip**: `339dbbf` (2026-05-12) — a merge of `origin/main` into the branch
 - **Main tip**: `0ee8b84` (2026-05-19)
 - **Divergence**: worktree is 97 commits **ahead** of main on a stale timeline AND 365 commits **behind** main on the post-May-12 work (round 2, L1–L7, V2/V4, S1/S6, A1–A3)
-- **Architecture has diverged**: the worktree's `enforceStreakCap` fix targets a day-level `simulateNext30Days()` function in `coach-engine.ts` that **does not exist on main**. Main's `NEXT 4 WEEKS` is built from `trajectory14wk` (weekly aggregates from `training/data.ts:607`), not a day-by-day projection. The "monotone easy stretch" failure mode is specific to the old architecture.
+- **Architecture has diverged**: the worktree's `enforceStreakCap` fix targets a day-level `simulateNext30Days()` function in `coach-engine.ts` that **does not exist on main**. Main builds its 14-week schedule from `trajectory14wk` (weekly aggregates from `training/data.ts:607`), not a day-by-day projection.
 
 **What the 97 worktree commits contain** (all 2026-05-08 → 2026-05-12):
 - Dashboard redesign (hero layout, card grids, body-context cards, SVG infographic icons) — superseded by main's current dashboard
@@ -225,11 +221,7 @@ In strict order:
 
 - **State desync across rendering boundaries**: when an Apply flow touches both server-rendered and client-island surfaces showing the same data, `router.refresh()` alone leaves client `useState` stale. Pattern fix: either pass SSR initial state to the island, or use `window.location.reload()` on success. The max HR validator was the inconsistency tonight; flag this whenever a new Apply flow lands.
 - **"Framework → live → fires" transition**: L7 Signal 1 is now in the same phase suspect-ceiling was in 24h ago. The pattern is repeatable. Banner UIs ship before real data fires them, and the gating logic is what gets verified between ship and first-fire.
-- **Status docs must attribute features to surfaces**: A feature name without a surface path is meaningless context — the reader can't verify, contextualize, or check it. Going forward: every feature reference includes a path (`/profile` Coach Reads card) or component name (`AdaptiveVdotBanner.tsx`). Caught this turn on the "NEXT 4 WEEKS" reference, which turned out to be testing dead code in a worktree branch. If I can't name where a user sees it, the claim shouldn't be in the status doc.
-
-## 🧹 Surfaced as cleanup candidate
-
-- **Dead `nextFourWeeks` code on main** — `getNextFourWeeks()` at `app/training/data.ts:610` still builds the `NextFourWeeksSnapshot` and populates `data.nextFourWeeks` (`data.ts:81, 312, 375`), but the only consumer is `page.tsx.pre-v4-port-bak`. The v4 port replaced that card with Full Schedule + Plan Arc. Worth deleting in a cleanup pass so future searches don't find a "feature" that isn't shipped. Not urgent.
+- **Status docs must attribute features to surfaces**: A feature name without a surface path is meaningless context — the reader can't verify, contextualize, or check it. Going forward: every feature reference includes a path (`/profile` Coach Reads card) or component name (`AdaptiveVdotBanner.tsx`). If I can't name where a user sees it, the claim shouldn't be in the status doc.
 
 ## 📁 Doc index
 

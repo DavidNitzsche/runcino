@@ -89,6 +89,39 @@ export default async function TrainingPage() {
   const peakWeekMi = Math.max(...weeks.map((w) => w.plannedMi));
   const planProgressPct = Math.max(0, Math.min(100, Math.round(((currentWeek.weekNum - 1 + 1) / 14) * 100)));
 
+  // Miles-in-the-bank · running cumulative-actual minus cumulative-
+  // prescribed since the training block started. Positive = ahead of
+  // plan, negative = behind. Renders as a small chip in the Full
+  // Schedule header so it sits next to total + peak-week mileage.
+  const yesterdayISO = (() => {
+    const d = new Date(today + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const blockStartISO = weeks[0]?.startDate ?? today;
+  let blockBankMi: number | null = null;
+  try {
+    const { query: dbQuery } = await import('@/lib/db');
+    const cumRows = await dbQuery<{ total_mi: string | null }>(
+      `SELECT SUM((data->>'distanceMi')::NUMERIC)::TEXT AS total_mi
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND (data->>'date') >= $2
+          AND (data->>'date') <= $3
+          AND (data->>'distanceMi')::NUMERIC > 0`,
+      [user.id, blockStartISO, yesterdayISO],
+    );
+    const cumulativeActual = Number(cumRows[0]?.total_mi ?? 0);
+    const currentIdx = weeks.findIndex((w) => w === currentWeek);
+    let cumulativePrescribed = 0;
+    for (let i = 0; i < currentIdx; i++) cumulativePrescribed += weeks[i].plannedMi;
+    const daysElapsed = Math.max(0, Math.min(7,
+      Math.floor((Date.parse(yesterdayISO + 'T12:00:00Z') - Date.parse(currentWeek.startDate + 'T12:00:00Z')) / 86_400_000) + 1
+    ));
+    cumulativePrescribed += currentWeek.plannedMi * (daysElapsed / 7);
+    blockBankMi = Math.round((cumulativeActual - cumulativePrescribed) * 10) / 10;
+  } catch { /* non-fatal */ }
+
   const PHASE_TIMELINE = PHASES.map((p) => {
     const ws = weeks.filter((w) => w.phase === p.key);
     if (!ws.length) return null;
@@ -235,6 +268,22 @@ export default async function TrainingPage() {
             </div>
             <div className="schedule-meta">
               Total <strong>{totalMiPlan}</strong> mi · Peak week <strong>{peakWeekMi}</strong> mi
+              {blockBankMi != null && Math.abs(blockBankMi) >= 0.5 && (
+                <span
+                  style={{
+                    marginLeft: 10,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: blockBankMi >= 0 ? '#1f6a21' : '#B3450A',
+                    background: blockBankMi >= 0 ? 'rgba(31,106,33,.08)' : 'rgba(232,93,38,.08)',
+                  }}
+                  title="Actual miles run since the block started, vs the prescribed mileage for the same elapsed time."
+                >
+                  {blockBankMi >= 0 ? `+${blockBankMi} mi ahead of plan` : `${blockBankMi} mi behind plan`}
+                </span>
+              )}
             </div>
           </div>
 

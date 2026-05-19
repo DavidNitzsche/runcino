@@ -74,7 +74,6 @@ Legend:
 | Goal Tracking | PR / GOAL / STRETCH tiles | 🟡 PR is hardcoded mockup "Disney 1:32"; Goal + Stretch come from raceFitnessPrediction |  |
 | Goal Tracking | Latest Proof callout | ✅ `coach.proofSessions().answer.latestCompleted` — Stage 7 stub mock |  |
 | Proof Sessions list | First T tempo · Mission Bay 10K · etc. | ✅ `coach.proofSessions().answer.sessions` — Stage 7 stub mock (4 sessions hardcoded in coach.ts:813-846) |  |
-| Next 4 Weeks | 4 blocks with mi/qual/long | 🟡 `getNextFourWeeks()` data.ts:482 — derives mi from `trajectory.points`, but `TITLES`, `RATIONALES`, `QUALITY`, `LONGS` are hardcoded arrays | TODO: Coach.next4Weeks() |
 | Path to AFC | 14-week build curve | ✅ `coach.trajectory14wk` Stage-7 stub |  |
 | Phase breakdown strip | BASE/BUILD/PEAK/TAPER widths | 🟡 inline JSX likely; trajectory points carry `phase` but strip widths not derived from them | (likely hardcoded in page.tsx) |
 | Plan Adapted | Same as Overview | 🟡 `getPlanAdapted()` data.ts:562 — hardcoded |  |
@@ -403,7 +402,6 @@ These are doctrine modules without an engine method to surface them:
 |---|---|---|---|
 | P3.1 | `coach.formScore(state)` → CTL/ATL/TSB | wearables.ts (Research/15) | Health · Training Stress card currently synthesized in route, not Coach |
 | P3.2 | `coach.classifyClimb(grade, distMi)` | course.ts (Research/11) | Run detail "Cat-5 Moderate" tagging |
-| P3.3 | `coach.next4Weeks(state, raceDate)` | plan_templates.ts (Research/22) | Training · NEXT 4 WEEKS card — currently synthesized from trajectory points + hardcoded titles |
 | P3.4 | `coach.dailyConditionsNote(weather, workout)` | weather.ts (Research/06) | Training · Conditions inset · 62°F coach note currently hardcoded |
 | P3.5 | `coach.bRaceClassification(b, a, phase)` | race_week.ts (Research/22 §Multi-race seasons) | Races · UP-NEXT inset · "TUNE-UP" / "FITNESS CHECK" / "OPENER" classification |
 

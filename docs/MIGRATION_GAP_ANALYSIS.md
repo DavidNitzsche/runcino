@@ -151,7 +151,6 @@ Every coaching judgment shown in the 11 mockups, the doctrine module that should
 | LATEST PROOF · APR 23 · "3 × 1mi @ T pace · 6:55 avg (target 7:00). HR 167 avg · sustainable. ✓ ON TARGET" | classification | pace_zones.ts (pace target vs actual) | ❌ (retrospect not implemented) | Research/01 + 02 | M |
 | PR/GOAL/STRETCH tile row · PR 1:32 Disney / GOAL 1:35 AFC / STRETCH 1:30 | prediction | race_prediction.ts | 🟡 | Research/02 | S |
 | WEEK STRIP (same as Overview) | prescription | workouts.ts + plan_templates.ts | 🟢 | Research/04 + 22 | n/a |
-| NEXT 4 WEEKS card · 4 blocks with mi/qual/long · "Recovery wraps · Base block opens" + "Recovery week 2", "Base · LT in · First T tempo Tue · long climbs", "Base · build LR", "Base · cutback −20% volume" | plan-change | plan_templates.ts | ❌ (no Coach.next4Weeks() method; engine produces today + week shape only, not 4-week ahead) | Research/22 · §HM build blocks | L |
 | PATH TO AFC build curve · 14-week weekly volume trajectory · peak 44 / long-run-max 14 / 52 race-pace mi / 28 quality days | prediction | plan_templates.ts | ❌ | Research/22 · §HM 14-wk template | L |
 | Phase breakdown strip · BASE 2W · BUILD 5W · PEAK 4W · TAPER 3W · RACE | classification | plan_templates.ts + race_week.ts | 🟡 | Research/22 + 08 | S |
 | PLAN ADAPTED (same as Overview) | plan-change | (Stage A) | ❌ | Research/00a + 13 | L |

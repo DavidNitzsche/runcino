@@ -192,37 +192,6 @@ export default async function OverviewPage() {
     fitness.restingHr.value,
   ).catch(() => null);
 
-  // C7 · Miles-in-the-bank · running cumulative-actual minus
-  // cumulative-prescribed since training block start. Positive
-  // means ahead of prescription; negative means behind. Renders
-  // as a small badge alongside the weekly Mileage trend row.
-  const blockStartISO = weeks[0]?.startDate ?? today;
-  let blockBankMi: number | null = null;
-  try {
-    const { query: dbQuery } = await import('@/lib/db');
-    const cumulativeRows = await dbQuery<{ total_mi: string | null }>(
-      `SELECT SUM((data->>'distanceMi')::NUMERIC)::TEXT AS total_mi
-         FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
-          AND (data->>'date') >= $2
-          AND (data->>'date') <= $3
-          AND (data->>'distanceMi')::NUMERIC > 0`,
-      [user.id, blockStartISO, yesterdayISO],
-    );
-    const cumulativeActual = Number(cumulativeRows[0]?.total_mi ?? 0);
-    // Cumulative prescribed: sum of plannedMi for fully-completed
-    // weeks (week.endDate < today) + this week's pro-rata share.
-    const currentIdx = weeks.findIndex((w) => w === currentWeek);
-    let cumulativePrescribed = 0;
-    for (let i = 0; i < currentIdx; i++) cumulativePrescribed += weeks[i].plannedMi;
-    // Pro-rate current week's prescribed by days-elapsed / 7.
-    const daysElapsedInCurrentWeek = Math.max(0, Math.min(7,
-      Math.floor((Date.parse(yesterdayISO + 'T12:00:00Z') - Date.parse(currentWeek.startDate + 'T12:00:00Z')) / 86_400_000) + 1
-    ));
-    cumulativePrescribed += currentWeek.plannedMi * (daysElapsedInCurrentWeek / 7);
-    blockBankMi = Math.round((cumulativeActual - cumulativePrescribed) * 10) / 10;
-  } catch { /* non-fatal */ }
-
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
@@ -510,28 +479,6 @@ export default async function OverviewPage() {
 
             {/* Mileage is the one trend we CAN compute — actual vs planned this week. */}
             <div className="trend-rows">
-              {/* C7 · Miles-in-the-bank badge · running cumulative actual
-                  vs prescribed across the training block. Positive = ahead,
-                  negative = behind. Renders only when block has measurable
-                  data (≥1 week elapsed). */}
-              {blockBankMi != null && Math.abs(blockBankMi) >= 0.5 && (
-                <div
-                  style={{
-                    marginBottom: 8,
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontFamily: 'Inter, sans-serif',
-                    fontWeight: 600,
-                    color: blockBankMi >= 0 ? '#1f6a21' : '#B3450A',
-                    background: blockBankMi >= 0 ? 'rgba(31,106,33,.08)' : 'rgba(232,93,38,.08)',
-                    display: 'inline-block',
-                  }}
-                  title="Cumulative actual minus cumulative prescribed since training block start."
-                >
-                  {blockBankMi >= 0 ? `+${blockBankMi} mi in the bank` : `${blockBankMi} mi behind plan`}
-                </div>
-              )}
               <TrendRow
                 label="Mileage"
                 value={`${thisWeekSoFar.totalMi} / ${currentWeek.plannedMi} mi`}
