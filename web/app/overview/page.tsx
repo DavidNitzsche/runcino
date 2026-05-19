@@ -245,6 +245,29 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
+                {/* V2: conditional pace guidance — only for easy/recovery
+                    where the range matters most. Threshold/interval/race
+                    are locked to specific paces; guidance there is
+                    "hit the target," not "back off if X." */}
+                {todayPace && (todayDay?.type === 'long' || todayDay?.type === 'rest' || (todayDay && !(['quality', 'race'] as string[]).includes(todayDay.type))) && (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      maxWidth: 540,
+                      padding: '12px 14px',
+                      background: 'rgba(13,15,18,.04)',
+                      borderLeft: '3px solid var(--accent, #E85D26)',
+                      borderRadius: '0 8px 8px 0',
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      color: 'rgba(13,15,18,.78)',
+                    }}
+                  >
+                    <strong style={{ color: '#0D0F12' }}>Target {todayPace}/mi if feeling good.</strong>{' '}
+                    Back off toward the slower end of the range if legs are heavy, HR drifts above your Z2 ceiling, or temp pushes past 75°F. Easy days are about absorbing yesterday's work — the slow end of the range is the right answer most of the time.
+                  </div>
+                )}
                 <div className="hero-buttons">
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
                 </div>

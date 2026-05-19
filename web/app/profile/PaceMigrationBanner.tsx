@@ -26,7 +26,41 @@
 
 import { useState } from 'react';
 
-export function PaceMigrationBanner() {
+/** Optional before/after data showing the user exactly what changed.
+ *  Pass paces in seconds/mile so the banner formats them. Renders a
+ *  compact two-column comparison ("Previous / Now") with deltas, per
+ *  David's N10 spec — makes the migration feel like a deliberate edit
+ *  rather than a silent shift. */
+export interface BeforeAfter {
+  legacyE?: number;  // s/mi
+  legacyT?: number;
+  legacyI?: number;
+  legacyR?: number;
+  newE?: number;
+  newT?: number;
+  newI?: number;
+  newR?: number;
+  vdot?: number;
+}
+
+function fmtPace(s?: number): string {
+  if (!s || s <= 0) return '—';
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function fmtDelta(prev?: number, curr?: number): { label: string; tone: 'faster' | 'slower' | 'same' } {
+  if (!prev || !curr) return { label: '', tone: 'same' };
+  const d = curr - prev;
+  if (Math.abs(d) < 1) return { label: 'same', tone: 'same' };
+  return {
+    label: d < 0 ? `${-d}s faster` : `${d}s slower`,
+    tone: d < 0 ? 'faster' : 'slower',
+  };
+}
+
+export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter } = {}) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +120,56 @@ export function PaceMigrationBanner() {
         workouts and the large-shift guard will catch any future changes that exceed
         15s/mi. Review the new bands below, then confirm.
       </div>
+      {/* V4 / N10 polish: show specific before/after pace numbers if
+          provided. Makes the migration feel like a deliberate edit
+          rather than a silent shift. */}
+      {beforeAfter && (beforeAfter.newE || beforeAfter.newT || beforeAfter.newI || beforeAfter.newR) && (
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.5)',
+            border: '1px solid rgba(13, 15, 18, 0.08)',
+            borderRadius: 8,
+            padding: '10px 12px',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: 'rgba(13, 15, 18, 0.75)',
+          }}
+        >
+          <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9, letterSpacing: 1.2, color: 'rgba(13, 15, 18, 0.55)', textTransform: 'uppercase', marginBottom: 6, fontWeight: 700 }}>
+            Before / after · VDOT {beforeAfter.vdot?.toFixed(1) ?? '—'}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+            <thead>
+              <tr style={{ color: 'rgba(13, 15, 18, 0.50)' }}>
+                <th style={{ textAlign: 'left', padding: '2px 0', fontWeight: 600 }}>Zone</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Previous (buggy)</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Now (canonical)</th>
+                <th style={{ textAlign: 'left', padding: '2px 0', fontWeight: 600 }}>Δ</th>
+              </tr>
+            </thead>
+            <tbody style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+              {([
+                ['E', beforeAfter.legacyE, beforeAfter.newE],
+                ['T', beforeAfter.legacyT, beforeAfter.newT],
+                ['I', beforeAfter.legacyI, beforeAfter.newI],
+                ['R', beforeAfter.legacyR, beforeAfter.newR],
+              ] as Array<['E' | 'T' | 'I' | 'R', number?, number?]>).map(([zone, prev, curr]) => {
+                const d = fmtDelta(prev, curr);
+                const color = d.tone === 'faster' ? '#1f6a21' : d.tone === 'slower' ? '#b3450a' : 'rgba(13,15,18,.50)';
+                return (
+                  <tr key={zone}>
+                    <td style={{ padding: '2px 0', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>{zone}</td>
+                    <td style={{ padding: '2px 6px', color: 'rgba(13,15,18,.55)' }}>{fmtPace(prev)}/mi</td>
+                    <td style={{ padding: '2px 6px' }}>{fmtPace(curr)}/mi</td>
+                    <td style={{ padding: '2px 0', color }}>{d.label}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
       {error ? (
         <div style={{ fontSize: 12, color: '#c92a2a', fontWeight: 600 }}>{error}</div>
       ) : null}

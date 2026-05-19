@@ -15,6 +15,7 @@ import type { RaceFeasibilityVerdict } from '@/lib/validate-race-feasibility';
 import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 import { PaceMigrationBanner } from './PaceMigrationBanner';
 import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdotBanner';
+import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
   if (!s || s <= 0) return '—';
@@ -119,6 +120,21 @@ export function CoachReadsCard({
 }) {
   const explainer = aggregateExplainer(fitness.vdot);
   const needsMigrationAck = !paceMigrationAckAt;
+
+  // V4: compute legacy paces ONLY for the migration banner's
+  // before/after table. Display-only; never used in a prescription path.
+  const legacy = legacyPaceCenters(fitness.vdot.value);
+  const beforeAfterPaces = legacy ? {
+    legacyE: legacy.eS,
+    legacyT: legacy.tS,
+    legacyI: legacy.iS,
+    legacyR: legacy.rS,
+    newE: Math.round((fitness.paces.E.lowS + fitness.paces.E.highS) / 2),
+    newT: Math.round((fitness.paces.T.lowS + fitness.paces.T.highS) / 2),
+    newI: Math.round((fitness.paces.I.lowS + fitness.paces.I.highS) / 2),
+    newR: Math.round((fitness.paces.R.lowS + fitness.paces.R.highS) / 2),
+    vdot: fitness.vdot.value,
+  } : undefined;
   return (
     <div className="card">
       <div className="card-header">
@@ -285,7 +301,7 @@ export function CoachReadsCard({
       {/* ── ONE-TIME MIGRATION BANNER ── */}
       {needsMigrationAck && (
         <div className="coach-reads-section" style={{ borderTop: '1px solid rgba(13,15,18,.06)' }}>
-          <PaceMigrationBanner />
+          <PaceMigrationBanner beforeAfter={beforeAfterPaces} />
         </div>
       )}
 
