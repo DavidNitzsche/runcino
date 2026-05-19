@@ -125,6 +125,32 @@ The pattern is: name the action, name what it touches, name what reverses it, co
 
 ---
 
+## Per-finding context filters (locked 2026-05-19 round 4)
+
+**When a surface aggregates multiple downstream findings, each finding applies its own context filters concretely. A surface-level guard doesn't protect sub-findings.**
+
+The bug pattern this fixes: V5 Z2 stimulus check has a race-week suppression at the surface level (whole banner suppresses within 7 days of a race). But the *threshold under-reach* sub-finding inside the surface walked workouts independently and picked up a taper workout from 3 days pre-Big Sur — pace in T-band, HR sub-Z4, looked exactly like the "easy days too hard → can't reach Z4" symptom we surface. Was actually intentional taper conservation. The surface's race-week guard would have correctly suppressed the whole banner *if today were 3 days from a race*. But today is 23 days post-Big Sur — the surface fires correctly, and the sub-finding has to apply its OWN race-recency filter to skip the historical taper workout.
+
+**The rule, concretely:**
+
+- A surface that aggregates N findings runs N filter applications, one per finding.
+- Inheritance is semantic, not automatic. The parent surface's filters describe *what context distorts this whole story*; each child finding asks *what context distorts THIS specific observation*.
+- Same architecture as L7 Signal 1's per-observation filtering: signals walk activities, and each activity gets its own context resolution (heat, race-recency, hr-missing) before contributing to the rollup.
+
+**Where this applies going forward:**
+
+- Readiness scores aggregating sleep + RHR + training load — each input filtered separately
+- Weekly summaries pulling daily executions — each day filtered for race-week, illness, weather
+- Plan adherence reports — each missed/modified session filtered for context (rain day, sick day, deliberate cutback)
+- Season retrospectives — each phase's findings filtered for the conditions specific to that phase
+- Any future "explain this trend" surface — each datum filtered, not just the trend window
+
+If you're building a surface that combines multiple observations into a unified story, list out every observation the surface depends on and apply the same context-filter taxonomy to each. The parent's filters don't propagate automatically; you propagate them explicitly.
+
+This rule was caught on first prod run of the V5 Z2 stimulus check. The cost of inheritance-by-assumption: a coaching observation that would have blamed easy-day load for what was actually planned taper conservation. The cost of doing this right: a few extra lines that ask the same race-calendar question for each finding instead of trusting the parent guard.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
