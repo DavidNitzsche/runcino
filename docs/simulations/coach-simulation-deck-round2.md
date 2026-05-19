@@ -35,10 +35,10 @@
 ## Section A · Current state surfacing
 
 ### A1 · Coach Reads VDOT explanation
-✅ **WORKING** — unchanged from round 1. Aggregate now reads **46.1** with Sombrero=C honored. Disney HM weight 53.1%, Sombrero 15.9%, Big Sur 19.6%, LA Marathon 11.4%.
+✅ **WORKING** — unchanged from round 1. Aggregate now reads **46.6** with priority weighting + Big Sur excluded + Rose Bowl backfilled. Weight shares: Disney HM 53.3% (A) · Sombrero 21.3% (C) · Rose Bowl 14.0% (A) · LA Marathon 11.4% (A) · Big Sur 0% (hilly-excluded).
 
 ### A2 · Coach Reads pace bands (canonical Daniels)
-✅ **WORKING** — unchanged from round 1. Label shows VDOT 46.1 (interpolated).
+✅ **WORKING** — unchanged from round 1. Label shows VDOT 46.6 (interpolated).
 
 ### A3 · HR zones + max HR validation
 ✅ **WORKING** (upgraded from ⚠️). HRR-based zones now on BOTH surfaces:
@@ -54,14 +54,14 @@
 ⚠️ **PARTIAL** — unchanged from round 1.
 
 ### A6 · Active race view: AFC HM countdown + readiness
-⚠️ **PARTIAL** — readiness shipped in round 1. Updated VDOT 46.1 → projected ~1:39 / goal 1:30 → gap 5.1 VDOT pts. Trajectory still deferred.
+⚠️ **PARTIAL** — readiness shipped in round 1. Updated VDOT 46.6 → projected ~1:38:30 / goal 1:30:00 → gap ~4.7 VDOT pts. Trajectory still deferred.
 
 ---
 
 ## Section B · Recent race ingestion
 
 ### B1 · Disney HM Feb 1 · goal-tier anchor (A)
-✅ **WORKING** — weight share recovered to 53.1% (was 38.7%) after Sombrero=C.
+✅ **WORKING** — weight share recovered to 53.3% (was 38.7%) after Sombrero=C and Big Sur exclusion.
 
 ### B2 · LA Marathon chip-time divergence
 ✅ **WORKING** — unchanged from round 1. Now priority A (was B).
@@ -70,7 +70,7 @@
 ⚠️ **PARTIAL** (upgraded from ❌). Edit UI shipped at `/races/big-sur-marathon` — David can pick `hilly-excluded` from the effort-level picker and the aggregate immediately drops Big Sur. But David's note from earlier session: "Big Sur is A — I trained for that elevation, didn't max out HR." So he may NOT want to exclude it. The UI gives him the choice; not auto-applied.
 
 ### B4 · Sombrero Half · goal-tier with effort discount
-✅ **WORKING** — now priority C, weight share 15.9% (was 38.7%). Honest as a tune-up.
+✅ **WORKING** — now priority C, weight share 21.3% (was 38.7%). Honest as a tune-up. (Higher than the mid-round 15.9% because Big Sur exclusion redistributed weight across the remaining contributors.)
 
 ### B5 · 10K from March
 ❌ **GAP** — still unresolved. Not in curated table. David hasn't confirmed whether to add or mark as never-real.
@@ -91,7 +91,7 @@ C1-C7 all ⚠️ **PARTIAL** — unchanged from round 1. Logic exists in `adapti
 ## Section D · Coaching voice
 
 ### D1 · Aggregate explainer paragraph
-✅ **WORKING** — unchanged. Now reads: "Your VDOT is 46.1, anchored by Disney HM Feb 1 (weighted 53.1%), and tuned down by Sombrero Half May 3 (a C-race / tune-up, 15.9%)."
+✅ **WORKING** — unchanged. Now reads: "Your VDOT is 46.6, anchored by Disney HM Feb 1 (weighted 53.3%), with Sombrero Half May 3 (a C-race / tune-up, 21.3%) and Rose Bowl Half Jan 18 (14.0%) as goal-tier corroboration. Big Sur Marathon excluded from aggregate (hilly-course distortion)."
 
 ### D2 · Cycle-window explainer
 ✅ **WORKING** — unchanged.
@@ -119,7 +119,7 @@ E1-E6 all unchanged from round 1 — ❌ GAP or ⚠️ PARTIAL as listed there.
 ## Section F · Editorial — gaps, opportunities, learnings
 
 ### F1 · Round 2's shipped fixes
-- **L1 verified:** Sombrero=C properly drops aggregate weight 38.7% → 15.9%. Disney HM anchor recovered to 53.1%. New aggregate 46.1.
+- **L1 verified:** Sombrero=C properly drops aggregate weight 38.7% → 21.3% (final round-2 share after Big Sur exclusion redistributed). Disney HM anchor recovered to 53.3%. Mid-round aggregate landed at 46.1; final aggregate at 46.6 after L2.
 - **U1 shipped:** Six-level effort flag (A / B / C / tune-up / training-run / hilly-excluded) with edit UI on `/races/[slug]`. PATCH `/api/races/[slug]/priority` endpoint. Hilly-excluded races drop from aggregate entirely.
 - **L3 shipped:** `suspect-ceiling` validator rule fires when ≥3 readings cluster near stored max. Suggests new max via avg/0.90 with full evidence list + falsifier.
 - **L4 shipped:** HRR/Karvonen on /profile zones (was %max only). Copy explains framework choice.
