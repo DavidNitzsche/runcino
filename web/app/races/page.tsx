@@ -172,7 +172,78 @@ export default async function RacesPage() {
   // forward from here as the cycle progresses.
   const vdotAgg = await computeAggregateVdot(auth.id);
 
-  // ── 3. PRs by canonical distance from strava canonical bests ──
+  // ── 3. PRs by canonical distance — races first, Strava fallback ──
+  //
+  // L5 fix (David 2026-05-19 round 2): the prior implementation read
+  // ONLY from strava_activities.canonicalLabel and showed "No PRs"
+  // even with 4 curated races on file. Same source-of-truth pattern
+  // bug as the phantom 5K and missing Sombrero before strict Option-B.
+  //
+  // New order per David's spec:
+  //   1. races.actual_result.finishS at canonical distance → race PR
+  //   2. If no race at that distance, fastest Strava canonical best →
+  //      Strava PR (labeled "training effort")
+  //   3. Visual distinction: race PRs authoritative, Strava PRs
+  //      provisional with "race this distance to lock it in"
+  //
+  // Strava PRs do NOT enter aggregate VDOT — that contract stays
+  // intact in compute-vdot (strict Option-B). The PR card surfaces
+  // them as fitness context only.
+  function inferCanonicalLocal(distMi: number): { label: string; canonicalMi: number } | null {
+    if (Math.abs(distMi - 3.107) < 0.155) return { label: '5K', canonicalMi: 3.107 };
+    if (Math.abs(distMi - 6.214) < 0.31)  return { label: '10K', canonicalMi: 6.214 };
+    if (Math.abs(distMi - 9.32)  < 0.47)  return { label: '15K', canonicalMi: 9.32 };
+    if (Math.abs(distMi - 13.109) < 0.55) return { label: 'Half', canonicalMi: 13.109 };
+    if (Math.abs(distMi - 26.219) < 1.05) return { label: 'Marathon', canonicalMi: 26.219 };
+    return null;
+  }
+
+  interface RacePrRow { distance_mi: string; finish_s: string; date: string; name: string; slug: string }
+  const racePrRows = await query<RacePrRow>(
+    `SELECT
+        COALESCE(meta->>'distanceMi', meta->>'distance_mi')::NUMERIC::TEXT AS distance_mi,
+        (actual_result->>'finishS')::NUMERIC::TEXT AS finish_s,
+        COALESCE(meta->>'date', '') AS date,
+        COALESCE(meta->>'name', '') AS name,
+        slug
+       FROM races
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND actual_result IS NOT NULL
+        AND (actual_result->>'finishS')::NUMERIC > 0`,
+    [auth.id],
+  );
+
+  type PR = {
+    distance: string;
+    canonicalLabel: string;
+    time: string;
+    when: string;
+    source: 'race' | 'strava';
+    raceName?: string;
+    finishS: number;
+  };
+  const racePRs = new Map<string, PR>();
+  for (const r of racePrRows) {
+    const distMi = Number(r.distance_mi);
+    const finishS = Number(r.finish_s);
+    if (!Number.isFinite(distMi) || !Number.isFinite(finishS) || finishS <= 0) continue;
+    const matched = inferCanonicalLocal(distMi);
+    if (!matched) continue;
+    const prior = racePRs.get(matched.label);
+    if (!prior || finishS < prior.finishS) {
+      racePRs.set(matched.label, {
+        distance: matched.label === 'Half' ? '13.1 (HM)' : matched.label === 'Marathon' ? '26.2' : matched.label,
+        canonicalLabel: matched.label,
+        time: fmtTime(finishS),
+        when: r.date ? fmtMonthDay(r.date) : '',
+        source: 'race',
+        raceName: r.name || undefined,
+        finishS,
+      });
+    }
+  }
+
+  // Strava fallback — only for canonical distances NOT covered by a race PR
   interface BestRow { canonical_label: string; finish_s: number; date: string }
   const bestRows = await query<BestRow>(
     `WITH bests AS (
@@ -191,13 +262,24 @@ export default async function RacesPage() {
        ORDER BY canonical_label`,
     [auth.id],
   );
-  const PRs: Array<{ distance: string; time: string; when: string; current?: boolean }> = bestRows.map((b) => ({
-    distance: b.canonical_label === 'Half' ? '13.1 (HM)'
-      : b.canonical_label === 'Marathon' ? '26.2'
-      : b.canonical_label,
-    time: fmtTime(b.finish_s),
-    when: b.date ? fmtMonthDay(b.date) : '',
-  }));
+
+  const stravaPRs: PR[] = [];
+  for (const b of bestRows) {
+    if (racePRs.has(b.canonical_label)) continue;  // race PR wins
+    stravaPRs.push({
+      distance: b.canonical_label === 'Half' ? '13.1 (HM)' : b.canonical_label === 'Marathon' ? '26.2' : b.canonical_label,
+      canonicalLabel: b.canonical_label,
+      time: fmtTime(b.finish_s),
+      when: b.date ? fmtMonthDay(b.date) : '',
+      source: 'strava',
+      finishS: b.finish_s,
+    });
+  }
+
+  // Combine + sort by canonical distance order (5K → Marathon).
+  const distanceOrder: Record<string, number> = { '5K': 0, '10K': 1, '15K': 2, 'Half': 3, 'Marathon': 4 };
+  const PRs: PR[] = [...racePRs.values(), ...stravaPRs]
+    .sort((a, b) => (distanceOrder[a.canonicalLabel] ?? 99) - (distanceOrder[b.canonicalLabel] ?? 99));
 
   return (
     <div className="races-v4-page">
@@ -445,7 +527,10 @@ export default async function RacesPage() {
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Personal Records</div>
-              <div className="card-sub">Per distance · current anchor highlighted</div>
+              <div className="card-sub">
+                Race PRs are authoritative · Strava bests are training-effort context
+                (do not enter aggregate VDOT)
+              </div>
             </div>
           </div>
 
@@ -456,10 +541,56 @@ export default async function RacesPage() {
           ) : (
             <div className="races-pr-grid">
               {PRs.map((pr) => (
-                <div key={pr.distance} className={`pr-cell ${pr.current ? 'is-current' : ''}`}>
+                <div
+                  key={pr.distance}
+                  className={`pr-cell ${pr.source === 'race' ? 'is-current' : ''}`}
+                  style={pr.source === 'strava' ? { opacity: 0.78 } : undefined}
+                >
                   <div className="pr-distance">{pr.distance}</div>
                   <div className="pr-time">{pr.time}</div>
-                  <div className="pr-meta">{pr.when}</div>
+                  <div className="pr-meta">
+                    {pr.when}
+                    {pr.source === 'race' && pr.raceName && (
+                      <> · {pr.raceName}</>
+                    )}
+                  </div>
+                  {pr.source === 'race' ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontFamily: 'Oswald, sans-serif',
+                        fontSize: 9,
+                        letterSpacing: 1.2,
+                        color: '#1f6a21',
+                        background: 'rgba(44,168,47,.10)',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        display: 'inline-block',
+                        textTransform: 'uppercase',
+                        fontWeight: 700,
+                      }}
+                    >
+                      ✓ Chip time
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontFamily: 'Oswald, sans-serif',
+                        fontSize: 9,
+                        letterSpacing: 1.2,
+                        color: '#b3450a',
+                        background: 'rgba(252,82,0,.08)',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        display: 'inline-block',
+                        textTransform: 'uppercase',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Training effort · race to lock in
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
