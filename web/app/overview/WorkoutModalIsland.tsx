@@ -580,6 +580,9 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                           <strong>{s.pace}</strong>
                           {' '}
                           <span className="wm-zone-suffix">({s.zone})</span>
+                          {s.hrTarget && (
+                            <span className="wm-hr-target"> · HR <strong>{s.hrTarget}</strong></span>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -596,6 +599,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                                 <strong>{it.duration}</strong>
                                 {it.pace && <> at <strong>{it.pace}</strong></>}
                                 {it.zone && <> <span className="wm-zone-suffix">({it.zone})</span></>}
+                                {it.hrTarget && <> · HR <strong>{it.hrTarget}</strong></>}
                                 {it.suffix && <> {it.suffix}</>}
                               </li>
                             ))}
@@ -885,6 +889,14 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         .wm-zone-suffix {
           color: rgba(13,15,18,.45);
           font-weight: 400;
+        }
+        .wm-hr-target {
+          color: rgba(13,15,18,.55);
+          font-size: 12px;
+        }
+        .wm-hr-target strong {
+          color: #E85D26;
+          font-weight: 600;
         }
 
         /* "5 ROUNDS OF:" header above the loop body */

@@ -83,9 +83,9 @@ async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
  *  forward to whatever's next on the calendar.
  *
  *  When two races share a date, A-priority wins the tiebreak. */
-async function getActiveRace(today: string): Promise<FitnessActiveRace | null> {
+async function getActiveRace(today: string, userId?: string): Promise<FitnessActiveRace | null> {
   let races;
-  try { races = await listRacesDB(); } catch { return null; }
+  try { races = await listRacesDB(userId); } catch { return null; }
   const priorityRank = (p: 'A' | 'B' | 'C' | undefined): number =>
     p === 'A' ? 0 : p === 'B' ? 1 : 2;
   const candidates = races
@@ -151,6 +151,23 @@ async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> 
   };
 }
 
+/** Build the race-pace band for training workouts.
+ *
+ *  Relationship to race-plan phase paces in lib/pacing.ts:
+ *    - The center of this band (goalPaceSPerMi) equals lib/pacing.ts's
+ *      flatPace = goalFinishS / distanceMi. Identical math.
+ *    - On a FLAT race, phase tile paces all equal that center.
+ *    - On a HILLY race, pacing.ts modulates by GAF (Grade-Adjusted
+ *      Factor) so climbing miles render slower and descents faster,
+ *      but the TIME-WEIGHTED AVERAGE still equals goalFinishS. The
+ *      race-plan UI shows phase-by-phase paces that can sit OUTSIDE
+ *      this ±10s band on individual hills — that's by design, not a
+ *      bug. Training workouts say "hold race-pace effort"; the race
+ *      plan says "here's how that effort distributes across the
+ *      course."
+ *    - The ±10s tolerance here matches the default
+ *      toleranceSPerMi=10 in the rebuild route, so training and
+ *      race-plan tolerance UIs agree on what "on pace" means. */
 function buildRacePaceBand(
   activeRace: FitnessActiveRace | null,
   paces: { T: { lowS: number; highS: number } },
@@ -170,7 +187,7 @@ export async function resolveFitness(userId: string, today: string): Promise<Res
     getUserLevel(userId),
     resolveEffectiveMaxHr(userId),
     getRestingHr(userId),
-    getActiveRace(today),
+    getActiveRace(today, userId),
   ]);
   const vdot = await resolveVdot(userId, level);
   const paces = pacesFromVdot(vdot.value) ?? pacesFromVdot(45)!;

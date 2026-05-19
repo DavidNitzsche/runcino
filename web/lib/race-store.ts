@@ -29,8 +29,21 @@ function toSaved(row: DBRow): SavedRace {
   };
 }
 
-export async function listRacesDB(): Promise<SavedRace[]> {
-  const rows = await query<DBRow>('SELECT slug, plan, gpx_text, meta, actual_result, saved_at FROM races');
+/** List races, optionally scoped to a user.
+ *
+ *  Multi-tenant pattern matches strava_activities/shoes: when userId
+ *  is supplied, returns rows where user_uuid matches OR user_uuid is
+ *  NULL (un-migrated legacy rows still visible — no regression).
+ *  Without userId, returns all races (admin/backwards-compat). */
+export async function listRacesDB(userId?: string): Promise<SavedRace[]> {
+  const rows = userId
+    ? await query<DBRow>(
+        `SELECT slug, plan, gpx_text, meta, actual_result, saved_at
+           FROM races
+          WHERE user_uuid = $1 OR user_uuid IS NULL`,
+        [userId],
+      )
+    : await query<DBRow>('SELECT slug, plan, gpx_text, meta, actual_result, saved_at FROM races');
   return rows.map(toSaved).sort((a, b) => {
     const today = Date.now();
     const aT = Date.parse(a.meta.date);
@@ -42,27 +55,36 @@ export async function listRacesDB(): Promise<SavedRace[]> {
   });
 }
 
-export async function getRaceDB(slug: string): Promise<SavedRace | null> {
-  const rows = await query<DBRow>('SELECT slug, plan, gpx_text, meta, actual_result, saved_at FROM races WHERE slug = $1', [slug]);
+export async function getRaceDB(slug: string, userId?: string): Promise<SavedRace | null> {
+  const rows = userId
+    ? await query<DBRow>(
+        `SELECT slug, plan, gpx_text, meta, actual_result, saved_at
+           FROM races
+          WHERE slug = $1 AND (user_uuid = $2 OR user_uuid IS NULL)`,
+        [slug, userId],
+      )
+    : await query<DBRow>('SELECT slug, plan, gpx_text, meta, actual_result, saved_at FROM races WHERE slug = $1', [slug]);
   return rows[0] ? toSaved(rows[0]) : null;
 }
 
-export async function saveRaceDB(race: SavedRace): Promise<void> {
+export async function saveRaceDB(race: SavedRace, userId?: string): Promise<void> {
   await query(
-    `INSERT INTO races (slug, plan, gpx_text, meta, actual_result, saved_at)
-     VALUES ($1, $2::jsonb, $3, $4::jsonb, $5::jsonb, NOW())
+    `INSERT INTO races (slug, plan, gpx_text, meta, actual_result, saved_at, user_uuid)
+     VALUES ($1, $2::jsonb, $3, $4::jsonb, $5::jsonb, NOW(), $6)
      ON CONFLICT (slug) DO UPDATE SET
        plan = EXCLUDED.plan,
        gpx_text = EXCLUDED.gpx_text,
        meta = EXCLUDED.meta,
        actual_result = EXCLUDED.actual_result,
-       saved_at = NOW()`,
+       saved_at = NOW(),
+       user_uuid = COALESCE(races.user_uuid, EXCLUDED.user_uuid)`,
     [
       race.slug,
       JSON.stringify(race.plan),
       race.gpxText,
       JSON.stringify(race.meta),
       race.actualResult ? JSON.stringify(race.actualResult) : null,
+      userId ?? null,
     ],
   );
 }

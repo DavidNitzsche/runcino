@@ -21,6 +21,7 @@
 import { getRaceDB, saveRaceDB } from '../../../../../lib/race-store';
 import { resolveGelSpec } from '../../../../../lib/gel-lookup';
 import { coachCarbRate } from '../../../../../lib/coach-carb-rate';
+import { requireActiveUser } from '../../../../../lib/auth';
 import type { FaffPlan } from '../../../../../lib/types';
 
 interface RebuildBody {
@@ -52,7 +53,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   try { body = await req.json(); }
   catch { return new Response('Invalid JSON', { status: 400 }); }
 
-  const existing = await getRaceDB(slug);
+  let userId: string | undefined;
+  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  const existing = await getRaceDB(slug, userId);
   if (!existing) return new Response('Not found', { status: 404 });
 
   // Resolve effective inputs — caller-provided values override the
@@ -133,7 +136,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const data = await buildRes.json() as { planJsonText: string; summary: { raceName: string; courseSlug: string; goalDisplay: string } };
   const plan = JSON.parse(data.planJsonText) as FaffPlan;
 
-  // Persist — preserve actualResult, refresh plan + meta.
+  // Persist — preserve actualResult, refresh plan + meta. Pass userId
+  // so rebuilds stamp user_uuid on legacy rows (additive backfill).
   await saveRaceDB({
     slug,
     plan,
@@ -147,7 +151,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       courseSlug: existing.meta.courseSlug,
     },
     actualResult: existing.actualResult,
-  });
+  }, userId);
 
   return Response.json({ ok: true, slug });
 }

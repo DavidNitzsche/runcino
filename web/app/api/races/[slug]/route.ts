@@ -12,11 +12,14 @@
 import { deleteRaceDB, getRaceDB, setActualResultDB, saveRaceDB } from '../../../../lib/race-store';
 import type { ActualResult, SavedRace } from '../../../../lib/storage-types';
 import { ensureSeed } from '../../../../lib/seed-server';
+import { requireActiveUser } from '../../../../lib/auth';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   await ensureSeed();
   const { slug } = await params;
-  const race = await getRaceDB(slug);
+  let userId: string | undefined;
+  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  const race = await getRaceDB(slug, userId);
   if (!race) return new Response('Not found', { status: 404 });
   return Response.json({ race });
 }
@@ -37,11 +40,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
     await setActualResultDB(slug, body.actualResult);
   }
   if (body.meta) {
-    const existing = await getRaceDB(slug);
+    let userId: string | undefined;
+    try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+    const existing = await getRaceDB(slug, userId);
     if (!existing) return new Response('Not found', { status: 404 });
     // Merge — don\'t let a partial meta erase fields the caller didn\'t send.
     const mergedMeta = { ...existing.meta, ...body.meta };
-    await saveRaceDB({ ...existing, meta: mergedMeta });
+    await saveRaceDB({ ...existing, meta: mergedMeta }, userId);
   }
   return Response.json({ ok: true });
 }

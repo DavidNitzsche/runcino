@@ -80,6 +80,17 @@ async function bootstrap(): Promise<void> {
         saved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
+    // Multi-tenant: add user_uuid to races so each user's races are
+    // scoped to them. Existing rows have user_uuid=NULL and remain
+    // visible to all users until backfilled — query pattern is
+    // `WHERE (user_uuid = $1 OR user_uuid IS NULL)` so no regression.
+    await client.query(`
+      ALTER TABLE races
+        ADD COLUMN IF NOT EXISTS user_uuid UUID REFERENCES users(id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS races_user_uuid_idx ON races (user_uuid);
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS strava_activities (
         id            BIGINT PRIMARY KEY,

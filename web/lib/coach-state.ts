@@ -259,7 +259,9 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
-    listRacesDB().catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
+    // When userId is provided, races scoped to that user (legacy rows with
+    // null user_uuid stay visible for now — additive migration).
+    listRacesDB(opts.userId).catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
     getCachedActivities().catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
     // gatherCheckinAggregate swallows DB failures internally so this
     // resolves to a 0-rows aggregate when Postgres is unavailable.

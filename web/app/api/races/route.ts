@@ -11,11 +11,14 @@
 
 import { listRacesDB, saveRaceDB } from '../../../lib/race-store';
 import { ensureSeed } from '../../../lib/seed-server';
+import { requireActiveUser } from '../../../lib/auth';
 import type { SavedRace } from '../../../lib/storage-types';
 
 export async function GET() {
   await ensureSeed();
-  const races = await listRacesDB();
+  let userId: string | undefined;
+  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  const races = await listRacesDB(userId);
   return Response.json({ races });
 }
 
@@ -28,6 +31,8 @@ export async function POST(req: Request) {
     return new Response('Missing required fields (slug, plan, gpxText, meta)', { status: 400 });
   }
 
-  await saveRaceDB(body);
+  let userId: string | undefined;
+  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  await saveRaceDB(body, userId);
   return Response.json({ ok: true, slug: body.slug });
 }

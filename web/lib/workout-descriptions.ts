@@ -16,7 +16,30 @@
  */
 
 import { pacesFromVdot, type DanielsPaceSet } from './vdot';
-import { fmtPaceBand, type ResolvedFitness } from './fitness-types';
+import { fmtPaceBand, type ResolvedFitness, type FitnessHrZones } from './fitness-types';
+
+/** Daniels pace zone → HR zone mapping. Both anchor to physiological
+ *  effort thresholds — easy aerobic pace lives in Z2 HR; threshold
+ *  pace lives in Z4; VO2max intervals live in Z5. */
+function hrZoneForPaceZone(zoneRef: ZoneRef, hrZones: FitnessHrZones | null): { lowBpm: number; highBpm: number } | null {
+  if (!hrZones) return null;
+  switch (zoneRef) {
+    case 'E':         return hrZones.z2;
+    case 'M':         return hrZones.z3;
+    case 'T':         return hrZones.z4;
+    case 'I':         return hrZones.z5;
+    case 'R':         return hrZones.z5;
+    case 'race-pace': return hrZones.z4;  // HM-pace effort lives in Z4
+    case 'fast':              return hrZones.z5;
+    case 'powerful':          return null; // strides — HR lags too much to be meaningful
+    case 'mixed-easy-to-race':return null; // headline-only ref
+  }
+}
+
+function fmtHrBand(band: { lowBpm: number; highBpm: number } | null): string | null {
+  if (!band) return null;
+  return `${band.lowBpm}-${band.highBpm} bpm`;
+}
 
 // ── Public types ──────────────────────────────────────────────────
 
@@ -26,6 +49,10 @@ export interface SimpleStep {
   duration: string;
   pace: string;
   zone: string;
+  /** HR target band derived from fitness.hrZones. Format: "105-122 bpm".
+   *  null when max HR isn't set or this step doesn't have a meaningful
+   *  HR target (e.g., recovery jogs). */
+  hrTarget?: string | null;
 }
 
 export interface LoopItem {
@@ -34,6 +61,7 @@ export interface LoopItem {
   pace?: string;
   zone?: string;
   suffix?: string;
+  hrTarget?: string | null;
 }
 
 export interface LoopStep {
@@ -109,15 +137,24 @@ const FALLBACK_RACE_PACE_S = 7 * 60 + 30; // 7:30/mi
 interface FitnessBands {
   paces: DanielsPaceSet;
   racePaceBand: { lowS: number; highS: number; label: string };
+  /** HR zone bands derived from max HR — null when max HR isn't set
+   *  (manual override absent + no Strava peak high enough). Consumers
+   *  use this to attach "105-122 bpm" alongside pace targets. */
+  hrZones: FitnessHrZones | null;
 }
 
 function bandsFromFitness(fitness: ResolvedFitness | null): FitnessBands {
   if (fitness) {
-    return { paces: fitness.paces, racePaceBand: fitness.racePaceBand };
+    return {
+      paces: fitness.paces,
+      racePaceBand: fitness.racePaceBand,
+      hrZones: fitness.hrZones,
+    };
   }
   return {
     paces: FALLBACK_PACES,
     racePaceBand: { lowS: FALLBACK_RACE_PACE_S - 10, highS: FALLBACK_RACE_PACE_S + 10, label: 'Race pace' },
+    hrZones: null,
   };
 }
 
@@ -408,6 +445,7 @@ function realizeStep(step: WorkoutStepTemplate, bands: FitnessBands): WorkoutSte
       duration: step.duration,
       pace: step.paceOverride ?? paceForZone(step.zoneRef, bands),
       zone: step.zoneLabel,
+      hrTarget: fmtHrBand(hrZoneForPaceZone(step.zoneRef, bands.hrZones)),
     };
   }
   return {
@@ -420,6 +458,7 @@ function realizeStep(step: WorkoutStepTemplate, bands: FitnessBands): WorkoutSte
       pace: it.paceOverride ?? (it.zoneRef ? paceForZone(it.zoneRef, bands) : undefined),
       zone: it.zoneLabel,
       suffix: it.suffix,
+      hrTarget: it.zoneRef ? fmtHrBand(hrZoneForPaceZone(it.zoneRef, bands.hrZones)) : null,
     })),
   };
 }

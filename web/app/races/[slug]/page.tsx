@@ -216,7 +216,7 @@ export default async function RacePlanPage({ params }: PageProps) {
   const auth = await requireActiveUser();
   const { slug } = await params;
 
-  const race = await getRaceDB(slug);
+  const race = await getRaceDB(slug, auth.id);
   if (!race) notFound();
 
   // Compute days-to-race
