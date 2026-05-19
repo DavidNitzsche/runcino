@@ -47,6 +47,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [error, setError]       = useState<string | null>(null);
   const [shoes, setShoes]       = useState<Shoe[]>([]);
   const [shoeId, setShoeId]     = useState<number | null>(null);
+  const [shoeAuto, setShoeAuto] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,13 +61,14 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         const [actJson, shoeJson, assignJson] = await Promise.all([
           actRes.json() as Promise<{ activity: RichActivity | null; error?: string }>,
           shoeRes.json() as Promise<{ shoes: Shoe[] }>,
-          assignRes.json() as Promise<{ shoe_id: number | null }>,
+          assignRes.json() as Promise<{ shoe_id: number | null; auto_assigned?: boolean }>,
         ]);
         if (cancelled) return;
         if (actJson.error) setError(actJson.error);
         setActivity(actJson.activity);
         setShoes(shoeJson.shoes ?? []);
         setShoeId(assignJson.shoe_id ?? null);
+        setShoeAuto(Boolean(assignJson.auto_assigned));
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -79,6 +81,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
 
   async function assignShoe(newShoeId: number | null) {
     setShoeId(newShoeId);
+    // Once the user touches the field, it's no longer auto-attributed
+    // (the PUT clears shoe_auto_assigned_at on the server, mirror it
+    // locally so the attribution badge disappears immediately).
+    setShoeAuto(false);
     await fetch(`/api/strava/activity/${id}/shoe`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -155,6 +161,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       <ShoeTile
         shoes={shoes}
         shoeId={shoeId}
+        autoAssigned={shoeAuto}
         runType={inferRunType(activity.workoutType, activity.name)}
         onAssign={assignShoe}
       />
@@ -401,9 +408,10 @@ function SplitsTable({ miles }: { miles: NonNullable<RichActivity['miles']> }) {
   );
 }
 
-function ShoeTile({ shoes, shoeId, runType, onAssign }: {
+function ShoeTile({ shoes, shoeId, autoAssigned, runType, onAssign }: {
   shoes: Shoe[];
   shoeId: number | null;
+  autoAssigned: boolean;
   runType: ReturnType<typeof inferRunType>;
   onAssign: (id: number | null) => void;
 }) {
@@ -411,6 +419,12 @@ function ShoeTile({ shoes, shoeId, runType, onAssign }: {
   const assigned  = shoes.find(s => s.id === shoeId) ?? null;
   const suggested = recommendShoe(shoes, runType);
   const active    = shoes.filter(s => !s.retired);
+
+  // Best-fit label for the auto-assign attribution chip — uses the
+  // assigned shoe's first run_type (the picker matched on it) so the
+  // copy reads "auto-assigned as your easy-day shoe" instead of a
+  // generic "auto-assigned by sync".
+  const autoLabel = assigned?.run_types[0] ?? runType;
 
   return (
     <div className="tile" style={{ marginBottom: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -427,6 +441,11 @@ function ShoeTile({ shoes, shoeId, runType, onAssign }: {
           }
           {assigned?.color && (
             <div style={{ fontSize: 12, color: 'var(--color-t3)', marginTop: 2 }}>{assigned.color}</div>
+          )}
+          {assigned && autoAssigned && (
+            <div style={{ fontSize: 11, color: 'var(--color-t3)', marginTop: 4 }}>
+              auto-assigned as your {autoLabel.replace('_', ' ')}-day shoe
+            </div>
           )}
         </div>
         <button className="btn btn--ghost" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => setOpen(o => !o)}>

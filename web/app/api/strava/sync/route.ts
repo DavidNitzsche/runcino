@@ -42,17 +42,22 @@ import { listRacesDB, setActualResultDB } from '../../../../lib/race-store';
 import { ensureSeed } from '../../../../lib/seed-server';
 import type { ActualResult } from '../../../../lib/storage-types';
 import { getCurrentPlan } from '../../../../coach/plan-lifecycle';
-import { buildPlanMatches, runTypeForWorkout, type PlanMatch } from '../../../../lib/plan-match';
+import { buildPlanMatches, type PlanMatch } from '../../../../lib/plan-match';
 import {
   plannedActivityTitle,
   renameStravaActivity,
   nameAlreadyMatchesPlan,
 } from '../../../../lib/strava-writeback';
-import { listShoes, recommendShoe } from '../../../../lib/shoe-store';
+import { listShoes } from '../../../../lib/shoe-store';
+import { pickFromShoes } from '../../../../lib/shoe-picker';
 
 interface PlanSyncReport {
   renamed: Array<{ id: number; title: string }>;
-  shoed: Array<{ id: number; shoeId: number; runType: string }>;
+  shoed: Array<{ id: number; shoeId: number; workoutType: string }>;
+  /** Activities the picker passed on because no preferred shoe matched
+   *  or the rotation was ambiguous. Surfaced so the UI can nudge the
+   *  user to either pick a shoe manually or flag a preferred one. */
+  shoeSkipped: Array<{ id: number; workoutType: string }>;
   errors: string[];
 }
 
@@ -152,7 +157,7 @@ async function runSync(): Promise<{
  *  Soft-fails: a failed rename / shoe assign is logged into errors[]
  *  and the loop continues — partial progress is better than nothing. */
 async function runPlanMatchPass(activities: NormalizedActivity[]): Promise<PlanSyncReport> {
-  const report: PlanSyncReport = { renamed: [], shoed: [], errors: [] };
+  const report: PlanSyncReport = { renamed: [], shoed: [], shoeSkipped: [], errors: [] };
 
   // Load the active plan + the shoe rotation up front. Either may be
   // absent (no plan authored yet / no shoes seeded) — that just means
@@ -189,20 +194,23 @@ async function runPlanMatchPass(activities: NormalizedActivity[]): Promise<PlanS
 
     // ── Shoe auto-assign ────────────────────────────────────────
     // Only assign when the user hasn't picked a shoe yet (shoe_id is
-    // NULL). Manual picks are sticky — see `users.strava_writeback`
-    // semantics: writeback can re-touch the name, but a user's
-    // intentional shoe choice is never overwritten.
+    // NULL). Manual picks are sticky — writeback can re-touch the
+    // name, but a user's intentional shoe choice is never overwritten.
+    // The picker returns null when the rotation is ambiguous (e.g.
+    // two non-preferred easy shoes) so we don't silently log miles to
+    // the wrong pair.
     const meta = await getActivitySyncMeta(m.activity.id).catch(() => null);
     if (meta && meta.shoe_id == null && shoes.length > 0) {
-      const runType = runTypeForWorkout(m.workout.type);
-      const shoe = recommendShoe(shoes, runType);
-      if (shoe) {
+      const shoeId = pickFromShoes(shoes, m.workout.type);
+      if (shoeId != null) {
         try {
-          await autoAssignShoe(m.activity.id, shoe.id, m.activity.distanceMi);
-          report.shoed.push({ id: m.activity.id, shoeId: shoe.id, runType });
+          await autoAssignShoe(m.activity.id, shoeId, m.activity.distanceMi);
+          report.shoed.push({ id: m.activity.id, shoeId, workoutType: m.workout.type });
         } catch (e) {
           report.errors.push(`autoAssignShoe ${m.activity.id}: ${e instanceof Error ? e.message : String(e)}`);
         }
+      } else {
+        report.shoeSkipped.push({ id: m.activity.id, workoutType: m.workout.type });
       }
     }
   }
