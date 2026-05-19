@@ -14,6 +14,8 @@ import {
   compareTrendWindows,
   buildVerdict,
   insufficientData,
+  requiresLargeShiftConfirmation,
+  LARGE_SHIFT_THRESHOLDS,
   DEFAULT_THRESHOLDS,
   type EvidenceItem,
 } from '../adaptive-pattern';
@@ -255,5 +257,167 @@ describe('adaptive-pattern · confidence scaling', () => {
     );
     expect(r.meets).toBe(true);
     expect(r.confidence).toBe('low');
+  });
+});
+
+describe('adaptive-pattern · rule 8 (large-shift confirmation gate)', () => {
+  // The exact scenario that motivated this rule: a pace-band shift
+  // from 441 s/mi (T pace at VDOT 46, derived from 15K race pace)
+  // to 361 s/mi (a buggy "training paces table" value, off by ~5
+  // VDOT). Without this gate, the change shipped silently because
+  // the evidence/falsifier checks all passed at a higher layer.
+  it('the regression scenario: 80 sec/mi pace shift triggers confirmation', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'T pace band',
+      kind: 'pace_band_s_per_mi',
+      oldValue: 441,
+      newValue: 361,
+    });
+    expect(r.requiresConfirmation).toBe(true);
+    expect(r.deltaActual).toBe(80);
+    expect(r.threshold).toBe(LARGE_SHIFT_THRESHOLDS.pace_band_s_per_mi);
+    expect(r.bannerMessage).toMatch(/T pace band would shift/);
+    expect(r.bannerMessage).toMatch(/80/);
+  });
+
+  it('small pace adjustments (≤15 sec/mi) do not require confirmation', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'E pace low end',
+      kind: 'pace_band_s_per_mi',
+      oldValue: 540,
+      newValue: 552,
+    });
+    expect(r.requiresConfirmation).toBe(false);
+    expect(r.deltaActual).toBe(12);
+  });
+
+  it('exactly at threshold does NOT trigger (strict >)', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'T pace',
+      kind: 'pace_band_s_per_mi',
+      oldValue: 400,
+      newValue: 415,  // delta = 15, threshold = 15
+    });
+    expect(r.requiresConfirmation).toBe(false);
+  });
+
+  it('max HR shift >8 bpm requires confirmation', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'Max HR',
+      kind: 'max_hr_bpm',
+      oldValue: 175,
+      newValue: 184,
+    });
+    expect(r.requiresConfirmation).toBe(true);
+    expect(r.deltaActual).toBe(9);
+  });
+
+  it('max HR shift of 5 bpm does NOT require confirmation', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'Max HR',
+      kind: 'max_hr_bpm',
+      oldValue: 175,
+      newValue: 180,
+    });
+    expect(r.requiresConfirmation).toBe(false);
+  });
+
+  it('VDOT shift >2 points requires confirmation', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'VDOT',
+      kind: 'vdot_points',
+      oldValue: 45,
+      newValue: 48,  // 3 point jump
+    });
+    expect(r.requiresConfirmation).toBe(true);
+  });
+
+  it('race goal shift >2 min requires confirmation', () => {
+    // User considering tightening HM goal from 1:35 to 1:30 = 300s
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'AFC Half goal',
+      kind: 'race_goal_seconds',
+      oldValue: 5700,
+      newValue: 5400,
+    });
+    expect(r.requiresConfirmation).toBe(true);
+    expect(r.deltaActual).toBe(300);
+  });
+
+  it('threshold override is honored when explicitly set', () => {
+    // A runner with a high RHR baseline might legitimately swing
+    // ±10 bpm in RHR readings. Per-runner override allows widening.
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'Resting HR',
+      kind: 'resting_hr_bpm',
+      oldValue: 55,
+      newValue: 62,  // delta = 7, default threshold = 6, override = 10
+      thresholdOverride: 10,
+    });
+    expect(r.requiresConfirmation).toBe(false);
+    expect(r.threshold).toBe(10);
+  });
+
+  it('banner copy includes direction (up/down) and units', () => {
+    const up = requiresLargeShiftConfirmation({
+      fieldLabel: 'Max HR',
+      kind: 'max_hr_bpm',
+      oldValue: 170,
+      newValue: 180,
+    });
+    expect(up.bannerMessage).toMatch(/up by/);
+    expect(up.bannerMessage).toMatch(/bpm/);
+
+    const down = requiresLargeShiftConfirmation({
+      fieldLabel: 'Max HR',
+      kind: 'max_hr_bpm',
+      oldValue: 180,
+      newValue: 170,
+    });
+    expect(down.bannerMessage).toMatch(/down by/);
+  });
+
+  it('falsifier suggests user actions in the banner', () => {
+    const r = requiresLargeShiftConfirmation({
+      fieldLabel: 'T pace',
+      kind: 'pace_band_s_per_mi',
+      oldValue: 441,
+      newValue: 361,
+    });
+    expect(r.falsifier).toMatch(/Apply if/);
+    expect(r.falsifier).toMatch(/keep current/i);
+  });
+});
+
+describe('adaptive-pattern · large-shift gate is the safety net', () => {
+  // Documents the gate's purpose: catches errors that the
+  // evidence/falsifier philosophy doesn't catch on its own. A high-
+  // confidence verdict to make a wrong-magnitude change is the
+  // exact case the gate exists for.
+  it('high-confidence verdict + large shift = still requires confirmation', () => {
+    // Evidence side: passes (say 5 race-derived data points)
+    const evidenceVerdict = buildVerdict({
+      direction: 'up',
+      evidence: Array(5).fill(0).map((_, i) => ({
+        label: `race ${i+1}`, weight: 1, when: '2026-05-01', kind: 'race' as const,
+      })),
+      reason: 'five corroborating race results',
+      falsifier: 'A new race that contradicts this would change our mind.',
+    });
+    expect(evidenceVerdict.hasFinding).toBe(true);
+    expect(evidenceVerdict.confidence).toBe('high');
+
+    // Shift side: also gates (80 sec/mi is well above threshold)
+    const shift = requiresLargeShiftConfirmation({
+      fieldLabel: 'T pace',
+      kind: 'pace_band_s_per_mi',
+      oldValue: 441,
+      newValue: 361,
+    });
+    expect(shift.requiresConfirmation).toBe(true);
+
+    // Both gates pass through the user's confirmation —
+    // evidenceVerdict tells them WHY, shift.bannerMessage tells
+    // them HOW MUCH.
   });
 });

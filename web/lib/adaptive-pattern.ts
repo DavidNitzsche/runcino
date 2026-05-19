@@ -40,6 +40,48 @@
  *      "keep current," suppress for a reasonable window. But re-fire
  *      if new sustained evidence appears (not single events).
  *
+ *   8. LARGE-SHIFT CONFIRMATION GATE — even when 1-7 are satisfied,
+ *      a proposed change that shifts a prescription by more than
+ *      LARGE_SHIFT_THRESHOLDS[field] requires explicit user
+ *      confirmation. Catches table errors, formula bugs, and
+ *      reference-data drift before they cascade into a training
+ *      plan. See `requiresLargeShiftConfirmation()` below.
+ *
+ *      ORIGIN: A prior pace-band fix shipped values ~30-50 sec/mi
+ *      faster than the user's actual fitness — derived from poor
+ *      memory of Daniels' canonical table rather than a verified
+ *      source. The pattern-level evidence/falsifier/asymmetric
+ *      checks all passed because the philosophy gates HOW changes
+ *      are decided, not whether the reference data underneath is
+ *      correct. This gate is the net: any large shift to a
+ *      prescription, regardless of how the change was decided,
+ *      requires explicit confirmation before it lands.
+ *
+ *   9. PHYSIOLOGICAL ESTIMATES ≠ TRAINING SIGNAL — values from
+ *      consumer devices (Apple Watch VO2max, garmin fitness scores,
+ *      whoop strain) are WELLNESS signals. They MUST NOT drive
+ *      pace prescriptions, VDOT validation under normal conditions,
+ *      or "confidence boosting" when they agree with race-derived
+ *      values. Race performance is training signal. The two never
+ *      blur. Use device estimates for:
+ *        - Cold-start defaults when no race data exists
+ *        - Trend display (informational only)
+ *        - Extreme-divergence data-quality checks (>20 pt gaps)
+ *      Never for prescription math.
+ *
+ *  10. MEMORY IS NOT A SOURCE — modules that import canonical
+ *      reference data (Daniels tables, HR zone formulas, fueling
+ *      research) MUST:
+ *        (a) cite the source URL or book/edition + page in a code
+ *            comment immediately above the data
+ *        (b) include a snapshot test that pins specific known
+ *            values (e.g. "VDOT 50 row = X"). If the table gets
+ *            edited to wrong values, the snapshot test fails
+ *            immediately.
+ *      No reconstruction from formulas. No blending of sources.
+ *      No values from memory. Single cited source, user spot-check,
+ *      snapshot test. This is the procedure for canonical data.
+ *
  * Modules import the types + helpers below. The TypeScript compiler
  * enforces the shape; the helpers enforce the rules.
  */
@@ -342,5 +384,151 @@ export function insufficientData(reason: string, falsifier: string): AdaptiveVer
     reason,
     falsifier,
     dismissed: false,
+  };
+}
+
+// ── Rule 8: Large-shift confirmation gate ──────────────────────────
+//
+// Even when the evidence/falsifier/asymmetric checks all pass, a
+// proposed change that moves a prescription by more than the
+// per-field threshold below requires EXPLICIT user confirmation
+// before it lands. Catches:
+//   - Table errors (wrong row in a canonical lookup)
+//   - Formula bugs (off-by-one, unit mixup, sign error)
+//   - Reference-data drift (a source got edited and now produces
+//     values 30 sec/mi different)
+//
+// The gate fires on the magnitude of the shift, not the quality of
+// the evidence behind it. A high-confidence verdict to shift T pace
+// by 40 sec/mi is the EXACT case where this gate is most valuable —
+// the user gets to read "we want to move your T pace from 7:21 to
+// 6:01, that's a 80-second jump, are you sure?" before workouts
+// start prescribing the new value.
+
+/** Kinds of prescription values the app can shift. Each maps to a
+ *  unit-specific magnitude threshold (in the LARGE_SHIFT_THRESHOLDS
+ *  table below). Add a new kind here when a new prescription type
+ *  becomes adaptive. */
+export type PrescriptionKind =
+  | 'pace_band_s_per_mi'    // Daniels E/M/T/I/R bands
+  | 'max_hr_bpm'            // Max HR
+  | 'resting_hr_bpm'        // Resting HR
+  | 'vdot_points'           // VDOT value
+  | 'race_goal_seconds'     // Race goal finish time
+  | 'weekly_volume_mi'      // Weekly mileage prescription
+  | 'carb_target_g_per_hr'  // Race fueling rate
+  ;
+
+/** Magnitudes above which a confirmation is required. Tuned to the
+ *  "this would noticeably change a workout if shipped" threshold,
+ *  per field. Values are conservative — the cost of an unconfirmed
+ *  large shift is real (training at wrong pace = injury risk; wrong
+ *  HR ceiling = wasted easy days). The cost of confirmation is one
+ *  click. Asymmetric in the right direction. */
+export const LARGE_SHIFT_THRESHOLDS: Record<PrescriptionKind, number> = {
+  pace_band_s_per_mi: 15,    // 15 sec/mi shift per band = real workout effect
+  max_hr_bpm: 8,             // 8 bpm shifts Z2 ceiling by ~5 bpm = real
+  resting_hr_bpm: 6,         // 6 bpm shifts freshness math meaningfully
+  vdot_points: 2,            // 2 VDOT points = ~10-15 sec/mi across bands
+  race_goal_seconds: 120,    // 2 min on a race goal = pace target shifts ~10 s/mi
+  weekly_volume_mi: 8,       // 8 mi/wk = ~25% jump for a 30 mpw runner
+  carb_target_g_per_hr: 15,  // 15 g/hr = real GI/fueling change
+};
+
+export interface LargeShiftCheck {
+  /** The prescription field being shifted (e.g. "T pace VDOT 46"). */
+  fieldLabel: string;
+  /** Kind of value — picks the threshold from LARGE_SHIFT_THRESHOLDS. */
+  kind: PrescriptionKind;
+  /** Current stored value (in the unit appropriate to kind). */
+  oldValue: number;
+  /** Proposed new value. */
+  newValue: number;
+  /** Optional override threshold. Use only when you genuinely need to
+   *  override the per-kind default (e.g. a specific runner with a
+   *  high RHR baseline needs a wider RHR shift threshold). Document
+   *  why in code. */
+  thresholdOverride?: number;
+}
+
+export interface LargeShiftResult {
+  /** True when the magnitude exceeds the threshold and the user
+   *  must confirm before applying. */
+  requiresConfirmation: boolean;
+  /** |newValue - oldValue|, for UI display ("shifts by 23 sec/mi"). */
+  deltaActual: number;
+  /** Threshold that was checked. */
+  threshold: number;
+  /** Banner copy ready to render. Includes the field label, the
+   *  delta, and an explicit "are you sure" framing. */
+  bannerMessage: string;
+  /** Suggested falsifier line for the banner — what the user can
+   *  do if they want to apply without re-reviewing every iteration. */
+  falsifier: string;
+}
+
+/** Check whether a proposed shift exceeds the field's confirmation
+ *  threshold. Any adaptive module that proposes a numeric change
+ *  should call this before applying. When `requiresConfirmation` is
+ *  true, the UI must surface a banner with the bannerMessage and
+ *  block the apply until the user clicks through.
+ *
+ *  Example call pattern:
+ *
+ *  ```ts
+ *  const shift = requiresLargeShiftConfirmation({
+ *    fieldLabel: 'T pace band',
+ *    kind: 'pace_band_s_per_mi',
+ *    oldValue: 441,  // 7:21/mi
+ *    newValue: 361,  // 6:01/mi
+ *  });
+ *  if (shift.requiresConfirmation) {
+ *    // Render banner: "T pace would shift by 80 sec/mi — large
+ *    // change. Apply, or keep current?"
+ *  }
+ *  ```
+ *
+ *  Use this whenever a value would be persisted: storing a new max
+ *  HR, applying a VDOT bump, accepting a recommended race goal,
+ *  rolling out new pace bands. The gate is intentionally
+ *  unit-specific so a 5 bpm HR shift isn't gated (small, normal)
+ *  but a 50 sec/mi pace band shift always is. */
+export function requiresLargeShiftConfirmation(check: LargeShiftCheck): LargeShiftResult {
+  const threshold = check.thresholdOverride ?? LARGE_SHIFT_THRESHOLDS[check.kind];
+  const delta = check.newValue - check.oldValue;
+  const deltaActual = Math.abs(delta);
+  const requiresConfirmation = deltaActual > threshold;
+
+  // Unit-aware human-readable delta for the banner.
+  const unitLabel = check.kind === 'pace_band_s_per_mi' ? 'sec/mi'
+    : check.kind === 'max_hr_bpm' || check.kind === 'resting_hr_bpm' ? 'bpm'
+    : check.kind === 'vdot_points' ? 'VDOT points'
+    : check.kind === 'race_goal_seconds' ? 'seconds'
+    : check.kind === 'weekly_volume_mi' ? 'mi/wk'
+    : check.kind === 'carb_target_g_per_hr' ? 'g/hr'
+    : '';
+  const dir = delta > 0 ? 'up' : 'down';
+  const sign = delta > 0 ? '+' : '−';
+
+  const bannerMessage = requiresConfirmation
+    ? `${check.fieldLabel} would shift ${dir} by ${sign}${deltaActual} ${unitLabel} ` +
+      `(from ${check.oldValue} to ${check.newValue}). That's above the ` +
+      `${threshold} ${unitLabel} confirmation threshold — large enough that ` +
+      `we want you to eyeball it before workouts start using the new value.`
+    : `${check.fieldLabel}: ${sign}${deltaActual} ${unitLabel} shift, within ` +
+      `the ${threshold} ${unitLabel} threshold — applying without prompt.`;
+
+  const falsifier = requiresConfirmation
+    ? `Apply if the new value matches your actual fitness; keep current if it ` +
+      `looks wrong (could be a stale data source, a sensor glitch, or a recent ` +
+      `race result that needs a closer look). We'll re-prompt if the gap widens.`
+    : 'Shift is within normal-update range; no review needed.';
+
+  return {
+    requiresConfirmation,
+    deltaActual,
+    threshold,
+    bannerMessage,
+    falsifier,
   };
 }
