@@ -24,6 +24,7 @@ import { query } from '@/lib/db';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { validateMaxHr } from '@/lib/validate-max-hr';
+import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -154,6 +155,11 @@ export default async function ProfilePage() {
   // CoachReadsCard's Heart Rate section.
   const maxHrVerdict = await validateMaxHr(auth.id, fitness.maxHr.value);
 
+  // Race feasibility validator — compares stored goal to predicted
+  // race time at current VDOT. Surfaces stretch/aggressive/fair/
+  // conservative verdict with evidence + falsifier.
+  const raceFeasibility = await validateRaceFeasibility(auth.id, today);
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -259,7 +265,11 @@ export default async function ProfilePage() {
 
         {/* ── COACH READS (fitness resolver output) ── */}
         <div style={{ marginTop: 16 }}>
-          <CoachReadsCard fitness={fitness} maxHrVerdict={maxHrVerdict} />
+          <CoachReadsCard
+            fitness={fitness}
+            maxHrVerdict={maxHrVerdict}
+            raceFeasibility={raceFeasibility}
+          />
         </div>
 
         {/* ── CONNECTORS ── */}
