@@ -11,6 +11,7 @@
 import type { ResolvedFitness } from '@/lib/fitness-types';
 import { fmtPaceBand } from '@/lib/fitness-types';
 import type { MaxHrValidationVerdict } from '@/lib/validate-max-hr';
+import type { RaceFeasibilityVerdict } from '@/lib/validate-race-feasibility';
 import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 
 function fmtFinish(s: number): string {
@@ -33,9 +34,11 @@ function fmtDate(iso: string): string {
 export function CoachReadsCard({
   fitness,
   maxHrVerdict,
+  raceFeasibility,
 }: {
   fitness: ResolvedFitness;
   maxHrVerdict?: MaxHrValidationVerdict | null;
+  raceFeasibility?: RaceFeasibilityVerdict | null;
 }) {
   return (
     <div className="card">
@@ -69,6 +72,24 @@ export function CoachReadsCard({
             <div className="coach-reads-meta">
               All HM/race-pace workouts target this band: <strong>{fmtPaceBand(fitness.racePaceBand)}</strong>
             </div>
+            {/* Race feasibility banner — surfaces stretch / aggressive
+                / conservative verdicts with evidence + falsifier. */}
+            {raceFeasibility && raceFeasibility.hasFinding && raceFeasibility.predicted && (
+              <div className={`coach-reads-feasibility coach-reads-feasibility-${raceFeasibility.verdict}`}>
+                <div className="coach-reads-feasibility-tag">
+                  {raceFeasibility.verdict === 'stretch' ? '⚠ STRETCH'
+                   : raceFeasibility.verdict === 'aggressive' ? '↑ AGGRESSIVE'
+                   : raceFeasibility.verdict === 'conservative' ? '↓ CONSERVATIVE'
+                   : 'FAIR'}
+                </div>
+                <div className="coach-reads-feasibility-reason">
+                  {raceFeasibility.reason}
+                </div>
+                <div className="coach-reads-feasibility-falsifier">
+                  <strong>What would change our mind: </strong>{raceFeasibility.falsifier}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="coach-reads-empty">
@@ -103,7 +124,7 @@ export function CoachReadsCard({
 
       {/* ── DERIVED PACE BANDS ── */}
       <div className="coach-reads-section">
-        <div className="coach-reads-label">Pace Bands · Daniels VDOT {fitness.vdot.value.toFixed(0)}</div>
+        <div className="coach-reads-label">Pace Bands · race-pace derived from VDOT {fitness.vdot.value.toFixed(0)}</div>
         <div className="coach-reads-pace-grid">
           <div className="coach-reads-pace-cell">
             <div className="coach-reads-pace-zone">E · Easy</div>
@@ -130,6 +151,15 @@ export function CoachReadsCard({
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.R)}</div>
             <div className="coach-reads-pace-meta">Strides, mile race pace</div>
           </div>
+        </div>
+        <div className="coach-reads-pace-footnote">
+          Bands are derived from your race performance (race-pace-derived),
+          not Daniels&rsquo; published training-pace tables. They reflect your
+          current race-pace capability and may run slightly slower than
+          canonical Daniels training paces. Anyone using a Daniels-based
+          calculator alongside this app will see ~15–30 sec/mi gap on T and
+          I bands — that&rsquo;s the labeling-semantics difference, not a math
+          error.
         </div>
       </div>
 
@@ -261,6 +291,49 @@ export function CoachReadsCard({
         .coach-reads-pace-meta {
           font-family: 'Inter', sans-serif; font-size: 11px;
           color: rgba(13,15,18,.55); margin-top: 4px;
+        }
+        .coach-reads-pace-footnote {
+          font-family: 'Inter', sans-serif; font-size: 11px;
+          line-height: 1.5; color: rgba(13,15,18,.50);
+          margin-top: 14px; padding-top: 12px;
+          border-top: 1px solid rgba(13,15,18,.06);
+          font-style: italic;
+        }
+        .coach-reads-feasibility {
+          margin-top: 12px; padding: 12px 14px;
+          border-radius: 10px;
+          border: 1px solid;
+        }
+        .coach-reads-feasibility-stretch {
+          background: rgba(212,144,10,.08);
+          border-color: rgba(212,144,10,.32);
+        }
+        .coach-reads-feasibility-aggressive {
+          background: rgba(232,93,38,.06);
+          border-color: rgba(232,93,38,.25);
+        }
+        .coach-reads-feasibility-conservative {
+          background: rgba(44,168,47,.06);
+          border-color: rgba(44,168,47,.25);
+        }
+        .coach-reads-feasibility-tag {
+          font-family: 'Oswald', sans-serif; font-weight: 700;
+          font-size: 10px; letter-spacing: 1.5px;
+          color: rgba(13,15,18,.65); margin-bottom: 6px;
+        }
+        .coach-reads-feasibility-reason {
+          font-family: 'Inter', sans-serif; font-size: 12px;
+          line-height: 1.5; color: rgba(13,15,18,.85);
+        }
+        .coach-reads-feasibility-falsifier {
+          font-family: 'Inter', sans-serif; font-size: 11px;
+          line-height: 1.5; color: rgba(13,15,18,.55);
+          margin-top: 6px; padding-top: 6px;
+          border-top: 1px solid rgba(13,15,18,.06);
+          font-style: italic;
+        }
+        .coach-reads-feasibility-falsifier strong {
+          color: rgba(13,15,18,.75); font-style: normal; font-weight: 600;
         }
       `}</style>
     </div>

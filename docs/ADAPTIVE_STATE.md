@@ -1,6 +1,16 @@
 # Adaptive system · state of the app
 
-Snapshot at commit `4f33235`. Read this when you want to know where the "alive but not nervous" architecture stands without re-reading the whole transcript.
+Snapshot at commit `e8fb58a`. Read this when you want to know where the "alive but not nervous" architecture stands without re-reading the whole transcript.
+
+## What's new in `e8fb58a` (the safety net)
+
+After a wrong-magnitude pace-band fix shipped + got reverted, three guards were added to prevent the same failure mode:
+
+1. **Rule 8 — Large-shift confirmation gate.** `requiresLargeShiftConfirmation()` in `lib/adaptive-pattern.ts`. Any prescription change above its per-field threshold (pace 15 sec/mi, max HR 8 bpm, VDOT 2 pts, race goal 120 sec, weekly volume 8 mi, carb rate 15 g/hr) requires explicit user confirmation. The 80 sec/mi pace shift that just got reverted would have been blocked.
+2. **Rule 9 — Physiological estimates ≠ training signal.** Locked in code. Apple Watch VO2max, Garmin scores, Whoop strain are wellness signals only. Never drive pace prescription.
+3. **Rule 10 — Memory is not a source.** Canonical reference tables MUST cite source + have snapshot tests pinning specific known values. New `lib/__tests__/reference-tables-snapshot.test.ts` pins VDOT_LOOKUP_TABLE against Daniels 3rd ed published values + monotonicity check.
+
+41 adaptive-pattern tests now (24 original + 12 shift-gate + 5 snapshot pins).
 
 ## The bar (locked in code)
 
@@ -23,11 +33,19 @@ Snapshot at commit `4f33235`. Read this when you want to know where the "alive b
 | Weekly insights (easy pace + mileage) | `lib/weekly-insights.ts` | /overview insight strip | covered via integration |
 | Coach engine cutback trigger | `lib/coach-engine.ts:435` | Daily prescription | 38 engine-event tests |
 
+## Pace bands — current state + deferred work
+
+**Currently shipped (working, not changing):** race-pace-derived formulas in `lib/vdot.ts pacesFromVdot()`. M = marathonS/26.219, T = km15S/9.321 (sub-VDOT-50) or halfS/13.109 (VDOT 50+), I = km5S/3.107, R = mileS/1, E = M+75 with ±30 sec window. These are internally consistent. They aren't Daniels' published training paces (they're typically 15-30 sec/mi slower on T/I) but they ARE defensible — they reflect the runner's current race-pace capability.
+
+**The honest label:** Coach Reads now reads `"Pace Bands · race-pace derived from VDOT N"` (not "Daniels VDOT N"). A footnote below explains the semantics: bands reflect current race-pace capability, not canonical Daniels training paces; expect ~15–30 sec/mi gap from a Daniels-based calculator.
+
+**Deferred — Daniels canonical training paces table:** LOW PRIORITY, no urgency. Blocked on either (a) David sitting down with Daniels' Running Formula and reading values out, or (b) a properly cited web source with all values run past David for spot-check on VDOT 46/48/50 BEFORE any code lands. Race-pace-derived bands are working in the meantime. Don't let perfect be the enemy of good.
+
 ## Modules audited, queued as background tasks
 
 Each chip on your screen is a self-contained task with file paths, the architectural pattern to follow, and references to the existing modules as templates. They'll spawn fresh worktrees and won't block main.
 
-1. **P0 pace band lookup bug** — M/T/I pulling from wrong VDOT row. Math is broken; technically higher priority than the adaptive work but the user said to ship max HR first.
+1. ~~P0 pace band lookup bug~~ — investigated, found the original formulas are internally consistent and defensible; the "bug" was a labeling-semantics question (race-pace-derived vs Daniels canonical). Resolved with an honest label + footnote. Daniels canonical work is now deferred (see section above).
 2. **Split E into 3 sub-bands** (recovery / aerobic / steady) — Daniels E is too wide for one prescription.
 3. **Passive VDOT updater** — race-update + threshold-adherence + HR-pace-drift triggers, same Apply/Keep current/falsifier banner as max HR.
 4. **HR-to-pace drift tracking** — longitudinal Z2 pace trend, feeds the VDOT updater's drift signal.
