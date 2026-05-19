@@ -163,10 +163,14 @@ export default async function OverviewPage() {
   // Weekly insights — plan-aware pattern detection. The coach measures
   // adherence vs the PLAN, not vs the runner's past behavior (so coming
   // off a recovery week with low volume isn't a 'spike' next week).
+  //
+  // Easy-pace target comes from the SAME fitness bundle every other
+  // surface uses — fixes the "below the 9:00–9:30 plan target" alert
+  // that ignored the user's actual VDOT-derived easy band.
   const insights = await generateWeeklyInsights(user.id, today, {
     thisWeekPlannedMi: currentWeek.plannedMi,
-    easyPaceLowSec: 9 * 60 + 0,   // 9:00/mi
-    easyPaceHighSec: 9 * 60 + 30, // 9:30/mi
+    easyPaceLowSec: fitness.easyPaceBand.lowS,
+    easyPaceHighSec: fitness.easyPaceBand.highS,
     phase: currentWeek.phase,
   });
 
