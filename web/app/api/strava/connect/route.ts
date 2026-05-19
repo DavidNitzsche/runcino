@@ -71,7 +71,12 @@ export async function GET(req: Request) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'read,activity:read_all',
+    // `activity:write` is required for the writeback rename in
+    // /api/strava/sync (PUT /activities/{id}). Without it Strava
+    // returns 401 on the rename and the sync continues without
+    // renaming — re-run /api/strava/connect to refresh the token
+    // with this scope.
+    scope: 'read,activity:read_all,activity:write',
     approval_prompt: 'auto',
   });
   const authorizeUrl = `https://www.strava.com/oauth/authorize?${params}`;

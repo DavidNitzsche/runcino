@@ -122,6 +122,25 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE shoes
         ADD COLUMN IF NOT EXISTS preferred BOOLEAN NOT NULL DEFAULT TRUE;
     `);
+    // Writeback bookkeeping: when did /api/strava/sync last push a
+    // planned title back to Strava, and what title did it push? Lets
+    // the sync skip already-renamed activities cheaply (one row read
+    // instead of a Strava round-trip). NULL = never renamed.
+    await client.query(`
+      ALTER TABLE strava_activities
+        ADD COLUMN IF NOT EXISTS writeback_at   TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE strava_activities
+        ADD COLUMN IF NOT EXISTS writeback_name TEXT;
+    `);
+    // Shoe auto-assign bookkeeping: distinct from shoe_id (which the
+    // user can override). When the sync auto-assigns a shoe we stamp
+    // this so re-syncs don't trample a user's manual reassignment.
+    await client.query(`
+      ALTER TABLE strava_activities
+        ADD COLUMN IF NOT EXISTS shoe_auto_assigned_at TIMESTAMPTZ;
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS recovery_sessions (
         id            SERIAL PRIMARY KEY,

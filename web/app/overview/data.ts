@@ -128,6 +128,10 @@ export interface OverviewData {
   planWeekWorkouts: OverviewApiPayload['planWeekWorkouts'];
   /** Current week's phase from the plan (BASE/BUILD/PEAK/TAPER). */
   planCurrentPhase: string | null;
+  /** Today's completion snapshot (planned vs actual + isComplete).
+   *  Drives the ✓ chip on the hero TodayCard. null when no plan or
+   *  today is a rest day. */
+  todayCompletion: OverviewApiPayload['todayCompletion'] | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -402,6 +406,12 @@ interface OverviewApiPayload {
   }> | null;
   planCurrentPhase?: string | null;
   profileName?: string | null;
+  todayCompletion?: {
+    dateISO: string;
+    plannedMi: number;
+    actualMi: number;
+    isComplete: boolean;
+  } | null;
   error?: string;
 }
 
@@ -537,6 +547,7 @@ export async function loadOverviewData(
     freshness,
     planWeekWorkouts: api.planWeekWorkouts ?? null,
     planCurrentPhase: api.planCurrentPhase ?? null,
+    todayCompletion: api.todayCompletion ?? null,
   };
 }
 

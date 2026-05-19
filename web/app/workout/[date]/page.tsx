@@ -14,6 +14,8 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { vdotSnapshot, pacesFromVdot } from '../../../lib/vdot';
 import { gatherCoachState } from '../../../lib/coach-state';
 import type { PlanWorkout, PhaseLabel } from '../../../coach/plan-types';
+import { getCachedActivities } from '../../../lib/strava-cache';
+import { findActivityForWorkout, isWorkoutComplete } from '../../../lib/plan-match';
 
 function fmtPace(sPerMi: number): string {
   const m = Math.floor(sPerMi / 60);
@@ -49,10 +51,13 @@ const PHASE_CHIP: Record<PhaseLabel, { label: string; color: string }> = {
 export default async function WorkoutDetailPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = await params;
 
-  // Load plan + state in parallel.
-  const [planResult, state] = await Promise.all([
+  // Load plan + state + the Strava activity cache in parallel. The
+  // activity cache feeds the actuals panel (✓ COMPLETED + actual
+  // mi/pace/HR) when a matching activity exists for this date.
+  const [planResult, state, stravaCache] = await Promise.all([
     getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
     gatherCoachState().catch(() => null),
+    getCachedActivities().catch(() => ({ activities: [] })),
   ]);
 
   const plan = planResult.plan;
@@ -109,6 +114,16 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
   const isQuality = workout?.isQuality ?? false;
   const subLabel = workout?.subLabel;
 
+  // Actuals — find the Strava activity that covers this planned workout
+  // (same date, ±15% distance for distance-anchored workouts). Surfaces
+  // a ✓ COMPLETED pin in the hero + an actuals strip when present.
+  const matchedActivity = workout
+    ? findActivityForWorkout(workout, stravaCache.activities)
+    : null;
+  const completed = workout && matchedActivity
+    ? isWorkoutComplete(workout.distanceMi, matchedActivity.distanceMi)
+    : false;
+
   return (
     <>
       <Caption left="Runcino · workout" right={`WORKOUT · ${date}`} />
@@ -145,6 +160,19 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                   borderColor: isQuality ? 'rgba(79,143,247,.25)' : undefined,
                 }}>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {completed && (
+                      <span
+                        className="chip"
+                        style={{
+                          color: 'var(--color-good)',
+                          borderColor: 'var(--color-good)',
+                          background: 'rgba(62,189,65,.08)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✓ COMPLETED · {matchedActivity!.distanceMi.toFixed(1)} MI
+                      </span>
+                    )}
                     {isQuality && (
                       <span className="chip chip--corporate">{workout.type.toUpperCase()}</span>
                     )}
@@ -190,6 +218,64 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                     </div>
                   )}
                 </div>
+
+                {/* Actuals — rendered only when we have a matched Strava
+                    activity for this date. Shows what the runner actually
+                    did so they can compare against the prescription above
+                    without leaving the workout detail. */}
+                {matchedActivity && (
+                  <div
+                    className="tile"
+                    style={{
+                      padding: '18px 22px',
+                      borderLeft: '3px solid var(--color-good)',
+                      background: 'linear-gradient(135deg, var(--color-l2) 0%, rgba(62,189,65,.04) 100%)',
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                      marginBottom: 12,
+                    }}>
+                      <div className="tile-lbl" style={{ color: 'var(--color-good)' }}>
+                        Actuals from Strava
+                      </div>
+                      <Link
+                        href={`/runs/${matchedActivity.id}`}
+                        style={{
+                          fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px',
+                          color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        Open run →
+                      </Link>
+                    </div>
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
+                    }}>
+                      <Kpi
+                        value={matchedActivity.distanceMi.toFixed(1)}
+                        unit="mi"
+                        label="Distance"
+                      />
+                      <Kpi
+                        value={`${Math.round(matchedActivity.movingTimeS / 60)}`}
+                        unit="min"
+                        label="Duration"
+                      />
+                      <Kpi
+                        value={fmtPace(matchedActivity.paceSPerMi)}
+                        unit="/mi"
+                        label="Avg pace"
+                      />
+                      <Kpi
+                        value={matchedActivity.avgHr != null ? String(Math.round(matchedActivity.avgHr)) : '—'}
+                        unit="bpm"
+                        label="Avg HR"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Notes / prescription */}
                 {workout.notes && (

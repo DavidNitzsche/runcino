@@ -183,17 +183,27 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
   const readinessVariant = readinessLevel === 'green' ? 'good' : readinessLevel === 'yellow' ? 'amber' : 'default';
   const readinessVal = readinessLevel === 'green' ? '88' : readinessLevel === 'yellow' ? '62' : '40';
 
+  // Today tile — switch to a green ✓ DONE variant once the planned
+  // miles are fulfilled (60% threshold lives in lib/plan-match.ts).
+  const todayCompletion = data.todayCompletion;
+  const todayDone = todayCompletion?.isComplete ?? false;
+
   return (
     <Greet>
       <GreetId eyebrow={greetEyebrow} title={profile.name.toUpperCase()} />
       <GreetState>
         <GreetTile
-          variant="amber"
-          eyebrow="TODAY"
-          value={todayDist}
+          variant={todayDone ? 'good' : 'amber'}
+          eyebrow={todayDone ? 'TODAY · DONE' : 'TODAY'}
+          value={todayDone && todayCompletion ? todayCompletion.actualMi.toFixed(1) : todayDist}
           unit="MI"
-          delta={todayPace.toUpperCase()}
+          delta={
+            todayDone && todayCompletion
+              ? `✓ ${todayPace.toUpperCase()}`
+              : todayPace.toUpperCase()
+          }
         />
+
         <GreetTile
           variant={readinessVariant}
           eyebrow="READINESS"
@@ -346,11 +356,20 @@ function TodayCard({ data }: { data: OverviewData }) {
     ? { why: planMutation.reason }
     : data.adjustedToday;
 
+  // Today completion pin — when the Strava activity for today covers
+  // ≥60% of planned miles, surface a ✓ DONE chip in place of the
+  // SCHEDULED / COACH ADJUSTED pin. Threshold lives in
+  // lib/plan-match.ts (COMPLETION_MIN_FRACTION).
+  const completion = data.todayCompletion;
+  const isDone = completion?.isComplete ?? false;
+
   return (
     <Card wash="amber" span={6} padding="26px 28px" style={{ minHeight: 340 }}>
       <CardHeader>
         <CardLabel color="var(--att)">{eyebrow}</CardLabel>
-        {adjusted ? (
+        {isDone && completion ? (
+          <CardPin variant="green">✓ DONE · {completion.actualMi.toFixed(1)} MI</CardPin>
+        ) : adjusted ? (
           <CardPin variant="coach">▾ COACH ADJUSTED</CardPin>
         ) : (
           <CardPin variant="amber">{w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>

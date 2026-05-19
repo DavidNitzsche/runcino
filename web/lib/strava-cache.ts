@@ -125,3 +125,60 @@ export async function setCachedDetail(id: number, detail: unknown): Promise<void
     [id, JSON.stringify(detail)],
   );
 }
+
+/** Bookkeeping a writeback rename — caller (sync route) records the
+ *  title it sent to Strava so the next sync can short-circuit.
+ *  Also updates the cached `data` blob so the in-app activity list
+ *  reflects the new name without waiting for the next Strava pull. */
+export async function markWriteback(
+  id: number,
+  newName: string,
+): Promise<void> {
+  await query(
+    `UPDATE strava_activities
+     SET writeback_at = NOW(),
+         writeback_name = $2,
+         data = jsonb_set(data, '{name}', to_jsonb($2::text), false)
+     WHERE id = $1`,
+    [id, newName],
+  );
+}
+
+export interface ActivitySyncMeta {
+  shoe_id: number | null;
+  shoe_auto_assigned_at: Date | null;
+  writeback_at: Date | null;
+  writeback_name: string | null;
+}
+
+/** Read the sync-meta row for one activity (writeback + shoe state).
+ *  null when the activity isn't in our cache. */
+export async function getActivitySyncMeta(id: number): Promise<ActivitySyncMeta | null> {
+  const rows = await query<ActivitySyncMeta>(
+    `SELECT shoe_id, shoe_auto_assigned_at, writeback_at, writeback_name
+     FROM strava_activities WHERE id = $1`,
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
+/** Auto-assign a shoe to an activity. Increments the shoe's mileage by
+ *  the activity's distance. Idempotent on shoe_id (caller checks that
+ *  shoe_id is currently NULL before invoking — we don't overwrite a
+ *  user's manual pick). */
+export async function autoAssignShoe(
+  activityId: number,
+  shoeId: number,
+  distanceMi: number,
+): Promise<void> {
+  await query(
+    `UPDATE strava_activities
+     SET shoe_id = $2, shoe_auto_assigned_at = NOW()
+     WHERE id = $1`,
+    [activityId, shoeId],
+  );
+  await query(
+    `UPDATE shoes SET mileage = mileage + $1 WHERE id = $2`,
+    [distanceMi, shoeId],
+  );
+}

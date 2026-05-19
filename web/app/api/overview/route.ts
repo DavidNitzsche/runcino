@@ -37,6 +37,11 @@ import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrativ
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
+import { getCachedActivities } from '../../../lib/strava-cache';
+import {
+  findWorkoutForDate,
+  isWorkoutComplete,
+} from '../../../lib/plan-match';
 
 interface OverviewApiOk {
   ok: true;
@@ -71,6 +76,16 @@ interface OverviewApiOk {
   planCurrentPhase: string | null;
   /** Runner display name from the profile table. null when no profile row. */
   profileName: string | null;
+  /** Today's completion snapshot — planned vs actual + isComplete flag.
+   *  Drives the ✓ pill on the hero TodayCard (and any other surface
+   *  that wants a single boolean for "did the user do today's run").
+   *  null when no plan exists or today is a rest day. */
+  todayCompletion: {
+    dateISO: string;
+    plannedMi: number;
+    actualMi: number;
+    isComplete: boolean;
+  } | null;
 }
 
 interface OverviewApiErr {
@@ -216,6 +231,33 @@ export async function GET(): Promise<Response> {
         : undefined,
     });
 
+    // Today completion — pulled from the same cache the week strip
+    // reads, so the hero ✓ chip and the strip's DONE pill move
+    // together. Defaults to null when no plan or today is a rest day.
+    const todayCompletion = await (async () => {
+      const plan = planResult.plan;
+      if (!plan) return null;
+      const planned = findWorkoutForDate(plan, today);
+      if (!planned || planned.type === 'rest' || planned.distanceMi <= 0) return null;
+      let actualMi = 0;
+      try {
+        const { activities } = await getCachedActivities();
+        actualMi = Math.round(
+          activities
+            .filter((a) => a.date === today && (a.type === 'Run' || a.sportType === 'Run' || a.sportType === 'TrailRun'))
+            .reduce((s, a) => s + a.distanceMi, 0) * 10,
+        ) / 10;
+      } catch {
+        // Strava unavailable — fall through with actualMi = 0.
+      }
+      return {
+        dateISO: today,
+        plannedMi: planned.distanceMi,
+        actualMi,
+        isComplete: isWorkoutComplete(planned.distanceMi, actualMi),
+      };
+    })();
+
     const body: OverviewApiOk = {
       ok: true,
       today,
@@ -236,6 +278,7 @@ export async function GET(): Promise<Response> {
       planWeekWorkouts,
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,
+      todayCompletion,
     };
     return Response.json(body);
   } catch (e) {
