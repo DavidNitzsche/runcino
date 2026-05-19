@@ -151,6 +151,43 @@ This rule was caught on first prod run of the V5 Z2 stimulus check. The cost of 
 
 ---
 
+## Candidate Rule 6 · queued for promotion on second instance (named 2026-05-19 round 4)
+
+**Multi-writer jsonb columns require field-level updates, not full-replace upserts.**
+
+When two or more code paths write to the same jsonb column with different field coverage, naive full-replace upserts silently erase fields the active writer doesn't know about. The active writer overwrites the inactive writer's contributions because `SET data = EXCLUDED.data` doesn't know which fields the new payload is missing vs. intentionally clearing.
+
+**The failure shape (caught once, splits-preservation, fixed in commit `d114c35`):**
+
+- `NormalizedActivity.splits` is a detail-only field. Populated by `getActivityDetail` + the backfill route from Strava's single-activity endpoint.
+- `syncStravaIfStale` runs on every page load → YTD list sync → list endpoint doesn't return `splits_standard` → normalizeActivity produces an activity without `splits`.
+- `INSERT ... ON CONFLICT DO UPDATE SET data = EXCLUDED.data` full-replaced → splits wiped on every page load.
+- Z2 surfaces silently returned zero data; the bug only surfaced because the agent ran the same diagnostic twice and saw the data disappear between runs.
+
+**The fix shape (already applied to syncSingleActivity + syncStravaForUser):**
+
+```sql
+SET data = CASE
+  WHEN strava_activities.data ? 'splits' AND NOT (EXCLUDED.data ? 'splits')
+  THEN jsonb_set(EXCLUDED.data, '{splits}', strava_activities.data->'splits')
+  ELSE EXCLUDED.data
+END
+```
+
+`jsonb_set` with a guard: preserve the existing field when the new payload doesn't carry it. Symmetric across all writers.
+
+**Why this is candidate and not yet rule:** one instance isn't a pattern. Promoted to rule on the second instance, OR if a pre-emptive audit finds another column with the same multi-writer + jsonb + full-replace shape elsewhere in the codebase.
+
+**Pre-emptive audit queued.** When the next cleanup window opens, grep for `SET data = EXCLUDED.data` (or any jsonb full-replace upsert pattern) across the codebase. If any other column matches the shape — multiple writers with different field coverage — that's not waiting for a second instance, that's a pre-emptive defense. Likely candidates worth checking first:
+
+- `strava_activities.detail` — only one writer (getActivityDetail), but worth confirming.
+- `races.meta` and `races.actual_result` — multiple writers (race-store, sync, race-detail editor).
+- Any future webhook-or-batch column that may grow detail-only fields.
+
+**The generalizable form:** anywhere multi-writer + jsonb + full-replace exists, this bug is latent. The audit doesn't have to find a current bug — it has to identify columns that match the structural shape so we know where to apply the fix proactively.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
