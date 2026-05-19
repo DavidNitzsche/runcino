@@ -103,11 +103,22 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
   if (!activity) return { ok: false, error: 'activity not found (404)' };
 
   const norm = normalizeActivity(activity);
+  // SPLITS PRESERVATION (locked 2026-05-19 round 4): the YTD list
+  // endpoint doesn't return splits_standard, so list-source normalized
+  // activities have no `splits` key. If we full-replace data on every
+  // sync, we wipe the per-mile splits backfilled from detail. Use
+  // jsonb_set with a guard to copy existing splits forward when the
+  // new payload doesn't carry them. Symmetric in both sync paths +
+  // single-activity webhook updates.
   await query(
     `INSERT INTO strava_activities (id, data, fetched_at, user_uuid)
           VALUES ($1, $2::jsonb, NOW(), $3)
      ON CONFLICT (id) DO UPDATE
-        SET data       = EXCLUDED.data,
+        SET data = CASE
+              WHEN strava_activities.data ? 'splits' AND NOT (EXCLUDED.data ? 'splits')
+              THEN jsonb_set(EXCLUDED.data, '{splits}', strava_activities.data->'splits')
+              ELSE EXCLUDED.data
+            END,
             fetched_at = EXCLUDED.fetched_at,
             user_uuid  = COALESCE(strava_activities.user_uuid, EXCLUDED.user_uuid)`,
     [activity.id, JSON.stringify(norm), userId],
@@ -485,11 +496,20 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
     try {
       for (const a of activities) {
         const norm = normalizeActivity(a);
+        // SPLITS PRESERVATION: see syncSingleActivity for rationale.
+        // YTD sync hits the list endpoint which never returns
+        // splits_standard, so naive full-replace nukes the detail-
+        // sourced splits we backfilled. Copy existing splits forward
+        // when the new (list-source) data doesn't carry them.
         await client.query(
           `INSERT INTO strava_activities (id, data, fetched_at, user_uuid)
                 VALUES ($1, $2::jsonb, $3, $4)
            ON CONFLICT (id) DO UPDATE
-              SET data       = EXCLUDED.data,
+              SET data = CASE
+                    WHEN strava_activities.data ? 'splits' AND NOT (EXCLUDED.data ? 'splits')
+                    THEN jsonb_set(EXCLUDED.data, '{splits}', strava_activities.data->'splits')
+                    ELSE EXCLUDED.data
+                  END,
                   fetched_at = EXCLUDED.fetched_at,
                   user_uuid  = COALESCE(strava_activities.user_uuid, EXCLUDED.user_uuid)`,
           [a.id, JSON.stringify(norm), fetchedAt.toISOString(), userId],
