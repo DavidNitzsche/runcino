@@ -1178,21 +1178,78 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
   const origLast28Remain = Math.max(0, (28 - daysOffset) / 28);
   const origIntensity14Remain = Math.max(0, (14 - daysOffset) / 14);
 
-  const last7Mi = Math.round((orig.last7Mi * origLast7Remain + simLast7) * 10) / 10;
-  const last28Mi = Math.round((orig.last28Mi * origLast28Remain + simLast28) * 10) / 10;
-  const weeklyAvg4w = Math.round((last28Mi / 4) * 10) / 10;
-  const orig8wRemain = Math.max(0, (56 - daysOffset) / 56);
-  const weeklyAvg8w = Math.round((orig.weeklyAvg8w * orig8wRemain + weeklyAvg4w * (1 - orig8wRemain)) * 10) / 10;
+  const rawLast7Mi = Math.round((orig.last7Mi * origLast7Remain + simLast7) * 10) / 10;
+  const rawLast28Mi = Math.round((orig.last28Mi * origLast28Remain + simLast28) * 10) / 10;
+  const rawWeeklyAvg4w = Math.round((rawLast28Mi / 4) * 10) / 10;
 
   const origLongestStillInWindow = daysOffset < 28;
-  const longestLast28Mi = Math.max(
+  const rawLongestLast28Mi = Math.max(
     origLongestStillInWindow ? orig.longestLast28Mi : 0,
     simLongest28,
   );
-  const longestTrainingRunLast28Mi = Math.max(
+  const rawLongestTrainingRunLast28Mi = Math.max(
     origLongestStillInWindow ? (orig.longestTrainingRunLast28Mi ?? 0) : 0,
     simLongestTraining28,
   );
+
+  // ─────────────────────────────────────────────────────────────
+  // Phase-aware volume cap — stops the rolling-window feedback loop.
+  //
+  // Without this, every day's prescription feeds back into the next
+  // day's `weeklyAvg4w` and `longestLast28Mi`, which inflate
+  // `baseEasyMi` and `longRunTarget`, which inflate the next day's
+  // prescription. Over 4 sim weeks, weekly mileage compounds ~10%/wk
+  // with no cutback cadence and reaches 1.40-1.50× baseline by build
+  // week 3 — overshooting into PEAK-phase territory before PEAK has
+  // even started (the curve peaks too early, leaving no headroom).
+  //
+  // The cap operates against the runner's ORIGINAL baseline (the state
+  // passed into the simulator), so each phase has a hard ceiling on
+  // how much projected volume the rolling window can drift before
+  // pickRun's daily formulas saturate. Combined with the engine's
+  // 2-quality + 1-long + 3-easy week shape, these caps keep the
+  // projected weekly total under the test-asserted 1.35× baseline.
+  //
+  // `avgRamp` caps the rolling 28-day weekly average; `longestRamp`
+  // caps the longest training run anchor used by `longRunTarget`.
+  // Research/00a §"Volume progression rules" + Research/22 §Periodization.
+  // ─────────────────────────────────────────────────────────────
+  const origAvg = orig.weeklyAvg4w;
+  const origLongestTraining = orig.longestTrainingRunLast28Mi ?? orig.longestLast28Mi ?? 0;
+  // Per-phase cap on the rolling 28-day weekly average and the longest
+  // training run. Tight values: the engine's per-day formulas
+  // (`baseEasyMi`, `longRunTarget`) read these aggregates directly, so
+  // a 1.05× cap on the rolling average translates to a ~1.30×
+  // single-week prescription once you stack 2 quality + 1 long + 3
+  // easy. Allowing more growth here would push individual weeks past
+  // the doctrinal 1.35× upper bound for a build cycle.
+  let avgRamp = 1.05;
+  let longestRamp = 1.05;
+  if (base.races.nextA != null && base.races.nextA.daysAway >= 0) {
+    const advDays = base.races.nextA.daysAway;
+    const phase = raceSubPhase(advDays, base.races.nextA.distanceMi);
+    if (phase === 'TAPER')      { avgRamp = 0.65; longestRamp = 0.75; }
+    else if (phase === 'PEAK')  { avgRamp = 1.15; longestRamp = 1.15; }
+    else if (phase === 'BUILD') { avgRamp = 1.00; longestRamp = 1.05; }
+    else /* BASE */             { avgRamp = 1.00; longestRamp = 1.00; }
+  }
+  const avgCap = origAvg > 0 ? origAvg * avgRamp : Infinity;
+  const longestCap = origLongestTraining > 0 ? origLongestTraining * longestRamp : Infinity;
+
+  // Clamp the rolling-window aggregates against the phase cap. last7Mi
+  // gets the same per-week ratio so the engine's acwr / crater gates
+  // continue to read a coherent picture.
+  const weeklyAvg4w = Math.min(rawWeeklyAvg4w, Math.round(avgCap * 10) / 10);
+  const last28Mi = Math.min(rawLast28Mi, Math.round(avgCap * 4 * 10) / 10);
+  const last7Mi = Math.min(rawLast7Mi, Math.round(avgCap * 10) / 10);
+  const longestLast28Mi = Math.min(rawLongestLast28Mi, Math.round(longestCap * 10) / 10);
+  const longestTrainingRunLast28Mi = Math.min(
+    rawLongestTrainingRunLast28Mi,
+    Math.round(longestCap * 10) / 10,
+  );
+
+  const orig8wRemain = Math.max(0, (56 - daysOffset) / 56);
+  const weeklyAvg8w = Math.round((orig.weeklyAvg8w * orig8wRemain + weeklyAvg4w * (1 - orig8wRemain)) * 10) / 10;
 
   // Intensity 14-day rollups: hold the ORIGINAL signal across the
   // projection rather than decaying it to zero. The gates that read
