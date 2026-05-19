@@ -34,6 +34,8 @@ import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
 import { PreWorkoutBriefingCard } from './PreWorkoutBriefing';
+import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
+import { Z2CoverageCard } from './Z2CoverageCard';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -146,6 +148,18 @@ export default async function OverviewPage() {
   const preWorkoutBriefing = !isRest && todayDay
     ? await buildPreWorkoutBriefing(user.id, today, todayDay.type).catch(() => null)
     : null;
+
+  // V5 · Z2 stimulus check — coaching finding when easy-run Z2
+  // coverage drops below 40% over 3+ recent easy runs. Fires only
+  // when HRR framework is calibrated (max HR + resting HR set) and
+  // we're outside race-week / post-race recovery. Same SSR pass.
+  const z2Finding = await computeZ2CoverageFinding(
+    user.id,
+    today,
+    fitness.maxHr.value,
+    fitness.restingHr.value,
+    fitness.vdot.value,
+  ).catch(() => null);
 
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
@@ -285,6 +299,7 @@ export default async function OverviewPage() {
                     workoutType={todayDay?.type ?? 'easy'}
                   />
                 )}
+                {z2Finding && <Z2CoverageCard finding={z2Finding} />}
                 <div className="hero-buttons">
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
                 </div>
