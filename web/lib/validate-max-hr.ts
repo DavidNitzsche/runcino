@@ -1,11 +1,9 @@
 /**
  * Max HR validation module.
  *
- * The first instance of the ADAPTIVE PATTERN this app uses everywhere:
- *  - Watch the runner's actual data
- *  - Notice when stored assumptions stop matching reality
- *  - Propose an update with evidence + the math that produced it
- *  - Show what would change the recommendation in the future
+ * First instance of the ADAPTIVE PATTERN (see lib/adaptive-pattern.ts).
+ * MUST conform to the philosophy: evidence-weighted, context-aware,
+ * conservative on the upside, trend-based, transparent.
  *
  * Cross-references three independent signals against the stored max HR:
  *
@@ -293,11 +291,37 @@ export async function validateMaxHr(
   }
 
   // ── Recommendation in priority order ──────────────────────────
+  //
+  // Per the adaptive-pattern philosophy (lib/adaptive-pattern.ts):
+  // single observations don't fire. Each rule below requires either
+  // multiple corroborating peaks, a very-clear single-peak signal
+  // (≥5 bpm above stored — unambiguous), OR a race-anchored signal
+  // backed by physiology math. The cost of bumping max HR on a
+  // sensor glitch is real (it widens Z2 ceiling and lets the runner
+  // ride too hard on easy days), so the threshold has to be high.
 
-  // 1. Validated peak > stored max — stored is certainly wrong.
+  // 1. Validated peaks ABOVE stored — fires when either:
+  //    (a) ≥2 validated peaks exceed stored, OR
+  //    (b) Top validated peak exceeds stored by ≥5 bpm (unambiguous)
+  //    NOT just any single peak ≥ stored+1.
   if (currentMaxHr && topPeaks.length > 0) {
-    const topValidated = topPeaks.find((p) => p.isValidatedEffort);
-    if (topValidated && topValidated.hr > currentMaxHr) {
+    const validatedAbove = topPeaks.filter(
+      (p) => p.isValidatedEffort && p.hr > currentMaxHr,
+    );
+    const topValidated = validatedAbove[0];
+    const meetsMultiPeak = validatedAbove.length >= 2;
+    const meetsClearSingle = topValidated && (topValidated.hr - currentMaxHr) >= 5;
+    if (topValidated && (meetsMultiPeak || meetsClearSingle)) {
+      const peakSummary = meetsMultiPeak
+        ? `${validatedAbove.length} validated runs in the last 18 months ` +
+          `peaked above ${currentMaxHr}: ${validatedAbove
+            .slice(0, 3)
+            .map((p) => `${p.hr} (${p.name})`)
+            .join(', ')}.`
+        : `Your highest validated HR is ${topValidated.hr} bpm during ` +
+          `"${topValidated.name}" (${topValidated.date}) — that's ` +
+          `${topValidated.hr - currentMaxHr} bpm above stored ${currentMaxHr}, ` +
+          `clear enough to flag.`;
       return {
         hasFinding: true,
         currentMaxHr,
@@ -307,13 +331,14 @@ export async function validateMaxHr(
         recommendation: {
           kind: 'peak-exceeds-current',
           peakHr: topValidated.hr,
-          reason:
-            `Your highest validated HR is ${topValidated.hr} bpm during ` +
-            `"${topValidated.name}" (${topValidated.date}). Stored max is ` +
-            `${currentMaxHr} — physically impossible for stored to be right.`,
+          reason: peakSummary,
           falsifier:
-            `We'd reconsider if you flag that ${topValidated.name} reading ` +
-            `as a sensor glitch (e.g. avg HR was implausibly low for the workout).`,
+            meetsMultiPeak
+              ? `We'd reconsider if you can identify one of these readings as a sensor glitch ` +
+                `(e.g. avg HR was implausibly low for the workout intensity).`
+              : `We'd reconsider if you flag that ${topValidated.name} reading as a sensor ` +
+                `glitch. With only one above-stored reading, this is high-confidence only ` +
+                `because of the ≥5 bpm gap.`,
         },
       };
     }
