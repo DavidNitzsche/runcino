@@ -151,40 +151,67 @@ This rule was caught on first prod run of the V5 Z2 stimulus check. The cost of 
 
 ---
 
-## Candidate Rule 6 · queued for promotion on second instance (named 2026-05-19 round 4)
+## Rule 6 · Multi-writer jsonb columns require field-level updates, not full-replace upserts (locked 2026-05-19 round 5)
 
-**Multi-writer jsonb columns require field-level updates, not full-replace upserts.**
+**Promoted from candidate after second instance found in `lib/race-store.ts:saveRaceDB` during the queued pre-emptive audit. Same shape, different column. The candidate-stage discipline worked: the second instance was recognized at first sight instead of looking novel.**
 
-When two or more code paths write to the same jsonb column with different field coverage, naive full-replace upserts silently erase fields the active writer doesn't know about. The active writer overwrites the inactive writer's contributions because `SET data = EXCLUDED.data` doesn't know which fields the new payload is missing vs. intentionally clearing.
+When two or more code paths write to the same jsonb column with different field coverage, naive full-replace upserts silently erase fields the active writer doesn't know about. The active writer overwrites the inactive writer's contributions because `SET column = EXCLUDED.column` can't distinguish "writer didn't include this field" from "writer intentionally cleared this field."
 
-**The failure shape (caught once, splits-preservation, fixed in commit `d114c35`):**
+### The failure pattern
 
-- `NormalizedActivity.splits` is a detail-only field. Populated by `getActivityDetail` + the backfill route from Strava's single-activity endpoint.
-- `syncStravaIfStale` runs on every page load → YTD list sync → list endpoint doesn't return `splits_standard` → normalizeActivity produces an activity without `splits`.
-- `INSERT ... ON CONFLICT DO UPDATE SET data = EXCLUDED.data` full-replaced → splits wiped on every page load.
-- Z2 surfaces silently returned zero data; the bug only surfaced because the agent ran the same diagnostic twice and saw the data disappear between runs.
+Three known instances at the time of locking:
 
-**The fix shape (already applied to syncSingleActivity + syncStravaForUser):**
+| Column | Multi-writer | Detail-only field | Status |
+|---|---|---|---|
+| `strava_activities.data` (multi-tenant) | `syncSingleActivity`, `syncStravaForUser`, backfill | `splits` | Fixed `d114c35` |
+| `strava_activities.data` (legacy single-tenant) | `strava-cache.ts:refreshActivities` | `splits` | Fixed this round |
+| `races` (jsonb-shape body) | `saveRaceDB` (editor POST + rebuild) | `actual_result` | Fixed this round |
+
+### The fix pattern
+
+`jsonb_set` (for jsonb columns) or `CASE WHEN ... ELSE` (for whole-jsonb columns) with a guard that preserves the existing field when the new payload doesn't carry it. Always symmetric across all writers.
 
 ```sql
+-- pattern A · field inside a jsonb column
 SET data = CASE
   WHEN strava_activities.data ? 'splits' AND NOT (EXCLUDED.data ? 'splits')
   THEN jsonb_set(EXCLUDED.data, '{splits}', strava_activities.data->'splits')
   ELSE EXCLUDED.data
 END
+
+-- pattern B · whole-column jsonb that's detail-only
+SET actual_result = CASE
+  WHEN EXCLUDED.actual_result IS NOT NULL
+  THEN EXCLUDED.actual_result
+  ELSE races.actual_result
+END
 ```
 
-`jsonb_set` with a guard: preserve the existing field when the new payload doesn't carry it. Symmetric across all writers.
+To explicitly clear a preserved field, callers must use a purpose-built setter (e.g., `setActualResultDB(slug, null)`). The default save path always preserves — explicit destruction beats silent destruction.
 
-**Why this is candidate and not yet rule:** one instance isn't a pattern. Promoted to rule on the second instance, OR if a pre-emptive audit finds another column with the same multi-writer + jsonb + full-replace shape elsewhere in the codebase.
+### How to detect this pattern in your code
 
-**Pre-emptive audit queued.** When the next cleanup window opens, grep for `SET data = EXCLUDED.data` (or any jsonb full-replace upsert pattern) across the codebase. If any other column matches the shape — multiple writers with different field coverage — that's not waiting for a second instance, that's a pre-emptive defense. Likely candidates worth checking first:
+Grep for `SET <column> = EXCLUDED.<column>` patterns. For each match, ask:
 
-- `strava_activities.detail` — only one writer (getActivityDetail), but worth confirming.
-- `races.meta` and `races.actual_result` — multiple writers (race-store, sync, race-detail editor).
-- Any future webhook-or-batch column that may grow detail-only fields.
+1. **Is the column jsonb (or jsonb-typed)?** If no, skip — non-jsonb upserts have schema-enforced shape.
+2. **Are there multiple writers to this column?** If only one writer, the bug can't fire; still consider whether future code might add a second.
+3. **Do the writers have different field coverage?** Most importantly: does any writer NOT populate every field that some OTHER writer populates? If yes, the gap is the bug surface.
 
-**The generalizable form:** anywhere multi-writer + jsonb + full-replace exists, this bug is latent. The audit doesn't have to find a current bug — it has to identify columns that match the structural shape so we know where to apply the fix proactively.
+If 1+2+3 all yes → apply the guard. If 1+2 yes but 3 unclear → audit the field coverage explicitly before deciding.
+
+### How to test
+
+Simulate writer-A-then-writer-B sequences:
+
+1. Writer A inserts row with field F populated.
+2. Writer B updates same row, payload lacks field F.
+3. Assert field F is still present after writer B's update.
+
+If you can't write this test cheaply, the write path probably has the bug.
+
+### Lesson worth holding
+
+The candidate-stage naming worked. The splits-preservation bug fix in `d114c35` had a one-time feel — "we fixed it, move on." Pre-naming the candidate rule turned the second instance from "huh, weird, another bug" into "oh, that's the same shape as splits, apply the same guard." Time-to-recognize dropped from 45+ minutes (splits) to under 5 minutes (race actual_result). Pattern recognition compounds when patterns are named.
 
 ---
 

@@ -68,6 +68,16 @@ export async function getRaceDB(slug: string, userId?: string): Promise<SavedRac
 }
 
 export async function saveRaceDB(race: SavedRace, userId?: string): Promise<void> {
+  // ACTUAL_RESULT PRESERVATION (Rule 6 · multi-writer jsonb guard).
+  // saveRaceDB is called by multiple paths:
+  //   - Race editor POST (may or may not include actualResult)
+  //   - Race rebuild (preserves explicitly by passing existing.actualResult)
+  //   - Race meta-merge editor (spreads existing first)
+  // The editor POST is the risk path: client may send a body without
+  // actualResult populated, full-replace would NULL it out. Apply same
+  // preservation pattern as splits — keep existing actual_result when
+  // the new payload doesn't carry one. To DELETE a chip time, callers
+  // must use setActualResultDB(slug, null) explicitly.
   await query(
     `INSERT INTO races (slug, plan, gpx_text, meta, actual_result, saved_at, user_uuid)
      VALUES ($1, $2::jsonb, $3, $4::jsonb, $5::jsonb, NOW(), $6)
@@ -75,7 +85,11 @@ export async function saveRaceDB(race: SavedRace, userId?: string): Promise<void
        plan = EXCLUDED.plan,
        gpx_text = EXCLUDED.gpx_text,
        meta = EXCLUDED.meta,
-       actual_result = EXCLUDED.actual_result,
+       actual_result = CASE
+         WHEN EXCLUDED.actual_result IS NOT NULL
+         THEN EXCLUDED.actual_result
+         ELSE races.actual_result
+       END,
        saved_at = NOW(),
        user_uuid = COALESCE(races.user_uuid, EXCLUDED.user_uuid)`,
     [

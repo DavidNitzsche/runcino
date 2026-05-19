@@ -49,11 +49,21 @@ export async function refreshActivities(): Promise<{ activities: StravaActivity[
     try {
       for (const a of activities) {
         const norm = normalizeActivity(a);
+        // SPLITS PRESERVATION (Rule 6 · multi-writer jsonb guard).
+        // This legacy single-tenant cache writes to the same column
+        // as syncSingleActivity + syncStravaForUser, all keyed on
+        // activity id. The list endpoint here doesn't return
+        // splits_standard, so naive full-replace would nuke splits
+        // backfilled from detail. Same fix pattern.
         await client.query(
           `INSERT INTO strava_activities (id, data, fetched_at)
            VALUES ($1, $2::jsonb, $3)
            ON CONFLICT (id) DO UPDATE SET
-             data = EXCLUDED.data,
+             data = CASE
+               WHEN strava_activities.data ? 'splits' AND NOT (EXCLUDED.data ? 'splits')
+               THEN jsonb_set(EXCLUDED.data, '{splits}', strava_activities.data->'splits')
+               ELSE EXCLUDED.data
+             END,
              fetched_at = EXCLUDED.fetched_at`,
           [a.id, JSON.stringify(norm), new Date(fetchedAt).toISOString()],
         );
