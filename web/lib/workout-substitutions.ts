@@ -23,6 +23,8 @@
  * specific (long-run subs differ from threshold subs).
  */
 
+import { formatCrossReference, type CrossReference } from './coach-voice';
+
 export interface WorkoutSubstitution {
   /** Short label shown on the button. */
   label: string;
@@ -38,12 +40,22 @@ export interface SubstitutionMenu {
   workoutLabel: string;
   workoutType: string;
   substitutions: WorkoutSubstitution[];
+  /** V7 · index of the substitution the system recommends, or null when
+   *  no recommendation applies.  Set when V3 trajectory is BEHIND and
+   *  today's session is Long or Quality (the workouts where quality-
+   *  protection matters).  Renderer highlights this option. */
+  recommendedIndex: number | null;
+  /** V7 · cross-reference to the trajectory read on /races when the
+   *  recommendation is being driven by V3.  Relation: 'tied to'
+   *  (structural — V3 state changes this output). */
+  crossRef?: CrossReference;
 }
 
 export function buildSubstitutionMenu(
   workoutType: string,
   label: string,
   distanceMi: number,
+  trajectoryBehind: boolean = false,
 ): SubstitutionMenu {
   const subs: WorkoutSubstitution[] = [];
 
@@ -127,9 +139,43 @@ export function buildSubstitutionMenu(
     });
   }
 
+  // V7 · trajectory-BEHIND recommendation.  Earned-not-decorative:
+  // only fires when (a) trajectory is actually behind AND (b) today's
+  // session is Long or Quality (where quality-protection is meaningful).
+  // Easy days don't have quality to protect, and race day IS the
+  // quality — so no recommendation fires for either even when
+  // trajectory is behind.  The relevance check rejects topic overlap
+  // that isn't actionable.
+  //
+  // The recommended option is the quality-protective one — always at
+  // index 0 by construction of the menus above (shorter long run,
+  // half-volume quality).  The renderer highlights this option with
+  // a "RECOMMENDED" badge.
+  //
+  // Cross-reference relation: 'tied to' — V3 state STRUCTURALLY changes
+  // this output (recommendedIndex flips from null to 0).  If V3 state
+  // changes from BEHIND to ON-TRACK in the next render, the menu's
+  // output changes too — that's the test for 'tied to' per
+  // coach-voice.ts CROSS-REFERENCE DISCIPLINE.
+  const isRaceDay = workoutType === 'race';
+  const eligibleForRecommendation = (isLong || isQuality) && !isRaceDay;
+  const recommendedIndex =
+    trajectoryBehind && eligibleForRecommendation && subs.length > 0 ? 0 : null;
+  const crossRef: CrossReference | undefined =
+    recommendedIndex != null
+      ? formatCrossReference({
+          relatedLabel: 'trajectory read',
+          surface: '/races',
+          anchor: 'trajectory-read',
+          relation: 'tied to',
+        })
+      : undefined;
+
   return {
     workoutLabel: label || workoutType,
     workoutType,
     substitutions: subs,
+    recommendedIndex,
+    crossRef,
   };
 }

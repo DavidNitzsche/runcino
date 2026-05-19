@@ -486,7 +486,7 @@ export default async function RacesPage() {
                     Falsifier rendered INLINE under the headline (not as
                     a hover tooltip) per Rule 2 + lib/coach-voice.ts. */}
                 {trajectory ? (
-                  <div className="path-stat">
+                  <div className="path-stat" id="trajectory-read">
                     <div className="path-stat-label">Trajectory</div>
                     <div className="path-stat-value" style={{ color: trajectoryColor(trajectory.state), fontSize: 22 }}>
                       {trajectoryShortLabel(trajectory.state)}

@@ -71,35 +71,80 @@ export function SubstitutionMenu({ menu }: Props) {
             }}
           >
             Substitutions for {menu.workoutLabel}
+            {menu.crossRef && (
+              <span style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: 0,
+                textTransform: 'none',
+                color: 'rgba(13,15,18,.62)',
+                marginLeft: 8,
+              }}>
+                {' — '}
+                <a
+                  href={menu.crossRef.href}
+                  style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                >
+                  {menu.crossRef.text}
+                </a>
+              </span>
+            )}
           </div>
 
-          {menu.substitutions.map((s, i) => (
-            <div
-              key={i}
-              style={{
-                padding: '10px 12px',
-                marginBottom: i === menu.substitutions.length - 1 ? 0 : 10,
-                background: 'rgba(255,255,255,.5)',
-                border: '1px solid rgba(13,15,18,.08)',
-                borderRadius: 8,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: '#0D0F12', marginBottom: 4 }}>
-                {s.label}
+          {menu.substitutions.map((s, i) => {
+            const isRecommended = menu.recommendedIndex === i;
+            return (
+              <div
+                key={i}
+                style={{
+                  padding: '10px 12px',
+                  marginBottom: i === menu.substitutions.length - 1 ? 0 : 10,
+                  background: isRecommended ? 'rgba(232,93,38,.06)' : 'rgba(255,255,255,.5)',
+                  border: isRecommended
+                    ? '1.5px solid rgba(232,93,38,.40)'
+                    : '1px solid rgba(13,15,18,.08)',
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 4,
+                }}>
+                  <div style={{ fontWeight: 700, color: '#0D0F12' }}>
+                    {s.label}
+                  </div>
+                  {isRecommended && (
+                    <span style={{
+                      fontFamily: 'Oswald, sans-serif',
+                      fontSize: 9,
+                      letterSpacing: 1.2,
+                      fontWeight: 700,
+                      color: '#B3450A',
+                      background: 'rgba(232,93,38,.12)',
+                      padding: '2px 7px',
+                      borderRadius: 4,
+                    }}>
+                      RECOMMENDED
+                    </span>
+                  )}
+                </div>
+                <div style={{ marginBottom: 6, color: 'rgba(13,15,18,.82)' }}>
+                  {s.prescription}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)' }}>
+                  <span style={{ color: '#1f6a21', fontWeight: 600 }}>Preserves:</span>{' '}
+                  {s.preserves}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)', marginTop: 2 }}>
+                  <span style={{ color: '#B3450A', fontWeight: 600 }}>Sacrifices:</span>{' '}
+                  {s.sacrifices}
+                </div>
               </div>
-              <div style={{ marginBottom: 6, color: 'rgba(13,15,18,.82)' }}>
-                {s.prescription}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)' }}>
-                <span style={{ color: '#1f6a21', fontWeight: 600 }}>Preserves:</span>{' '}
-                {s.preserves}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)', marginTop: 2 }}>
-                <span style={{ color: '#B3450A', fontWeight: 600 }}>Sacrifices:</span>{' '}
-                {s.sacrifices}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div
             style={{

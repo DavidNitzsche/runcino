@@ -44,6 +44,8 @@ import { computeReadinessScore } from '@/lib/readiness-score';
 import { buildWhyThisWorkout } from '@/lib/why-this-workout';
 import { WhyTooltip } from './WhyTooltip';
 import { buildSubstitutionMenu } from '@/lib/workout-substitutions';
+import { computeRaceTrajectory } from '@/lib/race-trajectory';
+import { listRacesDB } from '@/lib/race-store';
 import { SubstitutionMenu } from './SubstitutionMenu';
 import './overview-v4.css';
 
@@ -211,10 +213,27 @@ export default async function OverviewPage() {
       )
     : null;
 
+  // V7 item 3 · Pull race trajectory if the runner has an A-race set.
+  // C8's substitution menu uses trajectory.state === 'behind' to flag
+  // the quality-protective option as RECOMMENDED.  Computed once here
+  // so the menu can derive its output from real state (test for
+  // 'tied to' relation: V3 state structurally changes the menu).
+  const userRacesForTrajectory = await listRacesDB(user.id).catch(() => []);
+  const hasARace = userRacesForTrajectory.some((r) => r.meta.priority === 'A');
+  const trajectory = hasARace
+    ? await computeRaceTrajectory(user.id, new Date()).catch(() => null)
+    : null;
+  const trajectoryBehind = trajectory?.state === 'behind';
+
   // C8 · Workout substitution menu — populated when we have a real
   // workout. Surface as "⇄ Substitute" button alongside HeroActions.
   const substitutionMenu = !isRest && todayDay
-    ? buildSubstitutionMenu(todayDay.type, todayDay.label ?? '', todayDay.distanceMi)
+    ? buildSubstitutionMenu(
+        todayDay.type,
+        todayDay.label ?? '',
+        todayDay.distanceMi,
+        trajectoryBehind,
+      )
     : null;
 
   // Race countdown — race is week 14, last day
