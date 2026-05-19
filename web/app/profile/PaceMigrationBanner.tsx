@@ -41,6 +41,12 @@ export interface BeforeAfter {
   newI?: number;
   newR?: number;
   vdot?: number;
+  /** V4 generalization · optional reason copy for the migration.
+   *  Defaults to the canonical-Daniels copy when omitted; future
+   *  migrations pass their own explanation. */
+  reason?: string;
+  /** Optional eyebrow / header label (default: "One-time pace correction"). */
+  eyebrow?: string;
 }
 
 function fmtPace(s?: number): string {
@@ -106,14 +112,18 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
             textTransform: 'uppercase',
           }}
         >
-          ⚙ One-time pace correction
+          ⚙ {beforeAfter?.eyebrow ?? 'One-time pace correction'}
         </div>
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.45, color: 'rgba(13, 15, 18, 0.85)' }}>
-        Your training paces have been updated to <strong>canonical Daniels</strong> values from
-        the official Table 2 source. The previous formula was derived from race times and
-        drifted from the canonical bands — Easy paces ran too slow (over-conservative),
-        Repetition paces ran too fast (mile race pace instead of Daniels&apos; R).
+        {beforeAfter?.reason ?? (
+          <>
+            Your training paces have been updated to <strong>canonical Daniels</strong> values from
+            the official Table 2 source. The previous formula was derived from race times and
+            drifted from the canonical bands — Easy paces ran too slow (over-conservative),
+            Repetition paces ran too fast (mile race pace instead of Daniels&apos; R).
+          </>
+        )}
       </div>
       <div style={{ fontSize: 13, lineHeight: 1.4, color: 'rgba(13, 15, 18, 0.6)' }}>
         This is a one-time correction. After you confirm, the bands above apply to all
