@@ -36,6 +36,8 @@ import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
 import { PreWorkoutBriefingCard } from './PreWorkoutBriefing';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { Z2CoverageCard } from './Z2CoverageCard';
+import { computePostRaceFinding } from '@/lib/post-race-awareness';
+import { PostRaceCard } from './PostRaceCard';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -161,6 +163,11 @@ export default async function OverviewPage() {
     fitness.vdot.value,
   ).catch(() => null);
 
+  // E2 · Post-race awareness — surfaces day-by-day reverse-taper
+  // guidance the day after a race. Distance-aware stage windows
+  // (marathon 14d, HM 9d, shorter 5d). Reads races.actual_result.
+  const postRaceFinding = await computePostRaceFinding(user.id, today).catch(() => null);
+
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
@@ -250,6 +257,10 @@ export default async function OverviewPage() {
             ))}
           </div>
         )}
+
+        {/* E2 · Post-race awareness — renders above hero TodayCard
+            when within reverse-taper window of most recent race */}
+        {postRaceFinding && <PostRaceCard finding={postRaceFinding} />}
 
         {/* ── SECTION 2 · HERO CARD ── */}
         <div className="hero-card">
