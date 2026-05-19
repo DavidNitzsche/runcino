@@ -19,6 +19,7 @@
 import { listRacesDB } from './race-store';
 import { computeAggregateVdot } from './compute-vdot';
 import { vdotRow } from './vdot';
+import { query } from './db';
 
 export interface RaceFeasibilityVerdict {
   hasFinding: boolean;
@@ -199,6 +200,77 @@ export async function validateRaceFeasibility(
   }
   const predictedFinishS = row[distKey];
   const predictedPaceSPerMi = Math.round(predictedFinishS / distanceMi);
+
+  // C4 · PR anchor — pull the user's best goal-distance PR (race-source
+  // only, per L6 source-of-truth) to produce a time-delta framing
+  // alongside the VDOT framing. "Your HM PR is 1:34:54. Goal 1:30 is
+  // 4:54 faster, requiring ~3.7 VDOT pts of fitness gain."
+  // Time-deltas land more concretely than VDOT-deltas.
+  let prAnchor: {
+    finishS: number;
+    finishDisplay: string;
+    date: string;
+    name: string;
+    deltaSecondsFromGoal: number;       // positive = goal is faster than PR
+    deltaSecPerMiFromGoal: number;
+    deltaVdotEstimate: number | null;   // rough VDOT delta to bridge gap
+  } | null = null;
+  try {
+    const prRows = await query<{
+      finish_s: string; date: string; name: string;
+    }>(
+      `SELECT
+          (actual_result->>'finishS')::NUMERIC::TEXT AS finish_s,
+          meta->>'date'                              AS date,
+          COALESCE(meta->>'name', 'Race')            AS name
+         FROM races
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND actual_result IS NOT NULL
+          AND (actual_result->>'finishS')::NUMERIC > 0
+          AND (meta->>'distanceMi')::NUMERIC BETWEEN $2 AND $3
+        ORDER BY (actual_result->>'finishS')::NUMERIC ASC
+        LIMIT 1`,
+      [
+        userId,
+        distanceMi * 0.92,  // ±8% canonical-distance window
+        distanceMi * 1.08,
+      ],
+    );
+    const pr = prRows[0];
+    if (pr) {
+      const prFinish = Number(pr.finish_s);
+      if (Number.isFinite(prFinish) && prFinish > 0) {
+        const deltaSec = prFinish - goalFinishS;
+        const deltaSecPerMi = Math.round(deltaSec / distanceMi);
+        // Rough conversion · 1 VDOT pt ≈ 6 sec/mi at HM pace. Higher
+        // for shorter distances, lower for marathon. Average ~5-7 s/mi
+        // gives us a useable rough estimate.
+        const deltaVdotEst = deltaSec > 0
+          ? Math.round((deltaSecPerMi / 6) * 10) / 10
+          : null;
+        prAnchor = {
+          finishS: prFinish,
+          finishDisplay: fmtTime(prFinish),
+          date: pr.date,
+          name: pr.name,
+          deltaSecondsFromGoal: deltaSec,
+          deltaSecPerMiFromGoal: deltaSecPerMi,
+          deltaVdotEstimate: deltaVdotEst,
+        };
+      }
+    }
+  } catch { /* PR lookup non-fatal */ }
+
+  function prAnchorLine(): string {
+    if (!prAnchor || prAnchor.deltaSecondsFromGoal <= 0) return '';
+    const delta = fmtTime(prAnchor.deltaSecondsFromGoal);
+    const sPerMi = prAnchor.deltaSecPerMiFromGoal;
+    const vdotEst = prAnchor.deltaVdotEstimate;
+    const vdotPart = vdotEst != null
+      ? `, requiring roughly ${vdotEst} VDOT points of fitness gain over ${daysAway} days`
+      : '';
+    return `Your ${prAnchor.name} PR is ${prAnchor.finishDisplay} (${prAnchor.date}). Goal ${race.meta.goalDisplay} is ${delta} faster — about ${sPerMi} sec/mi improvement${vdotPart}. `;
+  }
   // Convention: positive gap = goal is HARDER than predicted (goal
   // is a faster time than what VDOT predicts). Negative gap = goal
   // is EASIER. The categorization below reads:
@@ -239,6 +311,7 @@ export async function validateRaceFeasibility(
     verdict = 'stretch';
     const ambitiousBy = fmtTime(gapSeconds);
     reason =
+      prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts a ${predDispl} finish for ${race.meta.name}. ` +
       `Goal of ${goalDispl} is ${ambitiousBy} more aggressive — stretch territory. ` +
       `Possible with a strong build cycle, but treat it as a reach goal not a base prediction.`;
@@ -250,6 +323,7 @@ export async function validateRaceFeasibility(
     verdict = 'aggressive';
     const ambitiousBy = fmtTime(gapSeconds);
     reason =
+      prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
       `Goal of ${goalDispl} is ${ambitiousBy} more aggressive — ambitious but in reach with a strong build.`;
     falsifier =
@@ -259,6 +333,7 @@ export async function validateRaceFeasibility(
     // Within ±1 min of predicted — fair
     verdict = 'fair';
     reason =
+      prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
       `Goal of ${goalDispl} is within ±1 min — fair and realistic.`;
     falsifier =
@@ -269,6 +344,7 @@ export async function validateRaceFeasibility(
     verdict = 'conservative';
     const easierBy = fmtTime(Math.abs(gapSeconds));
     reason =
+      prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts a ${predDispl} finish for ${race.meta.name}. ` +
       `Goal of ${goalDispl} is ${easierBy} easier than predicted — you have room to push if you want.`;
     falsifier =

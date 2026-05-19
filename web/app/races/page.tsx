@@ -45,6 +45,8 @@ interface UpcomingRace {
   date: string;
   daysAway: number;
   distanceLabel: string;
+  /** Raw distance in miles (used by trajectory + PR-coaching-line). */
+  distanceMi: number;
   goal: string;
   priority: 'A' | 'B' | 'C';
   slug?: string;
@@ -116,6 +118,7 @@ export default async function RacesPage() {
         date: fmtMonthDay(r.meta.date),
         daysAway,
         distanceLabel: distLabel,
+        distanceMi: dist,
         goal: r.meta.goalDisplay || '—',
         priority: r.meta.priority ?? 'A',
         slug: r.slug,
@@ -245,9 +248,13 @@ export default async function RacesPage() {
     canonicalLabel: string;
     time: string;
     when: string;
+    /** Raw ISO date (YYYY-MM-DD) for age-based coaching-line copy. */
+    rawDate: string;
     source: 'race' | 'strava';
     raceName?: string;
     finishS: number;
+    /** C5 · per-PR coaching line based on age + source + distance match. */
+    coachingLine?: string;
   };
   const racePRs = new Map<string, PR>();
   for (const r of racePrRows) {
@@ -263,6 +270,7 @@ export default async function RacesPage() {
         canonicalLabel: matched.label,
         time: fmtTime(finishS),
         when: r.date ? fmtMonthDay(r.date) : '',
+        rawDate: r.date ?? '',
         source: 'race',
         raceName: r.name || undefined,
         finishS,
@@ -298,6 +306,7 @@ export default async function RacesPage() {
       canonicalLabel: b.canonical_label,
       time: fmtTime(b.finish_s),
       when: b.date ? fmtMonthDay(b.date) : '',
+      rawDate: b.date ?? '',
       source: 'strava',
       finishS: b.finish_s,
     });
@@ -307,6 +316,34 @@ export default async function RacesPage() {
   const distanceOrder: Record<string, number> = { '5K': 0, '10K': 1, '15K': 2, 'Half': 3, 'Marathon': 4 };
   const PRs: PR[] = [...racePRs.values(), ...stravaPRs]
     .sort((a, b) => (distanceOrder[a.canonicalLabel] ?? 99) - (distanceOrder[b.canonicalLabel] ?? 99));
+
+  // C5 · Per-PR coaching lines · context-aware copy
+  //   - race + matches goal distance: "Most recent goal-distance effort..."
+  //   - race + adjacent tier: "Adjacent-tier evidence, decaying as it ages."
+  //   - race + pre-cycle (>12 weeks old): "Pre-cycle PR. Older evidence..."
+  //   - strava-source: "Training effort. Race this distance to lock it in."
+  //
+  // Goal-distance detection: aRace.distanceMi maps to canonical label
+  // via the same inferCanonicalLocal helper.
+  const goalCanonical = aRace ? inferCanonicalLocal(aRace.distanceMi)?.label : null;
+  const todayMsForPr = Date.parse(todayLocalISO + 'T12:00:00Z');
+  for (const pr of PRs) {
+    if (pr.source === 'strava') {
+      pr.coachingLine = 'Training effort. Race this distance to lock it in.';
+      continue;
+    }
+    const prMs = pr.rawDate ? Date.parse(pr.rawDate + 'T12:00:00Z') : null;
+    const ageDays = prMs ? Math.round((todayMsForPr - prMs) / 86_400_000) : null;
+    const isPreCycle = ageDays != null && ageDays > 84;  // >12 weeks
+    const isGoalDistance = goalCanonical && pr.canonicalLabel === goalCanonical;
+    if (isGoalDistance && !isPreCycle) {
+      pr.coachingLine = 'Most recent goal-distance effort. Anchors current VDOT.';
+    } else if (isPreCycle) {
+      pr.coachingLine = 'Pre-cycle PR. Older evidence, still informing baseline.';
+    } else {
+      pr.coachingLine = 'Adjacent-tier evidence, decaying as it ages.';
+    }
+  }
 
   return (
     <div className="races-v4-page">
@@ -648,6 +685,22 @@ export default async function RacesPage() {
                       }}
                     >
                       Training effort · race to lock in
+                    </div>
+                  )}
+                  {/* C5 · per-PR coaching line based on age + source +
+                      distance match to active goal race. */}
+                  {pr.coachingLine && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: 11,
+                        lineHeight: 1.45,
+                        color: 'rgba(13,15,18,.55)',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      {pr.coachingLine}
                     </div>
                   )}
                 </div>
