@@ -14,6 +14,7 @@ import { resolveEffectiveMaxHr } from './compute-max-hr';
 import { computeAggregateVdot } from './compute-vdot';
 import { pacesFromVdot, vdotFromRace } from './vdot';
 import { listRacesDB } from './race-store';
+import { buildFitnessHrZones } from './hr-zones';
 import type {
   ResolvedFitness,
   FitnessActiveRace,
@@ -117,51 +118,12 @@ async function getActiveRace(today: string, userId?: string): Promise<FitnessAct
   };
 }
 
-/** Build HR zones from max + resting HR.
- *
- *  Framework selection (David review 2026-05-19):
- *    - Karvonen / HRR when restingHr is available — more accurate
- *      for trained runners with low resting HR. %max systematically
- *      under-estimates zone ceilings for that demographic (e.g.
- *      max 175 + resting 45 → %max Z2 caps at 122 bpm, HRR Z2 caps
- *      at ~136 bpm, the latter matches actual easy-run physiology).
- *    - %max fallback when restingHr is unknown.
- *
- *  Zone targets are the Daniels percentages; the framework choice
- *  affects how those percentages map to bpm. Z5 ceiling at 100%
- *  equals maxHr in both frameworks (HRR collapses to maxHr when
- *  fraction = 1.0).
- */
+/** Build HR zones via the shared utility in lib/hr-zones.ts.
+ *  S1 cleanup (2026-05-19 round 3): this used to duplicate the math
+ *  with /profile/page.tsx; both now import from the shared module.
+ *  See lib/hr-zones.ts for framework selection (HRR vs %max). */
 function buildHrZones(maxHr: number | null, restingHr: number | null): FitnessHrZones | null {
-  if (!maxHr || maxHr <= 0) return null;
-
-  // HRR (Karvonen) — when resting HR is known and sane.
-  if (restingHr && restingHr > 0 && restingHr < maxHr) {
-    const hrr = maxHr - restingHr;
-    const band = (lo: number, hi: number) => ({
-      lowBpm: Math.round(restingHr + hrr * lo),
-      highBpm: Math.round(restingHr + hrr * hi),
-    });
-    return {
-      z1: { ...band(0.50, 0.60), label: 'Recovery'  },
-      z2: { ...band(0.60, 0.70), label: 'Easy'      },
-      z3: { ...band(0.70, 0.80), label: 'Steady'    },
-      z4: { ...band(0.80, 0.90), label: 'Threshold' },
-      z5: { ...band(0.90, 1.00), label: 'VO2max'    },
-    };
-  }
-
-  // %max fallback — when resting HR is unknown.
-  const band = (lo: number, hi: number) => ({
-    lowBpm: Math.round(maxHr * lo), highBpm: Math.round(maxHr * hi),
-  });
-  return {
-    z1: { ...band(0.50, 0.60), label: 'Recovery'  },
-    z2: { ...band(0.60, 0.70), label: 'Easy'      },
-    z3: { ...band(0.70, 0.80), label: 'Steady'    },
-    z4: { ...band(0.80, 0.90), label: 'Threshold' },
-    z5: { ...band(0.90, 1.00), label: 'VO2max'    },
-  };
+  return buildFitnessHrZones(maxHr, restingHr) as FitnessHrZones | null;
 }
 
 async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> {

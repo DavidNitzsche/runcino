@@ -26,6 +26,7 @@ import { resolveFitness } from '@/lib/fitness-resolver';
 import { validateMaxHr } from '@/lib/validate-max-hr';
 import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
+import { buildHrZonesBundle } from '@/lib/hr-zones';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -248,30 +249,27 @@ export default async function ProfilePage() {
     { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
   ];
 
-  // HR zones — populated from the user's resolved max HR. Uses
-  // HRR/Karvonen (resting + (max-resting) × pct) when resting HR is
-  // known, else falls back to %max. HRR is more accurate for trained
-  // runners with low resting HR — %max systematically caps Z2 too
-  // low (e.g. for max=175 resting=45, %max Z2 caps at 122 vs HRR
-  // Z2 caps at ~136). David review 2026-05-19 round 2.
+  // HR zones — via shared utility in lib/hr-zones.ts (S1 cleanup
+  // 2026-05-19 round 3). HRR (Karvonen) when resting HR is known,
+  // %max fallback otherwise. Identical math to Coach Reads.
   const restingHr = fitness.restingHr.value ?? null;
-  const useHRR = !!(maxHr && restingHr && restingHr > 0 && restingHr < maxHr);
-  const hrr = useHRR ? (maxHr! - restingHr!) : 0;
-  const zoneRange = (loPct: number, hiPct: number): string => {
-    if (!maxHr) return '—';
-    if (useHRR) {
-      return `${Math.round(restingHr! + hrr * loPct)}–${Math.round(restingHr! + hrr * hiPct)}`;
-    }
-    return `${Math.round(maxHr * loPct)}–${Math.round(maxHr * hiPct)}`;
-  };
-  const zonePctLabel = useHRR ? 'HRR' : 'max';
-  const HR_ZONES = [
-    { tier: 'z1', name: 'Z1 · Recovery',  range: zoneRange(0.50, 0.60), pct: `50–60% ${zonePctLabel}` },
-    { tier: 'z2', name: 'Z2 · Easy',      range: zoneRange(0.60, 0.70), pct: `60–70% ${zonePctLabel}` },
-    { tier: 'z3', name: 'Z3 · Steady',    range: zoneRange(0.70, 0.80), pct: `70–80% ${zonePctLabel}` },
-    { tier: 'z4', name: 'Z4 · Threshold', range: zoneRange(0.80, 0.90), pct: `80–90% ${zonePctLabel}` },
-    { tier: 'z5', name: 'Z5 · VO₂max',    range: zoneRange(0.90, 1.00), pct: `90–100% ${zonePctLabel}` },
-  ];
+  const hrBundle = buildHrZonesBundle(maxHr, restingHr);
+  const useHRR = hrBundle?.framework === 'HRR';
+  const hrr = hrBundle?.hrr ?? 0;
+  const HR_ZONES = hrBundle
+    ? hrBundle.zones.map((z) => ({
+        tier: z.tier,
+        name: z.name.replace('Z2 · Easy', 'Z2 · Easy').replace('Z5 · VO₂max', 'Z5 · VO₂max'),
+        range: `${z.lowBpm}–${z.highBpm}`,
+        pct: z.pctLabel,
+      }))
+    : [
+        { tier: 'z1', name: 'Z1 · Recovery',  range: '—', pct: '50–60% max' },
+        { tier: 'z2', name: 'Z2 · Easy',      range: '—', pct: '60–70% max' },
+        { tier: 'z3', name: 'Z3 · Steady',    range: '—', pct: '70–80% max' },
+        { tier: 'z4', name: 'Z4 · Threshold', range: '—', pct: '80–90% max' },
+        { tier: 'z5', name: 'Z5 · VO₂max',    range: '—', pct: '90–100% max' },
+      ];
 
   const bioBits: string[] = [];
   if (user.sex) bioBits.push(user.sex);
