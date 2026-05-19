@@ -43,6 +43,8 @@ import { StravaGapCard } from './StravaGapCard';
 import { computeReadinessScore } from '@/lib/readiness-score';
 import { buildWhyThisWorkout } from '@/lib/why-this-workout';
 import { WhyTooltip } from './WhyTooltip';
+import { buildSubstitutionMenu } from '@/lib/workout-substitutions';
+import { SubstitutionMenu } from './SubstitutionMenu';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -238,6 +240,12 @@ export default async function OverviewPage() {
       )
     : null;
 
+  // C8 · Workout substitution menu — populated when we have a real
+  // workout. Surface as "⇄ Substitute" button alongside HeroActions.
+  const substitutionMenu = !isRest && todayDay
+    ? buildSubstitutionMenu(todayDay.type, todayDay.label ?? '', todayDay.distanceMi)
+    : null;
+
   // Race countdown — race is week 14, last day
   const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
@@ -391,8 +399,9 @@ export default async function OverviewPage() {
                   />
                 )}
                 {z2Finding && <Z2CoverageCard finding={z2Finding} />}
-                <div className="hero-buttons">
+                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
+                  {substitutionMenu && <SubstitutionMenu menu={substitutionMenu} />}
                 </div>
               </>
             )}

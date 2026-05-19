@@ -20,6 +20,8 @@ import { query } from '@/lib/db';
 import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { computeRaceTrajectory } from '@/lib/race-trajectory';
+import { computeRaceProjection } from '@/lib/race-projection';
+import { RaceProjectionChart } from './RaceProjectionChart';
 import './races-v4.css';
 
 function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
@@ -201,6 +203,21 @@ export default async function RacesPage() {
   // this as the STARTING POINT — specific training runs nudge it
   // forward from here as the cycle progresses.
   const vdotAgg = await computeAggregateVdot(auth.id);
+
+  // C9 · Race projection chart · two trajectory lines (maintain + plan)
+  // across weeks-to-race. Reads current VDOT + goal time, computes
+  // weekly interpolation. Surface-only.
+  const aRaceGoalFinishS = (() => {
+    if (!aRace) return 0;
+    const m = aRace.goal?.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+    if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    const m2 = aRace.goal?.match(/^(\d{1,2}):(\d{2})$/);
+    if (m2) return Number(m2[1]) * 60 + Number(m2[2]);
+    return 0;
+  })();
+  const raceProjection = (aRace && vdotAgg && aRaceGoalFinishS > 0)
+    ? computeRaceProjection(vdotAgg.value, aRace.distanceMi, aRaceGoalFinishS, Math.ceil(aRace.daysAway / 7))
+    : null;
 
   // ── 3. PRs by canonical distance — races first, Strava fallback ──
   //
@@ -497,6 +514,12 @@ export default async function RacesPage() {
                   </div>
                 )}
               </div>
+              {/* C9 · Race projection chart · two trajectories
+                  (maintain at current VDOT, plan trending toward goal)
+                  with goal line as horizontal reference. */}
+              {raceProjection && (
+                <RaceProjectionChart projection={raceProjection} />
+              )}
             </div>
 
             <div className="a-race-right">
