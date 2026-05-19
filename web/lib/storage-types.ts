@@ -65,13 +65,31 @@ export interface SavedRace {
     distanceMi: number;
     goalDisplay: string;
     courseSlug: string;
-    /** Race priority drives how Coach treats it.
-     *  A — primary target. Coach builds the macrocycle toward this date.
-     *  B — secondary checkpoint. Lighter taper, treated as hard tempo.
-     *  C — drop-in / fun race. No taper, slotted as a workout.
+    /** Race priority / effort level drives BOTH (a) how Coach treats
+     *  the race in macrocycle planning and (b) how heavily the result
+     *  weights into aggregate VDOT.
+     *
+     *  Six levels (David spec 2026-05-19):
+     *    'A'              — primary target. Macrocycle built toward
+     *                       this date. Result weighted 1.0× in aggregate.
+     *    'B'              — secondary checkpoint. Lighter taper.
+     *                       Result weighted 0.7×.
+     *    'C'              — minor race, ran with some intention but not
+     *                       full effort. Result weighted 0.4×.
+     *    'tune-up'        — explicit pre-A-race tune-up. Result
+     *                       weighted 0.4× (same as C — the runner
+     *                       chose to express the intent semantically).
+     *    'training-run'   — race used as a workout, not raced. Result
+     *                       weighted 0.2×.
+     *    'hilly-excluded' — race on a course that's hilly enough to
+     *                       systematically distort the time→VDOT
+     *                       mapping. Result weighted 0.0× — excluded
+     *                       from aggregate. Used for Big Sur, mountain
+     *                       races, etc.
+     *
      *  Defaults to 'A' when missing — backward compat for races saved
      *  before this field existed. */
-    priority?: 'A' | 'B' | 'C';
+    priority?: 'A' | 'B' | 'C' | 'tune-up' | 'training-run' | 'hilly-excluded';
   };
   actualResult?: ActualResult | null;
 }

@@ -30,6 +30,7 @@ import type { FaffPlan } from '@/lib/types';
 import { GoalEditIsland } from './GoalEditIsland';
 import { RouteMapIsland } from './RouteMapIsland';
 import { FuelEditIsland } from './FuelEditIsland';
+import { EffortLevelEditIsland } from './EffortLevelEditIsland';
 import './race-plan-v4.css';
 
 export const dynamic = 'force-dynamic';
@@ -233,7 +234,17 @@ export default async function RacePlanPage({ params }: PageProps) {
   // C-RACE on the detail page. Users explicitly set B/C; null means
   // "haven't decided" which is closer to A than C.
   const priority = race.meta.priority ?? 'A';
-  const priorityLabel = priority === 'A' ? 'A-RACE' : priority === 'B' ? 'B-RACE' : 'C-RACE';
+  const priorityLabel: string = (() => {
+    switch (priority) {
+      case 'A':              return 'A-RACE';
+      case 'B':              return 'B-RACE';
+      case 'C':              return 'C-RACE';
+      case 'tune-up':        return 'TUNE-UP';
+      case 'training-run':   return 'TRAINING RUN';
+      case 'hilly-excluded': return 'HILLY · EXCLUDED FROM VDOT';
+      default:               return 'A-RACE';
+    }
+  })();
   const briefGenIso = (() => {
     // 7 days before the race
     const d = new Date(race.meta.date + 'T12:00:00Z');
@@ -508,6 +519,12 @@ export default async function RacePlanPage({ params }: PageProps) {
             <div className="coach-label">
               <span className="dot-orange"></span>
               COACH · RACE PLAN · {priorityLabel}
+            </div>
+            {/* Effort-level editor — controls how this race weights in
+                aggregate VDOT. Shipped 2026-05-19 round 2 to fix the
+                Sombrero=full-weight tune-up problem. */}
+            <div style={{ marginTop: 8, marginBottom: 8 }}>
+              <EffortLevelEditIsland slug={slug} currentPriority={priority as 'A' | 'B' | 'C' | 'tune-up' | 'training-run' | 'hilly-excluded'} />
             </div>
             <p className="coach-briefing">
               <strong>{fmtFullDate(race.meta.date)}.</strong>{' '}

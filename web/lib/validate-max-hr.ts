@@ -106,6 +106,7 @@ export interface MaxHrValidationVerdict {
     | { kind: 'looks-correct'; reason: string; falsifier: string }
     | { kind: 'peak-exceeds-current'; peakHr: number; reason: string; falsifier: string }
     | { kind: 'race-suggests-higher'; suggested: number; reason: string; falsifier: string }
+    | { kind: 'suspect-ceiling'; suggested: number; clusterCount: number; reason: string; falsifier: string }
     | { kind: 'insufficient-data'; reason: string; falsifier: string };
   /** When true, the user dismissed this within the last 30 days AND
    *  no new evidence has accumulated. UI should hide the banner. */
@@ -371,6 +372,64 @@ export async function validateMaxHr(
           `— that'd mean you really can hold a higher %max than the rule of thumb.`,
       },
     };
+  }
+
+  // 2b. Suspect ceiling — N≥3 validated peaks cluster within 3 bpm
+  //     of stored max. The pattern of "you hit 175 six times during
+  //     HM-effort runs" is DISCONFIRMING evidence, not confirming:
+  //     a true physiological max is a rare, brief reading from a
+  //     terminal effort, not a value routinely reached on sustained
+  //     races. (Locked with David 2026-05-19 round 2.)
+  //
+  //     Suggested new max derived from the highest-avg-HR race in
+  //     the cluster: max ≈ avg / 0.90 (slightly more aggressive
+  //     than the 0.88-0.92 HM band because the cluster pattern
+  //     itself suggests the stored max is low).
+  if (currentMaxHr && topPeaks.length >= 3) {
+    const nearStored = topPeaks.filter(
+      (p) => p.isValidatedEffort && p.hr >= currentMaxHr - 3 && p.hr <= currentMaxHr + 1,
+    );
+    if (nearStored.length >= 3) {
+      // Highest avg HR among the cluster — gives the most aggressive
+      // (lowest) implied true max via avg / 0.90.
+      const withAvg = nearStored.filter((p): p is typeof p & { avgHrInActivity: number } =>
+        p.avgHrInActivity != null && p.avgHrInActivity > 0,
+      );
+      if (withAvg.length > 0) {
+        withAvg.sort((a, b) => b.avgHrInActivity - a.avgHrInActivity);
+        const top = withAvg[0];
+        const suggested = Math.round(top.avgHrInActivity / 0.90);
+        if (suggested >= currentMaxHr + 3) {  // only fire if shift is meaningful
+          const clusterSummary = nearStored
+            .slice(0, 3)
+            .map((p) => `${p.hr} (${p.name})`)
+            .join(', ');
+          const sustainedPct = Math.round((top.avgHrInActivity / currentMaxHr) * 100);
+          return {
+            hasFinding: true,
+            currentMaxHr,
+            topPeaks,
+            raceEstimate,
+            dismissed,
+            recommendation: {
+              kind: 'suspect-ceiling',
+              suggested,
+              clusterCount: nearStored.length,
+              reason:
+                `${nearStored.length} validated runs peaked within 3 bpm of stored ${currentMaxHr}: ${clusterSummary}. ` +
+                `A true physiological max is a rare, brief reading from a terminal effort — not a value ` +
+                `routinely reached during sustained races. Your "${top.name}" averaged ${top.avgHrInActivity} ` +
+                `bpm (${sustainedPct}% of stored max), which implies a true max around ${suggested} bpm via ` +
+                `avg / 0.90. Suggest reviewing the stored ceiling.`,
+              falsifier:
+                `We'd reconsider if your next all-out interval session peaks at ${currentMaxHr - 2} bpm or ` +
+                `below — that'd be evidence ${currentMaxHr} really is your ceiling. The cluster pattern is ` +
+                `the strongest signal here.`,
+            },
+          };
+        }
+      }
+    }
   }
 
   // 3. No max set yet

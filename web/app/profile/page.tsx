@@ -213,18 +213,29 @@ export default async function ProfilePage() {
     { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
   ];
 
-  // HR zones — populated from the user's resolved max HR. Daniels-style
-  // %max bands: Z1 50-60, Z2 60-70, Z3 70-80, Z4 80-90, Z5 90-100.
+  // HR zones — populated from the user's resolved max HR. Uses
+  // HRR/Karvonen (resting + (max-resting) × pct) when resting HR is
+  // known, else falls back to %max. HRR is more accurate for trained
+  // runners with low resting HR — %max systematically caps Z2 too
+  // low (e.g. for max=175 resting=45, %max Z2 caps at 122 vs HRR
+  // Z2 caps at ~136). David review 2026-05-19 round 2.
+  const restingHr = fitness.restingHr.value ?? null;
+  const useHRR = !!(maxHr && restingHr && restingHr > 0 && restingHr < maxHr);
+  const hrr = useHRR ? (maxHr! - restingHr!) : 0;
   const zoneRange = (loPct: number, hiPct: number): string => {
     if (!maxHr) return '—';
+    if (useHRR) {
+      return `${Math.round(restingHr! + hrr * loPct)}–${Math.round(restingHr! + hrr * hiPct)}`;
+    }
     return `${Math.round(maxHr * loPct)}–${Math.round(maxHr * hiPct)}`;
   };
+  const zonePctLabel = useHRR ? 'HRR' : 'max';
   const HR_ZONES = [
-    { tier: 'z1', name: 'Z1 · Recovery',  range: zoneRange(0.50, 0.60), pct: '50–60% max' },
-    { tier: 'z2', name: 'Z2 · Easy',      range: zoneRange(0.60, 0.70), pct: '60–70% max' },
-    { tier: 'z3', name: 'Z3 · Steady',    range: zoneRange(0.70, 0.80), pct: '70–80% max' },
-    { tier: 'z4', name: 'Z4 · Threshold', range: zoneRange(0.80, 0.90), pct: '80–90% max' },
-    { tier: 'z5', name: 'Z5 · VO₂max',    range: zoneRange(0.90, 1.00), pct: '90–100% max' },
+    { tier: 'z1', name: 'Z1 · Recovery',  range: zoneRange(0.50, 0.60), pct: `50–60% ${zonePctLabel}` },
+    { tier: 'z2', name: 'Z2 · Easy',      range: zoneRange(0.60, 0.70), pct: `60–70% ${zonePctLabel}` },
+    { tier: 'z3', name: 'Z3 · Steady',    range: zoneRange(0.70, 0.80), pct: `70–80% ${zonePctLabel}` },
+    { tier: 'z4', name: 'Z4 · Threshold', range: zoneRange(0.80, 0.90), pct: `80–90% ${zonePctLabel}` },
+    { tier: 'z5', name: 'Z5 · VO₂max',    range: zoneRange(0.90, 1.00), pct: `90–100% ${zonePctLabel}` },
   ];
 
   const bioBits: string[] = [];
@@ -362,7 +373,9 @@ export default async function ProfilePage() {
               <div className="card-title">Heart Rate Zones</div>
               <div className="card-sub" style={{ color: 'rgba(13,15,18,.55)' }}>
                 {maxHr
-                  ? `Daniels %max bands · used for every HR read in your debriefs`
+                  ? (useHRR
+                      ? `HRR (Karvonen) bands · resting ${restingHr}, max ${maxHr} → HRR ${hrr}. More accurate for trained runners with low resting HR than %max alone.`
+                      : 'Daniels %max bands · log your resting HR to switch to more accurate HRR-based zones.')
                   : 'No data — log your max HR + recent race to populate'}
               </div>
             </div>

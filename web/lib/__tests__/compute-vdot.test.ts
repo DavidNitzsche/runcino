@@ -214,7 +214,7 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
 describe('aggregateVdotFromInputs · priority-aware weighting (race-effort-level)', () => {
   const cycleStart = new Date('2026-01-27T00:00:00Z');
 
-  it('priority C (tune-up) reduces weight to 0.3× vs priority A', () => {
+  it('priority C (minor race) reduces weight to 0.4× vs priority A', () => {
     const bestsAA: RaceBest[] = [
       { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: 'd', source: 'races', priority: 'A' },
       { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: 's', source: 'races', priority: 'A' },
@@ -230,13 +230,31 @@ describe('aggregateVdotFromInputs · priority-aware weighting (race-effort-level
     // shifts toward Disney HM's anchor.
     expect(ac!.value).toBeGreaterThan(aa!.value);
 
-    // Verify the effort multiplier landed: Sombrero C weight should be
-    // 0.3× of what it would be at A.
+    // Per David's round-2 spec: C now multiplies weight by 0.4.
     const sombreroAC = ac!.sources.find((s) => s.activityId === 's')!;
     const sombreroAA = aa!.sources.find((s) => s.activityId === 's')!;
-    expect(sombreroAC.weight).toBeCloseTo(sombreroAA.weight * 0.3, 3);
-    expect(sombreroAC.weightBreakdown.effort).toBe(0.3);
+    expect(sombreroAC.weight).toBeCloseTo(sombreroAA.weight * 0.4, 3);
+    expect(sombreroAC.weightBreakdown.effort).toBe(0.4);
     expect(sombreroAA.weightBreakdown.effort).toBe(1.0);
+  });
+
+  it('hilly-excluded races drop out of the aggregate entirely', () => {
+    const bests: RaceBest[] = [
+      { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: 'd', source: 'races', priority: 'A' },
+      { label: 'Marathon', canonicalMi: 26.219, finishS: 13015, date: '2026-04-26', activityId: 'bigsur', source: 'races', priority: 'hilly-excluded' },
+    ];
+    const result = aggregateVdotFromInputs({ bests, cycleStart, goalTier: 'HM_ISH', today: TODAY });
+    // Big Sur shouldn't appear in sources at all when marked hilly-excluded.
+    expect(result!.sourceCount).toBe(2);  // pure function doesn't filter; just zero weights
+    // But effort multiplier is 0.0 so weight is 0.
+    const bigsur = result!.sources.find((s) => s.activityId === 'bigsur')!;
+    expect(bigsur.weightBreakdown.effort).toBe(0.0);
+    expect(bigsur.weight).toBe(0);
+
+    // Aggregate equals exactly the Disney HM contributor's VDOT
+    // since the hilly-excluded race contributes zero weight.
+    const disney = result!.sources.find((s) => s.activityId === 'd')!;
+    expect(result!.value).toBe(disney.vdot);
   });
 
   it('defaults to A (full weight) when priority is unset', () => {

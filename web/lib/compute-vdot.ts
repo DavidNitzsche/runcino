@@ -77,7 +77,7 @@ export interface AggregateVdot {
     isInCycle: boolean;
     /** Race priority from meta.priority — A=full weight, B=0.6×,
      *  C=0.3×. Defaults to 'A' when unset. */
-    priority: 'A' | 'B' | 'C';
+    priority: RaceEffortLevel;
   }>;
   /** Human-readable description of the aggregation window. */
   windowLabel: string;
@@ -260,7 +260,7 @@ export interface RaceBest {
   /** Race priority from meta.priority — drives the effort-level
    *  weight multiplier in the aggregate (A=1.0, B=0.6, C=0.3).
    *  Defaults to 'A' when unset (full weight, prior behavior). */
-  priority?: 'A' | 'B' | 'C';
+  priority?: RaceEffortLevel;
 }
 
 export interface AggregateInputs {
@@ -342,26 +342,31 @@ interface RaceRow {
   activity_id: string | null;
   result_source: string | null;
   name: string | null;
-  priority: 'A' | 'B' | 'C' | null;
+  priority: string | null;
 }
 
 /** Priority → weight multiplier. Race-effort-level expressed via the
  *  existing meta.priority field (no new schema). The aggregate uses
- *  these multipliers to honor user intent:
- *    A (primary goal effort)        — full weight
- *    B (secondary checkpoint)       — moderate weight
- *    C (drop-in / tune-up race)     — light weight, so a sub-effort
- *                                     race doesn't drag the aggregate
- *                                     toward a value the runner
- *                                     didn't actually compete to.
+ *  these multipliers to honor user intent.
  *
- *  Locked with David 2026-05-19: Sombrero=C at full weight was
- *  pulling his VDOT from 48 (Disney HM) down to 44.7 even though he
- *  ran Sombrero as a tune-up. Priority-aware weighting fixes that. */
-const PRIORITY_WEIGHT: Record<'A' | 'B' | 'C', number> = {
+ *  Six levels locked with David on 2026-05-19 (round 2 spec):
+ *    A              full weight (1.0×) — primary goal effort
+ *    B              0.7× — secondary checkpoint
+ *    C              0.4× — minor race, partial effort
+ *    tune-up        0.4× — explicit pre-race tune-up (same as C
+ *                          but expressed semantically)
+ *    training-run   0.2× — race used as workout
+ *    hilly-excluded 0.0× — course profile distorts time→VDOT
+ *                          mapping; remove from aggregate */
+export type RaceEffortLevel = 'A' | 'B' | 'C' | 'tune-up' | 'training-run' | 'hilly-excluded';
+
+const PRIORITY_WEIGHT: Record<RaceEffortLevel, number> = {
   A: 1.0,
-  B: 0.6,
-  C: 0.3,
+  B: 0.7,
+  C: 0.4,
+  'tune-up': 0.4,
+  'training-run': 0.2,
+  'hilly-excluded': 0.0,
 };
 
 export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
@@ -416,7 +421,14 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
 
     // Normalize priority — default to 'A' when unset (legacy rows
     // without an explicit priority get full weight, prior behavior).
-    const pri = (r.priority === 'A' || r.priority === 'B' || r.priority === 'C') ? r.priority : 'A';
+    const validLevels: ReadonlySet<string> = new Set(['A', 'B', 'C', 'tune-up', 'training-run', 'hilly-excluded']);
+    const pri = (r.priority && validLevels.has(r.priority)) ? r.priority as RaceEffortLevel : 'A';
+
+    // Skip hilly-excluded races entirely — 0× weight means they'd
+    // contribute nothing anyway, but filtering early keeps the
+    // sources[] list honest (excluded races don't render as "0%
+    // contributor" in the UI; they're not contributors at all).
+    if (pri === 'hilly-excluded') continue;
 
     bests.push({
       label: matched.label,

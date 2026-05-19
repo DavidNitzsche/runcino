@@ -43,7 +43,9 @@ export function MaxHrValidationBanner({ verdict }: Props) {
     ? rec.peakHr
     : rec.kind === 'race-suggests-higher'
       ? rec.suggested
-      : null;
+      : rec.kind === 'suspect-ceiling'
+        ? rec.suggested
+        : null;
 
   async function onApply() {
     if (applyValue == null) return;
