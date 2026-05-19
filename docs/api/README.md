@@ -1,4 +1,4 @@
-# Runcino API — categorized surface map
+# Faff.run API — categorized surface map
 
 S6 deliverable · 2026-05-19 · last audit `585a3fb`.
 

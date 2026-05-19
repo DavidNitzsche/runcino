@@ -137,7 +137,7 @@ rep).  Honest data flow: completed rep marked partial, not full.
 | 7 | **Multi-workout race-day pacing strategy** | Race-day pacing is a separate UX problem · defer |
 | 8 | **Coaching cross-references on watch** | V7 cross-references are coherent coaching across surfaces where the user has time to read · watch during run = 1-2s attention · cross-references would be cognitive overhead at exactly the wrong moment · execution surface only |
 
-Also implicitly deferred (not Runcino's job either way):
+Also implicitly deferred (not Faff.run's job either way):
 - Music control during workout · Apple's native controls work fine
 - Workout substitutions on watch · belongs on iPhone/web before the run
 
@@ -160,13 +160,13 @@ gives clear next-arc material.
 
 ```
                   ┌─────────────────────────┐
-                  │  Backend (Runcino API)  │
+                  │  Backend (Faff.run API)  │
                   └─────┬─────────────┬─────┘
                         │             │
                     GET workout    POST completion
                         │             │
                   ┌─────▼─────────────┴─────┐
-                  │   iPhone Runcino app    │
+                  │   iPhone Faff.run app    │
                   │   · auth token holder   │
                   │   · backend bridge      │
                   │   · HealthKit anchor    │
@@ -176,7 +176,7 @@ gives clear next-arc material.
                   (workout struct)     workout record
                            │               │
                   ┌────────▼───────────────┴┐
-                  │  watchOS Runcino app    │
+                  │  watchOS Faff.run app    │
                   │  · runs workout         │
                   │  · live HR + pace       │
                   │  · transition haptics   │

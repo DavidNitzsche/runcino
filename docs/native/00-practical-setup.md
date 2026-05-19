@@ -170,7 +170,7 @@ you read/write each data type.  App Store review reads these strings
 carefully; vague descriptions get rejections.
 
 **App Store review nuance**: HealthKit is the most-scrutinized
-capability.  Your usage description must be specific (e.g., "Runcino
+capability.  Your usage description must be specific (e.g., "Faff.run
 reads your resting HR to compute training zones") not vague ("for
 improved experience").  Plan for one re-review cycle if it's a first
 submission.
@@ -274,7 +274,7 @@ For TestFlight + eventual App Store submission you'll need:
   ok for v0)
 - **TestFlight internal testers** · add yourself as internal tester
   (immediate · no review)
-- **App privacy details** · disclose what data Runcino collects · be
+- **App privacy details** · disclose what data Faff.run collects · be
   honest (HealthKit data, training data, no analytics if true)
 
 **Time cost**: 1 hour for initial setup · placeholders fine for icon
@@ -289,7 +289,7 @@ Once code exists and a build is archived in Xcode:
 1. Xcode → Product → Archive
 2. Organizer → "Distribute App" → "App Store Connect" → "Upload"
 3. App Store Connect → TestFlight → Internal Testing → add yourself
-4. Install TestFlight app on iPhone, sign in, install Runcino
+4. Install TestFlight app on iPhone, sign in, install Faff.run
 5. Watch app auto-installs to paired Apple Watch
 
 **Time cost per build**: 10-20 min upload + processing wait
@@ -341,7 +341,7 @@ no D-U-N-S delays or enrollment review snags.
    enabling, so do it.
 
 5. **iCloud / CloudKit** (not used yet · noting for completeness) ·
-   if Runcino ever uses CloudKit for sync, that's tied to the Apple
+   if Faff.run ever uses CloudKit for sync, that's tied to the Apple
    Developer account permanently.  Not in the v0 scope; flag if
    considering later.
 
@@ -366,7 +366,7 @@ no D-U-N-S delays or enrollment review snags.
 ## Open question for David
 
 Individual vs Organization enrollment.  If you have Workprint LLC
-already set up and plan to use it for Runcino, go organization.
+already set up and plan to use it for Faff.run, go organization.
 Otherwise, individual is fine for v0 — accept the eventual migration
 cost when/if you incorporate.
 

@@ -13,7 +13,7 @@
 > Read the reframed docs first.  Use this brief as the endpoint
 > reference + tier-1-gap catalog.
 
-S6 deliverable 3 · what the iPhone app needs from the Runcino backend.
+S6 deliverable 3 · what the iPhone app needs from the Faff.run backend.
 
 This is the actionable output of the categorization.  It enumerates
 the routes iPhone can use day-1, the routes that need iPhone-specific
