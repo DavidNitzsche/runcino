@@ -23,6 +23,7 @@ import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { resolveFitness } from '@/lib/fitness-resolver';
+import { validateMaxHr } from '@/lib/validate-max-hr';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -148,6 +149,11 @@ export default async function ProfilePage() {
   const today = new Date().toISOString().slice(0, 10);
   const fitness = await resolveFitness(auth.id, today);
 
+  // Adaptive max-HR validation — passive scan + race-anchored LTHR
+  // estimate. Verdict drives the Apply / Keep current banner inside
+  // CoachReadsCard's Heart Rate section.
+  const maxHrVerdict = await validateMaxHr(auth.id, fitness.maxHr.value);
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -253,7 +259,7 @@ export default async function ProfilePage() {
 
         {/* ── COACH READS (fitness resolver output) ── */}
         <div style={{ marginTop: 16 }}>
-          <CoachReadsCard fitness={fitness} />
+          <CoachReadsCard fitness={fitness} maxHrVerdict={maxHrVerdict} />
         </div>
 
         {/* ── CONNECTORS ── */}

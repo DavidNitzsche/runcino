@@ -118,13 +118,13 @@ export async function generateWeeklyInsights(
       // Faster than the easy band's fast edge — real "creep"
       const delta = easyPaceLowSec - thisMed;
       insights.push({
-        text: `Easy pace this week is ${fmtPace(thisMed)} — ${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} plan target. Easy days work best when they stay easy.`,
+        text: `Easy pace (last 7 days) is ${fmtPace(thisMed)} — ${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} plan target. Easy days work best when they stay easy.`,
         tone: 'amber',
       });
     } else if (thisMed > easyPaceHighSec + 30 && phase !== 'TAPER' && phase !== 'RACE_WEEK') {
       // Slower than the easy band's slow edge (outside taper/race week)
       insights.push({
-        text: `Easy pace this week is ${fmtPace(thisMed)} — ${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. Could be fatigue, heat, or terrain — worth a check-in.`,
+        text: `Easy pace (last 7 days) is ${fmtPace(thisMed)} — ${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. Could be fatigue, heat, or terrain — worth a check-in.`,
         tone: 'amber',
       });
     } else if (thisMed >= easyPaceLowSec && thisMed <= easyPaceHighSec) {

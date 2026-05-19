@@ -10,6 +10,8 @@
 
 import type { ResolvedFitness } from '@/lib/fitness-types';
 import { fmtPaceBand } from '@/lib/fitness-types';
+import type { MaxHrValidationVerdict } from '@/lib/validate-max-hr';
+import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 
 function fmtFinish(s: number): string {
   if (!s || s <= 0) return '—';
@@ -28,7 +30,13 @@ function fmtDate(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
-export function CoachReadsCard({ fitness }: { fitness: ResolvedFitness }) {
+export function CoachReadsCard({
+  fitness,
+  maxHrVerdict,
+}: {
+  fitness: ResolvedFitness;
+  maxHrVerdict?: MaxHrValidationVerdict | null;
+}) {
   return (
     <div className="card">
       <div className="card-header">
@@ -154,6 +162,10 @@ export function CoachReadsCard({ fitness }: { fitness: ResolvedFitness }) {
             </div>
           )}
         </div>
+        {/* Adaptive recommendation: when stored max HR doesn't match
+            the runner's actual race / peak data, surface the verdict
+            with Apply / Keep current actions + a falsifier line. */}
+        {maxHrVerdict && <MaxHrValidationBanner verdict={maxHrVerdict} />}
       </div>
 
       <style>{`

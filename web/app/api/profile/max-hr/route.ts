@@ -51,7 +51,14 @@ export async function POST(req: NextRequest) {
     }
   }
   await query(
-    `UPDATE users SET max_hr = $2, updated_at = NOW() WHERE id = $1`,
+    `UPDATE users
+        SET max_hr = $2,
+            -- Setting a new max HR clears any prior validation dismissal
+            -- so the user can be re-prompted if their stored value
+            -- diverges from race data in the future.
+            max_hr_validation_dismissed_at = NULL,
+            updated_at = NOW()
+      WHERE id = $1`,
     [user.id, v ?? null],
   );
   return NextResponse.json({ ok: true, ...(await buildPayload(user.id)) });

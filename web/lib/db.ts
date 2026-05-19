@@ -414,6 +414,14 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT
         CHECK (accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$');
     `);
+    // Adaptive-recommendation dismissals — when the user clicks
+    // "Keep current" on a max-HR validation prompt, the timestamp
+    // here suppresses the banner for 30 days OR until new evidence
+    // overrides (validated peak ≥ stored+3 bpm). See
+    // lib/validate-max-hr.ts.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr_validation_dismissed_at TIMESTAMPTZ;
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
     // Auto-promote the legacy owner to admin + active on every boot so
