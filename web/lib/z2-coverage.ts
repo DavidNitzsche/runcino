@@ -35,7 +35,8 @@
 import { query } from './db';
 import { buildFitnessHrZones } from './hr-zones';
 import { pacesFromVdot } from './vdot';
-import { RACE_RECENCY_DAYS } from './adaptive-vdot-signals';
+import { RACE_RECENCY_DAYS, HEAT_CEILING_F } from './adaptive-vdot-signals';
+import { getWorkoutTemperatureF } from './workout-weather';
 import { computeStravaGap } from './strava-gap';
 
 export interface Z2CoverageFinding {
@@ -130,11 +131,17 @@ async function fetchRaceDates(userId: string, startIso: string, endIso: string):
  *  but stayed below Z4 HR. The "downstream" observation in the V5
  *  surface — when easy runs are too hard, threshold can't reach Z4.
  *
- *  RACE-RECENCY GUARD · skips workouts within ±7 days of any race.
- *  A pace-band-but-sub-Z4 workout 3 days before a race is intentional
- *  taper conservation, not a fitness/freshness symptom. Without this
- *  guard the under-reach observation would misattribute taper miles
- *  to the easy-day-load story. */
+ *  CONTEXT GUARDS (per CLAUDE.md Rule 5 · per-finding context filters):
+ *   - RACE-RECENCY · skips workouts within ±7 days of any race
+ *   - HEAT · skips workouts where start temp > 78°F (cardiac drift in
+ *     heat artificially DEPRESSES HR-to-pace ratio at threshold —
+ *     a pace-in-T-band, HR-sub-Z4 workout in heat is explained by
+ *     heat, not easy-day load)
+ *
+ *  The S2 audit found heat-filter was missing here (was applied to
+ *  L7 Signals 1+2+3 but NOT the V5 under-reach lookup). Without this
+ *  guard the under-reach observation would mis-attribute heat-distorted
+ *  threshold workouts to the easy-day-load story. */
 async function findThresholdUnderReach(
   userId: string,
   todayIso: string,
@@ -154,12 +161,14 @@ async function findThresholdUnderReach(
   const rows = await query<{
     date: string; name: string;
     actual_pace_s: string; avg_hr: string;
+    start_lat_lng: string | null;
   }>(
     `SELECT
         data->>'date'                  AS date,
         COALESCE(data->>'name', '')    AS name,
         ((data->>'movingTimeS')::NUMERIC / NULLIF((data->>'distanceMi')::NUMERIC, 0))::NUMERIC AS actual_pace_s,
-        (data->>'avgHr')::NUMERIC      AS avg_hr
+        (data->>'avgHr')::NUMERIC      AS avg_hr,
+        (data->'startLatLng')::TEXT    AS start_lat_lng
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'date') >= $2
@@ -184,6 +193,22 @@ async function findThresholdUnderReach(
       return Math.abs(Math.round((rMs - wMs) / 86_400_000)) <= RACE_RECENCY_DAYS;
     });
     if (inRaceWindow) continue;
+    // Heat filter: same threshold as L7 signals. Heat distorts the
+    // pace-vs-HR-vs-effort relationship enough that an under-reach
+    // observation in heat doesn't tell us anything about easy-day load.
+    let coords: [number, number] | null = null;
+    if (r.start_lat_lng) {
+      try {
+        const parsed = JSON.parse(r.start_lat_lng);
+        if (Array.isArray(parsed) && parsed.length === 2) {
+          coords = [Number(parsed[0]), Number(parsed[1])];
+        }
+      } catch { /* malformed lat/lng */ }
+    }
+    if (coords) {
+      const temp = await getWorkoutTemperatureF(coords[0], coords[1], r.date);
+      if (temp != null && temp > HEAT_CEILING_F) continue;
+    }
     return {
       date: r.date,
       name: r.name || 'Threshold workout',
