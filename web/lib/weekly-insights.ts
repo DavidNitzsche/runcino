@@ -112,43 +112,65 @@ export async function generateWeeklyInsights(
     })
     .map((r) => Number(r.pace_s));
 
-  if (easyPaces.length >= 2) {
+  // Philosophy guard: require ≥3 easy runs in the window before
+  // firing any pace insight. Two runs is enough sample size to be
+  // wrong about a trend; three is the floor for "this is a pattern,
+  // not noise." Matches DEFAULT_THRESHOLDS.upMinEvidence in
+  // lib/adaptive-pattern.ts.
+  if (easyPaces.length >= 3) {
     const thisMed = median(easyPaces);
     if (thisMed < easyPaceLowSec - 15) {
-      // Faster than the easy band's fast edge — real "creep"
+      // Faster than the easy band's fast edge — real "creep".
+      // Falsifier line tells the runner what would un-fire this.
       const delta = easyPaceLowSec - thisMed;
       insights.push({
-        text: `Easy pace (last 7 days) is ${fmtPace(thisMed)} — ${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} plan target. Easy days work best when they stay easy.`,
+        text:
+          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)} — ` +
+          `${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} ` +
+          `plan target. Easy days work best when they stay easy. ` +
+          `We'd let this go if next week's easy median lands back in band.`,
         tone: 'amber',
       });
     } else if (thisMed > easyPaceHighSec + 30 && phase !== 'TAPER' && phase !== 'RACE_WEEK') {
       // Slower than the easy band's slow edge (outside taper/race week)
       insights.push({
-        text: `Easy pace (last 7 days) is ${fmtPace(thisMed)} — ${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. Could be fatigue, heat, or terrain — worth a check-in.`,
+        text:
+          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)} — ` +
+          `${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ` +
+          `${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. ` +
+          `Could be fatigue, heat, or terrain — worth a check-in. ` +
+          `If next week's median lands back in band this resolves itself.`,
         tone: 'amber',
       });
-    } else if (thisMed >= easyPaceLowSec && thisMed <= easyPaceHighSec) {
-      // Right in the band — quiet positive note (only show occasionally)
-      // Skip to avoid noise; user already knows they're on plan.
     }
+    // "Right in the band" — intentionally silent. We don't surface
+    // good news as an insight; the runner already knows.
   }
 
   // ── 2. Mileage vs PLANNED weekly mileage ───────────────────
   const totalThis = thisWeek.reduce((s, r) => s + (Number(r.mi) || 0), 0);
 
-  if (thisWeekPlannedMi > 0 && totalThis > 0) {
+  // Philosophy guard: only flag mileage deviation when this week
+  // is also far enough into the calendar to have a meaningful sample.
+  // Earlier than mid-week, the user has too few runs in this 7-day
+  // window to fairly assess "over/under plan." Also adds falsifier copy.
+  if (thisWeekPlannedMi > 0 && totalThis > 0 && thisWeek.length >= 3) {
     const overPct = Math.round(((totalThis - thisWeekPlannedMi) / thisWeekPlannedMi) * 100);
     if (overPct >= 25) {
-      // Real over-plan jump
       insights.push({
-        text: `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (+${overPct}%). Over plan — back off the extra running on easy days to leave room for the quality work.`,
+        text:
+          `${totalThis.toFixed(0)} mi (last 7 days) vs ${thisWeekPlannedMi.toFixed(0)} planned (+${overPct}%). ` +
+          `Over plan — back off the extra running on easy days to leave room for the quality work. ` +
+          `If next week lands within ±10% of plan this resolves itself.`,
         tone: 'amber',
       });
     } else if (overPct <= -40) {
-      // Significantly under plan
       const pct = Math.abs(overPct);
       insights.push({
-        text: `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). Missed sessions adding up — check back in or adjust next week's plan.`,
+        text:
+          `${totalThis.toFixed(0)} mi (last 7 days) vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). ` +
+          `Missed sessions adding up — check back in or adjust next week's plan. ` +
+          `One short week is fine; two in a row means the plan needs to bend.`,
         tone: 'amber',
       });
     }

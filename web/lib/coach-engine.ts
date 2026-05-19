@@ -432,12 +432,20 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
-  if (poorDaysCount >= 1 && state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
-    // 1-2 poor days alone is below the matrix cutback threshold, but
-    // combined with an unhealthy easy-share (too much hard work in the
-    // last 14 days), still suppress quality today. Easy-share <60% is
-    // well below the Research/00a §"Polarized" 80% target — the runner
-    // is already over-loading the system before the check-in signal.
+  if (poorDaysCount >= 2 && state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
+    // ADAPTIVE GUARD: bumped from `>= 1` to `>= 2` poor days per the
+    // philosophy in lib/adaptive-pattern.ts — single events don't
+    // trigger changes. One poor check-in could be a bad night's
+    // sleep or a stressful day at work, not a fatigue signal. Two
+    // consecutive poor days combined with already-unhealthy easy-share
+    // (Research/00a §Polarized 80% target) IS a fatigue trend.
+    //
+    // The 3+ poor days branch above handles the "definitely cooked"
+    // case independently. This branch catches the "starting to drift"
+    // case — and we now require corroborating evidence.
+    //
+    // Easy-share <60% is well below the polarized target; combined
+    // with 2+ poor days that's a real two-signal pattern.
     if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
