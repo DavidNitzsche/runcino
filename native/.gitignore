@@ -1,0 +1,38 @@
+# Xcode / Swift build artifacts · do not track in git
+#
+# Reference: https://github.com/github/gitignore/blob/main/Swift.gitignore
+# Reference: https://github.com/github/gitignore/blob/main/Global/Xcode.gitignore
+
+# Build products
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Per-user Xcode state · not portable across team members
+**/xcuserdata/
+**/*.xcuserdatad/
+**/UserInterfaceState.xcuserstate
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# CocoaPods (not used yet, defensive)
+Pods/
+
+# Carthage (not used yet, defensive)
+Carthage/Build/
+
+# CocoaPods + Carthage manifests are committed; the build artifacts above are not
+
+# macOS noise
+.DS_Store
+
+# Crash logs
+*.crash
+
+# Swift Playgrounds
+timeline.xctimeline
+playground.xcworkspace
