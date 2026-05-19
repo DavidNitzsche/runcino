@@ -17,6 +17,7 @@ import { Topbar } from '@/app/components';
 import { ConnectorsCard } from './ConnectorsCard';
 import { ProfileModalsIsland } from './ProfileModalsIsland';
 import { MaxHrIsland } from './MaxHrIsland';
+import { RestingHrIsland } from './RestingHrIsland';
 import { CoachReadsCard } from './CoachReadsCard';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -360,6 +361,7 @@ export default async function ProfilePage() {
             ))}
           </div>
           <MaxHrIsland />
+          <RestingHrIsland />
         </div>
 
         {/* ── SHOE ROTATION ── */}
