@@ -19,7 +19,26 @@ import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { computeRaceTrajectory } from '@/lib/race-trajectory';
 import './races-v4.css';
+
+function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
+  switch (state) {
+    case 'ahead':                return '#1f6a21';
+    case 'on-track':             return '#0D6E8F';
+    case 'behind':               return '#B3450A';
+    case 'collecting-evidence':  return 'rgba(13,15,18,.55)';
+  }
+}
+
+function trajectoryShortLabel(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
+  switch (state) {
+    case 'ahead':                return 'AHEAD';
+    case 'on-track':             return 'ON TRACK';
+    case 'behind':               return 'BEHIND';
+    case 'collecting-evidence':  return 'COLLECTING';
+  }
+}
 
 interface UpcomingRace {
   name: string;
@@ -165,6 +184,14 @@ export default async function RacesPage() {
     .slice(0, 12);
 
   const aRace = upcoming.find((r) => r.priority === 'A');
+
+  // V3 · Race trajectory directional indicator (only when an A-race exists).
+  // Reads L7 signal evidence layer (Signal 1 + 2 + 3). Conservative
+  // gating: "ahead" needs ≥2 corroborating UP signals; "on-track" is
+  // the 1-signal-up state; "behind" fires on any DOWN signal;
+  // "collecting-evidence" when signals are silent OR disagree OR
+  // insufficient data is available.
+  const trajectory = aRace ? await computeRaceTrajectory(auth.id, new Date()).catch(() => null) : null;
 
   // Aggregate VDOT from this year's Strava history (best-effort per
   // canonical distance, recency-weighted, top 3 averaged). Coach uses
@@ -395,11 +422,28 @@ export default async function RacesPage() {
                   <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
                   <div className="path-stat-sub">No data</div>
                 </div>
-                <div className="path-stat">
-                  <div className="path-stat-label">Feasibility</div>
-                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-                  <div className="path-stat-sub">No data</div>
-                </div>
+                {/* V3 · Trajectory directional indicator from L7 signals.
+                    Replaces the "Feasibility · No data" stub when L7
+                    evidence is available. Falls back to silent — the
+                    runner sees the same "No data" placeholder until
+                    signals + verdict accumulate enough to make a call. */}
+                {trajectory ? (
+                  <div className="path-stat" title={trajectory.falsifier}>
+                    <div className="path-stat-label">Trajectory</div>
+                    <div className="path-stat-value" style={{ color: trajectoryColor(trajectory.state), fontSize: 22 }}>
+                      {trajectoryShortLabel(trajectory.state)}
+                    </div>
+                    <div className="path-stat-sub" style={{ fontSize: 11 }}>
+                      {trajectory.headline}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="path-stat">
+                    <div className="path-stat-label">Trajectory</div>
+                    <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                    <div className="path-stat-sub">No data</div>
+                  </div>
+                )}
               </div>
             </div>
 
