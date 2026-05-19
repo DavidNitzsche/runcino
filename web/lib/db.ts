@@ -397,6 +397,12 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS resting_hr INTEGER
         CHECK (resting_hr IS NULL OR (resting_hr >= 30 AND resting_hr <= 100));
     `);
+    // User-chosen brand accent color (`#RRGGBB`). Null falls back to the
+    // canonical faff.run orange (#E85D26) in app/layout.tsx.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT
+        CHECK (accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$');
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
     // Auto-promote the legacy owner to admin + active on every boot so

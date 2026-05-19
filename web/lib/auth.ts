@@ -52,6 +52,9 @@ export interface AuthUser {
   /** Max HR (bpm) — null when unset. When set, coach uses %max
    *  zones in HR commentary instead of qualitative bands. */
   max_hr: number | null;
+  /** Brand accent (`#RRGGBB`) the user picked on /profile. null falls
+   *  back to the canonical faff.run orange `#E85D26`. */
+  accent_color: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -111,7 +114,7 @@ export async function signupUser(email: string, password: string, name: string):
   const rows = await query<AuthUser>(
     `INSERT INTO users (email, password_hash, name, status, is_admin, approved_at)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr;`,
+     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color;`,
     [normalizedEmail, passwordHash, name.trim(), status, isAdmin, approvedAt],
   );
   const user = rows[0];
@@ -144,7 +147,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   const normalizedEmail = email.trim().toLowerCase();
 
   const rows = await query<AuthUser & { password_hash: string }>(
-    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, password_hash
+    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, password_hash
      FROM users WHERE email = $1 LIMIT 1;`,
     [normalizedEmail],
   );
@@ -161,7 +164,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
     id: u.id, email: u.email, name: u.name,
     onboarding_complete: u.onboarding_complete,
     location: u.location, status: u.status, is_admin: u.is_admin,
-    max_hr: u.max_hr,
+    max_hr: u.max_hr, accent_color: u.accent_color,
   };
 }
 
@@ -198,7 +201,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!token) return null;
 
   const rows = await query<AuthUser>(
-    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr
+    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.session_token = $1 AND s.expires_at > NOW()

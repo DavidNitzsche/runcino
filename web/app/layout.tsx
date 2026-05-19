@@ -1,14 +1,36 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { getCurrentUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: 'faff.run',
   description: 'Personal Apple Watch race pacing tool.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/** Canonical faff.run brand accent — matches `--orange` in profile-v4.css. */
+const DEFAULT_ACCENT = '#E85D26';
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Resolve the logged-in user's accent so the whole app paints correctly
+  // on first byte. Anonymous / unauthenticated pages (login, signup) just
+  // get the default — no harm done.
+  let accent = DEFAULT_ACCENT;
+  try {
+    const u = await getCurrentUser();
+    if (u?.accent_color && /^#[0-9a-fA-F]{6}$/.test(u.accent_color)) {
+      accent = u.accent_color;
+    }
+  } catch {
+    // DB unavailable / cold start — fall back to default
+  }
+
+  const accentStyle = {
+    ['--accent' as string]: accent,
+    ['--orange' as string]: accent,
+  } as React.CSSProperties;
+
   return (
-    <html lang="en">
+    <html lang="en" style={accentStyle}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />

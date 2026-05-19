@@ -25,11 +25,16 @@ import './profile-v4.css';
 interface ShoeRow {
   id: string;
   name: string;
+  brand: string;
+  model: string;
   purposes: string[];
   cap_mi: number;
   current_mi: number;
   retired: boolean;
+  preferred: boolean;
+  notes: string | null;
   color: string;
+  raw_color: string | null;
 }
 
 interface UserPrefsRow {
@@ -41,7 +46,10 @@ interface UserPrefsRow {
   long_run_day: string;
   quality_days: string[];
   rest_day: string;
+  accent_color: string | null;
 }
+
+const DEFAULT_ACCENT = '#E85D26';
 
 const LEVEL_META: Record<string, string> = {
   beginner:     '10–25 mi/wk peak · Just finishing distance',
@@ -75,18 +83,22 @@ function shoeStatus(mi: number, cap: number): { label: string; tone: 'green' | '
 
 async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes: ShoeRow[] }> {
   const userRows = await query<UserPrefsRow>(
-    `SELECT name, age, sex, location, level, long_run_day, quality_days, rest_day
+    `SELECT name, age, sex, location, level, long_run_day, quality_days, rest_day, accent_color
      FROM users WHERE id = $1 LIMIT 1`,
     [userId],
   );
-  const user = userRows[0] ?? { name: 'Runner', age: null, sex: null, location: null, level: 'intermediate', long_run_day: 'sun', quality_days: ['tue','thu'], rest_day: 'sat' };
+  const user = userRows[0] ?? {
+    name: 'Runner', age: null, sex: null, location: null,
+    level: 'intermediate', long_run_day: 'sun', quality_days: ['tue','thu'], rest_day: 'sat',
+    accent_color: null,
+  };
 
   // Shoes table is legacy single-user; until cutover, read where user_uuid matches
   // OR rows are unclaimed (no user_uuid) and we haven't yet backfilled.
   let shoes: ShoeRow[] = [];
   try {
-    const rows = await query<{ id: number | string; brand: string; model: string; run_types: string[]; mileage: number; mileage_cap: number | null; retired: boolean; color: string | null }>(
-      `SELECT id, brand, model, run_types, mileage, mileage_cap, retired, color
+    const rows = await query<{ id: number | string; brand: string; model: string; run_types: string[]; mileage: number; mileage_cap: number | null; retired: boolean; color: string | null; preferred?: boolean; notes?: string | null }>(
+      `SELECT id, brand, model, run_types, mileage, mileage_cap, retired, color, preferred, notes
        FROM shoes
        WHERE (user_uuid = $1 OR user_uuid IS NULL)
        ORDER BY retired ASC, id ASC`,
@@ -95,11 +107,16 @@ async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes:
     shoes = rows.map((r) => ({
       id: String(r.id),
       name: `${r.brand} ${r.model}`,
+      brand: r.brand,
+      model: r.model,
       purposes: Array.isArray(r.run_types) ? r.run_types : [],
       cap_mi: r.mileage_cap ?? 300,
       current_mi: Number(r.mileage) || 0,
       retired: !!r.retired,
+      preferred: r.preferred ?? true,
+      notes: r.notes ?? null,
       color: r.color ?? '#2CA82F',
+      raw_color: r.color,
     }));
   } catch {
     // Schema not yet migrated — fall back to empty
@@ -192,6 +209,8 @@ export default async function ProfilePage() {
   if (user.age) bioBits.push(String(user.age));
   if (user.location) bioBits.push(user.location);
 
+  const currentAccent = user.accent_color ?? DEFAULT_ACCENT;
+
   return (
     <div className="profile-v4-page">
       <Topbar activeTab="profile" showAdmin={auth.is_admin} />
@@ -265,6 +284,42 @@ export default async function ProfilePage() {
               <div className="pref-meta">Day before the long run</div>
             </div>
           </div>
+
+          {/* Brand accent — sits inside Training Profile so the
+              personalization controls are co-located. The accent stamps
+              --accent / --orange on <html> server-side, so the wordmark,
+              buttons, and pins all pick it up on first paint. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 20,
+            alignItems: 'center', padding: '18px 40px 28px',
+            borderTop: '1px solid rgba(13,15,18,.08)', marginTop: 4,
+          }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 10,
+              background: currentAccent,
+              border: '1px solid rgba(13,15,18,.08)',
+              boxShadow: '0 4px 12px rgba(0,0,0,.08)',
+            }} aria-hidden="true" />
+            <div>
+              <div style={{
+                fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '1.5px',
+                color: 'rgba(13,15,18,.55)', textTransform: 'uppercase', fontWeight: 600,
+              }}>Brand accent</div>
+              <div style={{
+                fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#0D0F12',
+                fontWeight: 600, marginTop: 4,
+              }}>
+                {user.accent_color
+                  ? <>Custom · <span style={{ fontFamily: 'monospace', color: 'rgba(13,15,18,.55)', fontWeight: 500 }}>{currentAccent}</span></>
+                  : <>Default · <span style={{ fontFamily: 'monospace', color: 'rgba(13,15,18,.55)', fontWeight: 500 }}>{currentAccent}</span></>}
+              </div>
+              <div style={{
+                fontFamily: 'Inter, sans-serif', fontSize: 12,
+                color: 'rgba(13,15,18,.45)', marginTop: 2,
+              }}>Applied across buttons, pins, the wordmark gradient · stored on your account.</div>
+            </div>
+            <ProfileModalsIsland mode="edit-accent" initialAccent={user.accent_color} />
+          </div>
         </div>
 
         {/* ── HR ZONES ── */}
@@ -300,7 +355,7 @@ export default async function ProfilePage() {
             <div className="card-title-group">
               <div className="card-title">Shoe Rotation</div>
               <div className="card-sub">
-                <strong>{activeShoes.length} active</strong>{shoes.length > activeShoes.length ? ` · ${shoes.length - activeShoes.length} retired` : ''} · coach watches mileage to flag retire-soon · /log shoe picker reads from this list
+                <strong>{activeShoes.length} active</strong>{shoes.length > activeShoes.length ? ` · ${shoes.length - activeShoes.length} retired` : ''} · coach watches mileage to flag retire-soon · /log shoe picker reads from this list · tap any shoe to edit
               </div>
             </div>
             <ProfileModalsIsland mode="add-shoe" />
@@ -314,21 +369,44 @@ export default async function ProfilePage() {
                 const pct = Math.min(100, Math.round((sh.current_mi / sh.cap_mi) * 100));
                 const fillCls = status.tone === 'warn' ? 'warn' : status.tone === 'amber' ? 'amber' : '';
                 const purposeStr = (sh.purposes || []).map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '—';
+                // Reconstruct the Shoe row shape ProfileModalsIsland expects.
+                // We could re-GET from the API, but the page already has
+                // every field — pass it through directly to skip the round-trip.
+                const shoeForModal = {
+                  id: Number(sh.id),
+                  brand: sh.brand,
+                  model: sh.model,
+                  color: sh.raw_color,
+                  run_types: sh.purposes as never,
+                  mileage: sh.current_mi,
+                  mileage_cap: sh.cap_mi,
+                  preferred: sh.preferred,
+                  retired: sh.retired,
+                  notes: sh.notes,
+                  created_at: '',
+                };
                 return (
-                  <div key={sh.id} className="shoe-row" style={sh.retired ? { opacity: 0.5 } : undefined}>
-                    <div>
-                      <div className="shoe-name">{sh.name}</div>
-                      <div className="shoe-role">{purposeStr}</div>
-                      <div className="shoe-mileage-bar"><div className={`shoe-mileage-fill ${fillCls}`} style={{ width: `${pct}%` }} /></div>
-                      <div className="shoe-mileage-meta">
-                        <strong>{sh.current_mi}</strong> / {sh.cap_mi} mi · {Math.max(0, sh.cap_mi - sh.current_mi)} left
-                        {sh.retired && <> · <strong style={{ color: 'var(--t1)' }}>RETIRED</strong></>}
+                  <ProfileModalsIsland
+                    key={sh.id}
+                    mode="edit-shoe"
+                    triggerAs="wrap-children"
+                    initialShoe={shoeForModal}
+                  >
+                    <div className="shoe-row" style={sh.retired ? { opacity: 0.5 } : undefined}>
+                      <div>
+                        <div className="shoe-name">{sh.name}</div>
+                        <div className="shoe-role">{purposeStr}</div>
+                        <div className="shoe-mileage-bar"><div className={`shoe-mileage-fill ${fillCls}`} style={{ width: `${pct}%` }} /></div>
+                        <div className="shoe-mileage-meta">
+                          <strong>{sh.current_mi}</strong> / {sh.cap_mi} mi · {Math.max(0, sh.cap_mi - sh.current_mi)} left
+                          {sh.retired && <> · <strong style={{ color: 'var(--t1)' }}>RETIRED</strong></>}
+                        </div>
+                      </div>
+                      <div className="shoe-status-col">
+                        <div className={`shoe-status ${status.tone}`}>{status.label}</div>
                       </div>
                     </div>
-                    <div className="shoe-status-col">
-                      <div className={`shoe-status ${status.tone}`}>{status.label}</div>
-                    </div>
-                  </div>
+                  </ProfileModalsIsland>
                 );
               })
             )}
