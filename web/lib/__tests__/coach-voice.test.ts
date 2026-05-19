@@ -143,42 +143,97 @@ describe('formatReversal — evidence-strength frame', () => {
 });
 
 describe('formatCrossReference — V7-ready cross-surface acknowledgment', () => {
-  it('builds the canonical "consistent with the X on Y" clause by default', () => {
+  it('returns { text, href } structure for renderer link-wrapping', () => {
     const out = formatCrossReference({
       relatedLabel: 'Z2 stimulus check',
       surface: '/overview',
     });
-    expect(out).toBe('consistent with the Z2 stimulus check on /overview');
+    expect(out).toEqual({
+      text: 'consistent with the Z2 stimulus check on /overview',
+      href: '/overview',
+    });
   });
 
-  it('respects the explicit relation when caller wants something stronger', () => {
-    const tied = formatCrossReference({
-      relatedLabel: 'suspect-ceiling banner',
-      surface: '/profile',
-      relation: 'tied to',
+  it('default relation is "consistent with" — the safest (no causal claim)', () => {
+    const out = formatCrossReference({
+      relatedLabel: 'gap surface',
+      surface: '/overview',
     });
-    expect(tied).toBe('tied to the suspect-ceiling banner on /profile');
-
-    const contributing = formatCrossReference({
-      relatedLabel: 'Signal 4 PR trajectory',
-      surface: '/profile Coach Reads',
-      relation: 'contributing to',
-    });
-    expect(contributing).toBe(
-      'contributing to the Signal 4 PR trajectory on /profile Coach Reads',
-    );
+    expect(out.text.startsWith('consistent with')).toBe(true);
   });
 
-  it('produces lower-case output so the clause embeds mid-sentence', () => {
+  it('produces lower-case text so the clause embeds mid-sentence', () => {
     // V7's whole point: don't restate the related finding, just
-    // acknowledge it. The output is a clause, not a sentence —
+    // acknowledge it. The text is a clause, not a sentence —
     // capitalization would force a sentence break.
     const out = formatCrossReference({
       relatedLabel: 'gap surface',
       surface: '/overview',
       relation: 'see also',
     });
-    expect(out.charAt(0)).toBe(out.charAt(0).toLowerCase());
+    expect(out.text.charAt(0)).toBe(out.text.charAt(0).toLowerCase());
+  });
+
+  it('respects "see also" (informational pointer, no causal claim)', () => {
+    const out = formatCrossReference({
+      relatedLabel: 'projection chart',
+      surface: '/races',
+      relation: 'see also',
+    });
+    expect(out.text).toBe('see also the projection chart on /races');
+  });
+
+  it('respects "tied to" (structural link)', () => {
+    const out = formatCrossReference({
+      relatedLabel: 'max HR validation',
+      surface: '/profile',
+      relation: 'tied to',
+    });
+    expect(out.text).toBe('tied to the max HR validation on /profile');
+  });
+
+  it('inverts subject position for "contributing to" (causal asymmetry)', () => {
+    // "Contributing to" is the only relation where the related
+    // finding is the SUBJECT (it's the cause). The other three put
+    // it as object. Grammar tracks the causal direction.
+    const out = formatCrossReference({
+      relatedLabel: 'Disney HM',
+      surface: '/races',
+      relation: 'contributing to',
+    });
+    expect(out.text).toBe('the Disney HM on /races is contributing to this');
+    expect(out.text.startsWith('contributing to the')).toBe(false);
+  });
+
+  it('threads anchor into href as #fragment when provided', () => {
+    // Web: scroll target. iPhone: deep-link query.
+    const out = formatCrossReference({
+      relatedLabel: 'Z2 stimulus check',
+      surface: '/overview',
+      anchor: 'z2-stimulus',
+    });
+    expect(out.href).toBe('/overview#z2-stimulus');
+  });
+
+  it('href falls back to surface path when no anchor provided', () => {
+    const out = formatCrossReference({
+      relatedLabel: 'Disney HM',
+      surface: '/races',
+    });
+    expect(out.href).toBe('/races');
+  });
+
+  it('text and href are independent — text formatting does not affect href', () => {
+    // Specifically: "contributing to" subject-inversion changes text
+    // but href stays clean (surface or surface#anchor).
+    const out = formatCrossReference({
+      relatedLabel: 'Disney HM',
+      surface: '/races',
+      anchor: 'pr-disney-hm',
+      relation: 'contributing to',
+    });
+    expect(out.text).toBe('the Disney HM on /races is contributing to this');
+    expect(out.href).toBe('/races#pr-disney-hm');
   });
 });
 

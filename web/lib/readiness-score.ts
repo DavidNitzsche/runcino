@@ -57,6 +57,8 @@
 import { query } from './db';
 import { computeSignal2 } from './adaptive-vdot-signal2';
 import { computeStravaGap } from './strava-gap';
+import { formatCrossReference, type CrossReference } from './coach-voice';
+import type { Z2CoverageFinding } from './z2-coverage';
 
 export interface ReadinessFinding {
   /** 0-100 composite score, OR null when surface should be silent. */
@@ -72,6 +74,12 @@ export interface ReadinessFinding {
   missingInputs: string[];
   /** Suppress reason when score is null. */
   suppressReason?: 'injured' | 'no-data';
+  /** V7 cross-reference to another /overview surface that plausibly
+   *  contributes to the readiness state.  Fires only when the
+   *  earned-not-decorative relevance check passes (see
+   *  resolveCrossRef below).  Null when no related finding is informing
+   *  this one. */
+  crossRef?: CrossReference | null;
 }
 
 interface ActivityRow {
@@ -100,11 +108,54 @@ function recommendationFor(state: ReadinessFinding['state']): string {
   }
 }
 
+/**
+ * V7 · resolveCrossRef · earned-not-decorative cross-reference check.
+ *
+ * V5 (Z2 stimulus check) → C6 (readiness) cross-ref fires when ALL of:
+ *
+ *   · readiness state is yellow or red (green doesn't need an explanation)
+ *   · V5 is firing (z2Finding.shouldRender === true)
+ *   · V5 plausibly contributes — at least one readiness input that
+ *     reduced the score is in the same causal family as V5's finding.
+ *     V5 means easy runs were too hard; that elevates yesterday's
+ *     load + freshness markers.  If yesterday or freshness pushed the
+ *     score down, V5 is plausibly part of the story.
+ *
+ * Relation: 'consistent with' (default) — corroboration without
+ * overclaiming causation.  Both surfaces observe elevated effort from
+ * different angles; we don't assert V5 caused C6.
+ *
+ * Returns null when the check fails — topic overlap alone is not
+ * enough to fire a cross-reference (Rule 1 from CROSS-REFERENCE
+ * DISCIPLINE in coach-voice.ts).
+ */
+export function resolveCrossRef(
+  state: ReadinessFinding['state'],
+  inputs: ReadinessFinding['inputs'],
+  z2Finding: Z2CoverageFinding | null,
+): CrossReference | null {
+  if (state === 'green') return null;
+  if (!z2Finding || !z2Finding.shouldRender) return null;
+
+  const fatigueRelevantInputs = inputs.filter(
+    (i) => i.delta < 0 && (i.name === 'yesterday' || i.name === 'freshness' || i.name === 'load-7d'),
+  );
+  if (fatigueRelevantInputs.length === 0) return null;
+
+  return formatCrossReference({
+    relatedLabel: 'Z2 stimulus check',
+    surface: '/overview',
+    anchor: 'z2-stimulus-check',
+    relation: 'consistent with',
+  });
+}
+
 export async function computeReadinessScore(
   userId: string,
   todayIso: string,
   userMaxHr: number | null,
   restingHr: number | null,
+  z2Finding: Z2CoverageFinding | null = null,
 ): Promise<ReadinessFinding> {
   // Suspension check first (per Rule 5 · per-finding context filter).
   try {
@@ -228,6 +279,7 @@ export async function computeReadinessScore(
 
   score = clamp(score, 0, 100);
   const state = stateFor(score);
+  const crossRef = resolveCrossRef(state, inputs, z2Finding);
 
   return {
     score,
@@ -235,5 +287,6 @@ export async function computeReadinessScore(
     recommendation: recommendationFor(state),
     inputs,
     missingInputs: missing,
+    crossRef,
   };
 }

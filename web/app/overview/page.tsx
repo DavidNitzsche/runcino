@@ -184,12 +184,14 @@ export default async function OverviewPage() {
   // C6 · Daily readiness score (0-100). Composite from yesterday's
   // load + last-7d hard sessions + Signal 2 HR-pace drift. Surface-
   // only — never auto-modifies the plan. Suspended when user marked
-  // injured.
+  // injured.  z2Finding is threaded through for the V7 cross-reference
+  // (V5 → C6 fires when both fatigue inputs and V5 are active).
   const readiness = await computeReadinessScore(
     user.id,
     today,
     fitness.maxHr.value,
     fitness.restingHr.value,
+    z2Finding,
   ).catch(() => null);
 
   // Title bucket sizing
@@ -367,7 +369,11 @@ export default async function OverviewPage() {
                     workoutType={todayDay?.type ?? 'easy'}
                   />
                 )}
-                {z2Finding && <Z2CoverageCard finding={z2Finding} />}
+                {z2Finding && (
+                  <div id="z2-stimulus-check">
+                    <Z2CoverageCard finding={z2Finding} />
+                  </div>
+                )}
                 <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
                   {substitutionMenu && <SubstitutionMenu menu={substitutionMenu} />}
@@ -446,6 +452,18 @@ export default async function OverviewPage() {
                     }
                   >
                     {readiness.recommendation}
+                    {readiness.crossRef && (
+                      <span style={{ fontSize: 13, color: 'rgba(13,15,18,.65)' }}>
+                        {' — '}
+                        <a
+                          href={readiness.crossRef.href}
+                          style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                        >
+                          {readiness.crossRef.text}
+                        </a>
+                        {'.'}
+                      </span>
+                    )}
                     {readiness.missingInputs.length > 0 && (
                       <div style={{ fontSize: 11, color: 'rgba(13,15,18,.55)', marginTop: 4, fontStyle: 'italic' }}>
                         {readiness.missingInputs.length === 1

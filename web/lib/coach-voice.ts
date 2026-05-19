@@ -106,6 +106,44 @@
  * the runner the wrong thing about what they should do.
  *
  * ─────────────────────────────────────────────────────────────────────
+ *                      CROSS-REFERENCE DISCIPLINE (V7)
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * Cross-references let one surface acknowledge a related finding from
+ * another surface in language, without restating it.  They're how the
+ * system stops sounding like a stack of independent cards and starts
+ * sounding like one coach speaking across multiple aspects of training.
+ *
+ * THREE RULES — read these before adding any cross-reference:
+ *
+ *   1. EARNED, NOT DECORATIVE.
+ *      Cross-references fire when one surface's finding INFORMS another's
+ *      recommendation, not when they're topically related.  Topic overlap
+ *      is not enough.  The two findings must be linked by evidence the
+ *      runner could verify.
+ *
+ *      Good: C6 yellow + V5 firing + V5's elevated easy effort plausibly
+ *            explains the readiness flag → cross-ref earned.
+ *      Bad:  C6 yellow + V5 silent → no cross-ref ("they're both about
+ *            effort" is topic overlap, not informing).
+ *
+ *      Every cross-reference site needs a clear relevance check in code.
+ *      If you can't write the check, you don't have a cross-reference;
+ *      you have a thematic suggestion that doesn't belong.
+ *
+ *   2. RELATION STRENGTH IS A HIERARCHY (see formatCrossReference docs
+ *      for the four relation strengths and when each fires).  Pick the
+ *      weakest relation that's still accurate.  A weaker relation is
+ *      always safer than an overclaimed stronger one.
+ *
+ *   3. ONE CROSS-REFERENCE PER SURFACE PER RENDER.
+ *      A card pulling from three other surfaces ("consistent with V5,
+ *      tied to the max HR work, contributing to V3") is a coach trying
+ *      too hard.  If two cross-references would fire on the same render,
+ *      pick the strongest relation per the hierarchy and drop the
+ *      others.  Coherent > comprehensive.
+ *
+ * ─────────────────────────────────────────────────────────────────────
  *                      WHAT THIS MODULE IS NOT
  * ─────────────────────────────────────────────────────────────────────
  *
@@ -253,56 +291,140 @@ export function formatReversal(observation: string): string {
   return `${cleaned} ${WOULD_WEAKEN}`;
 }
 
+/** Four relation strengths a cross-reference can carry.  Pick the
+ *  WEAKEST that is still accurate.  See per-relation rules in the
+ *  formatCrossReference docstring. */
+export type CrossReferenceRelation =
+  | 'see also'         // Same training aspect, no causal claim.
+  | 'consistent with'  // Independent surfaces, compatible findings.
+  | 'contributing to'  // Related finding plausibly causes the current.
+  | 'tied to';         // Shared underlying data event.
+
+/** Structured result of formatCrossReference — text plus navigation
+ *  target.  The text is the lower-case clause to embed mid-sentence;
+ *  the href is the link target for web (anchor) or iPhone (deep link).
+ *  Renderers wrap the text in a link element using href. */
+export interface CrossReference {
+  /** Lower-case clause designed to be embedded mid-sentence. */
+  text: string;
+  /** Navigation target: surface path, optionally with #anchor fragment.
+   *  Web: anchor link; iPhone: deep link URI.  Always present — the
+   *  related surface is by definition reachable.  Renderers can ignore
+   *  if the link UX isn't ready. */
+  href: string;
+}
+
 /**
  * Build a cross-reference clause acknowledging a related finding from
  * another surface — V7 building block.
  *
- * The point: when two surfaces share a contributing factor, the second
- * surface should ACKNOWLEDGE the first without RESTATING it. This
- * helper builds a lower-case clause designed to be embedded inside a
- * surface's own sentence.
+ * The point: when one surface's finding INFORMS another's recommendation,
+ * the informed surface should ACKNOWLEDGE the informant without
+ * RESTATING it.  This helper builds the clause + the navigation target
+ * so the runner can jump to the related surface.
  *
- * Example:
+ * RELEVANCE CHECK REQUIRED.  Cross-references are earned, not decorative
+ * (see "CROSS-REFERENCE DISCIPLINE" section at top of file).  Every
+ * caller must demonstrate that the two findings inform each other.  If
+ * the check is missing, the cross-reference is wrong — even if the
+ * topics match.
+ *
+ * FREQUENCY CAP.  At most one cross-reference per surface per render.
+ * If two would fire, the surface picks the strongest relation and drops
+ * the rest.  Enforced by convention in caller code — the helper itself
+ * builds one at a time.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * RELATION STRENGTH USAGE RULES (locked in V7 round)
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * `see also` — INFORMATIONAL POINTER.  Same training aspect, no causal
+ *     claim.  Use when the related finding gives the runner additional
+ *     context but doesn't explain or modify the current finding.
+ *     Example: V3 trajectory ON-TRACK + C9 projection chart →
+ *     "see also the projection chart on /races" (both describe race
+ *     trajectory; neither informs the other).
+ *
+ * `consistent with` — CORROBORATION (default).  Independent surfaces
+ *     producing compatible findings.  No causal claim — just that they
+ *     agree.  Use when both surfaces observe the same pattern from
+ *     different angles.
+ *     Example: V5 firing + C6 yellow + V5 plausibly contributes →
+ *     "consistent with the Z2 stimulus check on /overview" (both
+ *     register elevated effort; corroboration without causation).
+ *
+ * `contributing to` — CAUSAL, REQUIRES EVIDENCE.  Related finding
+ *     plausibly causes the current.  Only fires when the caller can
+ *     point to concrete evidence (timing, mechanism) supporting the
+ *     causal claim.  Grammatically asymmetric: the related finding
+ *     takes the subject position ("the X on Y is contributing to this").
+ *     Example: Signal 4 PR fired + L7 verdict bumped → VDOT explainer
+ *     shows "the [PR name] on /races is contributing to this" (the
+ *     PR directly fed the bump-points calculation).
+ *
+ * `tied to` — STRUCTURAL LINK.  Shared underlying data event causes
+ *     both findings to change together.  Use when both surfaces read
+ *     from the same data source and a change there ripples through.
+ *     Example: max HR validation accepted → Z2 sparkline notes
+ *     "tied to the max HR validation on /profile" (zones recalibrate
+ *     because of the validation; structural, not causal).
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * EXAMPLES:
  *
  *   formatCrossReference({
  *     relatedLabel: 'Z2 stimulus check',
  *     surface:      '/overview',
+ *     anchor:       'z2-stimulus',
  *     relation:     'consistent with',
  *   })
- *     → "consistent with the Z2 stimulus check on /overview"
+ *     → { text: 'consistent with the Z2 stimulus check on /overview',
+ *         href: '/overview#z2-stimulus' }
  *
- *   Used inside C6 readiness copy:
- *   "Yellow. Watch effort if HR runs high early — consistent with the
- *    Z2 stimulus check on /overview."
+ *   formatCrossReference({
+ *     relatedLabel: 'Disney HM',
+ *     surface:      '/races',
+ *     relation:     'contributing to',
+ *   })
+ *     → { text: 'the Disney HM on /races is contributing to this',
+ *         href: '/races' }
  *
- * RELATIONS:
- *   · `consistent with`   — same pattern showing up in two surfaces
- *                            (V5 firing + C6 yellow: both observing
- *                            elevated effort).
- *   · `tied to`           — causal / structural link
- *                            (suspect-ceiling banner + Z2 sparkline:
- *                            zones recalibrated changes the sparkline).
- *   · `contributing to`   — related finding feeds the current one
- *                            (Signal 4 PR contributing to L7 bump).
- *   · `see also`          — pointer-only, no causal claim
- *                            (E1/E4 gap + L7 signals suspended).
+ * Used inside C6 readiness copy:
+ *   "Yellow. Watch effort if HR runs high — {text}."
  *
- * Pick the weakest relation that's still accurate. "Consistent with"
- * is the default because it claims pattern-co-occurrence without
- * asserting causation.
+ * Used in VDOT explainer:
+ *   "L7 verdict bumped +0.6 VDOT — {text}."
  */
 export function formatCrossReference(args: {
-  /** Brief noun-phrase naming the related finding. Should be the same
+  /** Brief noun-phrase naming the related finding.  Should be the same
    *  label the related surface uses for itself. */
   relatedLabel: string;
   /** Surface path where the related finding lives (e.g., '/overview',
-   *  '/profile', or component name). */
+   *  '/profile'). */
   surface: string;
-  /** How this finding relates to the current one. Default: 'consistent with'. */
-  relation?: 'consistent with' | 'tied to' | 'contributing to' | 'see also';
-}): string {
-  const relation = args.relation ?? 'consistent with';
-  return `${relation} the ${args.relatedLabel} on ${args.surface}`;
+  /** Optional fragment/anchor to scroll/deep-link to within the surface.
+   *  Web: appended as #fragment.  iPhone: passed through as deep-link
+   *  query parameter.  When omitted, href is just the surface path. */
+  anchor?: string;
+  /** How the related finding relates to the current one.  Default:
+   *  'consistent with' (corroboration without causation — safest). */
+  relation?: CrossReferenceRelation;
+}): CrossReference {
+  const relation: CrossReferenceRelation = args.relation ?? 'consistent with';
+  const relatedNoun = `the ${args.relatedLabel} on ${args.surface}`;
+
+  // Grammatical asymmetry: 'contributing to' is causal, so the related
+  // finding takes the subject position.  The other three relations
+  // take the related finding as object.
+  const text =
+    relation === 'contributing to'
+      ? `${relatedNoun} is contributing to this`
+      : `${relation} ${relatedNoun}`;
+
+  const href = args.anchor ? `${args.surface}#${args.anchor}` : args.surface;
+
+  return { text, href };
 }
 
 /**
