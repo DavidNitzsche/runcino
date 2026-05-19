@@ -147,6 +147,14 @@ export function citationsForWorkoutType(type: string): Citation[] {
           'research', '08',
         ),
       ];
+    case 'race_week_tuneup':
+      return [
+        cite(
+          '§9.3 Day-by-day race week templates',
+          'Tuesday race-week tune-up — short sharpener (e.g. HM: 4-5 mi w/ 4 × 1K at HMP, 90s recovery). Sharpens neuromuscular readiness without adding training fatigue; not a quality stimulus.',
+          'research', '08',
+        ),
+      ];
     case 'rest':
       return [
         cite(

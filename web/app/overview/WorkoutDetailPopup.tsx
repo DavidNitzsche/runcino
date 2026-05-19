@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<string, string> = {
   shakeout: 'Shakeout',
   race: 'Race',
   rest: 'Rest',
+  race_week_tuneup: 'Race Week Tune-Up',
 };
 
 const MONTH_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
