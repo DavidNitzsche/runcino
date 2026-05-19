@@ -27,15 +27,16 @@ import type { PlanWorkout, WorkoutType } from '../coach/plan-types';
 const STRAVA_API_BASE = 'https://www.strava.com/api/v3';
 
 const TYPE_LABEL: Record<WorkoutType, string> = {
-  easy:      'Easy',
-  long:      'Long Run',
-  threshold: 'Threshold',
-  interval:  'Intervals',
-  mp:        'Marathon Pace',
-  recovery:  'Recovery',
-  shakeout:  'Shakeout',
-  race:      'Race',
-  rest:      'Rest',
+  easy:             'Easy',
+  long:             'Long Run',
+  threshold:        'Threshold',
+  interval:         'Intervals',
+  mp:               'Marathon Pace',
+  recovery:         'Recovery',
+  shakeout:         'Shakeout',
+  race:             'Race',
+  rest:             'Rest',
+  race_week_tuneup: 'Tune-Up',
 };
 
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

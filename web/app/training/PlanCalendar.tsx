@@ -223,12 +223,14 @@ const WORKOUT_LABELS: Record<string, string> = {
   easy: 'Easy', long: 'Long Run', threshold: 'Threshold',
   interval: 'Intervals', mp: 'MP', recovery: 'Recovery',
   shakeout: 'Shakeout', race: 'RACE', rest: 'Rest',
+  race_week_tuneup: 'Tune-Up',
 };
 
 const WORKOUT_COLORS: Record<string, string> = {
   threshold: 'var(--corp)', interval: 'var(--corp)',
   long: 'var(--good)', race: 'var(--race)',
   recovery: 'var(--att)', shakeout: 'var(--att)',
+  race_week_tuneup: 'var(--corp)',
 };
 
 function WorkoutCell({ w, phaseColor, onOpen, today }: {

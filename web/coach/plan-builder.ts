@@ -351,8 +351,12 @@ export function weekShape(
       } else if ((raceDow - i + 7) % 7 === 1) {
         days[i] = { type: 'shakeout', isQuality: false, isLong: false };
       } else if (isHmRace && i === 2) {
-        // Tuesday tune-up: short quality session to stay sharp (Research/08 §9.3).
-        days[i] = { type: 'threshold', isQuality: true, isLong: false };
+        // Tuesday tune-up: short sharpener — not a quality stimulus.
+        // Daniels + Pfitzinger treat the race-week tune-up as a
+        // neuromuscular primer with negligible training fatigue, so
+        // isQuality is false and the day-after suppression rules
+        // skip it. (Research/08 §9.3)
+        days[i] = { type: 'race_week_tuneup', isQuality: false, isLong: false };
       } else if (i === prefs.restDow) {
         days[i] = { type: 'rest', isQuality: false, isLong: false };
       } else {
@@ -502,8 +506,12 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     if (threshMi > 0)   threshMi   = Math.max(4, threshMi);
     if (intervalMi > 0) intervalMi = Math.max(4, intervalMi);
 
+    // Race-week tune-up: warmup + 4×1K work + cooldown ≈ 4.5 mi
+    // (Research/08 §9.3 — "4-5 mi w/ 4 × 1K at HMP").
+    const tuneupMi = shape.some(d => d.type === 'race_week_tuneup') ? 4.5 : 0;
+
     // ── Easy days ───────────────────────────────────────────────
-    const usedMi     = longMi + threshMi + (numQ >= 2 ? intervalMi : 0);
+    const usedMi     = longMi + threshMi + (numQ >= 2 ? intervalMi : 0) + tuneupMi;
     const easyBudget = Math.max(0, weeklyMi - usedMi);
     const easySlots  = shape.reduce<number[]>((acc, d, i) => {
       if (!d.isQuality && !d.isLong && d.type === 'easy') acc.push(i);
@@ -522,6 +530,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
       const d = shape[i];
       if (d.type === 'rest' || d.type === 'race') continue;
       if (d.type === 'shakeout') { distances[i] = 3; continue; }
+      if (d.type === 'race_week_tuneup') { distances[i] = tuneupMi; continue; }
       if (d.isLong) { distances[i] = longMi; continue; }
       if (d.isQuality) {
         // threshold first, then interval
@@ -715,6 +724,8 @@ function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): numbe
     case 'interval':  return paceCenter(paceSet.I);
     case 'mp':        return paceCenter(paceSet.M);
     case 'shakeout':  return paceCenter(paceSet.E);
+    // HM tune-up work intervals are at HMP ≈ T pace (Research/08 §9.3).
+    case 'race_week_tuneup': return paceCenter(paceSet.T);
     default:          return null; // rest, race — no target
   }
 }
@@ -732,7 +743,6 @@ function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutba
   }
   if (t === 'threshold') {
     const tsp = THRESHOLD_SESSION_PROGRESSION.value;
-    if (phase === 'RACE_WEEK') return 'Race Week Tune-Up';
     if (phase === 'BASE') return tsp.BASE.label;
     if (phase === 'TAPER') return tsp.TAPER.label;
     if (phase === 'PEAK') return tsp.PEAK.label;
@@ -741,6 +751,7 @@ function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutba
     }
     return null;
   }
+  if (t === 'race_week_tuneup') return 'Race Week Tune-Up';
   return null;
 }
 
@@ -787,17 +798,18 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     }
 
     case 'threshold': {
-      if (phase === 'RACE_WEEK') {
-        const tuneUp = RACE_WEEK_TEMPLATES.value.half_sunday.find(d => d.day === 'Tue');
-        return tuneUp
-          ? `Race week tune-up — ${tuneUp.workout}. Sharp legs, not tired legs. Get in, get out, don\'t add reps because it felt good. (Research/08 §9.3)`
-          : 'Race week tune-up — 4–5 mi with 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. Get in, get out. (Research/08 §9.3)';
-      }
       if (phase === 'BASE') return tsp.BASE.prescription;
       if (phase === 'TAPER') return tsp.TAPER.prescription;
       if (phase === 'PEAK') return tsp.PEAK.prescription;
       if (phase === 'BUILD') return weekIdx % 2 === 1 ? tsp.BUILD_EARLY.prescription : tsp.BUILD_LATE.prescription;
       return tsp.BASE.prescription;
+    }
+
+    case 'race_week_tuneup': {
+      const tuneUp = RACE_WEEK_TEMPLATES.value.half_sunday.find(d => d.day === 'Tue');
+      return tuneUp
+        ? `Race week tune-up — ${tuneUp.workout}. Sharp legs, not tired legs. This is a sharpener, not a stimulus — get in, get out, don\'t add reps because it felt good. (Research/08 §9.3)`
+        : 'Race week tune-up — 4–5 mi with 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. Get in, get out. (Research/08 §9.3)';
     }
 
     case 'interval': {

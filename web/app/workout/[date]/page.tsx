@@ -28,15 +28,16 @@ function fmtMin(distMi: number, sPerMi: number): string {
 }
 
 const TYPE_DISPLAY: Record<string, string> = {
-  threshold: 'Threshold',
-  interval:  'Intervals',
-  long:      'Long Run',
-  easy:      'Easy Run',
-  recovery:  'Recovery',
-  shakeout:  'Shakeout',
-  race:      'Race',
-  rest:      'Rest',
-  mp:        'Marathon Pace',
+  threshold:        'Threshold',
+  interval:         'Intervals',
+  long:             'Long Run',
+  easy:             'Easy Run',
+  recovery:         'Recovery',
+  shakeout:         'Shakeout',
+  race:             'Race',
+  rest:             'Rest',
+  mp:               'Marathon Pace',
+  race_week_tuneup: 'Race Week Tune-Up',
 };
 
 const PHASE_CHIP: Record<PhaseLabel, { label: string; color: string }> = {

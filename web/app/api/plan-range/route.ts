@@ -40,46 +40,51 @@ export interface PlanRangeApiErr {
 
 function mapToRunType(planType: string): RunWorkoutType {
   switch (planType) {
-    case 'easy':      return 'general_aerobic';
-    case 'long':      return 'long_steady';
-    case 'threshold': return 'threshold';
-    case 'interval':  return 'vo2';
-    case 'mp':        return 'marathon_specific';
-    case 'race':      return 'race';
-    case 'shakeout':  return 'shakeout';
-    case 'recovery':  return 'recovery';
-    case 'rest':      return 'rest';
-    default:          return 'general_aerobic';
+    case 'easy':              return 'general_aerobic';
+    case 'long':              return 'long_steady';
+    case 'threshold':         return 'threshold';
+    case 'interval':          return 'vo2';
+    case 'mp':                return 'marathon_specific';
+    case 'race':              return 'race';
+    case 'shakeout':          return 'shakeout';
+    case 'recovery':          return 'recovery';
+    case 'rest':              return 'rest';
+    // Tune-up shows the threshold-tier colour treatment in the calendar
+    // grid, but its plan-side isQuality flag stays false (Research/08 §9.3).
+    case 'race_week_tuneup':  return 'threshold';
+    default:                  return 'general_aerobic';
   }
 }
 
 function mapToLabel(planType: string): string {
   switch (planType) {
-    case 'easy':      return 'Easy Run';
-    case 'long':      return 'Long Run · Steady';
-    case 'threshold': return 'Threshold Tempo';
-    case 'interval':  return 'VO₂ Max Intervals';
-    case 'mp':        return 'Marathon Pace';
-    case 'race':      return 'Race';
-    case 'shakeout':  return 'Shakeout';
-    case 'recovery':  return 'Recovery Run';
-    case 'rest':      return 'Rest';
-    default:          return 'Easy Run';
+    case 'easy':              return 'Easy Run';
+    case 'long':              return 'Long Run · Steady';
+    case 'threshold':         return 'Threshold Tempo';
+    case 'interval':          return 'VO₂ Max Intervals';
+    case 'mp':                return 'Marathon Pace';
+    case 'race':              return 'Race';
+    case 'shakeout':          return 'Shakeout';
+    case 'recovery':          return 'Recovery Run';
+    case 'rest':              return 'Rest';
+    case 'race_week_tuneup':  return 'Race Week Tune-Up';
+    default:                  return 'Easy Run';
   }
 }
 
 function mapToDescription(planType: string): string {
   switch (planType) {
-    case 'easy':      return 'Easy / conversational. E pace per Daniels (Research/01).';
-    case 'long':      return 'Long aerobic run at E pace. Builds durability (Research/00a §Long runs).';
-    case 'threshold': return 'Threshold continuous block at T pace (Research/01 §Daniels training paces).';
-    case 'interval':  return 'VO₂max intervals at I pace — 1000-1200 m reps (Research/01 §Dosing rules).';
-    case 'mp':        return 'Marathon-pace block (Research/01 §M pace).';
-    case 'race':      return 'Race day — execute per race-week pacing strategy (Research/08).';
-    case 'shakeout':  return 'Short shakeout, optional 4 strides.';
-    case 'recovery':  return 'Recovery run — below E pace. Circulation, not adaptation.';
-    case 'rest':      return 'Full rest day.';
-    default:          return '';
+    case 'easy':              return 'Easy / conversational. E pace per Daniels (Research/01).';
+    case 'long':              return 'Long aerobic run at E pace. Builds durability (Research/00a §Long runs).';
+    case 'threshold':         return 'Threshold continuous block at T pace (Research/01 §Daniels training paces).';
+    case 'interval':          return 'VO₂max intervals at I pace — 1000-1200 m reps (Research/01 §Dosing rules).';
+    case 'mp':                return 'Marathon-pace block (Research/01 §M pace).';
+    case 'race':              return 'Race day — execute per race-week pacing strategy (Research/08).';
+    case 'shakeout':          return 'Short shakeout, optional 4 strides.';
+    case 'recovery':          return 'Recovery run — below E pace. Circulation, not adaptation.';
+    case 'rest':              return 'Full rest day.';
+    case 'race_week_tuneup':  return 'Race week sharpener — short tune-up to prime neuromuscular readiness without adding fatigue (Research/08 §9.3).';
+    default:                  return '';
   }
 }
 
@@ -90,12 +95,14 @@ function paceForType(
 ): { lowS: number; highS: number } | null {
   if (!paces) return null;
   switch (planType) {
-    case 'easy':      return paces.E;
-    case 'long':      return paces.E;
-    case 'threshold': return paces.T;
-    case 'interval':  return paces.I;
-    case 'mp':        return paces.M;
-    default:          return null;
+    case 'easy':              return paces.E;
+    case 'long':              return paces.E;
+    case 'threshold':         return paces.T;
+    case 'interval':          return paces.I;
+    case 'mp':                return paces.M;
+    // HM tune-up work intervals at HMP ≈ T pace (Research/08 §9.3).
+    case 'race_week_tuneup':  return paces.T;
+    default:                  return null;
   }
 }
 

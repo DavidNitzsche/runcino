@@ -19,7 +19,8 @@ export type WorkoutType =
   | 'mp'
   | 'race'
   | 'shakeout'
-  | 'recovery';
+  | 'recovery'
+  | 'race_week_tuneup';
 
 export type PhaseLabel =
   | 'BASE'

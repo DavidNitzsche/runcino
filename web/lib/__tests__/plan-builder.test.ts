@@ -166,6 +166,28 @@ describe('buildPlan — race-prep HM intermediate', () => {
     expect(raceDay).toBeDefined();
     expect(raceDay!.distanceMi).toBe(13.1);
   });
+
+  it('HM race-week tune-up has its own type, is not quality, and lands on Tuesday', async () => {
+    // Saturday race + 2026-08-01 → race week starts Mon 2026-07-27.
+    // Tuesday tune-up therefore on 2026-07-28.
+    const state = makeState(25, 10, TODAY);
+    const raceDateISO = '2026-08-01';
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [2, 4], restDow: 1, level: 'intermediate' },
+      race: { id: 'hm-test', name: 'Test HM', dateISO: raceDateISO, distanceMi: 13.1, priority: 'A' },
+      todayISO: TODAY,
+    });
+    const raceWeek = plan.weeks.find(w => w.isRaceWeek)!;
+    const tuneup = raceWeek.workouts.find(w => w.type === 'race_week_tuneup');
+    expect(tuneup, 'HM race week must carry a race_week_tuneup workout').toBeDefined();
+    expect(tuneup!.isQuality, 'tune-up is a sharpener, not a quality stimulus').toBe(false);
+    expect(tuneup!.isLong).toBe(false);
+    expect(tuneup!.dow).toBe(2); // Tuesday
+    expect(tuneup!.distanceMi).toBeGreaterThan(0);
+    // And there must be no other quality work that week.
+    expect(raceWeek.workouts.filter(w => w.isQuality).length).toBe(0);
+  });
 });
 
 describe('buildPlan — race-prep HM beginner', () => {
