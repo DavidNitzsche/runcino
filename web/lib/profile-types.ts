@@ -26,6 +26,13 @@ export interface ProfileRow {
   /** User-chosen brand accent, stored as a `#RRGGBB` hex string. null
    *  falls back to the canonical Runcino blue (`#008FEC`). */
   accent_color: string | null;
+  /** Apple Health VO2max estimate (manual entry today; HealthKit M2).
+   *  WELLNESS signal — physiological capacity. NEVER used for pace
+   *  prescription. Range 25-90. See lib/vo2max-apple.ts. */
+  vo2max_apple: number | null;
+  /** ISO timestamp the manual VO2max was last written. Drives the
+   *  trend display on /profile. */
+  vo2max_apple_updated_at: string | null;
 }
 
 export interface ProfileInput {

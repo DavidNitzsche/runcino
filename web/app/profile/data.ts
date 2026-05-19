@@ -18,6 +18,7 @@ import type {
   ProfileApiShoeRow,
   ProfileApiConnection,
   ProfileApiVdot,
+  ProfileApiVo2MaxApple,
   ProfileApiHrBlock,
   ProfileApiHrZone,
   ProfileApiTier,
@@ -35,6 +36,7 @@ export type {
   ProfileApiShoeRow as ShoeRow,
   ProfileApiConnection as Connection,
   ProfileApiVdot as Vdot,
+  ProfileApiVo2MaxApple as Vo2MaxApple,
   ProfileApiHrBlock as HrBlock,
   ProfileApiHrZone as HrZone,
   ProfileApiTier as Tier,
@@ -56,6 +58,7 @@ export interface ProfileData {
   goals: ProfileApiGoal[];
   goalsActive: number;
   vdot: ProfileApiVdot;
+  vo2MaxApple: ProfileApiVo2MaxApple;
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
@@ -78,6 +81,7 @@ interface ProfileApiOk {
   goals: ProfileApiGoal[];
   goalsActive: number;
   vdot: ProfileApiVdot;
+  vo2MaxApple: ProfileApiVo2MaxApple;
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
@@ -113,6 +117,7 @@ export async function loadProfileData(): Promise<ProfileData> {
     goals: api.goals,
     goalsActive: api.goalsActive,
     vdot: api.vdot,
+    vo2MaxApple: api.vo2MaxApple,
     hrBlock: api.hrBlock,
     tier: api.tier,
     prefs: api.prefs,
