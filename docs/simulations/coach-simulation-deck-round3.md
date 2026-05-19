@@ -212,3 +212,66 @@ Tomorrow's session picks up:
 - Ongoing large-shift guard
 
 *Round 3 deck generated 2026-05-19 ~01:00 PT. Keep round 2's deck (`coach-simulation-deck-round2.md`) as the diff baseline.*
+
+---
+
+## Postscript · race-recency filter validated on real data (2026-05-19 afternoon)
+
+The L7 Signal 1 context filter caught its first real-world case the same day it shipped.
+
+David's Strava activity from **2026-04-23** — "Race Pace Mile Reps", 4-mile session at 7:36/mi vs prescribed 7:13/mi (23 s/mi slow), HR 144 — sat **3 days before Big Sur Marathon (2026-04-26)**.
+
+Without the race-recency filter, this workout would have entered Signal 1's `slowerCount` tally as evidence of a possible fitness regression. Three days before an A-race, paces are deliberately distorted — taper miles run at "race pace" with conservative effort, body in pre-race conservation mode. Treating that workout as honest evidence would have polluted the verdict.
+
+The filter caught it:
+
+```
+2026-04-23 · "Race Pace Mile Reps"
+  actualPace:           7:36/mi
+  prescribedPace:       7:13/mi
+  paceDeltaS:           +23
+  avgHr:                144 (hrInRange: false — sub-Z4 effort)
+  temperatureF:         56
+  daysToNearestRace:    3
+  context:              ["race-recency"]
+  weight:               0
+  verdict:              FILTERED · race-recency
+```
+
+This is concrete validation that context filtering matters under live conditions — not a hypothetical. Pre-2026-05-19 evening, the system would have read this as a "slow threshold workout" and tallied it against fitness. The filter design is doing real work.
+
+**Pattern note:** "framework → live → fires" transition for the race-recency filter — built on theory, shipped at evening commit `2eba246`, validated against real data within hours of deploy. Same shape as the suspect-ceiling pattern's transition the day before.
+
+The filter has now ALSO caught:
+- Signal 2 prior window: 1 race-recency-filtered workout on 2026-04-23 (skipped from window math)
+- Signal 1 evaluation: 1 race-recency-filtered observation (zeroed weight, NEUTRAL verdict)
+
+Two surfaces, one filter, one real workout — three data points proving the design.
+
+---
+
+## Postscript · HRR framework activated for Z2 detection (2026-05-19 afternoon)
+
+David set resting HR to 40 via `/api/admin/set-fitness-config` (his anchor based on 6 months of consistent readings). The shared `lib/hr-zones.ts` utility auto-flipped to HRR (Karvonen) framework.
+
+**Before HRR (resting HR null, %max framework):**
+- Z2 band: 109-127 bpm (60-70% of max 181)
+- Signal 2 recent window: 1 workout / 1 Z2 mile
+- Signal 2 prior window:  6 workouts / 6 Z2 miles
+- Δ: +357 s/mi (single noisy data point)
+
+**After HRR (resting HR 40):**
+- Z2 band: 125-139 bpm (60-70% of HRR 141, +12 bpm ceiling shift)
+- Signal 2 recent window: 6 workouts / 7 Z2 miles
+- Signal 2 prior window:  12 workouts / 21 Z2 miles
+- Δ: +59 s/mi (representative sample, holds under volume gate)
+
+**Z2 evidence multiplier: 3.5x** (7 Z2 miles vs 2, 28 cumulative vs 8). Same activities, recalibrated band, much cleaner signal.
+
+**The %max framework was structurally miscalibrated for David's profile.** With max 181 and resting 40, his HRR is 141 — a high-end trained-runner spread. The %max approach assumes a fixed offset that breaks down at the low-resting-HR extreme. Karvonen captures the work-capacity proportionality more accurately.
+
+**Coaching observation (not yet surfaced):** Even after HRR recalibration, only ~32% of David's easy-run mileage in the recent window lands in Z2. The Z2 ceiling moved up 12 bpm and there's still drift above it. Queued as a V-tier coaching surface on `/overview`:
+
+> "Last 28 days: 7 Z2 miles across 6 easy runs (avg 1.2 mi/run, 22% of easy mileage in Z2). Easy effort builds aerobic base — slowing by 10-15 s/mi or holding HR ≤ 139 would lift the Z2 share."
+
+Same shape as suspect-ceiling: evidence + reasoning + recommendation, no auto-action. User decides whether to slow down or whether the band still needs investigation.

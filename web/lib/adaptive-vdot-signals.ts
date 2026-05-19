@@ -390,14 +390,14 @@ export function computeHrPaceDriftSignal(): AdaptiveSignals['hrPaceDrift'] {
   };
 }
 
-/** STUB · Interval pace adherence. Same pattern as Signal 1 but
- *  filters for I-pace workouts. Deferred to next pass to keep
- *  this commit focused on Signal 1 end-to-end. */
+/** Signal 3 implementation lives in lib/adaptive-vdot-signal3.ts —
+ *  this stub kept for the shape contract; the verdict module reads
+ *  the new module directly. */
 export function computeIntervalSignal(): AdaptiveSignals['intervals'] {
   return {
     observations: [],
     implemented: false,
-    note: 'Signal 3 (interval pace) deferred to follow-up; pattern mirrors Signal 1.',
+    note: 'See lib/adaptive-vdot-signal3.ts — Signal 3 now lives there with its own observation shape.',
   };
 }
 
