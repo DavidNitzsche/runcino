@@ -45,9 +45,14 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      // Apply also acknowledges the shift-guard review at the new
+      // value — applying an L7 bump is a deliberate "I see this and
+      // accept it" action, which satisfies the aggregate-level guard.
       await query(
         `UPDATE users
             SET vdot_manual_override = $1, vdot_manual_override_at = NOW(),
+                vdot_last_reviewed = $1, vdot_last_reviewed_at = NOW(),
+                vdot_shift_dismissed_at = NULL, vdot_shift_snoozed_at = NULL,
                 adaptive_vdot_dismissed_at = NULL,
                 updated_at = NOW()
           WHERE id = $2`,

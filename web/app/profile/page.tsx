@@ -26,6 +26,7 @@ import { resolveFitness } from '@/lib/fitness-resolver';
 import { validateMaxHr } from '@/lib/validate-max-hr';
 import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
+import { computeVdotShiftFinding } from '@/lib/vdot-shift';
 import { buildHrZonesBundle } from '@/lib/hr-zones';
 import './profile-v4.css';
 
@@ -199,6 +200,29 @@ export default async function ProfilePage() {
       }
     : null;
 
+  // Ongoing large-shift guard · "VDOT moved >2 pts since last review."
+  // Distinct from L7's per-workout adaptive bumps — this watches the
+  // aggregate value itself. Race-week suppression + 30-day Dismiss +
+  // 24-hour Investigate snooze all applied by computeVdotShiftFinding.
+  const vdotShiftFinding = await computeVdotShiftFinding(
+    auth.id,
+    fitness.vdot.value,
+    today,
+  ).catch(() => null);
+  const vdotShiftForUI = (vdotShiftFinding?.shouldRender
+      && vdotShiftFinding.currentVdot != null
+      && vdotShiftFinding.lastReviewed != null
+      && vdotShiftFinding.shiftPoints != null
+      && vdotShiftFinding.direction != null)
+    ? {
+        oldVdot: vdotShiftFinding.lastReviewed,
+        newVdot: vdotShiftFinding.currentVdot,
+        shiftPoints: vdotShiftFinding.shiftPoints,
+        direction: vdotShiftFinding.direction,
+        lastReviewedAt: vdotShiftFinding.lastReviewedAt,
+      }
+    : null;
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -318,6 +342,7 @@ export default async function ProfilePage() {
             raceFeasibility={raceFeasibility}
             paceMigrationAckAt={user.pace_migration_ack_at}
             adaptiveVdotVerdict={adaptiveVdotForUI}
+            vdotShift={vdotShiftForUI}
           />
         </div>
 

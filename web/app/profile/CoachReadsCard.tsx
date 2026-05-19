@@ -15,6 +15,7 @@ import type { RaceFeasibilityVerdict } from '@/lib/validate-race-feasibility';
 import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 import { PaceMigrationBanner } from './PaceMigrationBanner';
 import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdotBanner';
+import { VdotShiftBanner, type VdotShiftBannerProps } from './VdotShiftBanner';
 import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
@@ -104,6 +105,7 @@ export function CoachReadsCard({
   raceFeasibility,
   paceMigrationAckAt,
   adaptiveVdotVerdict,
+  vdotShift,
 }: {
   fitness: ResolvedFitness;
   maxHrVerdict?: MaxHrValidationVerdict | null;
@@ -117,6 +119,10 @@ export function CoachReadsCard({
    *  'vdot-bump-suggested' or 'vdot-downgrade-investigate', the
    *  AdaptiveVdotBanner is rendered below the VDOT section. */
   adaptiveVdotVerdict?: AdaptiveVdotVerdictForUI | null;
+  /** Ongoing large-shift guard. When set, banner renders above the
+   *  L7 banner — represents aggregate-level review, not per-workout
+   *  evidence. */
+  vdotShift?: VdotShiftBannerProps | null;
 }) {
   const explainer = aggregateExplainer(fitness.vdot);
   const needsMigrationAck = !paceMigrationAckAt;
@@ -277,6 +283,7 @@ export function CoachReadsCard({
               shape as the suspect-ceiling banner: evidence,
               reasoning, math, recommendation, falsifier, user
               agency. */}
+          {vdotShift && <VdotShiftBanner {...vdotShift} />}
           {adaptiveVdotVerdict && (
             adaptiveVdotVerdict.kind === 'vdot-bump-suggested' ||
             adaptiveVdotVerdict.kind === 'vdot-downgrade-investigate'

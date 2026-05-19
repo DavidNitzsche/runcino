@@ -480,6 +480,34 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS adaptive_vdot_dismissed_at TIMESTAMPTZ;
     `);
 
+    // Ongoing large-shift guard · "VDOT moved >2pts since last review"
+    //
+    // vdot_last_reviewed:
+    //   The aggregate VDOT value the user last acknowledged. Set on
+    //   first-time profile load (baseline), bumped to current on Apply
+    //   for the shift-guard banner, on Apply for the L7 adaptive-VDOT
+    //   banner, and on manual override clear.
+    //
+    // vdot_last_reviewed_at: timestamp of the last review event.
+    //
+    // vdot_shift_dismissed_at: 30-day suppress when user clicks
+    //   Dismiss on the shift-guard banner.
+    //
+    // vdot_shift_snoozed_at: 24-hour snooze when user clicks
+    //   Investigate (intent: "I'm looking into this, come back tomorrow").
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_last_reviewed NUMERIC(4,1);
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_last_reviewed_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_shift_dismissed_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_shift_snoozed_at TIMESTAMPTZ;
+    `);
+
     // L7 Signal 1 context filters · workout weather cache
     //
     // Caches Open-Meteo historical archive lookups for (lat, lon, date)
