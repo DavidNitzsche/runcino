@@ -32,6 +32,11 @@ export interface WorkoutDay {
   distanceMi: number;
   isRest?: boolean;
   hasStrength?: boolean;
+  /** When this cell IS a race day (type='race'), the saved race's
+   *  slug. Cells with raceSlug navigate to /races/[slug] on click
+   *  instead of opening the workout modal — the race plan has
+   *  more depth than a generic workout card. */
+  raceSlug?: string;
 }
 
 interface ModalContextValue {
@@ -84,26 +89,52 @@ export function HeroActions({ today, todayDay }: { today: string; todayDay: Work
   const [skipped, setSkipped]   = useState(false);
   const [err, setErr]           = useState<string | null>(null);
 
-  async function onSkip() {
+  // Mirror the skipped state to a body data attribute so the parent
+  // hero card can dim itself via CSS. Querying the existing state on
+  // mount keeps the toggle in sync if the runner navigates back.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/plan/skip').then((r) => r.json()).then((j) => {
+      if (cancelled) return;
+      if (j.skip && j.skip.dateISO === today) setSkipped(true);
+    }).catch(() => { /* no-op */ });
+    return () => { cancelled = true; };
+  }, [today]);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.body.dataset.skippedToday = skipped ? 'true' : 'false';
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        delete document.body.dataset.skippedToday;
+      }
+    };
+  }, [skipped]);
+
+  async function onSkipToggle() {
     if (!todayDay || skipping) return;
-    if (!confirm('Skip today\'s workout? You can undo this from the log.')) return;
+    if (!skipped && !confirm("Skip today's workout?")) return;
     setSkipping(true);
     setErr(null);
     try {
       const res = await fetch('/api/plan/skip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plannedWorkoutType: todayDay.type,
-          plannedMi: todayDay.distanceMi,
-          reason: 'runner-initiated',
-        }),
+        body: JSON.stringify(skipped
+          ? { undo: true }
+          : {
+              plannedWorkoutType: todayDay.type,
+              plannedMi: todayDay.distanceMi,
+              reason: 'runner-initiated',
+            }
+        ),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setErr(j?.error || 'Skip failed');
+        setErr(j?.error || (skipped ? 'Undo failed' : 'Skip failed'));
       } else {
-        setSkipped(true);
+        setSkipped((s) => !s);
       }
     } catch {
       setErr('Network error');
@@ -126,12 +157,28 @@ export function HeroActions({ today, todayDay }: { today: string; todayDay: Work
       <button
         type="button"
         className="btn-ghost"
-        onClick={onSkip}
-        disabled={skipping || skipped}
+        onClick={onSkipToggle}
+        disabled={skipping}
       >
-        {skipped ? 'SKIPPED' : skipping ? 'SKIPPING…' : 'SKIP TODAY'}
+        {skipping ? (skipped ? 'UNDOING…' : 'SKIPPING…')
+         : skipped ? '↩ UNDO SKIP TODAY'
+         : 'SKIP TODAY'}
       </button>
       {err && <span style={{ color: '#B00020', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      {/* Body-attribute-driven dim — applied site-wide whenever today
+          is skipped. Parent hero card opts in by selecting on this
+          attribute. */}
+      <style jsx global>{`
+        body[data-skipped-today="true"] .hero-card,
+        body[data-skipped-today="true"] .today-card {
+          opacity: 0.55;
+          transition: opacity 200ms ease;
+        }
+        body[data-skipped-today="true"] .hero-card .btn-ghost,
+        body[data-skipped-today="true"] .today-card .btn-ghost {
+          opacity: 1;
+        }
+      `}</style>
     </>
   );
 }

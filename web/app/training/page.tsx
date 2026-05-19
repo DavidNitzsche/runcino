@@ -26,6 +26,7 @@ import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, 
 import { getCompletedMileageByDate, isWorkoutComplete } from '@/lib/completed-runs';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
 import { TrainingCell } from './TrainingCellIsland';
+import { listRacesDB } from '@/lib/race-store';
 import './training-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -60,6 +61,12 @@ export default async function TrainingPage() {
   const completedMileage = await getCompletedMileageByDate(user.id, planStart, planEnd);
   const isComplete = (dateISO: string, plannedMi: number) =>
     isWorkoutComplete(dateISO, plannedMi, completedMileage);
+
+  // Map race dates → slug so race-day cells in the calendar can link
+  // to their full race plan instead of opening the generic modal.
+  const userRaces = await listRacesDB(user.id).catch(() => []);
+  const raceSlugByDate = new Map<string, string>();
+  for (const r of userRaces) raceSlugByDate.set(r.meta.date, r.slug);
   const phaseKey = currentWeek.phase;
   const phaseWeeks = weeks.filter((w) => w.phase === phaseKey);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
@@ -291,8 +298,12 @@ export default async function TrainingPage() {
                   // miles cover ≥60% of the planned distance.
                   const isDone = !isToday && d.date < today && !d.isRest && isComplete(d.date, d.distanceMi);
                   const classes = `cal-cell ${d.type}${d.hasStrength ? ' has-str' : ''}${isDone ? ' done' : ''}${isToday ? ' today' : ''}`;
+                  const cellDay: WorkoutDay = {
+                    ...(d as WorkoutDay),
+                    raceSlug: d.type === 'race' ? raceSlugByDate.get(d.date) : undefined,
+                  };
                   rows.push(
-                    <TrainingCell key={`d-${d.date}`} day={d as WorkoutDay} className={classes}>
+                    <TrainingCell key={`d-${d.date}`} day={cellDay} className={classes}>
                       {d.isRest ? (
                         <>
                           <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>

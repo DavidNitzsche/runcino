@@ -21,6 +21,34 @@ interface Props {
 
 export function TrainingCell({ day, className, children }: Props) {
   const { openFor } = useModal();
+  // Race-day cells navigate to the full race plan instead of opening
+  // the modal — there's a whole race plan page (course profile,
+  // phase-by-phase, fueling, etc.) that a generic workout modal can't
+  // hold. Cells without raceSlug still open the modal as before.
+  if (day.type === 'race' && day.raceSlug) {
+    return (
+      <a
+        href={`/races/${day.raceSlug}`}
+        className={`${className} cal-cell-btn`}
+        aria-label={`${day.label} race plan`}
+      >
+        {children}
+        <style jsx>{`
+          a.cal-cell-btn {
+            display: block;
+            font: inherit; color: inherit; text-decoration: none;
+            text-align: inherit; cursor: pointer; width: 100%;
+            transition: filter 120ms ease;
+          }
+          a.cal-cell-btn:hover { filter: brightness(0.97); }
+          a.cal-cell-btn:focus-visible {
+            outline: 2px solid var(--amber, #D4900A);
+            outline-offset: -2px;
+          }
+        `}</style>
+      </a>
+    );
+  }
   return (
     <button
       type="button"

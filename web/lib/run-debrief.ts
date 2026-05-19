@@ -275,7 +275,9 @@ export function generateRunDebrief(input: DebriefInput): string {
           if (zone === 'Z1' || zone === 'Z2') {
             sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm) — landed it.`);
           } else {
-            sentences.push(`Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm. You ran ${actualAvgHr - tgtHigh > 0 ? `+${actualAvgHr - tgtHigh}` : `${actualAvgHr - tgtHigh}`} bpm over the easy ceiling.`);
+            const delta = Math.round(actualAvgHr - tgtHigh);
+            const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+            sentences.push(`Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm. You ran ${deltaStr} bpm over the easy ceiling.`);
           }
         } else {
           // Pace sentence didn't include HR — give the full HR read.

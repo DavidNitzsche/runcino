@@ -143,10 +143,12 @@ export async function GET(req: NextRequest) {
       distanceMi: Number(d.distanceMi) || 0,
       movingTimeS: Number(d.movingTimeS) || 0,
       paceSPerMi: Number(d.paceSPerMi) || 0,
-      avgHr: d.avgHr ? Number(d.avgHr) : null,
-      maxHr: d.maxHr ? Number(d.maxHr) : null,
-      avgCadence: d.avgCadence ? Number(d.avgCadence) : null,
-      elevGainFt: Number(d.elevGainFt) || 0,
+      // Round HR + cadence at the API boundary so consumers never
+      // need to render "148.7" or "26.6999...bpm over ceiling".
+      avgHr: d.avgHr ? Math.round(Number(d.avgHr)) : null,
+      maxHr: d.maxHr ? Math.round(Number(d.maxHr)) : null,
+      avgCadence: d.avgCadence ? Math.round(Number(d.avgCadence)) : null,
+      elevGainFt: Math.round(Number(d.elevGainFt) || 0),
       type: d.type || 'Run',
       workoutType: d.workoutType ?? null,
       splits,

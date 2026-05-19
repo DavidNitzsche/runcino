@@ -223,6 +223,13 @@ export default async function RacePlanPage({ params }: PageProps) {
   const tz = userTimezone(auth.location);
   const today = todayISO(tz);
   const daysAway = Math.max(0, daysBetween(today, race.meta.date));
+
+  // Priority defaults to 'A' when unset — matches /races page behavior
+  // so the same race doesn't show as A-RACE on the calendar and
+  // C-RACE on the detail page. Users explicitly set B/C; null means
+  // "haven't decided" which is closer to A than C.
+  const priority = race.meta.priority ?? 'A';
+  const priorityLabel = priority === 'A' ? 'A-RACE' : priority === 'B' ? 'B-RACE' : 'C-RACE';
   const briefGenIso = (() => {
     // 7 days before the race
     const d = new Date(race.meta.date + 'T12:00:00Z');
@@ -318,7 +325,7 @@ export default async function RacePlanPage({ params }: PageProps) {
           <div className="coach-left">
             <div className="coach-label">
               <span className="dot-orange"></span>
-              COACH · RACE PLAN · {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'}
+              COACH · RACE PLAN · {priorityLabel}
             </div>
             <p className="coach-briefing">
               <strong>{fmtFullDate(race.meta.date)}.</strong>{' '}
@@ -348,7 +355,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             <div className="a-race-hero-left">
               <div className="a-race-hero-text">
                 <div className="a-race-eyebrow">
-                  {race.meta.priority === 'A' ? 'A-RACE' : race.meta.priority === 'B' ? 'B-RACE' : 'C-RACE'} · GOAL TIME {race.meta.goalDisplay}
+                  {priorityLabel} · GOAL TIME {race.meta.goalDisplay}
                 </div>
                 <div className="a-race-title">
                   {hero.line1}{hero.line2 && <><br />{hero.line2}</>}

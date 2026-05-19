@@ -33,6 +33,19 @@ interface BriefingInput {
   thisWeekSoFar: WeekStats;
   /** Today's planned workout (or null on rest days). */
   todayDay: PlanWeekDay | null;
+  /** Local hour 0-23 — drives the "Good morning / afternoon / evening"
+   *  prefix. Caller passes the user's local time so the greeting
+   *  matches what the runner sees on the wall clock. Defaults to 8
+   *  (morning) when omitted, so existing callers don't regress. */
+  localHour?: number;
+}
+
+/** Pick a time-of-day greeting that matches the runner's wall clock. */
+function greetingForHour(hour: number): string {
+  if (hour < 4 || hour >= 22) return 'Late night';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function fmtPace(sPerMi: number): string {
@@ -92,7 +105,10 @@ function intensityCopyFor(type: string): string {
  * ─────────────────────────────────────────────────────────────────── */
 
 export function generateBriefing(input: BriefingInput): string {
-  const { firstName, today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay } = input;
+  const { firstName, today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay, localHour } = input;
+  const greetingPrefix = greetingForHour(localHour ?? 8);
+  // Tag every "Good morning" reference so they pick up the time-aware variant.
+  void raceLabel; // (currently unused but reserved for race-day greetings)
   const dow = dayOfWeekIdx(today);   // 0=Sun
   const isMonday    = dow === 1;
   const isSunday    = dow === 0;
@@ -150,7 +166,7 @@ export function generateBriefing(input: BriefingInput): string {
     }
 
     return [
-      `Good morning, ${greeting}. ${lastWeekSentence}`,
+      `${greetingPrefix}, ${greeting}. ${lastWeekSentence}`,
       thisWeekSentence,
       todaySentence,
       urgencyFraming(daysToRace),

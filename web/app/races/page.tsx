@@ -18,6 +18,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { computeAggregateVdot } from '@/lib/compute-vdot';
+import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import './races-v4.css';
 
 interface UpcomingRace {
@@ -63,7 +64,13 @@ function fmtPace(sPerMi: number): string {
 export default async function RacesPage() {
   const auth = await requireActiveUser();
 
-  const todayMs = Date.now();
+  // Anchor "today" in the user's local tz, then convert to a UTC-
+  // midnight ms for date math. Date.now() floats in real time and
+  // can land on a different UTC day than the user's local day,
+  // making daysAway round differently on /races vs /races/[slug]
+  // for the same race date (the 89 vs 90 mismatch).
+  const todayLocalISO = todayISO(userTimezone(auth.location));
+  const todayMs = Date.parse(todayLocalISO + 'T00:00:00Z');
 
   // ── 1. Upcoming + saved races from the `races` table ──
   interface RaceRow { slug: string; meta: { name: string; date: string; distanceMi: number; goalDisplay?: string; priority?: 'A'|'B'|'C' }; actual_result: { finishS?: number; paceSPerMi?: number } | null }

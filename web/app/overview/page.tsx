@@ -148,6 +148,13 @@ export default async function OverviewPage() {
   // Build the coach briefing using real last-week + this-week data.
   // Monday reflects on last week; weekend days frame the long run;
   // mid-week days reference current-week mileage banked so far.
+  // localHour drives the time-of-day greeting ("Good morning" vs
+  // "Good evening") so the coach voice matches the runner's wall
+  // clock. Computed from the user's IANA timezone via Intl.
+  const tzForHour = userTimezone(user.location);
+  const localHour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: tzForHour, hour: 'numeric', hour12: false,
+  }).format(new Date()));
   const briefing = generateBriefing({
     firstName: user.name?.split(' ')[0] || '',
     today,
@@ -158,6 +165,7 @@ export default async function OverviewPage() {
     lastWeekStats,
     thisWeekSoFar,
     todayDay,
+    localHour,
   });
 
   // Weekly insights — plan-aware pattern detection. The coach measures
