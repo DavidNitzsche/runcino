@@ -36,6 +36,7 @@ import { query } from './db';
 import { buildFitnessHrZones } from './hr-zones';
 import { pacesFromVdot } from './vdot';
 import { RACE_RECENCY_DAYS } from './adaptive-vdot-signals';
+import { computeStravaGap } from './strava-gap';
 
 export interface Z2CoverageFinding {
   /** True when the surface should render. */
@@ -219,6 +220,17 @@ export async function computeZ2CoverageFinding(
   if (!zones || !restingHr) {
     return { ...empty, suppressReason: 'no-hrr-framework' };
   }
+
+  // Injury suspension · per Rule 5 (per-finding context filter). V5
+  // shouldn't fire while the user is marked injured — missed easy
+  // runs during recovery are not "easy runs too hard," they're
+  // intentional rehab. Same context-filter principle as L7.
+  try {
+    const gap = await computeStravaGap(userId, todayIso);
+    if (gap.signalsSuspended) {
+      return { ...empty, z2CeilingBpm: zones.z2.highBpm, suppressReason: 'no-data' };
+    }
+  } catch { /* non-fatal */ }
   const z2 = zones.z2;
   const z4FloorBpm = zones.z4.lowBpm;
 

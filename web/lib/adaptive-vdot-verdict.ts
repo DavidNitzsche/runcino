@@ -46,6 +46,7 @@ import { query } from './db';
 import { computeAdaptiveSignals, type AdaptiveSignals, type SignalObservation } from './adaptive-vdot-signals';
 import { computeSignal2, type Signal2Result, type Signal2Workout } from './adaptive-vdot-signal2';
 import { computeSignal3, type Signal3Result, type Signal3Observation } from './adaptive-vdot-signal3';
+import { computeStravaGap } from './strava-gap';
 
 const UP_OBS_MIN = 3;
 const UP_WEIGHT_MIN = 2.5;
@@ -214,6 +215,26 @@ export async function buildAdaptiveVdotVerdict(
     signal2,
     signal3,
   };
+
+  // Injury-mark suspension · per E1 spec (Rule 5: each surface
+  // applies its own context filter explicitly). When the user has
+  // marked themselves injured, all L7 signals freeze until they
+  // resume activity. Distinct from race-week suspension below.
+  const todayIso = today.toISOString().slice(0, 10);
+  try {
+    const gap = await computeStravaGap(userId, todayIso);
+    if (gap.signalsSuspended) {
+      return {
+        ...base,
+        hasFinding: false,
+        recommendation: {
+          kind: 'race-week-suspended',  // reusing kind for "any suspension"
+          reason: `Signals suspended · you marked yourself injured ${gap.daysSinceLastRun != null ? `${gap.daysSinceLastRun} days ago` : ''}. Adaptive evaluation pauses until activity resumes — missed workouts during recovery should never read as fitness regression.`,
+          daysToRace: 0,
+        },
+      };
+    }
+  } catch { /* gap query failure non-fatal */ }
 
   // Race-week / taper suspension
   const daysToRace = await checkRaceWeek(userId, today);

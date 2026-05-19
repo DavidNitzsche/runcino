@@ -508,6 +508,29 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_shift_snoozed_at TIMESTAMPTZ;
     `);
 
+    // E1 + E4 · Strava activity gap tracking
+    //
+    // activity_gap_status:
+    //   'planned' · user marked planned break (E1 silent for 7 days OR
+    //               until next activity)
+    //   'injured' · user marked injured (L7 signals + V5 suspended
+    //               until next activity)
+    //   NULL      · no mark; gap surfaces fire per state machine in
+    //               lib/strava-gap.ts
+    //
+    // activity_gap_at: timestamp of the mark
+    // activity_gap_resume_at: timestamp of auto-clear when activity resumes
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_gap_status TEXT
+        CHECK (activity_gap_status IS NULL OR activity_gap_status IN ('planned', 'injured'));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_gap_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_gap_resume_at TIMESTAMPTZ;
+    `);
+
     // L7 Signal 1 context filters · workout weather cache
     //
     // Caches Open-Meteo historical archive lookups for (lat, lon, date)

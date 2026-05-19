@@ -38,6 +38,8 @@ import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { Z2CoverageCard } from './Z2CoverageCard';
 import { computePostRaceFinding } from '@/lib/post-race-awareness';
 import { PostRaceCard } from './PostRaceCard';
+import { computeStravaGap } from '@/lib/strava-gap';
+import { StravaGapCard } from './StravaGapCard';
 import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -168,6 +170,12 @@ export default async function OverviewPage() {
   // (marathon 14d, HM 9d, shorter 5d). Reads races.actual_result.
   const postRaceFinding = await computePostRaceFinding(user.id, today).catch(() => null);
 
+  // E1 + E4 · Strava activity gap (3d / 5-7d / 8-14d / 15+d states).
+  // Same state machine; surface acknowledges gap and offers planned /
+  // injured / unexpected affordances. "Injured" mark suspends L7
+  // signals + V5 until activity resumes.
+  const stravaGap = await computeStravaGap(user.id, today).catch(() => null);
+
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
@@ -256,6 +264,17 @@ export default async function OverviewPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* E1 + E4 · Activity gap surface — fires at 3d/5d/8d/15d
+            thresholds. Renders above E2 so the gap acknowledgment
+            comes before any post-race recovery guidance. */}
+        {stravaGap && stravaGap.state !== 'silent' && stravaGap.daysSinceLastRun != null && (
+          <StravaGapCard
+            state={stravaGap.state}
+            daysSinceLastRun={stravaGap.daysSinceLastRun}
+            lastRunDate={stravaGap.lastRunDate}
+          />
         )}
 
         {/* E2 · Post-race awareness — renders above hero TodayCard
