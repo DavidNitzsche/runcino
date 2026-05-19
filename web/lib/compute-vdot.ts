@@ -1,19 +1,45 @@
 /**
- * Aggregate VDOT compute from a user's Strava history.
+ * Aggregate VDOT compute — cycle-aware variant (c) with C3 + C1 fallback.
  *
  * Single-race VDOT (vdot.ts → vdotFromRace) is brittle: a bad day or
- * a hot race spikes it the wrong way. For the /races page anchor card
- * we want a STARTING POINT that draws on everything this year so far.
+ * a hot race spikes it the wrong way. The aggregate weights multiple
+ * race performances by recency, distance, and goal-distance match, so
+ * a single off-day can't drive prescription paces.
  *
- * Strategy:
- *   1. Pull this year's runs that look like effort (best efforts at
- *      common distances: 5K / 10K / HM / Marathon, plus any flagged
- *      workoutType=1 race).
- *   2. For each canonical distance, compute the VDOT implied by the
- *      best time within the last 365 days.
- *   3. Average the top 3 VDOTs (drop the rest as outliers). If only 1
- *      or 2 candidates, use whatever's there.
- *   4. Bias toward the most recent — divide weight by 1 + months_old / 6.
+ * Weighting formula (locked with David in UNIT B spec):
+ *
+ *   weight = recencyFactor × lengthFactor × tierFactor
+ *
+ *   recencyFactor:
+ *     - if race is goal-tier AND race.date ≥ cycleStart → 1.0 (exempt)
+ *     - else                                            → exp(−days / 90)
+ *
+ *   lengthFactor = sqrt(distanceKm / 10)        [5K→0.71, 10K→1.0, HM→1.45, M→2.05]
+ *   tierFactor   = 3.0 exact / 1.0 adjacent / 0.4 distant
+ *
+ * Tier classification:
+ *   - SPRINT     ≤ 3 km (1.864 mi)        — true sprints, mostly track
+ *   - TEN_K_ISH    3–15 km (1.864–9.32 mi) — 5K and 10K together
+ *   - HM_ISH    15–25 km (9.32–15.53 mi)   — HM
+ *   - M_ISH       > 25 km (15.53+ mi)      — marathon
+ *
+ *   Goal tier comes from races table (next upcoming race; falls back
+ *   to most recently saved when no future race exists). Race tier is
+ *   computed from the canonical distance.
+ *
+ * Cycle start (cycleStart) determination — C3 with C1 fallback:
+ *   1. Most recently archived training plan's earliest week_start_iso
+ *   2. Active training plan's earliest week_start_iso (when no archive)
+ *   3. today − 16 weeks (C1 fallback when no plans exist)
+ *
+ *   Goal-tier races within the cycle window keep full recency weight
+ *   so a goal-distance race from earlier in the cycle stays salient
+ *   even as standard recency would decay it.
+ *
+ * Option-B source-of-truth: when a Strava activity is linked to a
+ * curated `races` row via stravaActivityId, the curated
+ * actual_result.finishS supersedes Strava's canonicalFinishS /
+ * movingTimeS. Chip time wins over watch time when present.
  *
  * Returns null when there's nothing usable (no races logged, no
  * canonical-distance bests yet).
@@ -22,12 +48,14 @@
 import { query } from './db';
 import { vdotFromRace } from './vdot';
 
+// ── Public shape (backward-compat with previous consumers) ────────
+
 export interface AggregateVdot {
   /** The aggregate VDOT estimate (rounded to 0.1) */
   value: number;
   /** How many distinct distance bests fed into the aggregate */
   sourceCount: number;
-  /** Top contributing sources, newest-first */
+  /** Contributing sources, sorted by weight descending */
   sources: Array<{
     canonicalLabel: string;
     distanceMi: number;
@@ -35,10 +63,161 @@ export interface AggregateVdot {
     date: string;
     activityId: string;
     vdot: number;
+    /** Resolved source for finishS — 'races' means curated chip time;
+     *  'strava' means raw Strava canonicalFinishS / movingTimeS. */
+    source: 'races' | 'strava';
+    /** Total weight applied to this contributor. */
+    weight: number;
+    /** Components of weight for transparency. */
+    weightBreakdown: { recency: number; length: number; tier: number };
+    /** True when this race matched the goal tier. */
+    isGoalTier: boolean;
+    /** True when this race fell inside the cycle window (so goal-tier
+     *  races skip the recency decay). */
+    isInCycle: boolean;
   }>;
-  /** "this year" / "last 365d" — what window we actually used */
+  /** Human-readable description of the aggregation window. */
   windowLabel: string;
+  /** Goal-tier used for tier-factor scoring. Null when no race exists
+   *  in the races table. */
+  goalTier: RaceTier | null;
+  /** Start of the cycle window (ISO date) — for debugging / UI. */
+  cycleStartIso: string;
 }
+
+// ── Tier classification ──────────────────────────────────────────
+
+export type RaceTier = 'SPRINT' | 'TEN_K_ISH' | 'HM_ISH' | 'M_ISH';
+const TIER_ORDER: RaceTier[] = ['SPRINT', 'TEN_K_ISH', 'HM_ISH', 'M_ISH'];
+
+/** Race tier from distance in km. Boundaries chosen per UNIT B spec:
+ *  5K is structurally similar to 10K for fitness purposes, so they
+ *  share a tier; true sprints (≤3K) get their own band. */
+export function tierForKm(km: number): RaceTier {
+  if (km <= 3) return 'SPRINT';
+  if (km <= 15) return 'TEN_K_ISH';
+  if (km <= 25) return 'HM_ISH';
+  return 'M_ISH';
+}
+
+/** Tier-match factor: 3.0 exact, 1.0 one tier off, 0.4 two-plus off. */
+export function tierFactor(raceTier: RaceTier, goalTier: RaceTier): number {
+  if (raceTier === goalTier) return 3.0;
+  const a = TIER_ORDER.indexOf(raceTier);
+  const b = TIER_ORDER.indexOf(goalTier);
+  return Math.abs(a - b) === 1 ? 1.0 : 0.4;
+}
+
+// ── Recency + length factors ─────────────────────────────────────
+
+/** Days between two ISO dates (positive when `date` precedes `today`). */
+function daysBetween(date: Date, today: Date): number {
+  return Math.max(0, (today.getTime() - date.getTime()) / 86_400_000);
+}
+
+/** Recency factor with goal-tier-in-cycle exemption.
+ *  Goal-tier races within the cycle window keep weight 1.0; all
+ *  others decay via exp(−days/90). */
+export function recencyFactor(
+  raceDate: Date,
+  today: Date,
+  isGoalTier: boolean,
+  cycleStart: Date,
+): number {
+  if (isGoalTier && raceDate.getTime() >= cycleStart.getTime()) return 1.0;
+  return Math.exp(-daysBetween(raceDate, today) / 90);
+}
+
+/** Length factor — sqrt to keep race-length spread mild. */
+export function lengthFactor(km: number): number {
+  return Math.sqrt(km / 10);
+}
+
+// ── Cycle start determination (C3 + C1 fallback) ─────────────────
+
+const MILES_PER_KM = 0.621371;
+const SIXTEEN_WEEKS_MS = 16 * 7 * 86_400_000;
+
+/** Resolve the cycle window start for a user. C3: most recently
+ *  archived plan's earliest week start; falls through to active
+ *  plan's earliest week, then to 16-week fallback (C1) when no
+ *  plans exist. */
+export async function resolveCycleStart(userId: string, today: Date): Promise<Date> {
+  // C3: most recently archived plan (covers current + previous cycle)
+  const archived = await query<{ id: string }>(
+    `SELECT id FROM training_plans
+      WHERE user_id = $1 AND archived_iso IS NOT NULL
+      ORDER BY archived_iso DESC
+      LIMIT 1`,
+    [userId],
+  );
+  if (archived.length > 0) {
+    const start = await query<{ start: string | null }>(
+      `SELECT MIN(week_start_iso) AS start FROM plan_weeks WHERE plan_id = $1`,
+      [archived[0].id],
+    );
+    if (start[0]?.start) return new Date(start[0].start + 'T00:00:00Z');
+  }
+  // Active plan if no archive yet
+  const active = await query<{ id: string }>(
+    `SELECT id FROM training_plans
+      WHERE user_id = $1 AND archived_iso IS NULL
+      ORDER BY authored_iso DESC
+      LIMIT 1`,
+    [userId],
+  );
+  if (active.length > 0) {
+    const start = await query<{ start: string | null }>(
+      `SELECT MIN(week_start_iso) AS start FROM plan_weeks WHERE plan_id = $1`,
+      [active[0].id],
+    );
+    if (start[0]?.start) return new Date(start[0].start + 'T00:00:00Z');
+  }
+  // C1 fallback: rolling 16-week window
+  return new Date(today.getTime() - SIXTEEN_WEEKS_MS);
+}
+
+// ── Goal race determination ──────────────────────────────────────
+
+interface GoalRaceInfo { distanceKm: number; tier: RaceTier; name: string; dateIso: string }
+
+/** Resolve the goal race. Per UNIT B spec: nearest upcoming race
+ *  from the user's races table; falls back to most recently saved
+ *  race regardless of date when no future race exists. Returns null
+ *  only when the races table is empty. */
+export async function resolveGoalRace(userId: string, today: Date): Promise<GoalRaceInfo | null> {
+  const todayIso = today.toISOString().slice(0, 10);
+  // Nearest upcoming
+  const upcoming = await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+    `SELECT meta FROM races
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND meta->>'date' >= $2
+      ORDER BY meta->>'date' ASC
+      LIMIT 1`,
+    [userId, todayIso],
+  );
+  const pick = upcoming[0] ?? (await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+    // Fallback: most recently saved race
+    `SELECT meta FROM races
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      ORDER BY meta->>'date' DESC
+      LIMIT 1`,
+    [userId],
+  ))[0];
+  if (!pick) return null;
+  // Support both meta.distanceMi (TS field) and meta.distance_mi (snake_case fallback)
+  const distMi = Number(pick.meta?.distanceMi ?? pick.meta?.distance_mi ?? 0);
+  if (!distMi) return null;
+  const km = distMi / MILES_PER_KM;
+  return {
+    distanceKm: km,
+    tier: tierForKm(km),
+    name: pick.meta?.name ?? 'Race',
+    dateIso: pick.meta?.date ?? '',
+  };
+}
+
+// ── Activity row + Option-B preference ───────────────────────────
 
 interface ActivityRow {
   id: string;
@@ -51,54 +230,157 @@ interface ActivityRow {
     movingTimeS?: number;
     workoutType?: number | null;
   };
+  race_actual_result: { finishS?: number; source?: string; stravaActivityId?: number } | null;
+  race_slug: string | null;
 }
 
-/** Map a Strava activity to a canonical distance (within 5% tolerance)
- *  when canonicalLabel isn't already set on the row. Returns null when
- *  the activity doesn't match a standard race distance. */
+/** Map a Strava activity distance to a canonical race distance
+ *  (within 5% tolerance). */
 function inferCanonical(distanceMi: number): { label: string; canonicalMi: number } | null {
-  if (Math.abs(distanceMi - 3.107) < 0.155) return { label: '5K', canonicalMi: 3.107 };       // 5K ±5%
-  if (Math.abs(distanceMi - 6.214) < 0.31)  return { label: '10K', canonicalMi: 6.214 };      // 10K ±5%
+  if (Math.abs(distanceMi - 3.107) < 0.155) return { label: '5K', canonicalMi: 3.107 };
+  if (Math.abs(distanceMi - 6.214) < 0.31)  return { label: '10K', canonicalMi: 6.214 };
   if (Math.abs(distanceMi - 9.32)  < 0.47)  return { label: '15K', canonicalMi: 9.32 };
-  if (Math.abs(distanceMi - 13.109) < 0.55) return { label: 'Half', canonicalMi: 13.109 };    // HM ±4%
+  if (Math.abs(distanceMi - 13.109) < 0.55) return { label: 'Half', canonicalMi: 13.109 };
   if (Math.abs(distanceMi - 26.219) < 1.05) return { label: 'Marathon', canonicalMi: 26.219 };
   return null;
 }
 
+// ── Pure aggregation function (testable without DB) ──────────────
+
+export interface RaceBest {
+  label: string;
+  canonicalMi: number;
+  finishS: number;
+  date: string;
+  activityId: string;
+  source: 'races' | 'strava';
+}
+
+export interface AggregateInputs {
+  bests: RaceBest[];
+  cycleStart: Date;
+  goalTier: RaceTier | null;
+  today: Date;
+}
+
+/** Aggregate VDOT from already-resolved best efforts. Pure function,
+ *  no DB. Use this directly for testing the math. */
+export function aggregateVdotFromInputs(inputs: AggregateInputs): AggregateVdot | null {
+  const { bests, cycleStart, goalTier, today } = inputs;
+  if (bests.length === 0) return null;
+
+  const contributions = bests
+    .map((b) => {
+      const vdot = vdotFromRace(b.canonicalMi, b.finishS);
+      if (vdot == null) return null;
+      const km = b.canonicalMi / MILES_PER_KM;
+      const raceTier = tierForKm(km);
+      const isGoalTier = goalTier != null && raceTier === goalTier;
+      const raceDate = new Date(b.date + 'T12:00:00Z');
+      const isInCycle = raceDate.getTime() >= cycleStart.getTime();
+
+      const rFactor = recencyFactor(raceDate, today, isGoalTier, cycleStart);
+      const lFactor = lengthFactor(km);
+      const tFactor = goalTier ? tierFactor(raceTier, goalTier) : 1.0;
+      const weight = rFactor * lFactor * tFactor;
+
+      return {
+        canonicalLabel: b.label,
+        distanceMi: b.canonicalMi,
+        finishS: b.finishS,
+        date: b.date,
+        activityId: b.activityId,
+        vdot: Math.round(vdot * 10) / 10,
+        source: b.source,
+        weight,
+        weightBreakdown: { recency: rFactor, length: lFactor, tier: tFactor },
+        isGoalTier,
+        isInCycle,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  if (contributions.length === 0) return null;
+  const totalWeight = contributions.reduce((s, c) => s + c.weight, 0);
+  if (totalWeight === 0) return null;
+  const value = contributions.reduce((s, c) => s + c.vdot * c.weight, 0) / totalWeight;
+
+  // Sort sources by weight descending so the biggest contributor surfaces first.
+  contributions.sort((a, b) => b.weight - a.weight);
+
+  return {
+    value: Math.round(value * 10) / 10,
+    sourceCount: contributions.length,
+    sources: contributions,
+    windowLabel: goalTier
+      ? `cycle-aware, ${goalTier.toLowerCase()} goal-tier`
+      : 'cycle-aware (no goal race set)',
+    goalTier,
+    cycleStartIso: cycleStart.toISOString().slice(0, 10),
+  };
+}
+
+// ── Public API: fetch + aggregate ────────────────────────────────
+
 export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
-  // Pull anything from the last 365 days that's either a flagged race
-  // or has a canonical-label tag set by our import pipeline. We grab
-  // a generous superset and pick the best per distance in JS.
-  const yearAgoIso = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+  const today = new Date();
+  const yearAgoIso = new Date(today.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
+
+  // Option-B JOIN: pull strava_activities LEFT JOIN races (linked by
+  // stravaActivityId stored in races.actual_result). When a race row
+  // exists with a curated finishS, it supersedes Strava's value.
   const rows = await query<ActivityRow>(
-    `SELECT id::text AS id, data
-       FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND (data->>'date') >= $2
+    `SELECT
+        sa.id::text AS id,
+        sa.data,
+        r.actual_result AS race_actual_result,
+        r.slug AS race_slug
+       FROM strava_activities sa
+       LEFT JOIN races r
+              ON (r.actual_result->>'stravaActivityId')::BIGINT = sa.id::BIGINT
+             AND (r.user_uuid = sa.user_uuid OR r.user_uuid IS NULL OR sa.user_uuid IS NULL)
+      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+        AND (sa.data->>'date') >= $2
         AND (
-          (data->>'workoutType')::INTEGER = 1
-          OR data->>'canonicalLabel' IS NOT NULL
-          OR (data->>'distanceMi')::NUMERIC BETWEEN 2.95 AND 27.3
+          (sa.data->>'workoutType')::INTEGER = 1
+          OR sa.data->>'canonicalLabel' IS NOT NULL
+          OR (sa.data->>'distanceMi')::NUMERIC BETWEEN 2.95 AND 27.3
         )
-        AND (data->>'movingTimeS')::NUMERIC > 0
-      ORDER BY (data->>'date') DESC
+        AND (sa.data->>'movingTimeS')::NUMERIC > 0
+      ORDER BY (sa.data->>'date') DESC
       LIMIT 250`,
     [userId, yearAgoIso],
   );
   if (rows.length === 0) return null;
 
   // Group by canonical distance, taking the fastest in each bucket.
-  // The row's canonicalLabel/canonicalFinishS wins when present (our
-  // import pipeline already chose the segment within the activity).
-  // Otherwise fall back to inferring from distanceMi.
-  type Best = { label: string; canonicalMi: number; finishS: number; date: string; activityId: string };
-  const bests = new Map<string, Best>();
+  // Option-B: prefer races.actual_result.finishS when present.
+  const bestsMap = new Map<string, RaceBest>();
   for (const r of rows) {
     const d = r.data;
     let label: string | undefined;
     let canonMi = 0;
     let finishS = 0;
-    if (d.canonicalLabel && d.canonicalFinishS && d.canonicalFinishS > 0) {
+    let source: 'races' | 'strava' = 'strava';
+
+    // Option-B preference: curated chip time wins over Strava's.
+    const curated = r.race_actual_result?.finishS;
+    if (curated && curated > 0) {
+      finishS = Number(curated);
+      source = 'races';
+      // Distance from Strava data (curated finishS is paired with the
+      // Strava activity by stravaActivityId; the distance comes from
+      // the underlying activity).
+      const inferDist = Number(d.distanceMi) || 0;
+      if (d.canonicalLabel) {
+        label = d.canonicalLabel;
+        const matched = inferCanonical(label === 'Half' ? 13.109 : label === 'Marathon' ? 26.219 : inferDist);
+        canonMi = matched?.canonicalMi ?? inferDist;
+      } else if (inferDist > 0) {
+        const matched = inferCanonical(inferDist);
+        if (matched) { label = matched.label; canonMi = matched.canonicalMi; }
+      }
+    } else if (d.canonicalLabel && d.canonicalFinishS && d.canonicalFinishS > 0) {
       label = d.canonicalLabel;
       finishS = Number(d.canonicalFinishS);
       const matched = inferCanonical(label === 'Half' ? 13.109 : label === 'Marathon' ? 26.219 : Number(d.distanceMi) || 0);
@@ -113,53 +395,37 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
     }
     if (!label || finishS <= 0 || canonMi <= 0) continue;
 
-    const prior = bests.get(label);
-    if (!prior || finishS < prior.finishS) {
-      bests.set(label, {
+    const prior = bestsMap.get(label);
+    // When two activities map to the same distance bucket, prefer:
+    //   1. The one with curated source (races) over strava
+    //   2. The faster finish (when source tier is equal)
+    if (
+      !prior ||
+      (source === 'races' && prior.source === 'strava') ||
+      (source === prior.source && finishS < prior.finishS)
+    ) {
+      bestsMap.set(label, {
         label,
         canonicalMi: canonMi,
         finishS,
         date: d.date || '',
         activityId: r.id,
+        source,
       });
     }
   }
-  if (bests.size === 0) return null;
+  if (bestsMap.size === 0) return null;
 
-  // Convert each best to a VDOT and weight by recency.
-  const today = Date.now();
-  const sources = Array.from(bests.values())
-    .map((b) => {
-      const vdot = vdotFromRace(b.canonicalMi, b.finishS);
-      if (vdot == null) return null;
-      const ageDays = b.date
-        ? Math.max(0, (today - new Date(b.date + 'T12:00:00Z').getTime()) / 86_400_000)
-        : 180;
-      const monthsOld = ageDays / 30;
-      const weight = 1 / (1 + monthsOld / 6);  // 1.0 fresh → 0.5 after 6 months
-      return {
-        canonicalLabel: b.label,
-        distanceMi: b.canonicalMi,
-        finishS: b.finishS,
-        date: b.date,
-        activityId: b.activityId,
-        vdot: Math.round(vdot * 10) / 10,
-        weight,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  if (sources.length === 0) return null;
+  // Resolve cycle window + goal race
+  const [cycleStart, goalRace] = await Promise.all([
+    resolveCycleStart(userId, today),
+    resolveGoalRace(userId, today),
+  ]);
 
-  // Top 3 contributors only — drop trailing outliers.
-  const top = sources.slice(0, 3);
-  const weightSum = top.reduce((s, p) => s + p.weight, 0);
-  const value = top.reduce((s, p) => s + p.vdot * p.weight, 0) / weightSum;
-
-  return {
-    value: Math.round(value * 10) / 10,
-    sourceCount: sources.length,
-    sources: sources.slice(0, 5).map(({ weight: _w, ...rest }) => rest),
-    windowLabel: 'last 365 days',
-  };
+  return aggregateVdotFromInputs({
+    bests: Array.from(bestsMap.values()),
+    cycleStart,
+    goalTier: goalRace?.tier ?? null,
+    today,
+  });
 }
