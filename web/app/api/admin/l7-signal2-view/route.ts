@@ -8,8 +8,8 @@
  * Parallels /api/admin/l7-signal-view for Signal 1. Read-only.
  */
 
-import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { NextResponse, type NextRequest } from 'next/server';
+import { requireAdminOrOpToken } from '@/lib/auth';
 import { computeSignal2 } from '@/lib/adaptive-vdot-signal2';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { query } from '@/lib/db';
@@ -21,8 +21,8 @@ function fmtPace(s: number | null): string {
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
 }
 
-export async function GET() {
-  const admin = await requireAdmin();
+export async function GET(req: NextRequest) {
+  const admin = await requireAdminOrOpToken(req);
   const today = new Date();
 
   const maxHrResolved = await resolveEffectiveMaxHr(admin.id);

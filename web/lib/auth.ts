@@ -257,6 +257,61 @@ export async function requireAdmin(): Promise<AuthUser> {
 }
 
 /**
+ * Operational-token gate · for agent-driven read-only diagnostics +
+ * idempotent backfills.
+ *
+ * Accepts EITHER:
+ *   - A standard admin session (cookie) — same as requireAdmin().
+ *   - An `Authorization: Bearer <token>` header matching the
+ *     `ADMIN_OPERATIONAL_TOKEN` env var.
+ *
+ * Returns the bound admin user. When the bearer-token path is used,
+ * the user is the LEGACY_OWNER_EMAIL (David) — the rationale being
+ * that the agent acts on the owner's behalf, never on another user's.
+ *
+ * SCOPE · only endpoints that are read-only OR idempotent +
+ * rate-limited should opt in. Per CLAUDE.md rule #1 (operational vs
+ * decision vs external):
+ *   - GET /api/admin/l7-signal-view       · read-only, OK
+ *   - GET /api/admin/l7-signal2-view      · read-only, OK
+ *   - POST /api/admin/backfill-splits     · idempotent, rate-limited, OK
+ *   - POST /api/admin/audit-races         · read-only diagnostic, OK
+ *   - GET /api/admin/race-hr-diagnostic   · read-only, OK
+ *
+ * NOT opt-in:
+ *   - Any endpoint that mutates user-visible state without an
+ *     idempotency guarantee (e.g., race priority updates)
+ *   - Endpoints touching credentials, OAuth, or external accounts
+ *
+ * When the env var is unset (e.g., dev without operations), the
+ * bearer path silently fails and only session auth works.
+ */
+export async function requireAdminOrOpToken(req: { headers: Headers } | Request): Promise<AuthUser> {
+  const auth = req.headers.get('authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const presented = auth.slice('Bearer '.length).trim();
+    const expected = process.env.ADMIN_OPERATIONAL_TOKEN?.trim();
+    if (expected && expected.length >= 32 && presented === expected) {
+      // Token matches — bind to the legacy owner so the rest of the
+      // pipeline (admin.id, RBAC) works exactly as it would for a
+      // session-authed call.
+      const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+      const rows = await query<AuthUser>(
+        `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color
+           FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+        [legacyOwner],
+      );
+      const u = rows[0];
+      if (u && u.is_admin && u.status === 'active') {
+        return u;
+      }
+    }
+  }
+  // No valid bearer → fall through to session-auth.
+  return requireAdmin();
+}
+
+/**
  * Sign out — deletes the session row + clears the cookie.
  */
 export async function logoutUser(): Promise<void> {

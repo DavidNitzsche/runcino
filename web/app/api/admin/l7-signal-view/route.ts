@@ -16,8 +16,8 @@
  * inputs would produce in the live UI. Read-only.
  */
 
-import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { NextResponse, type NextRequest } from 'next/server';
+import { requireAdminOrOpToken } from '@/lib/auth';
 import { query } from '@/lib/db';
 import {
   evaluateActivities,
@@ -44,8 +44,8 @@ function fmtPace(s: number | null): string {
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
 }
 
-export async function GET() {
-  const admin = await requireAdmin();
+export async function GET(req: NextRequest) {
+  const admin = await requireAdminOrOpToken(req);
   const today = new Date();
   const todayIso = today.toISOString().slice(0, 10);
   const cutoffIso = new Date(today.getTime() - LOOKBACK_DAYS * 86_400_000)

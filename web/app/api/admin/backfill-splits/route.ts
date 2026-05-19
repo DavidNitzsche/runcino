@@ -23,7 +23,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdminOrOpToken } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { getActivityDetail } from '@/lib/sync-strava-user';
 import { normalizeActivity } from '@/app/api/strava/activities/route-shared';
@@ -34,7 +34,7 @@ interface PendingRow {
 }
 
 export async function POST(req: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requireAdminOrOpToken(req);
   const url = new URL(req.url);
   const limitParam = Number(url.searchParams.get('limit')) || 20;
   const limit = Math.max(1, Math.min(50, limitParam));
