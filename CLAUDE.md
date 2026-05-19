@@ -49,6 +49,37 @@ The coach runtime pulls from these. Decisions about what each beat of a page sho
 
 ---
 
+## Race-data source-of-truth (locked 2026-05-19)
+
+**Before merging ANY component that displays race-related data, answer these four questions:**
+
+1. **Does this display a race result?** (finish time, finish pace, PR, race comparison, aggregate VDOT, race-anchored prediction)
+2. **If yes, does it read from `races.actual_result` first?** Curated chip times beat raw Strava elapsed.
+3. **If it falls back to `strava_activities`, is that fallback labeled as provisional?** (e.g., "Training effort · race to lock in", "Strava elapsed", not "Personal Record"). Strava-source data must never display as authoritative race performance.
+4. **Does it skip auto-detected Strava best-effort segments?** A 5K split inside a long run is not a 5K race; pulling `canonicalLabel` directly from `strava_activities` is how the phantom-5K bug landed in compute-vdot. If a race-result consumer reads `canonicalLabel`, it's likely wrong.
+
+**The historical bugs that motivate this checklist** (all fixed by 2026-05-19):
+
+| Bug | Component | Root cause |
+|---|---|---|
+| Phantom 5K · VDOT 33.6 in aggregate | `compute-vdot.ts` | LEFT JOIN to `strava_activities` allowed auto-detected splits to leak |
+| Missing Sombrero Half | `compute-vdot.ts` | Dedup-by-canonical-distance dropped the slower of two HMs |
+| Empty Personal Records card | `/races/page.tsx` | Read ONLY from `strava_activities.canonicalLabel`, never from `races.actual_result` |
+
+**Reference docs:**
+- `docs/simulations/race-data-source-audit-L6.md` — the 11-component audit confirming current clean state
+- `web/app/api/admin/audit-races/route.ts` — diagnostic admin endpoint for ongoing data drift detection
+
+**Non-race-result consumers** (these correctly use `strava_activities`):
+
+- HR readings (`validate-max-hr.ts` reads `maxHr` and `avgHr` from training runs)
+- Activity caching (`lib/strava-activities.ts`)
+- The sync layer itself (`/api/strava/sync`)
+
+The distinction is *what you're surfacing*: race performance → races table; training data → strava_activities. Use the right source for the right job, not "races good, Strava bad."
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
