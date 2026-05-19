@@ -449,6 +449,36 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pace_migration_ack_at TIMESTAMPTZ;
     `);
+
+    // L7 · Passive VDOT updater · adaptive VDOT bump state
+    //
+    // vdot_manual_override:
+    //   Set when the user clicks Apply on an adaptive-VDOT-bump banner.
+    //   compute-vdot uses this value INSTEAD of the race-derived
+    //   aggregate, until a new race result lands AFTER override_at
+    //   (the new race result then clears the override automatically —
+    //   race-first source-of-truth still wins long term, but training
+    //   evidence can move the displayed VDOT between races).
+    //
+    // vdot_manual_override_at:
+    //   Timestamp the override was set. Used to detect "new race
+    //   since override" — if any race result post-dates this, the
+    //   override is considered stale and ignored.
+    //
+    // adaptive_vdot_dismissed_at:
+    //   Set when the user clicks "Keep current" on the adaptive-VDOT
+    //   banner. Suppresses the banner for 30 days OR until new
+    //   evidence (e.g., 3 more corroborating workouts) appears.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_manual_override NUMERIC(4,1)
+        CHECK (vdot_manual_override IS NULL OR (vdot_manual_override >= 20 AND vdot_manual_override <= 90));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS vdot_manual_override_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS adaptive_vdot_dismissed_at TIMESTAMPTZ;
+    `);
     // Adaptive-recommendation dismissals — when the user clicks
     // "Keep current" on a max-HR validation prompt, the timestamp
     // here suppresses the banner for 30 days OR until new evidence

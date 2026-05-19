@@ -369,6 +369,42 @@ const PRIORITY_WEIGHT: Record<RaceEffortLevel, number> = {
   'hilly-excluded': 0.0,
 };
 
+/** Check whether the user has an active manual VDOT override (from
+ *  L7 adaptive-vdot Apply). The override stays active until a new
+ *  race result post-dates the override timestamp — race-first
+ *  source-of-truth still wins long term. Returns null when no
+ *  override or when override is stale (newer race exists). */
+async function checkVdotManualOverride(userId: string): Promise<number | null> {
+  try {
+    const rows = await query<{ value: string | null; at: Date | null }>(
+      `SELECT vdot_manual_override::TEXT AS value, vdot_manual_override_at AS at
+         FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    const value = rows[0]?.value;
+    const at = rows[0]?.at;
+    if (value == null || at == null) return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    // Stale check: any race result with date > override date wipes the override.
+    const overrideDate = new Date(at).toISOString().slice(0, 10);
+    const newer = await query<{ count: string }>(
+      `SELECT COUNT(*)::TEXT AS count FROM races
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND actual_result IS NOT NULL
+          AND (meta->>'date') > $2`,
+      [userId, overrideDate],
+    );
+    if (Number(newer[0]?.count ?? '0') > 0) {
+      // Race-first wins. Override is stale.
+      return null;
+    }
+    return num;
+  } catch {
+    return null;
+  }
+}
+
 export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
   const today = new Date();
   const yearAgoIso = new Date(today.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
@@ -448,10 +484,28 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
     resolveGoalRace(userId, today),
   ]);
 
-  return aggregateVdotFromInputs({
+  const raceDerived = aggregateVdotFromInputs({
     bests,
     cycleStart,
     goalTier: goalRace?.tier ?? null,
     today,
   });
+
+  // L7 manual override: if the user has Applied an adaptive-vdot bump
+  // banner and no fresh race has landed since, override the displayed
+  // aggregate. The sources/weights/breakdown still reflect race
+  // contributors — the displayed VDOT just shifts to the user-applied
+  // value. Race-first source-of-truth: any new race result post-
+  // dating the override automatically clears it (next call returns
+  // pure race-derived).
+  const override = await checkVdotManualOverride(userId);
+  if (raceDerived && override != null && override > 0) {
+    return {
+      ...raceDerived,
+      value: Math.round(override * 10) / 10,
+      windowLabel: `${raceDerived.windowLabel} · adaptive override (race-derived: ${raceDerived.value.toFixed(1)})`,
+    };
+  }
+
+  return raceDerived;
 }

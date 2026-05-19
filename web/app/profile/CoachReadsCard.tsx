@@ -14,6 +14,7 @@ import type { MaxHrValidationVerdict } from '@/lib/validate-max-hr';
 import type { RaceFeasibilityVerdict } from '@/lib/validate-race-feasibility';
 import { MaxHrValidationBanner } from './MaxHrValidationBanner';
 import { PaceMigrationBanner } from './PaceMigrationBanner';
+import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdotBanner';
 
 function fmtFinish(s: number): string {
   if (!s || s <= 0) return '—';
@@ -101,6 +102,7 @@ export function CoachReadsCard({
   maxHrVerdict,
   raceFeasibility,
   paceMigrationAckAt,
+  adaptiveVdotVerdict,
 }: {
   fitness: ResolvedFitness;
   maxHrVerdict?: MaxHrValidationVerdict | null;
@@ -110,6 +112,10 @@ export function CoachReadsCard({
    *  the pace bands. Pulled from users.pace_migration_ack_at by
    *  /profile/page.tsx. */
   paceMigrationAckAt?: Date | string | null;
+  /** L7 passive VDOT updater verdict. When kind is
+   *  'vdot-bump-suggested' or 'vdot-downgrade-investigate', the
+   *  AdaptiveVdotBanner is rendered below the VDOT section. */
+  adaptiveVdotVerdict?: AdaptiveVdotVerdictForUI | null;
 }) {
   const explainer = aggregateExplainer(fitness.vdot);
   const needsMigrationAck = !paceMigrationAckAt;
@@ -249,6 +255,19 @@ export function CoachReadsCard({
               })}
             </div>
           )}
+          {/* L7 adaptive-VDOT banner — fires when training execution
+              evidence (3+ faster T workouts at controlled HR, or 2+
+              slower) suggests fitness has moved between races. Same
+              shape as the suspect-ceiling banner: evidence,
+              reasoning, math, recommendation, falsifier, user
+              agency. */}
+          {adaptiveVdotVerdict && (
+            adaptiveVdotVerdict.kind === 'vdot-bump-suggested' ||
+            adaptiveVdotVerdict.kind === 'vdot-downgrade-investigate'
+          ) && (
+            <AdaptiveVdotBanner verdict={adaptiveVdotVerdict} />
+          )}
+
           {/* Cycle-window explainer — small note explaining the C3
               cycle-aware exemption in plain language. */}
           {fitness.vdot.cycleStartIso && fitness.vdot.contributors.some((c) => c.isGoalTier && c.isInCycle) && (

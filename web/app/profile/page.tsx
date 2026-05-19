@@ -25,6 +25,7 @@ import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { validateMaxHr } from '@/lib/validate-max-hr';
 import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
+import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -162,6 +163,40 @@ export default async function ProfilePage() {
   // conservative verdict with evidence + falsifier.
   const raceFeasibility = await validateRaceFeasibility(auth.id, today);
 
+  // L7 adaptive-VDOT verdict — detects fitness movement between
+  // races from threshold workout adherence. Banner renders on Coach
+  // Reads when 3+ T workouts trend faster at controlled HR
+  // (vdot-bump-suggested) or 2+ trend slower with no flagged context
+  // (vdot-downgrade-investigate). Race-week and insufficient-data
+  // states return hasFinding: false.
+  const adaptiveVdotVerdict = await buildAdaptiveVdotVerdict(
+    auth.id,
+    fitness.vdot.value,
+    fitness.maxHr.value,
+    new Date(today + 'T12:00:00Z'),
+  );
+  const adaptiveVdotForUI = (adaptiveVdotVerdict.hasFinding && !adaptiveVdotVerdict.dismissed &&
+    (adaptiveVdotVerdict.recommendation.kind === 'vdot-bump-suggested' ||
+     adaptiveVdotVerdict.recommendation.kind === 'vdot-downgrade-investigate'))
+    ? {
+        kind: adaptiveVdotVerdict.recommendation.kind,
+        currentVdot: adaptiveVdotVerdict.currentVdot,
+        suggestedVdot: adaptiveVdotVerdict.recommendation.kind === 'vdot-bump-suggested'
+          ? adaptiveVdotVerdict.recommendation.suggestedVdot : undefined,
+        suggestedDeltaPoints: adaptiveVdotVerdict.recommendation.kind === 'vdot-bump-suggested'
+          ? adaptiveVdotVerdict.recommendation.suggestedDeltaPoints : undefined,
+        evidence: adaptiveVdotVerdict.recommendation.evidence.map((e) => ({
+          date: e.date,
+          workoutLabel: e.workoutLabel,
+          prescribedPaceS: e.prescribedPaceS,
+          actualPaceS: e.actualPaceS,
+          actualAvgHr: e.actualAvgHr,
+        })),
+        reason: adaptiveVdotVerdict.recommendation.reason,
+        falsifier: adaptiveVdotVerdict.recommendation.falsifier,
+      }
+    : null;
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -283,6 +318,7 @@ export default async function ProfilePage() {
             maxHrVerdict={maxHrVerdict}
             raceFeasibility={raceFeasibility}
             paceMigrationAckAt={user.pace_migration_ack_at}
+            adaptiveVdotVerdict={adaptiveVdotForUI}
           />
         </div>
 
