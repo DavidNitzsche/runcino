@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>faff.run · Overnight push · 2026-05-19</title>
+<style>
+  :root {
+    --l0:#10131A; --l1:#141820; --l2:#1A212D; --l3:#1D2736; --l4:#212D3F;
+    --t0:#F4F6F8; --t1:rgba(244,246,248,.78); --t2:rgba(244,246,248,.52); --t3:rgba(244,246,248,.32);
+    --good:#3EBD41; --warn:#FC4D64; --att:#F3AD38; --coach:#27B4E0; --race:#FF5722; --xp:#9013FE;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--l0); color: var(--t0); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { padding: 24px 28px 80px; max-width: 1100px; margin: 0 auto; line-height: 1.55; }
+  .hdr { display: flex; align-items: baseline; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--l4); margin-bottom: 22px; flex-wrap: wrap; }
+  .hdr h1 { font-family: 'Oswald', 'Helvetica Neue', sans-serif; font-weight: 700; font-size: 36px; letter-spacing: -.02em; text-transform: uppercase; }
+  .hdr .sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.5px; color: var(--t3); text-transform: uppercase; font-weight: 700; }
+  .hdr .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); vertical-align: middle; margin-right: 8px; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 26px; }
+  .stat { padding: 14px 16px; background: var(--l1); border: 1px solid var(--l4); border-radius: 10px; border-left: 3px solid var(--coach); }
+  .stat .lbl { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; color: var(--t3); text-transform: uppercase; font-weight: 700; }
+  .stat .val { font-family: 'Oswald', sans-serif; font-size: 26px; font-weight: 700; margin-top: 4px; line-height: 1; color: var(--good); }
+  .stat .val.warn { color: var(--warn); }
+  .stat .val.coach { color: var(--coach); }
+  .stat .val.race { color: var(--race); }
+  .stat .sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--t3); margin-top: 4px; }
+
+  .sec-h { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 700; margin: 24px 0 12px; }
+  .feed { display: flex; flex-direction: column; gap: 10px; }
+  .entry { padding: 16px 18px; background: var(--l1); border: 1px solid var(--l4); border-radius: 8px; }
+  .entry h3 { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1.0px; margin-bottom: 8px; }
+  .entry .commit { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--t3); margin-left: 8px; font-weight: 500; }
+  .entry .body { font-size: 13.5px; color: var(--t0); line-height: 1.55; }
+  .entry .body p { margin-bottom: 8px; }
+  .entry .body p:last-child { margin-bottom: 0; }
+  .entry .body code { background: var(--l2); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--coach); }
+  .entry .body ul { margin: 6px 0 6px 18px; }
+  .entry .body li { margin-bottom: 4px; }
+  .entry.p0 { border-left: 3px solid var(--race); }
+  .entry.p1 { border-left: 3px solid var(--coach); }
+  .entry.bg { border-left: 3px solid var(--xp); }
+  .entry.skip { border-left: 3px solid var(--t3); opacity: .85; }
+  .entry .tag { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.4px; color: var(--t3); text-transform: uppercase; font-weight: 700; display: inline-block; padding: 2px 6px; background: var(--l2); border-radius: 4px; margin-right: 6px; }
+  .entry .tag.shipped { color: var(--good); background: rgba(62,189,65,.10); }
+  .entry .tag.skipped { color: var(--t3); }
+  .entry table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 12px; }
+  .entry th, .entry td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--l4); }
+  .entry th { color: var(--t2); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 1.3px; text-transform: uppercase; }
+  .entry td { font-family: 'Inter', sans-serif; }
+  .entry td code { font-size: 11px; }
+
+  .quote { border-left: 3px solid var(--coach); background: rgba(39,180,224,.05); padding: 14px 18px; margin: 10px 0; font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.65; color: var(--t0); border-radius: 0 8px 8px 0; }
+  .quote em { font-style: italic; color: var(--t1); }
+
+  .footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--l4); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--t3); letter-spacing: .06em; }
+  .footer code { background: var(--l2); padding: 2px 7px; border-radius: 4px; color: var(--t1); }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>Overnight Push</h1>
+  <div class="sub"><span class="dot"></span>2026-05-19 · main is at <code style="background:none;color:var(--t1)">8f0acb2</code></div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="lbl">Commits shipped</div>
+    <div class="val">10</div>
+    <div class="sub">all pushed to main</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">BG agents</div>
+    <div class="val">4/4</div>
+    <div class="sub">A · B · C · D done</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">Tests</div>
+    <div class="val">478 / 0</div>
+    <div class="sub">pass / fail</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">P0 stack</div>
+    <div class="val">3 / 3</div>
+    <div class="sub">sim · wire · enrichment</div>
+  </div>
+  <div class="stat">
+    <div class="lbl">P1 voice</div>
+    <div class="val">4 / 6</div>
+    <div class="sub">step 4·5·6·8 ✓  &nbsp; 7·9 partial</div>
+  </div>
+</div>
+
+<div class="sec-h">North Star Status</div>
+<div class="quote">
+  <strong>“Wire up the coach to be a damn coach. I have the goal (1:30 HM at AFC, sub-3:10 marathon at CIM). I have the data. I have the plan. Let's fucking get there.”</strong><br><br>
+  As of this morning, your Coach Reads card on /profile speaks in natural language about <em>why</em> your VDOT lands at 47.2 — anchored by your Disney HM Feb 1 at full weight because it's your goal-tier race inside the training cycle. Pace bands flipped from the buggy legacy formula to canonical Daniels Table 2 (your E paces are 15s/mi faster, your R paces 27s/mi slower, both with the migration banner asking for one confirmation). The /races/[slug] page now shows your readiness gap: <strong>90 days to AFC, 4.1 VDOT points short, ~24 sec/mi of T-pace improvement needed</strong>. LA Marathon and Disney HM are curated entries in your races table now, chip times locked in. The system stopped being a calculator at 23:21 PT.
+</div>
+
+<div class="sec-h">P0 · The Foundation (3 / 3 shipped)</div>
+
+<div class="feed">
+
+  <div class="entry p0">
+    <h3>Step 1 — Sim sweep diff report <span class="commit">d9af552</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>Verification script that runs the new canonical Daniels resolver against the legacy pacesFromVdot across a VDOT sweep (15 rows × 5 zones). Output at <code>docs/2026-05-19-sim-sweep.md</code>.</p>
+      <p><strong>Findings:</strong> 25 large-shift cells exceed the 15s/mi guard threshold. Systematic pattern — legacy E was 15-40s/mi too slow (over-conservative), legacy R was 16-38s/mi too fast (mile race pace, not Daniels' canonical r400 × 4.023).</p>
+      <p><strong>David-specific (VDOT 47.2):</strong></p>
+      <table>
+        <tr><th>Zone</th><th>Legacy</th><th>New (canonical)</th><th>Δ</th><th>Guard?</th></tr>
+        <tr><td>E</td><td>8:53/mi</td><td>8:38/mi</td><td>−15s faster</td><td>⚠ trips</td></tr>
+        <tr><td>M</td><td>7:18/mi</td><td>7:24/mi</td><td>+6s</td><td>no</td></tr>
+        <tr><td>T</td><td>6:55/mi</td><td>6:55/mi</td><td>0s</td><td>no</td></tr>
+        <tr><td>I</td><td>6:21/mi</td><td>6:25/mi</td><td>+4s</td><td>no</td></tr>
+        <tr><td>R</td><td>5:41/mi</td><td>6:08/mi</td><td>+27s slower</td><td>⚠ trips</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="entry p0">
+    <h3>Step 2 — Wire pacesFromVdot → resolveTrainingPaces <span class="commit">5df4a35</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p><code>pacesFromVdot</code> in <code>web/lib/vdot.ts</code> now delegates to <code>resolveTrainingPaces</code>. Same <code>DanielsPaceSet</code> return shape; all downstream callers unaffected. Source-priority chain encoded (published &gt; i1000×1.609 &gt; i400×4.023 for I; r400×4.023 &gt; r200×8.046 for R).</p>
+      <p><strong>Migration banner mechanism:</strong></p>
+      <ul>
+        <li><code>users.pace_migration_ack_at TIMESTAMPTZ</code> column added</li>
+        <li><code>POST /api/profile/acknowledge-pace-migration</code> endpoint sets the timestamp</li>
+        <li><code>PaceMigrationBanner.tsx</code> client component renders on /profile Coach Reads while ack is NULL</li>
+        <li>Pre-flagged with David's explanatory copy: "This is a one-time correction from the previous pace formula bug — new paces are canonical Daniels for your VDOT"</li>
+        <li>After confirm → POST → reload → banner gone, paces flow normally</li>
+      </ul>
+      <p><strong>Action for you when you wake up:</strong> visit /profile, read the banner, click "Confirm canonical paces". After that, all workout prescriptions flow with the corrected bands.</p>
+    </div>
+  </div>
+
+  <div class="entry p0">
+    <h3>Step 3 — Coach Reads UI enrichment <span class="commit">5df4a35</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>The /profile Coach Reads card now surfaces the full <code>compute-vdot</code> enrichment:</p>
+      <ul>
+        <li>Per-contributor <strong>weight %</strong> (HM 75% / Marathon 12% / 10K 13%)</li>
+        <li><strong>Source provenance</strong> flag — <code>✓ chip time</code> (curated) vs <code>Strava elapsed</code></li>
+        <li><strong>goal-tier</strong> badge when a contributor matches the goal distance</li>
+        <li><strong>⊕ full weight (in cycle)</strong> badge when goal-tier + inside cycle window</li>
+        <li><strong>recency N%</strong> for off-cycle contributors with decay applied</li>
+      </ul>
+      <p>Pace bands label flipped from "Pace Bands · race-pace derived from VDOT N" to "Pace Bands · canonical Daniels for VDOT N". Footnote rewritten to cite the canonical source images at <code>docs/references/</code>.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="sec-h">P1 · Coaching Voice (4 / 6 shipped)</div>
+
+<div class="feed">
+
+  <div class="entry p1">
+    <h3>Step 4 — Aggregate explainer paragraph <span class="commit">5df4a35</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>The <code>aggregateExplainer()</code> function writes the natural-language paragraph from contributor data — not hand-coded. The moment David said it should write itself from the data, that's exactly what it does.</p>
+      <p><strong>For your state right now</strong> (VDOT 47.2, Disney HM anchor, today is 2026-05-18):</p>
+      <div class="quote">
+        Your current VDOT is <strong>47.2</strong>. Anchored by your <strong>Half Feb 1</strong> (1:34:54 (chip time) → VDOT 48.1), weighted <strong>75%</strong> of the total. This race is your goal-distance tier and falls inside your current training cycle, so it carries full weight despite being 106 days old. Marathon*, 10K contribute the remaining <strong>25%</strong> via adjacent-tier recency decay.
+      </div>
+      <p>This is the moment the app stops being a calculator. The * marker indicates the marathon entry uses curated chip time (Option-B). When you load /profile and clear the migration banner, the explainer + flags render together.</p>
+    </div>
+  </div>
+
+  <div class="entry p1">
+    <h3>Step 5 — LA Marathon chip-time divergence banner <span class="commit">986cbb7</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>On /races/la-marathon-2026 (and any past race with a chip-time / Strava-elapsed gap ≥ 2 seconds), a banner sits between the breadcrumb and the coach strip explaining the divergence. For your LA Marathon:</p>
+      <div class="quote">
+        <strong>⏱ Chip time used · Strava elapsed differs</strong><br>
+        Your <strong>chip time</strong> of <strong>3:31:40</strong> is what the coach uses for VDOT computation (Option-B source-of-truth: curated chip time wins over Strava elapsed). The matched Strava activity shows <strong>3:30:25</strong> — <strong>75s slower</strong> than your watch recorded.<br><br>
+        <em>The gap is usually start-corral walking before the chip mat (gun-to-mat lag) or GPS drift through tall buildings. Chip time is the official race result; we use it for fitness math, but your training analysis below still reads from the Strava activity's splits and HR data.</em>
+      </div>
+      <p>Generalizes to all races: Big Sur, Sombrero, and any future race with a chip-time correction will show the same banner if there's a divergence.</p>
+    </div>
+  </div>
+
+  <div class="entry p1">
+    <h3>Step 6 — Cycle-window explainer <span class="commit">5df4a35</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>In the Coach Reads VDOT section, a small purple-bordered note explains the C3 cycle-aware exemption in plain language:</p>
+      <div class="quote">
+        <strong>Cycle window:</strong> goal-tier races on or after Jan 27 count at full weight regardless of age. Off-distance races decay normally over ~90 days. Helps anchor your fitness to recent goal-distance evidence rather than letting older off-distance races dominate.
+      </div>
+      <p>Shown only when at least one contributor is goal-tier AND in-cycle. Read directly from <code>fitness.vdot.cycleStartIso</code>. Doesn't expose the formula, explains the principle.</p>
+    </div>
+  </div>
+
+  <div class="entry p1">
+    <h3>Step 8 — Race countdown with readiness context <span class="commit">8f0acb2</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>The /races/[slug] countdown card now shows BOTH days-to-race AND the fitness gap to the goal. For your August HM (AFC, 90 days out):</p>
+      <table>
+        <tr><th>Field</th><th>Value</th></tr>
+        <tr><td>Days to go</td><td><strong>90</strong></td></tr>
+        <tr><td>Date</td><td>Aug 16, 2026 · Half Marathon</td></tr>
+        <tr><td>Projected at current VDOT 47.2</td><td><strong>1:36:16</strong></td></tr>
+        <tr><td>Goal 1:30:00 requires VDOT</td><td><strong>51.3</strong></td></tr>
+        <tr><td>Gap</td><td><strong>4.1 VDOT points / ~24 sec/mi T pace</strong></td></tr>
+      </table>
+      <p>The gap is rendered in orange when you're behind, green with "✓ On pace" when you're ahead of your goal. Math: <code>computeAggregateVdot</code> → <code>vdotRow(currentVdot)[distKey]</code> for predicted; walk VDOT 30→85 with interpolation to find the VDOT that produces a finish ≤ goalFinishS for the goal VDOT; <code>resolveTrainingPaces</code> delta for the T-pace gap.</p>
+      <p>NOT shipped (deferred): "trajectory" piece (on track / behind / ahead based on key-workout adherence + HR-pace drift). Needs the passive VDOT updater signals — queued for a follow-up.</p>
+    </div>
+  </div>
+
+  <div class="entry p1 skip">
+    <h3>Step 7 — Pre-workout briefing on TodayCard <span class="tag skipped">DEFERRED</span></h3>
+    <div class="body">
+      <p>Format spec: <em>"Tomorrow: [workout type]. Target pace [pace]. Weather: [temp/conditions]. Shoes: [recommended]. Last similar session: [date + outcome]."</em></p>
+      <p>Not shipped tonight. Requires wiring four independent data sources (weather integration, shoe rotation rules, last-similar-session query, target pace) into the today/overview page. Each piece is well-defined but the integration surface is wider than the rest of P1 — and TodayCard already has the existing format. Queued for a focused session.</p>
+    </div>
+  </div>
+
+  <div class="entry p1">
+    <h3>Step 9 — Workout prescription refresh (verification) <span class="tag shipped">VERIFIED</span></h3>
+    <div class="body">
+      <p>Confirmed the prescription path picks up canonical paces automatically. Two key call sites:</p>
+      <ul>
+        <li><code>web/app/workout/[date]/page.tsx:85</code> — <code>const paces = pacesFromVdot(vdotLib.vdot)</code></li>
+        <li><code>web/app/api/fitness/route.ts:20</code> — returns <code>fitness.paces</code> (computed via <code>resolveFitness</code> → <code>pacesFromVdot</code>)</li>
+      </ul>
+      <p>Since <code>pacesFromVdot</code> now delegates to <code>resolveTrainingPaces</code>, every workout target on those pages auto-renders with canonical Daniels values. No additional code change needed. The <code>vdot.test.ts</code> assertions (updated to expect canonical T-mile values at VDOT 45 and 50) are the regression guard.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="sec-h">Parallel Background Agents (4 / 4 shipped)</div>
+
+<div class="feed">
+
+  <div class="entry bg">
+    <h3>Agent A — Retrospective fixture <span class="commit">24e4537</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>Restored the missing <code>web/public/big-sur-3-50.runcino.json</code> fixture. Generated from the existing 3-40 template, paired to <code>web/fixtures/bigsur-actual.json</code>, with phase 2 labeled "Hurricane Point climb" per the test's assertion. <code>retrospective.test.ts</code> went from failing-at-import to 9/9 passing.</p>
+    </div>
+  </div>
+
+  <div class="entry bg">
+    <h3>Agent B — HANDOFF completion-pin <span class="tag">NO-OP</span></h3>
+    <div class="body">
+      <p>The ✓ pin UI from dev commit <code>e5349b9</code> is <strong>already on main</strong>. The overview page's TODAY tile flips to "TODAY · DONE" + actual mi, the inline TodayCard renders <code>✓ DONE · X.X MI</code>, and <code>workout/[date]/page.tsx</code> shows the completion chip + "Actuals from Strava" tile. Working tree clean, no porting needed. Detection mechanism: <code>findActivityForWorkout()</code> + <code>isWorkoutComplete()</code> from <code>lib/plan-match.ts</code> using the 60% completion threshold.</p>
+    </div>
+  </div>
+
+  <div class="entry bg">
+    <h3>Agent C — Build-ramp fix <span class="commit">6689af7</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>BUILD phase now caps at 5%/wk growth (was 10%/wk flat across BUILD+PEAK); PEAK keeps the 10%/wk steep climb. Saves PEAK headroom per Daniels Research/04 §progression rules. The failing scenario test now passes — simulated weeks 43.0 / 44.5 / 46.1 / 48.0, ratios 1.19 / 1.24 / 1.28 / 1.33 vs ±35% tolerance. Tolerance NOT widened. Full suite: 476 passed.</p>
+    </div>
+  </div>
+
+  <div class="entry bg">
+    <h3>Agent D — VO2max wellness fold (corrected scope) <span class="commit">caea219</span> <span class="tag shipped">SHIPPED</span></h3>
+    <div class="body">
+      <p>Folded dev commit <code>7916bc5</code> onto main with the corrected scope locked in (wellness signal only, NEVER drives VDOT, NEVER labeled as peer to VDOT). Snapshot test asserts <code>paceTargetFromVdot</code> outputs are identical with/without an Apple VO2max present across all four pace zones. Static signature canary asserts <code>paceTargetFromVdot.length &lt;= 2</code> — no Vo2MaxApple param. Profile UI changes from 7916bc5 were dropped (different architecture on main) — left as a follow-up for a WellnessCard.tsx component.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="sec-h">What Tripped Guards (and how it was handled)</div>
+
+<div class="feed">
+
+  <div class="entry">
+    <h3>Stale cherry-pick state from prior session</h3>
+    <div class="body">
+      <p><code>.git/CHERRY_PICK_HEAD</code> kept pointing at <code>7916bc5</code> (VO2max) from a pre-session aborted merge attempt. The agent D worktree's git operations would re-surface the stale state in the main worktree's git dir between operations, so each commit attempt failed with "unmerged files." Resolved by manually clearing <code>.git/CHERRY_PICK_HEAD</code>, checking out HEAD on the affected files, and starting fresh. No data lost.</p>
+    </div>
+  </div>
+
+  <div class="entry">
+    <h3>vdot.test.ts assertions outdated by the migration</h3>
+    <div class="body">
+      <p>Two tests (<code>VDOT 50 T pace</code> and <code>VDOT 45 T pace</code>) asserted the OLD race-time-interpolation values: T = halfS/13.109 (≈ 419s) or 15K/9.321 (≈ 450s). After the migration, T comes directly from Daniels' canonical T column: 411s at VDOT 50, 445s at VDOT 45. Updated the test expectations to assert canonical values, kept the tolerance tight (±1s to account for band-rounding asymmetry). This is the regression guard for the migration — if anything ever pushes T pace back to the old race-time-derived values, these tests catch it.</p>
+    </div>
+  </div>
+
+  <div class="entry">
+    <h3>Background agents leaked .git state across worktrees</h3>
+    <div class="body">
+      <p>The background-agent worktrees share <code>.git</code> with the main worktree. Agent D's cherry-pick attempts left <code>CHERRY_PICK_HEAD</code> visible to my main worktree git operations. Workaround: clear state explicitly before each commit. Not a blocker, but worth noting for future autonomous sessions — if agents will be doing cherry-pick or merge ops, the main session should detect-and-clean before its own commits.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="sec-h">What's Still Open</div>
+
+<div class="feed">
+
+  <div class="entry skip">
+    <h3>P1 step 7 — Pre-workout briefing on TodayCard <span class="tag skipped">DEFERRED</span></h3>
+    <div class="body">
+      <p>Needs four independent data sources stitched (weather, shoe rotation, last-similar-session, target pace). Each is well-defined; the integration is a coherent session of its own. Recommend it as the next focused work block.</p>
+    </div>
+  </div>
+
+  <div class="entry skip">
+    <h3>Step 8 trajectory piece (on-track / behind / ahead) <span class="tag skipped">QUEUED</span></h3>
+    <div class="body">
+      <p>The race countdown reads VDOT gap correctly; the "trajectory" piece (whether you're trending toward or away from the goal) needs the passive VDOT updater signals — key workout adherence, HR-to-pace drift over time. Both modules exist as scaffolding but aren't surfacing trend data yet. Queue.</p>
+    </div>
+  </div>
+
+  <div class="entry skip">
+    <h3>Chip E — HR-pace trend sparkline <span class="tag skipped">DEFERRED</span></h3>
+    <div class="body">
+      <p>Small chart on Coach Reads showing avg pace at 140bpm over the last 4 weeks. Cheap to spec, requires chart-library decisions (inline SVG vs Recharts), and would have to land in the same area as the new aggregate explainer I shipped tonight. Queue for the next session.</p>
+    </div>
+  </div>
+
+  <div class="entry skip">
+    <h3>VDOT 61–72 second-source verification <span class="tag skipped">DEFERRED</span></h3>
+    <div class="body">
+      <p>The canonical Daniels table is snapshot-tested for VDOT 30, 40, 46, 48, 50, 60. Rows 61–72 are best-effort transcription pending a second-source check against runsmartonline.com or Daniels 3rd ed direct. Not blocking at your current VDOT 47.2 — flagged on the data file as "pending second-source verification".</p>
+    </div>
+  </div>
+
+  <div class="entry skip">
+    <h3>Explicit A-race flag <span class="tag skipped">QUEUED</span></h3>
+    <div class="body">
+      <p>The cycle-aware compute-vdot picks goal-tier from "nearest upcoming race" — works for your current state because AFC HM (Aug) is the next race AND your A race. The heuristic breaks for runners with multiple upcoming races at different distances. Add an explicit "A race" flag to <code>races.meta.priority</code> (already exists) and have goalRace() prefer priority='A'. Low priority for V1.</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="sec-h">The Numbers</div>
+
+<div class="entry">
+  <div class="body">
+    <table>
+      <tr><th>Metric</th><th>Before</th><th>After</th><th>Source</th></tr>
+      <tr><td>Aggregate VDOT</td><td>45.9 (naive top-3)</td><td><strong>~47.2</strong> (cycle-aware variant c)</td><td>compute-vdot.ts</td></tr>
+      <tr><td>HM weight in aggregate</td><td>~33% (1 of 3)</td><td><strong>75%</strong> (goal-tier exempt)</td><td>compute-vdot.ts</td></tr>
+      <tr><td>LA Marathon finishS</td><td>12625s (Strava gun)</td><td><strong>12700s (chip)</strong></td><td>races.actual_result (Option-B)</td></tr>
+      <tr><td>E pace at VDOT 47.2</td><td>8:53/mi (legacy, slow)</td><td><strong>8:38/mi</strong> (canonical)</td><td>training_paces_table.ts</td></tr>
+      <tr><td>R pace at VDOT 47.2</td><td>5:41/mi (legacy, fast)</td><td><strong>6:08/mi</strong> (canonical)</td><td>training_paces_table.ts</td></tr>
+      <tr><td>Projected AFC HM finish</td><td>n/a (no surface)</td><td><strong>1:36:16</strong> @ current fitness</td><td>readiness math, /races/[slug]</td></tr>
+      <tr><td>Gap to 1:30 goal</td><td>n/a</td><td><strong>4.1 VDOT pts · ~24 sec/mi T</strong></td><td>readiness math</td></tr>
+      <tr><td>Tests passing</td><td>422 (before UNIT B)</td><td><strong>478</strong></td><td>vitest</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="sec-h">Action for You When You Wake Up</div>
+
+<div class="entry p0">
+  <h3>One click to apply the canonical pace bands</h3>
+  <div class="body">
+    <ol style="margin-left: 18px;">
+      <li>Visit <code>/profile</code></li>
+      <li>Read the migration banner explaining the one-time correction</li>
+      <li>Click <strong>"Confirm canonical paces"</strong></li>
+      <li>Banner clears, paces apply across all workout prescriptions</li>
+    </ol>
+    <p style="margin-top: 10px;">After that, the system is fully on canonical Daniels. Coach Reads will speak in plain English about your VDOT. /races/la-marathon-2026 will show the chip-time divergence banner. /races/americas-finest-city will show your 90-day countdown with the 4.1 VDOT-point gap to your goal.</p>
+    <p>The training cycle exists. The data is clean. The math is right. Now we run.</p>
+  </div>
+</div>
+
+<div class="footer">
+  Generated <code>2026-05-19 06:00 PT</code> · main is at <code>8f0acb2</code> · 478/0 tests · 4/4 BG agents complete
+</div>
+
+</body>
+</html>
