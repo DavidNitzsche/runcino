@@ -32,6 +32,7 @@
 import { buildAdaptiveVdotVerdict } from './adaptive-vdot-verdict';
 import { resolveEffectiveMaxHr } from './compute-max-hr';
 import { computeAggregateVdot } from './compute-vdot';
+import { INCONCLUSIVE_EVIDENCE } from './coach-voice';
 
 export type TrajectoryState = 'ahead' | 'on-track' | 'behind' | 'collecting-evidence';
 
@@ -104,7 +105,7 @@ export async function computeRaceTrajectory(
       state: 'collecting-evidence',
       signals,
       headline: 'Collecting evidence · signals disagree',
-      falsifier: `Signals point in opposite directions this period (${upCount} up, ${downCount} down). Most likely one window had a non-representative sample. Trajectory read needs the picture to converge.`,
+      falsifier: `${INCONCLUSIVE_EVIDENCE} — signals point in opposite directions this period (${upCount} up, ${downCount} down). Most likely one window had a non-representative sample. Trajectory read needs the picture to converge.`,
     };
   }
 
@@ -132,7 +133,7 @@ export async function computeRaceTrajectory(
       state: 'on-track',
       signals,
       headline: 'On track · single corroborating signal',
-      falsifier: 'A second corroborating signal would lift this to "ahead." A reversal in the firing signal would drop it to "collecting evidence."',
+      falsifier: "A second corroborating signal — we'd revise to 'ahead.' A reversal in the firing signal — we'd revise to 'collecting evidence.'",
     };
   }
 

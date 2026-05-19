@@ -22,6 +22,7 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { computeRaceTrajectory } from '@/lib/race-trajectory';
 import { computeRaceProjection } from '@/lib/race-projection';
 import { RaceProjectionChart } from './RaceProjectionChart';
+import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
 import './races-v4.css';
 
 function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
@@ -495,15 +496,26 @@ export default async function RacesPage() {
                     Replaces the "Feasibility · No data" stub when L7
                     evidence is available. Falls back to silent — the
                     runner sees the same "No data" placeholder until
-                    signals + verdict accumulate enough to make a call. */}
+                    signals + verdict accumulate enough to make a call.
+                    Falsifier rendered INLINE under the headline (not as
+                    a hover tooltip) per Rule 2 + lib/coach-voice.ts. */}
                 {trajectory ? (
-                  <div className="path-stat" title={trajectory.falsifier}>
+                  <div className="path-stat">
                     <div className="path-stat-label">Trajectory</div>
                     <div className="path-stat-value" style={{ color: trajectoryColor(trajectory.state), fontSize: 22 }}>
                       {trajectoryShortLabel(trajectory.state)}
                     </div>
                     <div className="path-stat-sub" style={{ fontSize: 11 }}>
                       {trajectory.headline}
+                    </div>
+                    <div className="path-stat-falsifier" style={{
+                      fontSize: 10,
+                      lineHeight: 1.4,
+                      marginTop: 6,
+                      color: 'rgba(13,15,18,.55)',
+                    }}>
+                      <strong style={{ color: 'rgba(13,15,18,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
+                      {trajectory.falsifier}
                     </div>
                   </div>
                 ) : (

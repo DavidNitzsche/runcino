@@ -22,6 +22,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MaxHrValidationVerdict } from '@/lib/validate-max-hr';
+import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
 
 interface Props {
   verdict: MaxHrValidationVerdict;
@@ -114,7 +115,7 @@ export function MaxHrValidationBanner({ verdict }: Props) {
           {err && <span className="mhr-err">{err}</span>}
         </div>
         <div className="mhr-banner-falsifier">
-          <strong>What would change our mind: </strong>
+          <strong>{FALSIFIER_PREFIX} </strong>
           {rec.falsifier}
         </div>
       </div>

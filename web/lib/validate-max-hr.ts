@@ -335,9 +335,9 @@ export async function validateMaxHr(
           reason: peakSummary,
           falsifier:
             meetsMultiPeak
-              ? `We'd reconsider if you can identify one of these readings as a sensor glitch ` +
+              ? `We'd revise if you can identify one of these readings as a sensor glitch ` +
                 `(e.g. avg HR was implausibly low for the workout intensity).`
-              : `We'd reconsider if you flag that ${topValidated.name} reading as a sensor ` +
+              : `We'd revise if you flag that ${topValidated.name} reading as a sensor ` +
                 `glitch. With only one above-stored reading, this is high-confidence only ` +
                 `because of the ≥5 bpm gap.`,
         },
@@ -368,7 +368,7 @@ export async function validateMaxHr(
           `— LTHR caps at ~${ratioCap} for most runners. ` +
           `Suggested ${raceEstimate.estimateMid} bpm (midpoint of estimated range).`,
         falsifier:
-          `We'd reconsider if your next HM-effort run shows avg HR > ${Math.round(currentMaxHr * 0.94)} ` +
+          `We'd revise if your next HM-effort run shows avg HR > ${Math.round(currentMaxHr * 0.94)} ` +
           `— that'd mean you really can hold a higher %max than the rule of thumb.`,
       },
     };
@@ -422,7 +422,7 @@ export async function validateMaxHr(
                 `bpm (${sustainedPct}% of stored max), which implies a true max around ${suggested} bpm via ` +
                 `avg / 0.90. Suggest reviewing the stored ceiling.`,
               falsifier:
-                `We'd reconsider if your next all-out interval session peaks at ${currentMaxHr - 2} bpm or ` +
+                `We'd revise if your next all-out interval session peaks at ${currentMaxHr - 2} bpm or ` +
                 `below — that'd be evidence ${currentMaxHr} really is your ceiling. The cluster pattern is ` +
                 `the strongest signal here.`,
             },
@@ -465,7 +465,7 @@ export async function validateMaxHr(
         : `Stored ${currentMaxHr} bpm; log a half or 10K with HR data ` +
           `to validate against race performance.`,
       falsifier:
-        `We'd raise this estimate if a validated peak from a race or ` +
+        `We'd revise this estimate if a validated peak from a race or ` +
         `interval session comes in 3+ bpm above ${currentMaxHr}, or if ` +
         `a future HM avg HR implies a max above ${currentMaxHr + 5}.`,
     },

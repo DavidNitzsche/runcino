@@ -19,6 +19,7 @@
  */
 
 import { useState } from 'react';
+import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
 
 type Evidence = {
   date: string;
@@ -184,7 +185,7 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
           fontStyle: 'italic',
         }}
       >
-        <strong style={{ color: 'rgba(13,15,18,.75)', fontStyle: 'normal' }}>What would change our mind:</strong>{' '}
+        <strong style={{ color: 'rgba(13,15,18,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
         {verdict.falsifier}
       </div>
 

@@ -327,7 +327,7 @@ export async function validateRaceFeasibility(
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
       `Goal of ${goalDispl} is ${ambitiousBy} more aggressive — ambitious but in reach with a strong build.`;
     falsifier =
-      `We'd switch to 'fair' if a race in the next 4 weeks moves your VDOT up by ` +
+      `We'd revise to 'fair' if a race in the next 4 weeks moves your VDOT up by ` +
       `~2 points (about 1 min/mi faster at HM pace).`;
   } else if (gapSeconds >= -FAIR_TOLERANCE_S) {
     // Within ±1 min of predicted — fair
@@ -337,7 +337,7 @@ export async function validateRaceFeasibility(
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
       `Goal of ${goalDispl} is within ±1 min — fair and realistic.`;
     falsifier =
-      `We'd flag 'stretch' if you tighten the goal by >2 min, or 'conservative' ` +
+      `We'd revise to 'stretch' if you tighten the goal by >2 min, or 'conservative' ` +
       `if you ease it by >1 min.`;
   } else {
     // >1 min easier — conservative
@@ -348,7 +348,7 @@ export async function validateRaceFeasibility(
       `Your VDOT ${agg.value.toFixed(1)} predicts a ${predDispl} finish for ${race.meta.name}. ` +
       `Goal of ${goalDispl} is ${easierBy} easier than predicted — you have room to push if you want.`;
     falsifier =
-      `We'd switch to 'fair' if you bump the goal closer to ${predDispl}, or ` +
+      `We'd revise to 'fair' if you bump the goal closer to ${predDispl}, or ` +
       `if a race in the next 4 weeks moves your VDOT down.`;
   }
 

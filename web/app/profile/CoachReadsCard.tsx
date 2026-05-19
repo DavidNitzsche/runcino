@@ -18,6 +18,7 @@ import { AdaptiveVdotBanner, type AdaptiveVdotVerdictForUI } from './AdaptiveVdo
 import { VdotShiftBanner, type VdotShiftBannerProps } from './VdotShiftBanner';
 import { Z2Sparkline } from './Z2Sparkline';
 import type { Z2SparklineResult } from '@/lib/z2-sparkline';
+import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
 import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
@@ -193,7 +194,7 @@ export function CoachReadsCard({
                   {raceFeasibility.reason}
                 </div>
                 <div className="coach-reads-feasibility-falsifier">
-                  <strong>What would change our mind: </strong>{raceFeasibility.falsifier}
+                  <strong>{FALSIFIER_PREFIX} </strong>{raceFeasibility.falsifier}
                 </div>
               </div>
             )}
