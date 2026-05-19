@@ -439,6 +439,16 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT
         CHECK (accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$');
     `);
+    // Pace-migration acknowledgment — set when the user confirms the
+    // one-time pace-band correction from the legacy race-pace-derived
+    // formula to canonical Daniels Table 2. While NULL, /profile's
+    // Coach Reads card surfaces a migration banner explaining the
+    // canonical correction. POST /api/profile/acknowledge-pace-migration
+    // sets the timestamp. See web/scripts/sim-sweep-pace-bands.ts +
+    // docs/2026-05-19-sim-sweep.md for the migration diff context.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pace_migration_ack_at TIMESTAMPTZ;
+    `);
     // Adaptive-recommendation dismissals — when the user clicks
     // "Keep current" on a max-HR validation prompt, the timestamp
     // here suppresses the banner for 30 days OR until new evidence

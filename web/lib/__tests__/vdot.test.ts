@@ -52,23 +52,24 @@ describe('pacesFromVdot', () => {
     expect(mCenter).toBeLessThan(440);
   });
 
-  it('VDOT 50 T pace = HM pace (vdot < 50 uses 15K)', () => {
-    // For vdot ≥ 50 T is anchored on HM pace.
+  it('VDOT 50 T pace = canonical Daniels T mile (411s ≈ 6:51)', () => {
+    // Post-migration: T pace reads from canonical Daniels Table 2
+    // (TRAINING_PACES_TABLE) instead of race-time interpolation.
+    // VDOT 50 tMileS = 411. Band width 3s/mi rounds asymmetrically
+    // (low 410, high 413 → midpoint 411.5).
     const set = pacesFromVdot(50);
-    // halfS 5495 / 13.109 ≈ 419.2 s/mi (~6:59).
     const tCenter = (set!.T.lowS + set!.T.highS) / 2;
-    expect(tCenter).toBeGreaterThan(416);
-    expect(tCenter).toBeLessThan(423);
+    expect(tCenter).toBeGreaterThanOrEqual(411);
+    expect(tCenter).toBeLessThanOrEqual(412);
   });
 
-  it('VDOT 45 T pace = 15K pace (slower runner)', () => {
-    // For vdot < 50 T anchors on 15K pace.
+  it('VDOT 45 T pace = canonical Daniels T mile (445s ≈ 7:25)', () => {
+    // Post-migration: T pace reads from canonical Daniels Table 2.
+    // VDOT 45 tMileS = 445 per the data file.
     const set = pacesFromVdot(45);
-    // 15K 4193 / 9.321 ≈ 449.8 s/mi (~7:30). HM/13.109 = 459.3 (~7:39).
-    // So T should land closer to 450 than 460.
     const tCenter = (set!.T.lowS + set!.T.highS) / 2;
-    expect(tCenter).toBeGreaterThan(446);
-    expect(tCenter).toBeLessThan(454);
+    expect(tCenter).toBeGreaterThanOrEqual(445);
+    expect(tCenter).toBeLessThanOrEqual(446);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   PACE_ZONE_WIDTH,
   type DanielsPace,
 } from '../coach/doctrine';
+import { resolveTrainingPaces } from './training-paces-resolver';
 import type { CoachState } from './coach-state';
 import type { RunWorkoutType } from './coach-workouts';
 
@@ -133,33 +134,38 @@ export interface DanielsPaceSet {
   R: { lowS: number; highS: number };
 }
 
-/** Build Daniels pace bands from a VDOT. The math:
- *  - M = marathon time / 26.219
- *  - T = HM pace for sub-elite, 15K pace for slower runners
- *  - I = 5K race pace (slightly slower for very long intervals)
- *  - R = mile race pace (or ~6 sec faster than I per 400m)
- *  - E = M + 60-90 sec/mi (Daniels' E is wide on purpose)
- *  Bands use PACE_ZONE_WIDTH per zone. */
+/** Build Daniels pace bands from a VDOT.
+ *
+ *  Migration history (commit context):
+ *    The previous formula derived training paces from race-time
+ *    interpolation: E = M + 75s, R = mile race pace, T = HM pace,
+ *    etc. The sim sweep at docs/2026-05-19-sim-sweep.md confirmed
+ *    this drifted systematically from canonical Daniels Table 2:
+ *      - E was 15-40s/mi too slow (over-conservative)
+ *      - R was 16-38s/mi too fast (mile-pace instead of r400 × 4.023)
+ *      - 25 large-shift cells across 15 VDOTs × 5 zones
+ *
+ *    pacesFromVdot now delegates to resolveTrainingPaces (canonical
+ *    Daniels Table 2 with the source-priority chain). The
+ *    DanielsPaceSet shape stays unchanged so all callers keep
+ *    working. Band widths still come from PACE_ZONE_WIDTH per zone.
+ *
+ *  Migration gate at the UI layer: when `users.pace_migration_ack_at`
+ *  is null, /profile/Coach Reads surfaces a one-time banner
+ *  explaining the canonical correction; user confirms once. After
+ *  the ack, the migration banner disappears and pace bands
+ *  re-render in their corrected form. */
 export function pacesFromVdot(vdot: number): DanielsPaceSet | null {
-  const row = vdotRow(vdot);
-  if (!row) return null;
+  if (!Number.isFinite(vdot) || vdot <= 0) return null;
 
-  // M pace (marathon) — center pace, 5 sec/mi band per Daniels
-  const mCenterS = row.marathonS / 26.219;
-  // T pace — for vdot >= 50 use HM pace; below that use 15K pace
-  // (slower runners benefit from longer distance anchor per
-  // Pfitzinger/Daniels).
-  const tCenterS = vdot >= 50 ? row.halfS / 13.109 : row.km15S / 9.321;
-  // I pace — 5K race pace
-  const iCenterS = row.km5S / 3.107;
-  // R pace — mile race pace
-  const rCenterS = row.mileS / 1;
-  // E pace — Daniels says E is 60-90 sec/mi slower than M; use 75
-  // as the center
-  const eCenterS = mCenterS + 75;
+  // Resolver returns canonical Daniels paces with the source-priority
+  // chain (published > derived) applied for iMile and rMile. Clamps
+  // to the table bounds [30, 72]; pendingVerification is set for
+  // VDOT > 60 (caller can read it but pacesFromVdot doesn't pass
+  // through — the DanielsPaceSet shape is fixed).
+  const resolved = resolveTrainingPaces(vdot);
 
   const widthFor = (zone: DanielsPace): number => PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
-
   const band = (centerS: number, zone: DanielsPace) => {
     const half = widthFor(zone) / 2;
     return { lowS: Math.round(centerS - half), highS: Math.round(centerS + half) };
@@ -167,11 +173,11 @@ export function pacesFromVdot(vdot: number): DanielsPaceSet | null {
 
   return {
     vdot,
-    E: band(eCenterS, 'E'),
-    M: band(mCenterS, 'M'),
-    T: band(tCenterS, 'T'),
-    I: band(iCenterS, 'I'),
-    R: band(rCenterS, 'R'),
+    E: band(resolved.eMidS, 'E'),
+    M: band(resolved.mS, 'M'),
+    T: band(resolved.tMileS, 'T'),
+    I: band(resolved.iMileS, 'I'),
+    R: band(resolved.rMileS, 'R'),
   };
 }
 

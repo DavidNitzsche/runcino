@@ -32,7 +32,26 @@ export interface FitnessVdot {
     distanceMi: number;
     finishS: number;
     vdot: number;
+    /** Provenance of finishS — 'races' = curated chip time, 'strava' = raw Strava. */
+    source?: 'races' | 'strava';
+    /** Total weight in the aggregate (recency × length × tier). */
+    weight?: number;
+    /** True when this contributor's distance tier matches the goal tier. */
+    isGoalTier?: boolean;
+    /** True when the race date falls within the current cycle window. */
+    isInCycle?: boolean;
+    /** Recency component of weight (exp decay, 1.0 = full / exempt). */
+    recency?: number;
+    /** Tier-match component (3.0 exact / 1.0 adjacent / 0.4 distant). */
+    tierFactor?: number;
+    /** Length component (sqrt(km/10)). */
+    lengthFactor?: number;
   }>;
+  /** Goal race tier used for tier-factor scoring in the aggregate. */
+  goalTier?: 'SPRINT' | 'TEN_K_ISH' | 'HM_ISH' | 'M_ISH' | null;
+  /** Cycle window start (ISO date). Goal-tier races on or after this
+   *  date keep full recency weight per the C3 cycle-aware rule. */
+  cycleStartIso?: string;
 }
 
 export interface FitnessMaxHr {

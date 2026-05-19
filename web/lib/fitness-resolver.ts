@@ -138,9 +138,24 @@ async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> 
       value: agg.value, source: 'aggregate',
       sourceLabel: `Top ${agg.sourceCount} efforts (${agg.windowLabel}): ${labels}`,
       contributors: agg.sources.map((s) => ({
-        name: s.canonicalLabel, date: s.date, distanceMi: s.distanceMi,
-        finishS: s.finishS, vdot: s.vdot,
+        name: s.canonicalLabel,
+        date: s.date,
+        distanceMi: s.distanceMi,
+        finishS: s.finishS,
+        vdot: s.vdot,
+        // Enrichment fields from cycle-aware compute-vdot (commit
+        // 0052067): surface weight breakdown + provenance so Coach
+        // Reads can explain WHY a contributor lands where it does.
+        source: s.source,
+        weight: s.weight,
+        isGoalTier: s.isGoalTier,
+        isInCycle: s.isInCycle,
+        recency: s.weightBreakdown.recency,
+        tierFactor: s.weightBreakdown.tier,
+        lengthFactor: s.weightBreakdown.length,
       })),
+      goalTier: agg.goalTier,
+      cycleStartIso: agg.cycleStartIso,
     };
   }
   const defaultV = DEFAULT_VDOT_BY_LEVEL[level] ?? DEFAULT_VDOT_BY_LEVEL.intermediate;

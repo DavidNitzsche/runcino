@@ -8,11 +8,12 @@
  * workout descriptions) should match what's shown here.
  */
 
-import type { ResolvedFitness } from '@/lib/fitness-types';
+import type { ResolvedFitness, FitnessVdot } from '@/lib/fitness-types';
 import { fmtPaceBand } from '@/lib/fitness-types';
 import type { MaxHrValidationVerdict } from '@/lib/validate-max-hr';
 import type { RaceFeasibilityVerdict } from '@/lib/validate-race-feasibility';
 import { MaxHrValidationBanner } from './MaxHrValidationBanner';
+import { PaceMigrationBanner } from './PaceMigrationBanner';
 
 function fmtFinish(s: number): string {
   if (!s || s <= 0) return '—';
@@ -31,15 +32,77 @@ function fmtDate(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
+/** Natural-language aggregate explainer — written from the
+ *  contributor data, not hand-coded. The voice goal: explain WHY
+ *  VDOT lands where it does so the user can see the cycle-aware
+ *  weighting + goal-tier exemption + chip-time correction in
+ *  plain English. */
+function aggregateExplainer(vdot: FitnessVdot): string | null {
+  if (vdot.source !== 'aggregate' || vdot.contributors.length === 0) return null;
+  const totalWeight = vdot.contributors.reduce((s, c) => s + (c.weight ?? 0), 0);
+  if (totalWeight === 0) return null;
+
+  const top = vdot.contributors[0];
+  const topPct = Math.round(((top.weight ?? 0) / totalWeight) * 100);
+  const others = vdot.contributors.slice(1);
+  const othersPct = 100 - topPct;
+
+  const topFinish = fmtFinish(top.finishS);
+  const topDate = fmtDate(top.date);
+  const ageDays = top.date
+    ? Math.max(0, Math.floor((Date.now() - new Date(top.date + 'T12:00:00Z').getTime()) / 86_400_000))
+    : null;
+
+  const parts: string[] = [];
+  parts.push(`Your current VDOT is **${vdot.value.toFixed(1)}**.`);
+
+  // Top contributor framing
+  const topProvSrc = top.source === 'races' ? ' (chip time)' : '';
+  parts.push(
+    ` Anchored by your **${top.name} ${topDate}** (${topFinish}${topProvSrc} → VDOT ${top.vdot.toFixed(1)}), weighted **${topPct}%** of the total.`,
+  );
+
+  // Goal-tier-in-cycle explainer
+  if (top.isGoalTier && top.isInCycle && ageDays != null) {
+    parts.push(
+      ` This race is your goal-distance tier and falls inside your current training cycle, so it carries full weight despite being ${ageDays} days old.`,
+    );
+  } else if (top.isGoalTier && ageDays != null) {
+    parts.push(
+      ` This race matches your goal-distance tier but falls before the current training cycle, so its recency weight has decayed normally.`,
+    );
+  }
+
+  // Other contributors summary
+  if (others.length > 0 && othersPct > 0) {
+    const labels = others
+      .map((c) => `${c.name}${c.source === 'races' ? '*' : ''}`)
+      .join(', ');
+    parts.push(
+      ` ${labels} contribute the remaining **${othersPct}%** via adjacent-tier recency decay.`,
+    );
+  }
+
+  return parts.join('');
+}
+
 export function CoachReadsCard({
   fitness,
   maxHrVerdict,
   raceFeasibility,
+  paceMigrationAckAt,
 }: {
   fitness: ResolvedFitness;
   maxHrVerdict?: MaxHrValidationVerdict | null;
   raceFeasibility?: RaceFeasibilityVerdict | null;
+  /** Timestamp at which the user acknowledged the canonical pace
+   *  migration. When null, the PaceMigrationBanner is rendered above
+   *  the pace bands. Pulled from users.pace_migration_ack_at by
+   *  /profile/page.tsx. */
+  paceMigrationAckAt?: Date | string | null;
 }) {
+  const explainer = aggregateExplainer(fitness.vdot);
+  const needsMigrationAck = !paceMigrationAckAt;
   return (
     <div className="card">
       <div className="card-header">
@@ -105,26 +168,101 @@ export function CoachReadsCard({
           <div className="coach-reads-headline">
             <span className="coach-reads-bignum">{fitness.vdot.value.toFixed(1)}</span>
             <span className="coach-reads-tag coach-reads-tag-source">{fitness.vdot.source}</span>
+            {fitness.vdot.goalTier && (
+              <span className="coach-reads-tag coach-reads-tag-goal">
+                Goal: {fitness.vdot.goalTier.replace('_ISH', '').toLowerCase()}
+              </span>
+            )}
           </div>
-          {fitness.vdot.sourceLabel && (
+          {/* Natural-language aggregate explainer — surfaces WHY this
+              VDOT lands here. Built from contributor data, not
+              hand-coded. */}
+          {explainer && (
+            <div
+              className="coach-reads-explainer"
+              dangerouslySetInnerHTML={{
+                __html: explainer.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'),
+              }}
+            />
+          )}
+          {fitness.vdot.sourceLabel && !explainer && (
             <div className="coach-reads-meta">{fitness.vdot.sourceLabel}</div>
           )}
           {fitness.vdot.contributors.length > 0 && (
             <div className="coach-reads-contributors">
-              {fitness.vdot.contributors.slice(0, 3).map((c, i) => (
-                <div key={i} className="coach-reads-contributor">
-                  <strong>{c.name}</strong> {fmtFinish(c.finishS)} · {fmtDate(c.date)} →
-                  <span className="coach-reads-accent"> VDOT {c.vdot.toFixed(1)}</span>
-                </div>
-              ))}
+              {fitness.vdot.contributors.slice(0, 4).map((c, i) => {
+                const totalWeight = fitness.vdot.contributors.reduce(
+                  (s, x) => s + (x.weight ?? 0),
+                  0,
+                );
+                const pct = totalWeight > 0 && c.weight != null
+                  ? Math.round((c.weight / totalWeight) * 100)
+                  : null;
+                return (
+                  <div key={i} className="coach-reads-contributor">
+                    <div className="coach-reads-contributor-line">
+                      <strong>{c.name}</strong> {fmtFinish(c.finishS)} · {fmtDate(c.date)} →
+                      <span className="coach-reads-accent"> VDOT {c.vdot.toFixed(1)}</span>
+                      {pct != null && (
+                        <span className="coach-reads-weight-pct">{pct}%</span>
+                      )}
+                    </div>
+                    <div className="coach-reads-contributor-flags">
+                      {c.source === 'races' && (
+                        <span className="coach-reads-flag coach-reads-flag-curated">
+                          ✓ chip time
+                        </span>
+                      )}
+                      {c.source === 'strava' && (
+                        <span className="coach-reads-flag coach-reads-flag-strava">
+                          Strava elapsed
+                        </span>
+                      )}
+                      {c.isGoalTier && (
+                        <span className="coach-reads-flag coach-reads-flag-goal">
+                          goal-tier
+                        </span>
+                      )}
+                      {c.isInCycle && c.isGoalTier && (
+                        <span className="coach-reads-flag coach-reads-flag-exempt">
+                          ⊕ full weight (in cycle)
+                        </span>
+                      )}
+                      {!c.isInCycle && c.recency != null && (
+                        <span className="coach-reads-flag coach-reads-flag-decayed">
+                          recency {(c.recency * 100).toFixed(0)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Cycle-window explainer — small note explaining the C3
+              cycle-aware exemption in plain language. */}
+          {fitness.vdot.cycleStartIso && fitness.vdot.contributors.some((c) => c.isGoalTier && c.isInCycle) && (
+            <div className="coach-reads-cycle-note">
+              <strong>Cycle window:</strong> goal-tier races on or after{' '}
+              {fmtDate(fitness.vdot.cycleStartIso)} count at full weight regardless of age.
+              Off-distance races decay normally over ~90 days. Helps anchor your
+              fitness to recent goal-distance evidence rather than letting older
+              off-distance races dominate.
             </div>
           )}
         </div>
       </div>
 
-      {/* ── DERIVED PACE BANDS ── */}
+      {/* ── ONE-TIME MIGRATION BANNER ── */}
+      {needsMigrationAck && (
+        <div className="coach-reads-section" style={{ borderTop: '1px solid rgba(13,15,18,.06)' }}>
+          <PaceMigrationBanner />
+        </div>
+      )}
+
+      {/* ── DERIVED PACE BANDS (canonical Daniels) ── */}
       <div className="coach-reads-section">
-        <div className="coach-reads-label">Pace Bands · race-pace derived from VDOT {fitness.vdot.value.toFixed(0)}</div>
+        <div className="coach-reads-label">Pace Bands · canonical Daniels for VDOT {fitness.vdot.value.toFixed(0)}</div>
         <div className="coach-reads-pace-grid">
           <div className="coach-reads-pace-cell">
             <div className="coach-reads-pace-zone">E · Easy</div>
@@ -153,13 +291,12 @@ export function CoachReadsCard({
           </div>
         </div>
         <div className="coach-reads-pace-footnote">
-          Bands are derived from your race performance (race-pace-derived),
-          not Daniels&rsquo; published training-pace tables. They reflect your
-          current race-pace capability and may run slightly slower than
-          canonical Daniels training paces. Anyone using a Daniels-based
-          calculator alongside this app will see ~15–30 sec/mi gap on T and
-          I bands — that&rsquo;s the labeling-semantics difference, not a math
-          error.
+          Bands are <strong>canonical Daniels</strong> values from the official
+          Table 2 source (images committed at <code>docs/references/</code>).
+          Single-value columns (M, T, I) come from the published table; E
+          is the published range midpoint with ±10s synthesis; R derives
+          from r400 × 4.023. Source-priority chain: published &gt; i1000 × 1.609
+          &gt; i400 × 4.023 for I-mile.
         </div>
       </div>
 
@@ -253,12 +390,78 @@ export function CoachReadsCard({
           color: rgba(13,15,18,.55); font-style: italic;
         }
         .coach-reads-contributors {
-          margin-top: 10px;
-          display: flex; flex-direction: column; gap: 4px;
+          margin-top: 12px;
+          display: flex; flex-direction: column; gap: 10px;
         }
         .coach-reads-contributor {
           font-family: 'Inter', sans-serif; font-size: 12px;
           color: rgba(13,15,18,.65);
+          padding: 8px 10px;
+          background: rgba(13,15,18,.025);
+          border: 1px solid rgba(13,15,18,.05);
+          border-radius: 8px;
+        }
+        .coach-reads-contributor-line {
+          display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+        }
+        .coach-reads-contributor-flags {
+          display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px;
+        }
+        .coach-reads-weight-pct {
+          margin-left: auto;
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 14px; letter-spacing: 0.5px;
+          color: rgba(13,15,18,.75);
+        }
+        .coach-reads-flag {
+          font-family: 'Oswald', sans-serif; font-weight: 600;
+          font-size: 9px; letter-spacing: 1.0px;
+          padding: 2px 6px; border-radius: 4px;
+          text-transform: uppercase;
+          background: rgba(13,15,18,.06);
+          color: rgba(13,15,18,.55);
+        }
+        .coach-reads-flag-curated {
+          background: rgba(44,168,47,.10);
+          color: #1f6a21;
+        }
+        .coach-reads-flag-strava {
+          background: rgba(252,82,0,.08);
+          color: #b3450a;
+        }
+        .coach-reads-flag-goal {
+          background: rgba(232,93,38,.10);
+          color: var(--accent, #E85D26);
+        }
+        .coach-reads-flag-exempt {
+          background: rgba(80,40,180,.08);
+          color: #5028b4;
+        }
+        .coach-reads-flag-decayed {
+          background: rgba(13,15,18,.04);
+          color: rgba(13,15,18,.50);
+        }
+        .coach-reads-explainer {
+          margin-top: 10px;
+          padding: 12px 14px;
+          background: rgba(13,15,18,.03);
+          border-left: 3px solid var(--accent, #E85D26);
+          border-radius: 6px;
+          font-family: 'Inter', sans-serif; font-size: 13px;
+          line-height: 1.55; color: rgba(13,15,18,.85);
+        }
+        .coach-reads-explainer strong { color: #0D0F12; font-weight: 600; }
+        .coach-reads-cycle-note {
+          margin-top: 10px; padding: 10px 12px;
+          background: rgba(80,40,180,.04);
+          border-radius: 6px;
+          font-family: 'Inter', sans-serif; font-size: 11px;
+          line-height: 1.5; color: rgba(13,15,18,.65);
+        }
+        .coach-reads-cycle-note strong { color: rgba(13,15,18,.85); font-weight: 600; }
+        .coach-reads-tag-goal {
+          background: rgba(232,93,38,.10);
+          color: var(--accent, #E85D26);
         }
         .coach-reads-pace-grid {
           display: grid;

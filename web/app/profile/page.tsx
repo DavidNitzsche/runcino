@@ -52,6 +52,7 @@ interface UserPrefsRow {
   quality_days: string[];
   rest_day: string;
   accent_color: string | null;
+  pace_migration_ack_at: Date | null;
 }
 
 const DEFAULT_ACCENT = '#E85D26';
@@ -88,7 +89,7 @@ function shoeStatus(mi: number, cap: number): { label: string; tone: 'green' | '
 
 async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes: ShoeRow[] }> {
   const userRows = await query<UserPrefsRow>(
-    `SELECT name, age, sex, location, level, long_run_day, quality_days, rest_day, accent_color
+    `SELECT name, age, sex, location, level, long_run_day, quality_days, rest_day, accent_color, pace_migration_ack_at
      FROM users WHERE id = $1 LIMIT 1`,
     [userId],
   );
@@ -96,6 +97,7 @@ async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes:
     name: 'Runner', age: null, sex: null, location: null,
     level: 'intermediate', long_run_day: 'sun', quality_days: ['tue','thu'], rest_day: 'sat',
     accent_color: null,
+    pace_migration_ack_at: null,
   };
 
   // Shoes table is legacy single-user; until cutover, read where user_uuid matches
@@ -269,6 +271,7 @@ export default async function ProfilePage() {
             fitness={fitness}
             maxHrVerdict={maxHrVerdict}
             raceFeasibility={raceFeasibility}
+            paceMigrationAckAt={user.pace_migration_ack_at}
           />
         </div>
 
