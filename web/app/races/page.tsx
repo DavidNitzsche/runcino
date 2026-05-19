@@ -23,6 +23,7 @@ import { computeRaceTrajectory } from '@/lib/race-trajectory';
 import { computeRaceProjection } from '@/lib/race-projection';
 import { RaceProjectionChart } from './RaceProjectionChart';
 import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
+import { classifyPR, coachingLineForPR } from '@/lib/pr-coaching';
 import './races-v4.css';
 
 function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
@@ -335,32 +336,17 @@ export default async function RacesPage() {
   const PRs: PR[] = [...racePRs.values(), ...stravaPRs]
     .sort((a, b) => (distanceOrder[a.canonicalLabel] ?? 99) - (distanceOrder[b.canonicalLabel] ?? 99));
 
-  // C5 · Per-PR coaching lines · context-aware copy
-  //   - race + matches goal distance: "Most recent goal-distance effort..."
-  //   - race + adjacent tier: "Adjacent-tier evidence, decaying as it ages."
-  //   - race + pre-cycle (>12 weeks old): "Pre-cycle PR. Older evidence..."
-  //   - strava-source: "Training effort. Race this distance to lock it in."
-  //
-  // Goal-distance detection: aRace.distanceMi maps to canonical label
-  // via the same inferCanonicalLocal helper.
+  // C5 · Per-PR coaching lines — classification logic + canonical
+  // strings live in lib/pr-coaching.ts (consolidated during V6).
+  // This loop maps each PR to its role and pulls the canonical line.
   const goalCanonical = aRace ? inferCanonicalLocal(aRace.distanceMi)?.label : null;
   const todayMsForPr = Date.parse(todayLocalISO + 'T12:00:00Z');
   for (const pr of PRs) {
-    if (pr.source === 'strava') {
-      pr.coachingLine = 'Training effort. Race this distance to lock it in.';
-      continue;
-    }
     const prMs = pr.rawDate ? Date.parse(pr.rawDate + 'T12:00:00Z') : null;
     const ageDays = prMs ? Math.round((todayMsForPr - prMs) / 86_400_000) : null;
-    const isPreCycle = ageDays != null && ageDays > 84;  // >12 weeks
-    const isGoalDistance = goalCanonical && pr.canonicalLabel === goalCanonical;
-    if (isGoalDistance && !isPreCycle) {
-      pr.coachingLine = 'Most recent goal-distance effort. Anchors current VDOT.';
-    } else if (isPreCycle) {
-      pr.coachingLine = 'Pre-cycle PR. Older evidence, still informing baseline.';
-    } else {
-      pr.coachingLine = 'Adjacent-tier evidence, decaying as it ages.';
-    }
+    const isGoalDistance = !!goalCanonical && pr.canonicalLabel === goalCanonical;
+    const role = classifyPR({ source: pr.source, isGoalDistance, ageDays });
+    pr.coachingLine = coachingLineForPR(role);
   }
 
   return (

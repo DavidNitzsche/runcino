@@ -84,16 +84,26 @@
  * ─────────────────────────────────────────────────────────────────────
  *
  * The same architectural state should use the same phrase across
- * surfaces. Three states were found drifting in audit:
+ * surfaces. Three states had drifted in audit; the constants below
+ * replace the variants. New surfaces import them.
  *
- *   "evidence inconclusive"   — was: signals disagree · signals stable
- *                                · noise floor · within ±5 s/mi
- *   "signal suspended ..."    — was: silenced · paused · injured-out
- *                                · L7 disabled · adaptive off
- *   "investigate path"        — was: investigate · check · examine
- *                                · look at · review
+ * NB: the "investigate" family splits into TWO distinct states, not
+ * one. Conflating them flattens real diagnostic information:
  *
- * The constants below replace those variants. New surfaces import them.
+ *   COLLECTING_EVIDENCE  — system hasn't seen enough yet to call it.
+ *                          Path forward is more data. ("a second
+ *                          corroborating signal would lift this to
+ *                          a stronger read")
+ *
+ *   SIGNALS_CONFLICTED   — system sees enough data but the signals
+ *                          disagree. Path forward is resolution, not
+ *                          more data. ("[Signal A] suggests fitness
+ *                          up, [Signal B] suggests fitness flat.
+ *                          Resolution pending.")
+ *
+ * These two states need different runner-facing language because they
+ * suggest different next-steps. A surface using the wrong one tells
+ * the runner the wrong thing about what they should do.
  *
  * ─────────────────────────────────────────────────────────────────────
  *                      WHAT THIS MODULE IS NOT
@@ -121,20 +131,23 @@ export const FALSIFIER_PREFIX = 'What would change our mind:';
 //                         SHARED-STATE PHRASES
 // ─────────────────────────────────────────────────────────────────────
 
-/** When adaptive signals point opposite directions, or all signals are
- *  within noise floor. Replaces: "signals disagree", "signals stable",
- *  "noise floor", "within ±5 s/mi". */
-export const INCONCLUSIVE_EVIDENCE = 'Evidence is inconclusive';
+/** When the system hasn't seen enough data yet to make a call. Path
+ *  forward is more data, not resolution. Use the headline form
+ *  (`Collecting evidence`) as the lead-in; compose the rest per surface.
+ *  Replaces: "signals stable", "noise floor", "within ±5 s/mi". */
+export const COLLECTING_EVIDENCE = 'Collecting evidence';
+
+/** When the system has seen enough data but signals disagree.  Path
+ *  forward is resolution (additional evidence to break the tie), not
+ *  more of the same.  Use the headline form (`Signals are mixed`) as
+ *  the lead-in; compose the per-signal detail per surface.
+ *  Replaces: "signals disagree", "evidence inconclusive". */
+export const SIGNALS_CONFLICTED = 'Signals are mixed';
 
 /** When a signal would have fired but is suspended due to injury mark.
  *  Replaces: "silenced", "paused", "L7 disabled", etc. */
 export const INJURY_SUSPENDED =
   'Signal suspended while injury is marked. Resumes when activity resumes.';
-
-/** When the coach is pointing the runner toward investigation rather
- *  than action. Used in adaptive verdicts that need confirmation
- *  before they're load-bearing. */
-export const INVESTIGATE_PATH = 'investigate before acting';
 
 // ─────────────────────────────────────────────────────────────────────
 //                         FALSIFIER VERB CONSTANTS
@@ -238,6 +251,58 @@ export function formatRevisionThreshold(args: {
 export function formatReversal(observation: string): string {
   const cleaned = observation.trim().replace(/\.$/, '');
   return `${cleaned} ${WOULD_WEAKEN}`;
+}
+
+/**
+ * Build a cross-reference clause acknowledging a related finding from
+ * another surface — V7 building block.
+ *
+ * The point: when two surfaces share a contributing factor, the second
+ * surface should ACKNOWLEDGE the first without RESTATING it. This
+ * helper builds a lower-case clause designed to be embedded inside a
+ * surface's own sentence.
+ *
+ * Example:
+ *
+ *   formatCrossReference({
+ *     relatedLabel: 'Z2 stimulus check',
+ *     surface:      '/overview',
+ *     relation:     'consistent with',
+ *   })
+ *     → "consistent with the Z2 stimulus check on /overview"
+ *
+ *   Used inside C6 readiness copy:
+ *   "Yellow. Watch effort if HR runs high early — consistent with the
+ *    Z2 stimulus check on /overview."
+ *
+ * RELATIONS:
+ *   · `consistent with`   — same pattern showing up in two surfaces
+ *                            (V5 firing + C6 yellow: both observing
+ *                            elevated effort).
+ *   · `tied to`           — causal / structural link
+ *                            (suspect-ceiling banner + Z2 sparkline:
+ *                            zones recalibrated changes the sparkline).
+ *   · `contributing to`   — related finding feeds the current one
+ *                            (Signal 4 PR contributing to L7 bump).
+ *   · `see also`          — pointer-only, no causal claim
+ *                            (E1/E4 gap + L7 signals suspended).
+ *
+ * Pick the weakest relation that's still accurate. "Consistent with"
+ * is the default because it claims pattern-co-occurrence without
+ * asserting causation.
+ */
+export function formatCrossReference(args: {
+  /** Brief noun-phrase naming the related finding. Should be the same
+   *  label the related surface uses for itself. */
+  relatedLabel: string;
+  /** Surface path where the related finding lives (e.g., '/overview',
+   *  '/profile', or component name). */
+  surface: string;
+  /** How this finding relates to the current one. Default: 'consistent with'. */
+  relation?: 'consistent with' | 'tied to' | 'contributing to' | 'see also';
+}): string {
+  const relation = args.relation ?? 'consistent with';
+  return `${relation} the ${args.relatedLabel} on ${args.surface}`;
 }
 
 /**

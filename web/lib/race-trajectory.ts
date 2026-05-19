@@ -32,7 +32,7 @@
 import { buildAdaptiveVdotVerdict } from './adaptive-vdot-verdict';
 import { resolveEffectiveMaxHr } from './compute-max-hr';
 import { computeAggregateVdot } from './compute-vdot';
-import { INCONCLUSIVE_EVIDENCE } from './coach-voice';
+import { COLLECTING_EVIDENCE, SIGNALS_CONFLICTED } from './coach-voice';
 
 export type TrajectoryState = 'ahead' | 'on-track' | 'behind' | 'collecting-evidence';
 
@@ -76,8 +76,8 @@ export async function computeRaceTrajectory(
     return {
       state: 'collecting-evidence',
       signals: { s1: 'silent', s2: 'silent', s3: 'silent' },
-      headline: 'Collecting evidence',
-      falsifier: 'Need 3+ threshold workouts (Signal 1), 10+ Z2 mile-splits per 4-week window (Signal 2), or 3+ interval sessions (Signal 3) to read trajectory.',
+      headline: COLLECTING_EVIDENCE,
+      falsifier: `${COLLECTING_EVIDENCE} — need 3+ threshold workouts (Signal 1), 10+ Z2 mile-splits per 4-week window (Signal 2), or 3+ interval sessions (Signal 3) to read trajectory.`,
     };
   }
 
@@ -105,7 +105,7 @@ export async function computeRaceTrajectory(
       state: 'collecting-evidence',
       signals,
       headline: 'Collecting evidence · signals disagree',
-      falsifier: `${INCONCLUSIVE_EVIDENCE} — signals point in opposite directions this period (${upCount} up, ${downCount} down). Most likely one window had a non-representative sample. Trajectory read needs the picture to converge.`,
+      falsifier: `${SIGNALS_CONFLICTED} — ${upCount} pointing up, ${downCount} pointing down this period. Resolution pending: a third corroborating observation in either direction would break the tie. Most likely one window had a non-representative sample.`,
     };
   }
 
@@ -141,7 +141,7 @@ export async function computeRaceTrajectory(
   return {
     state: 'collecting-evidence',
     signals,
-    headline: 'Collecting evidence · signals stable',
-    falsifier: 'Signals are within noise floor (±5 s/mi for pace, gating thresholds for HR). Trajectory direction requires at least one signal to fire above its threshold.',
+    headline: `${COLLECTING_EVIDENCE} · signals stable`,
+    falsifier: `${COLLECTING_EVIDENCE} — signals are within noise floor (±5 s/mi for pace, gating thresholds for HR). Trajectory direction requires at least one signal to fire above its threshold.`,
   };
 }

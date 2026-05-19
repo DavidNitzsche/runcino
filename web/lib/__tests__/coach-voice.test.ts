@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   FALSIFIER_PREFIX,
-  INCONCLUSIVE_EVIDENCE,
+  COLLECTING_EVIDENCE,
+  SIGNALS_CONFLICTED,
   INJURY_SUSPENDED,
   WOULD_REVISE,
   WOULD_WEAKEN,
@@ -17,6 +18,7 @@ import {
   formatRevisionThreshold,
   formatReversal,
   formatDiagnosis,
+  formatCrossReference,
 } from '../coach-voice';
 
 describe('canonical constants — locked phrasing', () => {
@@ -27,8 +29,16 @@ describe('canonical constants — locked phrasing', () => {
     expect(FALSIFIER_PREFIX).toBe('What would change our mind:');
   });
 
-  it('INCONCLUSIVE_EVIDENCE replaces three drifted phrases at one source', () => {
-    expect(INCONCLUSIVE_EVIDENCE).toBe('Evidence is inconclusive');
+  it('COLLECTING_EVIDENCE names the "not enough data yet" state', () => {
+    // Different state from SIGNALS_CONFLICTED — path forward is more
+    // data, not resolution. Conflating them flattens diagnostic info.
+    expect(COLLECTING_EVIDENCE).toBe('Collecting evidence');
+  });
+
+  it('SIGNALS_CONFLICTED names the "data sufficient but signals disagree" state', () => {
+    // Different state from COLLECTING_EVIDENCE — path forward is
+    // resolution (third corroborating signal), not more of the same.
+    expect(SIGNALS_CONFLICTED).toBe('Signals are mixed');
   });
 
   it('INJURY_SUSPENDED unifies the suspend-state message across surfaces', () => {
@@ -129,6 +139,46 @@ describe('formatReversal — evidence-strength frame', () => {
   it('strips trailing period from caller input so the suffix attaches cleanly', () => {
     const out = formatReversal('A single slow threshold workout.');
     expect(out).toBe('A single slow threshold workout would weaken this read');
+  });
+});
+
+describe('formatCrossReference — V7-ready cross-surface acknowledgment', () => {
+  it('builds the canonical "consistent with the X on Y" clause by default', () => {
+    const out = formatCrossReference({
+      relatedLabel: 'Z2 stimulus check',
+      surface: '/overview',
+    });
+    expect(out).toBe('consistent with the Z2 stimulus check on /overview');
+  });
+
+  it('respects the explicit relation when caller wants something stronger', () => {
+    const tied = formatCrossReference({
+      relatedLabel: 'suspect-ceiling banner',
+      surface: '/profile',
+      relation: 'tied to',
+    });
+    expect(tied).toBe('tied to the suspect-ceiling banner on /profile');
+
+    const contributing = formatCrossReference({
+      relatedLabel: 'Signal 4 PR trajectory',
+      surface: '/profile Coach Reads',
+      relation: 'contributing to',
+    });
+    expect(contributing).toBe(
+      'contributing to the Signal 4 PR trajectory on /profile Coach Reads',
+    );
+  });
+
+  it('produces lower-case output so the clause embeds mid-sentence', () => {
+    // V7's whole point: don't restate the related finding, just
+    // acknowledge it. The output is a clause, not a sentence —
+    // capitalization would force a sentence break.
+    const out = formatCrossReference({
+      relatedLabel: 'gap surface',
+      surface: '/overview',
+      relation: 'see also',
+    });
+    expect(out.charAt(0)).toBe(out.charAt(0).toLowerCase());
   });
 });
 
