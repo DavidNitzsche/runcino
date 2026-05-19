@@ -21,6 +21,9 @@ import { Topbar } from '@/app/components';
 import { requireActiveUser } from '@/lib/auth';
 import { getRaceDB } from '@/lib/race-store';
 import { query } from '@/lib/db';
+import { computeAggregateVdot } from '@/lib/compute-vdot';
+import { vdotRow } from '@/lib/vdot';
+import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
 import { buildSyntheticPlan, todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
@@ -308,6 +311,86 @@ export default async function RacePlanPage({ params }: PageProps) {
   }
   const linkedTop = linkedWorkouts.slice(0, 4);
 
+  // ── Readiness math: where you are vs where the goal is ────────
+  // Pulls current aggregate VDOT, looks up the predicted finish at
+  // this race's distance, computes the VDOT delta + T-pace delta to
+  // hit the goal. Surfaces in the countdown card so the user sees
+  // both the days-to-race AND the fitness gap in one place.
+  type ReadinessVdot = {
+    currentVdot: number;
+    currentVdotLabel: string;
+    predictedFinishS: number;
+    predictedFinishDisplay: string;
+    goalFinishS: number;
+    goalVdot: number | null;
+    vdotGap: number | null;
+    paceTGapS: number | null;
+    onPace: boolean;
+  } | null;
+  let readiness: ReadinessVdot = null;
+  if (goalFinishS > 0 && race.meta.distanceMi > 0) {
+    try {
+      const agg = await computeAggregateVdot(auth.id);
+      if (agg && agg.value > 0) {
+        const cv = agg.value;
+        const row = vdotRow(cv);
+        // Predicted finish at current VDOT for this race's distance.
+        const distKey: 'mileS' | 'km5S' | 'km10S' | 'km15S' | 'halfS' | 'marathonS' | null = (() => {
+          const m = race.meta.distanceMi;
+          if (Math.abs(m - 13.109) < 0.55) return 'halfS';
+          if (Math.abs(m - 26.219) < 1.05) return 'marathonS';
+          if (Math.abs(m - 6.214) < 0.31) return 'km10S';
+          if (Math.abs(m - 9.32) < 0.47) return 'km15S';
+          if (Math.abs(m - 3.107) < 0.155) return 'km5S';
+          return null;
+        })();
+        if (row && distKey) {
+          const predicted = row[distKey] as number;
+          // Find the VDOT that would produce the goal finish at this
+          // distance. Walk the VDOT table.
+          let goalVdot: number | null = null;
+          // Pull table rows in order — bracket and interpolate.
+          // We can use vdotRow at integer VDOTs from 30 to 85.
+          for (let v = 30; v <= 85; v++) {
+            const r = vdotRow(v);
+            if (!r) continue;
+            const t = r[distKey] as number;
+            if (t <= goalFinishS) {
+              if (v === 30) { goalVdot = 30; break; }
+              const prev = vdotRow(v - 1);
+              if (!prev) { goalVdot = v; break; }
+              const tPrev = prev[distKey] as number;
+              const span = tPrev - t;
+              const frac = span === 0 ? 0 : (tPrev - goalFinishS) / span;
+              goalVdot = Math.round(((v - 1) + frac) * 10) / 10;
+              break;
+            }
+          }
+          // T-pace gap (canonical Daniels per mile)
+          let paceTGapS: number | null = null;
+          if (goalVdot != null) {
+            const currentT = resolveTrainingPaces(cv).tMileS;
+            const goalT = resolveTrainingPaces(goalVdot).tMileS;
+            paceTGapS = currentT - goalT; // positive = current is slower
+          }
+          readiness = {
+            currentVdot: cv,
+            currentVdotLabel: agg.windowLabel,
+            predictedFinishS: predicted,
+            predictedFinishDisplay: fmtTime(predicted),
+            goalFinishS,
+            goalVdot,
+            vdotGap: goalVdot != null ? Math.round((goalVdot - cv) * 10) / 10 : null,
+            paceTGapS,
+            onPace: predicted <= goalFinishS,
+          };
+        }
+      }
+    } catch {
+      // Fail-soft: don't block the page if readiness math errors.
+    }
+  }
+
   // ── Chip-time vs Strava divergence ─────────────────────────────
   // When the curated actualResult.finishS differs from the matched
   // Strava activity's canonicalFinishS / movingTimeS, surface a
@@ -445,6 +528,77 @@ export default async function RacePlanPage({ params }: PageProps) {
               <strong>{fmtFullDate(race.meta.date)}</strong><br />
               {race.meta.distanceMi >= 26.1 ? 'Marathon' : race.meta.distanceMi >= 13.0 ? 'Half Marathon' : `${race.meta.distanceMi.toFixed(2)} mi`} · {race.meta.distanceMi.toFixed(2)} mi
             </div>
+            {/* Readiness math: surfaces the fitness gap to the goal
+                so the user sees daysAway AND vdotGap together. */}
+            {readiness && (
+              <div
+                style={{
+                  borderTop: '1px solid rgba(13,15,18,.08)',
+                  marginTop: 12,
+                  paddingTop: 12,
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  color: 'rgba(13,15,18,.85)',
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'Oswald, sans-serif',
+                    fontWeight: 700,
+                    fontSize: 9,
+                    letterSpacing: 1.2,
+                    color: 'rgba(13,15,18,.55)',
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}
+                >
+                  Readiness
+                </div>
+                <div style={{ fontSize: 12 }}>
+                  Projected at current VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>:
+                  <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, marginLeft: 6, letterSpacing: 0.5 }}>
+                    {readiness.predictedFinishDisplay}
+                  </span>
+                </div>
+                {readiness.goalVdot != null && readiness.vdotGap != null && (
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    Goal{' '}
+                    <strong>{fmtTime(readiness.goalFinishS)}</strong>{' '}
+                    requires VDOT{' '}
+                    <strong>{readiness.goalVdot.toFixed(1)}</strong>
+                  </div>
+                )}
+                {readiness.vdotGap != null && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      marginTop: 6,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      background: readiness.onPace
+                        ? 'rgba(44,168,47,.08)'
+                        : 'rgba(232,93,38,.06)',
+                      color: readiness.onPace ? '#1f6a21' : 'var(--accent, #E85D26)',
+                    }}
+                  >
+                    {readiness.onPace ? (
+                      <>✓ <strong>On pace</strong> — projected is faster than goal by{' '}
+                      {fmtTime(readiness.goalFinishS - readiness.predictedFinishS)}.</>
+                    ) : (
+                      <>
+                        Gap: <strong>{readiness.vdotGap.toFixed(1)} VDOT points</strong>
+                        {readiness.paceTGapS != null && (
+                          <>
+                            {' '}/ <strong>~{Math.abs(readiness.paceTGapS)} sec/mi</strong> T pace
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
