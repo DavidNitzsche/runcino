@@ -77,8 +77,6 @@ export interface TrainingData {
   /** Goal tracking — PR / Goal / Stretch tiles + fitness now vs goal.
    *  null when no A-race is set (page prompts the user to set one). */
   goalTracking: GoalTrackingSnapshot | null;
-  /** Next-4-weeks plan blocks. null when trajectory has no upcoming weeks. */
-  nextFourWeeks: NextFourWeeksSnapshot | null;
   /** Plan-adapted (Coach Read) — null when nothing has changed in the
    *  last 7 days. */
   planAdapted: PlanAdaptedReport | null;
@@ -167,32 +165,6 @@ export interface GoalTrackingSnapshot {
     summary: string;
     onTarget: boolean;
   } | null;
-}
-
-export interface NextFourWeeksBlock {
-  rangeLabel: string;
-  title: string;
-  tone: 'recovery' | 'base' | 'build' | 'peak' | 'taper' | 'race';
-  miles: number;
-  quality: number;
-  longMi: number;
-  rationale: string;
-}
-
-export interface NextFourWeeksSnapshot {
-  rangeLabel: string;
-  title: string;
-  pins: Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }>;
-  blocks: NextFourWeeksBlock[];
-  summary: {
-    totalMi: number;
-    avgWeekMi: number;
-    avgVsRecovery: string;
-    qualityDays: number;
-    qualityDetail: string;
-    longestRunMi: number;
-    longestRunWhen: string;
-  };
 }
 
 export interface PlanAdaptedDelta {
@@ -309,7 +281,6 @@ export async function loadTrainingData(
     vdotLib,
     prs,
   );
-  const nextFourWeeks = getNextFourWeeks(api.trajectory.answer);
   const planAdapted = getPlanAdapted(api.recentAdjustments ?? null);
 
   const workoutDecision: CoachDecision<WorkoutPrescription> = adjustedAnswer?.changed
@@ -372,7 +343,6 @@ export async function loadTrainingData(
     readyToRun,
     conditions,
     goalTracking,
-    nextFourWeeks,
     planAdapted,
     adjustedToday,
     hrZones: api.hrZones,
@@ -604,131 +574,6 @@ function pickPrForRaceDistance(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Next 4 weeks — derived from trajectory14wk's first 4 upcoming points
-// ─────────────────────────────────────────────────────────────────────
-
-function getNextFourWeeks(trajectory: Trajectory14wk): NextFourWeeksSnapshot | null {
-  // The trajectory walker returns 4 past + present + 9 future points.
-  // We take the first 4 strictly-future points.
-  const futurePoints = trajectory.points.filter(
-    (p) => p.phase !== 'past' && p.label !== 'NOW',
-  );
-  const nextFour = futurePoints.slice(0, 4);
-  if (nextFour.length === 0) return null;
-
-  const blocks: NextFourWeeksBlock[] = nextFour.map((p, i) => ({
-    rangeLabel: weekRangeLabel(p.weekStartISO),
-    title: titleForPhase(p, i),
-    tone: toneForPhase(p.phase),
-    miles: Math.round(p.plannedMi),
-    quality: qualityForPhase(p.phase),
-    longMi: Math.round(p.plannedMi * 0.32),
-    rationale: rationaleForPhase(p),
-  }));
-
-  // Fill if trajectory was short (shouldn't happen — engine always
-  // returns 14 weeks — but defensive against future engine changes).
-  while (blocks.length < 4) {
-    blocks.push({
-      rangeLabel: '—',
-      title: '—',
-      tone: 'base',
-      miles: 0,
-      quality: 0,
-      longMi: 0,
-      rationale: '',
-    });
-  }
-
-  const totalMi = blocks.reduce((s, b) => s + b.miles, 0);
-  const avgWeek = totalMi / 4;
-  const longestRun = blocks.reduce((m, b) => (b.longMi > m.longMi ? b : m), blocks[0]);
-  const qualityDays = blocks.reduce((s, b) => s + b.quality, 0);
-
-  const rangeStart = blocks[0].rangeLabel.replace('WEEK · ', '').split('–')[0];
-  const rangeEnd = blocks[3].rangeLabel.replace('WEEK · ', '').split('–')[1] ?? '';
-
-  return {
-    rangeLabel: `NEXT 4 WEEKS · ${rangeStart} → ${rangeEnd}`,
-    title: titleForBlockSequence(nextFour),
-    pins: pinsForBlockSequence(nextFour),
-    blocks,
-    summary: {
-      totalMi,
-      avgWeekMi: Math.round(avgWeek * 10) / 10,
-      avgVsRecovery: avgWeek > 0 ? `${Math.round(avgWeek)} MI/WK AVG` : '—',
-      qualityDays,
-      qualityDetail: qualityDays > 0
-        ? `${qualityDays} QUALITY DAYS · TEMPO + INT`
-        : 'ALL EASY',
-      longestRunMi: longestRun.longMi,
-      longestRunWhen: longestRun.rangeLabel.replace('WEEK · ', '').replace('–', ' — '),
-    },
-  };
-}
-
-function toneForPhase(phase: TrajectoryPoint['phase']): NextFourWeeksBlock['tone'] {
-  switch (phase) {
-    case 'past': return 'base';
-    case 'base': return 'base';
-    case 'build': return 'build';
-    case 'peak': return 'peak';
-    case 'taper': return 'taper';
-    case 'race': return 'race';
-  }
-}
-
-function qualityForPhase(phase: TrajectoryPoint['phase']): number {
-  // Quality days per week, derived from doctrine: base = 1 (one tempo
-  // or stride session), build = 2 (T + I), peak = 2, taper/race = 0-1.
-  if (phase === 'build' || phase === 'peak') return 2;
-  if (phase === 'base') return 1;
-  return 0;
-}
-
-function titleForPhase(p: TrajectoryPoint, blockIdx: number): string {
-  if (p.isRaceWeek) return 'Race week';
-  if (p.phase === 'taper') return 'Taper';
-  if (p.phase === 'peak') return p.isPeak ? 'Peak week' : 'Peak block';
-  if (p.phase === 'build') return `Build · week ${blockIdx + 1}`;
-  if (p.phase === 'base') return `Base · week ${blockIdx + 1}`;
-  return p.label;
-}
-
-function rationaleForPhase(p: TrajectoryPoint): string {
-  if (p.isRaceWeek) return 'Race day. Sharpen, then deliver.';
-  if (p.phase === 'taper') return 'Drop volume, hold intensity. Sharpen the engine.';
-  if (p.phase === 'peak') return p.isPeak ? 'Peak mileage week — biggest aerobic ask.' : 'Peak block · max volume + quality.';
-  if (p.phase === 'build') return 'Add volume + quality. Absorb hard work.';
-  if (p.phase === 'base') return 'Aerobic foundation · frequency + easy mileage.';
-  return '';
-}
-
-function titleForBlockSequence(points: TrajectoryPoint[]): string {
-  const phases = points.map((p) => p.phase);
-  if (phases.includes('race')) return 'Race week ahead';
-  if (phases.includes('taper')) return 'Taper begins';
-  if (phases.includes('peak')) return 'Peak block in view';
-  if (phases.every((p) => p === 'build')) return 'Build block';
-  if (phases.every((p) => p === 'base')) return 'Base block';
-  return 'Phase transition';
-}
-
-function pinsForBlockSequence(points: TrajectoryPoint[]): Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }> {
-  const phases = points.map((p) => p.phase);
-  const pins: Array<{ label: string; variant: 'green' | 'amber' | 'warn' | 'blue' | 'purple' | 'race' | 'coach' | 'muted' }> = [];
-  const baseDays = phases.filter((p) => p === 'base').length * 7;
-  const buildDays = phases.filter((p) => p === 'build').length * 7;
-  const peakDays = phases.filter((p) => p === 'peak').length * 7;
-  const taperDays = phases.filter((p) => p === 'taper').length * 7;
-  if (baseDays > 0) pins.push({ label: `BASE · ${baseDays}D`, variant: 'blue' });
-  if (buildDays > 0) pins.push({ label: `BUILD · ${buildDays}D`, variant: 'green' });
-  if (peakDays > 0) pins.push({ label: `PEAK · ${peakDays}D`, variant: 'amber' });
-  if (taperDays > 0) pins.push({ label: `TAPER · ${taperDays}D`, variant: 'warn' });
-  return pins;
-}
-
-// ─────────────────────────────────────────────────────────────────────
 // Plan adapted (Coach Read)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -813,16 +658,3 @@ export function formatShortDate(iso: string): string {
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-function weekRangeLabel(weekStartISO: string): string {
-  const m = weekStartISO.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return weekStartISO;
-  const month = MONTHS[Number(m[2]) - 1];
-  const start = Number(m[3]);
-  const d = new Date(weekStartISO + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() + 6);
-  const endDay = d.getUTCDate();
-  const endMonth = MONTHS[d.getUTCMonth()];
-  const range =
-    month === endMonth ? `${month} ${start}–${endDay}` : `${month} ${start}–${endMonth} ${endDay}`;
-  return `WEEK · ${range}`;
-}
