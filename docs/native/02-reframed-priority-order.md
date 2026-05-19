@@ -1,5 +1,14 @@
 # Reframed priority order · watch primary, iPhone bridge
 
+> **Locked 2026-05-19** · all decisions from the watch reframe + scoping pass:
+> - Watch is the primary product surface · iPhone is the bridge · web stays for deep work
+> - Apple Developer enrollment: Individual ($99/year)
+> - Bundle IDs: `run.faff.app` · `run.faff.app.watchkitapp` · `group.run.faff.app`
+> - watchOS MVP: 6 features in, 8 deferred (see [scoping doc](./01-watchos-scoping.md))
+> - claude writes Swift · David tests on physical Apple Watch
+> - Standalone watch deferred indefinitely (not on roadmap)
+> - No coaching cross-references on watch (execution only)
+
 Supersedes the priority section of [`../api/iphone-integration-brief.md`](../api/iphone-integration-brief.md).
 The original brief assumed iPhone was the primary surface; David's
 reframe clarified that **the Apple Watch is the actual product

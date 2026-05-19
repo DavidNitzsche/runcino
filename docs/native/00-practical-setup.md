@@ -1,12 +1,20 @@
 # Practical setup · what David needs ready before native development starts
 
+> **Decisions locked 2026-05-19:**
+> - **Enrollment**: Individual ($99/year) · not Organization
+> - **No D-U-N-S needed** · individual path skips this entirely
+> - **Bundle ID parent**: `run.faff.app` (reverse-domain of product URL)
+> - **Watch companion bundle ID**: `run.faff.app.watchkitapp`
+> - **App Group**: `group.run.faff.app`
+> - **App display name**: "faff.run" if App Store allows the period; otherwise "Faff" with URL in the subtitle
+> - **Watch app name**: "Faff" (period doesn't render well at watch size)
+
 Everything required on David's end before Swift code is written.  Ordered
 by **what has the longest lead time first** — some of this propagates
 through Apple's systems for days, so worth kicking off in parallel
 while backend gap work proceeds.
 
-**Total cost · year 1**: $99 (Apple Developer Program) + likely $0
-(D-U-N-S if needed is free in the US).
+**Total cost · year 1**: $99 (Apple Developer Program).
 
 ---
 

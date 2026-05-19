@@ -1,11 +1,18 @@
 # watchOS scoping doc · what the watch app actually does
 
+> **Approved 2026-05-19** · MVP scope locked.  Decisions:
+> - Bundle ID: `run.faff.app.watchkitapp` · app name "Faff"
+> - **6 features in**, **8 features deferred** (locked list below)
+> - **Companion app only** · standalone deferred indefinitely (not on roadmap)
+> - **No coaching cross-references on watch** · execution surface only
+> - Code ownership: claude writes Swift, David tests on physical Apple Watch
+> - Hardware-testing constraint accepted; reassess at first review if burden is unsustainable
+
 David's framing was: "Pick the minimum viable watch experience.  Spec
 it.  Then we can decide whether you build it or whether watchOS
 development gets handled differently."
 
-This is that spec.  Read it, push back, approve before any Swift code
-gets written.
+This is that spec.  Approved as the build target.
 
 ---
 
@@ -117,18 +124,22 @@ rep).  Honest data flow: completed rep marked partial, not full.
 
 ---
 
-## What's out (deferred v1+)
+## What's out (deferred v1+) · locked 2026-05-19
 
-| Feature | Why deferred |
-|---|---|
-| Standalone watch (without iPhone) | watchOS standalone needs its own auth + sync layer · adds 2-3 weeks · MVP is companion |
-| HR zone targeting on watch | Pace targeting is the primary signal · HR is secondary · defer |
-| Race-day pacing strategy | Real-time race-day pacing is a separate UX problem · defer |
-| Workout substitutions on watch | Substitutions need the menu UI · doesn't fit watch screen ergonomics · do it on iPhone before the run |
-| Coach voice / cross-references on watch | Watch is execution; coaching voice is for reflection · deliberately absent |
-| Maps / route display | Apple's native Workout app already does this · don't reinvent |
-| Music control during workout | Use existing watchOS controls; not Runcino's job |
-| Manual workout entry on watch | iPhone has the screen real estate · do it there |
+| # | Feature | Why deferred |
+|---|---|---|
+| 1 | **Standalone watch (no phone)** | Companion mode is correct for David's use case (phone in pocket while running) · designing for standalone now is speculative · marked "considered and deferred indefinitely" so future product decisions don't accidentally treat it as on-roadmap |
+| 2 | **Complications** (watch-face widgets) | v2+ surface area · not on critical path for workout execution |
+| 3 | **Maps / GPS visualization on watch** | Apple's native Workout app handles this · phone-in-pocket means watch is execution surface only |
+| 4 | **Custom workout authoring on watch** | iPhone has the screen real estate · do it there or on web |
+| 5 | **HR-zone-based targeting** (vs pace-based) | Pace is the primary signal for v1 · HR is secondary execution input · defer |
+| 6 | **Advanced metrics** (cadence, vertical oscillation, GCT) | Not core to interval execution · aesthetic data · defer |
+| 7 | **Multi-workout race-day pacing strategy** | Race-day pacing is a separate UX problem · defer |
+| 8 | **Coaching cross-references on watch** | V7 cross-references are coherent coaching across surfaces where the user has time to read · watch during run = 1-2s attention · cross-references would be cognitive overhead at exactly the wrong moment · execution surface only |
+
+Also implicitly deferred (not Runcino's job either way):
+- Music control during workout · Apple's native controls work fine
+- Workout substitutions on watch · belongs on iPhone/web before the run
 
 This list is long on purpose · the MVP is small and the deferred list
 gives clear next-arc material.
@@ -376,27 +387,26 @@ periodically on David's device-testing turnaround.
 
 ---
 
-## Decision points for David
+## Decisions · resolved 2026-05-19
 
-1. **Approve / push back on the MVP scope.**  Is "6 features in, 8
-   features deferred" the right cut?  Want anything added or pulled?
+1. **MVP scope** · approved · 6 in / 8 out per the tables above
+2. **Bundle ID** · `run.faff.app.watchkitapp` · app name "Faff"
+3. **iPhone bridge UI scope** · MINIMAL · v1 jobs are login + sync today's workout to watch + ingest HealthKit + surface watch-app status · web app exists for everything else · no speculative iPhone TodayCard mirror
+4. **Standalone watch** · deferred indefinitely (not on roadmap) · revisit only if real demand emerges
+5. **Watch coaching cross-references** · NO · execution surface only · coaching context lives on phone before/after run
 
-2. **Bundle ID for watchOS app.**  Per Step 4 of practical setup,
-   pick the parent bundle ID name.
+## Hardware-testing protocol
 
-3. **iPhone bridge UI scope.**  v0 can be one screen ("Today's
-   workout · push to watch") or a full TodayCard equivalent.  My
-   recommendation: one-screen v0, full bridge in v1.
+David acknowledged the hardware-testing constraint:
 
-4. **Standalone watch on the v2 roadmap?**  Affects how much
-   auth-on-watch infrastructure to lay foundation for now.  My
-   recommendation: defer entirely · v1 is companion-only.
+- David runs regularly · serves as the device-test surface for v1
+- Builds installed via TestFlight; reports behavior with structured detail
+- Realistic expectation flagged: real-run bugs (sensor behavior, sweat,
+  gloves, sleeve coverage, GPS lock during workout starts) won't surface
+  during stationary testing
+- Feedback loop: David reports from real runs · claude iterates
 
-5. **Should the watch surface coaching cross-references (V7)?**
-   My strong recommendation: **no**.  Watch is for execution;
-   coaching voice is for reflection.  Don't dilute the watch's job.
-
-Once decision points are settled, I can start the backend
-workout-to-watch endpoint while practical-setup propagation
-finishes.  No watchOS code starts until David explicitly approves
-this doc.
+**Reassessment trigger**: if testing burden becomes unsustainable after
+first few weeks, decision point opens to either hire a watchOS
+specialist, simplify scope further, or accept longer iteration cycles.
+Default is "burden is manageable" unless David flags otherwise.
