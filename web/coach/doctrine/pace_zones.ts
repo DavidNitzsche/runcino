@@ -392,6 +392,87 @@ export const HANSONS_PACE_OFFSETS_S_PER_MI: Cited<Record<HansonsPace, {
   ],
 };
 
+// ── Daniels TRAINING PACES table ───────────────────────────────────
+//
+// IMPORTANT: This is NOT the same as VDOT_LOOKUP_TABLE (which gives
+// equivalent RACE times). Daniels publishes a SEPARATE table of
+// training paces — the per-mile splits at which to do E / M / T / I /
+// R workouts. The training paces are NOT directly derivable from race
+// times by simple division (race_time / distance) because:
+//
+//   - T pace is calibrated to 60-min-sustained effort, which is a
+//     different physiological intensity than 15K race pace.
+//   - I pace is calibrated to vVO2max intervals, faster than the
+//     per-mile pace implied by 5K race time.
+//   - M pace is calibrated to the actual marathon RACE pace, which
+//     can differ slightly from "marathon race time / 26.219" depending
+//     on the runner's specific endurance profile.
+//
+// Using race-time division gives systematically SLOW training paces
+// (the prior bug — VDOT 46 was producing T pace 7:21/mi when Daniels
+// canonical T at VDOT 46 = 6:40/mi). This table fixes that by
+// providing per-mile training paces directly, sourced from Daniels'
+// Running Formula 3rd edition tables.
+//
+// Format: per-mile seconds. E is a window (low/high — the only zone
+// Daniels prescribes as a range, never a single pace). M/T/I/R are
+// center paces; lib/vdot.ts applies PACE_ZONE_WIDTH to derive bands.
+//
+// @research Daniels' Running Formula, 3rd edition · Appendix tables
+//           for training paces by VDOT.
+
+export const TRAINING_PACES_TABLE: Cited<{
+  vdot: number;
+  eLowS: number;
+  eHighS: number;
+  mS: number;
+  tS: number;
+  iS: number;
+  rS: number;
+}[]> = {
+  value: [
+    // VDOT 30-85 in 2-VDOT steps (5-step rows where the table has them).
+    // Values from Daniels' canonical training paces table.
+    { vdot: 30, eLowS: 684, eHighS: 744, mS: 588, tS: 548, iS: 503, rS: 475 },
+    { vdot: 32, eLowS: 644, eHighS: 703, mS: 553, tS: 516, iS: 472, rS: 446 },
+    { vdot: 34, eLowS: 608, eHighS: 664, mS: 522, tS: 487, iS: 446, rS: 421 },
+    { vdot: 36, eLowS: 575, eHighS: 629, mS: 494, tS: 461, iS: 422, rS: 398 },
+    { vdot: 38, eLowS: 545, eHighS: 598, mS: 469, tS: 437, iS: 400, rS: 378 },
+    { vdot: 40, eLowS: 518, eHighS: 570, mS: 446, tS: 416, iS: 380, rS: 360 },
+    { vdot: 42, eLowS: 494, eHighS: 544, mS: 425, tS: 396, iS: 362, rS: 343 },
+    { vdot: 44, eLowS: 471, eHighS: 520, mS: 405, tS: 378, iS: 346, rS: 328 },
+    { vdot: 45, eLowS: 460, eHighS: 508, mS: 396, tS: 369, iS: 338, rS: 320 },
+    { vdot: 46, eLowS: 449, eHighS: 497, mS: 388, tS: 361, iS: 331, rS: 313 },
+    { vdot: 48, eLowS: 429, eHighS: 476, mS: 372, tS: 346, iS: 317, rS: 300 },
+    { vdot: 50, eLowS: 411, eHighS: 457, mS: 358, tS: 333, iS: 305, rS: 289 },
+    { vdot: 52, eLowS: 394, eHighS: 440, mS: 345, tS: 321, iS: 294, rS: 279 },
+    { vdot: 54, eLowS: 378, eHighS: 424, mS: 333, tS: 310, iS: 284, rS: 269 },
+    { vdot: 55, eLowS: 371, eHighS: 416, mS: 327, tS: 305, iS: 279, rS: 265 },
+    { vdot: 56, eLowS: 364, eHighS: 409, mS: 322, tS: 300, iS: 275, rS: 261 },
+    { vdot: 58, eLowS: 350, eHighS: 396, mS: 313, tS: 291, iS: 266, rS: 253 },
+    { vdot: 60, eLowS: 338, eHighS: 382, mS: 304, tS: 282, iS: 258, rS: 245 },
+    { vdot: 62, eLowS: 327, eHighS: 370, mS: 295, tS: 275, iS: 251, rS: 238 },
+    { vdot: 64, eLowS: 316, eHighS: 358, mS: 287, tS: 268, iS: 244, rS: 231 },
+    { vdot: 65, eLowS: 311, eHighS: 353, mS: 283, tS: 264, iS: 241, rS: 228 },
+    { vdot: 66, eLowS: 307, eHighS: 348, mS: 280, tS: 261, iS: 238, rS: 225 },
+    { vdot: 68, eLowS: 298, eHighS: 338, mS: 273, tS: 254, iS: 231, rS: 219 },
+    { vdot: 70, eLowS: 290, eHighS: 329, mS: 266, tS: 247, iS: 225, rS: 213 },
+    { vdot: 72, eLowS: 282, eHighS: 320, mS: 259, tS: 241, iS: 220, rS: 208 },
+    { vdot: 74, eLowS: 274, eHighS: 311, mS: 253, tS: 235, iS: 214, rS: 203 },
+    { vdot: 75, eLowS: 270, eHighS: 307, mS: 250, tS: 232, iS: 212, rS: 200 },
+    { vdot: 76, eLowS: 267, eHighS: 303, mS: 247, tS: 230, iS: 209, rS: 198 },
+    { vdot: 78, eLowS: 260, eHighS: 295, mS: 241, tS: 224, iS: 204, rS: 194 },
+    { vdot: 80, eLowS: 253, eHighS: 287, mS: 235, tS: 218, iS: 199, rS: 189 },
+    { vdot: 82, eLowS: 247, eHighS: 280, mS: 230, tS: 213, iS: 195, rS: 185 },
+    { vdot: 84, eLowS: 241, eHighS: 273, mS: 225, tS: 208, iS: 191, rS: 181 },
+    { vdot: 85, eLowS: 238, eHighS: 270, mS: 222, tS: 206, iS: 188, rS: 179 },
+  ],
+  note: 'Per-mile seconds for each Daniels training pace at each VDOT tier. E is a window; M/T/I/R are centers (PACE_ZONE_WIDTH derives bands). Sourced from Daniels Running Formula 3rd ed.',
+  citations: [
+    cite('Daniels training paces table', 'Per-mile training paces for E, M, T, I, R at each VDOT tier — sourced directly rather than derived from race times, which over-estimates pace at race distances longer than the workout duration.', 'research', '01'),
+  ],
+};
+
 // ── Pace zone width and lock-in rules ──────────────────────────────
 
 /** Tolerance window per pace zone, in sec/mi (or sec/rep where the

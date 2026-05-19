@@ -44,31 +44,66 @@ describe('pacesFromVdot', () => {
     expect(set!.I.lowS).toBeGreaterThan(set!.R.lowS);
   });
 
-  it('VDOT 50 marathon center pace ≈ 7:17/mi', () => {
+  it('VDOT 50 M pace ≈ 5:58/mi (Daniels canonical training pace)', () => {
+    // Daniels training paces table for VDOT 50: M = 358 sec/mi.
+    // PRE-FIX bug: derived from marathonS/26.219 = 436 sec/mi (7:16/mi),
+    // about 78 sec/mi slower than Daniels canonical. Fixed by reading
+    // from TRAINING_PACES_TABLE directly.
     const set = pacesFromVdot(50);
-    // Doctrine: VDOT 50 marathonS = 11449s. 11449 / 26.219 ≈ 436.7 s/mi.
     const mCenter = (set!.M.lowS + set!.M.highS) / 2;
-    expect(mCenter).toBeGreaterThan(434);
-    expect(mCenter).toBeLessThan(440);
+    expect(mCenter).toBeGreaterThanOrEqual(356);
+    expect(mCenter).toBeLessThanOrEqual(360);
   });
 
-  it('VDOT 50 T pace = HM pace (vdot < 50 uses 15K)', () => {
-    // For vdot ≥ 50 T is anchored on HM pace.
+  it('VDOT 50 T pace = 5:33/mi (Daniels canonical, not HM race pace)', () => {
+    // Daniels training paces table for VDOT 50: T = 333 sec/mi.
+    // PRE-FIX bug: derived from halfS/13.109 = 419 sec/mi, about
+    // 86 sec/mi slower than Daniels canonical T pace. T training pace
+    // is NOT the same as HM race pace; it's a separate physiological
+    // intensity (60-min sustainable effort).
     const set = pacesFromVdot(50);
-    // halfS 5495 / 13.109 ≈ 419.2 s/mi (~6:59).
     const tCenter = (set!.T.lowS + set!.T.highS) / 2;
-    expect(tCenter).toBeGreaterThan(416);
-    expect(tCenter).toBeLessThan(423);
+    expect(tCenter).toBeGreaterThanOrEqual(331);
+    expect(tCenter).toBeLessThanOrEqual(335);
   });
 
-  it('VDOT 45 T pace = 15K pace (slower runner)', () => {
-    // For vdot < 50 T anchors on 15K pace.
+  it('VDOT 45 T pace = 6:09/mi (Daniels canonical, not 15K race pace)', () => {
+    // Daniels training paces table for VDOT 45: T = 369 sec/mi.
+    // PRE-FIX bug: derived from km15S/9.321 = 449 sec/mi (~80 sec/mi
+    // too slow). The pre-fix formula used 15K race pace as a proxy
+    // for T pace, which over-estimates by the typical 15K-to-T gap
+    // (15K is run faster than T because 15K is shorter than the T
+    // 60-min anchor duration).
     const set = pacesFromVdot(45);
-    // 15K 4193 / 9.321 ≈ 449.8 s/mi (~7:30). HM/13.109 = 459.3 (~7:39).
-    // So T should land closer to 450 than 460.
     const tCenter = (set!.T.lowS + set!.T.highS) / 2;
-    expect(tCenter).toBeGreaterThan(446);
-    expect(tCenter).toBeLessThan(454);
+    expect(tCenter).toBeGreaterThanOrEqual(367);
+    expect(tCenter).toBeLessThanOrEqual(371);
+  });
+
+  it('VDOT 46 produces Daniels canonical training paces', () => {
+    // The exact case the user reported. VDOT 46 (close to user's
+    // aggregate VDOT 45.9). Daniels canonical training paces:
+    //   E: 8:25–9:05/mi (505-545 sec — actually 449-497 per Daniels)
+    //   M: 6:28/mi (388 sec)
+    //   T: 6:01/mi (361 sec)
+    //   I: 5:31/mi (331 sec)
+    //   R: 5:13/mi (313 sec)
+    const set = pacesFromVdot(46);
+    expect(set).not.toBeNull();
+    // M: ±5 sec/mi band centered on 388 (low=386, high=391 after rounding)
+    expect(set!.M.lowS).toBeGreaterThanOrEqual(385);
+    expect(set!.M.lowS).toBeLessThanOrEqual(386);
+    expect(set!.M.highS).toBeGreaterThanOrEqual(390);
+    expect(set!.M.highS).toBeLessThanOrEqual(391);
+    // T: ±3 sec/mi centered on 361 (low=359, high=362)
+    expect(set!.T.lowS).toBeGreaterThanOrEqual(359);
+    expect(set!.T.highS).toBeLessThanOrEqual(363);
+    // I: ±3 sec/mi centered on 331
+    expect(set!.I.lowS).toBeGreaterThanOrEqual(329);
+    expect(set!.I.highS).toBeLessThanOrEqual(333);
+    // E: window from 449 to 497 (Daniels publishes E as a range)
+    expect(set!.E.lowS).toBe(449);
+    expect(set!.E.highS).toBe(497);
   });
 });
 
