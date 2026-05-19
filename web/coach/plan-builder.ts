@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 18;
+export const BUILDER_VERSION = 19;
 
 export interface BuildPlanRace {
   id: string;
@@ -225,8 +225,10 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
 // Weekly volume curve
 // ─────────────────────────────────────────────────────────────────
 
-/** Compute volume target per week. Ramps startMpw → peakMpw at ≤10%/wk,
- *  cutback every 3rd week (−18%), taper −40%, race week ballpark. */
+/** Compute volume target per week. Ramps startMpw → peakMpw at ≤5%/wk
+ *  inside BUILD and ≤10%/wk inside PEAK (BUILD ramps gently, PEAK takes
+ *  the steep climb — Daniels §13). Cutback every 3rd week (−18%),
+ *  taper −40%, race week ballpark. */
 export function weeklyVolumeCurve(
   weeksTotal: number,
   startMpw: number,
@@ -258,12 +260,24 @@ export function weeklyVolumeCurve(
     buildSlice ? buildSlice.endWeekIdx :
     Math.max(0, weeksTotal - 3);
 
+  // Phase-aware per-week growth cap. Daniels' Advanced Training §13:
+  // BUILD ramps GENTLY (≤5%/wk) so threshold load can be absorbed;
+  // PEAK is where the steep climb happens (≤10%/wk) to reach race-
+  // specific volume. A flat 10%/wk cap across BUILD+PEAK pushed BUILD
+  // weeks past 1.35× of baseline by mid-block and left no headroom
+  // for PEAK. Holding BUILD at 5%/wk lets the curve breathe.
+  const phaseGrowthCapFor = (weekIdx: number): number => {
+    if (buildSlice && weekIdx >= buildSlice.startWeekIdx && weekIdx <= buildSlice.endWeekIdx) {
+      return 1.05;
+    }
+    return 1.10;
+  };
   for (let i = 0; i <= peakAtIdx; i++) {
     const t = peakAtIdx === 0 ? 1 : i / peakAtIdx;
     let v = startMpw + (peakMpw - startMpw) * t;
     if (i > 0) {
       const priorIntent = startMpw + (peakMpw - startMpw) * ((i - 1) / Math.max(1, peakAtIdx));
-      v = Math.min(v, priorIntent * 1.10);
+      v = Math.min(v, priorIntent * phaseGrowthCapFor(i));
     }
     if ((i + 1) % 3 === 0 && i !== peakAtIdx) {
       v = v * 0.82;

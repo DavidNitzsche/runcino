@@ -183,14 +183,14 @@ export const STATE_MID_BUILD_WEEK_4: CoachState = (() => {
       raceCount30d: 0,
     },
     volume: {
-      last7Mi: 30,
-      last28Mi: 124,          // 28+30+32+34 ramp
+      last7Mi: 36,
+      last28Mi: 144,          // 32+34+36+42 BUILD ramp (mid-block)
       last7Days: [],
-      weeklyAvg4w: 31,        // mid-ramp
-      weeklyAvg8w: 28,
-      longestLast28Mi: 11,
-      ...defaultTrainingVolume(11),
-      deltaPct4v4: 0.12,
+      weeklyAvg4w: 36,        // mid-ramp BUILD baseline (post-base-phase)
+      weeklyAvg8w: 32,
+      longestLast28Mi: 12,
+      ...defaultTrainingVolume(12),
+      deltaPct4v4: 0.15,
     },
     intensity: { easyMi14d: 45, hardMi14d: 16, easyShare14d: 0.74 },
     recovery: {
