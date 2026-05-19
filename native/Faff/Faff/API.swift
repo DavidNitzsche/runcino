@@ -114,13 +114,13 @@ final class FaffAPI {
             return
         }
         struct Body: Encodable { let refreshToken: String }
-        // Fire-and-forget · don't block UI on network success
-        _ = try? await request(
+        // Fire-and-forget · don't block UI on network success.  Explicit
+        // result type so the generic T resolves to EmptyResponse.
+        let _: EmptyResponse? = try? await request(
             method: "POST",
             path: "/api/auth/token/revoke",
             body: Body(refreshToken: refresh),
-            authenticated: false,
-            decode: EmptyResponse.self
+            authenticated: false
         )
         TokenStore.shared.clear()
     }
@@ -139,12 +139,13 @@ final class FaffAPI {
         body: Body,
         authenticated: Bool = true
     ) async throws -> T {
-        try await request(
+        let encoded = try JSONEncoder().encode(body)
+        return try await perform(
             method: method,
             path: path,
-            body: try JSONEncoder().encode(body),
+            body: encoded,
             authenticated: authenticated,
-            decode: T.self
+            as: T.self
         )
     }
 
@@ -153,21 +154,21 @@ final class FaffAPI {
         path: String,
         authenticated: Bool = true
     ) async throws -> T {
-        try await request(
+        try await perform(
             method: method,
             path: path,
             body: nil,
             authenticated: authenticated,
-            decode: T.self
+            as: T.self
         )
     }
 
-    private func request<T: Decodable>(
+    private func perform<T: Decodable>(
         method: String,
         path: String,
         body: Data?,
         authenticated: Bool,
-        decode: T.Type
+        as: T.Type
     ) async throws -> T {
         guard let url = URL(string: path, relativeTo: API.baseURL) else {
             throw APIError.invalidURL
