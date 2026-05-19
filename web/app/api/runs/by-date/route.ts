@@ -113,10 +113,28 @@ export async function GET(req: NextRequest) {
   // across runs). null when neither is available.
   const maxHr = await resolveEffectiveMaxHr(user.id);
 
+  // Resolve the user's full fitness so the modal can render
+  // workout descriptions with race-goal-derived paces (HM Blocks
+  // workout for a 1:30 goal shows ~6:52/mi, not the hardcoded
+  // 7:30-7:50 from the pre-resolver era).
+  const { resolveFitness } = await import('@/lib/fitness-resolver');
+  const today = new Date().toISOString().slice(0, 10);
+  const fitness = await resolveFitness(user.id, today);
+
   return NextResponse.json({
     ok: true,
     maxHr: maxHr.value,
     maxHrSource: maxHr.source,
+    fitness: {
+      paces: fitness.paces,
+      racePaceBand: fitness.racePaceBand,
+      activeRace: fitness.activeRace ? {
+        name: fitness.activeRace.name,
+        goalPaceSPerMi: fitness.activeRace.goalPaceSPerMi,
+        goalDisplay: fitness.activeRace.goalDisplay,
+      } : null,
+      vdot: fitness.vdot.value,
+    },
     run: {
       id: row.id,
       name: d.name || 'Untitled run',

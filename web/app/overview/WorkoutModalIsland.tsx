@@ -274,9 +274,26 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const isToday = day.date === today;
   const isPast = !isToday && day.date < today;
   const canHaveActual = day.date <= today; // today or past
+
+  // User's resolved fitness — loaded via /api/runs/by-date. Until it
+  // arrives, describeWorkout falls back to VDOT-45 default paces, so
+  // the modal renders with generic strings briefly, then re-renders
+  // with the user's actual paces (e.g. 6:52/mi HM goal pace for a
+  // 1:30 target instead of the old hardcoded 7:30-7:50).
+  const [userFitness, setUserFitness] = useState<{
+    paces: { E: { lowS: number; highS: number }; M: { lowS: number; highS: number }; T: { lowS: number; highS: number }; I: { lowS: number; highS: number }; R: { lowS: number; highS: number }; vdot: number };
+    racePaceBand: { lowS: number; highS: number; label: string };
+    activeRace: { name: string; goalPaceSPerMi: number; goalDisplay: string } | null;
+    vdot: number;
+  } | null>(null);
+
   // Look up the label-specific description. Falls back to type-based
   // copy if the label isn't in the lookup (e.g. for an ad-hoc workout).
-  const desc = describeWorkout(day.label, day.type);
+  // describeWorkout pulls pace strings from userFitness when set.
+  // Cast: the fitness shape we accept is structurally compatible with
+  // ResolvedFitness's subset that describeWorkout reads (paces +
+  // racePaceBand).
+  const desc = describeWorkout(day.label, day.type, userFitness as unknown as Parameters<typeof describeWorkout>[2]);
   const paceTarget = isRest ? '' : desc.paceTarget;
   const paceDisplay = parsePaceTarget(paceTarget);
 
@@ -296,6 +313,28 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
   const [userMaxHr, setUserMaxHr] = useState<number | null>(null);
   const [userMaxHrSource, setUserMaxHrSource] = useState<string | null>(null);
+
+  // Always load fitness on modal open — even for future workouts where
+  // we never hit by-date. This is what threads the user's actual race
+  // goal pace + Daniels bands into the recipe steps.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/fitness')
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.ok) {
+          setUserFitness({
+            paces: j.paces,
+            racePaceBand: j.racePaceBand,
+            activeRace: j.activeRace,
+            vdot: j.vdot?.value ?? 45,
+          });
+        }
+      })
+      .catch(() => { /* keep fallback paces */ });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!canHaveActual) { setActual(null); return; }
     let cancelled = false;
@@ -306,6 +345,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         setActual(j.run ?? null);
         setUserMaxHr(j.maxHr ?? null);
         setUserMaxHrSource(j.maxHrSource ?? null);
+        if (j.fitness) setUserFitness(j.fitness);
       })
       .catch(() => { if (!cancelled) setActual(null); });
     return () => { cancelled = true; };

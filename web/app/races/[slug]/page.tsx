@@ -257,6 +257,16 @@ export default async function RacePlanPage({ params }: PageProps) {
 
   // Find race-pointed workouts from the synthetic plan
   // (only show if the race is within the synthetic-plan horizon — 14 weeks)
+  // Race-pace band derived from THIS race's goal — single source of
+  // truth for every workout that says "half-marathon goal pace".
+  // (1:30:00 / 13.1 mi = 6:52/mi ± 10 sec tolerance.)
+  const racePaceLow = Math.max(0, Math.round(goalFinishS / race.meta.distanceMi) - 10);
+  const racePaceHigh = Math.round(goalFinishS / race.meta.distanceMi) + 10;
+  const fmtPaceS = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const racePaceDisplay = goalFinishS > 0 && race.meta.distanceMi > 0
+    ? `${fmtPaceS(racePaceLow)}–${fmtPaceS(racePaceHigh)}`
+    : '—';
+
   const synthWeeks = buildSyntheticPlan();
   const planFirstDate = synthWeeks[0]?.startDate ?? '';
   const planLastDate = synthWeeks[synthWeeks.length - 1]?.endDate ?? '';
@@ -270,7 +280,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             date: fmtShortMonthDay(d.date),
             label: d.label,
             sub: 'Key threshold session — anchors race pace',
-            pace: '7:30–7:50',
+            pace: racePaceDisplay,
             paceSub: '/mi target',
             tag: 'threshold',
           });
@@ -280,7 +290,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             date: fmtShortMonthDay(d.date),
             label: d.label,
             sub: 'Race-pace block on tired legs',
-            pace: '7:30–7:50',
+            pace: racePaceDisplay,
             paceSub: '/mi block',
             tag: 'long',
           });

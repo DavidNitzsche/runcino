@@ -17,9 +17,11 @@ import { Topbar } from '@/app/components';
 import { ConnectorsCard } from './ConnectorsCard';
 import { ProfileModalsIsland } from './ProfileModalsIsland';
 import { MaxHrIsland } from './MaxHrIsland';
+import { CoachReadsCard } from './CoachReadsCard';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
+import { resolveFitness } from '@/lib/fitness-resolver';
 import './profile-v4.css';
 
 interface ShoeRow {
@@ -139,6 +141,12 @@ export default async function ProfilePage() {
   const resolvedMaxHr = await resolveEffectiveMaxHr(auth.id);
   const maxHr = resolvedMaxHr.value;
 
+  // Resolve the full fitness bundle — same function every other page
+  // calls. Surfacing it via CoachReadsCard lets the user verify the
+  // whole app is reading from one coherent set of numbers.
+  const today = new Date().toISOString().slice(0, 10);
+  const fitness = await resolveFitness(auth.id, today);
+
   // Real lifetime KPIs computed from strava_activities. Until activity
   // data is present, every cell reads "No data" — no more seeded mockups.
   interface KpiRow {
@@ -240,6 +248,11 @@ export default async function ProfilePage() {
               <div className="kpi-sub">{kpi.sub}</div>
             </div>
           ))}
+        </div>
+
+        {/* ── COACH READS (fitness resolver output) ── */}
+        <div style={{ marginTop: 16 }}>
+          <CoachReadsCard fitness={fitness} />
         </div>
 
         {/* ── CONNECTORS ── */}

@@ -1,0 +1,176 @@
+/**
+ * Fitness resolver — SINGLE source of truth for a user's fitness
+ * signals at request time. See lib/fitness-types.ts for the bundle
+ * shape; this module is server-only because it hits Postgres.
+ *
+ * Every page, route, and API endpoint that needs paces or HR zones
+ * tuned to the runner calls this one function. Workout-descriptions
+ * use the resolved bundle to render concrete paces (a 1:30 HM goal
+ * gets ~6:52/mi HM-pace workouts, not the legacy hardcoded 7:30-7:50).
+ */
+
+import { query } from './db';
+import { resolveEffectiveMaxHr } from './compute-max-hr';
+import { computeAggregateVdot } from './compute-vdot';
+import { pacesFromVdot, vdotFromRace } from './vdot';
+import { listRacesDB } from './race-store';
+import type {
+  ResolvedFitness,
+  FitnessActiveRace,
+  FitnessVdot,
+  FitnessMaxHr,
+  FitnessRestingHr,
+  FitnessHrZones,
+} from './fitness-types';
+
+export type {
+  ResolvedFitness,
+  FitnessActiveRace,
+  FitnessVdot,
+  FitnessMaxHr,
+  FitnessRestingHr,
+  FitnessHrZones,
+} from './fitness-types';
+export { fmtPaceBand, paceStringFromFitness } from './fitness-types';
+export { vdotFromRace };
+
+const DEFAULT_VDOT_BY_LEVEL: Record<string, number> = {
+  beginner: 35,
+  intermediate: 45,
+  advanced: 55,
+  elite: 65,
+};
+
+function parseGoalHMS(s: string): number {
+  const m = s?.trim()?.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+function daysBetween(fromISO: string, toISO: string): number {
+  const a = Date.parse(fromISO + 'T00:00:00Z');
+  const b = Date.parse(toISO + 'T00:00:00Z');
+  return Math.round((b - a) / 86_400_000);
+}
+
+async function getUserLevel(userId: string): Promise<string> {
+  try {
+    const rows = await query<{ level: string }>(
+      `SELECT level FROM users WHERE id = $1 LIMIT 1`, [userId],
+    );
+    return rows[0]?.level ?? 'intermediate';
+  } catch { return 'intermediate'; }
+}
+
+async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
+  try {
+    const rows = await query<{ resting_hr: number | null }>(
+      `SELECT resting_hr FROM users WHERE id = $1 LIMIT 1`, [userId],
+    );
+    const stored = rows[0]?.resting_hr ?? null;
+    if (stored) return { value: stored, source: 'manual' };
+    return { value: null, source: 'none' };
+  } catch { return { value: null, source: 'none' }; }
+}
+
+async function getActiveRace(today: string): Promise<FitnessActiveRace | null> {
+  let races;
+  try { races = await listRacesDB(); } catch { return null; }
+  const candidates = races
+    .filter((r) => r.meta.priority === 'A' && r.meta.date >= today)
+    .sort((a, b) => a.meta.date.localeCompare(b.meta.date));
+  const r = candidates[0];
+  if (!r) return null;
+  const goalFinishS = r.plan?.goal?.finish_time_s ?? parseGoalHMS(r.meta.goalDisplay);
+  const distanceMi = r.meta.distanceMi || 13.109;
+  const goalPaceSPerMi = goalFinishS > 0 && distanceMi > 0
+    ? Math.round(goalFinishS / distanceMi) : 0;
+  return {
+    slug: r.slug,
+    name: r.meta.name,
+    date: r.meta.date,
+    daysAway: Math.max(0, daysBetween(today, r.meta.date)),
+    distanceMi,
+    goalDisplay: r.meta.goalDisplay,
+    goalFinishS,
+    goalPaceSPerMi,
+    priority: 'A',
+  };
+}
+
+function buildHrZones(maxHr: number | null): FitnessHrZones | null {
+  if (!maxHr || maxHr <= 0) return null;
+  const band = (lo: number, hi: number) => ({
+    lowBpm: Math.round(maxHr * lo), highBpm: Math.round(maxHr * hi),
+  });
+  return {
+    z1: { ...band(0.50, 0.60), label: 'Recovery'  },
+    z2: { ...band(0.60, 0.70), label: 'Easy'      },
+    z3: { ...band(0.70, 0.80), label: 'Steady'    },
+    z4: { ...band(0.80, 0.90), label: 'Threshold' },
+    z5: { ...band(0.90, 1.00), label: 'VO2max'    },
+  };
+}
+
+async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> {
+  const agg = await computeAggregateVdot(userId);
+  if (agg && agg.sources.length > 0) {
+    const labels = agg.sources.slice(0, 3)
+      .map((s) => `${s.canonicalLabel} ${Math.floor(s.finishS / 60)}m`)
+      .join(', ');
+    return {
+      value: agg.value, source: 'aggregate',
+      sourceLabel: `Top ${agg.sourceCount} efforts (${agg.windowLabel}): ${labels}`,
+      contributors: agg.sources.map((s) => ({
+        name: s.canonicalLabel, date: s.date, distanceMi: s.distanceMi,
+        finishS: s.finishS, vdot: s.vdot,
+      })),
+    };
+  }
+  const defaultV = DEFAULT_VDOT_BY_LEVEL[level] ?? DEFAULT_VDOT_BY_LEVEL.intermediate;
+  return {
+    value: defaultV, source: 'level-default',
+    sourceLabel: `Default for ${level} runners (no race history yet)`,
+    contributors: [],
+  };
+}
+
+function buildRacePaceBand(
+  activeRace: FitnessActiveRace | null,
+  paces: { T: { lowS: number; highS: number } },
+): ResolvedFitness['racePaceBand'] {
+  if (activeRace && activeRace.goalPaceSPerMi > 0) {
+    return {
+      lowS: activeRace.goalPaceSPerMi - 10,
+      highS: activeRace.goalPaceSPerMi + 10,
+      label: `${activeRace.name} goal pace`,
+    };
+  }
+  return { lowS: paces.T.lowS, highS: paces.T.highS, label: 'Threshold (no active race)' };
+}
+
+export async function resolveFitness(userId: string, today: string): Promise<ResolvedFitness> {
+  const [level, maxHrRaw, restingHr, activeRace] = await Promise.all([
+    getUserLevel(userId),
+    resolveEffectiveMaxHr(userId),
+    getRestingHr(userId),
+    getActiveRace(today),
+  ]);
+  const vdot = await resolveVdot(userId, level);
+  const paces = pacesFromVdot(vdot.value) ?? pacesFromVdot(45)!;
+  const maxHr: FitnessMaxHr = {
+    value: maxHrRaw.value, source: maxHrRaw.source,
+    sourceLabel:
+      maxHrRaw.source === 'manual' ? 'Manual override'
+      : maxHrRaw.source === 'computed' && maxHrRaw.computed
+        ? `Peak from ${maxHrRaw.computed.source.name} (${maxHrRaw.computed.source.date})`
+        : undefined,
+  };
+  const hrZones = buildHrZones(maxHr.value);
+  const racePaceBand = buildRacePaceBand(activeRace, paces);
+  const easyPaceBand = { lowS: paces.E.lowS, highS: paces.E.highS };
+  return {
+    today, paces, vdot, maxHr, restingHr, hrZones,
+    activeRace, racePaceBand, easyPaceBand,
+  };
+}
