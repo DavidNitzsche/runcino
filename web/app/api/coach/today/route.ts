@@ -21,10 +21,15 @@ import { gatherCoachState } from '../../../../lib/coach-state';
 import { coachDaily } from '../../../../lib/coach-engine';
 import { coach } from '../../../../coach/coach';
 import { vdotSnapshot } from '../../../../lib/vdot';
+import { requireActiveUser } from '../../../../lib/auth';
 
 export async function GET() {
   try {
-    const state = await gatherCoachState();
+    // Pre-resolve userId so gatherCoachState can load the aggregate
+    // VDOT — keeps engine pace decisions aligned with /profile UI.
+    let userId: string | undefined;
+    try { userId = (await requireActiveUser()).id; } catch { /* unauth ok */ }
+    const state = await gatherCoachState({ userId });
     const today = coachDaily(state);
     const isoToday = state.now.slice(0, 10);
     const [workout, readiness] = await Promise.all([

@@ -31,6 +31,14 @@ export interface CoachState {
   /** ISO date the state was gathered. Engine should treat this as "today". */
   now: string;
 
+  /** Pre-resolved aggregate VDOT — when populated, vdotSnapshot and
+   *  paceTargetFromVdot prefer this over the single-best-race picker.
+   *  Aligns engine pace decisions with what the user sees on
+   *  /profile's Coach Reads card (computeAggregateVdot in
+   *  lib/compute-vdot.ts is the source). Optional for backwards-
+   *  compat with test fixtures that don't supply it. */
+  aggregateVdotValue?: number;
+
   /** Race calendar — calendar-aware decisions cascade off here. */
   races: {
     /** Next A race in the future (closest by date). null = base mode candidate. */
@@ -232,7 +240,15 @@ function buildWindowDays(distanceMi: number): number {
   return 6 * 7;
 }
 
-export async function gatherCoachState(): Promise<CoachState> {
+/** Options for gatherCoachState — opaque struct so we can add fields
+ *  without breaking call sites. When `userId` is passed, the aggregate
+ *  VDOT is pre-loaded into state.aggregateVdotValue so the engine's
+ *  pace decisions match what /profile shows. */
+export interface GatherCoachStateOpts {
+  userId?: string;
+}
+
+export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise<CoachState> {
   // "Today" in LA — server runs in UTC and would otherwise flip a day
   // early in the evening. todayDate() is anchored at noon UTC of the
   // LA calendar date so isoDateOffset's setDate/getDate math is safe.
@@ -444,8 +460,25 @@ export async function gatherCoachState(): Promise<CoachState> {
     }
   }
 
+  // Pre-load the aggregate VDOT when a userId is provided. This is
+  // the SAME value /profile's Coach Reads card shows; threading it
+  // into state.aggregateVdotValue means vdotSnapshot + paceTargetFromVdot
+  // pick the same number the UI displays.
+  let aggregateVdotValue: number | undefined;
+  if (opts.userId) {
+    try {
+      const { computeAggregateVdot } = await import('./compute-vdot');
+      const agg = await computeAggregateVdot(opts.userId);
+      if (agg && agg.value > 0) aggregateVdotValue = agg.value;
+    } catch {
+      // Aggregate VDOT is an optimization; engine falls back to
+      // single-best-race picker if the lookup fails.
+    }
+  }
+
   return {
     now: todayISO,
+    aggregateVdotValue,
     races: {
       nextA, nextAny, inWindow, recent, raceCount30d, bestForVdot,
     },

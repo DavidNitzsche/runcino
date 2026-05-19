@@ -14,6 +14,7 @@
  */
 
 import { gatherCoachState } from '../../../lib/coach-state';
+import { requireActiveUser } from '../../../lib/auth';
 import { coach } from '../../../coach/coach';
 import type {
   CoachDecision,
@@ -88,7 +89,9 @@ interface OverviewApiErr {
 
 export async function GET(): Promise<Response> {
   try {
-    const state = await gatherCoachState();
+    let userId: string | undefined;
+    try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+    const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 
     // The Coach methods that need a goal time pull from the saved

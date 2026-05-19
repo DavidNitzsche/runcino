@@ -253,17 +253,35 @@ export interface VdotPaceTarget {
 }
 
 /** Return a VDOT-derived pace target for the given workout type, or
- *  null when no recent race is available (caller uses legacy table). */
+ *  null when no recent race is available (caller uses legacy table).
+ *
+ *  Source priority:
+ *    1. state.aggregateVdotValue when present — matches the value the
+ *       UI shows on /profile's Coach Reads card (computeAggregateVdot
+ *       recency-weighted top 3). Engine + UI agree.
+ *    2. pickStrongestRecentRace fallback — single best race in 180-day
+ *       window. Used when state wasn't gathered with a userId. */
 export function paceTargetFromVdot(
   state: CoachState,
   workoutType: RunWorkoutType,
 ): VdotPaceTarget | null {
+  const zone = zoneForWorkout(workoutType);
+  if (zone == null) return null;
+
+  // Tier 1 — pre-resolved aggregate VDOT (preferred)
+  if (state.aggregateVdotValue && state.aggregateVdotValue > 0) {
+    const set = pacesFromVdot(state.aggregateVdotValue);
+    if (set) {
+      const band = set[zone];
+      return { lowS: band.lowS, highS: band.highS, vdot: state.aggregateVdotValue, zone };
+    }
+  }
+
+  // Tier 2 — single-best-race fallback
   const race = pickStrongestRecentRace(state);
   if (!race) return null;
   const vdot = vdotFromRace(race.distanceMi, race.timeS);
   if (vdot == null) return null;
-  const zone = zoneForWorkout(workoutType);
-  if (zone == null) return null;
   const set = pacesFromVdot(vdot);
   if (!set) return null;
   const band = set[zone];
@@ -290,31 +308,69 @@ export interface VdotSnapshot {
 
 /** Bundle the VDOT picture for the dashboard tile: source race +
  *  current VDOT + all 5 pace bands. Returns null when no usable
- *  recent race is logged. */
+ *  recent race is logged.
+ *
+ *  Source priority matches paceTargetFromVdot above:
+ *    1. state.aggregateVdotValue — agrees with what /profile shows
+ *    2. Single best race in 180-day window (legacy fallback)
+ *
+ *  The .source field always cites the strongest single race, even
+ *  when the VDOT value came from the aggregate — that's the most
+ *  meaningful "anchor race" to show. */
 export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
-  // Use 180-day window (bestForVdot) to find peak fitness — a casual race
-  // during a recovery block shouldn't drag VDOT below a runner's real ceiling.
-  // Falls back to recent (28-day) if bestForVdot isn't populated (old state shape).
+  // Find the strongest race regardless of which tier we end up using —
+  // its metadata becomes the `.source` field on the snapshot.
   const pool = (state.races.bestForVdot?.length ? state.races.bestForVdot : state.races.recent);
   let best: { race: typeof state.races.recent[number]; vdot: number } | null = null;
   for (const r of pool) {
     if (r.finishS == null) continue;
     if (!distanceKeyForMi(r.distanceMi)) continue;
-    // Marathon (and ultra) results don't reflect aerobic VDOT cleanly —
-    // late-race fatigue + fueling + heat are confounders. Skip for
-    // current-fitness inference. (Marathon times are still used by
-    // raceFitnessPrediction via vdotRow.marathonS — for predicting,
-    // not inferring.)
     if (r.distanceMi >= 22) continue;
     const v = vdotFromRace(r.distanceMi, r.finishS);
     if (v == null) continue;
     if (best == null || v > best.vdot) best = { race: r, vdot: v };
   }
-  if (!best || best.race.finishS == null) return null;
 
+  // Tier 1: use the pre-resolved aggregate VDOT when present.
+  // Source race metadata still comes from the single best for display.
+  if (state.aggregateVdotValue && state.aggregateVdotValue > 0) {
+    const paces = pacesFromVdot(state.aggregateVdotValue);
+    if (paces && best && best.race.finishS != null) {
+      return {
+        vdot: state.aggregateVdotValue,
+        source: {
+          name: best.race.name,
+          date: best.race.date,
+          daysAgo: best.race.daysAgo,
+          distanceMi: best.race.distanceMi,
+          timeS: best.race.finishS,
+          paceSPerMi: Math.round(best.race.finishS / best.race.distanceMi),
+        },
+        paces,
+      };
+    }
+    // Aggregate present but no anchor race — still return paces with
+    // a synthetic placeholder source so callers don't fall through.
+    if (paces) {
+      return {
+        vdot: state.aggregateVdotValue,
+        source: {
+          name: 'Aggregate fitness',
+          date: state.now,
+          daysAgo: 0,
+          distanceMi: 0,
+          timeS: 0,
+          paceSPerMi: 0,
+        },
+        paces,
+      };
+    }
+  }
+
+  // Tier 2: legacy single-best-race path
+  if (!best || best.race.finishS == null) return null;
   const paces = pacesFromVdot(best.vdot);
   if (!paces) return null;
-
   return {
     vdot: best.vdot,
     source: {
