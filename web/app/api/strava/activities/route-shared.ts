@@ -43,6 +43,18 @@ export interface NormalizedActivity {
   canonicalFinishS: number | null;
   canonicalDistanceMi: number | null;
   canonicalLabel: string | null;
+  /** Per-mile splits from Strava's splits_standard. Only present when
+   *  the activity was ingested from a detail-bearing response (single-
+   *  activity endpoint OR the detail backfill). Consumers needing
+   *  splits should treat `undefined` as "not yet hydrated" — kick off
+   *  /api/admin/backfill-splits to populate. L7 Signal 2 reads these
+   *  to compute pace-at-Z2-HR drift. */
+  splits?: Array<{
+    mile: number;
+    paceSPerMi: number;
+    avgHr: number | null;
+    elevDeltaFt: number;
+  }>;
 }
 
 export function normalizeActivity(a: StravaActivity): NormalizedActivity {
@@ -54,6 +66,23 @@ export function normalizeActivity(a: StravaActivity): NormalizedActivity {
   // distance AND within 8% of the activity's actual distance (so a
   // 13.4mi run picks the half-marathon best_effort, not the marathon).
   const canonical = pickCanonicalBestEffort(a, distMi);
+
+  // Per-mile splits — present only when the source response includes
+  // splits_standard (single-activity endpoint OR detail backfill). The
+  // list endpoint doesn't return them. Undefined here means "not
+  // hydrated yet"; the backfill admin endpoint populates retroactively.
+  const splits = a.splits_standard?.map((s) => {
+    const splitMi = s.distance / 1609.344;
+    const paceSPerMi = splitMi > 0 ? Math.round(s.elapsed_time / splitMi) : 0;
+    return {
+      mile: s.split,
+      paceSPerMi,
+      avgHr: s.average_heartrate != null ? Math.round(s.average_heartrate) : null,
+      elevDeltaFt: s.elevation_difference != null
+        ? Math.round(s.elevation_difference * 3.28084)
+        : 0,
+    };
+  });
 
   return {
     id: a.id,
@@ -81,6 +110,7 @@ export function normalizeActivity(a: StravaActivity): NormalizedActivity {
     canonicalFinishS: canonical?.elapsedS ?? null,
     canonicalDistanceMi: canonical?.distMi ?? null,
     canonicalLabel: canonical?.label ?? null,
+    ...(splits && splits.length > 0 ? { splits } : {}),
   };
 }
 

@@ -379,15 +379,14 @@ export async function computeThresholdSignal(
   return evaluateActivities(enriched, currentVdot, maxHr);
 }
 
-/** STUB · Pace-at-fixed-HR drift. Returns empty observations + a
- *  note explaining the deferral. Full implementation requires HR
- *  stream data or per-mile splits, both of which need additional
- *  Strava API integration. Queued for follow-up. */
+/** Signal 2 implementation lives in lib/adaptive-vdot-signal2.ts —
+ *  this stub kept for the shape contract; the verdict module reads
+ *  the new module directly. */
 export function computeHrPaceDriftSignal(): AdaptiveSignals['hrPaceDrift'] {
   return {
     observations: [],
     implemented: false,
-    note: 'Signal 2 (pace-at-fixed-HR drift) requires per-mile HR splits or stream data. Not implemented in this commit.',
+    note: 'See lib/adaptive-vdot-signal2.ts — Signal 2 now lives there with its own observation shape.',
   };
 }
 
