@@ -19,7 +19,7 @@
  */
 
 import { useState } from 'react';
-import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
+import { FALSIFIER_PREFIX, type CrossReference } from '@/lib/coach-voice';
 
 type Evidence = {
   date: string;
@@ -41,6 +41,9 @@ export type AdaptiveVdotVerdictForUI = {
   evidence: Evidence[];
   reason: string;
   falsifier: string;
+  /** V7 cross-reference to /races · fires when Signal 4 PR
+   *  trajectory directly contributes to the bump. */
+  crossRef?: CrossReference;
 };
 
 function fmtPace(s: number | null): string {
@@ -140,6 +143,18 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
         }}
       >
         {verdict.reason}
+        {verdict.crossRef && (
+          <span style={{ color: 'rgba(13,15,18,.65)' }}>
+            {' — '}
+            <a
+              href={verdict.crossRef.href}
+              style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+            >
+              {verdict.crossRef.text}
+            </a>
+            {'.'}
+          </span>
+        )}
       </div>
 
       {verdict.evidence.length > 0 && (

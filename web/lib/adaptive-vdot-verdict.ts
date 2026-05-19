@@ -48,6 +48,42 @@ import { computeSignal2, type Signal2Result, type Signal2Workout } from './adapt
 import { computeSignal3, type Signal3Result, type Signal3Observation } from './adaptive-vdot-signal3';
 import { computeSignal4, type Signal4Result, SIGNAL4_SOFT_THRESHOLD } from './adaptive-vdot-signal4';
 import { computeStravaGap } from './strava-gap';
+import { formatCrossReference, type CrossReference } from './coach-voice';
+
+/**
+ * V7 · Signal-4-to-VDOT-explainer cross-reference builder.
+ *
+ * Returns a cross-reference clause + nav target when Signal 4 directly
+ * fed the bump, otherwise undefined.  Earned-not-decorative: the PR
+ * result must have literally driven the s4Bump points calculation
+ * (s4FiresUp === true).  Soft-positive Signal 4 doesn't qualify — it
+ * corroborates but didn't drive the bump math.
+ *
+ * Picks the MOST RECENT PR — single name beats listing all, per the
+ * frequency-cap rule (one cross-reference per surface per render).
+ * computeSignal4 builds prsInWindow ASCENDING by date (walks the
+ * chronological list tracking running best), so the last element is
+ * the most recent.
+ *
+ * Relation: 'contributing to' (causal, grammatically subject-position
+ * — see coach-voice.ts).  The PR's existence drove the bump number.
+ *
+ * Exported for unit testing.
+ */
+export function buildSignal4CrossRef(
+  s4FiresUp: boolean,
+  signal4: Signal4Result,
+): CrossReference | undefined {
+  if (!s4FiresUp) return undefined;
+  if (signal4.prsInWindow.length === 0) return undefined;
+  const mostRecentPr = signal4.prsInWindow[signal4.prsInWindow.length - 1];
+  return formatCrossReference({
+    relatedLabel: `${mostRecentPr.canonicalLabel} PR`,
+    surface: '/races',
+    anchor: 'personal-records',
+    relation: 'contributing to',
+  });
+}
 
 const UP_OBS_MIN = 3;
 const UP_WEIGHT_MIN = 2.5;
@@ -94,6 +130,12 @@ export interface AdaptiveVdotVerdict {
         signal3Evidence?: Signal3Observation[];
         reason: string;
         falsifier: string;
+        /** V7 cross-reference · fires when Signal 4 PR trajectory
+         *  directly fed the bump-points calculation.  Names the most
+         *  recent contributing PR and links to /races#personal-records.
+         *  Relation: 'contributing to' (causal — the PR result
+         *  literally drove the s4Bump number). */
+        crossRef?: CrossReference;
       }
     | {
         kind: 'vdot-downgrade-investigate';
@@ -417,6 +459,8 @@ export async function buildAdaptiveVdotVerdict(
         `as would discovering a context (illness, life stress) that explained the fast paces.`;
     }
 
+    const crossRef = buildSignal4CrossRef(s4FiresUp, signal4);
+
     return {
       ...base,
       hasFinding: true,
@@ -430,6 +474,7 @@ export async function buildAdaptiveVdotVerdict(
         signal3Evidence,
         reason,
         falsifier,
+        crossRef,
       },
     };
   }

@@ -198,6 +198,9 @@ export default async function ProfilePage() {
         })),
         reason: adaptiveVdotVerdict.recommendation.reason,
         falsifier: adaptiveVdotVerdict.recommendation.falsifier,
+        crossRef: adaptiveVdotVerdict.recommendation.kind === 'vdot-bump-suggested'
+          ? adaptiveVdotVerdict.recommendation.crossRef
+          : undefined,
       }
     : null;
 

@@ -640,7 +640,7 @@ export default async function RacesPage() {
         </div>
 
         {/* ── PRs ── */}
-        <div className="card">
+        <div className="card" id="personal-records">
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Personal Records</div>
