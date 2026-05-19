@@ -73,12 +73,28 @@ async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
   } catch { return { value: null, source: 'none' }; }
 }
 
+/** Pick the user's "active" race — the one currently driving training.
+ *  Rule: NEAREST upcoming race, regardless of priority. Training paces
+ *  follow what's actually coming up next, not the season's biggest
+ *  goal. A B-race in 6 weeks dictates near-term workout pacing; the
+ *  A-race in 6 months can wait its turn.
+ *
+ *  Once the nearest race finishes (date < today), the picker rolls
+ *  forward to whatever's next on the calendar.
+ *
+ *  When two races share a date, A-priority wins the tiebreak. */
 async function getActiveRace(today: string): Promise<FitnessActiveRace | null> {
   let races;
   try { races = await listRacesDB(); } catch { return null; }
+  const priorityRank = (p: 'A' | 'B' | 'C' | undefined): number =>
+    p === 'A' ? 0 : p === 'B' ? 1 : 2;
   const candidates = races
-    .filter((r) => r.meta.priority === 'A' && r.meta.date >= today)
-    .sort((a, b) => a.meta.date.localeCompare(b.meta.date));
+    .filter((r) => r.meta.date >= today)
+    .sort((a, b) => {
+      const dateDiff = a.meta.date.localeCompare(b.meta.date);
+      if (dateDiff !== 0) return dateDiff;
+      return priorityRank(a.meta.priority) - priorityRank(b.meta.priority);
+    });
   const r = candidates[0];
   if (!r) return null;
   const goalFinishS = r.plan?.goal?.finish_time_s ?? parseGoalHMS(r.meta.goalDisplay);
@@ -94,7 +110,7 @@ async function getActiveRace(today: string): Promise<FitnessActiveRace | null> {
     goalDisplay: r.meta.goalDisplay,
     goalFinishS,
     goalPaceSPerMi,
-    priority: 'A',
+    priority: (r.meta.priority as 'A' | 'B' | 'C') ?? 'C',
   };
 }
 

@@ -28,6 +28,8 @@ import {
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { generateWeeklyInsights } from '@/lib/weekly-insights';
+import { resolveFitness } from '@/lib/fitness-resolver';
+import { describeWorkout } from '@/lib/workout-descriptions';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import './overview-v4.css';
@@ -109,14 +111,31 @@ export default async function OverviewPage() {
   const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date, d.distanceMi)).length;
   const sessionsTotal = weekDaysWithWork.length;
 
-  // Approximate duration from distance + paceMin
-  const paceTargetByType: Record<string, string> = {
-    easy: '9:15', recovery: '10:00', long: '9:30', quality: '7:30', race: '7:15',
-  };
-  const todayPace = todayDay && !todayDay.isRest ? paceTargetByType[todayDay.type] ?? '9:00' : null;
-  const [paceM, paceS] = (todayPace ?? '0:00').split(':').map(Number);
-  const paceSec = paceM * 60 + paceS;
-  const durMin = todayDay && !todayDay.isRest && todayDay.distanceMi ? Math.round((paceSec * todayDay.distanceMi) / 60) : null;
+  // Resolve fitness ONCE — paces and duration come from the same
+  // source the modal + race plan use. Kills the legacy
+  // paceTargetByType map that hardcoded 9:15 easy / 7:30 quality
+  // regardless of the user's VDOT or race goal.
+  const fitness = await resolveFitness(user.id, today);
+  const todayDesc = todayDay && !todayDay.isRest
+    ? describeWorkout(todayDay.label, todayDay.type, fitness)
+    : null;
+  // Pull a single representative pace string for the hero stat tile.
+  // For the duration estimate we average any pace pair we find.
+  const todayPace = (() => {
+    if (!todayDesc?.paceTarget) return null;
+    // Headline string from describeWorkout might be "8:49–9:19/mi"
+    // or "6:42–7:02/mi (half-marathon goal)". Strip the suffix.
+    return todayDesc.paceTarget.replace(/\/mi.*$/, '').trim();
+  })();
+  const paceSec = (() => {
+    if (!todayPace) return 0;
+    const matches = [...todayPace.matchAll(/(\d+):(\d{2})/g)]
+      .map((m) => parseInt(m[1], 10) * 60 + parseInt(m[2], 10));
+    if (matches.length === 0) return 0;
+    return Math.round(matches.reduce((a, b) => a + b, 0) / matches.length);
+  })();
+  const durMin = todayDay && !todayDay.isRest && todayDay.distanceMi && paceSec > 0
+    ? Math.round((paceSec * todayDay.distanceMi) / 60) : null;
 
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
