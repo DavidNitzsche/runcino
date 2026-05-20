@@ -192,6 +192,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     plan?.goal?.finish_time_s ?? 0,
   );
 
+  // Race-day execution brief — generated at T−7d. Null until then; the
+  // iPhone shows the same honest "awaiting" empty state the web does.
+  const b = plan?.brief;
+  const brief = b ? {
+    narrative: b.narrative,
+    weatherInput: b.weather_input,
+    generatedAt: b.generated_at,
+    adjustments: (b.plan_adjustments ?? []).map((a) => ({
+      phaseIdx: a.phase_idx, paceDeltaSPerMi: a.pace_delta_s_per_mi, reason: a.reason,
+    })),
+  } : null;
+  const raceMs = Date.parse(race.meta.date + 'T12:00:00Z');
+  const briefGeneratesISO = Number.isNaN(raceMs)
+    ? null
+    : new Date(raceMs - 7 * 86_400_000).toISOString().slice(0, 10);
+
   const phases = (plan?.phases ?? []).map((p) => ({
     label: p.label,
     startMi: p.start_mi,
@@ -228,5 +244,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     fueling,
     gels,
     projection,
+    brief,
+    briefGeneratesISO,
   });
 }
