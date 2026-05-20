@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Apple Watch · Build Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Faff — Apple Watch BUILD HANDOFF
+   Light v4 page (readable spec) · DARK watch execution faces.
+   Every metric is annotated with its watchOS source + v4 token.
+   Authority: docs/native/01-watchos-scoping.md (+ 2026-05-19 amendment)
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --bg:#EEECEA; --card:#FFFFFF; --ink:#0D0F12; --t1:rgba(13,15,18,.55); --t2:rgba(13,15,18,.35); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.08); --pill-bg:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.14);
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.10),0 20px 50px rgba(0,0,0,.16);
+  /* DARK watch face — same semantic hues, dark neutrals only */
+  --wbg:#000; --wsurf:rgba(255,255,255,.07); --wline:rgba(255,255,255,.15);
+  --wink:#FFFFFF; --wt1:rgba(255,255,255,.62); --wt2:rgba(255,255,255,.40);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif; --f-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5;padding:60px 7vw 120px}
+.tnum{font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto}
+
+/* masthead */
+.logo{font-family:var(--f-display);font-style:italic;font-size:30px;letter-spacing:3px;line-height:1;
+  background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-top:22px}
+h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height:.86;text-transform:uppercase;margin:12px 0 16px}
+.intro{font-size:15.5px;color:var(--t1);max-width:680px;line-height:1.6}
+.intro b{color:var(--ink);font-weight:600}
+
+/* decision chips */
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.chip{font-size:12px;font-weight:600;letter-spacing:.2px;padding:9px 13px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);display:flex;align-items:center;gap:8px}
+.chip .d{width:8px;height:8px;border-radius:50%}
+.chip b{font-weight:700}
+
+/* section heads */
+.sec{margin-top:64px}
+.sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:24px}
+.sec-h .n{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:2px;color:var(--t2)}
+.sec-h h2{font-family:var(--f-display);font-size:38px;line-height:.9;text-transform:uppercase;letter-spacing:-.01em}
+.sec-h .note{margin-left:auto;font-size:12.5px;color:var(--t1);max-width:380px;text-align:right}
+
+/* token table */
+.tok-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px}
+.tok{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px 24px}
+.tok h3{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
+.tok-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--divider);font-size:13px}
+.tok-row .sw{width:26px;height:26px;border-radius:7px;flex:none;border:1px solid var(--divider)}
+.tok-row .nm{font-weight:600;min-width:84px}
+.tok-row .hex{font-family:var(--f-mono);font-size:11.5px;color:var(--t2)}
+.tok-row .use{margin-left:auto;color:var(--t1);font-size:12px;text-align:right}
+
+/* spec rows: dark watch + annotation */
+.spec{display:grid;grid-template-columns:230px 1fr;gap:40px;align-items:start;margin-bottom:30px;
+  background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:30px 32px}
+.spec .watch-col{display:flex;flex-direction:column;align-items:center;gap:14px}
+.spec .state-tag{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink)}
+.spec .state-when{font-size:11.5px;color:var(--t1);text-align:center;line-height:1.4}
+
+/* annotation panel */
+.anno h3{font-family:var(--f-display);font-size:34px;line-height:.9;text-transform:uppercase;margin-bottom:4px}
+.anno .lede{font-size:13.5px;color:var(--t1);margin-bottom:16px}
+.arow{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:11px 0;border-top:1px solid var(--divider);font-size:13.5px}
+.arow .k{font-family:var(--f-body);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);padding-top:2px}
+.arow .v{color:var(--ink);line-height:1.5}
+.arow .v b{font-weight:700}
+.arow .v code{font-family:var(--f-mono);font-size:12px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:5px;padding:1px 6px;color:var(--ink)}
+.arow .v .src{color:var(--t1)}
+.tag-green,.tag-amber,.tag-orange,.tag-warn,.tag-ink{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;vertical-align:middle}
+.tag-green{color:var(--green);background:var(--green-wash)} .tag-amber{color:var(--amber);background:var(--amber-wash)}
+.tag-orange{color:var(--orange);background:var(--orange-wash)} .tag-warn{color:var(--warn);background:rgba(244,63,94,.12)}
+.tag-ink{color:var(--ink);background:var(--pill-bg)}
+
+/* ── DARK watch face ───────────────────────────────────────── */
+.watch{position:relative;width:198px;height:240px;border-radius:54px;padding:13px;
+  background:linear-gradient(150deg,#3a3d44,#15171a);box-shadow:var(--shadow-lg)}
+.watch::before{content:"";position:absolute;right:-5px;top:78px;width:6px;height:42px;border-radius:4px;background:linear-gradient(90deg,#4a4d54,#222)}
+.watch::after{content:"";position:absolute;right:-4px;top:130px;width:5px;height:30px;border-radius:4px;background:#222}
+.watch.aod{opacity:.42;filter:saturate(.8)}
+.w-screen{width:100%;height:100%;border-radius:42px;overflow:hidden;background:var(--wbg);padding:13px 14px;display:flex;flex-direction:column;position:relative;color:var(--wink)}
+.w-top{display:flex;justify-content:space-between;align-items:center}
+.w-eye{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--wt2)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
+.w-clock{font-size:12px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
+.w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+.w-hero{font-family:var(--f-display);font-size:72px;line-height:.74;letter-spacing:-2px;color:var(--wink);margin-top:2px}
+.w-hero.green{color:var(--green)} .w-hero.amber{color:var(--amber)} .w-hero.over{color:var(--warn)}
+.w-hero small{font-family:var(--f-body);font-size:18px;font-weight:600;color:var(--wt2);letter-spacing:0;margin-left:2px}
+.w-ref{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:4px}
+.w-ref b{color:var(--wink)} .w-ref .up{color:var(--green)} .w-ref .down{color:var(--warn)}
+.w-stats{display:flex;margin-top:auto;border-top:1px solid var(--wline);padding-top:7px}
+.w-stat{flex:1;padding-right:10px} .w-stat+.w-stat{border-left:1px solid var(--wline);padding-left:12px;padding-right:0}
+.w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82;color:var(--wink)}
+.w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
+.w-stat .k{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--wt2);margin-top:3px}
+.w-prog{margin-top:7px}
+.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
+.w-prog .lbl b{color:var(--wink)}
+.w-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.green{background:var(--green)}
+.w-name{font-family:var(--f-display);font-size:54px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:12px 0 6px}
+.w-namesub{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
+.w-meta{font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-top:5px}
+.w-dots{display:flex;gap:3px;margin-top:13px}
+.w-dots i{height:5px;border-radius:3px;background:rgba(255,255,255,.14)}
+.w-dots i.work{flex:1;background:var(--orange)} .w-dots i.rec{flex:.5;background:rgba(232,93,38,.4)}
+.w-dots i.warm{flex:1.4;background:rgba(255,255,255,.32)} .w-dots i.cool{flex:1.4;background:rgba(255,255,255,.32)}
+.w-start{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--green);color:#04130d;
+  border-radius:30px;padding:14px;font-family:var(--f-sub);font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.w-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.w-done .ring{width:40px;height:40px;border-radius:50%;border:3px solid var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.w-done .ttl{font-family:var(--f-display);font-size:28px;line-height:.84;letter-spacing:-.5px;text-transform:uppercase}
+.w-done .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 6px;margin-top:13px;width:100%}
+.w-done .grid .c{text-align:center}
+.w-done .grid .c .v{font-family:var(--f-display);font-size:22px;line-height:.85;color:var(--wink)}
+.w-done .grid .c .k{font-size:7.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:2px;white-space:nowrap}
+.w-done .save{margin-top:12px;font-size:9.5px;color:var(--wt2);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+
+/* state machine + haptics + payload */
+.flowline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--f-sub);font-size:14px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--ink)}
+.flowline .node{background:var(--card);box-shadow:var(--shadow);border-radius:10px;padding:10px 14px}
+.flowline .node.loop{color:var(--orange)}
+.flowline .ar{color:var(--t2);font-size:16px}
+.flowline .loopnote{font-family:var(--f-body);font-size:12px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--t1);width:100%;margin-top:4px}
+.tbl{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);margin-top:6px}
+.tbl th{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t2);text-align:left;padding:13px 16px;border-bottom:1px solid var(--divider)}
+.tbl td{padding:13px 16px;border-bottom:1px solid var(--divider);font-size:13.5px;color:var(--t1);vertical-align:top}
+.tbl td:first-child{color:var(--ink);font-weight:600}
+.tbl tr:last-child td{border-bottom:0}
+.tbl code{font-family:var(--f-mono);font-size:12px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:5px;padding:1px 6px;color:var(--ink)}
+pre{background:#15171a;color:#e8e8e8;border-radius:14px;padding:22px 24px;overflow-x:auto;font-family:var(--f-mono);font-size:12.5px;line-height:1.6;margin-top:6px}
+pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
+.frameworks{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.fw{font-family:var(--f-mono);font-size:12px;background:var(--card);box-shadow:var(--shadow);border-radius:9px;padding:9px 13px;color:var(--ink)}
+.foot{margin-top:80px;padding-top:26px;border-top:1px solid var(--divider);font-size:12px;color:var(--t1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.foot b{color:var(--ink);font-weight:600}
+
+@media(max-width:880px){.tok-grid{grid-template-columns:1fr}.spec{grid-template-columns:1fr;gap:26px}.sec-h .note{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- masthead -->
+  <header>
+    <div class="logo">FAFF</div>
+    <div class="kicker">Apple Watch · Build Handoff</div>
+    <h1>The execution<br>surface, specced.</h1>
+    <p class="intro">The dark companion app that runs today's structured workout on the wrist. This is the build target:
+      every state, every metric, with its <b>watchOS source</b> and <b>v4 token</b>. The rest of the product is the light
+      v4 system; <b>the watch is dark</b> for OLED battery, sunlight contrast, and always-on legibility. Companion app:
+      the paired iPhone holds auth and pushes the workout. Spec authority: <b>docs/native/01-watchos-scoping.md</b>.</p>
+    <div class="chips">
+      <div class="chip"><span class="d" style="background:var(--ink)"></span>Dark active face</div>
+      <div class="chip"><span class="d" style="background:var(--green)"></span>Cadence surfaced (v1)</div>
+      <div class="chip"><span class="d" style="background:var(--orange)"></span>Current pace is hero</div>
+      <div class="chip"><span class="d" style="background:var(--amber)"></span>Pace smoothed, ±10s band</div>
+      <div class="chip"><span class="d" style="background:var(--t2)"></span>AOD = dim the same face</div>
+    </div>
+  </header>
+
+  <!-- TOKENS -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">A</span><h2>Dark face tokens</h2>
+      <span class="note">Same semantic hues as the light app. Only the neutrals flip to dark. Don't invent a new hue; if one reads dim on OLED, raise its lightness, keep the hue.</span></div>
+    <div class="tok-grid">
+      <div class="tok">
+        <h3>Neutrals (dark)</h3>
+        <div class="tok-row"><span class="sw" style="background:#000"></span><span class="nm">Background</span><span class="hex">#000000</span><span class="use">true black · OLED off</span></div>
+        <div class="tok-row"><span class="sw" style="background:#1b1b1b"></span><span class="nm">Surface</span><span class="hex">white 7%</span><span class="use">stat dividers, bars</span></div>
+        <div class="tok-row"><span class="sw" style="background:#fff"></span><span class="nm">Ink</span><span class="hex">#FFFFFF</span><span class="use">hero + values</span></div>
+        <div class="tok-row"><span class="sw" style="background:#9e9e9e"></span><span class="nm">Muted</span><span class="hex">white 40–62%</span><span class="use">labels, units, clock</span></div>
+      </div>
+      <div class="tok">
+        <h3>Semantic (unchanged from v4)</h3>
+        <div class="tok-row"><span class="sw" style="background:#2CA82F"></span><span class="nm">Green</span><span class="hex">#2CA82F</span><span class="use">on pace · go · recovery</span></div>
+        <div class="tok-row"><span class="sw" style="background:#D4900A"></span><span class="nm">Amber</span><span class="hex">#D4900A</span><span class="use">drift 10–15s · interval label</span></div>
+        <div class="tok-row"><span class="sw" style="background:#E85D26"></span><span class="nm">Orange</span><span class="hex">#E85D26</span><span class="use">brand · work segment · rep bar</span></div>
+        <div class="tok-row"><span class="sw" style="background:#F43F5E"></span><span class="nm">Warn</span><span class="hex">#F43F5E</span><span class="use">sustained drift &gt;15s</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATES -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">B</span><h2>The six states</h2>
+      <span class="note">The state machine walks the phases array. Each face: one hero metric, two big secondary stats, workout context. Glance in under a second.</span></div>
+
+    <!-- 1 · PRE-RUN -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye">Today · ready</span><span class="w-clock tnum">7:14</span></div>
+          <div class="w-body">
+            <div class="w-name">6×800</div>
+            <div class="w-namesub">@ T · 6:31/mi · 60s rec</div>
+            <div class="w-meta">6.4 mi · est 52 min</div>
+            <div class="w-dots"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+            <div class="w-start"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 3l9 5-9 5V3z" fill="#04130d"/></svg>Start</div>
+          </div>
+        </div></div>
+        <div class="state-tag">1 · Idle / Pre-run</div>
+        <div class="state-when">When the workout has synced<br>and is waiting to start.</div>
+      </div>
+      <div class="anno">
+        <h3>Pre-run</h3>
+        <div class="lede">The whole workout, summarized, ready to start. No mid-run metrics yet.</div>
+        <div class="arow"><div class="k">Hero</div><div class="v"><b>Workout name</b> + summary. <span class="src">← WatchConnectivity payload <code>name</code>, <code>summary</code> from <code>GET /api/watch/today</code>.</span></div></div>
+        <div class="arow"><div class="k">Structure</div><div class="v">Segment strip = the <code>phases[]</code> array. <span class="tag-orange">work</span> <span class="tag-amber">recovery</span> warm/cool in muted. <span class="src">Visual only.</span></div></div>
+        <div class="arow"><div class="k">Action</div><div class="v"><b>Start</b> button, green = go. <span class="src">Begins <code>HKWorkoutSession</code> + <code>HKLiveWorkoutBuilder</code>, transitions to Warmup.</span></div></div>
+        <div class="arow"><div class="k">AOD</div><div class="v">Pre-start, screen behaves normally (not a workout yet).</div></div>
+      </div>
+    </div>
+
+    <!-- 2 · WARMUP -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Warmup</span><span class="w-clock tnum">7:16</span></div>
+          <div class="w-body">
+            <div class="w-hero tnum">2:15<small>/10:00</small></div>
+            <div class="w-ref">Easy · <b>7:58</b>/mi</div>
+            <div class="w-stats">
+              <div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart rate</div></div>
+              <div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div>
+            </div>
+            <div class="w-prog"><div class="lbl"><span>Warmup</span><span>next · Interval 1</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="state-tag">2 · Warmup</div>
+        <div class="state-when">Easy effort, counting toward<br>the target duration.</div>
+      </div>
+      <div class="anno">
+        <h3>Warmup</h3>
+        <div class="lede">No pace target. The hero is the clock toward the warmup duration. Same layout serves Cooldown.</div>
+        <div class="arow"><div class="k">Hero</div><div class="v"><b>Elapsed / target time.</b> <span class="src">Local timer driven by phase <code>durationSec</code>. White ink (no judgment).</span></div></div>
+        <div class="arow"><div class="k">Reference</div><div class="v">Current pace, labelled Easy. <span class="src">← smoothed pace; no color band (no target during warmup).</span></div></div>
+        <div class="arow"><div class="k">Stat 1 · HR</div><div class="v">Live heart rate. <span class="src">← <code>HKLiveWorkoutBuilder</code> · <code>heartRate</code>.</span></div></div>
+        <div class="arow"><div class="k">Stat 2 · Cadence</div><div class="v">Steps per minute. <span class="src">← live running cadence (step events ÷ time).</span></div></div>
+        <div class="arow"><div class="k">Haptic</div><div class="v">Triple-tap 3s before warmup ends; transition tap into Interval 1.</div></div>
+        <div class="arow"><div class="k">AOD</div><div class="v">Same face dimmed by watchOS; timer + HR keep updating at ~1 Hz.</div></div>
+      </div>
+    </div>
+
+    <!-- 3 · WORK INTERVAL -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-body">
+            <div class="w-hero green tnum">6:33</div>
+            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-stats">
+              <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
+              <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
+            </div>
+            <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="state-tag">3 · Work interval</div>
+        <div class="state-when">The high-stakes screen.<br>Am I on pace, right now.</div>
+      </div>
+      <div class="anno">
+        <h3>Work interval</h3>
+        <div class="lede">Current pace is the hero, color-coded against the target band. The one-second glance is the color, not the digits.</div>
+        <div class="arow"><div class="k">Hero · pace</div><div class="v"><b>Current pace</b>, smoothed. <span class="src">← <code>HKLiveWorkoutBuilder</code> distance/speed, 3s rolling avg; <code>CMPedometer</code> fallback first 30s before GPS lock.</span></div></div>
+        <div class="arow"><div class="k">Color logic</div><div class="v"><span class="tag-green">≤ ±10s</span> on band · <span class="tag-amber">10–15s</span> drift · <span class="tag-warn">&gt;15s held</span> over target. <span class="src">vs <code>targetPaceSPerMi</code> ± <code>tolerancePaceSPerMi</code>.</span></div></div>
+        <div class="arow"><div class="k">Reference</div><div class="v">Target pace + live delta. <span class="src">← payload <code>targetPaceSPerMi</code>.</span></div></div>
+        <div class="arow"><div class="k">Stat 1 · HR</div><div class="v">Live HR. <span class="src">Note: lags rapid intensity ~10–30s; expected.</span></div></div>
+        <div class="arow"><div class="k">Stat 2 · Cadence</div><div class="v">Live SPM. <span class="src">← running cadence.</span></div></div>
+        <div class="arow"><div class="k">Context</div><div class="v">Rep <code>3/6</code> + time left in rep + progress bar <span class="tag-orange">orange</span>.</div></div>
+        <div class="arow"><div class="k">Haptic</div><div class="v">Single tap if pace drifts &gt;10s for &gt;5s. Triple-tap 3s before rep ends. Distinct work→recovery pattern.</div></div>
+        <div class="arow"><div class="k">Lap</div><div class="v">"End interval" tap bails early; rep marked partial, flows to Recovery.</div></div>
+        <div class="arow"><div class="k">AOD</div><div class="v">Dimmed; pace + color persist. Haptics fire regardless of screen state.</div></div>
+      </div>
+    </div>
+
+    <!-- 4 · RECOVERY -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Rest · 3 of 6</span><span class="w-clock tnum">7:32</span></div>
+          <div class="w-body">
+            <div class="w-hero green tnum">0:42</div>
+            <div class="w-ref">Next rep · <b>6:31</b>/mi</div>
+            <div class="w-stats">
+              <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
+              <div class="w-stat"><div class="v tnum">92<small>spm</small></div><div class="k">Cadence</div></div>
+            </div>
+            <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="green" style="width:70%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="state-tag">4 · Recovery</div>
+        <div class="state-when">Between reps. When do I<br>run hard again.</div>
+      </div>
+      <div class="anno">
+        <h3>Recovery</h3>
+        <div class="lede">Hero is the countdown to the next rep. No pace target to chase, so the glance answer is time remaining.</div>
+        <div class="arow"><div class="k">Hero · time</div><div class="v"><b>Remaining</b> in the recovery. <span class="src">Counts down from phase <code>durationSec</code>. Green = breathe.</span></div></div>
+        <div class="arow"><div class="k">Reference</div><div class="v">Next rep's target pace, so you can pre-load. <span class="src">← next work phase <code>targetPaceSPerMi</code>.</span></div></div>
+        <div class="arow"><div class="k">Stat 1 · HR</div><div class="v">Live HR, watch it drop. <span class="src">← <code>HKLiveWorkoutBuilder</code>.</span></div></div>
+        <div class="arow"><div class="k">Stat 2 · Cadence</div><div class="v">Live SPM (low at a jog). <span class="src">Surfaced per v1 decision.</span></div></div>
+        <div class="arow"><div class="k">Haptic</div><div class="v">Triple-tap 3s before recovery ends; distinct recovery→work pattern at the start of the next rep.</div></div>
+        <div class="arow"><div class="k">AOD</div><div class="v">Dimmed; countdown keeps ticking.</div></div>
+      </div>
+    </div>
+
+    <!-- 5 · COOLDOWN -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Cooldown</span><span class="w-clock tnum">8:01</span></div>
+          <div class="w-body">
+            <div class="w-hero tnum">4:10<small>/10:00</small></div>
+            <div class="w-ref">Easy · <b>8:30</b>/mi</div>
+            <div class="w-stats">
+              <div class="w-stat"><div class="v tnum">138<small>bpm</small></div><div class="k">Heart rate</div></div>
+              <div class="w-stat"><div class="v tnum">160<small>spm</small></div><div class="k">Cadence</div></div>
+            </div>
+            <div class="w-prog"><div class="lbl"><span>Cooldown</span><span>almost done</span></div><div class="w-bar"><i class="green" style="width:42%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="state-tag">5 · Cooldown</div>
+        <div class="state-when">Same layout as warmup.<br>Wind down to the finish.</div>
+      </div>
+      <div class="anno">
+        <h3>Cooldown</h3>
+        <div class="lede">Identical layout to warmup, relabelled. Hero is the clock toward the cooldown duration.</div>
+        <div class="arow"><div class="k">Hero</div><div class="v"><b>Elapsed / target time.</b> <span class="src">Local timer from phase <code>durationSec</code>.</span></div></div>
+        <div class="arow"><div class="k">Stats</div><div class="v">HR + cadence, same sources as warmup.</div></div>
+        <div class="arow"><div class="k">Haptic</div><div class="v">Long haptic + "workout complete" at the end, transitions to Summary.</div></div>
+        <div class="arow"><div class="k">AOD</div><div class="v">Dimmed; timer continues.</div></div>
+      </div>
+    </div>
+
+    <!-- 6 · SUMMARY -->
+    <div class="spec">
+      <div class="watch-col">
+        <div class="watch"><div class="w-screen">
+          <div class="w-done">
+            <div class="ring"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#2CA82F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="ttl">Complete</div>
+            <div class="grid">
+              <div class="c"><div class="v tnum">6/6</div><div class="k">Reps</div></div>
+              <div class="c"><div class="v tnum">6:30</div><div class="k">Avg pace</div></div>
+              <div class="c"><div class="v tnum">6.4</div><div class="k">Miles</div></div>
+              <div class="c"><div class="v tnum">171</div><div class="k">Avg HR</div></div>
+              <div class="c"><div class="v tnum">181</div><div class="k">Cadence</div></div>
+              <div class="c"><div class="v tnum">52:14</div><div class="k">Time</div></div>
+            </div>
+            <div class="save">Saved · syncing</div>
+          </div>
+        </div></div>
+        <div class="state-tag">6 · Summary</div>
+        <div class="state-when">Full readout, then it flows<br>back to phone and coach.</div>
+      </div>
+      <div class="anno">
+        <h3>Summary</h3>
+        <div class="lede">The full readout. Reps, pace, distance, HR, cadence, time. Then it leaves the watch.</div>
+        <div class="arow"><div class="k">Stats</div><div class="v">Reps completed, avg work pace, distance, avg HR, avg cadence, total time. <span class="src">← aggregated from the live session.</span></div></div>
+        <div class="arow"><div class="k">Writeback</div><div class="v">Writes an <code>HKWorkout</code> with per-interval metadata. <span class="src">iPhone picks it up via HealthKit background delivery and POSTs to <code>/api/watch/workouts/complete</code>.</span></div></div>
+        <div class="arow"><div class="k">Action</div><div class="v">Save returns to Idle. Coaching surfaces (readiness, signals) react on next render, on phone/web only.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE MACHINE -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">C</span><h2>State machine</h2>
+      <span class="note">Forward-only cursor over the phases array. No backward jumps. Each transition fires a haptic.</span></div>
+    <div class="flowline">
+      <span class="node">Idle</span><span class="ar">→</span>
+      <span class="node">Warmup</span><span class="ar">→</span>
+      <span class="node loop">Work</span><span class="ar">⇄</span><span class="node loop">Recovery</span><span class="ar">→</span>
+      <span class="node">Cooldown</span><span class="ar">→</span>
+      <span class="node">Summary</span><span class="ar">→</span><span class="node">Idle</span>
+      <span class="loopnote">Work ⇄ Recovery repeats N times (here, 6). "End interval" can skip a rep forward; the cursor never moves backward.</span>
+    </div>
+  </section>
+
+  <!-- HAPTICS -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">D</span><h2>Haptics</h2>
+      <span class="note">The watch is glance-and-feel. Haptics are how you know without looking. Fire regardless of screen on/off.</span></div>
+    <table class="tbl">
+      <tr><th>Moment</th><th>Pattern</th><th>Why</th></tr>
+      <tr><td>3s before a work rep ends</td><td>Triple tap</td><td>"Get ready to ease off" so you don't overrun the rep.</td></tr>
+      <tr><td>Work → Recovery</td><td>Distinct transition tap</td><td>The rep is done, start the jog.</td></tr>
+      <tr><td>Recovery → Work</td><td>Different transition tap</td><td>Go again. Different from the work→rec tap so they're never confused.</td></tr>
+      <tr><td>Pace drift</td><td>Single subtle tap</td><td>Current pace &gt;10s off target for &gt;5s. Silent inside the band, no nagging.</td></tr>
+      <tr><td>Workout complete</td><td>Long haptic</td><td>Cooldown done. Look at the summary.</td></tr>
+    </table>
+  </section>
+
+  <!-- PAYLOAD + FRAMEWORKS -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">E</span><h2>Data in, data out</h2>
+      <span class="note">iPhone is the bridge: holds auth, fetches the workout, pushes it over WatchConnectivity. The watch sends the finished workout back via HealthKit.</span></div>
+    <pre><span class="c">// GET /api/watch/today  →  pushed to watch over WCSession</span>
+{
+  <span class="k">"name"</span>: <span class="s">"6×800 @ T-pace"</span>,
+  <span class="k">"summary"</span>: <span class="s">"6×800 @ 6:31 · 60s rec"</span>,
+  <span class="k">"phases"</span>: [
+    { <span class="k">"type"</span>: <span class="s">"warmup"</span>,   <span class="k">"durationSec"</span>: 600, <span class="k">"targetPaceSPerMi"</span>: null },
+    { <span class="k">"type"</span>: <span class="s">"work"</span>,     <span class="k">"durationSec"</span>: 192, <span class="k">"targetPaceSPerMi"</span>: 391, <span class="k">"tolerancePaceSPerMi"</span>: 10 },
+    { <span class="k">"type"</span>: <span class="s">"recovery"</span>, <span class="k">"durationSec"</span>:  60, <span class="k">"targetPaceSPerMi"</span>: null }
+    <span class="c">// … 5 more work + recovery pairs, then cooldown</span>
+  ]
+}</pre>
+    <div class="frameworks">
+      <span class="fw">SwiftUI (watchOS 11)</span>
+      <span class="fw">HKWorkoutSession</span>
+      <span class="fw">HKLiveWorkoutBuilder</span>
+      <span class="fw">WatchConnectivity · WCSession</span>
+      <span class="fw">HealthKit (live HR, cadence, distance · write HKWorkout)</span>
+      <span class="fw">WKInterfaceDevice.play()</span>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div>Dark execution faces · v4 semantic tokens · <b>docs/design/watch-handoff.html</b></div>
+    <div>Companion app · phone holds auth · build per <b>docs/native/01-watchos-scoping.md</b></div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · iPhone & Watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Faff — iPhone Today + Apple Watch · v4 LIGHT system
+   Tokens from designs/V4_DESIGN_LAW.md + web/app/components/v4/tokens.ts
+   Light, bold. Bebas Neue numbers/titles · Inter body · Oswald sub.
+   Orange #E85D26 brand · green on-plan · amber today/in-progress.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --bg:#EEECEA; --card:#FFFFFF; --card-2:rgba(13,15,18,.02);
+  --ink:#0D0F12; --t1:rgba(13,15,18,.55); --t2:rgba(13,15,18,.35); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.08); --pill-bg:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.14);
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:60px 24px 96px}
+.tnum{font-variant-numeric:tabular-nums}
+.bebas{font-family:var(--f-display);font-weight:400}
+
+/* ── Page scaffold ───────────────────────────────────────────── */
+.wrap{max-width:1180px;margin:0 auto}
+.masthead{margin-bottom:60px}
+.logo{font-family:var(--f-display);font-style:italic;font-size:30px;letter-spacing:3px;line-height:1;
+  background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.masthead .kicker{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-top:22px}
+.masthead h1{font-family:var(--f-display);font-size:84px;letter-spacing:-.02em;line-height:.88;text-transform:uppercase;margin:12px 0 16px}
+.masthead p{font-size:15px;color:var(--t1);max-width:580px;line-height:1.55}
+.masthead p b{color:var(--ink);font-weight:600}
+
+.section-tag{display:flex;align-items:baseline;gap:14px;margin:0 0 30px}
+.section-tag .n{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:2px;color:var(--t2)}
+.section-tag h2{font-family:var(--f-sub);font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.section-tag .note{margin-left:auto;font-size:12.5px;color:var(--t1)}
+
+.stage{display:flex;gap:72px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.rail{flex:1;min-width:280px;max-width:440px;padding-top:14px}
+.rail h3{font-family:var(--f-display);font-size:42px;letter-spacing:-.01em;text-transform:uppercase;line-height:.92;margin-bottom:16px}
+.rail .lede{font-size:14.5px;color:var(--t1);line-height:1.6;margin-bottom:24px}
+.rail .pt{padding:15px 0;border-top:1px solid var(--divider)}
+.rail .pt .t{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink);margin-bottom:6px}
+.rail .pt .d{font-size:14px;color:var(--t1);line-height:1.5}
+.rail .pt .d b{color:var(--orange);font-weight:600}
+
+/* ════════════════════════════════════════════════════════════
+   iPhone — light screen, dark titanium frame
+   ════════════════════════════════════════════════════════════ */
+.phone{width:392px;flex:none;border-radius:56px;padding:13px;
+  background:linear-gradient(150deg,#3a3d44,#1a1c20);box-shadow:0 50px 90px -20px rgba(0,0,0,.45),0 2px 0 rgba(255,255,255,.08) inset}
+.phone-screen{position:relative;border-radius:44px;overflow:hidden;background:var(--bg);height:812px;display:flex;flex-direction:column}
+.island{position:absolute;top:13px;left:50%;transform:translateX(-50%);width:122px;height:34px;background:#0b0c0e;border-radius:20px;z-index:40}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:15px 30px 0;height:52px;flex:none}
+.statusbar .time{font-size:15px;font-weight:700}
+.statusbar .sys{display:flex;gap:7px;align-items:center}
+
+.feed{flex:1;overflow:hidden;padding:8px 20px 24px;display:flex;flex-direction:column;gap:16px}
+
+/* topbar */
+.ptop{display:flex;justify-content:space-between;align-items:center}
+.ptop .lg{font-family:var(--f-display);font-style:italic;font-size:24px;letter-spacing:2.5px;line-height:1;
+  background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ptop .dt{font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;color:var(--t2)}
+
+/* coach strip */
+.coach-lbl{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--t2);margin-bottom:10px}
+.coach-lbl .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.coach-brief{font-size:16px;line-height:1.5;color:var(--ink);font-weight:400}
+.coach-brief b{font-weight:700}
+
+/* generic card */
+.card{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:22px}
+.eyebrow{font-size:11px;font-weight:500;letter-spacing:2.2px;text-transform:uppercase;color:var(--t2)}
+
+/* hero workout card */
+.hero .eyebrow{margin-bottom:12px}
+.hero .title{font-family:var(--f-display);font-size:96px;line-height:.84;letter-spacing:-2px;text-transform:uppercase;margin-left:-3px;margin-bottom:16px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.spill{background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:10px;padding:11px 14px;flex:1;min-width:64px}
+.spill .v{display:flex;align-items:baseline;gap:3px}
+.spill .v .num{font-family:var(--f-display);font-size:30px;line-height:.9}
+.spill .v .u{font-size:12px;color:var(--t1);font-weight:500}
+.spill .v .num.orange{color:var(--orange)}
+.spill .l{font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:var(--t2);margin-top:5px}
+.struct{display:flex;gap:3px;margin-bottom:16px}
+.struct i{height:8px;border-radius:2px;background:rgba(13,15,18,.07)}
+.struct i.warm{flex:1.3;background:rgba(13,15,18,.14)} .struct i.work{flex:1;background:var(--orange)}
+.struct i.rec{flex:.5;background:var(--orange-wash)} .struct i.cool{flex:1.3;background:rgba(13,15,18,.14)}
+.send{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--ink);color:#fff;
+  border:none;border-radius:10px;padding:15px;font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer}
+
+/* readiness */
+.ready{display:flex;gap:14px;align-items:center}
+.ring-wrap{flex:none;position:relative;width:104px;height:104px}
+.ring-wrap .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-wrap .val .n{font-family:var(--f-display);font-size:44px;line-height:.8;color:var(--ink)}
+.ring-wrap .val .s{font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);margin-top:2px}
+.ready .rcol{flex:1}
+.ready .rhead{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ready .rhead .lbl{font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2)}
+.badge-ready{background:var(--green-wash);color:var(--green);font-size:10px;font-weight:600;letter-spacing:1.2px;padding:4px 10px;border-radius:20px;text-transform:uppercase}
+.trend{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
+.trend:last-child{margin-bottom:0}
+.trend .tt{display:flex;justify-content:space-between;align-items:baseline}
+.trend .tt .k{font-size:11px;font-weight:500;letter-spacing:.5px;text-transform:uppercase;color:var(--t2)}
+.trend .tt .v{font-size:13px;font-weight:700} .trend .tt .v.green{color:var(--green)} .trend .tt .v .s{color:var(--t2);font-weight:500;font-size:11px;margin-left:2px}
+.trend .bar{height:8px;border-radius:4px;background:rgba(13,15,18,.07);overflow:hidden}
+.trend .bar i{display:block;height:100%;border-radius:4px;background:var(--green)} .trend .bar i.dim{background:rgba(13,15,18,.25)}
+
+/* week strip */
+.week-card{padding:16px 14px}
+.week-head{font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);margin:0 6px 12px}
+.week{display:flex;gap:6px}
+.day{flex:1;text-align:center;border-radius:12px;padding:10px 0}
+.day .dw{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--t2)}
+.day .dn{font-family:var(--f-display);font-size:24px;line-height:1;margin-top:4px}
+.day .mk{width:7px;height:7px;border-radius:50%;margin:8px auto 0;background:rgba(13,15,18,.14)}
+.day .mk.done{background:var(--green)} .day .mk.rest{background:transparent;border:1.5px solid var(--t3)}
+.day.today{background:var(--amber-wash)} .day.today .dw{color:var(--amber)} .day.today .dn{color:var(--amber)} .day.today .mk{background:var(--amber)}
+
+/* tabbar */
+.tabbar{flex:none;height:64px;border-top:1px solid var(--divider);background:rgba(238,236,234,.92);display:flex;align-items:flex-start;justify-content:space-around;padding-top:11px}
+.tabbar .ti{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--t2)}
+.tabbar .ti.on{color:var(--ink)} .tabbar .ti.on .lab{color:var(--orange)}
+.tabbar .ti .lab{font-family:var(--f-sub);font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.home-ind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(13,15,18,.28);z-index:41}
+
+/* ════════════════════════════════════════════════════════════
+   Apple Watch — glanceable execution. One giant hero number,
+   big bold secondary stats (HR · cadence), nothing else competing.
+   ════════════════════════════════════════════════════════════ */
+.watches{display:flex;gap:38px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.watch-unit{display:flex;flex-direction:column;align-items:center;gap:16px;width:208px}
+.watch{position:relative;width:198px;height:240px;border-radius:54px;padding:13px;
+  background:linear-gradient(150deg,#3a3d44,#15171a);box-shadow:0 36px 60px -22px rgba(0,0,0,.5),0 2px 0 rgba(255,255,255,.08) inset}
+.watch::before{content:"";position:absolute;right:-5px;top:78px;width:6px;height:42px;border-radius:4px;background:linear-gradient(90deg,#4a4d54,#222)}
+.watch::after{content:"";position:absolute;right:-4px;top:130px;width:5px;height:30px;border-radius:4px;background:#222}
+.w-screen{width:100%;height:100%;border-radius:42px;overflow:hidden;background:#F4F2F0;padding:13px 14px;display:flex;flex-direction:column;position:relative}
+.w-cap{text-align:center;font-size:12px;color:var(--t1);font-weight:500;line-height:1.45}
+.w-cap b{display:block;font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+
+/* top row — context label + clock */
+.w-top{display:flex;justify-content:space-between;align-items:center}
+.w-eye{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--t2)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
+.w-clock{font-size:12px;font-weight:700;color:var(--t2);font-variant-numeric:tabular-nums}
+.w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+
+/* THE hero number — read in under a second */
+.w-hero{font-family:var(--f-display);font-size:74px;line-height:.74;letter-spacing:-2px;color:var(--ink);margin-top:2px}
+.w-hero.green{color:var(--green)} .w-hero.amber{color:var(--amber)} .w-hero.over{color:var(--warn)}
+.w-ref{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--t2);margin-top:4px}
+.w-ref b{color:var(--ink)} .w-ref .up{color:var(--green)} .w-ref .down{color:var(--warn)}
+
+/* secondary stats — big, bold, two columns, pinned to the bottom */
+.w-stats{display:flex;margin-top:auto;border-top:1px solid rgba(13,15,18,.12);padding-top:7px}
+.w-stat{flex:1;padding-right:10px}
+.w-stat+.w-stat{border-left:1px solid rgba(13,15,18,.12);padding-left:12px;padding-right:0}
+.w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82}
+.w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--t2);margin-left:1px}
+.w-stat .k{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--t2);margin-top:3px}
+
+/* rep progress */
+.w-prog{margin-top:6px}
+.w-prog .lbl{display:flex;justify-content:space-between;font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--t2);margin-bottom:5px}
+.w-prog .lbl b{color:var(--ink)}
+.w-bar{height:6px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.rec{background:var(--green)}
+
+/* pre-run */
+.w-name{font-family:var(--f-display);font-size:56px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:12px 0 6px}
+.w-namesub{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
+.w-meta{font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);margin-top:5px}
+.w-dots{display:flex;gap:3px;margin-top:13px}
+.w-dots i{height:5px;border-radius:3px;background:rgba(13,15,18,.10)}
+.w-dots i.work{flex:1;background:var(--orange)} .w-dots i.rec{flex:.5;background:var(--orange-wash)}
+.w-dots i.warm{flex:1.4;background:rgba(13,15,18,.18)} .w-dots i.cool{flex:1.4;background:rgba(13,15,18,.18)}
+.w-start{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--green);color:#fff;
+  border-radius:30px;padding:14px;font-family:var(--f-sub);font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+
+/* complete */
+.w-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.w-done .ring{width:40px;height:40px;border-radius:50%;border:3px solid var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.w-done .ttl{font-family:var(--f-display);font-size:30px;line-height:.84;letter-spacing:-.5px;text-transform:uppercase}
+.w-done .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px 6px;margin-top:14px;width:100%}
+.w-done .grid .c{text-align:center}
+.w-done .grid .c .v{font-family:var(--f-display);font-size:23px;line-height:.85}
+.w-done .grid .c .k{font-size:7.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--t2);margin-top:2px;white-space:nowrap}
+.w-done .save{margin-top:13px;font-size:10.5px;color:var(--t2);font-weight:600}
+
+/* ── DARK execution face (matches watch-handoff.html) ── */
+.w-screen{background:#000;color:#fff}
+.w-hero,.w-ref b,.w-stat .v,.w-prog .lbl b,.w-name,.w-done .ttl,.w-done .grid .c .v{color:#fff}
+.w-eye,.w-clock,.w-hero small,.w-ref,.w-stat .v small,.w-stat .k,.w-meta,.w-prog .lbl,.w-done .grid .c .k,.w-done .save{color:rgba(255,255,255,.45)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
+.w-stats{border-top-color:rgba(255,255,255,.15)} .w-stat+.w-stat{border-left-color:rgba(255,255,255,.15)}
+.w-bar{background:rgba(255,255,255,.14)}
+.w-dots i{background:rgba(255,255,255,.14)}
+.w-dots i.warm,.w-dots i.cool{background:rgba(255,255,255,.32)} .w-dots i.rec{background:rgba(232,93,38,.4)}
+
+/* colophon */
+.colophon{max-width:1180px;margin:96px auto 0;padding-top:28px;border-top:1px solid var(--divider);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--t1);font-weight:500}
+.colophon b{color:var(--ink);font-weight:600}
+.swatches{display:flex;gap:14px;flex-wrap:wrap}
+.sw{display:flex;align-items:center;gap:7px}
+.sw .c{width:13px;height:13px;border-radius:4px}
+.sw span{font-size:11px;letter-spacing:.04em;color:var(--t1)}
+
+@media(max-width:560px){body{padding:40px 12px 60px}.masthead h1{font-size:52px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ── Masthead ─────────────────────────────────────────── -->
+  <header class="masthead">
+    <div class="logo">FAFF</div>
+    <div class="kicker">iPhone &amp; Watch</div>
+    <h1>The day, on your<br>wrist and in your hand.</h1>
+    <p>Two surfaces, one source of truth, one design language. The <b>iPhone</b> answers
+       what now in two seconds and sends the session to the watch. The <b>Watch</b>
+       runs the workout. Big Bebas numbers on a dark face, color you read at a glance.
+       Shown on a threshold morning, the day the surfaces earn their keep.</p>
+  </header>
+
+  <!-- ════════════ iPhone ════════════ -->
+  <div class="section-tag">
+    <span class="n">01</span>
+    <h2>iPhone · Today</h2>
+    <span class="note">Standing, phone in hand. One column. One thumb. The hero is what to do next.</span>
+  </div>
+
+  <div class="stage" style="margin-bottom:120px">
+    <!-- phone -->
+    <div class="phone"><div class="phone-screen">
+      <div class="island"></div>
+      <div class="statusbar">
+        <span class="time tnum">7:02</span>
+        <span class="sys">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#0D0F12"/><rect x="5" y="5" width="3" height="7" rx="1" fill="#0D0F12"/><rect x="10" y="2.5" width="3" height="9.5" rx="1" fill="#0D0F12"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#0D0F12"/></svg>
+          <svg width="26" height="13" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/><rect x="24.5" y="4" width="1.5" height="5" rx=".75" fill="#0D0F12" fill-opacity=".5"/></svg>
+        </span>
+      </div>
+
+      <div class="feed">
+        <div class="ptop">
+          <div class="lg">FAFF</div>
+          <div class="dt">Tue · 20 May</div>
+        </div>
+
+        <!-- coach strip -->
+        <div>
+          <div class="coach-lbl"><span class="dot"></span>Coach · Build · Wk 4 of 12</div>
+          <div class="coach-brief"><b>Threshold day.</b> The engine work that makes marathon pace feel like cruising. Hold the band, not the hero pace.</div>
+        </div>
+
+        <!-- HERO workout card -->
+        <div class="card hero">
+          <div class="eyebrow">Today's session · Threshold</div>
+          <div class="title">6 × 800</div>
+          <div class="stats">
+            <div class="spill"><div class="v"><span class="num orange tnum">6:31</span><span class="u">/mi</span></div><div class="l">Target</div></div>
+            <div class="spill"><div class="v"><span class="num tnum">60</span><span class="u">s</span></div><div class="l">Recovery</div></div>
+            <div class="spill"><div class="v"><span class="num tnum">6.4</span><span class="u">mi</span></div><div class="l">Volume</div></div>
+            <div class="spill"><div class="v"><span class="num tnum">52</span><span class="u">min</span></div><div class="l">Time</div></div>
+          </div>
+          <div class="struct"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+          <button class="send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="4" stroke="#fff" stroke-width="2"/><circle cx="12" cy="18" r="1.4" fill="#fff"/></svg>
+            Send to Watch
+          </button>
+        </div>
+
+        <!-- readiness card -->
+        <div class="card ready">
+          <div class="ring-wrap">
+            <svg width="104" height="104" viewBox="0 0 104 104">
+              <circle cx="52" cy="52" r="44" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="9"/>
+              <circle cx="52" cy="52" r="44" fill="none" stroke="#2CA82F" stroke-width="9" stroke-linecap="round"
+                stroke-dasharray="276.5" stroke-dashoffset="50" transform="rotate(-90 52 52)"/>
+            </svg>
+            <div class="val"><div class="n tnum">82</div><div class="s">Ready</div></div>
+          </div>
+          <div class="rcol">
+            <div class="rhead"><span class="lbl">Readiness</span><span class="badge-ready">Primed</span></div>
+            <div class="trend"><div class="tt"><span class="k">HRV</span><span class="v green tnum">68<span class="s">ms · +6</span></span></div><div class="bar"><i style="width:78%"></i></div></div>
+            <div class="trend"><div class="tt"><span class="k">Resting HR</span><span class="v tnum">48<span class="s">bpm · −2</span></span></div><div class="bar"><i class="dim" style="width:64%"></i></div></div>
+            <div class="trend"><div class="tt"><span class="k">Sleep</span><span class="v green tnum">7:48<span class="s">vs 7:30</span></span></div><div class="bar"><i style="width:88%"></i></div></div>
+          </div>
+        </div>
+
+        <!-- week strip -->
+        <div class="card week-card">
+          <div class="week-head">This week</div>
+          <div class="week">
+            <div class="day"><div class="dw">Mon</div><div class="dn">19</div><div class="mk done"></div></div>
+            <div class="day today"><div class="dw">Tue</div><div class="dn">20</div><div class="mk"></div></div>
+            <div class="day"><div class="dw">Wed</div><div class="dn">21</div><div class="mk"></div></div>
+            <div class="day"><div class="dw">Thu</div><div class="dn">22</div><div class="mk"></div></div>
+            <div class="day"><div class="dw">Fri</div><div class="dn">23</div><div class="mk rest"></div></div>
+            <div class="day"><div class="dw">Sat</div><div class="dn">24</div><div class="mk"></div></div>
+            <div class="day"><div class="dw">Sun</div><div class="dn">25</div><div class="mk"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabbar">
+        <div class="ti on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5" stroke="#E85D26" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 10v9h14v-9" stroke="#E85D26" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lab">Today</span></div>
+        <div class="ti"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lab">Plan</span></div>
+        <div class="ti"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 18l4-7 4 4 4-9 4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lab">Health</span></div>
+        <div class="ti"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1" fill="currentColor"/></svg><span class="lab">Coach</span></div>
+      </div>
+      <div class="home-ind"></div>
+    </div></div>
+
+    <!-- rail -->
+    <div class="rail">
+      <h3>What now, in two seconds.</h3>
+      <p class="lede">The page is alive. On a build-phase threshold morning it leads with the
+        session, the one thing that has to happen well today. Light surfaces, bold Bebas numbers,
+        color only where it carries meaning.</p>
+      <div class="pt"><div class="t">Hero is the session</div><div class="d">The workout name takes the big Bebas title. Target <b>6:31/mi</b> sits in the stat pills, in orange.</div></div>
+      <div class="pt"><div class="t">Send to Watch is the action</div><div class="d">Dark ink button, the canonical primary CTA. Plan flows down to the surface that runs the run.</div></div>
+      <div class="pt"><div class="t">Body state, then trajectory</div><div class="d">Readiness <b>82, primed</b> on a green ring. The amber-marked today column anchors the week.</div></div>
+      <div class="pt"><div class="t">Color carries meaning</div><div class="d">Green is on-plan. Amber is today and in-progress. Orange is the brand and the race. Nothing decorative.</div></div>
+    </div>
+  </div>
+
+  <!-- ════════════ Apple Watch ════════════ -->
+  <div class="section-tag">
+    <span class="n">02</span>
+    <h2>Apple Watch · Execution</h2>
+    <span class="note">Mid-run, sweat in the eyes. Huge numbers, dark face, color you read at a glance.</span>
+  </div>
+
+  <div class="watches">
+
+    <!-- A · pre-run -->
+    <div class="watch-unit">
+      <div class="watch"><div class="w-screen">
+        <div class="w-top"><span class="w-eye">Today · ready</span><span class="w-clock tnum">7:14</span></div>
+        <div class="w-body">
+          <div class="w-name">6×800</div>
+          <div class="w-namesub">@ T · 6:31/mi · 60s rec</div>
+          <div class="w-meta">6.4 mi · est 52 min</div>
+          <div class="w-dots"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+          <div class="w-start"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 3l9 5-9 5V3z" fill="#fff"/></svg>Start</div>
+        </div>
+      </div></div>
+      <div class="w-cap"><b>Pre-run</b>Workout name front and center.<br>One tap to start.</div>
+    </div>
+
+    <!-- B · work interval -->
+    <div class="watch-unit">
+      <div class="watch"><div class="w-screen">
+        <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+        <div class="w-body">
+          <div class="w-hero green tnum">6:33</div>
+          <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+          <div class="w-stats">
+            <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
+            <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
+          </div>
+          <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+        </div>
+      </div></div>
+      <div class="w-cap"><b>Work interval</b>Current pace is the hero. Green<br>on the band, amber on drift.</div>
+    </div>
+
+    <!-- C · recovery -->
+    <div class="watch-unit">
+      <div class="watch"><div class="w-screen">
+        <div class="w-top"><span class="w-eye green">Rest · 3 of 6</span><span class="w-clock tnum">7:32</span></div>
+        <div class="w-body">
+          <div class="w-hero green tnum">0:42</div>
+          <div class="w-ref">Next rep · <b>6:31</b>/mi</div>
+          <div class="w-stats">
+            <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
+            <div class="w-stat"><div class="v tnum">9:20<small>/mi</small></div><div class="k">Jog pace</div></div>
+          </div>
+          <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="rec" style="width:70%"></i></div></div>
+        </div>
+      </div></div>
+      <div class="w-cap"><b>Recovery</b>Big countdown to the next rep.<br>Haptics carry the transition.</div>
+    </div>
+
+    <!-- D · complete -->
+    <div class="watch-unit">
+      <div class="watch"><div class="w-screen">
+        <div class="w-done">
+          <div class="ring"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#2CA82F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="ttl">Complete</div>
+          <div class="grid">
+            <div class="c"><div class="v tnum">6/6</div><div class="k">Reps</div></div>
+            <div class="c"><div class="v tnum">6:30</div><div class="k">Avg pace</div></div>
+            <div class="c"><div class="v tnum">6.4</div><div class="k">Miles</div></div>
+            <div class="c"><div class="v tnum">171</div><div class="k">Avg HR</div></div>
+            <div class="c"><div class="v tnum">181</div><div class="k">Cadence</div></div>
+          </div>
+          <div class="save">Saved to Health · syncing</div>
+        </div>
+      </div></div>
+      <div class="w-cap"><b>Complete</b>Full readout, then it flows back<br>to phone and the coach.</div>
+    </div>
+
+  </div>
+
+  <div class="rail" style="max-width:760px;margin:56px auto 0;padding-top:0;text-align:center">
+    <p class="lede" style="margin:0">Six reps, zero clock math. The watch knows the structure, so you react to
+      haptics instead of counting intervals while running hard. Pace reads green on the band, amber on
+      drift, red when it has been off too long. No coach prose on the wrist. That lives on the phone,
+      before and after.</p>
+  </div>
+
+  <!-- ── Colophon ─────────────────────────────────────────── -->
+  <div class="colophon">
+    <div>v4 light system · Bebas Neue + Inter + Oswald · <b>designs/V4_DESIGN_LAW.md</b></div>
+    <div class="swatches">
+      <div class="sw"><span class="c" style="background:#2CA82F"></span><span>green · on-plan</span></div>
+      <div class="sw"><span class="c" style="background:#D4900A"></span><span>amber · today</span></div>
+      <div class="sw"><span class="c" style="background:#E85D26"></span><span>orange · race</span></div>
+      <div class="sw"><span class="c" style="background:#F43F5E"></span><span>red · error</span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

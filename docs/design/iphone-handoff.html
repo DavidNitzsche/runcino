@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · iPhone · Build Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Faff — iPhone BUILD HANDOFF · full companion · light v4
+   Authority: docs/native/05-iphone-app-scope.md · designs/V4_DESIGN_LAW.md
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --bg:#EEECEA; --bg-2:#E7E4E1; --card:#FFFFFF; --ink:#0D0F12;
+  --t1:rgba(13,15,18,.55); --t2:rgba(13,15,18,.35); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.08); --pill-bg:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.14);
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.10),0 22px 50px rgba(0,0,0,.14);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif; --f-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5;padding:60px 7vw 120px}
+.tnum{font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto}
+
+/* masthead */
+.logo{font-family:var(--f-display);font-style:italic;font-size:30px;letter-spacing:3px;line-height:1;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-top:22px}
+h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height:.86;text-transform:uppercase;margin:12px 0 16px}
+.intro{font-size:15.5px;color:var(--t1);max-width:720px;line-height:1.6}
+.intro b{color:var(--ink);font-weight:600}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.chip{font-size:12px;font-weight:600;padding:9px 13px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);display:flex;align-items:center;gap:8px}
+.chip .d{width:8px;height:8px;border-radius:50%}
+
+.sec{margin-top:64px}
+.sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:24px}
+.sec-h .n{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:2px;color:var(--t2)}
+.sec-h h2{font-family:var(--f-display);font-size:38px;line-height:.9;text-transform:uppercase}
+.sec-h .note{margin-left:auto;font-size:12.5px;color:var(--t1);max-width:380px;text-align:right}
+
+/* app map */
+.ia{display:flex;gap:12px;flex-wrap:wrap}
+.ia-col{flex:1;min-width:150px;background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:18px 20px}
+.ia-col .tab{display:flex;align-items:center;gap:8px;font-family:var(--f-sub);font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.ia-col .tab .ic{width:24px;height:24px;color:var(--orange)}
+.ia-col ul{list-style:none}
+.ia-col li{font-size:13px;color:var(--t1);padding:5px 0;border-top:1px solid var(--divider)}
+.ia-col li b{color:var(--ink);font-weight:600}
+
+/* phone gallery */
+.gallery{display:flex;gap:34px;flex-wrap:wrap;justify-content:center}
+.unit{width:268px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.ph{width:268px;border-radius:42px;padding:9px;background:linear-gradient(150deg,#3a3d44,#1a1c20);box-shadow:var(--shadow-lg)}
+.ph-screen{position:relative;border-radius:34px;overflow:hidden;background:var(--bg);height:560px;display:flex;flex-direction:column}
+.island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:84px;height:22px;background:#0b0c0e;border-radius:13px;z-index:5}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:11px 18px 0;height:34px;font-size:11px;font-weight:700}
+.sb .sys{display:flex;gap:4px;align-items:center}
+.feed{flex:1;padding:6px 13px 10px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.cap{text-align:center;font-size:12px;color:var(--t1);font-weight:500;line-height:1.45;max-width:248px}
+.cap b{display:block;font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:3px}
+
+/* shared phone bits */
+.topbar{display:flex;justify-content:space-between;align-items:center}
+.topbar .lg{font-family:var(--f-display);font-style:italic;font-size:18px;letter-spacing:1.5px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.topbar .dt{font-size:9px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;color:var(--t2)}
+.scr-h{font-family:var(--f-display);font-size:30px;line-height:.9;text-transform:uppercase;letter-spacing:-.5px}
+.scr-eyb{font-size:9px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:var(--t2)}
+.coach-lbl{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--t2);margin-bottom:6px}
+.coach-lbl .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.coach-brief{font-size:12.5px;line-height:1.4;color:var(--ink)} .coach-brief b{font-weight:700}
+.c{background:var(--card);border-radius:15px;box-shadow:var(--shadow);padding:14px}
+.eyb{font-size:9px;font-weight:500;letter-spacing:1.6px;text-transform:uppercase;color:var(--t2)}
+.title{font-family:var(--f-display);font-size:52px;line-height:.82;letter-spacing:-1px;text-transform:uppercase;margin:6px 0 10px}
+.spills{display:flex;gap:5px}
+.spill{flex:1;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:8px;padding:8px 9px}
+.spill .v{display:flex;align-items:baseline;gap:2px}
+.spill .v .n{font-family:var(--f-display);font-size:21px;line-height:.9} .spill .v .n.o{color:var(--orange)} .spill .v .u{font-size:9px;color:var(--t1);font-weight:500}
+.spill .l{font-size:7.5px;font-weight:500;letter-spacing:.8px;text-transform:uppercase;color:var(--t2);margin-top:3px}
+.send{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px;font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;margin-top:10px}
+.btn-ghost{display:flex;align-items:center;justify-content:center;width:100%;background:transparent;border:1.5px solid var(--pill-line);color:var(--ink);border-radius:9px;padding:10px;font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;margin-top:7px}
+.struct{display:flex;gap:2px;margin:8px 0}
+.struct i{height:6px;border-radius:2px;background:rgba(13,15,18,.07)}
+.struct i.warm{flex:1.3;background:rgba(13,15,18,.14)} .struct i.work{flex:1;background:var(--orange)} .struct i.rec{flex:.5;background:var(--orange-wash)} .struct i.cool{flex:1.3;background:rgba(13,15,18,.14)}
+.ring-wrap{position:relative;width:84px;height:84px;flex:none}
+.ring-wrap .vv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-wrap .vv .n{font-family:var(--f-display);font-size:34px;line-height:.8} .ring-wrap .vv .s{font-size:7.5px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t2);margin-top:2px}
+.row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid var(--divider);font-size:12px}
+.row:first-child{border-top:0}
+.row .lf{display:flex;align-items:center;gap:8px}
+.row .day{font-family:var(--f-display);font-size:18px;color:var(--t2);min-width:30px}
+.row .nm{font-weight:600} .row .nm small{display:block;font-weight:400;color:var(--t2);font-size:10px}
+.row .rt{font-family:var(--f-display);font-size:17px}
+.dot-ok{width:7px;height:7px;border-radius:50%;background:var(--green)} .dot-now{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+.badge{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:6px}
+.badge.green{color:var(--green);background:var(--green-wash)} .badge.amber{color:var(--amber);background:var(--amber-wash)} .badge.orange{color:#fff;background:var(--orange)}
+.tabbar{flex:none;height:50px;border-top:1px solid var(--divider);background:rgba(238,236,234,.92);display:flex;align-items:center;justify-content:space-around}
+.tabbar .ti{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--t2);font-size:7.5px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.tabbar .ti.on{color:var(--orange)}
+.tabbar .ti .ic{width:18px;height:18px}
+.trend{margin:6px 0}
+.trend .tt{display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px}
+.trend .tt .k{color:var(--t2);font-weight:500;letter-spacing:.5px;text-transform:uppercase} .trend .tt .v{font-weight:700} .trend .tt .v.green{color:var(--green)}
+.trend .bar{height:6px;border-radius:3px;background:rgba(13,15,18,.07);overflow:hidden} .trend .bar i{display:block;height:100%;background:var(--green)} .trend .bar i.dim{background:rgba(13,15,18,.25)}
+.race-card{background:linear-gradient(155deg,#F3AD38,#E85D26 55%,#C73E0B);border-radius:15px;padding:16px;color:#fff}
+.race-card .e{font-size:8.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.race-card .nm{font-family:var(--f-display);font-size:26px;line-height:.9;text-transform:uppercase;margin:6px 0 4px}
+.race-card .cd{display:flex;align-items:baseline;gap:6px;margin-top:10px}
+.race-card .cd .n{font-family:var(--f-display);font-size:44px;line-height:.8} .race-card .cd .u{font-size:11px;color:rgba(255,255,255,.9);font-weight:600}
+/* chat */
+.bubble{max-width:82%;font-size:12px;line-height:1.4;padding:9px 12px;border-radius:13px}
+.bubble.coach{background:var(--card);box-shadow:var(--shadow);border-bottom-left-radius:4px;align-self:flex-start}
+.bubble.me{background:var(--ink);color:#fff;border-bottom-right-radius:4px;align-self:flex-end}
+.prompts{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.prompt{font-size:10px;font-weight:600;color:var(--ink);background:var(--card);box-shadow:var(--shadow);border-radius:14px;padding:6px 10px}
+.inputbar{display:flex;align-items:center;gap:8px;background:var(--card);box-shadow:var(--shadow);border-radius:20px;padding:9px 14px;font-size:11px;color:var(--t2)}
+/* settings */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--divider);font-size:12.5px}
+.set-row:first-child{border-top:0}
+.set-row .lf{display:flex;align-items:center;gap:9px}
+.set-row .ic{width:26px;height:26px;border-radius:7px;background:var(--pill-bg);display:flex;align-items:center;justify-content:center;font-size:11px}
+
+/* race day mode */
+.rd{background:linear-gradient(180deg,rgba(232,93,38,.10),transparent 40%),var(--bg)}
+.rd .big{font-family:var(--f-display);font-size:78px;line-height:.78;letter-spacing:-2px;color:var(--orange)}
+.rd .big small{font-family:var(--f-body);font-size:16px;color:var(--t1);font-weight:600}
+
+/* native surfaces */
+.surfaces{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start}
+.surf-block{flex:1;min-width:260px}
+.surf-block h3{font-family:var(--f-sub);font-size:14px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;margin-bottom:14px}
+.surf-block .desc{font-size:13px;color:var(--t1);margin-top:12px;line-height:1.5}
+/* lock-screen live activity */
+.lockscreen{background:linear-gradient(160deg,#2a2d33,#0d0f13);border-radius:22px;padding:22px 18px;box-shadow:var(--shadow-lg)}
+.lock-time{font-family:var(--f-display);font-size:48px;color:#fff;text-align:center;line-height:.9}
+.lock-date{text-align:center;font-size:11px;color:rgba(255,255,255,.6);font-weight:500;margin-bottom:18px}
+.la{background:rgba(255,255,255,.10);backdrop-filter:blur(8px);border-radius:18px;padding:14px 16px;color:#fff}
+.la-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.la-top .nm{font-family:var(--f-sub);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.la-top .rep{font-size:10px;color:rgba(255,255,255,.7);font-weight:600}
+.la-stats{display:flex;gap:14px}
+.la-stats .c .v{font-family:var(--f-display);font-size:30px;line-height:.85} .la-stats .c .v.green{color:#48d14d} .la-stats .c .k{font-size:8px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.di{display:inline-flex;align-items:center;gap:10px;background:#000;border-radius:22px;padding:9px 16px;color:#fff;margin-top:14px}
+.di .v{font-family:var(--f-display);font-size:20px;color:#48d14d} .di .k{font-size:9px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase}
+/* widgets */
+.widgets{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.wdg{background:var(--card);border-radius:18px;box-shadow:var(--shadow-lg);padding:15px}
+.wdg.sm{width:108px;height:108px} .wdg.md{width:230px;height:108px} .wdg.lg{width:230px;height:160px}
+.wdg .e{font-size:8px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--t2)}
+.wdg .n{font-family:var(--f-display);font-size:30px;line-height:.85;margin-top:4px} .wdg .n.o{color:var(--orange)}
+.wdg .s2{font-size:9.5px;color:var(--t1);font-weight:600;margin-top:3px}
+.wdg.md{display:flex;gap:14px;align-items:center} .wdg.lg{display:flex;flex-direction:column;justify-content:space-between}
+/* push */
+.push{background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border-radius:16px;box-shadow:var(--shadow);padding:12px 14px;display:flex;gap:11px;align-items:flex-start;margin-bottom:10px}
+.push .pic{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);flex:none}
+.push .bd .t{font-size:12px;font-weight:700} .push .bd .m{font-size:11.5px;color:var(--t1);line-height:1.4;margin-top:1px} .push .bd .tm{font-size:9.5px;color:var(--t2);font-weight:600;float:right}
+
+/* build table */
+.tbl{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.tbl th{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);text-align:left;padding:13px 16px;border-bottom:1px solid var(--divider)}
+.tbl td{padding:13px 16px;border-bottom:1px solid var(--divider);font-size:12.5px;color:var(--t1);vertical-align:top}
+.tbl td:first-child{color:var(--ink);font-weight:700;font-family:var(--f-sub);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl code{font-family:var(--f-mono);font-size:11px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+.frameworks{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.fw{font-family:var(--f-mono);font-size:12px;background:var(--card);box-shadow:var(--shadow);border-radius:9px;padding:9px 13px;color:var(--ink)}
+.foot{margin-top:80px;padding-top:26px;border-top:1px solid var(--divider);font-size:12px;color:var(--t1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.foot b{color:var(--ink);font-weight:600}
+@media(max-width:880px){.sec-h .note{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- masthead -->
+  <header>
+    <div class="logo">FAFF</div>
+    <div class="kicker">iPhone · Build Handoff · Full Companion</div>
+    <h1>The daily driver.</h1>
+    <p class="intro">The full companion app, light v4. The <b>web</b> stays the command center for deep planning and
+      analysis; the <b>watch</b> executes; the <b>iPhone</b> is where you live day to day. Glanceable Today, one-tap
+      Send-to-Watch, auto run recaps, race-day mode, coach in your pocket. This is the build target: every screen with
+      its job, data source, and components. Authority: <b>docs/native/05-iphone-app-scope.md</b>.</p>
+    <div class="chips">
+      <div class="chip"><span class="d" style="background:var(--orange)"></span>Light v4 system</div>
+      <div class="chip"><span class="d" style="background:var(--ink)"></span>Send-to-Watch primary action</div>
+      <div class="chip"><span class="d" style="background:var(--green)"></span>Auto run recap</div>
+      <div class="chip"><span class="d" style="background:var(--amber)"></span>Race day mode</div>
+      <div class="chip"><span class="d" style="background:var(--t2)"></span>Live Activities · widgets · push</div>
+    </div>
+  </header>
+
+  <!-- A · APP MAP -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">A</span><h2>App map</h2><span class="note">Five-tab base. Deep editing defers to web. Workout detail, recap, and race day are pushed/modal.</span></div>
+    <div class="ia">
+      <div class="ia-col"><div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+        <ul><li><b>Hero workout</b> + Send-to-Watch</li><li>Coach line · readiness</li><li>Week strip · race countdown</li><li>→ Workout detail (push)</li><li>→ Run recap (auto modal)</li></ul></div>
+      <div class="ia-col"><div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Plan</div>
+        <ul><li>Week + upcoming list</li><li><b>Move · swap · skip</b></li><li>Per-day workout</li><li>Deep edit → web</li></ul></div>
+      <div class="ia-col"><div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1" fill="currentColor"/></svg>Coach</div>
+        <ul><li>Chat · ask anything</li><li>Suggested prompts</li><li>Contextual to your data</li></ul></div>
+      <div class="ia-col"><div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M4 18l4-7 4 4 4-9 4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+        <ul><li>Recovery score</li><li>HRV · RHR · sleep</li><li>Training load</li></ul></div>
+      <div class="ia-col"><div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg>More</div>
+        <ul><li><b>Races</b> + Race Day mode</li><li>Settings · integrations</li><li>Gear · Log</li></ul></div>
+    </div>
+  </section>
+
+  <!-- B · SCREENS -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">B</span><h2>The screens</h2><span class="note">Light v4 throughout. Bebas numbers, white cards, orange brand. Each screen does one job well.</span></div>
+    <div class="gallery">
+
+      <!-- TODAY -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:02</span><span class="sys"><svg width="14" height="9" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#0D0F12"/><rect x="5" y="5" width="3" height="7" rx="1" fill="#0D0F12"/><rect x="10" y="2.5" width="3" height="9.5" rx="1" fill="#0D0F12"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#0D0F12"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="topbar"><span class="lg">FAFF</span><span class="dt">Tue · 20 May</span></div>
+            <div><div class="coach-lbl"><span class="dot"></span>Coach · Build · Wk 4/12</div><div class="coach-brief"><b>Threshold day.</b> Engine work that makes marathon pace feel like cruising.</div></div>
+            <div class="c"><div class="eyb">Today · Threshold</div><div class="title">6×800</div>
+              <div class="spills"><div class="spill"><div class="v"><span class="n o tnum">6:31</span><span class="u">/mi</span></div><div class="l">Target</div></div><div class="spill"><div class="v"><span class="n tnum">6.4</span><span class="u">mi</span></div><div class="l">Vol</div></div><div class="spill"><div class="v"><span class="n tnum">52</span><span class="u">min</span></div><div class="l">Time</div></div></div>
+              <div class="struct"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+              <button class="send"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="4" stroke="#fff" stroke-width="2"/><circle cx="12" cy="18" r="1.4" fill="#fff"/></svg>Send to Watch</button></div>
+            <div class="c" style="display:flex;gap:12px;align-items:center">
+              <div class="ring-wrap"><svg width="84" height="84" viewBox="0 0 84 84"><circle cx="42" cy="42" r="35" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="7"/><circle cx="42" cy="42" r="35" fill="none" stroke="#2CA82F" stroke-width="7" stroke-linecap="round" stroke-dasharray="220" stroke-dashoffset="40" transform="rotate(-90 42 42)"/></svg><div class="vv"><div class="n tnum">82</div><div class="s">Ready</div></div></div>
+              <div style="flex:1"><div class="row" style="border:0;padding:3px 0"><span class="lf" style="color:var(--t2);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Readiness</span><span class="badge green">Primed</span></div><div style="font-size:10.5px;color:var(--t1);margin-top:4px;line-height:1.4">HRV +6 · RHR 48 · slept 7:48</div></div></div>
+          </div>
+          <div class="tabbar"><div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div><div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div><div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/></svg>Coach</div><div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M4 18l4-7 4 4 4-9 4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div><div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg>More</div></div>
+        </div></div>
+        <div class="cap"><b>Today</b>The 2-second glance. Hero workout, Send-to-Watch, readiness. State-driven.</div>
+      </div>
+
+      <!-- WORKOUT DETAIL -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:03</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Threshold · today</div>
+            <div class="scr-h">6×800<br>@ T-pace</div>
+            <div class="c"><div class="eyb" style="margin-bottom:8px">Structure</div>
+              <div class="row"><span class="lf"><span class="day" style="font-size:13px">WU</span><span class="nm">Warm-up<small>easy</small></span></span><span class="rt">10:00</span></div>
+              <div class="row"><span class="lf"><span class="day" style="font-size:13px;color:var(--orange)">6×</span><span class="nm" style="color:var(--orange)">800 @ T<small>60s jog recovery</small></span></span><span class="rt" style="color:var(--orange)">6:31</span></div>
+              <div class="row"><span class="lf"><span class="day" style="font-size:13px">CD</span><span class="nm">Cool-down<small>easy</small></span></span><span class="rt">10:00</span></div></div>
+            <div class="c"><div class="coach-lbl"><span class="dot"></span>Why</div><div class="coach-brief">Week 4. A controlled dose of T-pace to lift the ceiling. Comfortably hard, never racing the reps.</div></div>
+            <button class="send"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="4" stroke="#fff" stroke-width="2"/><circle cx="12" cy="18" r="1.4" fill="#fff"/></svg>Send to Watch</button>
+            <button class="btn-ghost">Adjust · move · skip</button>
+          </div>
+        </div></div>
+        <div class="cap"><b>Workout detail</b>Full structure, the why, fueling. Send-to-Watch is the primary action.</div>
+      </div>
+
+      <!-- RUN RECAP -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">8:09</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="scr-eyb">Just now · synced from watch</span><span class="badge green">On plan</span></div>
+            <div class="scr-h">6×800<br>nailed.</div>
+            <div class="c"><div class="spills"><div class="spill"><div class="v"><span class="n tnum">6.4</span><span class="u">mi</span></div><div class="l">Distance</div></div><div class="spill"><div class="v"><span class="n tnum">6:30</span><span class="u">/mi</span></div><div class="l">Avg work</div></div><div class="spill"><div class="v"><span class="n tnum">52:14</span></div><div class="l">Time</div></div></div></div>
+            <div class="c"><div class="eyb" style="margin-bottom:8px">Reps vs target · 6:31</div>
+              <div class="row" style="padding:6px 0"><span class="lf"><span class="day" style="font-size:12px">1–2</span><span class="nm" style="font-weight:600">6:29 · 6:30</span></span><span class="badge green">on band</span></div>
+              <div class="row" style="padding:6px 0"><span class="lf"><span class="day" style="font-size:12px">3–4</span><span class="nm" style="font-weight:600">6:33 · 6:31</span></span><span class="badge green">on band</span></div>
+              <div class="row" style="padding:6px 0"><span class="lf"><span class="day" style="font-size:12px">5–6</span><span class="nm" style="font-weight:600">6:28 · 6:27</span></span><span class="badge amber">+ fast</span></div></div>
+            <div class="c"><div class="coach-lbl"><span class="dot"></span>Coach</div><div class="coach-brief">Even through five, then you found another gear. Exactly the control this session wants.</div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Run recap</b>Auto-prompts after a synced run. Hero stats, prescribed vs actual, coach read, RPE capture.</div>
+      </div>
+
+      <!-- PLAN -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:05</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Build · week 4 of 12</div><div class="scr-h">This week</div>
+            <div class="c">
+              <div class="row"><span class="lf"><span class="dot-ok"></span><span class="day">Mon</span><span class="nm">Easy<small>5 mi · done</small></span></span><span class="rt" style="color:var(--green)">✓</span></div>
+              <div class="row"><span class="lf"><span class="dot-now"></span><span class="day">Tue</span><span class="nm" style="color:var(--amber)">Threshold<small>6×800 · today</small></span></span><span class="rt" style="color:var(--amber)">6.4</span></div>
+              <div class="row"><span class="lf"><span class="dot-ok" style="background:var(--t3)"></span><span class="day">Wed</span><span class="nm">Easy<small>6 mi</small></span></span><span class="rt">6</span></div>
+              <div class="row"><span class="lf"><span class="dot-ok" style="background:var(--t3)"></span><span class="day">Thu</span><span class="nm">Easy + strides<small>5 mi</small></span></span><span class="rt">5</span></div>
+              <div class="row"><span class="lf"><span class="dot-ok" style="background:transparent;border:1.5px solid var(--t3)"></span><span class="day">Fri</span><span class="nm">Rest</span></span><span class="rt" style="color:var(--t2)">—</span></div>
+              <div class="row"><span class="lf"><span class="dot-ok" style="background:var(--t3)"></span><span class="day">Sat</span><span class="nm">Long<small>16 mi</small></span></span><span class="rt">16</span></div>
+              <div class="row"><span class="lf"><span class="dot-ok" style="background:var(--t3)"></span><span class="day">Sun</span><span class="nm">Easy<small>5 mi</small></span></span><span class="rt">5</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t1);font-weight:600;padding:0 4px"><span>43 mi planned</span><span style="color:var(--ink)">11 / 43 done</span></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Plan</b>Week + upcoming. Tap a day to open it; move, swap, skip. Deep editing on web.</div>
+      </div>
+
+      <!-- HEALTH -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:06</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Today</div><div class="scr-h">Body state</div>
+            <div class="c" style="display:flex;gap:14px;align-items:center">
+              <div class="ring-wrap" style="width:96px;height:96px"><svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="8"/><circle cx="48" cy="48" r="40" fill="none" stroke="#2CA82F" stroke-width="8" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="45" transform="rotate(-90 48 48)"/></svg><div class="vv"><div class="n tnum" style="font-size:40px">82</div><div class="s">Ready</div></div></div>
+              <div style="flex:1"><span class="badge green">Primed</span><div style="font-size:11px;color:var(--t1);margin-top:7px;line-height:1.45">Recovered and ready for quality. Green light on today's threshold.</div></div></div>
+            <div class="c">
+              <div class="trend"><div class="tt"><span class="k">HRV</span><span class="v green tnum">68 ms · +6</span></div><div class="bar"><i style="width:78%"></i></div></div>
+              <div class="trend"><div class="tt"><span class="k">Resting HR</span><span class="v tnum">48 bpm · −2</span></div><div class="bar"><i class="dim" style="width:62%"></i></div></div>
+              <div class="trend"><div class="tt"><span class="k">Sleep</span><span class="v green tnum">7:48 · need 7:30</span></div><div class="bar"><i style="width:88%"></i></div></div>
+              <div class="trend" style="margin-bottom:0"><div class="tt"><span class="k">Load · ACWR</span><span class="v tnum">0.94 · balanced</span></div><div class="bar"><i style="width:55%"></i></div></div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Health</b>Recovery score, HRV/RHR/sleep trends, training load. The "how am I doing it" read.</div>
+      </div>
+
+      <!-- RACES -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:08</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Next A-race</div>
+            <div class="race-card"><div class="e">California International Marathon</div><div class="nm">CIM</div><div style="font-size:10px;color:rgba(255,255,255,.85);font-weight:600">Sacramento · 7 Dec</div><div class="cd"><span class="n tnum">198</span><span class="u">days out</span></div></div>
+            <div class="eyb" style="margin-top:4px">Recent</div>
+            <div class="c">
+              <div class="row"><span class="lf"><span class="nm">Big Sur Marathon<small>26 Apr · hilly</small></span></span><span class="rt">3:52</span></div>
+              <div class="row"><span class="lf"><span class="nm">LA Marathon<small>15 Mar · PR</small></span></span><span class="rt" style="color:var(--amber)">3:40</span></div></div>
+            <div class="c"><div class="eyb" style="margin-bottom:6px">Personal bests</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="spill" style="flex:none;padding:6px 9px"><span class="n tnum" style="font-family:var(--f-display);font-size:17px">19:48</span> <span style="font-size:8px;color:var(--t2)">5K</span></span><span class="spill" style="flex:none;padding:6px 9px"><span class="n tnum" style="font-family:var(--f-display);font-size:17px">1:41</span> <span style="font-size:8px;color:var(--t2)">HM</span></span><span class="spill" style="flex:none;padding:6px 9px"><span class="n tnum" style="font-family:var(--f-display);font-size:17px">3:40</span> <span style="font-size:8px;color:var(--t2)">M</span></span></div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Races</b>Upcoming countdown + past recaps + PRs. Race chip is the one place orange fills a surface.</div>
+      </div>
+
+      <!-- RACE DAY MODE -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen rd">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">9:42</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed" style="gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="scr-eyb" style="color:var(--orange)">CIM · Race day</span><span class="badge orange">Mile 14</span></div>
+            <div><div class="eyb">Current pace</div><div class="rd big tnum">8:11<small>/mi</small></div><div style="font-size:11px;font-weight:700;color:var(--green);margin-top:2px">2s under goal · 8:13 target</div></div>
+            <div class="c"><div class="spills"><div class="spill"><div class="v"><span class="n tnum">1:54</span></div><div class="l">Elapsed</div></div><div class="spill"><div class="v"><span class="n tnum">12.2</span><span class="u">to go</span></div><div class="l">Distance</div></div><div class="spill"><div class="v"><span class="n tnum">3:49</span></div><div class="l">Projected</div></div></div></div>
+            <div class="c" style="background:var(--amber-wash);box-shadow:none"><div class="coach-lbl" style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>Fuel now</div><div class="coach-brief">Gel + water at the mile 15 aid station. Hold this pace through the rollers.</div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Race day mode</b>During the race. Pace vs goal, splits, fuel cues, projection. Watch leads; phone is the big screen.</div>
+      </div>
+
+      <!-- COACH CHAT -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:11</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Coach</div><div class="scr-h" style="font-size:24px">Ask anything</div>
+            <div class="bubble coach">Threshold today. Hold 6:31, not faster. The point is repeatable, not heroic.</div>
+            <div class="bubble me">can I move it to tomorrow? legs feel flat</div>
+            <div class="bubble coach">Yes. Swap with Wednesday's easy 6. Flat legs plus quality is how reps drift fast. Tuesday becomes easy, Wednesday becomes the session.</div>
+            <div class="prompts"><span class="prompt">What's my CIM pace?</span><span class="prompt">Why so much easy?</span></div>
+            <div style="margin-top:auto"><div class="inputbar"><span style="flex:1">Message coach…</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#E85D26" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Coach chat</b>Contextual to your data and plan. Can propose plan changes you accept inline.</div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="unit">
+        <div class="ph"><div class="ph-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:13</span><span class="sys"><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+          <div class="feed">
+            <div class="scr-eyb">Profile</div><div class="scr-h" style="font-size:26px">David · VDOT 49</div>
+            <div class="c"><div class="eyb" style="margin-bottom:4px">Integrations</div>
+              <div class="set-row"><span class="lf"><span class="ic">♥</span>Apple Health</span><span class="badge green">Connected</span></div>
+              <div class="set-row"><span class="lf"><span class="ic">S</span>Strava</span><span class="badge green">Connected</span></div>
+              <div class="set-row"><span class="lf"><span class="ic">G</span>Garmin</span><span class="badge" style="color:var(--t2);background:var(--pill-bg)">Connect</span></div>
+              <div class="set-row"><span class="lf"><span class="ic">⌚</span>Apple Watch</span><span class="badge green">Paired</span></div></div>
+            <div class="c"><div class="eyb" style="margin-bottom:4px">App</div>
+              <div class="set-row"><span class="lf">Notifications</span><span style="color:var(--t2)">5 on ›</span></div>
+              <div class="set-row"><span class="lf">Units</span><span style="color:var(--t2)">Miles ›</span></div>
+              <div class="set-row"><span class="lf">Card visibility</span><span style="color:var(--t2)">›</span></div></div>
+          </div>
+        </div></div>
+        <div class="cap"><b>Settings / Profile</b>Account, integrations + sync status, notification prefs, units, watch management.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- C · NATIVE SURFACES -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">C</span><h2>iPhone-native surfaces</h2><span class="note">The app reaches out more than you reach in. Glance without opening; act from the lock screen.</span></div>
+    <div class="surfaces">
+      <div class="surf-block">
+        <h3>Live Activity · Lock Screen + Dynamic Island</h3>
+        <div class="lockscreen">
+          <div class="lock-time tnum">7:31</div><div class="lock-date">Tuesday, 20 May</div>
+          <div class="la"><div class="la-top"><span class="nm">6×800 · Faff</span><span class="rep">Interval 3 / 6</span></div>
+            <div class="la-stats"><div class="c"><div class="v green tnum">6:33</div><div class="k">Pace · on band</div></div><div class="c"><div class="v tnum">168</div><div class="k">BPM</div></div><div class="c"><div class="v tnum">0:24</div><div class="k">Rep left</div></div></div></div>
+          <div class="di"><span class="v tnum">6:33</span><span class="k">Int 3/6 · 0:24</span></div>
+        </div>
+        <div class="desc">During a run: live pace (color-coded), rep, HR, time left. Tapping opens the app. Also used for race countdowns.</div>
+      </div>
+      <div class="surf-block">
+        <h3>Home-screen widgets</h3>
+        <div class="widgets">
+          <div class="wdg sm"><div class="e">Today</div><div class="n o tnum" style="font-size:24px">6×800</div><div class="s2">Threshold · 6:31</div></div>
+          <div class="wdg sm"><div class="e">Readiness</div><div class="n tnum" style="color:var(--green)">82</div><div class="s2">Primed</div></div>
+          <div class="wdg md"><div><div class="e">Today</div><div class="n o" style="font-size:26px">6×800</div><div class="s2">Tap to Send to Watch</div></div><div style="border-left:1px solid var(--divider);padding-left:14px"><div class="e">Ready</div><div class="n tnum" style="color:var(--green)">82</div></div></div>
+          <div class="wdg lg"><div><div class="e">CIM · race countdown</div><div class="n o tnum" style="font-size:40px">198</div><div class="s2">days · Sacramento</div></div><div style="display:flex;gap:10px"><div><div class="e">Today</div><div class="s2" style="color:var(--ink);font-weight:700">Threshold 6×800</div></div><div><div class="e">Ready</div><div class="s2" style="color:var(--green);font-weight:700">82 primed</div></div></div></div>
+        </div>
+        <div class="desc">Small / medium / large. Today's workout, readiness, race countdown. Medium offers Send-to-Watch from the home screen.</div>
+      </div>
+      <div class="surf-block">
+        <h3>Push notifications · coach voice</h3>
+        <div class="push"><span class="pic"></span><div class="bd"><span class="tm">7:00</span><div class="t">Faff</div><div class="m">Threshold day. 6×800 at 6:31. Send it to your watch when you're ready.</div></div></div>
+        <div class="push"><span class="pic"></span><div class="bd"><span class="tm">8:10</span><div class="t">Faff</div><div class="m">Strong session. Even through five, then a gear. Log how it felt.</div></div></div>
+        <div class="push"><span class="pic"></span><div class="bd"><span class="tm">6:45</span><div class="t">Faff</div><div class="m">HRV down two days running. Today is easy, not threshold. Trust it.</div></div></div>
+        <div class="desc">Category-tagged, quiet-hours aware: workout reminder, post-run prompt, recovery alert, race countdown. No hype, no emoji.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- D · BUILD TABLE -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">D</span><h2>Per-screen build spec</h2><span class="note">Job · data source · key components · primary interaction. The agent builds against this.</span></div>
+    <table class="tbl">
+      <tr><th>Screen</th><th>Job</th><th>Data source</th><th>Key components / interaction</th></tr>
+      <tr><td>Today</td><td>What now, in 2s</td><td><code>getOverviewSnapshot(userId,date)</code></td><td>Coach line, hero workout card, <b>Send-to-Watch</b> (WCSession), readiness ring, week strip. State-driven layout.</td></tr>
+      <tr><td>Workout detail</td><td>Brief + push to watch</td><td>Plan workout + <code>targetPaces</code> from VDOT</td><td>Structure rows, WHY block, fueling. Primary: Send-to-Watch. Secondary: move/swap/skip sheet.</td></tr>
+      <tr><td>Run recap</td><td>How did it go</td><td>HealthKit workout ← watch · <code>reconcileActivity()</code></td><td>Auto-modal on app open after a run. Hero stats, reps vs target, coach read, RPE capture, share.</td></tr>
+      <tr><td>Plan</td><td>See + lightly edit</td><td>Plan phases + per-day workouts</td><td>Week list, day rows, done/today markers. Tap day → detail. Move/swap/skip; deep edit → web.</td></tr>
+      <tr><td>Coach</td><td>Ask anything</td><td>Coach LLM + user context</td><td>Chat, suggested prompts, inline plan-change proposals you accept.</td></tr>
+      <tr><td>Health</td><td>How am I doing it</td><td>HealthKit / Oura / Whoop · <code>ReadinessScore</code></td><td>Recovery ring, HRV/RHR/sleep trends, ACWR. Tap a metric → detail sheet.</td></tr>
+      <tr><td>Races</td><td>Upcoming + past</td><td><code>races</code> table (actual_result first)</td><td>Orange race-countdown card, past recaps, PR strip. → Race day mode.</td></tr>
+      <tr><td>Race day mode</td><td>Guide me, racing now</td><td>Live run + race plan + fueling</td><td>Pace vs goal (color), splits, fuel cues, projection. Watch primary; phone secondary. Auto-recap at finish.</td></tr>
+      <tr><td>Settings</td><td>Manage account</td><td>Integration + permission state</td><td>Profile, integrations + sync status, notification prefs, units, watch management, card visibility.</td></tr>
+      <tr><td>Live Activity</td><td>Glance without opening</td><td>In-run feed · race countdown</td><td>ActivityKit. Lock screen + Dynamic Island. Live pace/HR/rep during runs.</td></tr>
+      <tr><td>Widgets</td><td>Home-screen presence</td><td>Widget timeline · cached snapshot</td><td>WidgetKit S/M/L: today's workout, readiness, race countdown.</td></tr>
+      <tr><td>Push</td><td>Reach out when useful</td><td>Server queue · category-tagged</td><td>Workout reminder, post-run prompt, recovery alert, race countdown. Quiet-hours aware.</td></tr>
+    </table>
+  </section>
+
+  <!-- E · ARCHITECTURE -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">E</span><h2>Architecture</h2><span class="note">iPhone holds auth, talks to backend, stays the watch bridge. Companion screens sit on top of that.</span></div>
+    <div class="frameworks">
+      <span class="fw">SwiftUI (iOS 18)</span>
+      <span class="fw">HealthKit (ingest runs + biometrics)</span>
+      <span class="fw">WatchConnectivity · WCSession (Send-to-Watch)</span>
+      <span class="fw">ActivityKit (Live Activities)</span>
+      <span class="fw">WidgetKit</span>
+      <span class="fw">UserNotifications</span>
+      <span class="fw">Backend · getOverviewSnapshot / coach / races</span>
+      <span class="fw">Strava · Garmin · Coros · Oura · Whoop sync</span>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div>Light v4 · Bebas + Inter + Oswald · <b>docs/design/iphone-handoff.html</b></div>
+    <div>Full companion · web = command center · watch = executor · <b>docs/native/05-iphone-app-scope.md</b></div>
+  </div>
+
+</div>
+</body>
+</html>

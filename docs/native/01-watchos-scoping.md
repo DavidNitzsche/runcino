@@ -16,6 +16,32 @@ This is that spec.  Approved as the build target.
 
 ---
 
+## Amendment · 2026-05-19 (design-pass decisions)
+
+After the first watch screen designs (`docs/design/watch-handoff.html`),
+David made these calls. They amend the locked scope above:
+
+1. **Cadence is promoted into v1.** It must be surfaced on the watch
+   during the run. (Was previously in the deferred "advanced metrics"
+   bucket — see table below, now amended.) Vertical oscillation and
+   ground-contact-time stay deferred.
+2. **The active workout face is DARK.** The rest of the product (web,
+   iPhone, deck) is the light v4 system; the watch execution surface is
+   dark for OLED battery, sunlight contrast, and always-on legibility.
+3. **Always-on display = let watchOS dim the same dark face.** No
+   separate AOD layout. Accept the ~1 Hz update throttle while dimmed.
+4. **Current pace is the hero, not target pace.** Inverts the ASCII
+   sketch in this doc — "am I on pace right now" is the one-second
+   glance. Target sits beside it as a small reference plus delta.
+5. **Pace is smoothed, never raw.** Use a short rolling average /
+   current-lap pace with the ±10 s tolerance band for the color state.
+   Raw instantaneous GPS pace jitters too much to drive a color glow.
+
+The build-ready visual + per-metric source/token spec for all six
+states lives in `docs/design/watch-handoff.html`.
+
+---
+
 ## The one job the watch must do well
 
 **Execute today's structured workout on your wrist.**
@@ -133,7 +159,7 @@ rep).  Honest data flow: completed rep marked partial, not full.
 | 3 | **Maps / GPS visualization on watch** | Apple's native Workout app handles this · phone-in-pocket means watch is execution surface only |
 | 4 | **Custom workout authoring on watch** | iPhone has the screen real estate · do it there or on web |
 | 5 | **HR-zone-based targeting** (vs pace-based) | Pace is the primary signal for v1 · HR is secondary execution input · defer |
-| 6 | **Advanced metrics** (cadence, vertical oscillation, GCT) | Not core to interval execution · aesthetic data · defer |
+| 6 | **Advanced metrics** (~~cadence~~, vertical oscillation, GCT) | **Cadence promoted to v1 (2026-05-19 amendment) — surface it on the run.** Vertical oscillation + GCT stay deferred · aesthetic data |
 | 7 | **Multi-workout race-day pacing strategy** | Race-day pacing is a separate UX problem · defer |
 | 8 | **Coaching cross-references on watch** | V7 cross-references are coherent coaching across surfaces where the user has time to read · watch during run = 1-2s attention · cross-references would be cognitive overhead at exactly the wrong moment · execution surface only |
 

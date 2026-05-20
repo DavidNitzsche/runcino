@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · The Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ════════════════════════════════════════════════════════════════
+   FAFF · THE DECK · v4 LIGHT system
+   Tokens from designs/V4_DESIGN_LAW.md + web/app/components/v4/tokens.ts
+   Light + bold. Bebas Neue titles/numbers · Inter body · Oswald sub.
+   Orange #E85D26 brand · green on-plan · amber today/in-progress.
+   ════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#EEECEA; --bg-2:#E7E4E1; --card:#FFFFFF; --card-tint:rgba(13,15,18,.02);
+  --ink:#0D0F12; --t1:rgba(13,15,18,.55); --t2:rgba(13,15,18,.35); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.08); --pill-bg:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.14); --warn-wash:rgba(244,63,94,.12);
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.08),0 18px 48px rgba(0,0,0,.10);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}
+.tnum{font-variant-numeric:tabular-nums}
+.bebas{font-family:var(--f-display);font-weight:400;text-transform:uppercase}
+
+/* ── Deck scaffold ───────────────────────────────────────────── */
+.deck{height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+.deck{scrollbar-width:none}.deck::-webkit-scrollbar{display:none}
+.slide{min-height:100vh;scroll-snap-align:start;scroll-snap-stop:always;position:relative;
+  display:flex;flex-direction:column;justify-content:center;padding:92px 9vw 100px;overflow:hidden}
+.slide:nth-child(even){background:var(--bg-2)}
+.inner{width:100%;max-width:1200px;margin:0 auto}
+
+/* chrome */
+.kicker{font-family:var(--f-body);font-size:12px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);
+  display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.kicker .ln{width:30px;height:2px;background:var(--orange)}
+.kicker.green{color:var(--green)} .kicker.green .ln{background:var(--green)}
+.kicker.amber{color:var(--amber)} .kicker.amber .ln{background:var(--amber)}
+.kicker.ink{color:var(--ink)} .kicker.ink .ln{background:var(--ink)}
+
+.bigtitle{font-family:var(--f-display);text-transform:uppercase;line-height:.86;letter-spacing:-.01em}
+.t-xl{font-size:clamp(64px,10vw,150px);letter-spacing:-.02em;line-height:.82}
+.t-lg{font-size:clamp(48px,7vw,104px)}
+.t-md{font-size:clamp(40px,5vw,72px)}
+.lead{font-family:var(--f-body);font-size:clamp(16px,1.5vw,21px);color:var(--t1);max-width:720px;line-height:1.55;font-weight:400}
+.lead b{color:var(--ink);font-weight:600}
+.grad{background:linear-gradient(120deg,#F3AD38,#E85D26 55%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+.slide-no{position:absolute;top:44px;right:9vw;font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:2px;color:var(--t2)}
+.slide-no b{color:var(--ink)}
+.foot{position:absolute;bottom:40px;left:9vw;right:9vw;display:flex;justify-content:space-between;
+  font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#F3AD38,#E85D26);width:0;z-index:90;transition:width .25s ease}
+.dots{position:fixed;right:26px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:11px;z-index:90}
+.dots button{width:8px;height:8px;border-radius:50%;border:0;padding:0;cursor:pointer;background:rgba(13,15,18,.18);transition:all .2s}
+.dots button:hover{background:var(--t2)}
+.dots button.on{background:var(--orange);transform:scale(1.45)}
+.hint{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);font-family:var(--f-body);font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--t2);font-weight:600;z-index:90;display:flex;gap:8px;align-items:center;opacity:.85;transition:opacity .4s}
+.hint.gone{opacity:0;pointer-events:none}
+.hint kbd{font-family:var(--f-body);font-size:10px;background:var(--card);border:1px solid var(--divider);border-radius:5px;padding:3px 6px;color:var(--ink)}
+
+.card{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:26px 28px}
+.ey{font-family:var(--f-body);font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--t2)}
+.subh{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--f-body);font-size:12px;font-weight:600;
+  padding:8px 13px;border-radius:10px;border:1px solid var(--pill-line);background:var(--card);color:var(--ink)}
+.pill .d{width:8px;height:8px;border-radius:50%}
+
+/* ════════ 1 · COVER ════════ */
+#s1{background:radial-gradient(120% 90% at 84% 12%,rgba(232,93,38,.14),transparent 52%),var(--bg)}
+.cover-mark{font-family:var(--f-display);font-style:italic;font-size:30px;letter-spacing:3px;line-height:1;margin-bottom:34px;
+  background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover h1{font-family:var(--f-display);text-transform:uppercase;font-size:clamp(60px,12vw,182px);letter-spacing:-.02em;line-height:.82}
+.cover .sub{margin-top:30px;font-family:var(--f-body);font-size:clamp(17px,1.7vw,23px);color:var(--ink);font-weight:500;max-width:640px;line-height:1.45}
+.cover .sub span{color:var(--t1);font-weight:400}
+.meta-row{display:flex;gap:46px;margin-top:54px;flex-wrap:wrap}
+.meta .k{font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--t2)}
+.meta .v{font-family:var(--f-display);font-size:46px;line-height:.9;margin-top:8px}
+.meta .v small{font-family:var(--f-body);font-size:13px;color:var(--t1);font-weight:500;letter-spacing:0}
+
+/* ════════ 2 · gap ════════ */
+.gap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:46px}
+.gap-grid .card .n{font-family:var(--f-display);font-size:52px;line-height:.9;color:var(--warn)}
+.gap-grid .card h4{font-family:var(--f-sub);font-size:17px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px}
+.gap-grid .card p{font-size:13.5px;color:var(--t1);line-height:1.5}
+
+/* ════════ 3 · surfaces ════════ */
+.surf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+.surf{background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:26px;position:relative;overflow:hidden}
+.surf::before{content:"";position:absolute;inset:0 0 auto 0;height:4px}
+.surf.web::before{background:var(--green)} .surf.ios::before{background:var(--amber)} .surf.watch::before{background:var(--orange)}
+.surf .ic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.surf.web .ic{background:var(--green-wash)} .surf.ios .ic{background:var(--amber-wash)} .surf.watch .ic{background:var(--orange-wash)}
+.surf .role{font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+.surf.web .role{color:var(--green)} .surf.ios .role{color:var(--amber)} .surf.watch .role{color:var(--orange)}
+.surf h3{font-family:var(--f-display);font-size:38px;line-height:.9;text-transform:uppercase}
+.surf p{font-size:14px;color:var(--t1);margin-top:12px;line-height:1.5}
+.surf .dens{margin-top:18px;height:6px;border-radius:4px;background:var(--pill-bg);overflow:hidden}
+.surf .dens i{display:block;height:100%;border-radius:4px}
+.surf.web .dens i{width:100%;background:var(--green)} .surf.ios .dens i{width:62%;background:var(--amber)} .surf.watch .dens i{width:26%;background:var(--orange)}
+.surf .denslbl{font-size:10.5px;color:var(--t2);font-weight:600;letter-spacing:.04em;margin-top:8px;text-transform:uppercase}
+.flow{margin-top:30px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:var(--f-sub);font-size:13px;color:var(--t1);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.flow b{color:var(--ink);font-weight:600} .flow .ar{color:var(--orange);font-weight:700}
+
+/* ════════ 4 · questions ════════ */
+.q-list{margin-top:28px}
+.q{display:flex;align-items:baseline;gap:30px;padding:28px 0;border-top:1px solid var(--divider)}
+.q:last-child{border-bottom:1px solid var(--divider)}
+.q .num{font-family:var(--f-display);font-size:clamp(40px,4.6vw,76px);line-height:.9;color:var(--t3);min-width:1.1em}
+.q .txt h3{font-family:var(--f-display);font-size:clamp(30px,3.4vw,52px);line-height:.92;text-transform:uppercase}
+.q .txt p{font-size:15px;color:var(--t1);margin-top:8px}
+.q.a1 .num{color:var(--orange)} .q.a2 .num{color:var(--green)} .q.a3 .num{color:var(--amber)}
+
+/* ════════ 5 · alive ════════ */
+.states{display:flex;gap:9px;flex-wrap:wrap;margin-top:38px}
+.state{flex:1;min-width:102px;background:var(--card);border-radius:13px;box-shadow:var(--shadow);padding:16px 12px;text-align:center}
+.state .ph{font-family:var(--f-sub);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.state .ds{font-size:11px;color:var(--t1);font-weight:500;margin-top:5px;line-height:1.35}
+.state.on{background:var(--orange);box-shadow:var(--shadow-lg)} .state.on .ph{color:#fff} .state.on .ds{color:rgba(255,255,255,.85)}
+.alive-note{margin-top:32px;display:flex;gap:16px;flex-wrap:wrap}
+.alive-note .card{flex:1;min-width:260px}
+.alive-note .card .ey{color:var(--orange)}
+.alive-note .card h4{font-family:var(--f-sub);font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 7px}
+.alive-note .card p{font-size:13.5px;color:var(--t1)}
+
+/* ════════ 6 · palette ════════ */
+.neutrals{display:flex;gap:0;border-radius:14px;overflow:hidden;margin-top:10px;box-shadow:var(--shadow)}
+.neutrals .n{flex:1;height:76px;display:flex;align-items:flex-end;padding:9px;font-family:var(--f-body);font-size:9.5px;font-weight:600;letter-spacing:.04em}
+.accents{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:28px}
+.acc{background:var(--card);border-radius:15px;box-shadow:var(--shadow);padding:18px;overflow:hidden}
+.acc .chip{height:56px;border-radius:10px;margin-bottom:16px}
+.acc .nm{font-family:var(--f-display);font-size:24px;line-height:.9;text-transform:uppercase}
+.acc .role{font-size:12px;color:var(--t1);font-weight:500;margin-top:6px;line-height:1.4}
+.acc .hex{font-family:var(--f-body);font-size:11px;color:var(--t2);font-weight:700;letter-spacing:.06em;margin-top:12px}
+.palette-foot{margin-top:24px;font-size:13.5px;color:var(--t1);max-width:780px}
+.palette-foot b{color:var(--ink);font-weight:600}
+
+/* ════════ 7 · type ════════ */
+.type-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;margin-top:34px;align-items:center}
+.type-spec{border-top:1px solid var(--divider)}
+.tspec{display:flex;align-items:baseline;gap:18px;padding:14px 0;border-bottom:1px solid var(--divider)}
+.tspec .demo{color:var(--ink)} .tspec .meta{margin-left:auto;font-family:var(--f-body);font-size:11px;color:var(--t2);font-weight:700;letter-spacing:.04em}
+.tspec .fam{font-family:var(--f-body);font-size:10px;color:var(--orange);font-weight:700;letter-spacing:.1em;text-transform:uppercase;min-width:54px}
+.type-show{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:36px;text-align:center}
+.type-show .ey{margin-bottom:12px}
+.type-show .hero-num{font-family:var(--f-display);font-size:150px;line-height:.78;color:var(--ink)}
+.type-show .hero-num small{font-family:var(--f-body);font-size:24px;color:var(--t1);font-weight:600}
+.type-show .cap{font-size:13px;color:var(--t1);margin-top:16px;font-weight:500;line-height:1.5}
+
+/* ════════ 8 · components ════════ */
+.comp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:38px}
+.comp{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px;min-height:150px;display:flex;flex-direction:column}
+.comp .cname{font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--t2);margin-top:auto}
+.m-stat .num{font-family:var(--f-display);font-size:48px;line-height:.85} .m-stat .num small{font-family:var(--f-body);font-size:16px;color:var(--t1);font-weight:600}
+.m-stat .lab{font-family:var(--f-body);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin:6px 0 4px}
+.m-stat .ctx{font-size:12px;color:var(--green);font-weight:600}
+.m-coach{border-left:3px solid var(--green);padding-left:14px}
+.m-coach .l{font-family:var(--f-body);font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--green);text-transform:uppercase;margin-bottom:7px}
+.m-coach .b{font-size:13.5px;color:var(--ink);font-weight:400;line-height:1.45}
+.pacepill{display:inline-flex;align-items:baseline;gap:5px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:10px;padding:8px 11px;margin:0 6px 8px 0}
+.pacepill .v{font-family:var(--f-display);font-size:22px;line-height:.9} .pacepill .z{font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--orange);letter-spacing:.04em}
+.m-arc{display:flex;gap:3px;align-items:flex-end;height:48px}
+.m-arc i{flex:1;border-radius:3px 3px 0 0;background:rgba(13,15,18,.10)} .m-arc i.on{background:var(--orange)}
+.m-cond{display:flex;gap:8px}
+.m-cond .c{flex:1;text-align:center;background:var(--pill-bg);border-radius:9px;padding:9px 2px}
+.m-cond .c .v{font-family:var(--f-display);font-size:22px;line-height:.9} .m-cond .c .k{font-size:8.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);margin-top:4px}
+.m-intens{height:18px;border-radius:9px;background:linear-gradient(to right,#2CA82F,#F3AD38 60%,#E85D26);position:relative}
+.m-intens .tick{position:absolute;top:-3px;bottom:-3px;left:24%;width:3px;background:var(--ink);border-radius:2px}
+.m-intens-lbl{font-size:12px;color:var(--green);font-weight:600;margin-top:10px}
+
+/* ════════ 9 · voice ════════ */
+.voice-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:40px;margin-top:34px;align-items:start}
+.rules{list-style:none}
+.rules li{padding:13px 0;border-top:1px solid var(--divider);font-size:15px;color:var(--ink);display:flex;gap:12px;align-items:flex-start}
+.rules li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--orange);margin-top:8px;flex:none}
+.rules li b{font-weight:600} .rules li span{color:var(--t1)}
+.voice-ex{display:flex;flex-direction:column;gap:14px}
+.cv{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:18px 20px;border-left:3px solid var(--green)}
+.cv.amber{border-left-color:var(--amber)} .cv.warn{border-left-color:var(--warn)} .cv.race{border-left-color:var(--orange)}
+.cv .l{font-family:var(--f-body);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--green);margin-bottom:8px}
+.cv.amber .l{color:var(--amber)} .cv.warn .l{color:var(--warn)} .cv.race .l{color:var(--orange)}
+.cv .b{font-size:15.5px;color:var(--ink);font-weight:400;line-height:1.45}
+
+/* ════════ 10 · iPhone ════════ */
+.device-split{display:grid;grid-template-columns:auto 1fr;gap:60px;align-items:center;margin-top:14px}
+.phone{width:330px;flex:none;border-radius:48px;padding:11px;background:linear-gradient(150deg,#3a3d44,#1a1c20);box-shadow:var(--shadow-lg)}
+.phone-screen{position:relative;border-radius:38px;overflow:hidden;background:var(--bg);height:690px;display:flex;flex-direction:column}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:100px;height:26px;background:#0b0c0e;border-radius:15px;z-index:5}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:13px 22px 0;height:42px;font-size:13px;font-weight:700}
+.sb .sys{display:flex;gap:5px;align-items:center}
+.pfeed{flex:1;padding:8px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:hidden}
+.ptop{display:flex;justify-content:space-between;align-items:center}
+.ptop .lg{font-family:var(--f-display);font-style:italic;font-size:21px;letter-spacing:2px;line-height:1;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ptop .dt{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2)}
+.coach-lbl{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;color:var(--t2);margin-bottom:8px}
+.coach-lbl .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.coach-brief{font-size:14px;line-height:1.45;color:var(--ink)} .coach-brief b{font-weight:700}
+.pcard{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:18px}
+.pcard .eyb{font-size:10px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--t2);margin-bottom:10px}
+.pcard .title{font-family:var(--f-display);font-size:74px;line-height:.82;letter-spacing:-1.5px;text-transform:uppercase;margin:0 0 12px -2px}
+.pstats{display:flex;gap:6px;margin-bottom:12px}
+.pstat{flex:1;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:9px;padding:9px 10px}
+.pstat .v{display:flex;align-items:baseline;gap:2px}
+.pstat .v .n{font-family:var(--f-display);font-size:24px;line-height:.9} .pstat .v .n.o{color:var(--orange)} .pstat .v .u{font-size:10px;color:var(--t1);font-weight:500}
+.pstat .l{font-size:8.5px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--t2);margin-top:4px}
+.pstruct{display:flex;gap:2px;margin-bottom:12px}
+.pstruct i{height:7px;border-radius:2px;background:rgba(13,15,18,.07)}
+.pstruct i.warm{flex:1.3;background:rgba(13,15,18,.14)} .pstruct i.work{flex:1;background:var(--orange)} .pstruct i.rec{flex:.5;background:var(--orange-wash)} .pstruct i.cool{flex:1.3;background:rgba(13,15,18,.14)}
+.psend{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--ink);color:#fff;border:none;border-radius:10px;padding:12px;font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase}
+.pweek{display:flex;gap:4px}
+.pweek .d{flex:1;text-align:center;border-radius:10px;padding:8px 0}
+.pweek .d .dw{font-size:8.5px;font-weight:600;text-transform:uppercase;color:var(--t2)}
+.pweek .d .dn{font-family:var(--f-display);font-size:19px;line-height:1;margin-top:2px}
+.pweek .d .mk{width:6px;height:6px;border-radius:50%;margin:6px auto 0;background:rgba(13,15,18,.14)}
+.pweek .d .mk.done{background:var(--green)} .pweek .d .mk.rest{background:transparent;border:1.5px solid var(--t3)}
+.pweek .d.today{background:var(--amber-wash)} .pweek .d.today .dw,.pweek .d.today .dn{color:var(--amber)} .pweek .d.today .mk{background:var(--amber)}
+.ann{display:flex;flex-direction:column}
+.ann h3{font-family:var(--f-display);font-size:52px;line-height:.86;text-transform:uppercase;margin-bottom:14px}
+.ann .a{padding:15px 0;border-top:1px solid var(--divider)}
+.ann .a .t{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink);margin-bottom:6px}
+.ann .a .d{font-size:14px;color:var(--t1);line-height:1.5} .ann .a .d b{color:var(--orange);font-weight:600}
+
+/* ════════ 11 · watch — glanceable, one hero number ════════ */
+.watch-row{display:flex;gap:30px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+.watch-unit{display:flex;flex-direction:column;align-items:center;gap:14px;width:188px}
+.watch{position:relative;width:180px;height:218px;border-radius:48px;padding:11px;background:linear-gradient(150deg,#3a3d44,#15171a);box-shadow:var(--shadow-lg)}
+.watch::before{content:"";position:absolute;right:-4px;top:70px;width:5px;height:38px;border-radius:4px;background:linear-gradient(90deg,#4a4d54,#222)}
+.w-screen{width:100%;height:100%;border-radius:38px;overflow:hidden;background:#F4F2F0;padding:12px 13px;display:flex;flex-direction:column;position:relative}
+.w-top{display:flex;justify-content:space-between;align-items:center}
+.w-eye{font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--t2)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
+.w-clock{font-size:11px;font-weight:700;color:var(--t2);font-variant-numeric:tabular-nums}
+.w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+.w-hero{font-family:var(--f-display);font-size:66px;line-height:.74;letter-spacing:-2px;color:var(--ink);margin-top:2px}
+.w-hero.green{color:var(--green)} .w-hero.amber{color:var(--amber)} .w-hero.over{color:var(--warn)}
+.w-ref{font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--t2);margin-top:5px}
+.w-ref b{color:var(--ink)} .w-ref .up{color:var(--green)} .w-ref .down{color:var(--warn)}
+.w-stats{display:flex;margin-top:auto;border-top:1px solid rgba(13,15,18,.12);padding-top:6px}
+.w-stat{flex:1;padding-right:8px} .w-stat+.w-stat{border-left:1px solid rgba(13,15,18,.12);padding-left:10px;padding-right:0}
+.w-stat .v{font-family:var(--f-display);font-size:24px;line-height:.82} .w-stat .v small{font-family:var(--f-body);font-size:9px;font-weight:600;color:var(--t2);margin-left:1px}
+.w-stat .k{font-size:8px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--t2);margin-top:2px}
+.w-prog{margin-top:6px}
+.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);margin-bottom:4px} .w-prog .lbl b{color:var(--ink)}
+.w-bar{height:5px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.rec{background:var(--green)}
+.w-name{font-family:var(--f-display);font-size:50px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:10px 0 5px}
+.w-namesub{font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
+.w-meta{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);margin-top:4px}
+.w-dots{display:flex;gap:3px;margin-top:12px}
+.w-dots i{height:5px;border-radius:3px;background:rgba(13,15,18,.10)}
+.w-dots i.work{flex:1;background:var(--orange)} .w-dots i.rec{flex:.5;background:var(--orange-wash)} .w-dots i.warm{flex:1.4;background:rgba(13,15,18,.18)} .w-dots i.cool{flex:1.4;background:rgba(13,15,18,.18)}
+.w-start{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--green);color:#fff;border-radius:24px;padding:12px;font-family:var(--f-sub);font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.w-cap{text-align:center;font-size:11.5px;color:var(--t1);font-weight:500;line-height:1.4}
+.w-cap b{display:block;font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+
+/* ── DARK execution face (matches watch-handoff.html) ── */
+.w-screen{background:#000;color:#fff}
+.w-hero,.w-ref b,.w-stat .v,.w-prog .lbl b,.w-name{color:#fff}
+.w-eye,.w-clock,.w-hero small,.w-ref,.w-stat .v small,.w-stat .k,.w-meta,.w-prog .lbl{color:rgba(255,255,255,.45)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
+.w-stats{border-top-color:rgba(255,255,255,.15)} .w-stat+.w-stat{border-left-color:rgba(255,255,255,.15)}
+.w-bar{background:rgba(255,255,255,.14)}
+.w-dots i{background:rgba(255,255,255,.14)}
+.w-dots i.warm,.w-dots i.cool{background:rgba(255,255,255,.32)} .w-dots i.rec{background:rgba(232,93,38,.4)}
+
+/* ════════ 12 · engine ════════ */
+.eng-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:34px}
+.eng{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:24px 26px}
+.eng .ey{color:var(--green);margin-bottom:10px}
+.eng h4{font-family:var(--f-display);font-size:30px;line-height:.9;text-transform:uppercase;margin-bottom:8px}
+.eng p{font-size:13.5px;color:var(--t1);line-height:1.5}
+.eng .stat{font-family:var(--f-display);font-size:54px;line-height:.88} .eng .stat small{font-family:var(--f-body);font-size:14px;color:var(--t1);font-weight:600}
+.tid{display:flex;gap:8px;margin-top:14px}
+.tid .b{flex:1;border-radius:9px;padding:11px 8px;text-align:center;background:var(--pill-bg);border:1px solid var(--pill-line)}
+.tid .b .v{font-family:var(--f-display);font-size:24px;line-height:.9} .tid .b .k{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t2);margin-top:3px}
+.tid .b.e .v{color:var(--green)} .tid .b.t .v{color:var(--amber)} .tid .b.i .v{color:var(--orange)}
+.cite{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--t1);background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:8px;padding:6px 10px;margin:14px 8px 0 0}
+.cite b{color:var(--ink)}
+
+/* ════════ 13 · data flow ════════ */
+.pipe{display:flex;align-items:stretch;margin-top:40px;flex-wrap:wrap}
+.node{flex:1;min-width:150px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px;text-align:center}
+.node .ic{font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+.node h4{font-family:var(--f-display);font-size:34px;line-height:.9;text-transform:uppercase;margin:8px 0 6px}
+.node p{font-size:12px;color:var(--t1);line-height:1.4}
+.node.web{border-top:4px solid var(--green)} .node.be{border-top:4px solid var(--amber)} .node.ph{border-top:4px solid var(--orange)} .node.wt{border-top:4px solid var(--orange)}
+.arrows{display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 6px;gap:8px;min-width:58px}
+.arrows .down{font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:11px;letter-spacing:.5px} .arrows .up{font-family:var(--f-sub);color:var(--green);font-weight:600;font-size:11px;letter-spacing:.5px}
+.integrations{display:flex;gap:10px;flex-wrap:wrap;margin-top:32px}
+.flow-legend{display:flex;gap:24px;margin-top:24px;font-size:12.5px;font-weight:600;color:var(--t1);flex-wrap:wrap}
+.flow-legend b.dn{color:var(--ink)} .flow-legend b.upp{color:var(--green)}
+
+/* ════════ 14 · athlete ════════ */
+.athlete{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:34px;align-items:center}
+.stat-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.scard{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px}
+.scard .num{font-family:var(--f-display);font-size:56px;line-height:.82} .scard .num small{font-family:var(--f-body);font-size:16px;color:var(--t1);font-weight:600}
+.scard .lbl{font-family:var(--f-body);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2);margin:10px 0 5px}
+.scard .ctx{font-size:12px;color:var(--t1)}
+.scard.blue .num{color:var(--ink)} .scard.green .num{color:var(--green)} .scard.gold .num{color:var(--amber)} .scard.orange .num{color:var(--orange)}
+.race-card{background:linear-gradient(155deg,#F3AD38 0%,#E85D26 55%,#C73E0B 100%);border-radius:20px;padding:30px;color:#fff;box-shadow:var(--shadow-lg)}
+.race-card .ey{color:rgba(255,255,255,.85)}
+.race-card .nm{font-family:var(--f-display);font-size:46px;line-height:.86;text-transform:uppercase;margin:12px 0 6px}
+.race-card .dt{font-family:var(--f-sub);font-size:13px;color:rgba(255,255,255,.9);font-weight:500;letter-spacing:1px;text-transform:uppercase}
+.race-card .cd{display:flex;align-items:baseline;gap:10px;margin-top:22px}
+.race-card .cd .n{font-family:var(--f-display);font-size:82px;line-height:.8} .race-card .cd .u{font-size:15px;color:rgba(255,255,255,.9);font-weight:600}
+
+/* ════════ 15 · roadmap ════════ */
+.map-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:30px;margin-top:34px}
+.pages{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pages .p{background:var(--card);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px}
+.pages .p .nm{font-family:var(--f-sub);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.pages .p .jb{font-size:11px;color:var(--t1);margin-top:4px;line-height:1.35}
+.pages .p.live .nm::after{content:" ●";color:var(--green);font-size:9px;vertical-align:middle}
+.watch-scope{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:24px}
+.watch-scope h4{font-family:var(--f-display);font-size:26px;line-height:.9;text-transform:uppercase;margin-bottom:12px}
+.scope-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--divider);font-size:13px}
+.scope-row .yes{color:var(--green);font-weight:700} .scope-row .no{color:var(--t2);font-weight:600}
+.legend{display:flex;gap:18px;margin-top:16px;font-size:11.5px;color:var(--t1);font-weight:600}
+.legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--green)}
+
+/* ════════ 16 · close ════════ */
+#s16{background:radial-gradient(120% 100% at 50% 118%,rgba(232,93,38,.16),transparent 58%),var(--bg);align-items:center;text-align:center}
+#s16 .inner{display:flex;flex-direction:column;align-items:center}
+.close-mark{font-family:var(--f-display);font-style:italic;font-size:clamp(80px,17vw,260px);line-height:.8;letter-spacing:2px}
+.close-tag{font-family:var(--f-body);font-size:clamp(18px,2vw,26px);color:var(--ink);font-weight:500;margin-top:24px;max-width:560px}
+.close-tag span{color:var(--t1)}
+.close-meta{margin-top:44px;display:flex;gap:38px;flex-wrap:wrap;justify-content:center;font-family:var(--f-body);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--t2)}
+
+@media(max-width:920px){
+  .gap-grid,.surf-grid,.comp-grid,.pages,.accents{grid-template-columns:1fr 1fr}
+  .type-grid,.voice-grid,.eng-grid,.athlete,.map-grid,.device-split{grid-template-columns:1fr}
+  .dots{display:none}.slide{padding:80px 7vw 90px}
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<nav class="dots" id="dots"></nav>
+<div class="hint" id="hint"><kbd>↓</kbd> or scroll to advance</div>
+
+<main class="deck" id="deck">
+
+  <!-- 1 · COVER -->
+  <section class="slide" id="s1">
+    <div class="inner cover">
+      <div class="cover-mark">FAFF · RUN</div>
+      <h1>Every day has a<br>different <span class="grad">shape.</span></h1>
+      <p class="sub">A running platform that trains you by what today actually is.
+        <span>The weather, your legs, the climb at mile ten, where you sit in the cycle.
+        Web to plan, iPhone to decide, watch to execute.</span></p>
+      <div class="meta-row">
+        <div class="meta"><div class="k">Surfaces</div><div class="v">3 <small>web · phone · watch</small></div></div>
+        <div class="meta"><div class="k">Source of truth</div><div class="v">1 <small>one coach, one brain</small></div></div>
+        <div class="meta"><div class="k">Doctrine</div><div class="v">Cited <small>Daniels · peer-reviewed</small></div></div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run · the deck</span><span>v4 light · bold type</span></div>
+  </section>
+
+  <!-- 2 · GAP -->
+  <section class="slide" id="s2">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>01 · The gap</div>
+      <h2 class="bigtitle t-lg">Most apps hand you a plan.<br>None of them know what today is.</h2>
+      <p class="lead" style="margin-top:24px">A plan written twelve weeks ago does not see the heat, the bad night of sleep,
+        or the two miles of climbing at mile ten. And the moment you start the workout, the knowledge is on your
+        phone while the work is on your wrist. So you run, and you do clock math.</p>
+      <div class="gap-grid">
+        <div class="card"><div class="n">01</div><h4>Static plans, living bodies</h4><p>The same prescription every Tuesday, regardless of recovery, weather, or where you are in the arc.</p></div>
+        <div class="card"><div class="n">02</div><h4>Knowledge in the wrong place</h4><p>The workout structure lives on the phone. The execution happens on the watch, which does not know the plan.</p></div>
+        <div class="card"><div class="n">03</div><h4>Numbers without a coach</h4><p>Dashboards show HRV, pace, and load. They rarely tell you the one thing to do about it, and why.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>The gap</span></div>
+  </section>
+
+  <!-- 3 · SURFACES -->
+  <section class="slide" id="s3">
+    <div class="inner">
+      <div class="kicker green"><span class="ln"></span>02 · Architecture</div>
+      <h2 class="bigtitle t-lg">Three surfaces.<br>One source of truth.</h2>
+      <div class="surf-grid">
+        <div class="surf web">
+          <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2" stroke="#2CA82F" stroke-width="2"/><path d="M2 9h20M8 21h8" stroke="#2CA82F" stroke-width="2"/></svg></div>
+          <div class="role">Command center</div><h3>Web</h3>
+          <p>Where you sit down to plan, analyze, and read deeply. The full picture in two minutes.</p>
+          <div class="dens"><i></i></div><div class="denslbl">Density: expansive</div>
+        </div>
+        <div class="surf ios">
+          <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="3" stroke="#D4900A" stroke-width="2"/><circle cx="12" cy="18" r="1" fill="#D4900A"/></svg></div>
+          <div class="role">Daily companion</div><h3>iPhone</h3>
+          <p>Glanceable, push-driven, one thumb. What now, in two seconds. Then send it to the watch.</p>
+          <div class="dens"><i></i></div><div class="denslbl">Density: medium</div>
+        </div>
+        <div class="surf watch">
+          <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="3" stroke="#E85D26" stroke-width="2"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3" stroke="#E85D26" stroke-width="2"/></svg></div>
+          <div class="role">Execution layer</div><h3>Watch</h3>
+          <p>Reductive. Big numbers, high contrast, haptics. Where the workout actually happens.</p>
+          <div class="dens"><i></i></div><div class="denslbl">Density: reductive</div>
+        </div>
+      </div>
+      <div class="flow"><b>Plan</b><span class="ar">↓</span> web <span class="ar">→</span> backend <span class="ar">→</span> phone <span class="ar">→</span> watch
+        <span style="margin:0 12px;color:var(--t3)">|</span>
+        <b>Runs</b><span class="ar" style="color:var(--green)">↑</span> watch <span class="ar" style="color:var(--green)">→</span> phone <span class="ar" style="color:var(--green)">→</span> backend <span class="ar" style="color:var(--green)">→</span> web</div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Architecture</span></div>
+  </section>
+
+  <!-- 4 · QUESTIONS -->
+  <section class="slide" id="s4">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>03 · The job</div>
+      <h2 class="bigtitle t-lg">Answer three questions<br>in two seconds.</h2>
+      <div class="q-list">
+        <div class="q a1"><div class="num">1</div><div class="txt"><h3>What should I do today?</h3><p>The prescription. The single most important answer, and the one with the largest type.</p></div></div>
+        <div class="q a2"><div class="num">2</div><div class="txt"><h3>How am I doing it?</h3><p>The body state. Recovery, readiness, the conditions you are about to run into.</p></div></div>
+        <div class="q a3"><div class="num">3</div><div class="txt"><h3>How am I doing overall?</h3><p>The trajectory. Where you sit in the arc, on track or drifting.</p></div></div>
+      </div>
+      <p class="lead" style="margin-top:28px">If a stranger looks for two seconds and cannot answer all three, the hierarchy is wrong.</p>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>The three-question test</span></div>
+  </section>
+
+  <!-- 5 · ALIVE -->
+  <section class="slide" id="s5">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>04 · Composition</div>
+      <h2 class="bigtitle t-lg">The page is alive.</h2>
+      <p class="lead" style="margin-top:20px">Not a fixed template with slots to fill. Composition is a function of where you are:
+        in the season, in the week, in the day. Beats promote, demote, appear, and disappear.</p>
+      <div class="states">
+        <div class="state"><div class="ph">Off-season</div><div class="ds">Gear, goals</div></div>
+        <div class="state"><div class="ph">Base</div><div class="ds">Volume, patience</div></div>
+        <div class="state on"><div class="ph">Build</div><div class="ds">Workouts, mileage</div></div>
+        <div class="state"><div class="ph">Peak</div><div class="ds">Load, sharpness</div></div>
+        <div class="state"><div class="ph">Taper</div><div class="ds">Stillness</div></div>
+        <div class="state"><div class="ph">Race week</div><div class="ds">Countdown hero</div></div>
+        <div class="state"><div class="ph">Race day</div><div class="ds">Takes the page</div></div>
+        <div class="state"><div class="ph">Recovery</div><div class="ds">Reverse arc</div></div>
+        <div class="state"><div class="ph">Injury</div><div class="ds">Banner overrides</div></div>
+      </div>
+      <div class="alive-note">
+        <div class="card"><div class="ey">The 4-month test</div><h4>Different beats, not numbers</h4><p>Render this page four months out and it should look like a cousin, not the same layout with new figures.</p></div>
+        <div class="card"><div class="ey">Color follows the moment</div><h4>Hierarchy you can feel</h4><p>Green marks on-plan. Amber marks today and in-progress. Orange arrives when a race is close.</p></div>
+        <div class="card"><div class="ey">Tone shifts by phase</div><h4>Same voice, new register</h4><p>Base feels patient. Peak feels charged. Race week is electric but quiet. Race morning is reverent.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>State-driven composition</span></div>
+  </section>
+
+  <!-- 6 · PALETTE -->
+  <section class="slide" id="s6">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>05 · Design language</div>
+      <h2 class="bigtitle t-md" style="margin-bottom:6px">Light, bold. Color only when it means something.</h2>
+      <div class="ey" style="margin:22px 0 8px">Core neutrals</div>
+      <div class="neutrals">
+        <div class="n" style="background:#EEECEA;color:#8a8a88">bg</div>
+        <div class="n" style="background:#E7E4E1;color:#8a8a88">bg-2</div>
+        <div class="n" style="background:#FFFFFF;color:#8a8a88">card</div>
+        <div class="n" style="background:rgba(13,15,18,.08);color:#555">divider</div>
+        <div class="n" style="background:rgba(13,15,18,.55);color:#fff">muted</div>
+        <div class="n" style="background:#0D0F12;color:#fff">ink</div>
+      </div>
+      <div class="accents">
+        <div class="acc"><div class="chip" style="background:#2CA82F"></div><div class="nm">Recovery</div><div class="role">On plan, done, easy. Default positive.</div><div class="hex tnum">#2CA82F</div></div>
+        <div class="acc"><div class="chip" style="background:#D4900A"></div><div class="nm">Milestone</div><div class="role">Today, taper, in progress. Watching.</div><div class="hex tnum">#D4900A</div></div>
+        <div class="acc"><div class="chip" style="background:linear-gradient(155deg,#F3AD38,#E85D26 55%,#C73E0B)"></div><div class="nm">Race</div><div class="role">Brand, A-race, race day. Used sparingly.</div><div class="hex tnum">#E85D26</div></div>
+        <div class="acc"><div class="chip" style="background:#F43F5E"></div><div class="nm">Warn</div><div class="role">Errors only. Not "behind on plan."</div><div class="hex tnum">#F43F5E</div></div>
+      </div>
+      <p class="palette-foot"><b>Cards are quiet:</b> white surface, soft shadow, no border. <b>Orange is the brand,</b> used sparingly so the page never feels alarmed.
+        Behind on plan is amber, not red. Race orange is for races, never a generic highlight.</p>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Palette · v4</span></div>
+  </section>
+
+  <!-- 7 · TYPE -->
+  <section class="slide" id="s7">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>06 · Design language</div>
+      <h2 class="bigtitle t-md">Three typefaces. Never mix, never substitute.</h2>
+      <div class="type-grid">
+        <div class="type-spec">
+          <div class="tspec"><span class="fam">Bebas</span><span class="demo bebas" style="font-size:40px">Hero title</span><span class="meta">300 / .86 / -4</span></div>
+          <div class="tspec"><span class="fam">Bebas</span><span class="demo bebas" style="font-size:30px">48:00 Stat</span><span class="meta">32 / 1.0</span></div>
+          <div class="tspec"><span class="fam">Bebas</span><span class="demo bebas" style="font-size:26px">Day 20</span><span class="meta">28 / 1.0</span></div>
+          <div class="tspec"><span class="fam">Inter</span><span class="demo" style="font-size:17px;font-weight:400">Coach briefing body</span><span class="meta">22 / 1.5 / 400</span></div>
+          <div class="tspec"><span class="fam">Oswald</span><span class="demo subh" style="font-size:14px;color:var(--ink)">Sub-header</span><span class="meta">13 / 600 / upper</span></div>
+          <div class="tspec"><span class="fam">Inter</span><span class="demo ey">Eyebrow label</span><span class="meta">12 / 2.5 / upper</span></div>
+        </div>
+        <div class="type-show">
+          <div class="ey">Resting HR</div>
+          <div class="hero-num tnum">48<small>bpm</small></div>
+          <div class="cap">Bebas Neue for numbers and titles. Inter for body. Oswald for sub-headers. The eyebrow sits above every hero number.</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Type ladder</span></div>
+  </section>
+
+  <!-- 8 · COMPONENTS -->
+  <section class="slide" id="s8">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>07 · Design language</div>
+      <h2 class="bigtitle t-md">A vocabulary, not a component zoo.</h2>
+      <div class="comp-grid">
+        <div class="comp m-stat"><div class="num tnum">68<small>ms</small></div><div class="lab">HRV today</div><div class="ctx">+6 vs 30-day baseline</div><div class="cname">Stat pill</div></div>
+        <div class="comp"><div class="m-coach"><div class="l">Why</div><div class="b">Week 4 of the build. We add a controlled dose of T-pace to lift the ceiling.</div></div><div class="cname" style="margin-top:16px">Coach voice block</div></div>
+        <div class="comp"><div><span class="pacepill"><span class="v tnum">7:25</span><span class="z">M</span></span><span class="pacepill"><span class="v tnum">6:31</span><span class="z">T</span></span><span class="pacepill"><span class="v tnum">5:58</span><span class="z">I</span></span></div><div class="cname">Pace pill</div></div>
+        <div class="comp"><div class="m-arc"><i style="height:30%"></i><i style="height:45%"></i><i class="on" style="height:72%"></i><i style="height:92%"></i><i style="height:55%"></i><i style="height:35%"></i></div><div class="cname">Phase / arc</div></div>
+        <div class="comp"><div class="m-cond"><div class="c"><div class="v tnum">52°</div><div class="k">Temp</div></div><div class="c"><div class="v tnum">47°</div><div class="k">Dew</div></div><div class="c"><div class="v tnum">6</div><div class="k">Wind</div></div><div class="c"><div class="v tnum">18</div><div class="k">AQI</div></div></div><div class="cname" style="margin-top:16px">Conditions panel</div></div>
+        <div class="comp"><div class="m-intens"><div class="tick"></div></div><div class="m-intens-lbl">Easy · Zone 2</div><div class="cname">Intensity spectrum</div></div>
+      </div>
+      <p class="lead" style="margin-top:26px">The brand has proven primitives. New patterns read as members of this family.
+        Same typefaces, same color logic, same eyebrow.</p>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Component vocabulary</span></div>
+  </section>
+
+  <!-- 9 · VOICE -->
+  <section class="slide" id="s9">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>08 · Voice</div>
+      <h2 class="bigtitle t-md">Coach voice, not app voice.</h2>
+      <div class="voice-grid">
+        <ul class="rules">
+          <li><b>Short and direct.</b> <span>A note is one or two sentences, never three.</span></li>
+          <li><b>No hype.</b> <span>No "crushing it", no "let's go", no exclamation marks.</span></li>
+          <li><b>No emoji, no em dashes.</b> <span>Use periods.</span></li>
+          <li><b>Stats speak first.</b> <span>Words add context only when they add meaning.</span></li>
+          <li><b>Always the why.</b> <span>Never just the what.</span></li>
+          <li><b>Honest, even when it stings.</b> <span>"A bit hard, back off." "Recovery is the workout."</span></li>
+        </ul>
+        <div class="voice-ex">
+          <div class="cv"><div class="l">Why</div><div class="b">Threshold day. The engine work that makes marathon pace feel like cruising. Hold the band, not the hero pace.</div></div>
+          <div class="cv amber"><div class="l">Focus</div><div class="b">Comfortably hard, repeatable, never racing the reps. If rep six matches rep one, you ran it right.</div></div>
+          <div class="cv warn"><div class="l">Back off if</div><div class="b">Pace drifts more than ten seconds off target for two reps running. The session is the stimulus, not the suffering.</div></div>
+          <div class="cv race"><div class="l">Race week</div><div class="b">Volume drop is intentional. Let the legs absorb the work. Day 1 of 14.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Tone of voice</span></div>
+  </section>
+
+  <!-- 10 · iPHONE -->
+  <section class="slide" id="s10">
+    <div class="inner">
+      <div class="kicker amber"><span class="ln"></span>09 · Surface · iPhone Today</div>
+      <div class="device-split">
+        <div class="phone"><div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span class="tnum">7:02</span><span class="sys">
+            <svg width="16" height="11" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#0D0F12"/><rect x="5" y="5" width="3" height="7" rx="1" fill="#0D0F12"/><rect x="10" y="2.5" width="3" height="9.5" rx="1" fill="#0D0F12"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#0D0F12"/></svg>
+            <svg width="23" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="22" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="#0D0F12"/></svg>
+          </span></div>
+          <div class="pfeed">
+            <div class="ptop"><div class="lg">FAFF</div><div class="dt">Tue · 20 May</div></div>
+            <div><div class="coach-lbl"><span class="dot"></span>Coach · Build · Wk 4/12</div><div class="coach-brief"><b>Threshold day.</b> The engine work that makes marathon pace feel like cruising.</div></div>
+            <div class="pcard">
+              <div class="eyb">Today's session · Threshold</div>
+              <div class="title">6 × 800</div>
+              <div class="pstats">
+                <div class="pstat"><div class="v"><span class="n o tnum">6:31</span><span class="u">/mi</span></div><div class="l">Target</div></div>
+                <div class="pstat"><div class="v"><span class="n tnum">60</span><span class="u">s</span></div><div class="l">Rec</div></div>
+                <div class="pstat"><div class="v"><span class="n tnum">6.4</span><span class="u">mi</span></div><div class="l">Vol</div></div>
+                <div class="pstat"><div class="v"><span class="n tnum">52</span><span class="u">min</span></div><div class="l">Time</div></div>
+              </div>
+              <div class="pstruct"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+              <button class="psend"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="4" stroke="#fff" stroke-width="2"/><circle cx="12" cy="18" r="1.4" fill="#fff"/></svg>Send to Watch</button>
+            </div>
+            <div class="pcard" style="padding:14px">
+              <div class="pweek">
+                <div class="d"><div class="dw">Mon</div><div class="dn">19</div><div class="mk done"></div></div>
+                <div class="d today"><div class="dw">Tue</div><div class="dn">20</div><div class="mk"></div></div>
+                <div class="d"><div class="dw">Wed</div><div class="dn">21</div><div class="mk"></div></div>
+                <div class="d"><div class="dw">Thu</div><div class="dn">22</div><div class="mk"></div></div>
+                <div class="d"><div class="dw">Fri</div><div class="dn">23</div><div class="mk rest"></div></div>
+                <div class="d"><div class="dw">Sat</div><div class="dn">24</div><div class="mk"></div></div>
+                <div class="d"><div class="dw">Sun</div><div class="dn">25</div><div class="mk"></div></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <div class="ann">
+          <h3>What now,<br>in two seconds.</h3>
+          <div class="a"><div class="t">Hero is the session</div><div class="d">The workout name takes the big Bebas title. Target <b>6:31/mi</b> sits in the stat pills, in orange.</div></div>
+          <div class="a"><div class="t">Send to Watch is the action</div><div class="d">Dark ink button, the canonical primary CTA. Plan flows down to the surface that runs the run.</div></div>
+          <div class="a"><div class="t">Color carries meaning</div><div class="d">Green is on-plan. Amber is today. Orange is the brand and the race. Nothing decorative.</div></div>
+          <div class="a"><div class="t">One column, one thumb</div><div class="d">No grids, no drag-to-rearrange. Opinionated layout, hide and show in settings.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>iPhone · Today</span></div>
+  </section>
+
+  <!-- 11 · WATCH -->
+  <section class="slide" id="s11">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>10 · Surface · Apple Watch</div>
+      <h2 class="bigtitle t-md" style="margin-bottom:6px">Six reps, zero clock math.</h2>
+      <p class="lead">The watch knows the structure, so you react to haptics instead of counting intervals while running hard.</p>
+      <div class="watch-row">
+        <div class="watch-unit">
+          <div class="watch"><div class="w-screen">
+            <div class="w-top"><span class="w-eye">Today · ready</span><span class="w-clock tnum">7:14</span></div>
+            <div class="w-body">
+              <div class="w-name">6×800</div>
+              <div class="w-namesub">@ T · 6:31/mi · 60s rec</div>
+              <div class="w-meta">6.4 mi · est 52 min</div>
+              <div class="w-dots"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+              <div class="w-start"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 3l9 5-9 5V3z" fill="#fff"/></svg>Start</div>
+            </div>
+          </div></div>
+          <div class="w-cap"><b>Pre-run</b>Workout name front and center.<br>One tap to start.</div>
+        </div>
+        <div class="watch-unit">
+          <div class="watch"><div class="w-screen">
+            <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+            <div class="w-body">
+              <div class="w-hero green tnum">6:33</div>
+              <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+              <div class="w-stats">
+                <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
+                <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
+              </div>
+              <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+            </div>
+          </div></div>
+          <div class="w-cap"><b>Work interval</b>Current pace is the hero. Green<br>on the band, amber on drift.</div>
+        </div>
+        <div class="watch-unit">
+          <div class="watch"><div class="w-screen">
+            <div class="w-top"><span class="w-eye green">Rest · 3 of 6</span><span class="w-clock tnum">7:32</span></div>
+            <div class="w-body">
+              <div class="w-hero green tnum">0:42</div>
+              <div class="w-ref">Next rep · <b>6:31</b>/mi</div>
+              <div class="w-stats">
+                <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
+                <div class="w-stat"><div class="v tnum">9:20<small>/mi</small></div><div class="k">Jog pace</div></div>
+              </div>
+              <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="rec" style="width:70%"></i></div></div>
+            </div>
+          </div></div>
+          <div class="w-cap"><b>Recovery</b>Big countdown to the next rep.<br>Haptics carry the transition.</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Apple Watch · execution</span></div>
+  </section>
+
+  <!-- 12 · ENGINE -->
+  <section class="slide" id="s12">
+    <div class="inner">
+      <div class="kicker green"><span class="ln"></span>11 · The engine</div>
+      <h2 class="bigtitle t-md">The coach cannot make things up.</h2>
+      <p class="lead" style="margin-top:16px">Every rule traces to a citation. No extrapolation beyond the research.
+        Reference tables are transcribed from source and pinned with snapshot tests. Memory is not a source.</p>
+      <div class="eng-grid">
+        <div class="eng"><div class="ey">Pace zones</div><h4>Daniels VDOT</h4><div class="stat tnum">30–85 <small>VDOT</small></div>
+          <p style="margin-top:10px">Race times and E / M / T / I / R training paces, transcribed verbatim from Daniels' Running Formula, 3rd ed.</p>
+          <div class="cite"><b>Daniels 3e</b> Table 1 + 2</div><div class="cite">Snapshot-tested</div></div>
+        <div class="eng"><div class="ey">Intensity distribution</div><h4>Pyramidal, then polarized</h4>
+          <p>Pyramidal through base and build to grow threshold capacity, polarized in the peak to sharpen VO2max while preserving it.</p>
+          <div class="tid"><div class="b e"><div class="v tnum">80%</div><div class="k">Easy</div></div><div class="b t"><div class="v tnum">5%</div><div class="k">Threshold</div></div><div class="b i"><div class="v tnum">15%</div><div class="k">Hard</div></div></div></div>
+        <div class="eng"><div class="ey">Periodization</div><h4>Four phases, sequenced</h4>
+          <p>Base, build, peak, taper across 16 to 24 weeks. Marathon-specific work peaks last, not VO2max. Adaptation lives in the deload.</p></div>
+        <div class="eng"><div class="ey">Body signals</div><h4>Readiness, honestly</h4>
+          <p>HRV, resting HR, sleep, and a subjective check-in compose readiness. Each input is context-filtered for heat, race recency, and illness before it counts.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Research as the mastermind</span></div>
+  </section>
+
+  <!-- 13 · DATA FLOW -->
+  <section class="slide" id="s13">
+    <div class="inner">
+      <div class="kicker green"><span class="ln"></span>12 · Sync</div>
+      <h2 class="bigtitle t-md">Plan flows down. Runs flow up.</h2>
+      <div class="pipe">
+        <div class="node web"><div class="ic">Build</div><h4>Web</h4><p>Plan and edit the cycle.</p></div>
+        <div class="arrows"><span class="down">↓ plan</span><span class="up">↑ run</span></div>
+        <div class="node be"><div class="ic">Brain</div><h4>Backend</h4><p>Coach reconciles plan and actual.</p></div>
+        <div class="arrows"><span class="down">↓ plan</span><span class="up">↑ run</span></div>
+        <div class="node ph"><div class="ic">Decide</div><h4>iPhone</h4><p>Bridge and auth. Sends today to the watch.</p></div>
+        <div class="arrows"><span class="down">↓ plan</span><span class="up">↑ run</span></div>
+        <div class="node wt"><div class="ic">Execute</div><h4>Watch</h4><p>Runs the workout, writes it back.</p></div>
+      </div>
+      <div class="flow-legend"><span><b class="dn">↓ Plan flow</b> &nbsp;web to backend to phone to watch</span><span><b class="upp">↑ Activity flow</b> &nbsp;watch to phone to backend to web</span></div>
+      <div class="integrations">
+        <span class="pill"><span class="d" style="background:var(--green)"></span>Apple HealthKit</span>
+        <span class="pill"><span class="d" style="background:var(--orange)"></span>Strava</span>
+        <span class="pill"><span class="d" style="background:var(--amber)"></span>Garmin Connect</span>
+        <span class="pill"><span class="d" style="background:var(--ink)"></span>Coros</span>
+        <span class="pill"><span class="d" style="background:var(--warn)"></span>Whoop</span>
+        <span class="pill"><span class="d" style="background:#7a5cff"></span>Oura</span>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Sync architecture</span></div>
+  </section>
+
+  <!-- 14 · ATHLETE -->
+  <section class="slide" id="s14">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>13 · Grounded</div>
+      <h2 class="bigtitle t-md">Built for a real runner.</h2>
+      <div class="athlete">
+        <div>
+          <p class="lead" style="margin-bottom:22px">Not a persona. A competitive marathoner with real data, a real last race, and a real next one.
+            The coach reacts to what actually happened, not to an average.</p>
+          <div class="stat-cards">
+            <div class="scard blue"><div class="num tnum">48<small>bpm</small></div><div class="lbl">Resting HR</div><div class="ctx">trending down, 8-week</div></div>
+            <div class="scard green"><div class="num tnum">38<small>mi</small></div><div class="lbl">Week volume</div><div class="ctx">rebuilding post-race</div></div>
+            <div class="scard orange"><div class="num tnum">6:31<small>/mi</small></div><div class="lbl">Threshold pace</div><div class="ctx">from current VDOT</div></div>
+            <div class="scard gold"><div class="num tnum">18<small>mi</small></div><div class="lbl">Longest recent</div><div class="ctx">long-run progression</div></div>
+          </div>
+        </div>
+        <div class="race-card">
+          <div class="ey">Next A-race</div>
+          <div class="nm">California<br>International<br>Marathon</div>
+          <div class="dt">Sacramento · December</div>
+          <div class="cd"><span class="n tnum">198</span><span class="u">days out</span></div>
+          <div style="margin-top:16px;font-size:12.5px;color:rgba(255,255,255,.9);font-weight:500;line-height:1.5">Last build closed at Big Sur in April. Now base into build, the race a quiet line until it climbs.</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>The athlete</span></div>
+  </section>
+
+  <!-- 15 · ROADMAP -->
+  <section class="slide" id="s15">
+    <div class="inner">
+      <div class="kicker"><span class="ln"></span>14 · Surface map</div>
+      <h2 class="bigtitle t-md">The whole surface, mapped.</h2>
+      <div class="map-grid">
+        <div>
+          <div class="ey" style="margin-bottom:12px">Web · the command center</div>
+          <div class="pages">
+            <div class="p live"><div class="nm">Overview</div><div class="jb">Where am I, what today</div></div>
+            <div class="p live"><div class="nm">Training</div><div class="jb">Plan, paces, why</div></div>
+            <div class="p live"><div class="nm">Races</div><div class="jb">Upcoming + recap</div></div>
+            <div class="p live"><div class="nm">Health</div><div class="jb">Recovery, biometrics</div></div>
+            <div class="p live"><div class="nm">Log</div><div class="jb">Activity feed</div></div>
+            <div class="p live"><div class="nm">Runs</div><div class="jb">Detail + reconcile</div></div>
+            <div class="p live"><div class="nm">Plan</div><div class="jb">Cycle builder</div></div>
+            <div class="p live"><div class="nm">Profile</div><div class="jb">Baselines, integrations</div></div>
+            <div class="p"><div class="nm">Coach</div><div class="jb">Ask anything</div></div>
+          </div>
+          <div class="legend"><span><span class="dot"></span>Built and live in the web app</span></div>
+        </div>
+        <div class="watch-scope">
+          <h4>Apple Watch · MVP</h4>
+          <div class="scope-row"><span>Today's workout, ready to start</span><span class="yes">In</span></div>
+          <div class="scope-row"><span>Interval-by-interval execution</span><span class="yes">In</span></div>
+          <div class="scope-row"><span>Transition + drift haptics</span><span class="yes">In</span></div>
+          <div class="scope-row"><span>Manual lap and completion</span><span class="yes">In</span></div>
+          <div class="scope-row"><span>HealthKit writeback</span><span class="yes">In</span></div>
+          <div class="scope-row"><span>Complications, maps, standalone</span><span class="no">Deferred</span></div>
+          <div class="scope-row"><span>Coaching prose on the wrist</span><span class="no">Never</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Faff.run</span><span>Surface map · 6 in, 8 deferred on watch</span></div>
+  </section>
+
+  <!-- 16 · CLOSE -->
+  <section class="slide" id="s16">
+    <div class="inner">
+      <div class="close-mark grad">Faff.</div>
+      <div class="close-tag">Train by what today actually is. <span>Web to plan. iPhone to decide. Watch to execute. One coach behind all three.</span></div>
+      <div class="close-meta"><span>Light · bold type</span><span>Coach voice · cited doctrine</span><span>Three surfaces · one brain</span></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function(){
+  var deck=document.getElementById('deck');
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var dots=document.getElementById('dots');
+  var progress=document.getElementById('progress');
+  var hint=document.getElementById('hint');
+  var current=0;
+  slides.forEach(function(s,i){var b=document.createElement('button');b.setAttribute('aria-label','Slide '+(i+1));b.addEventListener('click',function(){s.scrollIntoView();});dots.appendChild(b);});
+  var dotBtns=[].slice.call(dots.children);
+  function setActive(i){current=i;dotBtns.forEach(function(b,j){b.classList.toggle('on',j===i);});progress.style.width=(i/(slides.length-1)*100)+'%';}
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting)setActive(slides.indexOf(e.target));});},{root:deck,threshold:0.55});
+  slides.forEach(function(s){io.observe(s);});
+  deck.addEventListener('scroll',function(){hint.classList.add('gone');},{once:true});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'||e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();if(current<slides.length-1)slides[current+1].scrollIntoView();}
+    else if(e.key==='ArrowUp'||e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();if(current>0)slides[current-1].scrollIntoView();}
+    else if(e.key==='Home'){slides[0].scrollIntoView();} else if(e.key==='End'){slides[slides.length-1].scrollIntoView();}
+  });
+  setActive(0);
+})();
+</script>
+</body>
+</html>
