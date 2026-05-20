@@ -41,7 +41,7 @@ export type Level = 'beginner' | 'intermediate' | 'advanced';
 
 /** Bump when the builder algorithm changes significantly. Plans authored
  *  at an older version are transparently rewritten on next load. */
-export const BUILDER_VERSION = 19;
+export const BUILDER_VERSION = 20;
 
 export interface BuildPlanRace {
   id: string;
@@ -483,18 +483,33 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     const weeklyMi = curve.volumeMi[w];
 
     // ── Long run ────────────────────────────────────────────────
+    // Anchor early long runs to the athlete's recent longest *training*
+    // run (excludes races), so the plan progresses FROM proven fitness
+    // instead of ramping up to a distance they already cover — e.g. an
+    // 11 mi runner shouldn't be prescribed a 10.5 mi "build-up" long.
+    // Capped at peakLongTarget (never start above the plan's peak) and
+    // suppressed on cutback/taper weeks, which intentionally pull back.
+    // The single-jump ceiling stays governed by the 110%-of-recent rule
+    // (Research/00a §"The 10% rule — reconsidered": a single long run
+    // should not exceed 110% of the longest run in the prior 30 days).
+    const recentLongFloor = Math.min(
+      round1(state.volume.longestTrainingRunLast28Mi ?? 0),
+      peakLongTarget,
+    );
     let longMi = 0;
     if (phaseSlice.label !== 'RACE_WEEK' && shape.some(d => d.isLong)) {
       if (phaseSlice.label === 'TAPER') {
         longMi = round1(peakLongTarget * 0.50);
+      } else if (curve.isCutback[w]) {
+        longMi = round1(peakLongTarget * 0.75);
       } else {
         // Scale toward peakLongTarget proportionally with weekly volume.
-        // Minimum: 60% of peakLong in BASE so early weeks aren't trivial.
+        // Minimum: 60% of peakLong in BASE so early weeks aren't trivial,
+        // and never below the athlete's recent proven long.
         const scaledLong = round1(peakLongTarget * Math.min(1, weeklyMi / peakVol));
         longMi = phaseSlice.label === 'BASE'
-          ? Math.max(scaledLong, round1(peakLongTarget * 0.60))
-          : scaledLong;
-        if (curve.isCutback[w]) longMi = round1(peakLongTarget * 0.75);
+          ? Math.max(scaledLong, round1(peakLongTarget * 0.60), recentLongFloor)
+          : Math.max(scaledLong, recentLongFloor);
       }
       // Hard cap: long run ≤ 50% of weekly. Lower-volume plans (e.g. HM beginner
       // at 22 mpw) legitimately have long runs = 40-50% of weekly volume.
