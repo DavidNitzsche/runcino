@@ -451,18 +451,20 @@ struct RacesView: View {
             }
             if let recent = overview.state?.races?.recent, !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("RECENT").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
-                    ForEach(Array(recent.prefix(5).enumerated()), id: \.offset) { _, rr in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(rr.name ?? "").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.ink)
-                                Text("\(rr.date ?? "") · \(OverviewFormat.distance(rr.distanceMi)) mi").font(Faff.F.inter(9)).foregroundStyle(Faff.C.textDim)
+                    Text("RECENT").font(Faff.F.inter(10, .semibold)).tracking(1.4)
+                        .foregroundStyle(Faff.C.textDim)
+                        .padding(.bottom, 14)
+                    ForEach(Array(recent.prefix(5).enumerated()), id: \.offset) { i, rr in
+                        if i > 0 { Divider().overlay(Faff.C.divider).padding(.vertical, 13) }
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(rr.name ?? "").font(Faff.F.inter(13.5, .semibold)).foregroundStyle(Faff.C.ink)
+                                Text("\(Self.prettyDate(rr.date ?? "")) · \(OverviewFormat.distance(rr.distanceMi)) mi")
+                                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
                             }
-                            Spacer()
-                            Text(Self.finish(rr.finishS)).font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                            Spacer(minLength: 8)
+                            Text(Self.finish(rr.finishS)).font(Faff.F.display(19)).foregroundStyle(Faff.C.ink)
                         }
-                        .padding(.vertical, 9)
-                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
                     }
                 }.faffCard()
             }
