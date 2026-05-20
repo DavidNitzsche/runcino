@@ -80,7 +80,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)} .w-eye.orange{color:var(--orange)}
 .w-clock{font-size:11px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
 .w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
-.w-mid{flex:1;display:flex;flex-direction:column;justify-content:center} /* hero+ref centered between the top strip and the bottom stats */
+.w-mid{flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center} /* hero+ref centered (vertically and horizontally) between the top strip and the bottom stats */
 /* whole-workout segment strip */
 .w-seg{display:flex;gap:2px;margin-top:6px}
 .w-seg i{height:4px;border-radius:2px;background:rgba(255,255,255,.16)}
@@ -119,9 +119,10 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-dots i.work{flex:1;background:var(--orange)} .w-dots i.rec{flex:.5;background:rgba(232,93,38,.4)}
 .w-dots i.warm{flex:1.4;background:rgba(255,255,255,.32)} .w-dots i.cool{flex:1.4;background:rgba(255,255,255,.32)}
 .w-start{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--green);color:#04130d;border-radius:30px;padding:13px;font-family:var(--f-sub);font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
-.w-rest{flex:1;display:flex;flex-direction:column;justify-content:center}
-.w-rest .big{font-family:var(--f-display);font-size:60px;line-height:.8;letter-spacing:-1px;color:var(--green)}
-.w-rest .sub{font-size:11px;color:var(--wt1);font-weight:500;line-height:1.4;margin-top:8px}
+.w-rest{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.w-rest .big{font-family:var(--f-display);font-size:70px;line-height:.78;letter-spacing:-1px;color:var(--green);margin-top:4px}
+.w-rest .sub{font-size:12.5px;color:var(--wt1);font-weight:500;line-height:1.4;margin-top:10px;max-width:150px}
+.w-rest .rstat{font-size:13px;font-weight:700;letter-spacing:.3px;color:var(--wt2);margin-top:8px;font-variant-numeric:tabular-nums}
 
 /* countdown / transition */
 .w-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
@@ -234,7 +235,8 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-rest">
             <div class="w-eye green">Rest day</div>
             <div class="big">REST</div>
-            <div class="sub">Recovery is the workout. HRV 68, resting HR 48. Easy walk if you want it.</div>
+            <div class="sub">Recovery is the workout. Easy walk if you want it.</div>
+            <div class="rstat">HRV 68 · RHR 48</div>
           </div>
         </div></div>
         <div class="lbl"><b>Home · rest day</b>No prescription. States it plainly,<br>shows the body read.</div>
