@@ -591,6 +591,36 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_health_samples_user_type_date ON health_samples (user_id, sample_type, sample_date DESC);`);
 
+    // workout_completions — structured result of executing a watch
+    // workout (docs/native/01-watchos-scoping.md §6).  The companion
+    // endpoint POST /api/watch/workouts/complete writes here; distinct
+    // from health_samples (biometric time-series).  Stores prescribed-
+    // vs-executed per-interval data in the phases JSONB so coaching
+    // surfaces can compare on next render.
+    //
+    // Idempotent: UNIQUE(user_id, workout_id) — the iPhone HealthKit
+    // observer can fire more than once for the same completed workout,
+    // so re-POSTing the same workoutId UPSERTs rather than duplicating.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workout_completions (
+        id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        workout_id         TEXT NOT NULL,
+        status             TEXT NOT NULL,
+        started_at         TIMESTAMPTZ NOT NULL,
+        completed_at       TIMESTAMPTZ NOT NULL,
+        total_distance_mi  NUMERIC,
+        total_duration_sec INTEGER NOT NULL,
+        avg_hr             INTEGER,
+        max_hr             INTEGER,
+        phases             JSONB NOT NULL,
+        source             TEXT NOT NULL DEFAULT 'apple_watch',
+        recorded_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, workout_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_workout_completions_user_date ON workout_completions (user_id, completed_at DESC);`);
+
     // Auto-promote the legacy owner to admin + active on every boot so
     // we can never lock the founder out of the admin panel.
     const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();

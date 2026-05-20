@@ -1,0 +1,211 @@
+//
+//  WatchWorkoutModels.swift
+//  FaffWatch
+//
+//  Data shapes for the watch app.  The INCOMING workout mirrors the
+//  backend GET /api/watch/today payload (and the iPhone target's
+//  Faff/API.swift WatchWorkout) — duplicated here per
+//  docs/native/03-watchos-target-setup.md ("v0 duplication is fine;
+//  consolidate later" once a shared module exists).
+//
+//  The OUTGOING completion mirrors the backend POST
+//  /api/watch/workouts/complete body (web/lib/watch-completion.ts), so
+//  when WatchConnectivity + HealthKit writeback land (phases 4-6) the
+//  engine's result can be sent straight up with no reshaping.
+//
+//  This is the UI-shell phase (scoping step 3): timer-driven, no
+//  HKWorkoutSession yet, so live pace/HR fields are nil here.
+//
+
+import Foundation
+
+// MARK: - Incoming · today's prescribed workout
+
+enum WatchPhaseType: String, Codable {
+    case warmup, work, recovery, cooldown
+}
+
+enum WatchHaptic: String, Codable {
+    case start
+    case transitionWork = "transition-work"
+    case transitionRecovery = "transition-recovery"
+    case transitionCooldown = "transition-cooldown"
+    case end
+}
+
+struct WatchPhase: Codable, Identifiable {
+    /// Stable identity for SwiftUI lists · the cursor index assigned at
+    /// decode time (the backend payload has no per-phase id).
+    var id: Int { index }
+    let index: Int
+    let type: WatchPhaseType
+    let label: String
+    let durationSec: Int
+    let targetPaceSPerMi: Int?
+    let tolerancePaceSPerMi: Int?
+    let haptic: WatchHaptic
+
+    /// The backend payload omits `index` (the phases array is ordered
+    /// and the watch walks it with a cursor).  We assign it during
+    /// decode via WatchWorkout's custom init so each phase carries its
+    /// own position for labels + completion reporting.
+    init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
+         targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic) {
+        self.index = index
+        self.type = type
+        self.label = label
+        self.durationSec = durationSec
+        self.targetPaceSPerMi = targetPaceSPerMi
+        self.tolerancePaceSPerMi = tolerancePaceSPerMi
+        self.haptic = haptic
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic
+    }
+
+    /// Decoding without an index — used only when a phase is decoded in
+    /// isolation.  WatchWorkout normally re-stamps indices on decode.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.index = 0
+        self.type = try c.decode(WatchPhaseType.self, forKey: .type)
+        self.label = try c.decode(String.self, forKey: .label)
+        self.durationSec = try c.decode(Int.self, forKey: .durationSec)
+        self.targetPaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .targetPaceSPerMi)
+        self.tolerancePaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .tolerancePaceSPerMi)
+        self.haptic = try c.decode(WatchHaptic.self, forKey: .haptic)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(type, forKey: .type)
+        try c.encode(label, forKey: .label)
+        try c.encode(durationSec, forKey: .durationSec)
+        try c.encodeIfPresent(targetPaceSPerMi, forKey: .targetPaceSPerMi)
+        try c.encodeIfPresent(tolerancePaceSPerMi, forKey: .tolerancePaceSPerMi)
+        try c.encode(haptic, forKey: .haptic)
+    }
+}
+
+struct WatchWorkout: Codable {
+    let workoutId: String
+    let name: String
+    let summary: String
+    let totalEstimatedMinutes: Int
+    let phases: [WatchPhase]
+    let completionEndpoint: String
+    let expiresAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
+    }
+
+    init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
+         phases: [WatchPhase], completionEndpoint: String, expiresAt: String) {
+        self.workoutId = workoutId
+        self.name = name
+        self.summary = summary
+        self.totalEstimatedMinutes = totalEstimatedMinutes
+        self.phases = phases
+        self.completionEndpoint = completionEndpoint
+        self.expiresAt = expiresAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.workoutId = try c.decode(String.self, forKey: .workoutId)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.summary = try c.decode(String.self, forKey: .summary)
+        self.totalEstimatedMinutes = try c.decode(Int.self, forKey: .totalEstimatedMinutes)
+        self.completionEndpoint = try c.decode(String.self, forKey: .completionEndpoint)
+        self.expiresAt = try c.decode(String.self, forKey: .expiresAt)
+        // Re-stamp each phase with its cursor index.
+        let raw = try c.decode([WatchPhase].self, forKey: .phases)
+        self.phases = raw.enumerated().map { (i, p) in
+            WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
+                       targetPaceSPerMi: p.targetPaceSPerMi,
+                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic)
+        }
+    }
+}
+
+// MARK: - Outgoing · completion writeback (phase 6)
+
+struct WatchCompletionPhase: Encodable {
+    let index: Int
+    let type: String
+    let label: String
+    let targetPaceSPerMi: Int?
+    let actualPaceSPerMi: Int?
+    let actualDurationSec: Int
+    let avgHr: Int?
+    let completed: Bool
+}
+
+struct WatchCompletion: Encodable {
+    let workoutId: String
+    let startedAt: String
+    let completedAt: String
+    let status: String          // "completed" | "partial" | "abandoned"
+    let totalDistanceMi: Double?
+    let totalDurationSec: Int
+    let avgHr: Int?
+    let maxHr: Int?
+    let phases: [WatchCompletionPhase]
+}
+
+// MARK: - Sample · drives the simulator UI flow before WCSession exists
+
+extension WatchWorkout {
+    /// A hardcoded threshold session so the shell can be exercised in
+    /// the simulator without a paired iPhone (WatchConnectivity lands
+    /// in a later phase).  Mirrors the "Threshold · Cruise Intervals"
+    /// catalog entry in web/lib/watch-workout.ts.
+    static var sample: WatchWorkout {
+        var phases: [WatchPhase] = []
+        var idx = 0
+        func add(_ type: WatchPhaseType, _ label: String, _ sec: Int,
+                 target: Int?, tol: Int?, haptic: WatchHaptic) {
+            phases.append(WatchPhase(index: idx, type: type, label: label, durationSec: sec,
+                                     targetPaceSPerMi: target, tolerancePaceSPerMi: tol, haptic: haptic))
+            idx += 1
+        }
+        add(.warmup, "Warmup", 600, target: nil, tol: nil, haptic: .start)
+        for rep in 1...5 {
+            add(.work, "Interval \(rep)/5", 420, target: 391, tol: 10, haptic: .transitionWork)
+            if rep < 5 {
+                add(.recovery, "Recovery \(rep)/5", 90, target: nil, tol: nil, haptic: .transitionRecovery)
+            }
+        }
+        add(.cooldown, "Cooldown", 600, target: nil, tol: nil, haptic: .transitionCooldown)
+        let total = phases.reduce(0) { $0 + $1.durationSec }
+        return WatchWorkout(
+            workoutId: "sample-threshold",
+            name: "Threshold · Cruise Intervals",
+            summary: "5×7 min @ 6:31 · 90s rec",
+            totalEstimatedMinutes: total / 60,
+            phases: phases,
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2026-05-21T08:00:00Z"
+        )
+    }
+}
+
+// MARK: - Pace formatting helpers
+
+enum PaceFormat {
+    /// "6:31" from 391 s/mi.
+    static func mmss(_ secondsPerMile: Int) -> String {
+        let m = secondsPerMile / 60
+        let s = secondsPerMile % 60
+        return "\(m):\(String(format: "%02d", s))"
+    }
+
+    /// "2:15" from 135 seconds (durations / elapsed clocks).
+    static func clock(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return "\(m):\(String(format: "%02d", s))"
+    }
+}
