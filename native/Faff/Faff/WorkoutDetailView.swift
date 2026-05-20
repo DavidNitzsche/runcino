@@ -21,14 +21,18 @@ struct WorkoutDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
-                Capsule().fill(Faff.C.textFaint).frame(width: 38, height: 5)
-                    .frame(maxWidth: .infinity).padding(.top, 8)
-
-                Text(eyebrow.uppercased())
-                    .font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
-                Text(titleLine)
-                    .font(Faff.F.display(46)).tracking(-0.5).foregroundStyle(Faff.C.ink)
-                    .lineSpacing(-8).fixedSize(horizontal: false, vertical: true)
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text(eyebrow.uppercased())
+                            .font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                        Text(titleLine)
+                            .font(Faff.F.display(46)).tracking(-0.5).foregroundStyle(Faff.C.ink)
+                            .lineSpacing(-8).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    SheetCloseButton { dismiss() }
+                }
 
                 if let steps = dw?.detail?.steps, !steps.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {

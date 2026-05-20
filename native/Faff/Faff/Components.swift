@@ -50,10 +50,35 @@ struct FaffTabBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity)
         .background(Faff.C.bg)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
+    }
+}
+
+// MARK: - Sheet chrome (grab handle + close) — every sheet must be exitable
+
+struct SheetCloseButton: View {
+    var action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Faff.C.textMuted)
+                .frame(width: 30, height: 30)
+                .background(Faff.C.pillBg)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct SheetGrabHandle: View {
+    var body: some View {
+        Capsule().fill(Faff.C.textFaint).frame(width: 38, height: 5)
+            .frame(maxWidth: .infinity).padding(.top, 8)
     }
 }
 

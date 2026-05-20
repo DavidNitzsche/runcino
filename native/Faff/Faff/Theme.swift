@@ -76,7 +76,7 @@ enum Faff {
         static let tilePadding: CGFloat  = 12   // metric-tile interior
         static let tileGap: CGFloat      = 8    // gap between tiles in the grid
         static let scrollTop: CGFloat    = 12   // inset under the sticky bar
-        static let scrollBottom: CGFloat = 22   // inset before the tab bar
+        static let scrollBottom: CGFloat = 30   // breathing room before the tab bar
     }
 
     // ── Radii ─────────────────────────────────────────────────────

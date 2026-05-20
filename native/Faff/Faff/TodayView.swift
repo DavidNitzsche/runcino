@@ -15,15 +15,25 @@ struct TodayView: View {
     var onWhy: () -> Void = {}
     var onOpenWorkout: () -> Void = {}
 
+    @State private var selected: String?   // nil = today
+
+    private var selDate: String { selected ?? overview.today ?? "" }
+    private var selDay: OPlanDay? { overview.planWeekWorkouts?.first { $0.dateISO == selDate } }
+    private var isTodaySel: Bool { selDate == overview.today }
+    private var isPastSel: Bool { selDate < (overview.today ?? "") }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 dateStrip(overview)
-                coachBrief(overview)
-                if overview.todayWorkout.isRest { restHero(overview) }
-                else { runHero(overview) }
-                readinessCard(overview)
-                CheckInCard()
+                coachLineView
+                heroView
+                if isTodaySel {
+                    readinessCard(overview)
+                    CheckInCard()
+                } else if !isPastSel {
+                    previewReadiness
+                }
             }
             .padding(.horizontal, Faff.S.pageEdge)
             .padding(.top, Faff.S.scrollTop)
@@ -32,27 +42,71 @@ struct TodayView: View {
         .background(Faff.C.bg)
     }
 
+    @ViewBuilder private var heroView: some View {
+        if isTodaySel {
+            if overview.todayWorkout.isRest { restHero(overview) } else { runHero(overview) }
+        } else if let d = selDay {
+            if isPastSel { recapHero(d) } else { previewHero(d) }
+        }
+    }
+    @ViewBuilder private var coachLineView: some View {
+        if isTodaySel { coachBrief(overview) }
+        else if let d = selDay {
+            Text(dayLine(d)).font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink).lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 2)
+        }
+    }
+
     // ── Date strip ────────────────────────────────────────────────
     private func dateStrip(_ o: OverviewResponse) -> some View {
         let days = o.planWeekWorkouts ?? []
         return HStack(spacing: 4) {
             ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 let isToday = day.dateISO == o.today
-                VStack(spacing: 5) {
-                    Text(dow(day.dow)).font(Faff.F.inter(9.5, .bold)).tracking(0.5)
-                        .foregroundStyle(isToday ? Faff.C.race : Faff.C.textDim)
-                    Text(dom(day.dateISO)).font(Faff.F.display(20))
-                        .foregroundStyle(isToday ? Faff.C.race : Faff.C.textMuted)
-                    statusDot(o, day).frame(width: 5, height: 5)
+                let isSel = day.dateISO == selDate
+                Button {
+                    selected = (day.dateISO == o.today) ? nil : day.dateISO
+                } label: {
+                    VStack(spacing: 5) {
+                        Text(dow(day.dow)).font(Faff.F.inter(9.5, .bold)).tracking(0.5)
+                            .foregroundStyle(isSel ? .white : (isToday ? Faff.C.race : Faff.C.textDim))
+                        Text(dom(day.dateISO)).font(Faff.F.display(20))
+                            .foregroundStyle(isSel ? .white : (isToday ? Faff.C.race : Faff.C.textMuted))
+                        statusDot(o, day).frame(width: 5, height: 5)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(isSel ? Faff.C.ink : .clear, in: RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Faff.R.tile)
+                            .stroke(Faff.C.race.opacity(0.55), lineWidth: (isToday && !isSel) ? 1.5 : 0)
+                    )
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Faff.R.tile)
-                        .stroke(Faff.C.race.opacity(0.55), lineWidth: isToday ? 1.5 : 0)
-                )
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    private func dayLine(_ d: OPlanDay) -> String {
+        let dw = DerivedWorkout(plan: d, fallback: nil)
+        let wd = weekday(d.dateISO)
+        if dw.isRest { return "\(wd) is a rest day — recovery is part of the work." }
+        let mi = OverviewFormat.distance(d.distanceMi)
+        if isPastSel {
+            let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
+            if overview.isPlanDayDone(d) { return "\(wd)'s \(dw.label.lowercased()), logged — \(OverviewFormat.distance(actual)) of \(mi) mi." }
+            return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned, not logged."
+        }
+        return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned. Tap Open workout for the structure."
+    }
+    private func weekday(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "That day" }
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let dt = inF.date(from: String(iso.prefix(10))) else { return "That day" }
+        let out = DateFormatter(); out.dateFormat = "EEEE"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: dt)
     }
     @ViewBuilder private func statusDot(_ o: OverviewResponse, _ d: OPlanDay) -> some View {
         let isRest = (d.type ?? "") == "rest"
@@ -152,6 +206,90 @@ struct TodayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .faffCard(padding: 17)
+    }
+
+    // ── Past day · recap hero ─────────────────────────────────────
+    private func recapHero(_ d: OPlanDay) -> some View {
+        let dw = DerivedWorkout(plan: d, fallback: nil)
+        let done = overview.isPlanDayDone(d)
+        let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
+        let rest = dw.isRest
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(eyebrowDate(d.dateISO)) · \(rest ? "REST" : (done ? "DONE" : "MISSED"))")
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if !rest { Badge(text: done ? "On plan" : "Missed", tone: done ? .green : .amber) }
+            }
+            Text((rest ? "REST" : heroTitle(dw)).uppercased())
+                .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
+                .padding(.top, 9).padding(.bottom, 14)
+            if !rest {
+                HStack(spacing: Faff.S.inlineGap) {
+                    StatPill(value: OverviewFormat.distance(d.distanceMi), unit: "mi", label: "Planned")
+                    StatPill(value: done ? OverviewFormat.distance(actual) : "—", unit: done ? "mi" : nil, label: "Ran", accent: done)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
+    }
+
+    // ── Future day · preview hero ─────────────────────────────────
+    private func previewHero(_ d: OPlanDay) -> some View {
+        let dw = DerivedWorkout(plan: d, fallback: nil)
+        let rest = dw.isRest
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(eyebrowDate(d.dateISO)) · PLANNED")
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Badge(text: "Upcoming", tone: .grey)
+            }
+            Text((rest ? "REST" : heroTitle(dw)).uppercased())
+                .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
+                .padding(.top, 9).padding(.bottom, 14)
+            if !rest {
+                HStack(spacing: Faff.S.inlineGap) {
+                    StatPill(value: OverviewFormat.distance(dw.distanceMi), unit: "mi", label: "Distance")
+                    StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: dw.isQuality)
+                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? "—", unit: dw.durationMin != nil ? "min" : nil, label: "Time")
+                }
+                GhostButton(title: "Open workout") { onOpenWorkout() }.padding(.top, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
+    }
+
+    private var previewReadiness: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Badge(text: "\(shortWeekday(selDate)) AM", tone: .grey)
+            }
+            HStack(spacing: 14) {
+                ReadinessRing(score: nil, size: 54)
+                Text("Your readiness score posts \(weekday(selDate)) morning, once sleep & HRV sync.")
+                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).faffCard()
+    }
+
+    private func eyebrowDate(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "" }
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let dt = inF.date(from: String(iso.prefix(10))) else { return "" }
+        let out = DateFormatter(); out.dateFormat = "EEE MMM d"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: dt)
+    }
+    private func shortWeekday(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "" }
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let dt = inF.date(from: String(iso.prefix(10))) else { return "" }
+        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: dt)
     }
 
     // ── Readiness ─────────────────────────────────────────────────

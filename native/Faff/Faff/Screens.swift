@@ -598,9 +598,14 @@ struct WhyThisSheet: View {
         let dw = overview.todayWorkout
         return ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("COACH · WHY THIS WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
-                    Text("Why \(dw.label.lowercased())").font(Faff.F.display(34)).foregroundStyle(Faff.C.ink)
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("COACH · WHY THIS WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                        Text("Why \(dw.label.lowercased())").font(Faff.F.display(34)).foregroundStyle(Faff.C.ink)
+                    }
+                    Spacer()
+                    SheetCloseButton { dismiss() }
                 }
                 faffMarkdown(overview.composedCoach)
                     .font(Faff.F.inter(15)).foregroundStyle(Faff.C.ink).lineSpacing(5)
@@ -613,7 +618,7 @@ struct WhyThisSheet: View {
                 }
                 PrimaryButton(title: "Open today's coach read", icon: "questionmark.circle") { dismiss(); onOpenCoach() }
             }
-            .padding(.horizontal, Faff.S.pageEdge).padding(.top, 24).padding(.bottom, Faff.S.scrollBottom)
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
     }
@@ -629,9 +634,12 @@ struct MetricDetailSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
-                Capsule().fill(Faff.C.textFaint).frame(width: 38, height: 5)
-                    .frame(maxWidth: .infinity).padding(.top, 8)
-                Text("APPLE HEALTH").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    Text("APPLE HEALTH").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    SheetCloseButton { dismiss() }
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(metric.title) · 7-day average").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
