@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff.run · native mockups</title>
+<link rel="stylesheet" href="assets/styles.css">
+<style>
+  body { background: #f4f4f5; }
+  .index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 30px; }
+  .index-card {
+    background: white;
+    border: 1px solid #e5e5e7;
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 150ms;
+  }
+  .index-card:hover { border-color: var(--orange); }
+  .index-card .surface {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #888; margin-bottom: 4px;
+  }
+  .index-card .name {
+    font-family: var(--sf-display); font-size: 18px; font-weight: 600; margin-bottom: 4px;
+  }
+  .index-card .summary {
+    font-size: 13px; color: #5a5a5e; line-height: 1.4;
+  }
+  .toc { background: white; border-radius: 12px; padding: 24px; margin-bottom: 40px; }
+  .toc h2 { font-family: var(--sf-display); font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+  .toc p { font-size: 14px; color: #555; line-height: 1.55; }
+  .surface-section { margin-bottom: 40px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Faff.run · native mockups</h1>
+    <div class="subtitle">Design pass before SwiftUI implementation · 2026-05-19</div>
+  </div>
+
+  <div class="toc">
+    <h2>How to review</h2>
+    <p>
+      Each mockup shows both <strong>light + dark mode side by side</strong>. iPhone screens use an iPhone 16 Pro frame (402×874pt). Watch screens use a 41mm Apple Watch frame (324×394pt usable) — designed for the smallest watch size so larger sizes scale up cleanly. Real data throughout (VDOT 46.6, AFC HM Aug 16, max HR 181, RHR 40).
+    </p>
+    <p style="margin-top: 10px;">
+      Approve, push back, or call out the specific mockup that needs change. Once locked, mockups become the spec for SwiftUI implementation.
+    </p>
+    <p style="margin-top: 10px;">
+      See <a href="design-notes.md" style="color: var(--orange);"><strong>design-notes.md</strong></a> for typography, spacing, color, and HIG-deviation rationale.
+    </p>
+  </div>
+
+  <!-- ─── iPhone screens ─── -->
+  <div class="surface-section">
+    <div class="section-title">iPhone (iOS 26.5 · iPhone 16 Pro · 402×874pt)</div>
+    <div class="index-grid">
+      <a class="index-card" href="iphone/login.html">
+        <div class="surface">iPhone</div>
+        <div class="name">Login</div>
+        <div class="summary">Sign-in screen · email + password</div>
+      </a>
+      <a class="index-card" href="iphone/today.html">
+        <div class="surface">iPhone</div>
+        <div class="name">Today</div>
+        <div class="summary">Today's workout · structured intervals · watch-sync status</div>
+      </a>
+      <a class="index-card" href="iphone/settings.html">
+        <div class="surface">iPhone</div>
+        <div class="name">Settings</div>
+        <div class="summary">Profile · max HR · resting HR · sign out</div>
+      </a>
+      <a class="index-card" href="iphone/history.html">
+        <div class="surface">iPhone</div>
+        <div class="name">History</div>
+        <div class="summary">Recent workouts list · date · type · outcome</div>
+      </a>
+      <a class="index-card" href="iphone/race-detail.html">
+        <div class="surface">iPhone</div>
+        <div class="name">Race detail</div>
+        <div class="summary">A-race countdown + V3 trajectory · AFC HM</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ─── Watch screens ─── -->
+  <div class="surface-section">
+    <div class="section-title">Apple Watch (watchOS 11 · 41mm · 324×394pt usable)</div>
+    <div class="index-grid">
+      <a class="index-card" href="watch/icon-grid.html">
+        <div class="surface">Watch</div>
+        <div class="name">App icon · grid view</div>
+        <div class="summary">How Faff shows up among other apps</div>
+      </a>
+      <a class="index-card" href="watch/idle.html">
+        <div class="surface">Watch</div>
+        <div class="name">Idle · pre-workout</div>
+        <div class="summary">Today's workout summary + Start button</div>
+      </a>
+      <a class="index-card" href="watch/warmup.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · WARMUP</div>
+        <div class="summary">Warmup phase · elapsed/target · current HR + pace</div>
+      </a>
+      <a class="index-card" href="watch/work-interval.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · WORK INTERVAL ⭐</div>
+        <div class="summary">Highest-stakes screen · target vs current pace</div>
+      </a>
+      <a class="index-card" href="watch/recovery.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · RECOVERY</div>
+        <div class="summary">Recovery countdown · no pace gate · next phase preview</div>
+      </a>
+      <a class="index-card" href="watch/cooldown.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · COOLDOWN</div>
+        <div class="summary">Cooldown phase · ease-down</div>
+      </a>
+      <a class="index-card" href="watch/summary.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · SUMMARY</div>
+        <div class="summary">End-of-workout stats · save button</div>
+      </a>
+      <a class="index-card" href="watch/paused.html">
+        <div class="surface">Watch</div>
+        <div class="name">Workout · PAUSED</div>
+        <div class="summary">User-initiated pause · resume / end</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ─── Edge states ─── -->
+  <div class="surface-section">
+    <div class="section-title">Edge states</div>
+    <div class="index-grid">
+      <a class="index-card" href="edge-states/rest-day.html">
+        <div class="surface">iPhone + Watch</div>
+        <div class="name">Rest day · empty</div>
+        <div class="summary">No workout today · how the system behaves</div>
+      </a>
+      <a class="index-card" href="edge-states/loading.html">
+        <div class="surface">iPhone + Watch</div>
+        <div class="name">Loading</div>
+        <div class="summary">Initial fetch · skeleton states</div>
+      </a>
+      <a class="index-card" href="edge-states/error-network.html">
+        <div class="surface">iPhone + Watch</div>
+        <div class="name">Error · network</div>
+        <div class="summary">Can't reach faff.run · retry affordance</div>
+      </a>
+      <a class="index-card" href="edge-states/signals-suspended.html">
+        <div class="surface">iPhone</div>
+        <div class="name">Signals suspended</div>
+        <div class="summary">Injury marker active · L7 paused notice</div>
+      </a>
+      <a class="index-card" href="edge-states/pace-drift.html">
+        <div class="surface">Watch</div>
+        <div class="name">Pace drift</div>
+        <div class="summary">Work interval · pace outside target band</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ─── Side-by-side with web ─── -->
+  <div class="surface-section">
+    <div class="section-title">Side-by-side · web vs iPhone</div>
+    <div class="index-grid">
+      <a class="index-card" href="comparisons/today-card.html">
+        <div class="surface">Comparison</div>
+        <div class="name">TodayCard · web vs iPhone</div>
+        <div class="summary">Verify daily-touch surface feels like same product</div>
+      </a>
+      <a class="index-card" href="comparisons/coach-reads.html">
+        <div class="surface">Comparison</div>
+        <div class="name">Coach Reads · web vs (deferred)</div>
+        <div class="summary">Deep-work card stays on web · note explains why</div>
+      </a>
+      <a class="index-card" href="comparisons/race-countdown.html">
+        <div class="surface">Comparison</div>
+        <div class="name">Race countdown · web vs iPhone</div>
+        <div class="summary">A-race hero block side-by-side</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top: 50px;">
+    <strong>After review</strong>: drop comments next to the mockups that need change, or just message back the screen name + the change. I'll iterate the HTML, you re-review, then we lock the set and start SwiftUI implementation against the approved spec.
+  </div>
+
+</div>
+</body>
+</html>

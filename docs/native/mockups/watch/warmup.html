@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Watch · Warmup phase</title>
+<link rel="stylesheet" href="../assets/styles.css">
+<style>
+  .phase-screen { height: 100%; padding: 18px 16px 14px; display: flex; flex-direction: column; }
+  .phase-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .phase-header .phase-type {
+    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  .phase-header.warmup .phase-type { color: #2c5fc7; }
+  .phase-header .progress-line {
+    flex: 1; height: 3px; background: rgba(255,255,255,0.15);
+    border-radius: 2px; margin-left: 10px; overflow: hidden;
+  }
+  .light .phase-header .progress-line { background: var(--border-l); }
+  .phase-header .progress-line .fill {
+    height: 100%; background: #2c5fc7; width: 22%;
+  }
+
+  .timer-block {
+    text-align: center;
+    margin: 18px 0 12px;
+  }
+  .timer-block .elapsed {
+    font-family: var(--sf-compact);
+    font-size: 56px; font-weight: 800; line-height: 1;
+    letter-spacing: -2px;
+    color: #2c5fc7;
+  }
+  .timer-block .total {
+    font-family: var(--sf-compact);
+    font-size: 14px; font-weight: 500;
+    color: var(--text-l-2); margin-top: 4px;
+  }
+  .dark .timer-block .total { color: var(--text-d-2); }
+
+  .secondary-row {
+    display: flex; justify-content: space-between;
+    margin-top: auto; padding-top: 10px;
+    border-top: 0.5px solid var(--border-l);
+  }
+  .dark .secondary-row { border-top-color: var(--border-d); }
+  .secondary-row .stat {
+    text-align: center; flex: 1;
+  }
+  .secondary-row .stat .num {
+    font-family: var(--sf-compact); font-size: 18px; font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .secondary-row .stat .lbl {
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-l-3); margin-top: 1px;
+  }
+  .dark .secondary-row .stat .lbl { color: var(--text-d-3); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Watch · Workout · WARMUP</h1>
+    <div class="subtitle">Warmup phase · countdown to start of intervals · HR + pace visible but not gated</div>
+    <div class="crumbs"><a href="../index.html">← back to index</a></div>
+  </div>
+
+  <div class="mode-pair">
+
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:48</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header warmup">
+              <div class="phase-type">WARMUP</div>
+              <div class="progress-line"><div class="fill"></div></div>
+            </div>
+            <div class="timer-block">
+              <div class="elapsed">3:18</div>
+              <div class="total">of 15:00</div>
+            </div>
+            <div class="secondary-row">
+              <div class="stat">
+                <div class="num">8:52</div>
+                <div class="lbl">PACE /MI</div>
+              </div>
+              <div class="stat">
+                <div class="num">132</div>
+                <div class="lbl">BPM</div>
+              </div>
+              <div class="stat">
+                <div class="num">0.4</div>
+                <div class="lbl">MI</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:48</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header warmup">
+              <div class="phase-type">WARMUP</div>
+              <div class="progress-line"><div class="fill"></div></div>
+            </div>
+            <div class="timer-block">
+              <div class="elapsed">3:18</div>
+              <div class="total">of 15:00</div>
+            </div>
+            <div class="secondary-row">
+              <div class="stat">
+                <div class="num">8:52</div>
+                <div class="lbl">PACE /MI</div>
+              </div>
+              <div class="stat">
+                <div class="num">132</div>
+                <div class="lbl">BPM</div>
+              </div>
+              <div class="stat">
+                <div class="num">0.4</div>
+                <div class="lbl">MI</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <strong>Design notes</strong>:
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Phase type chip + progress bar at top · spatial orientation ("where am I in the workout")</li>
+      <li>Timer is the BIG number · warmup uses blue color · no pace pressure during warmup</li>
+      <li>Three secondary stats at the bottom · pace / HR / distance · informational only</li>
+      <li>No target pace shown during warmup · the runner is just easing in</li>
+      <li>3-second pre-end haptic fires at 14:57 elapsed · "almost to interval 1"</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

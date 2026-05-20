@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Watch · WORK INTERVAL (the highest-stakes screen)</title>
+<link rel="stylesheet" href="../assets/styles.css">
+<style>
+  .phase-screen { height: 100%; padding: 16px 14px 12px; display: flex; flex-direction: column; }
+  .phase-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .phase-header .phase-type {
+    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--orange);
+  }
+  .phase-header .interval-count {
+    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
+    color: var(--text-l-2);
+  }
+  .dark .phase-header .interval-count { color: var(--text-d-2); }
+
+  .progress-line {
+    width: 100%; height: 3px; background: rgba(255,255,255,0.15);
+    border-radius: 2px; overflow: hidden; margin-bottom: 8px;
+  }
+  .light .progress-line { background: var(--border-l); }
+  .progress-line .fill {
+    height: 100%; background: var(--orange); width: 50%;
+  }
+
+  /* Pace block — the focal element */
+  .pace-block {
+    text-align: center;
+    padding: 6px 0 8px;
+  }
+  .pace-block .target-label {
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-l-3); margin-bottom: 2px;
+  }
+  .dark .pace-block .target-label { color: var(--text-d-3); }
+  .pace-block .target-pace {
+    font-family: var(--sf-compact);
+    font-size: 32px; font-weight: 700; line-height: 1;
+    color: var(--text-l-2); margin-bottom: 8px;
+  }
+  .dark .pace-block .target-pace { color: var(--text-d-2); }
+
+  .current-block {
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .current-block .current-pace {
+    font-family: var(--sf-compact);
+    font-size: 64px; font-weight: 800; line-height: 0.92;
+    letter-spacing: -3px;
+    color: var(--green);
+  }
+  .current-block .delta {
+    font-family: var(--sf-compact);
+    font-size: 16px; font-weight: 600;
+    color: var(--green);
+    margin-top: 2px;
+  }
+
+  .footer-row {
+    display: flex; justify-content: space-between;
+    margin-top: auto; padding-top: 6px;
+    border-top: 0.5px solid var(--border-l);
+  }
+  .dark .footer-row { border-top-color: var(--border-d); }
+  .footer-row .stat { text-align: center; flex: 1; }
+  .footer-row .stat .num {
+    font-family: var(--sf-compact); font-size: 17px; font-weight: 700;
+  }
+  .footer-row .stat .lbl {
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-l-3); margin-top: 1px;
+  }
+  .dark .footer-row .stat .lbl { color: var(--text-d-3); }
+
+  .footer-row .stat .timer {
+    font-family: var(--sf-compact); font-size: 17px; font-weight: 700;
+    color: var(--orange);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Watch · WORK INTERVAL  ⭐ highest-stakes screen</h1>
+    <div class="subtitle">Mid-interval · current pace vs target · 2-second glance window</div>
+    <div class="crumbs"><a href="../index.html">← back to index</a></div>
+  </div>
+
+  <div class="mode-pair">
+
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header">
+              <div class="phase-type">WORK · INTERVAL</div>
+              <div class="interval-count">3 / 6</div>
+            </div>
+            <div class="progress-line"><div class="fill"></div></div>
+
+            <div class="pace-block">
+              <div class="target-label">TARGET</div>
+              <div class="target-pace">6:31</div>
+            </div>
+
+            <div class="current-block">
+              <div class="current-pace">6:29</div>
+              <div class="delta">−2 s/mi</div>
+            </div>
+
+            <div class="footer-row">
+              <div class="stat">
+                <div class="timer">1:37</div>
+                <div class="lbl">REMAINING</div>
+              </div>
+              <div class="stat">
+                <div class="num">168</div>
+                <div class="lbl">BPM</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header">
+              <div class="phase-type">WORK · INTERVAL</div>
+              <div class="interval-count">3 / 6</div>
+            </div>
+            <div class="progress-line"><div class="fill"></div></div>
+
+            <div class="pace-block">
+              <div class="target-label">TARGET</div>
+              <div class="target-pace">6:31</div>
+            </div>
+
+            <div class="current-block">
+              <div class="current-pace">6:29</div>
+              <div class="delta">−2 s/mi</div>
+            </div>
+
+            <div class="footer-row">
+              <div class="stat">
+                <div class="timer">1:37</div>
+                <div class="lbl">REMAINING</div>
+              </div>
+              <div class="stat">
+                <div class="num">168</div>
+                <div class="lbl">BPM</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <strong>Design notes</strong> · this is the most-glanced screen in the entire app:
+    <ul style="margin: 8px 0 0 20px;">
+      <li><strong>Information hierarchy</strong>: target pace (medium) above · current pace (huge, color-coded) is the focal element · delta is a precision signal</li>
+      <li><strong>Color coding</strong>: green = within tolerance band · amber = drifting (>10s/mi delta sustained 5+ sec) · red = sustained >15s/mi (see edge-states/pace-drift.html)</li>
+      <li><strong>"3 / 6"</strong> in the top right gives spatial context · which rep am I on</li>
+      <li><strong>Time remaining in interval</strong> (1:37) is the second-most-important number · runner uses this to pace breathing/effort to the finish</li>
+      <li><strong>No distance or elapsed time shown</strong> · deliberately omitted · the rep ends on time, not distance · less to read at speed</li>
+      <li><strong>No HR target</strong> · per scoping decision (HR-zone-based targeting deferred) · HR shown as informational only</li>
+      <li><strong>2-second glance</strong>: target on top, current in the middle, time remaining bottom · eyes scan top-to-bottom in 1-2 seconds</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

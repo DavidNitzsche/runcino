@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Edge · Rest day</title>
+<link rel="stylesheet" href="../assets/styles.css">
+<style>
+  .empty-content {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0 40px;
+  }
+  .empty-content .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty-content .headline {
+    font-family: var(--sf-display); font-size: 24px; font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .empty-content .sub {
+    font-size: 15px; color: var(--text-l-2); line-height: 1.4;
+  }
+  .dark .empty-content .sub { color: var(--text-d-2); }
+
+  .watch-empty {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0 14px;
+  }
+  .watch-empty .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+  .watch-empty .text {
+    font-family: var(--sf-compact); font-size: 14px; font-weight: 600;
+    line-height: 1.2;
+  }
+  .watch-empty .sub {
+    font-family: var(--sf-compact); font-size: 11px;
+    color: var(--text-l-2); margin-top: 4px;
+  }
+  .dark .watch-empty .sub { color: var(--text-d-2); }
+
+  .tab-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 84px;
+    background: var(--bg-l); border-top: 0.5px solid var(--border-l);
+    display: flex; padding: 8px 0 22px; }
+  .dark .tab-bar { background: var(--bg-d); border-top-color: var(--border-d); }
+  .tab-bar > .tab { flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 4px; color: var(--text-l-3); font-size: 10px; font-weight: 500; }
+  .dark .tab-bar > .tab { color: var(--text-d-3); }
+  .tab-bar > .tab.active { color: var(--orange); }
+  .tab-bar > .tab > .ico { font-size: 24px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Edge state · Rest day</h1>
+    <div class="subtitle">Today is Saturday, the synthetic plan prescribes rest · how the surfaces behave</div>
+    <div class="crumbs"><a href="../index.html">← back to index</a></div>
+  </div>
+
+  <div class="section-title">iPhone</div>
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="iphone-frame light">
+        <div class="dynamic-island"></div>
+        <div class="screen">
+          <div class="status-bar"><span class="time">9:41</span></div>
+          <div class="iphone-content">
+            <div style="padding: 16px 20px 0;">
+              <div style="font-family: var(--sf-display); font-size: 34px; font-weight: 700;">Saturday</div>
+              <div style="font-size: 15px; color: var(--text-l-2); margin-top: 2px;">May 23 · Week 1 · Base</div>
+            </div>
+            <div class="empty-content">
+              <div class="icon">😌</div>
+              <div class="headline">Rest day</div>
+              <div class="sub">Synthetic plan keeps Saturdays open.  Move freely, walk, stretch.  Watch app will stay quiet today.</div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab active"><div class="ico">●</div>Today</div>
+            <div class="tab"><div class="ico">≡</div>History</div>
+            <div class="tab"><div class="ico">🏁</div>Race</div>
+            <div class="tab"><div class="ico">⚙</div>Settings</div>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="iphone-frame dark">
+        <div class="dynamic-island"></div>
+        <div class="screen">
+          <div class="status-bar"><span class="time" style="color: white;">9:41</span></div>
+          <div class="iphone-content">
+            <div style="padding: 16px 20px 0;">
+              <div style="font-family: var(--sf-display); font-size: 34px; font-weight: 700;">Saturday</div>
+              <div style="font-size: 15px; color: var(--text-d-2); margin-top: 2px;">May 23 · Week 1 · Base</div>
+            </div>
+            <div class="empty-content">
+              <div class="icon">😌</div>
+              <div class="headline">Rest day</div>
+              <div class="sub">Synthetic plan keeps Saturdays open.  Move freely, walk, stretch.  Watch app will stay quiet today.</div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab active"><div class="ico">●</div>Today</div>
+            <div class="tab"><div class="ico">≡</div>History</div>
+            <div class="tab"><div class="ico">🏁</div>Race</div>
+            <div class="tab"><div class="ico">⚙</div>Settings</div>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Apple Watch</div>
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:41</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="watch-empty">
+              <div class="icon">😌</div>
+              <div class="text">Rest day</div>
+              <div class="sub">No workout today</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:41</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="watch-empty">
+              <div class="icon">😌</div>
+              <div class="text">Rest day</div>
+              <div class="sub">No workout today</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Design notes</strong>:
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Honest emptiness · no fake-positive "Way to recover!" copy</li>
+      <li>iPhone explains the plan structure briefly so a new runner understands</li>
+      <li>Watch is minimal · same vibe as Apple's native "No workout today" screens</li>
+      <li>No Start button on the watch · nothing to start · removes confusion</li>
+      <li>Backend behavior: <code>GET /api/watch/today</code> returns <code>{ workoutId: null, reason: 'rest' }</code> · client renders this state</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

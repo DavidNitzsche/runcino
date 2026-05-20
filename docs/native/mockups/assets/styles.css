@@ -1,0 +1,474 @@
+/* ─────────────────────────────────────────────────────────────────
+   Faff.run native mockup stylesheet
+   Shared by all iPhone + Apple Watch screen mockups.
+
+   Color palette mirrors faff.run web app:
+     orange (race / primary accent)
+     green (positive / recovery / readiness)
+     amber (warn / drift)
+     red   (error / red-readiness)
+
+   Light + dark modes via .light / .dark class on .screen-frame parent.
+   Both modes ship from v1 per the design brief.
+
+   Typography: -apple-system / system-ui targets SF Pro on iOS and
+   SF Compact on watchOS at the real font stack level.  Web preview
+   here is approximate; SwiftUI implementation gets the real fonts.
+   ───────────────────────────────────────────────────────────────── */
+
+/* ── Reset + tokens ────────────────────────────────────────────── */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Brand */
+  --orange:        #E85D26;
+  --orange-soft:   rgba(232, 93, 38, 0.12);
+  --orange-wash:   rgba(232, 93, 38, 0.06);
+  --green:         #1f6a21;
+  --green-soft:    rgba(31, 106, 33, 0.12);
+  --amber:         #B3450A;
+  --amber-soft:    rgba(179, 69, 10, 0.12);
+  --red:           #c92a2a;
+  --red-soft:      rgba(201, 42, 42, 0.10);
+
+  /* Light mode */
+  --bg-l:          #ffffff;
+  --bg-l-2:        #fafafa;
+  --border-l:      rgba(13, 15, 18, 0.08);
+  --border-l-2:    rgba(13, 15, 18, 0.16);
+  --text-l:        #0D0F12;
+  --text-l-2:      rgba(13, 15, 18, 0.65);
+  --text-l-3:      rgba(13, 15, 18, 0.45);
+
+  /* Dark mode (designed for OLED watch + iPhone) */
+  --bg-d:          #000000;
+  --bg-d-2:        #1c1c1e;
+  --border-d:      rgba(255, 255, 255, 0.10);
+  --border-d-2:    rgba(255, 255, 255, 0.18);
+  --text-d:        #ffffff;
+  --text-d-2:      rgba(255, 255, 255, 0.72);
+  --text-d-3:      rgba(255, 255, 255, 0.50);
+
+  /* Font stacks */
+  --sf-display:    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+  --sf-text:       -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+  --sf-compact:    -apple-system, BlinkMacSystemFont, "SF Compact", "SF Pro Text", sans-serif;
+  --sf-mono:       ui-monospace, "SF Mono", monospace;
+}
+
+html, body {
+  background: #f4f4f5;
+  color: var(--text-l);
+  font-family: var(--sf-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Page layout ───────────────────────────────────────────────── */
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 30px 80px;
+}
+
+.page-header {
+  margin-bottom: 30px;
+}
+
+.page-header h1 {
+  font-family: var(--sf-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.page-header .subtitle {
+  font-size: 15px;
+  color: #5a5a5e;
+  margin-bottom: 14px;
+}
+
+.page-header .crumbs {
+  font-size: 13px;
+  color: #888;
+}
+
+.page-header .crumbs a {
+  color: #555;
+  text-decoration: none;
+  border-bottom: 1px dotted #aaa;
+}
+
+.section-title {
+  font-family: var(--sf-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #888;
+  margin: 36px 0 16px;
+}
+
+.mode-pair {
+  display: flex;
+  gap: 60px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-bottom: 24px;
+}
+
+.mode-pair > .mockup-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mode-pair > .mockup-slot > .mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 14px;
+}
+
+.note {
+  background: #fff8e6;
+  border-left: 3px solid #d4a017;
+  padding: 12px 16px;
+  margin: 20px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4a3c0d;
+  border-radius: 0 4px 4px 0;
+}
+
+.note strong { color: #2f2607; }
+
+/* ─────────────────────────────────────────────────────────────────
+   iPhone 16 Pro device frame
+   Logical points: 402 × 874
+   Display: ~12pt corner radius, Dynamic Island near top
+   ───────────────────────────────────────────────────────────────── */
+
+.iphone-frame {
+  width: 402px;
+  height: 874px;
+  border-radius: 56px;
+  padding: 0;
+  position: relative;
+  background: #1c1c1e;
+  box-shadow:
+    0 0 0 2px #2c2c2e,
+    0 20px 60px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+
+.iphone-frame .screen {
+  position: absolute;
+  inset: 12px;
+  border-radius: 44px;
+  overflow: hidden;
+  background: var(--bg-l);
+  color: var(--text-l);
+}
+
+.iphone-frame.dark .screen {
+  background: var(--bg-d);
+  color: var(--text-d);
+}
+
+/* Dynamic Island · ~125 × 37 centered near top */
+.iphone-frame .dynamic-island {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 125px;
+  height: 37px;
+  background: #000;
+  border-radius: 19px;
+  z-index: 10;
+}
+
+/* Status bar · time + battery indicators */
+.iphone-frame .status-bar {
+  position: relative;
+  height: 54px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px 0 30px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--sf-text);
+}
+
+.iphone-frame .status-bar .time {
+  margin-top: 8px;
+  margin-left: 8px;
+}
+
+.iphone-frame .status-bar .icons {
+  margin-top: 8px;
+  margin-right: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Home indicator at the bottom */
+.iphone-frame .home-indicator {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  background: var(--text-l);
+  border-radius: 3px;
+  opacity: 0.85;
+}
+
+.iphone-frame.dark .home-indicator {
+  background: var(--text-d);
+  opacity: 0.65;
+}
+
+/* Content area inside iPhone screen · sits below status bar */
+.iphone-content {
+  position: absolute;
+  top: 54px;
+  left: 0;
+  right: 0;
+  bottom: 34px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Apple Watch (41mm) device frame
+   Logical points: ~324 × 394 usable
+   The watch has substantial bezel; chrome rounded rectangle with
+   crown indicator on the right side.
+   ───────────────────────────────────────────────────────────────── */
+
+.watch-frame {
+  width: 360px;
+  height: 430px;
+  border-radius: 54px;
+  background: linear-gradient(180deg, #1a1a1c 0%, #2a2a2c 100%);
+  position: relative;
+  box-shadow:
+    0 0 0 2px #0a0a0a,
+    0 20px 60px rgba(0,0,0,0.25);
+  overflow: visible;
+}
+
+/* Digital Crown (right side) */
+.watch-frame::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 50px;
+  background: linear-gradient(90deg, #555, #999, #555);
+  border-radius: 6px 3px 3px 6px;
+}
+
+/* Side button (also right side, below crown) */
+.watch-frame > .side-btn {
+  position: absolute;
+  right: -3px;
+  top: calc(50% + 60px);
+  width: 7px;
+  height: 28px;
+  background: linear-gradient(90deg, #444, #777);
+  border-radius: 3px;
+}
+
+.watch-frame .screen {
+  position: absolute;
+  inset: 18px;
+  border-radius: 38px;
+  overflow: hidden;
+  background: var(--bg-l);
+  color: var(--text-l);
+}
+
+.watch-frame.dark .screen {
+  background: var(--bg-d);
+  color: var(--text-d);
+}
+
+.watch-content {
+  position: absolute;
+  inset: 0;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Watch status indicators (time top-right area) */
+.watch-frame .watch-status {
+  position: absolute;
+  top: 8px;
+  right: 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+  font-family: var(--sf-compact);
+  z-index: 5;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Shared component styles
+   ───────────────────────────────────────────────────────────────── */
+
+/* Buttons */
+.btn-primary {
+  background: var(--orange);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 24px;
+  font-family: var(--sf-text);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--orange);
+  border: 1.5px solid var(--orange);
+  border-radius: 14px;
+  padding: 14px 24px;
+  font-family: var(--sf-text);
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dark .btn-secondary {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+/* Text styles · iOS */
+.ios-display {
+  font-family: var(--sf-display);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.ios-title { font-family: var(--sf-display); font-size: 28px; font-weight: 700; }
+.ios-title2 { font-family: var(--sf-display); font-size: 22px; font-weight: 700; }
+.ios-headline { font-family: var(--sf-text); font-size: 17px; font-weight: 600; }
+.ios-body { font-family: var(--sf-text); font-size: 17px; font-weight: 400; }
+.ios-callout { font-family: var(--sf-text); font-size: 16px; font-weight: 400; }
+.ios-subhead { font-family: var(--sf-text); font-size: 15px; font-weight: 400; }
+.ios-footnote { font-family: var(--sf-text); font-size: 13px; font-weight: 400; }
+.ios-caption { font-family: var(--sf-text); font-size: 12px; font-weight: 400; }
+
+/* Text styles · watch (SF Compact, tighter) */
+.watch-numeral { font-family: var(--sf-compact); font-weight: 700; letter-spacing: -0.5px; }
+.watch-label { font-family: var(--sf-compact); font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.7; }
+.watch-headline { font-family: var(--sf-compact); font-size: 16px; font-weight: 600; }
+.watch-body { font-family: var(--sf-compact); font-size: 14px; font-weight: 400; }
+.watch-small { font-family: var(--sf-compact); font-size: 12px; font-weight: 500; }
+
+/* Chip · for phase-type labels etc */
+.chip {
+  display: inline-block;
+  font-family: var(--sf-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.chip.work { color: var(--orange); background: var(--orange-soft); }
+.chip.warmup { color: #2c5fc7; background: rgba(44, 95, 199, 0.12); }
+.chip.recovery { color: var(--green); background: var(--green-soft); }
+.chip.cooldown { color: #6f42c1; background: rgba(111, 66, 193, 0.12); }
+.chip.race { color: var(--red); background: var(--red-soft); }
+.chip.drift { color: var(--amber); background: var(--amber-soft); }
+
+/* Progress bar (used in workout phase) */
+.progress-bar {
+  height: 6px;
+  background: var(--border-l);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dark .progress-bar { background: var(--border-d); }
+
+.progress-bar > .fill {
+  height: 100%;
+  background: var(--orange);
+  border-radius: 3px;
+}
+
+/* Readiness ring (placeholder for SVG actual ring) */
+.readiness-ring {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sf-display);
+  font-size: 36px;
+  font-weight: 700;
+  position: relative;
+}
+
+.readiness-ring.green {
+  background: conic-gradient(var(--green) 0deg 280deg, var(--border-l) 280deg 360deg);
+  color: var(--green);
+}
+
+.readiness-ring.green::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--bg-l);
+}
+
+.dark .readiness-ring.green::before { background: var(--bg-d); }
+
+.readiness-ring.green > span {
+  position: relative;
+  z-index: 1;
+}
+
+/* iPhone navigation list rows */
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 0.5px solid var(--border-l);
+  font-family: var(--sf-text);
+  font-size: 17px;
+}
+
+.dark .nav-row { border-bottom-color: var(--border-d); }
+
+.nav-row > .chevron {
+  color: var(--text-l-3);
+  font-size: 14px;
+}
+
+.dark .nav-row > .chevron { color: var(--text-d-3); }

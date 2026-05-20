@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Comparison · Web TodayCard vs iPhone Today</title>
+<link rel="stylesheet" href="../assets/styles.css">
+<style>
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 50px;
+    align-items: start;
+  }
+  .web-mock {
+    width: 540px;
+    max-width: 100%;
+    background: white;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 16px 50px rgba(0,0,0,.10);
+  }
+  .web-mock h2 { font-family: var(--sf-display); font-size: 24px; font-weight: 700; margin-bottom: 14px; }
+  .web-mock .hero-card {
+    border: 1px solid var(--border-l);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .web-mock .label {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #888; margin-bottom: 6px;
+  }
+  .web-mock .day-name {
+    font-family: var(--sf-display); font-size: 38px; font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .web-mock .workout-line {
+    font-size: 18px; font-weight: 600; margin-top: 6px;
+  }
+  .web-mock .pace-line {
+    font-size: 14px; color: #666; margin-top: 4px;
+  }
+  .web-mock .actions {
+    display: flex; gap: 8px; margin-top: 16px;
+  }
+  .web-mock .action-btn {
+    flex: 1; padding: 12px;
+    border-radius: 10px;
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    border: none;
+  }
+  .web-mock .btn-primary { background: black; color: white; }
+  .web-mock .btn-ghost { background: white; color: black; border: 1.5px solid #ccc; }
+
+  .label-tag {
+    display: inline-block;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #888; margin-bottom: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Comparison · Web TodayCard vs iPhone Today</h1>
+    <div class="subtitle">Verify the daily-touch surface feels like the same product · voice + color + typography</div>
+    <div class="crumbs"><a href="../index.html">← back to index</a></div>
+  </div>
+
+  <div class="comparison-grid">
+
+    <!-- Web -->
+    <div>
+      <div class="label-tag">WEB · /overview · TodayCard</div>
+      <div class="web-mock">
+        <div class="hero-card">
+          <div class="label">Tuesday · May 19</div>
+          <div class="day-name">Cruise Intervals</div>
+          <div class="workout-line">Threshold · Cruise Intervals</div>
+          <div class="pace-line">6 × 800m @ 6:31 · 60s rec · 7.0 mi · ≈52 min</div>
+          <div class="actions">
+            <button class="action-btn btn-primary">▶ Open workout</button>
+            <button class="action-btn btn-ghost">Skip today</button>
+            <button class="action-btn btn-ghost">⇄ Substitute</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size: 12px; color: #666; margin-top: 12px; line-height: 1.5;">
+        Web TodayCard · big day label + workout name + structured detail line + three action buttons.  Buttons are the matched-size primary / ghost / ghost trio from the V6/V7 work.
+      </div>
+    </div>
+
+    <!-- iPhone -->
+    <div>
+      <div class="label-tag">iPhone · Today</div>
+      <div class="iphone-frame light" style="transform: scale(0.85); transform-origin: top left;">
+        <div class="dynamic-island"></div>
+        <div class="screen">
+          <div class="status-bar"><span class="time">9:41</span></div>
+          <div class="iphone-content">
+            <div style="padding: 12px 20px 8px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="font-size: 17px; font-weight: 600;">Today</div>
+            </div>
+            <div style="padding: 8px 20px 20px;">
+              <div style="font-family: var(--sf-display); font-size: 34px; font-weight: 700; letter-spacing: -0.5px;">Tuesday</div>
+              <div style="font-size: 15px; color: var(--text-l-2); margin-top: 2px;">May 19 · Week 1 · Base</div>
+            </div>
+            <div style="margin: 0 20px 16px; background: var(--bg-l-2); border-radius: 16px; padding: 18px;">
+              <div style="font-family: var(--sf-display); font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">Threshold · Cruise Intervals</div>
+              <div style="font-size: 15px; color: var(--text-l-2); margin-top: 2px;">6 × 800m @ 6:31 · 60s rec</div>
+              <div style="display: flex; gap: 18px; padding: 14px 0 6px; margin-top: 12px; border-top: 0.5px solid var(--border-l);">
+                <div style="flex: 1;">
+                  <div style="font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-l-3);">Distance</div>
+                  <div style="font-family: var(--sf-display); font-size: 19px; font-weight: 700;">7.0 mi</div>
+                </div>
+                <div style="flex: 1;">
+                  <div style="font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-l-3);">Time</div>
+                  <div style="font-family: var(--sf-display); font-size: 19px; font-weight: 700;">52 min</div>
+                </div>
+                <div style="flex: 1;">
+                  <div style="font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-l-3);">T pace</div>
+                  <div style="font-family: var(--sf-display); font-size: 19px; font-weight: 700;">6:31</div>
+                </div>
+              </div>
+            </div>
+            <div style="margin: 0 20px; background: var(--bg-l-2); border-radius: 16px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; background: rgba(31, 106, 33, 0.12); border-radius: 50%; color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 18px;">⌚</div>
+              <div style="flex: 1;">
+                <div style="font-size: 15px; font-weight: 600;">Synced to Apple Watch</div>
+                <div style="font-size: 12px; color: var(--text-l-3); margin-top: 1px;">Last update: 6:42 AM · ready to run</div>
+              </div>
+            </div>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note" style="margin-top: 50px;">
+    <strong>Consistency check</strong>:
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Same workout name + structure rendering ("Threshold · Cruise Intervals" + "6 × 800m @ 6:31 · 60s rec")</li>
+      <li>Same impersonal-observation voice for data (V6 voice rule)</li>
+      <li>Same orange accent for primary actions / status confirmation</li>
+      <li>Same typography family (SF Pro Display on iPhone matches the web's Inter family closely)</li>
+    </ul>
+    <strong>Deliberate deviations</strong>:
+    <ul style="margin: 8px 0 0 20px;">
+      <li><strong>iPhone doesn't show action buttons</strong> · the watch handles "open workout" (=Start), "skip today" lives in iPhone's Settings, "substitute" defers to web</li>
+      <li><strong>iPhone adds the "Synced to Apple Watch" status card</strong> · this is the iPhone-bridge-specific affordance the web doesn't have</li>
+      <li><strong>iPhone shows stat pills (Distance/Time/Pace)</strong> instead of the inline pace-line · denser layout for mobile</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>
