@@ -2,90 +2,191 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · WORK INTERVAL (the highest-stakes screen)</title>
+<title>Watch · WORK INTERVAL (v2 · three workout-type variants)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
-  .phase-screen { height: 100%; padding: 16px 14px 12px; display: flex; flex-direction: column; }
-  .phase-header {
+  /* ── Shared base ───────────────────────────────────────────────── */
+  .work-screen {
+    height: 100%;
+    padding: 14px 14px 10px;
+    display: flex; flex-direction: column;
+  }
+
+  .work-header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 4px;
   }
-  .phase-header .phase-type {
-    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
+  .work-header .phase-type {
+    font-family: var(--sf-compact);
+    font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
     color: var(--orange);
   }
-  .phase-header .interval-count {
-    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
-    color: var(--text-l-2);
+  .work-header .phase-type.easy   { color: #2CA82F; }
+  .work-header .phase-type.race   { color: var(--orange); }
+  .work-header .rep-count {
+    font-family: var(--sf-compact);
+    font-size: 11px; font-weight: 800;
+    color: var(--text-d-2);
   }
-  .dark .phase-header .interval-count { color: var(--text-d-2); }
+  .light .work-header .rep-count { color: var(--text-l-2); }
 
   .progress-line {
-    width: 100%; height: 3px; background: rgba(255,255,255,0.15);
-    border-radius: 2px; overflow: hidden; margin-bottom: 8px;
+    width: 100%; height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px; overflow: hidden;
+    margin-bottom: 6px;
   }
   .light .progress-line { background: var(--border-l); }
   .progress-line .fill {
-    height: 100%; background: var(--orange); width: 50%;
+    height: 100%; background: var(--orange);
+    width: 35%;
   }
+  .progress-line .fill.easy { background: #2CA82F; }
+  .progress-line .fill.race { background: var(--orange); }
 
-  /* Pace block — the focal element */
-  .pace-block {
-    text-align: center;
-    padding: 6px 0 8px;
+  /* ── Target strip (thin reference at top) ──────────────────────── */
+  .target-strip {
+    display: flex; align-items: baseline;
+    justify-content: center; gap: 6px;
+    padding: 2px 0 0;
   }
-  .pace-block .target-label {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
+  .target-strip .lbl {
+    font-family: var(--sf-compact);
+    font-size: 9px; font-weight: 800;
     letter-spacing: 1.2px; text-transform: uppercase;
-    color: var(--text-l-3); margin-bottom: 2px;
+    color: var(--text-d-3);
   }
-  .dark .pace-block .target-label { color: var(--text-d-3); }
-  .pace-block .target-pace {
+  .light .target-strip .lbl { color: var(--text-l-3); }
+  .target-strip .val {
     font-family: var(--sf-compact);
-    font-size: 32px; font-weight: 700; line-height: 1;
-    color: var(--text-l-2); margin-bottom: 8px;
+    font-size: 24px; font-weight: 700;
+    line-height: 1; letter-spacing: -0.5px;
+    color: var(--text-d-2);
   }
-  .dark .pace-block .target-pace { color: var(--text-d-2); }
+  .light .target-strip .val { color: var(--text-l-2); }
 
-  .current-block {
+  /* ── Hero metric (the dominant number — varies by workout type) ── */
+  .hero {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
     text-align: center;
-    margin-bottom: 8px;
+    position: relative;
   }
-  .current-block .current-pace {
+  .hero .value {
     font-family: var(--sf-compact);
-    font-size: 64px; font-weight: 800; line-height: 0.92;
-    letter-spacing: -3px;
-    color: var(--green);
+    font-weight: 800;
+    font-size: 100px;
+    line-height: 0.88;
+    letter-spacing: -4px;
+    color: var(--orange);
+    font-variant-numeric: tabular-nums;
   }
-  .current-block .delta {
+  .hero .value.easy { color: #2CA82F; }
+  .hero .value.race { color: var(--orange); }
+  .hero .value.in-range { color: #4ade80; }   /* bright green = exactly on */
+  .hero .value.warn { color: #F3AD38; }       /* amber = caution */
+  .hero .value.over { color: var(--red); }    /* red = above ceiling */
+
+  .hero .unit {
     font-family: var(--sf-compact);
-    font-size: 16px; font-weight: 600;
-    color: var(--green);
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    margin-top: 0;
+    color: var(--text-d-3);
+  }
+  .light .hero .unit { color: var(--text-l-3); }
+
+  /* Delta chip — instant "you're slow / you're fast" without reading direction */
+  .delta-chip {
+    position: absolute;
+    top: 0; right: 0;
+    font-family: var(--sf-compact);
+    font-size: 14px; font-weight: 800;
+    padding: 4px 9px;
+    border-radius: 6px;
+    background: var(--orange);
+    color: #fff;
+    line-height: 1;
+  }
+  .delta-chip.good { background: #2CA82F; color: #fff; }
+  .delta-chip.warn { background: #F3AD38; color: #0D0F12; }
+  .delta-chip.over { background: var(--red); color: #fff; }
+
+  /* HR-ceiling band (race-pace variant) — top-left chip */
+  .hr-ceiling {
+    position: absolute;
+    top: 0; left: 0;
+    font-family: var(--sf-compact);
+    font-size: 11px; font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    line-height: 1;
+  }
+  .light .hr-ceiling { background: rgba(0,0,0,0.08); color: #0D0F12; }
+  .hr-ceiling.warn { background: var(--orange); color: #fff; }
+
+  /* ── Footer (small contextual stats) ───────────────────────────── */
+  .work-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 6px;
+    border-top: 0.5px solid rgba(255,255,255,0.15);
+  }
+  .light .work-footer { border-top-color: var(--border-l); }
+  .work-footer .stat { text-align: center; flex: 1; }
+  .work-footer .stat .num {
+    font-family: var(--sf-compact);
+    font-size: 22px; font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .work-footer .stat .num.in-range { color: #4ade80; }
+  .work-footer .stat .num.warn { color: #F3AD38; }
+  .work-footer .stat .num.over { color: var(--red); }
+  .light .work-footer .stat .num { color: var(--text-l); }
+  .dark  .work-footer .stat .num { color: var(--text-d); }
+  .work-footer .stat .lbl {
+    font-family: var(--sf-compact);
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-d-3);
     margin-top: 2px;
   }
+  .light .work-footer .stat .lbl { color: var(--text-l-3); }
 
-  .footer-row {
-    display: flex; justify-content: space-between;
-    margin-top: auto; padding-top: 6px;
-    border-top: 0.5px solid var(--border-l);
+  /* ── Hero-defense panel below each mockup ──────────────────────── */
+  .defense-block {
+    max-width: 800px;
+    margin: 0 auto 30px;
+    background: #fffbe6;
+    border-left: 3px solid var(--orange);
+    padding: 16px 20px;
+    border-radius: 0 8px 8px 0;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #3a2607;
   }
-  .dark .footer-row { border-top-color: var(--border-d); }
-  .footer-row .stat { text-align: center; flex: 1; }
-  .footer-row .stat .num {
-    font-family: var(--sf-compact); font-size: 17px; font-weight: 700;
+  .defense-block h3 {
+    font-family: var(--sf-display);
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #2c1c00;
   }
-  .footer-row .stat .lbl {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
-    letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3); margin-top: 1px;
-  }
-  .dark .footer-row .stat .lbl { color: var(--text-d-3); }
-
-  .footer-row .stat .timer {
-    font-family: var(--sf-compact); font-size: 17px; font-weight: 700;
-    color: var(--orange);
+  .defense-block .swap-rule {
+    background: #fff;
+    border: 1px solid #f0e0a0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #5a4a0d;
   }
 </style>
 </head>
@@ -93,44 +194,53 @@
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · WORK INTERVAL  ⭐ highest-stakes screen</h1>
-    <div class="subtitle">Mid-interval · current pace vs target · 2-second glance window</div>
+    <h1>Watch · WORK INTERVAL (v2)</h1>
+    <div class="subtitle">Highest-stakes screen · glanced hundreds of times across thousands of intervals · one layout pattern adapts to workout context</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
-  <div class="mode-pair">
+  <div class="note">
+    <strong>The hero number question · DEFENDED.</strong> Round 1 used target pace as hero. Wrong.
+    During execution the runner is working against <em>current</em> pace — that's what they're trying
+    to adjust. Target is the prescription <em>already known going in</em>. Make current dominant,
+    target a thin reference strip. Delta chip color carries the "you're slow vs fast" read in
+    0.5 seconds — runner never has to parse "+15s" as text, just sees red/green/amber.
+    <br><br>
+    <strong>The screen isn't one design — it's one pattern that adapts to workout context.</strong>
+    Three variants below show the swap rule: which metric becomes hero depends on whether
+    pace or HR is the governing prescription.
+  </div>
 
+  <!-- ════════════════════════════════════════════════════════════════
+       VARIANT 1 · THRESHOLD / INTERVAL (pace is the prescription)
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Variant 1 · Threshold / interval workout (pace dominant)</div>
+
+  <div class="mode-pair">
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
       <div class="watch-frame light">
         <div class="watch-status">9:55</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">3 / 6</div>
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type">⬤ WORK · 2/6</div>
+              <div class="rep-count">800m</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-
-            <div class="current-block">
-              <div class="current-pace">6:29</div>
-              <div class="delta">−2 s/mi</div>
+            <div class="hero">
+              <div class="delta-chip good">−2s</div>
+              <div class="value in-range">6:29</div>
+              <div class="unit">CURRENT · MIN/MI</div>
             </div>
-
-            <div class="footer-row">
-              <div class="stat">
-                <div class="timer">1:37</div>
-                <div class="lbl">REMAINING</div>
-              </div>
-              <div class="stat">
-                <div class="num">168</div>
-                <div class="lbl">BPM</div>
-              </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num">2:08</div><div class="lbl">LEFT</div></div>
+              <div class="stat"><div class="num">168</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num">82</div><div class="lbl">SPM</div></div>
             </div>
           </div>
         </div>
@@ -142,51 +252,283 @@
       <div class="watch-frame dark">
         <div class="watch-status">9:55</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">3 / 6</div>
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type">⬤ WORK · 2/6</div>
+              <div class="rep-count">800m</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-
-            <div class="current-block">
-              <div class="current-pace">6:29</div>
-              <div class="delta">−2 s/mi</div>
+            <div class="hero">
+              <div class="delta-chip good">−2s</div>
+              <div class="value in-range">6:29</div>
+              <div class="unit">CURRENT · MIN/MI</div>
             </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num">2:08</div><div class="lbl">LEFT</div></div>
+              <div class="stat"><div class="num">168</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num">82</div><div class="lbl">SPM</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-            <div class="footer-row">
-              <div class="stat">
-                <div class="timer">1:37</div>
-                <div class="lbl">REMAINING</div>
-              </div>
-              <div class="stat">
-                <div class="num">168</div>
-                <div class="lbl">BPM</div>
-              </div>
+  <div class="defense-block">
+    <h3>Variant 1 design defense · threshold/interval</h3>
+    <strong>Hero choice:</strong> current pace at 100pt · the prescription says 6:31 but execution
+    is "am I hitting it" · current is the actionable metric.<br>
+    <strong>Target as reference strip:</strong> 24pt at top · runner already knows it going into the
+    rep · displayed for trust ("watch hasn't drifted from plan"), not for primary reading.<br>
+    <strong>Delta chip color logic:</strong>
+    <ul style="margin: 6px 0 0 18px;">
+      <li>green chip "−2s" = you're 0-5s/mi faster than target (good, on threshold)</li>
+      <li>green chip "+0s" = exactly on target</li>
+      <li>green chip "+1s to +5s" = within tolerance (the workout doesn't require pixel precision)</li>
+      <li>amber chip "+6s to +14s" = drifting (cue: "stay on it") · pace number color stays orange</li>
+      <li>red chip "+15s+" = sustained drift (cue: "well off") · pace number turns red</li>
+      <li>amber chip "−6s+" = pushing too fast (cue: "ease back") · pace number stays orange</li>
+    </ul>
+    <strong>HR is footer-only:</strong> 168 BPM shown but small · pace is the prescription on threshold,
+    HR is supporting context (informs whether the runner is gassed early).<br>
+    <strong>Cadence (SPM):</strong> third footer stat · useful for form drift detection late in a
+    workout but not primary.
+    <div class="swap-rule">
+      <strong>When this variant fires:</strong> workout.type ∈ {threshold, interval, tempo, repetition} OR explicit pace target on the rep
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       VARIANT 2 · EASY RUN (HR is the prescription · Z2 stimulus)
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Variant 2 · Easy run · Z2 ceiling (HR dominant)</div>
+
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type easy">● EASY · Z2</div>
+              <div class="rep-count">5.5 mi</div>
+            </div>
+            <div class="progress-line"><div class="fill easy"></div></div>
+            <div class="target-strip">
+              <span class="lbl">CEILING</span>
+              <span class="val">139</span>
+            </div>
+            <div class="hero">
+              <div class="delta-chip good">−6</div>
+              <div class="value easy in-range">133</div>
+              <div class="unit">HR · BPM</div>
+            </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num">8:42</div><div class="lbl">PACE</div></div>
+              <div class="stat"><div class="num">2.3</div><div class="lbl">MI</div></div>
+              <div class="stat"><div class="num">81</div><div class="lbl">SPM</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type easy">● EASY · Z2</div>
+              <div class="rep-count">5.5 mi</div>
+            </div>
+            <div class="progress-line"><div class="fill easy"></div></div>
+            <div class="target-strip">
+              <span class="lbl">CEILING</span>
+              <span class="val">139</span>
+            </div>
+            <div class="hero">
+              <div class="delta-chip good">−6</div>
+              <div class="value easy in-range">133</div>
+              <div class="unit">HR · BPM</div>
+            </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num">8:42</div><div class="lbl">PACE</div></div>
+              <div class="stat"><div class="num">2.3</div><div class="lbl">MI</div></div>
+              <div class="stat"><div class="num">81</div><div class="lbl">SPM</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="defense-block">
+    <h3>Variant 2 design defense · easy / Z2 stimulus</h3>
+    <strong>Hero choice:</strong> HR at 100pt · V5 explicitly says HR is the governing metric on easy
+    days · pace is whatever cardiovascular ease produces, not what the runner targets.<br>
+    <strong>Ceiling not target:</strong> Z2 has a ceiling (139), not a target. Below ceiling = stimulus
+    is correct. Above ceiling = drifting out of zone. The strip says "CEILING" not "TARGET" so the
+    semantic is unambiguous.<br>
+    <strong>Color logic on HR hero:</strong>
+    <ul style="margin: 6px 0 0 18px;">
+      <li>green = HR is below ceiling (Z2 stimulus achieved)</li>
+      <li>amber at ceiling-5 to ceiling-0 = "ease back" cue</li>
+      <li>red above ceiling = sustained Z2 violation · same haptic escalation as pace drift</li>
+    </ul>
+    <strong>Pace demoted to footer:</strong> 8:42 visible but small · runner sees what their easy
+    pace is producing today without making it the prescription.<br>
+    <strong>Why green for the phase chip:</strong> easy days are recovery-adjacent · the same green
+    used on the recovery / readiness markers.
+    <div class="swap-rule">
+      <strong>When this variant fires:</strong> workout.type ∈ {easy, recovery_run, long_run_aerobic} · explicit HR ceiling exists on the rep · no pace target set
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       VARIANT 3 · RACE-PACE EFFORT (pace dominant + HR ceiling warning)
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Variant 3 · Race-pace effort (pace dominant + HR-ceiling warning)</div>
+
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type race">▲ RACE-PACE · 1/3</div>
+              <div class="rep-count">2.0 mi</div>
+            </div>
+            <div class="progress-line"><div class="fill race"></div></div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">7:01</span>
+            </div>
+            <div class="hero">
+              <div class="hr-ceiling warn">HR 175 / 178</div>
+              <div class="delta-chip good">−3s</div>
+              <div class="value race in-range">6:58</div>
+              <div class="unit">CURRENT · MIN/MI</div>
+            </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num warn">175</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num">5:42</div><div class="lbl">LEFT</div></div>
+              <div class="stat"><div class="num">82</div><div class="lbl">SPM</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:55</div>
+        <div class="screen">
+          <div class="watch-content work-screen">
+            <div class="work-header">
+              <div class="phase-type race">▲ RACE-PACE · 1/3</div>
+              <div class="rep-count">2.0 mi</div>
+            </div>
+            <div class="progress-line"><div class="fill race"></div></div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">7:01</span>
+            </div>
+            <div class="hero">
+              <div class="hr-ceiling warn">HR 175 / 178</div>
+              <div class="delta-chip good">−3s</div>
+              <div class="value race in-range">6:58</div>
+              <div class="unit">CURRENT · MIN/MI</div>
+            </div>
+            <div class="work-footer">
+              <div class="stat"><div class="num warn">175</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num">5:42</div><div class="lbl">LEFT</div></div>
+              <div class="stat"><div class="num">82</div><div class="lbl">SPM</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="defense-block">
+    <h3>Variant 3 design defense · race-pace effort</h3>
+    <strong>Hero choice:</strong> current pace at 100pt · race-pace is a pace prescription · same
+    structure as threshold but with an HR-ceiling watchdog layered on.<br>
+    <strong>HR-ceiling chip (top-left):</strong> "HR 175 / 178" · shows actual / max-permitted on the
+    rep · amber background once HR enters the warning band (within 5 BPM of ceiling) · turns red
+    when HR breaches ceiling.  Runner sees "I'm at pace but redlining cardio" in one glance.<br>
+    <strong>HR also shown amber in footer:</strong> footer BPM stat color-codes too (175 in amber) ·
+    redundant signal protects against sweat-on-screen + missed chip.<br>
+    <strong>Why this matters:</strong> race-pace efforts at the wrong CV cost waste training
+    adaptation. Workout asks for race-pace, but if HR is screaming you'll blow up the next rep ·
+    the chip is the early warning that pace alone wouldn't surface.<br>
+    <strong>Color escalation on HR:</strong>
+    <ul style="margin: 6px 0 0 18px;">
+      <li>neutral = below 95% of max-permitted (safe band)</li>
+      <li>amber = 95-100% of ceiling (caution, you're at the edge)</li>
+      <li>red = above ceiling (you're racing the rep, not running it)</li>
+    </ul>
+    <div class="swap-rule">
+      <strong>When this variant fires:</strong> workout.type ∈ {race_pace, marathon_pace, half_pace, simulation} OR (explicit pace target AND explicit HR ceiling on the same rep)
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       HERO NUMBER DEFENSE · ONE-LINER ────────────────────────────── -->
+  <div class="section-title">Hero-number swap rule · single decision tree</div>
+
+  <div class="note">
+    <pre style="font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.55; margin: 6px 0 0;">
+if workout.rep.pace_target AND NOT workout.rep.hr_ceiling:
+    hero = current_pace            # Variant 1 (threshold/interval)
+    reference_strip = target_pace
+    footer_includes_hr = true (small)
+
+elif workout.rep.hr_ceiling AND NOT workout.rep.pace_target:
+    hero = current_hr              # Variant 2 (easy/Z2)
+    reference_strip = hr_ceiling   # labeled "CEILING" not "TARGET"
+    footer_includes_pace = true (small)
+
+elif workout.rep.pace_target AND workout.rep.hr_ceiling:
+    hero = current_pace            # Variant 3 (race-pace)
+    reference_strip = target_pace
+    overlay_chip_hr_ceiling = true # shown top-left of hero
+    footer_includes_hr_with_color_escalation = true
+    </pre>
   </div>
 
   <div class="note">
-    <strong>Design notes</strong> · this is the most-glanced screen in the entire app:
+    <strong>Layout invariants across all three variants</strong> (preserves muscle-memory across
+    workout types):
     <ul style="margin: 8px 0 0 20px;">
-      <li><strong>Information hierarchy</strong>: target pace (medium) above · current pace (huge, color-coded) is the focal element · delta is a precision signal</li>
-      <li><strong>Color coding</strong>: green = within tolerance band · amber = drifting (>10s/mi delta sustained 5+ sec) · red = sustained >15s/mi (see edge-states/pace-drift.html)</li>
-      <li><strong>"3 / 6"</strong> in the top right gives spatial context · which rep am I on</li>
-      <li><strong>Time remaining in interval</strong> (1:37) is the second-most-important number · runner uses this to pace breathing/effort to the finish</li>
-      <li><strong>No distance or elapsed time shown</strong> · deliberately omitted · the rep ends on time, not distance · less to read at speed</li>
-      <li><strong>No HR target</strong> · per scoping decision (HR-zone-based targeting deferred) · HR shown as informational only</li>
-      <li><strong>2-second glance</strong>: target on top, current in the middle, time remaining bottom · eyes scan top-to-bottom in 1-2 seconds</li>
+      <li>Hero metric always center · 100pt SF Compact Display 800-weight · color = state</li>
+      <li>Reference strip always top · 24pt · labeled "TARGET" or "CEILING"</li>
+      <li>Delta chip always top-right · color carries the read</li>
+      <li>HR-ceiling chip (only Variant 3) top-left · color escalation distinct from delta</li>
+      <li>Footer always three stats · the third stat (cadence) is the only constant across variants</li>
     </ul>
+  </div>
+
+  <div class="note">
+    <strong>What changes between variants:</strong>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Phase chip color (orange threshold · green easy · orange race)</li>
+      <li>Hero metric (pace vs HR)</li>
+      <li>Reference strip label ("TARGET" vs "CEILING")</li>
+      <li>Footer stat ordering (Variant 1: time/HR/cadence · Variant 2: pace/distance/cadence · Variant 3: HR/time/cadence)</li>
+      <li>Variant 3 adds the HR-ceiling chip overlay</li>
+    </ul>
+    <strong>This is one screen pattern · three configurations · driven by what the workout prescribed.</strong>
   </div>
 
 </div>
