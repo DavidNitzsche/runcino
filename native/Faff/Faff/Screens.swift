@@ -16,15 +16,18 @@ struct RootTabView: View {
 
     @State private var overview: OverviewResponse?
     @State private var loadError: String?
-    @State private var tab: FaffTabBar.Tab = RootTabView.initialTab
+    @State private var tab: FaffTab = RootTabView.initialTab
+    @State private var showProfile = false
+    @State private var showDetail = false
+    @State private var showWhy = false
     @Environment(\.scenePhase) private var scenePhase
 
-    /// DEBUG: `-tab plan|coach|health|more` opens that tab for screenshots.
-    static var initialTab: FaffTabBar.Tab {
+    /// DEBUG: `-tab plan|coach|health|races` opens that tab for screenshots.
+    static var initialTab: FaffTab {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-tab"), i + 1 < args.count,
-           let t = FaffTabBar.Tab(rawValue: args[i + 1]) { return t }
+           let t = FaffTab(rawValue: args[i + 1]) { return t }
         #endif
         return .today
     }
@@ -32,10 +35,22 @@ struct RootTabView: View {
     var body: some View {
         Group {
             if let o = overview, o.ok {
-                screen(o)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        FaffTabBar(active: tab) { tab = $0 }
-                    }
+                VStack(spacing: 0) {
+                    StickyTopBar(
+                        raceName: o.raceCountdown.map { shortRace($0.name) },
+                        raceDaysOut: o.raceCountdown?.days,
+                        avatarInitial: initial(o),
+                        onRaceTap: { tab = .races },
+                        onAvatarTap: { showProfile = true }
+                    )
+                    screen(o)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    FaffTabBar(active: tab) { tab = $0 }
+                }
+                .sheet(isPresented: $showProfile) { ProfileView(overview: o, onLogout: onLogout) }
+                .sheet(isPresented: $showDetail) { WorkoutDetailView(overview: o) }
+                .sheet(isPresented: $showWhy) { WhyThisSheet(overview: o) { showWhy = false; tab = .coach } }
             } else if let loadError {
                 FaffStateView(title: "Couldn't load", detail: loadError) { Task { await load() } }
             } else {
@@ -45,7 +60,6 @@ struct RootTabView: View {
         .background(Faff.C.bg.ignoresSafeArea())
         .task {
             await load()
-            // Quietly re-sync HealthKit on launch (no-op until connected).
             await HealthKitManager.shared.syncIfConnected()
         }
         .onChange(of: scenePhase) { _, p in
@@ -58,13 +72,18 @@ struct RootTabView: View {
 
     @ViewBuilder private func screen(_ o: OverviewResponse) -> some View {
         switch tab {
-        case .today:  TodayView(overview: o, onLogout: onLogout)
+        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { showDetail = true })
         case .plan:   PlanView(overview: o)
         case .coach:  CoachView(overview: o)
         case .health: HealthView(overview: o)
-        case .more:   MoreView(overview: o, onLogout: onLogout)
+        case .races:  RacesView(overview: o)
         }
     }
+
+    private func initial(_ o: OverviewResponse) -> String {
+        String((o.profileName ?? "F").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+    }
+    private func shortRace(_ n: String) -> String { n.count > 16 ? String(n.prefix(14)) + "…" : n }
 
     private func load() async {
         loadError = nil
@@ -219,7 +238,7 @@ struct HealthView: View {
                     Text("RECOVERY").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim)
                     Spacer()
                     Badge(text: overview.hasHealthData ? "Tracked" : "No data",
-                          tone: overview.hasHealthData ? .green : .none)
+                          tone: overview.hasHealthData ? .green : .grey)
                 }
                 if overview.hasHealthData {
                     metricRow("Resting HR", overview.state?.recovery?.rhrBpm.map { "\(Int($0)) bpm" } ?? "—")
@@ -284,72 +303,149 @@ struct HealthView: View {
     }
 }
 
-// MARK: - More (profile · races · integrations · sign out)
+// MARK: - Races (tab) — orange countdown + recent
 
-struct MoreView: View {
+struct RacesView: View {
     let overview: OverviewResponse
-    let onLogout: () -> Void
     var body: some View {
-        FaffPage(eyebrow: "More", title: overview.profileName ?? "Profile") {
+        FaffScreen(eyebrow: "Next A-race", title: "Races") {
             if let r = overview.state?.races?.nextA {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NEXT A-RACE").font(Faff.F.inter(9, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
-                    Text((r.name ?? "").uppercased()).font(Faff.F.display(24)).foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text((r.name ?? "").uppercased()).font(Faff.F.display(28)).foregroundStyle(.white)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(r.daysAway ?? 0)").font(Faff.F.display(40)).foregroundStyle(.white)
-                        Text("days out · goal \(r.goalDisplay ?? "—")").font(Faff.F.inter(11, .semibold)).foregroundStyle(.white.opacity(0.9))
+                        Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
+                        Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
                     }
+                    HStack(spacing: 16) {
+                        raceStat("Goal time", r.goalDisplay ?? "—")
+                        if let d = r.distanceMi { raceStat("Distance", "\(OverviewFormat.distance(d)) mi") }
+                    }
+                    .padding(.top, 6)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                .padding(18)
                 .background(Color.faffMark)
                 .clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("No race yet. Pick your goal and we'll plan backward from race day.")
+                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+                    GhostButton(title: "Add a race", icon: "flag.checkered")
+                }.faffCard()
             }
             if let recent = overview.state?.races?.recent, !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("RECENT RACES").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
-                    ForEach(Array(recent.prefix(4).enumerated()), id: \.offset) { _, rr in
+                    Text("RECENT").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
+                    ForEach(Array(recent.prefix(5).enumerated()), id: \.offset) { _, rr in
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(rr.name ?? "").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.ink)
+                                Text(rr.name ?? "").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.ink)
                                 Text("\(rr.date ?? "") · \(OverviewFormat.distance(rr.distanceMi)) mi").font(Faff.F.inter(9)).foregroundStyle(Faff.C.textDim)
                             }
                             Spacer()
-                            Text(finish(rr.finishS)).font(Faff.F.display(16)).foregroundStyle(Faff.C.ink)
+                            Text(Self.finish(rr.finishS)).font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
                         }
                         .padding(.vertical, 9)
                         .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
                     }
-                }
-                .faffCard()
+                }.faffCard()
             }
-            VStack(alignment: .leading, spacing: 0) {
-                Text("INTEGRATIONS").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
-                setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false))
-                setRow("Strava", connected: overview.connectors?.contains("strava") ?? false)
-                setRow("Apple Watch", connected: false)
-            }
-            .faffCard()
-            Button { onLogout() } label: {
-                Text("SIGN OUT").font(Faff.F.oswald(12)).tracking(1.5).foregroundStyle(Faff.C.warn)
-                    .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Faff.C.divider, lineWidth: 1.5))
-            }
-            .buttonStyle(.plain)
         }
+    }
+    private func raceStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
+            Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.8).foregroundStyle(.white.opacity(0.8))
+        }
+    }
+    static func finish(_ s: Double?) -> String {
+        guard let s, s > 0 else { return "—" }
+        let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+}
+
+// MARK: - Profile (sheet from the avatar)
+
+struct ProfileView: View {
+    let overview: OverviewResponse
+    let onLogout: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("PROFILE").font(Faff.F.oswald(13, .semibold)).tracking(1.5).foregroundStyle(Faff.C.ink)
+                Spacer()
+                Button("Done") { dismiss() }.font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.race)
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.top, 18).padding(.bottom, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                    HStack(spacing: 14) {
+                        FaffAvatar(initial: String((overview.profileName ?? "F").prefix(1)).uppercased(), size: 52)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(overview.profileName ?? "Runner").font(Faff.F.inter(17, .semibold)).foregroundStyle(Faff.C.ink)
+                            if let phase = overview.planCurrentPhase {
+                                Text("\(phase) phase").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                            }
+                        }
+                        Spacer()
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
+                        setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false))
+                        setRow("Strava", connected: overview.connectors?.contains("strava") ?? false)
+                        setRow("Apple Watch", connected: false)
+                    }.faffCard()
+                    Button { onLogout() } label: {
+                        Text("SIGN OUT").font(Faff.F.oswald(12, .semibold)).tracking(1.5).foregroundStyle(Faff.C.warn)
+                            .frame(maxWidth: .infinity).padding(.vertical, 13)
+                            .overlay(RoundedRectangle(cornerRadius: 11).stroke(Faff.C.divider, lineWidth: 1.5))
+                    }.buttonStyle(.plain)
+                }
+                .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
+            }
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
     }
     private func setRow(_ name: String, connected: Bool) -> some View {
         HStack {
             Text(name).font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.ink)
             Spacer()
-            Badge(text: connected ? "Connected" : "Connect", tone: connected ? .green : .none)
+            Badge(text: connected ? "Connected" : "Connect", tone: connected ? .green : .grey)
         }
         .padding(.vertical, 9)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
     }
-    private func finish(_ s: Double?) -> String {
-        guard let s, s > 0 else { return "—" }
-        let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+}
+
+// MARK: - Why this (sheet) — read-only rationale
+
+struct WhyThisSheet: View {
+    let overview: OverviewResponse
+    var onOpenCoach: () -> Void = {}
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        let dw = overview.todayWorkout
+        return ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("COACH · WHY THIS WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                    Text("Why \(dw.label.lowercased())").font(Faff.F.display(34)).foregroundStyle(Faff.C.ink)
+                }
+                faffMarkdown(overview.composedCoach)
+                    .font(Faff.F.inter(15)).foregroundStyle(Faff.C.ink).lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+                CoachVerdict("Focus", dw.guidance, color: Faff.C.milestone)
+                if let acwr = overview.acwrValue, acwr > 1.3 {
+                    CoachVerdict("Watching",
+                                 String(format: "Acute load (ACWR %.2f) is still elevated post-race, which is why today stays easy.", acwr),
+                                 color: Faff.C.amberInk)
+                }
+                PrimaryButton(title: "Open today's coach read", icon: "questionmark.circle") { dismiss(); onOpenCoach() }
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.top, 24).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
     }
 }
