@@ -172,12 +172,16 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
       every state, every metric, with its <b>watchOS source</b> and <b>v4 token</b>. The rest of the product is the light
       v4 system; <b>the watch is dark</b> for OLED battery, sunlight contrast, and always-on legibility. Companion app:
       the paired iPhone holds auth and pushes the workout. Spec authority: <b>docs/native/01-watchos-scoping.md</b>.</p>
+    <p class="intro" style="margin-top:14px;font-size:14px"><b>Visual canon: <code style="font-family:var(--f-mono);font-size:12px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:4px;padding:1px 5px">docs/design/watch-app.html</code>.</b>
+      That file is the current, complete set of faces (including race day) and is what to match for layout, sizing,
+      centering, and spacing. This doc is the <b>build spec</b>: per-metric source + token, payload shapes, haptics,
+      the state machine, and build status. Where the mockups below differ from watch-app, watch-app wins.</p>
     <div class="chips">
       <div class="chip"><span class="d" style="background:var(--ink)"></span>Dark active face</div>
-      <div class="chip"><span class="d" style="background:var(--green)"></span>Cadence surfaced (v1)</div>
-      <div class="chip"><span class="d" style="background:var(--orange)"></span>Current pace is hero</div>
-      <div class="chip"><span class="d" style="background:var(--amber)"></span>Pace smoothed, ±10s band</div>
-      <div class="chip"><span class="d" style="background:var(--t2)"></span>AOD = dim the same face</div>
+      <div class="chip"><span class="d" style="background:var(--green)"></span>Cadence (v1)</div>
+      <div class="chip"><span class="d" style="background:var(--orange)"></span>Race day (v1)</div>
+      <div class="chip"><span class="d" style="background:var(--amber)"></span>Hero centered + auto-scales</div>
+      <div class="chip"><span class="d" style="background:var(--t2)"></span>Elapsed top-right</div>
     </div>
   </header>
 
@@ -398,6 +402,12 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
       <span class="node">Summary</span><span class="ar">→</span><span class="node">Idle</span>
       <span class="loopnote">Work ⇄ Recovery repeats N times (here, 6). "End interval" can skip a rep forward; the cursor never moves backward.</span>
     </div>
+    <div class="flowline" style="margin-top:16px">
+      <span class="node">Pre-race</span><span class="ar">→</span>
+      <span class="node loop">Phase</span><span class="ar">⇄</span><span class="node loop" style="color:var(--orange)">Fuel cue</span><span class="ar">→</span>
+      <span class="node">Finish</span>
+      <span class="loopnote"><b>Race day is the same cursor</b>, walking the race's flat <b>pace</b> + <b>fuel</b> segment list. A pace segment is a course phase with its own terrain-aware target; a fuel segment fires a gel cue + haptic, then continues. Forward-only, like intervals.</span>
+    </div>
   </section>
 
   <!-- HAPTICS -->
@@ -411,6 +421,8 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
       <tr><td>Recovery → Work</td><td>Different transition tap</td><td>Go again. Different from the work→rec tap so they're never confused.</td></tr>
       <tr><td>Pace drift</td><td>Single subtle tap</td><td>Current pace &gt;10s off target for &gt;5s. Silent inside the band, no nagging.</td></tr>
       <tr><td>Workout complete</td><td>Long haptic</td><td>Cooldown done. Look at the summary.</td></tr>
+      <tr><td>Gel due (race)</td><td>Distinct double tap + cue</td><td>Fuel segment reached, anchored to a phase boundary. Full-screen "Gel N + water."</td></tr>
+      <tr><td>Phase change (race)</td><td>Transition tap</td><td>New course phase, new target pace. Brief card with the phase + target.</td></tr>
     </table>
   </section>
 
@@ -427,6 +439,16 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
     { <span class="k">"type"</span>: <span class="s">"work"</span>,     <span class="k">"durationSec"</span>: 192, <span class="k">"targetPaceSPerMi"</span>: 391, <span class="k">"tolerancePaceSPerMi"</span>: 10 },
     { <span class="k">"type"</span>: <span class="s">"recovery"</span>, <span class="k">"durationSec"</span>:  60, <span class="k">"targetPaceSPerMi"</span>: null }
     <span class="c">// … 5 more work + recovery pairs, then cooldown</span>
+  ]
+}</pre>
+    <pre><span class="c">// GET /api/watch/race  →  same flat-segment shape, walked by the same engine</span>
+{
+  <span class="k">"name"</span>: <span class="s">"Big Sur Marathon"</span>, <span class="k">"goalFinishS"</span>: 13800, <span class="k">"strategy"</span>: <span class="s">"even_effort"</span>,
+  <span class="k">"segments"</span>: [
+    { <span class="k">"type"</span>: <span class="s">"pace"</span>, <span class="k">"atMi"</span>: 0,   <span class="k">"distanceMi"</span>: 5, <span class="k">"targetPaceSPerMi"</span>: 514, <span class="k">"label"</span>: <span class="s">"Redwood descent"</span> },
+    { <span class="k">"type"</span>: <span class="s">"fuel"</span>, <span class="k">"atMi"</span>: 3.7, <span class="k">"item"</span>: <span class="s">"Maurten gel · water"</span>, <span class="k">"gelNumber"</span>: 1 },
+    { <span class="k">"type"</span>: <span class="s">"pace"</span>, <span class="k">"atMi"</span>: 10,  <span class="k">"distanceMi"</span>: 2, <span class="k">"targetPaceSPerMi"</span>: 638, <span class="k">"label"</span>: <span class="s">"Hurricane climb"</span> }
+    <span class="c">// … walks all 6 phases + 6 gels to the finish</span>
   ]
 }</pre>
     <div class="frameworks">
@@ -454,6 +476,7 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
       <div class="r"><span class="st amber"><span class="d"></span>Partial</span><b>Native watch app</b>FaffWatch target, UI shell, WCSession loop, pace-drift logic + unit tests are in. Full <code>HKLiveWorkoutBuilder</code> + on-device sensors pending hardware testing.</div>
       <div class="r"><span class="st amber"><span class="d"></span>Partial</span><b>Cadence on the run</b>Promoted to v1 (2026-05-19). Live cadence wiring is the new addition vs. the original pace+HR scope.</div>
       <div class="r"><span class="st grey"><span class="d"></span>Net-new</span><b>Transition + drift haptics</b>Patterns specced (section D); not yet implemented on-device.</div>
+      <div class="r"><span class="st amber"><span class="d"></span>Partial</span><b>Race day (v1)</b>Reuses the interval engine; race plan data exists (phases + pace/fuel segments in the data model). Net-new: a <code>api/watch/race</code>-style endpoint returning the flat segment list, plus the race faces.</div>
     </div>
   </section>
 

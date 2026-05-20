@@ -42,6 +42,36 @@ states lives in `docs/design/watch-handoff.html`.
 
 ---
 
+## Amendment · 2026-05-19 (design finalized + race day promoted)
+
+After the full watch design pass (`docs/design/watch-app.html`):
+
+1. **Race day is promoted into v1.** Reverses the original "multi-workout
+   race-day pacing strategy" deferral. Crucially, it is **not** a separate
+   UX problem: the race plan is a flat list of `pace` + `fuel` segments
+   (see `docs/example.runcino.json`), the same shape as the workout
+   payload, so race day **reuses the interval-execution engine**. `pace`
+   segments are course phases with their own terrain-aware target (even
+   *effort*, not even pace, so the target shifts 8:34 → 10:38 by terrain);
+   `fuel` segments fire a gel cue + haptic. The watch shows the current
+   slice (current phase, pace vs phase target, projected finish, distance,
+   next gel); the full plan stays on the phone. Net-new backend: a
+   `GET /api/watch/race`-style endpoint returning the flat segment list.
+2. **Design finalized** (canon = `watch-app.html`): dark execution face;
+   one hero per face, **centered and maximized**, hero **auto-scales** so
+   3- and 4-digit values fill without clipping; no negative letter-spacing
+   on the centered hero (it makes longer numbers lean); three-zone layout
+   (orientation+elapsed top, hero+target centered, stats+bar bottom);
+   top-right shows **elapsed**, not wall clock; units are the label
+   (`bpm`/`spm`), no word labels; eyebrows one line (`INT 3/6`, `REST 3/6`).
+3. **Two watch artifacts:** `watch-app.html` is the visual canon (all
+   states + race day + experience); `watch-handoff.html` is the build spec
+   (per-metric source/token, payload shapes, haptics, state machine,
+   build-status). Build order + the brief live in
+   `docs/native/07-watch-build-kickoff.md`.
+
+---
+
 ## The one job the watch must do well
 
 **Execute today's structured workout on your wrist.**
