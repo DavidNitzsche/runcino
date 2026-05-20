@@ -109,6 +109,47 @@ struct OPlanDay: Decodable {
     let isQuality: Bool?
     let isLong: Bool?
     let notes: String?
+    let subLabel: String?
+    /// describeWorkout key the backend resolved, e.g. "Threshold · Cruise
+    /// Intervals" / "Easy". Present only on enriched (non-rest) days.
+    let label: String?
+    /// Server-computed structured workout (pace band + steps + effort +
+    /// why), the SAME describeWorkout the web modal renders.
+    let description: ODescription?
+}
+
+/// Mirrors lib/workout-descriptions.ts `WorkoutDescription`.
+struct ODescription: Decodable {
+    let zone: String?          // "Easy · Zone 2 + Strides"
+    let paceTarget: String?    // "8:29–8:59/mi · strides at 1-mile race pace"
+    let effort: String?
+    let why: String?
+    let steps: [OStep]?
+}
+
+/// One recipe step — either `simple` (name/duration/pace/zone) or `loop`
+/// (name/times/items). Both kinds decode into this one struct; the
+/// unused fields stay nil.
+struct OStep: Decodable {
+    let kind: String?          // "simple" | "loop"
+    let name: String?
+    // simple
+    let duration: String?
+    let pace: String?
+    let zone: String?
+    let hrTarget: String?
+    // loop
+    let times: Int?
+    let items: [OLoopItem]?
+}
+
+struct OLoopItem: Decodable {
+    let verb: String?
+    let duration: String?
+    let pace: String?
+    let zone: String?
+    let suffix: String?
+    let hrTarget: String?
 }
 
 // MARK: - Fetch (anonymous; hits API.baseURL)
@@ -186,6 +227,9 @@ struct DerivedWorkout {
     let isRest: Bool
     let notes: String?
     let zone: Int?
+    /// Server-computed structured workout (band + steps + effort + why).
+    /// nil for the old-engine fallback / rest days.
+    let detail: ODescription?
 
     init(plan: OPlanDay?, fallback: OWorkout?) {
         if let p = plan, let t = p.type {
@@ -196,7 +240,10 @@ struct DerivedWorkout {
             paceSPerMi = p.paceTargetSPerMi
             notes = p.notes
             zone = DerivedWorkout.zone(for: t)
-            label = DerivedWorkout.label(type: t, notes: p.notes, isQuality: p.isQuality ?? false)
+            detail = p.description
+            // Prefer the backend's resolved describeWorkout label/zone.
+            label = p.label
+                ?? DerivedWorkout.label(type: t, notes: p.notes, isQuality: p.isQuality ?? false)
             durationMin = OverviewFormat.durationMin(distanceMi: p.distanceMi, paceSPerMi: p.paceTargetSPerMi, explicit: p.durationMin)
         } else if let w = fallback {
             type = w.type ?? "easy"
@@ -206,13 +253,33 @@ struct DerivedWorkout {
             paceSPerMi = w.paceTargetSPerMi
             notes = w.coachToday?.today?.description ?? w.voiceLead
             zone = w.hrZone
+            detail = nil
             label = w.label ?? "Today's run"
             durationMin = OverviewFormat.durationMin(distanceMi: w.distanceMi, paceSPerMi: w.paceTargetSPerMi, explicit: nil)
         } else {
             type = "rest"; isQuality = false; isRest = true
             distanceMi = nil; paceSPerMi = nil; durationMin = nil; notes = nil; zone = nil
-            label = "Rest"
+            label = "Rest"; detail = nil
         }
+    }
+
+    /// Pace band string for display ("8:29–8:59"), preferring the
+    /// server's resolved band, falling back to the single plan pace.
+    var paceDisplay: String {
+        if let pt = detail?.paceTarget, let band = DerivedWorkout.paceBand(pt) { return band }
+        return OverviewFormat.pace(paceSPerMi)
+    }
+    /// Extract just the leading "M:SS–M:SS" (or "M:SS") from a paceTarget
+    /// string like "8:29–8:59/mi · strides at 1-mile race pace".
+    static func paceBand(_ s: String) -> String? {
+        // Range first, then single time.
+        if let r = s.range(of: #"\d+:\d{2}\s*[–-]\s*\d+:\d{2}"#, options: .regularExpression) {
+            return String(s[r]).replacingOccurrences(of: " ", with: "")
+        }
+        if let r = s.range(of: #"\d+:\d{2}"#, options: .regularExpression) {
+            return String(s[r])
+        }
+        return nil
     }
 
     /// One-line effort guidance for the coach strip / detail.

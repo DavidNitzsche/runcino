@@ -36,11 +36,14 @@ struct WorkoutDetailView: View {
                     header
                     statTiles
                     Divider().overlay(Faff.C.divider)
-                    if !workoutText.isEmpty { section("The workout", workoutText) }
-                    section("Effort", effortText)
-                    if !coachText.isEmpty {
-                        Divider().overlay(Faff.C.divider)
-                        coachSection
+                    if let steps = dw?.detail?.steps, !steps.isEmpty {
+                        recipe(steps)
+                    } else if !workoutText.isEmpty {
+                        section("The workout", workoutText)
+                    }
+                    section("How it should feel", effortText)
+                    if let why = dw?.detail?.why, !why.isEmpty {
+                        section("Why this workout", why)
                     }
                     Button { dismiss() } label: {
                         Text("CLOSE").font(Faff.F.oswald(13, .semibold)).tracking(2)
@@ -74,9 +77,86 @@ struct WorkoutDetailView: View {
     private var statTiles: some View {
         HStack(spacing: Faff.S.inlineGap) {
             tile(distanceStr, "mi", "Distance")
-            tile(OverviewFormat.pace(dw?.paceSPerMi), OverviewFormat.paceUnit(dw?.paceSPerMi), "Pace target")
+            tile(dw?.paceDisplay ?? "Easy", paceUnit, "Pace target")
             tile(durationStr.0, durationStr.1, "Duration")
         }
+    }
+    private var paceUnit: String? {
+        let p = dw?.paceDisplay ?? ""
+        return p.contains(":") ? "/mi" : nil
+    }
+
+    // ── Structured recipe (simple + loop steps) ───────────────────
+    private func recipe(_ steps: [OStep]) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                HStack(alignment: .top, spacing: 12) {
+                    Text("\(i + 1)").font(Faff.F.oswald(20, .bold))
+                        .foregroundStyle(Faff.C.ink).frame(width: 22, alignment: .leading)
+                    if s.kind == "loop" {
+                        loopStep(s)
+                    } else {
+                        simpleStep(s)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func simpleStep(_ s: OStep) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text((s.name ?? "").uppercased())
+                .font(Faff.F.oswald(14, .semibold)).tracking(0.5).foregroundStyle(Faff.C.ink)
+            (
+                faffMarkdown("**\(s.duration ?? "")**")
+                + Text(stepPaceSuffix(pace: s.pace, zone: s.zone)).foregroundStyle(Faff.C.textMuted)
+            )
+            .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func loopStep(_ s: OStep) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text((s.name ?? "").uppercased())
+                .font(Faff.F.oswald(14, .semibold)).tracking(0.5).foregroundStyle(Faff.C.ink)
+            Text("\(s.times ?? 0) ROUNDS OF")
+                .font(Faff.F.oswald(11, .semibold)).tracking(1).foregroundStyle(Faff.C.race)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array((s.items ?? []).enumerated()), id: \.offset) { _, it in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("·").foregroundStyle(Faff.C.textDim)
+                        loopItemText(it)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func loopItemText(_ it: OLoopItem) -> Text {
+        var t = Text("\(it.verb ?? "") ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+            + faffMarkdown("**\(it.duration ?? "")**").font(Faff.F.inter(13))
+        if let p = it.pace, !p.isEmpty {
+            t = t + Text(" at ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+                + faffMarkdown("**\(p)**").font(Faff.F.inter(13))
+        }
+        if let z = it.zone, !z.isEmpty {
+            t = t + Text(" (\(z))").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textDim)
+        }
+        if let suf = it.suffix, !suf.isEmpty {
+            t = t + Text(" \(suf)").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+        }
+        return t
+    }
+
+    private func stepPaceSuffix(pace: String?, zone: String?) -> String {
+        var s = ""
+        if let p = pace, !p.isEmpty { s += " at \(p)" }
+        if let z = zone, !z.isEmpty { s += " (\(z))" }
+        return s
     }
     private func tile(_ value: String, _ unit: String?, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -92,21 +172,6 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, 10).padding(.vertical, 12)
         .background(Faff.C.pillBg)
         .clipShape(RoundedRectangle(cornerRadius: Faff.R.pill, style: .continuous))
-    }
-
-    private var coachSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Circle().fill(Faff.C.recovery).frame(width: 7, height: 7)
-                Text((overview?.briefing?.answer.label ?? "Coach").uppercased())
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.4)
-                    .foregroundStyle(Faff.C.textDim)
-            }
-            faffMarkdown(coachText)
-                .font(Faff.F.inter(15)).foregroundStyle(Faff.C.ink)
-                .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func section(_ label: String, _ body: String) -> some View {
@@ -128,8 +193,9 @@ struct WorkoutDetailView: View {
         out.timeZone = TimeZone(identifier: "UTC")
         return "\(out.string(from: d)) · Today"
     }
-    private var title: String { dw?.label ?? "Threshold · Cruise Intervals" }
+    private var title: String { dw?.label ?? "Today's run" }
     private var zoneSub: String {
+        if let z = dw?.detail?.zone, !z.isEmpty { return z }
         guard let dw else { return "" }
         var parts = [DerivedWorkout.niceType(dw.type)]
         if let z = dw.zone { parts.append("Zone \(z)") }
@@ -151,8 +217,10 @@ struct WorkoutDetailView: View {
         let pace = OverviewFormat.pace(dw.paceSPerMi)
         return pace == "Easy" ? "Run \(distanceStr) mi easy, conversational." : "Run \(distanceStr) mi at \(pace)/mi."
     }
-    private var effortText: String { dw?.guidance ?? "Controlled, sustainable work for today's phase." }
-    private var coachText: String { overview?.composedCoach ?? "" }
+    private var effortText: String {
+        if let e = dw?.detail?.effort, !e.isEmpty { return e }
+        return dw?.guidance ?? "Controlled, sustainable work for today's phase."
+    }
 }
 
 #Preview { WorkoutDetailView() }

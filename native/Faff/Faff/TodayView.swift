@@ -21,10 +21,10 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 topbar(overview)
                 weekStrip(overview)
+                coachStrip(overview)
                 Button { showDetail = true } label: { heroCard(overview) }
                     .buttonStyle(.plain)
                 actionButtons
-                readinessCard(overview)
                 CheckInCard()
             }
             .padding(.horizontal, Faff.S.pageEdge)
@@ -125,6 +125,26 @@ struct TodayView: View {
         return String(name.prefix(1)).uppercased()
     }
 
+    // ── Coach read ────────────────────────────────────────────────
+    private func coachStrip(_ o: OverviewResponse) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle().fill(Faff.C.recovery).frame(width: 7, height: 7)
+                Text(coachLabel(o).uppercased())
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.4)
+                    .foregroundStyle(Faff.C.textDim)
+            }
+            faffMarkdown(o.composedCoach)
+                .font(Faff.F.inter(16)).foregroundStyle(Faff.C.ink)
+                .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2).padding(.bottom, 2)
+    }
+    private func coachLabel(_ o: OverviewResponse) -> String {
+        o.briefing?.answer.label ?? "Coach"
+    }
+
     // ── Hero workout card ─────────────────────────────────────────
     private func heroCard(_ o: OverviewResponse) -> some View {
         let dw = o.todayWorkout
@@ -142,8 +162,8 @@ struct TodayView: View {
 
             HStack(spacing: Faff.S.inlineGap) {
                 statPill(value: distanceStr(dw.distanceMi), unit: "mi", label: "Distance")
-                statPill(value: OverviewFormat.pace(dw.paceSPerMi),
-                         unit: OverviewFormat.paceUnit(dw.paceSPerMi),
+                statPill(value: dw.paceDisplay,
+                         unit: dw.paceDisplay.contains(":") ? "/mi" : nil,
                          label: "Pace", accent: dw.isQuality)
                 statPill(value: dw.durationMin.map { "~\($0)" } ?? "—", unit: dw.durationMin != nil ? "min" : nil, label: "Time")
             }
@@ -154,45 +174,6 @@ struct TodayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .faffCard()
-    }
-
-    // ── Readiness (honest: load-based until Health is connected) ──
-    private func readinessCard(_ o: OverviewResponse) -> some View {
-        let hasHealth = o.hasHealthData
-        let acwr = o.acwrValue
-        // Without biometrics, readiness is a load read, not a recovery score.
-        let (badgeText, tone): (String, OverviewFormat.ReadinessTone) = {
-            guard let a = acwr else { return ("No data", .none) }
-            if a > 1.3 { return ("Watch load", .amber) }
-            return ("On track", .green)
-        }()
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("READINESS")
-                    .font(Faff.F.inter(10, .medium)).tracking(0.8)
-                    .foregroundStyle(Faff.C.textDim)
-                Spacer()
-                Badge(text: badgeText, tone: tone)
-            }
-            Text(readinessCopy(hasHealth: hasHealth, acwr: acwr))
-                .font(Faff.F.inter(12.5))
-                .foregroundStyle(Faff.C.textMuted)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .faffCard()
-    }
-
-    private func readinessCopy(hasHealth: Bool, acwr: Double?) -> String {
-        if let a = acwr {
-            let load = a > 1.3
-                ? String(format: "Load is climbing (ACWR %.2f). Keep easy days easy.", a)
-                : String(format: "Training load is balanced (ACWR %.2f).", a)
-            return hasHealth ? load
-                : load + " Connect Apple Health for HRV, resting HR and sleep."
-        }
-        return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep."
     }
 
     // ── small helpers ─────────────────────────────────────────────
