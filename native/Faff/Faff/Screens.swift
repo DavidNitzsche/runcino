@@ -641,11 +641,23 @@ struct MetricDetailSheet: View {
                     SheetCloseButton { dismiss() }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(metric.title) · 7-day average").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                    HStack {
+                        Text("\(metric.title) · 7-day average").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                        Spacer()
+                        Badge(text: "Tracked", tone: .green)
+                    }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(metric.value).font(Faff.F.display(58)).foregroundStyle(Faff.C.recovery)
                         if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
                     }
+                }.faffCard()
+                // Trend — honest placeholder until a daily series is wired.
+                VStack(spacing: 12) {
+                    Segmented(options: ["7D", "30D", "90D"], selected: "30D")
+                    Text("30-day trend appears here as more days sync from Apple Health.")
+                        .font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
+                        .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
+                        .multilineTextAlignment(.center)
                 }.faffCard()
                 CoachVerdict("What this means",
                              "Your 7-day average from Apple Health. Day-to-day trend charts fill in here as more days sync.",
@@ -653,13 +665,33 @@ struct MetricDetailSheet: View {
                 if let s = overview.readinessScore {
                     HStack(spacing: 12) {
                         ReadinessRing(score: s, tone: TodayView.tone(for: overview.readinessState), size: 42)
-                        Text("Feeds your readiness score (\(s)).").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                        Text("**Feeds Readiness** — load is what's holding the score at \(s).")
+                            .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                        Spacer()
                     }.faffCard()
                 }
+                relatedTiles
                 PrimaryButton(title: "Close", icon: nil) { dismiss() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
+    }
+
+    private var relatedTiles: some View {
+        struct T: Identifiable { let id = UUID(); let label, value: String; let unit: String? }
+        let r = overview.state?.recovery
+        let tiles = [
+            T(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil),
+            T(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil),
+            T(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil),
+        ]
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("RELATED").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            MetricGrid(items: tiles) { t in
+                MetricTile(label: t.label, value: t.value, unit: t.unit,
+                           delta: t.value == "—" ? "No data" : "7-day avg", deltaTone: .good)
+            }
+        }
     }
 }

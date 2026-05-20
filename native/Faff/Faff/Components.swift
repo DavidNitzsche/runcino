@@ -394,6 +394,33 @@ struct StructureRow: View {
     }
 }
 
+// MARK: - Segmented control (Metric detail range)
+
+struct Segmented: View {
+    let options: [String]
+    var selected: String
+    var onSelect: (String) -> Void = { _ in }
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.self) { o in
+                Button { onSelect(o) } label: {
+                    Text(o).font(Faff.F.inter(11, .semibold))
+                        .foregroundStyle(o == selected ? Faff.C.ink : Faff.C.textMuted)
+                        .frame(maxWidth: .infinity).padding(.vertical, 6)
+                        .background(o == selected ? Faff.C.surface : .clear,
+                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .shadow(color: o == selected ? .black.opacity(0.06) : .clear, radius: 2, y: 1)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Faff.C.pillBg)
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Faff.C.pillLine, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+}
+
 // MARK: - Progress bar
 
 struct FaffProgressBar: View {
