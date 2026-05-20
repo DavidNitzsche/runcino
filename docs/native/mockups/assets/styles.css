@@ -2,46 +2,64 @@
    Faff.run native mockup stylesheet
    Shared by all iPhone + Apple Watch screen mockups.
 
-   Color palette mirrors faff.run web app:
-     orange (race / primary accent)
-     green (positive / recovery / readiness)
-     amber (warn / drift)
-     red   (error / red-readiness)
+   Typography matches web/app/globals.css exactly:
+     • Bebas Neue · display (italic for headlines, regular for stats)
+     • Inter · body, data labels
+     • System fonts as fallback only
 
-   Light + dark modes via .light / .dark class on .screen-frame parent.
-   Both modes ship from v1 per the design brief.
+   Color palette mirrors faff.run web app · OLED-tuned dark variants
+   live in the .dark scope.
 
-   Typography: -apple-system / system-ui targets SF Pro on iOS and
-   SF Compact on watchOS at the real font stack level.  Web preview
-   here is approximate; SwiftUI implementation gets the real fonts.
+   Both light + dark modes ship from v1.
    ───────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* ── Reset + tokens ────────────────────────────────────────────── */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Brand */
+  /* Brand · matches web app */
   --orange:        #E85D26;
   --orange-soft:   rgba(232, 93, 38, 0.12);
   --orange-wash:   rgba(232, 93, 38, 0.06);
-  --green:         #1f6a21;
-  --green-soft:    rgba(31, 106, 33, 0.12);
-  --amber:         #B3450A;
+  --orange-deep:   #C44A18;
+  --orange-light:  #F3AD38;
+
+  /* Brand gradient · used for wordmark and primary CTAs */
+  --gradient-brand: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%);
+  --gradient-brand-light: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%);
+
+  /* State colors · light + dark variants */
+  --green:         #2CA82F;        /* recovery, in-range — web token */
+  --green-bright:  #4ade80;        /* OLED dark-mode in-range */
+  --green-soft:    rgba(44, 168, 47, 0.12);
+
+  --amber:         #B3450A;         /* warn, drift — web light token */
+  --amber-bright:  #F3AD38;         /* OLED dark-mode warn */
   --amber-soft:    rgba(179, 69, 10, 0.12);
+
   --red:           #c92a2a;
+  --red-bright:    #ff7070;
   --red-soft:      rgba(201, 42, 42, 0.10);
 
-  /* Light mode */
+  --blue:          #2c5fc7;        /* warmup */
+  --blue-bright:   #6f9bff;        /* OLED dark-mode warmup */
+  --purple:        #6f42c1;        /* cooldown */
+  --purple-bright: #b85cff;
+
+  /* Light mode neutrals */
   --bg-l:          #ffffff;
   --bg-l-2:        #fafafa;
+  --bg-l-warm:     #EEECEA;        /* web's warm sand bg */
   --border-l:      rgba(13, 15, 18, 0.08);
   --border-l-2:    rgba(13, 15, 18, 0.16);
   --text-l:        #0D0F12;
   --text-l-2:      rgba(13, 15, 18, 0.65);
   --text-l-3:      rgba(13, 15, 18, 0.45);
 
-  /* Dark mode (designed for OLED watch + iPhone) */
+  /* Dark mode neutrals (OLED-friendly) */
   --bg-d:          #000000;
   --bg-d-2:        #1c1c1e;
   --border-d:      rgba(255, 255, 255, 0.10);
@@ -50,11 +68,48 @@
   --text-d-2:      rgba(255, 255, 255, 0.72);
   --text-d-3:      rgba(255, 255, 255, 0.50);
 
-  /* Font stacks */
-  --sf-display:    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
-  --sf-text:       -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
-  --sf-compact:    -apple-system, BlinkMacSystemFont, "SF Compact", "SF Pro Text", sans-serif;
-  --sf-mono:       ui-monospace, "SF Mono", monospace;
+  /* Font stacks · matches web/app/globals.css */
+  --f-display:     'Bebas Neue', -apple-system, BlinkMacSystemFont, sans-serif;
+  --f-body:        'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --f-data:        'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --f-mono:        ui-monospace, "SF Mono", monospace;
+
+  /* System-font fallbacks kept for any element still using them */
+  --sf-display:    var(--f-display);
+  --sf-text:       var(--f-body);
+  --sf-compact:    var(--f-body);
+  --sf-mono:       var(--f-mono);
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   TYPE SCALE — matches web/app/globals.css exactly
+   ═════════════════════════════════════════════════════════════════ */
+.t-hero    { font-family: var(--f-display); font-size: 140px; font-weight: 400; font-style: italic; letter-spacing: -0.04em; line-height: 0.9;  font-variant-numeric: tabular-nums; }
+.t-display { font-family: var(--f-display); font-size:  72px; font-weight: 400; font-style: italic; letter-spacing: -0.03em; line-height: 0.95; }
+.t-section { font-family: var(--f-display); font-size:  36px; font-weight: 400; font-style: italic; letter-spacing: -0.02em; line-height: 1; }
+.t-stat    { font-family: var(--f-display); font-size:  48px; font-weight: 400; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.t-body    { font-family: var(--f-body);    font-size:  15px; font-weight: 400; letter-spacing: -0.012em; line-height: 1.6; }
+.t-eyebrow { font-family: var(--f-data);    font-size:  11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-l-3); }
+.mono-sm   { font-family: var(--f-data);    font-size:  10px; font-weight: 700; letter-spacing: 0.6px; }
+
+/* ═════════════════════════════════════════════════════════════════
+   FAFF WORDMARK — italic gradient, ALL CAPS, like the web topbar
+   ═════════════════════════════════════════════════════════════════ */
+.faff-wordmark {
+  font-family: var(--f-display);
+  font-style: italic;
+  letter-spacing: 0.06em;
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+.faff-wordmark-solid {
+  font-family: var(--f-display);
+  font-style: italic;
+  letter-spacing: 0.06em;
+  color: var(--orange);
 }
 
 html, body {

@@ -2,135 +2,127 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · COOLDOWN</title>
+<title>Watch · COOLDOWN (v2 · Bebas + multi-metric)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
-  .phase-screen { height: 100%; padding: 18px 16px 14px; display: flex; flex-direction: column; }
-  .phase-header {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
-  }
-  .phase-header .phase-type {
-    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
-    color: #6f42c1;
-  }
-  .progress-line {
-    width: 100%; height: 3px; background: rgba(255,255,255,0.15);
-    border-radius: 2px; overflow: hidden; margin-bottom: 12px;
-  }
-  .light .progress-line { background: var(--border-l); }
-  .progress-line .fill { height: 100%; background: #6f42c1; width: 60%; }
+  .cd-screen { height: 100%; padding: 10px 14px 8px; display: flex; flex-direction: column; background: #000; color: #fff; }
+  .cd-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .cd-head .phase { font-family: var(--f-display); font-style: italic; font-size: 14px; letter-spacing: 0.06em; color: var(--purple-bright); }
+  .cd-head .dist { font-family: var(--f-display); font-style: italic; font-size: 14px; letter-spacing: 0.04em; color: rgba(255,255,255,0.55); }
+  .cd-progress { width: 100%; height: 2px; background: rgba(255,255,255,0.15); margin-bottom: 6px; }
+  .cd-progress .fill { height: 100%; background: var(--purple-bright); width: 26%; }
+  .cd-stack { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 2px 0; }
+  .cd-row { display: flex; flex-direction: column; line-height: 1; }
+  .cd-row .lbl { font-family: var(--f-display); font-style: italic; font-size: 11px; letter-spacing: 0.18em; color: rgba(255,255,255,0.50); margin-bottom: 1px; }
+  .cd-row .val { font-family: var(--f-display); font-size: 64px; line-height: 0.88; letter-spacing: -0.03em; color: #fff; font-variant-numeric: tabular-nums; }
+  .cd-row .val.purple { color: var(--purple-bright); }
+  .cd-row .val.green  { color: var(--green-bright); }
+  .cd-foot { display: flex; justify-content: space-between; padding-top: 4px; border-top: 0.5px solid rgba(255,255,255,0.12); font-family: var(--f-display); font-style: italic; font-size: 13px; letter-spacing: 0.06em; color: rgba(255,255,255,0.55); }
+  .cd-foot .k { color: rgba(255,255,255,0.40); margin-right: 4px; }
 
-  .timer-block { text-align: center; margin: 14px 0; }
-  .timer-block .elapsed {
-    font-family: var(--sf-compact);
-    font-size: 54px; font-weight: 800; line-height: 1;
-    letter-spacing: -2px; color: #6f42c1;
+  /* Soft prose moment unique to cooldown */
+  .cd-prose {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.05;
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 0.5px solid rgba(255,255,255,0.10);
   }
-  .timer-block .total {
-    font-family: var(--sf-compact); font-size: 13px; font-weight: 500;
-    color: var(--text-l-2); margin-top: 3px;
-  }
-  .dark .timer-block .total { color: var(--text-d-2); }
-
-  .message {
-    font-family: var(--sf-compact);
-    font-size: 14px; font-weight: 500;
-    text-align: center;
-    margin-bottom: 12px;
-    line-height: 1.3;
-  }
-
-  .footer-row {
-    display: flex; justify-content: space-around;
-    margin-top: auto; padding-top: 8px;
-    border-top: 0.5px solid var(--border-l);
-  }
-  .dark .footer-row { border-top-color: var(--border-d); }
-  .footer-row .stat { text-align: center; flex: 1; }
-  .footer-row .stat .num {
-    font-family: var(--sf-compact); font-size: 15px; font-weight: 700;
-  }
-  .footer-row .stat .lbl {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
-    letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3); margin-top: 1px;
-  }
-  .dark .footer-row .stat .lbl { color: var(--text-d-3); }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · COOLDOWN</h1>
-    <div class="subtitle">Final ease-down phase · workout almost complete</div>
+    <h1 style="font-family: var(--f-display); font-style: italic; font-size: 42px; letter-spacing: -0.02em;">COOLDOWN · v2</h1>
+    <div class="subtitle">Bebas Neue italic · multi-metric stack · purple phase color · prose-moment line</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
   <div class="mode-pair">
-
     <div class="mockup-slot">
-      <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
-        <div class="watch-status">10:35</div>
-        <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">COOLDOWN</div>
-            </div>
-            <div class="progress-line"><div class="fill"></div></div>
-            <div class="timer-block">
-              <div class="elapsed">6:12</div>
-              <div class="total">of 10:00</div>
-            </div>
-            <div class="message">Ease down. Nice work.</div>
-            <div class="footer-row">
-              <div class="stat"><div class="num">9:08</div><div class="lbl">PACE</div></div>
-              <div class="stat"><div class="num">132</div><div class="lbl">BPM</div></div>
-              <div class="stat"><div class="num">6.8</div><div class="lbl">MI TOTAL</div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="mockup-slot">
-      <div class="mode-label">DARK</div>
+      <div class="mode-label">EARLY COOLDOWN</div>
       <div class="watch-frame dark">
-        <div class="watch-status">10:35</div>
+        <div class="watch-status">10:24</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">COOLDOWN</div>
-            </div>
-            <div class="progress-line"><div class="fill"></div></div>
-            <div class="timer-block">
-              <div class="elapsed">6:12</div>
-              <div class="total">of 10:00</div>
-            </div>
-            <div class="message">Ease down. Nice work.</div>
-            <div class="footer-row">
-              <div class="stat"><div class="num">9:08</div><div class="lbl">PACE</div></div>
-              <div class="stat"><div class="num">132</div><div class="lbl">BPM</div></div>
-              <div class="stat"><div class="num">6.8</div><div class="lbl">MI TOTAL</div></div>
+          <div class="watch-content">
+            <div class="cd-screen">
+              <div class="cd-head">
+                <span class="phase">COOLDOWN</span>
+                <span class="dist">2:38 / 10:00</span>
+              </div>
+              <div class="cd-progress"><div class="fill"></div></div>
+
+              <div class="cd-stack">
+                <div class="cd-row">
+                  <div class="lbl">PACE</div>
+                  <div class="val purple">7:24</div>
+                </div>
+                <div class="cd-row">
+                  <div class="lbl">HR · DROPPING</div>
+                  <div class="val">142</div>
+                </div>
+                <div class="cd-row">
+                  <div class="lbl">REMAINING</div>
+                  <div class="val">7:22</div>
+                </div>
+              </div>
+
+              <div class="cd-prose">EASE DOWN. NICE WORK.</div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="mockup-slot">
+      <div class="mode-label">LATE COOLDOWN (HR settling)</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">10:30</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="cd-screen">
+              <div class="cd-head">
+                <span class="phase">COOLDOWN</span>
+                <span class="dist">8:42 / 10:00</span>
+              </div>
+              <div class="cd-progress"><div class="fill" style="width: 87%;"></div></div>
+
+              <div class="cd-stack">
+                <div class="cd-row">
+                  <div class="lbl">PACE</div>
+                  <div class="val purple">8:12</div>
+                </div>
+                <div class="cd-row">
+                  <div class="lbl">HR · SETTLED</div>
+                  <div class="val green">118</div>
+                </div>
+                <div class="cd-row">
+                  <div class="lbl">REMAINING</div>
+                  <div class="val">1:18</div>
+                </div>
+              </div>
+
+              <div class="cd-prose">EASE DOWN. NICE WORK.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong style="font-family: var(--f-display); font-style: italic; font-size: 18px;">DESIGN NOTES · COOLDOWN v2</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>Purple chip · distinct from warmup blue · so the runner can color-recognize the phase at a glance</li>
-      <li>Timer big, no pace pressure · the work is done, this is reward + recovery</li>
-      <li><strong>"Ease down. Nice work."</strong> · the ONLY screen with prose copy · the work is finished, brief warmth allowed (V6 voice: second-person warm when discussing the runner's body/state)</li>
-      <li>Distance + total HR + pace shown small at bottom · runner can preview their stats while cooling</li>
-      <li>End-of-workout haptic fires at 10:00 · long pattern · workout complete → SUMMARY screen</li>
+      <li>Purple phase chip + purple progress fill — cooldown is the recovery-bound wind-down · color reads warm-down</li>
+      <li>Pace in purple (matches phase) · HR white but turns green when "SETTLED" (≤ 120 bpm) · remaining time white</li>
+      <li><strong>Prose moment at bottom:</strong> "EASE DOWN. NICE WORK." in Bebas italic ALL CAPS at 18pt · the one warm-second-person line allowed on watch · the work is over, restraint relaxes</li>
+      <li>No footer ribbon on cooldown — runner doesn't need cadence or distance reads here</li>
     </ul>
   </div>
 

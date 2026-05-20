@@ -2,137 +2,68 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · Warmup phase</title>
+<title>Watch · WARMUP (v2 · Bebas + multi-metric)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
-  .phase-screen { height: 100%; padding: 18px 16px 14px; display: flex; flex-direction: column; }
-  .phase-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 6px;
-  }
-  .phase-header .phase-type {
-    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
-  }
-  .phase-header.warmup .phase-type { color: #2c5fc7; }
-  .phase-header .progress-line {
-    flex: 1; height: 3px; background: rgba(255,255,255,0.15);
-    border-radius: 2px; margin-left: 10px; overflow: hidden;
-  }
-  .light .phase-header .progress-line { background: var(--border-l); }
-  .phase-header .progress-line .fill {
-    height: 100%; background: #2c5fc7; width: 22%;
-  }
-
-  .timer-block {
-    text-align: center;
-    margin: 18px 0 12px;
-  }
-  .timer-block .elapsed {
-    font-family: var(--sf-compact);
-    font-size: 56px; font-weight: 800; line-height: 1;
-    letter-spacing: -2px;
-    color: #2c5fc7;
-  }
-  .timer-block .total {
-    font-family: var(--sf-compact);
-    font-size: 14px; font-weight: 500;
-    color: var(--text-l-2); margin-top: 4px;
-  }
-  .dark .timer-block .total { color: var(--text-d-2); }
-
-  .secondary-row {
-    display: flex; justify-content: space-between;
-    margin-top: auto; padding-top: 10px;
-    border-top: 0.5px solid var(--border-l);
-  }
-  .dark .secondary-row { border-top-color: var(--border-d); }
-  .secondary-row .stat {
-    text-align: center; flex: 1;
-  }
-  .secondary-row .stat .num {
-    font-family: var(--sf-compact); font-size: 18px; font-weight: 700;
-    letter-spacing: -0.5px;
-  }
-  .secondary-row .stat .lbl {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
-    letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3); margin-top: 1px;
-  }
-  .dark .secondary-row .stat .lbl { color: var(--text-d-3); }
+  .wu-screen { height: 100%; padding: 10px 14px 8px; display: flex; flex-direction: column; background: #000; color: #fff; }
+  .wu-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .wu-head .phase { font-family: var(--f-display); font-style: italic; font-size: 14px; letter-spacing: 0.06em; color: var(--blue-bright); }
+  .wu-head .dist { font-family: var(--f-display); font-style: italic; font-size: 14px; letter-spacing: 0.04em; color: rgba(255,255,255,0.55); }
+  .wu-progress { width: 100%; height: 2px; background: rgba(255,255,255,0.15); margin-bottom: 6px; }
+  .wu-progress .fill { height: 100%; background: var(--blue-bright); width: 32%; }
+  .wu-stack { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 2px 0; }
+  .wu-row { display: flex; flex-direction: column; line-height: 1; }
+  .wu-row .lbl { font-family: var(--f-display); font-style: italic; font-size: 11px; letter-spacing: 0.18em; color: rgba(255,255,255,0.50); margin-bottom: 1px; }
+  .wu-row .val { font-family: var(--f-display); font-size: 64px; line-height: 0.88; letter-spacing: -0.03em; color: #fff; font-variant-numeric: tabular-nums; }
+  .wu-row .val.blue   { color: var(--blue-bright); }
+  .wu-row .val.green  { color: var(--green-bright); }
+  .wu-foot { display: flex; justify-content: space-between; padding-top: 4px; border-top: 0.5px solid rgba(255,255,255,0.12); font-family: var(--f-display); font-style: italic; font-size: 13px; letter-spacing: 0.06em; color: rgba(255,255,255,0.55); }
+  .wu-foot .k { color: rgba(255,255,255,0.40); margin-right: 4px; }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · Workout · WARMUP</h1>
-    <div class="subtitle">Warmup phase · countdown to start of intervals · HR + pace visible but not gated</div>
+    <h1 style="font-family: var(--f-display); font-style: italic; font-size: 42px; letter-spacing: -0.02em;">WARMUP · v2</h1>
+    <div class="subtitle">Bebas Neue italic · Apple's multi-metric stack · blue phase color</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
   <div class="mode-pair">
-
     <div class="mockup-slot">
-      <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
-        <div class="watch-status">9:48</div>
-        <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header warmup">
-              <div class="phase-type">WARMUP</div>
-              <div class="progress-line"><div class="fill"></div></div>
-            </div>
-            <div class="timer-block">
-              <div class="elapsed">3:18</div>
-              <div class="total">of 15:00</div>
-            </div>
-            <div class="secondary-row">
-              <div class="stat">
-                <div class="num">8:52</div>
-                <div class="lbl">PACE /MI</div>
-              </div>
-              <div class="stat">
-                <div class="num">132</div>
-                <div class="lbl">BPM</div>
-              </div>
-              <div class="stat">
-                <div class="num">0.4</div>
-                <div class="lbl">MI</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="mockup-slot">
-      <div class="mode-label">DARK</div>
+      <div class="mode-label">3 MIN IN · BUILDING</div>
       <div class="watch-frame dark">
-        <div class="watch-status">9:48</div>
+        <div class="watch-status">9:42</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header warmup">
-              <div class="phase-type">WARMUP</div>
-              <div class="progress-line"><div class="fill"></div></div>
-            </div>
-            <div class="timer-block">
-              <div class="elapsed">3:18</div>
-              <div class="total">of 15:00</div>
-            </div>
-            <div class="secondary-row">
-              <div class="stat">
-                <div class="num">8:52</div>
-                <div class="lbl">PACE /MI</div>
+          <div class="watch-content">
+            <div class="wu-screen">
+              <div class="wu-head">
+                <span class="phase">WARMUP</span>
+                <span class="dist">3:14 / 10:00</span>
               </div>
-              <div class="stat">
-                <div class="num">132</div>
-                <div class="lbl">BPM</div>
+              <div class="wu-progress"><div class="fill"></div></div>
+
+              <div class="wu-stack">
+                <div class="wu-row">
+                  <div class="lbl">HR · Z1</div>
+                  <div class="val green">118</div>
+                </div>
+                <div class="wu-row">
+                  <div class="lbl">PACE</div>
+                  <div class="val">9:42</div>
+                </div>
+                <div class="wu-row">
+                  <div class="lbl">ELAPSED</div>
+                  <div class="val blue">3:14</div>
+                </div>
               </div>
-              <div class="stat">
-                <div class="num">0.4</div>
-                <div class="lbl">MI</div>
+
+              <div class="wu-foot">
+                <span><span class="k">CEIL</span>125</span>
+                <span><span class="k">CAD</span>76</span>
+                <span><span class="k">DIST</span>0.34 MI</span>
               </div>
             </div>
           </div>
@@ -140,16 +71,53 @@
       </div>
     </div>
 
+    <div class="mockup-slot">
+      <div class="mode-label">8 MIN IN · ALMOST READY</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:47</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="wu-screen">
+              <div class="wu-head">
+                <span class="phase">WARMUP</span>
+                <span class="dist">8:42 / 10:00</span>
+              </div>
+              <div class="wu-progress"><div class="fill" style="width: 87%;"></div></div>
+
+              <div class="wu-stack">
+                <div class="wu-row">
+                  <div class="lbl">HR · Z2</div>
+                  <div class="val green">128</div>
+                </div>
+                <div class="wu-row">
+                  <div class="lbl">PACE</div>
+                  <div class="val">8:18</div>
+                </div>
+                <div class="wu-row">
+                  <div class="lbl">ELAPSED</div>
+                  <div class="val blue">8:42</div>
+                </div>
+              </div>
+
+              <div class="wu-foot">
+                <span><span class="k">CEIL</span>125</span>
+                <span><span class="k">CAD</span>80</span>
+                <span><span class="k">DIST</span>1.04 MI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong style="font-family: var(--f-display); font-style: italic; font-size: 18px;">DESIGN NOTES · WARMUP v2</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>Phase type chip + progress bar at top · spatial orientation ("where am I in the workout")</li>
-      <li>Timer is the BIG number · warmup uses blue color · no pace pressure during warmup</li>
-      <li>Three secondary stats at the bottom · pace / HR / distance · informational only</li>
-      <li>No target pace shown during warmup · the runner is just easing in</li>
-      <li>3-second pre-end haptic fires at 14:57 elapsed · "almost to interval 1"</li>
+      <li>Blue phase chip + blue progress bar fill — warmup is the "build" phase, reads cool and patient</li>
+      <li>HR position 1 (green when below ceiling) · pace position 2 · elapsed position 3 in blue (matches phase color)</li>
+      <li>Footer: ceiling (125 for Z1→Z2 build) · cadence · distance</li>
+      <li>Bebas Neue throughout · italic ALL CAPS labels at 11pt with 0.18em tracking · regular Bebas for numerals · tabular numerals</li>
     </ul>
   </div>
 
