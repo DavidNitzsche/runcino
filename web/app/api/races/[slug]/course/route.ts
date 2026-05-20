@@ -29,10 +29,77 @@ import { getRaceDB } from '@/lib/race-store';
 import { ensureSeed } from '@/lib/seed-server';
 import { requireActiveUser } from '@/lib/auth';
 import { analyzeGpx } from '@/lib/gpx-analysis';
+import { computeAggregateVdot } from '@/lib/compute-vdot';
+import { vdotRow } from '@/lib/vdot';
+import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
 
 const M_PER_MI = 1609.344;
 const FT_PER_M = 3.28084;
 const TARGET_POINTS = 160;
+
+function fmtTime(sec: number): string {
+  const t = Math.round(sec);
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function distKeyFor(distanceMi: number): 'mileS' | 'km5S' | 'km10S' | 'km15S' | 'halfS' | 'marathonS' | null {
+  if (Math.abs(distanceMi - 13.109) < 0.55) return 'halfS';
+  if (Math.abs(distanceMi - 26.219) < 1.05) return 'marathonS';
+  if (Math.abs(distanceMi - 6.214) < 0.31) return 'km10S';
+  if (Math.abs(distanceMi - 9.32) < 0.47) return 'km15S';
+  if (Math.abs(distanceMi - 3.107) < 0.155) return 'km5S';
+  return null;
+}
+
+/**
+ * Mirror the /races/[slug] web page's readiness-VDOT math EXACTLY so the
+ * iPhone race detail and the web race page show the same projection for
+ * the same user (computeAggregateVdot — not vdotSnapshot/resolveFitness).
+ */
+async function computeProjection(userId: string, distanceMi: number, goalFinishS: number) {
+  if (!(goalFinishS > 0) || !(distanceMi > 0)) return null;
+  const agg = await computeAggregateVdot(userId);
+  if (!agg || agg.value <= 0) return null;
+  const cv = agg.value;
+  const row = vdotRow(cv);
+  const distKey = distKeyFor(distanceMi);
+  if (!row || !distKey) return null;
+  const predicted = row[distKey] as number;
+
+  let goalVdot: number | null = null;
+  for (let v = 30; v <= 85; v++) {
+    const r = vdotRow(v);
+    if (!r) continue;
+    const t = r[distKey] as number;
+    if (t <= goalFinishS) {
+      if (v === 30) { goalVdot = 30; break; }
+      const prev = vdotRow(v - 1);
+      if (!prev) { goalVdot = v; break; }
+      const tPrev = prev[distKey] as number;
+      const span = tPrev - t;
+      const frac = span === 0 ? 0 : (tPrev - goalFinishS) / span;
+      goalVdot = Math.round(((v - 1) + frac) * 10) / 10;
+      break;
+    }
+  }
+  let paceTGapS: number | null = null;
+  if (goalVdot != null) {
+    paceTGapS = Math.round(resolveTrainingPaces(cv).tMileS - resolveTrainingPaces(goalVdot).tMileS);
+  }
+  return {
+    currentVdot: Math.round(cv * 10) / 10,
+    currentVdotLabel: agg.windowLabel,
+    predictedFinishS: Math.round(predicted),
+    predictedDisplay: fmtTime(predicted),
+    goalFinishS,
+    goalDisplay: fmtTime(goalFinishS),
+    goalVdot,
+    vdotGap: goalVdot != null ? Math.round((goalVdot - cv) * 10) / 10 : null,
+    paceTGapS,
+    onPace: predicted <= goalFinishS,
+  };
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   await ensureSeed();
@@ -102,6 +169,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     .filter((iv): iv is Extract<typeof iv, { kind: 'fuel' }> => iv.kind === 'fuel')
     .map((iv) => ({ number: iv.gel_number, atMi: iv.at_mi, item: iv.item, label: iv.label }));
 
+  // Race projection — identical math to the /races/[slug] web page.
+  const projection = await computeProjection(
+    userId ?? 'me',
+    race.meta.distanceMi,
+    plan?.goal?.finish_time_s ?? 0,
+  );
+
   const phases = (plan?.phases ?? []).map((p) => ({
     label: p.label,
     startMi: p.start_mi,
@@ -137,5 +211,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     phases,
     fueling,
     gels,
+    projection,
   });
 }
