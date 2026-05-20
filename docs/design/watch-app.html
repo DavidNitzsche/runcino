@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Apple Watch · The App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Faff — Apple Watch · the app design pass
+   Dark execution surface · shared v4 language (Bebas + semantics).
+   Light page chrome, dark watch faces, annotations.
+   Build spec: docs/design/watch-handoff.html · scope: 01-watchos-scoping.md
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --bg:#EEECEA; --bg-2:#E7E4E1; --card:#FFFFFF; --ink:#0D0F12;
+  --t1:rgba(13,15,18,.55); --t2:rgba(13,15,18,.35); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.08); --pill-bg:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.14);
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.10),0 22px 50px rgba(0,0,0,.16);
+  /* dark watch face */
+  --wink:#fff; --wt1:rgba(255,255,255,.62); --wt2:rgba(255,255,255,.40); --wline:rgba(255,255,255,.15);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif; --f-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5;padding:60px 7vw 120px}
+.tnum{font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto}
+
+/* masthead */
+.logo{font-family:var(--f-display);font-style:italic;font-size:30px;letter-spacing:3px;line-height:1;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-top:22px}
+h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height:.86;text-transform:uppercase;margin:12px 0 16px}
+.intro{font-size:15.5px;color:var(--t1);max-width:720px;line-height:1.6}
+.intro b{color:var(--ink);font-weight:600}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.chip{font-size:12px;font-weight:600;padding:9px 13px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);display:flex;align-items:center;gap:8px}
+.chip .d{width:8px;height:8px;border-radius:50%}
+
+.sec{margin-top:70px}
+.sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sec-h .n{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:2px;color:var(--t2)}
+.sec-h h2{font-family:var(--f-display);font-size:40px;line-height:.9;text-transform:uppercase}
+.sec-sub{font-size:14.5px;color:var(--t1);max-width:760px;line-height:1.6;margin-bottom:30px}
+.sec-sub b{color:var(--ink);font-weight:600}
+
+/* layout helpers */
+.flow{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start}
+.unit{display:flex;flex-direction:column;align-items:center;gap:13px;width:188px}
+.unit .lbl{text-align:center;font-size:11.5px;color:var(--t1);font-weight:500;line-height:1.4}
+.unit .lbl b{display:block;font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:12px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:3px}
+.arrow{align-self:center;color:var(--t2);font-size:22px;font-weight:300;padding-top:80px}
+
+/* annotated split */
+.split{display:grid;grid-template-columns:230px 1fr;gap:48px;align-items:center}
+.callouts{display:flex;flex-direction:column}
+.callouts h3{font-family:var(--f-display);font-size:34px;line-height:.9;text-transform:uppercase;margin-bottom:6px}
+.callouts .l{font-size:14px;color:var(--t1);line-height:1.55;margin-bottom:18px;max-width:520px}
+.co{display:grid;grid-template-columns:26px 96px 1fr;gap:14px;align-items:baseline;padding:11px 0;border-top:1px solid var(--divider);font-size:13.5px}
+.co .num{font-family:var(--f-display);font-size:20px;color:var(--orange);line-height:1}
+.co .z{font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--ink)}
+.co .d{color:var(--t1);line-height:1.45}
+.co .d b{color:var(--ink);font-weight:600}
+
+/* ── dark watch face ───────────────────────────────────────── */
+.watch{position:relative;width:188px;height:228px;border-radius:52px;padding:12px;background:linear-gradient(150deg,#3a3d44,#15171a);box-shadow:var(--shadow-lg)}
+.watch.lg{width:228px;height:276px;border-radius:62px;padding:14px}
+.watch::before{content:"";position:absolute;right:-5px;top:74px;width:6px;height:40px;border-radius:4px;background:linear-gradient(90deg,#4a4d54,#222)}
+.watch::after{content:"";position:absolute;right:-4px;top:122px;width:5px;height:28px;border-radius:4px;background:#222}
+.w-screen{width:100%;height:100%;border-radius:42px;overflow:hidden;background:#000;padding:13px 14px;display:flex;flex-direction:column;position:relative;color:var(--wink);line-height:1.15}
+.watch.lg .w-screen{border-radius:50px;padding:16px 17px}
+.aod{opacity:.5;filter:brightness(.65) saturate(.85)}
+
+.w-top{display:flex;justify-content:space-between;align-items:center}
+.w-eye{font-size:11px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--wt2)}
+.w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)} .w-eye.orange{color:var(--orange)}
+.w-clock{font-size:11px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
+.w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+/* whole-workout segment strip */
+.w-seg{display:flex;gap:2px;margin-top:6px}
+.w-seg i{height:4px;border-radius:2px;background:rgba(255,255,255,.16)}
+.w-seg i.warm{flex:1.3} .w-seg i.work{flex:1} .w-seg i.rec{flex:.5}
+.w-seg i.cool{flex:1.3} .w-seg i.done{background:var(--green)} .w-seg i.now{background:var(--orange)}
+/* hero */
+.w-hero{font-family:var(--f-display);line-height:.72;letter-spacing:-2px;color:var(--wink);margin-top:5px}
+.watch .w-hero{font-size:72px} .watch.lg .w-hero{font-size:92px}
+.w-hero.green{color:var(--green)} .w-hero.amber{color:var(--amber)} .w-hero.over{color:var(--warn)}
+.w-hero small{font-family:var(--f-body);font-size:18px;font-weight:600;color:var(--wt2);letter-spacing:0;margin-left:2px}
+.w-ref{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:5px}
+.w-ref b{color:var(--wink)} .w-ref .up{color:var(--green)} .w-ref .down{color:var(--warn)} .w-ref .mid{color:var(--amber)}
+/* stats */
+.w-stats{display:flex;margin-top:auto;border-top:1px solid var(--wline);padding-top:8px}
+.w-stat{flex:1;padding-right:10px} .w-stat+.w-stat{border-left:1px solid var(--wline);padding-left:12px;padding-right:0}
+.w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82;color:var(--wink)}
+.watch.lg .w-stat .v{font-size:34px}
+.w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
+.w-stat .k{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--wt2);margin-top:3px}
+/* rep progress */
+.w-prog{margin-top:8px}
+.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
+.w-prog .lbl b{color:var(--wink)}
+.w-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.green{background:var(--green)}
+
+/* home / pre-run */
+.w-logo{font-family:var(--f-display);font-style:italic;font-size:15px;letter-spacing:1.5px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.w-ready{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--green);background:rgba(44,168,47,.15);border-radius:20px;padding:4px 9px;margin-top:10px;align-self:flex-start}
+.w-name{font-family:var(--f-display);font-size:46px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:10px 0 5px}
+.w-namesub{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
+.w-meta{font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-top:4px}
+.w-dots{display:flex;gap:3px;margin-top:12px}
+.w-dots i{height:5px;border-radius:3px;background:rgba(255,255,255,.14)}
+.w-dots i.work{flex:1;background:var(--orange)} .w-dots i.rec{flex:.5;background:rgba(232,93,38,.4)}
+.w-dots i.warm{flex:1.4;background:rgba(255,255,255,.32)} .w-dots i.cool{flex:1.4;background:rgba(255,255,255,.32)}
+.w-start{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--green);color:#04130d;border-radius:30px;padding:13px;font-family:var(--f-sub);font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.w-rest{flex:1;display:flex;flex-direction:column;justify-content:center}
+.w-rest .big{font-family:var(--f-display);font-size:60px;line-height:.8;letter-spacing:-1px;color:var(--green)}
+.w-rest .sub{font-size:11px;color:var(--wt1);font-weight:500;line-height:1.4;margin-top:8px}
+
+/* countdown / transition */
+.w-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.w-count{font-family:var(--f-display);font-size:130px;line-height:.8;color:var(--green)}
+.w-trans-ic{width:46px;height:46px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.w-trans-t{font-family:var(--f-display);font-size:40px;line-height:.84;text-transform:uppercase;letter-spacing:-.5px}
+.w-trans-s{font-size:12px;color:var(--wt1);font-weight:600;margin-top:8px;letter-spacing:.5px;text-transform:uppercase}
+
+/* recovery */
+.w-rc{font-family:var(--f-display);font-size:72px;line-height:.72;color:var(--green);margin-top:5px}
+.w-nx{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:5px} .w-nx b{color:var(--wink)}
+
+/* alt pages */
+.w-pg-h{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--wt2);margin-bottom:8px}
+.w-list{display:flex;flex-direction:column}
+.w-li{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--wline);font-size:13px}
+.w-li:first-child{border-top:0}
+.w-li .rp{display:flex;align-items:center;gap:8px;color:var(--wt1);font-weight:600}
+.w-li .rp .n{font-family:var(--f-display);font-size:16px;color:var(--wt2);min-width:16px}
+.w-li .pace{font-family:var(--f-display);font-size:20px;letter-spacing:-.5px}
+.w-li .pace.green{color:var(--green)} .w-li .pace.amber{color:var(--amber)}
+.w-li.now .rp{color:var(--orange)} .w-li.now .rp .n{color:var(--orange)}
+.w-li.up{opacity:.4}
+.w-ov{display:flex;align-items:center;gap:9px;padding:5px 0;border-top:1px solid var(--wline);font-size:12px;color:var(--wt1)}
+.w-ov:first-child{border-top:0}
+.w-ov .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);flex:none}
+.w-ov.done .dot{background:var(--green)} .w-ov.now .dot{background:var(--orange)} .w-ov.now{color:var(--wink);font-weight:600}
+.w-ov .t{flex:1} .w-ov .v{font-family:var(--f-display);font-size:16px;color:var(--wt2)}
+/* controls */
+.w-ctrls{flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center}
+.w-ctrl{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;padding:13px;font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.w-ctrl.pause{background:var(--amber);color:#1a1300} .w-ctrl.end{background:var(--warn);color:#fff} .w-ctrl.lock{background:rgba(255,255,255,.12);color:var(--wink)}
+/* summary */
+.w-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.w-done .ring{width:40px;height:40px;border-radius:50%;border:3px solid var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.w-done .ttl{font-family:var(--f-display);font-size:28px;line-height:.84;text-transform:uppercase}
+.w-done .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 6px;margin-top:13px;width:100%}
+.w-done .grid .c .v{font-family:var(--f-display);font-size:22px;line-height:.85;color:var(--wink)}
+.w-done .grid .c .k{font-size:7.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:2px;white-space:nowrap}
+.w-done .save{margin-top:12px;font-size:9.5px;color:var(--wt2);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+/* glance / complication */
+.w-glance{flex:1;display:flex;flex-direction:column;justify-content:center}
+.w-glance .gh{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--wt2)}
+.w-glance .gv{font-family:var(--f-display);font-size:56px;line-height:.78;margin-top:4px}
+.w-glance .gs{font-size:11px;color:var(--wt1);font-weight:600;margin-top:6px}
+.w-face{flex:1;position:relative;display:flex;align-items:center;justify-content:center}
+.w-face .ftime{font-family:var(--f-display);font-size:58px;color:var(--wink);letter-spacing:-1px}
+.w-comp{position:absolute;bottom:6px;left:0;right:0;display:flex;justify-content:center;gap:6px}
+.w-comp .cc{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.10);border-radius:14px;padding:5px 9px;font-size:10px;font-weight:700;color:var(--wink)}
+.w-comp .cc .o{color:var(--orange);font-family:var(--f-display);font-size:14px}
+
+/* color trio */
+.trio{display:flex;gap:24px;flex-wrap:wrap}
+.trio .unit .lbl b.green{color:var(--green)} .trio .unit .lbl b.amber{color:var(--amber)} .trio .unit .lbl b.warn{color:var(--warn)}
+
+/* principles */
+.principles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.principles .card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px 24px}
+.principles .card .e{font-family:var(--f-display);font-size:30px;line-height:.9;color:var(--orange)}
+.principles .card h4{font-family:var(--f-sub);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 7px}
+.principles .card p{font-size:13px;color:var(--t1);line-height:1.5}
+
+.foot{margin-top:80px;padding-top:26px;border-top:1px solid var(--divider);font-size:12px;color:var(--t1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.foot b{color:var(--ink);font-weight:600}
+@media(max-width:880px){.split{grid-template-columns:1fr;gap:30px}.principles{grid-template-columns:1fr}.arrow{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- masthead -->
+  <header>
+    <div class="logo">FAFF</div>
+    <div class="kicker">Apple Watch · the app</div>
+    <h1>Run it,<br>don't read it.</h1>
+    <p class="intro">The watch is the execution layer. Same design language as the phone, Bebas numbers and the
+      orange/green/amber semantics, but <b>dark</b> for the wrist and stripped to what you can absorb in a
+      glance at speed. The whole job: <b>know if you're on pace right now</b>, and feel the transitions without
+      looking. Companion app, so the phone holds auth and pushes the workout. No coach prose here.</p>
+    <div class="chips">
+      <div class="chip"><span class="d" style="background:var(--ink)"></span>Dark · OLED + sunlight</div>
+      <div class="chip"><span class="d" style="background:var(--orange)"></span>One hero number, color-coded</div>
+      <div class="chip"><span class="d" style="background:var(--green)"></span>Pace · HR · cadence</div>
+      <div class="chip"><span class="d" style="background:var(--amber)"></span>Haptics carry transitions</div>
+    </div>
+  </header>
+
+  <!-- A · APP HOME -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">A</span><h2>The app screen</h2></div>
+    <p class="sec-sub">Raise your wrist and open Faff. Not a dashboard, a launchpad: today's session, a one-word readiness
+      read, and a thumb-sized Start. On a rest day it says so and gets out of the way.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-logo">FAFF</span><span class="w-clock tnum">7:14</span></div>
+          <div class="w-body">
+            <div class="w-ready"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>82 · Primed</div>
+            <div class="w-name">6×800</div>
+            <div class="w-namesub">@ T · 6:31/mi</div>
+            <div class="w-meta">52 min · 6.4 mi</div>
+            <div class="w-start"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 3l9 5-9 5V3z" fill="#04130d"/></svg>Start</div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Home · workout day</b>Readiness glance, today's session,<br>one tap to start.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-logo">FAFF</span><span class="w-clock tnum">7:14</span></div>
+          <div class="w-rest">
+            <div class="w-eye green">Rest day</div>
+            <div class="big">REST</div>
+            <div class="sub">Recovery is the workout. HRV 68, resting HR 48. Easy walk if you want it.</div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Home · rest day</b>No prescription. States it plainly,<br>shows the body read.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye">Today · ready</span><span class="w-clock tnum">7:14</span></div>
+          <div class="w-body">
+            <div class="w-name" style="margin-top:8px">6×800</div>
+            <div class="w-namesub">@ T · 6:31/mi · 60s rec</div>
+            <div class="w-meta">est 52 min · 6.4 mi</div>
+            <div class="w-dots"><i class="warm"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+            <div class="w-start"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 3l9 5-9 5V3z" fill="#04130d"/></svg>Start</div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Pre-run briefing</b>The structure, before you go.<br>Segment strip = the whole session.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B · STARTING -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">B</span><h2>Starting</h2></div>
+    <p class="sec-sub">Tap Start, get a three-count so the first GPS-laggy seconds aren't a panic, then the warmup runs itself.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen"><div class="w-center"><div class="w-eye green" style="margin-bottom:8px">Get ready</div><div class="w-count">3</div></div></div></div>
+        <div class="lbl"><b>Countdown</b>3 · 2 · 1, with a tick haptic each.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Warmup</span><span class="w-clock tnum">7:16</span></div>
+          <div class="w-body">
+            <div class="w-hero tnum">2:15<small>/10:00</small></div>
+            <div class="w-ref">Easy · <b>7:58</b>/mi</div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Warmup</span><span>next · Interval 1</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Warmup</b>No pace target. Hero is the clock<br>toward the warmup duration.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C · DURING THE WORKOUT (the hero) -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">C</span><h2>During the workout</h2></div>
+    <p class="sec-sub">The whole design exists for this screen. At threshold effort, eyes streaming, you get <b>one second</b>.
+      So there is <b>one hero</b>: current pace, and its color answers the only question that matters before you can even
+      read the digits. Everything else is one rank quieter.</p>
+
+    <div class="split">
+      <div class="unit" style="width:auto">
+        <div class="watch lg"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-seg"><i class="warm done"></i><i class="work done"></i><i class="rec done"></i><i class="work done"></i><i class="rec done"></i><i class="work now"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
+          <div class="w-body">
+            <div class="w-hero green tnum">6:33</div>
+            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="callouts">
+        <h3>The primary view</h3>
+        <p class="l">Five things, in strict rank. Read top to bottom only if you have time; most glances stop at the color.</p>
+        <div class="co"><span class="num">1</span><span class="z">Where you are</span><span class="d"><b>Rep 3 of 6</b> in amber, and a hairline strip of the whole session above it (done green, current orange). Orientation without thinking.</span></div>
+        <div class="co"><span class="num">2</span><span class="z">Hero · pace</span><span class="d"><b>Current pace</b>, the biggest thing on the watch, <b>color-coded</b>. Green means on the band. You don't read it, you feel it.</span></div>
+        <div class="co"><span class="num">3</span><span class="z">Reference</span><span class="d">Target and live delta, small. There when you want the exact number, ignorable when you don't.</span></div>
+        <div class="co"><span class="num">4</span><span class="z">Two stats</span><span class="d"><b>Heart rate + cadence</b>, equal weight, big enough to catch peripherally. The secondary read.</span></div>
+        <div class="co"><span class="num">5</span><span class="z">Rep progress</span><span class="d">A bar and the time left in the rep. Pairs with the haptic that fires 3 seconds before the rep ends.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C2 · color states -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">C</span><h2>The color is the message</h2></div>
+    <p class="sec-sub">The pace number changes color against the target band, so a half-second glance tells you what to do
+      before you process a single digit. Drift haptics back it up so you can keep your eyes on the road.</p>
+    <div class="trio">
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-body"><div class="w-hero green tnum">6:31</div><div class="w-ref">Target <b>6:31</b> · <span class="up">on pace</span></div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>hold</span></div><div class="w-bar"><i class="green" style="width:50%"></i></div></div></div>
+        </div></div>
+        <div class="lbl"><b class="green">Green · on the band</b>Within ±10s of target.<br>No haptic. Hold it.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-body"><div class="w-hero amber tnum">6:44</div><div class="w-ref">Target <b>6:31</b> · <span class="mid">+13s</span></div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">164<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">176<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>lift it</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
+        </div></div>
+        <div class="lbl"><b class="amber">Amber · drifting</b>10–15s off. One soft tap.<br>Nudge back, no alarm.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-body"><div class="w-hero over tnum">6:51</div><div class="w-ref">Target <b>6:31</b> · <span class="down">+20s</span></div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">159<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">171<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>off pace</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
+        </div></div>
+        <div class="lbl"><b class="warn">Red · off pace</b>15s+ for several seconds.<br>The rep is slipping.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C3 · transitions + recovery -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">C</span><h2>Transitions you feel</h2></div>
+    <p class="sec-sub">The hard part of intervals is the clock-math at the edges. The watch owns it: a heads-up before a rep ends,
+      a full-screen flip at each transition, a distinct haptic for work-ends-vs-rest-ends so you never confuse them.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen"><div class="w-center">
+          <div class="w-trans-ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#D4900A" stroke-width="2"/><path d="M12 7v5l3 2" stroke="#D4900A" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <div class="w-trans-t" style="color:var(--amber)">Ease off</div><div class="w-trans-s">3 seconds left</div>
+        </div></div></div>
+        <div class="lbl"><b>Heads-up · 3s</b>Triple tap + cue before the rep ends.<br>So you don't overrun it.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Recovery 3 / 6</span><span class="w-clock tnum">7:32</span></div>
+          <div class="w-body">
+            <div class="w-rc tnum">0:42</div>
+            <div class="w-nx">Next rep · <b>6:31</b>/mi</div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">96<small>spm</small></div><div class="k">Cadence</div></div></div>
+            <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="green" style="width:70%"></i></div></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Recovery</b>Hero flips to the countdown.<br>No target. Next pace pre-loaded.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen"><div class="w-center">
+          <div class="w-trans-ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#2CA82F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="w-trans-t" style="color:var(--green)">Go · Int 4</div><div class="w-trans-s">Target 6:31/mi</div>
+        </div></div></div>
+        <div class="lbl"><b>Next rep</b>Different haptic from work-ends.<br>You know which way without looking.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- D · MORE ON DEMAND -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">D</span><h2>More, only if you reach for it</h2></div>
+    <p class="sec-sub">The primary view never grows. Detail lives one swipe away: turn the Digital Crown or swipe for splits and
+      the whole-session map; swipe in for pause and end. Default behavior stays a single number.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-pg-h">Splits · so far</div>
+          <div class="w-list">
+            <div class="w-li"><span class="rp"><span class="n">1</span>800</span><span class="pace green tnum">6:29</span></div>
+            <div class="w-li"><span class="rp"><span class="n">2</span>800</span><span class="pace green tnum">6:30</span></div>
+            <div class="w-li now"><span class="rp"><span class="n">3</span>800</span><span class="pace tnum" style="color:var(--orange)">6:33</span></div>
+            <div class="w-li up"><span class="rp"><span class="n">4</span>800</span><span class="pace tnum">—</span></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Splits</b>Every rep's pace as you bank it.<br>Are you holding, or fading.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-pg-h">Session</div>
+          <div class="w-list">
+            <div class="w-ov done"><span class="dot"></span><span class="t">Warmup</span><span class="v tnum">10:00</span></div>
+            <div class="w-ov done"><span class="dot"></span><span class="t">Reps 1–2</span><span class="v tnum">✓</span></div>
+            <div class="w-ov now"><span class="dot"></span><span class="t">Rep 3 · now</span><span class="v tnum">6:31</span></div>
+            <div class="w-ov"><span class="dot"></span><span class="t">Reps 4–6</span><span class="v tnum">800</span></div>
+            <div class="w-ov"><span class="dot"></span><span class="t">Cooldown</span><span class="v tnum">10:00</span></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Session map</b>Where this rep sits in the whole<br>workout. How much is left.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-pg-h" style="margin-bottom:10px">Controls</div>
+          <div class="w-ctrls">
+            <div class="w-ctrl pause"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="3.5" height="12" rx="1" fill="#1a1300"/><rect x="9.5" y="2" width="3.5" height="12" rx="1" fill="#1a1300"/></svg>Pause</div>
+            <div class="w-ctrl end"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="2" fill="#fff"/></svg>End</div>
+            <div class="w-ctrl lock"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="#fff" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="#fff" stroke-width="2"/></svg>Lock</div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Controls</b>Swipe in for pause / end / water-lock.<br>Side button ends, too.</div>
+      </div>
+      <div class="unit">
+        <div class="watch aod"><div class="w-screen">
+          <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
+          <div class="w-body">
+            <div class="w-hero green tnum">6:33</div>
+            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cad</div></div></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Always-on · dimmed</b>Wrist down: same face, dimmed by<br>watchOS, ~1 Hz. Pace + color persist.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- E · FINISH -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">E</span><h2>Finish</h2></div>
+    <p class="sec-sub">Cooldown ends with a long haptic, then the readout, then it leaves the wrist: an HKWorkout writes back through
+      the phone to the coach. No rating screens, no nagging.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen"><div class="w-done">
+          <div class="ring"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#2CA82F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="ttl">Complete</div>
+          <div class="grid">
+            <div class="c"><div class="v tnum">6/6</div><div class="k">Reps</div></div>
+            <div class="c"><div class="v tnum">6:30</div><div class="k">Avg pace</div></div>
+            <div class="c"><div class="v tnum">6.4</div><div class="k">Miles</div></div>
+            <div class="c"><div class="v tnum">171</div><div class="k">Avg HR</div></div>
+            <div class="c"><div class="v tnum">181</div><div class="k">Cadence</div></div>
+            <div class="c"><div class="v tnum">52:14</div><div class="k">Time</div></div>
+          </div>
+          <div class="save">Saved · syncing</div>
+        </div></div></div>
+        <div class="lbl"><b>Summary</b>Full readout: reps, pace, distance,<br>HR, cadence, time. Then it's gone.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- F · OUTSIDE A WORKOUT -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">F</span><h2>On the watch face</h2></div>
+    <p class="sec-sub">Most of the time you're not in the app. A complication on the face is the fastest tap into today's session, and a
+      glance answers the body-state question without opening anything.</p>
+    <div class="flow">
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-face"><div class="ftime tnum">7:14</div>
+            <div class="w-comp"><span class="cc"><span class="o">6×800</span> today</span><span class="cc"><span class="o">82</span> ready</span></div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Complication</b>Today's workout + readiness on the<br>face. Tap to open, tap to start.</div>
+      </div>
+      <div class="unit">
+        <div class="watch"><div class="w-screen">
+          <div class="w-top"><span class="w-eye green">Readiness</span><span class="w-clock tnum">7:14</span></div>
+          <div class="w-glance">
+            <div class="gh">Recovered</div>
+            <div class="gv" style="color:var(--green)">82</div>
+            <div class="gs">HRV 68 · RHR 48 · slept 7:48</div>
+            <div class="gs" style="color:var(--wt2);margin-top:10px">CIM · 198 days</div>
+          </div>
+        </div></div>
+        <div class="lbl"><b>Glance</b>Readiness + race countdown.<br>The watch's slice of the phone read.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- G · PRINCIPLES -->
+  <section class="sec">
+    <div class="sec-h"><span class="n">G</span><h2>Why it works on the wrist</h2></div>
+    <div class="principles">
+      <div class="card"><div class="e">01</div><h4>One hero, always</h4><p>Exactly one number is biggest on every screen. The glance lands in well under a second because there's nothing to choose between.</p></div>
+      <div class="card"><div class="e">02</div><h4>Color before digits</h4><p>On-pace is green, drift amber, off red. You react to the color and never have to parse the number at speed.</p></div>
+      <div class="card"><div class="e">03</div><h4>Feel, don't watch</h4><p>Haptics own the transitions, distinct patterns for work-ends and rest-ends, so the watch can stay at your side mid-rep.</p></div>
+      <div class="card"><div class="e">04</div><h4>Detail on demand</h4><p>Splits, the session map, and controls are one swipe or one crown turn away. The default never gets busier.</p></div>
+      <div class="card"><div class="e">05</div><h4>Dark by design</h4><p>Black saves OLED battery, holds up in direct sun, and dims cleanly when your wrist drops. Same language as the phone, right surface for the wrist.</p></div>
+      <div class="card"><div class="e">06</div><h4>No coaching here</h4><p>The why lives on the phone, before and after. Mid-run, prose is cognitive load at exactly the wrong moment.</p></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <div>Dark v4 execution surface · shared Bebas + semantics · <b>docs/design/watch-app.html</b></div>
+    <div>Build spec: <b>docs/design/watch-handoff.html</b> · scope: <b>docs/native/01-watchos-scoping.md</b></div>
+  </div>
+
+</div>
+</body>
+</html>
