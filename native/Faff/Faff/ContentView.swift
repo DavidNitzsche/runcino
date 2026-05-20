@@ -28,9 +28,15 @@ struct ContentView: View {
             } else {
                 LoginView(onLogin: {
                     isAuthenticated = true
+                    // Push today's workout to the watch right after login —
+                    // automatic, no user action.
+                    Task { await WatchSync.shared.syncTodayToWatch() }
                 })
             }
         }
+        // Bring up the WatchConnectivity session as soon as the app shows,
+        // so the watch can reach us (and we can push context) immediately.
+        .onAppear { WatchSync.shared.activate() }
     }
 }
 

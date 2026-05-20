@@ -17,6 +17,7 @@ struct TodayView: View {
     @State private var workout: WatchWorkout?
     @State private var isLoading: Bool = true
     @State private var errorMessage: String?
+    @ObservedObject private var watchSync = WatchSync.shared
 
     var body: some View {
         NavigationStack {
@@ -88,7 +89,7 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Status")
                     .font(.headline)
-                Text("Watch sync · not yet wired (v1)")
+                Text(watchSync.lastSyncStatus ?? "Syncing to watch…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -114,6 +115,8 @@ struct TodayView: View {
         defer { isLoading = false }
         do {
             workout = try await FaffAPI.shared.fetchToday()
+            // Keep the watch in sync on every refresh — automatic.
+            await WatchSync.shared.syncTodayToWatch()
         } catch APIError.unauthorized {
             // Token expired · drop back to login
             TokenStore.shared.clear()

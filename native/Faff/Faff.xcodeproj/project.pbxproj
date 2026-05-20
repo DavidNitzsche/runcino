@@ -71,16 +71,6 @@
 		6393077D2FBD6666004C9428 /* FaffWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FaffWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		639307A22FBD6E79004C9428 /* Exceptions for "FaffWatch Watch App" folder in "FaffWatch Watch App" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"FaffWatch-Watch-App-Info.plist",
-			);
-			target = 639307662FBD6665004C9428 /* FaffWatch Watch App */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		639307322FBD29D7004C9428 /* Faff */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -99,9 +89,6 @@
 		};
 		639307682FBD6665004C9428 /* FaffWatch Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				639307A22FBD6E79004C9428 /* Exceptions for "FaffWatch Watch App" folder in "FaffWatch Watch App" target */,
-			);
 			path = "FaffWatch Watch App";
 			sourceTree = "<group>";
 		};

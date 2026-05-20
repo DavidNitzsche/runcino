@@ -147,6 +147,45 @@ final class FaffAPI {
         try await request(method: "GET", path: "/api/watch/today")
     }
 
+    /// Raw GET /api/watch/today body, forwarded verbatim to the watch via
+    /// WatchConnectivity so the watch decodes the exact backend shape (no
+    /// cross-target re-encode mismatch).
+    func fetchTodayRaw() async throws -> Data {
+        guard let url = URL(string: "/api/watch/today", relativeTo: API.baseURL) else {
+            throw APIError.invalidURL
+        }
+        var req = URLRequest(url: url)
+        if let token = TokenStore.shared.accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw APIError.network(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(status: 0, body: nil)
+        }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+        return data
+    }
+
+    /// POST a completed-workout payload (already-encoded JSON the watch
+    /// produced) to the backend completion endpoint.
+    func postWatchCompletion(_ jsonBody: Data) async throws {
+        let _: EmptyResponse = try await perform(
+            method: "POST",
+            path: "/api/watch/workouts/complete",
+            body: jsonBody,
+            authenticated: true,
+            as: EmptyResponse.self
+        )
+    }
+
     // MARK: Generic helpers
 
     private func request<Body: Encodable, T: Decodable>(

@@ -1,0 +1,155 @@
+//
+//  WatchSync.swift
+//  Faff
+//
+//  iPhone side of the iPhone↔watch bridge (WatchConnectivity).
+//
+//  Design goal: the watch workout "is just there" — no manual push.
+//  Two mechanisms cover that:
+//
+//    1. updateApplicationContext — whenever the iPhone app fetches
+//       today's workout, it sets it as the session's application
+//       context. WatchConnectivity delivers the latest context to the
+//       watch automatically (even in the background), so it's present
+//       the next time the watch app opens.
+//
+//    2. didReceiveMessage — when the watch opens and is reachable, it
+//       asks the iPhone directly; we fetch fresh and reply.
+//
+//  Completion writeback: the watch sends its WatchCompletion payload via
+//  transferUserInfo; we receive it here and POST it to the backend.
+//
+
+import Foundation
+import Combine
+import WatchConnectivity
+
+@MainActor
+final class WatchSync: NSObject, ObservableObject {
+    static let shared = WatchSync()
+
+    /// Human-readable last-sync state, surfaced on the iPhone TodayView.
+    @Published private(set) var lastSyncStatus: String?
+
+    /// Latest context we want the watch to have, retained until the
+    /// session is activated (updateApplicationContext fails pre-activation).
+    private var pendingContext: [String: Any]?
+
+    private override init() { super.init() }
+
+    // MARK: Lifecycle
+
+    func activate() {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        session.delegate = self
+        session.activate()
+    }
+
+    // MARK: Push today's workout to the watch
+
+    /// Fetch today's workout and hand it to the watch as application
+    /// context. Called automatically on login + on every TodayView
+    /// refresh — never from a user-facing button.
+    func syncTodayToWatch() async {
+        guard WCSession.isSupported() else { return }
+        do {
+            let data = try await FaffAPI.shared.fetchTodayRaw()
+            let peek = try? JSONDecoder().decode(TodayPeek.self, from: data)
+            if let peek, peek.workoutId != nil {
+                sendContext(["workout": data])
+                lastSyncStatus = "Synced to watch ✓"
+            } else {
+                let message = peek?.message ?? "No workout today"
+                sendContext(["noWorkout": message])
+                lastSyncStatus = "Watch: \(message)"
+            }
+        } catch {
+            lastSyncStatus = "Watch sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func sendContext(_ context: [String: Any]) {
+        let session = WCSession.default
+        guard session.activationState == .activated else {
+            pendingContext = context
+            return
+        }
+        do {
+            try session.updateApplicationContext(context)
+        } catch {
+            pendingContext = context
+            lastSyncStatus = "Watch context error: \(error.localizedDescription)"
+        }
+    }
+
+    /// Reply payload for a watch-initiated request (synchronous-ish).
+    fileprivate func todayReply() async -> [String: Any] {
+        do {
+            let data = try await FaffAPI.shared.fetchTodayRaw()
+            let peek = try? JSONDecoder().decode(TodayPeek.self, from: data)
+            if let peek, peek.workoutId != nil { return ["workout": data] }
+            return ["noWorkout": peek?.message ?? "No workout today"]
+        } catch {
+            return [:]
+        }
+    }
+}
+
+// MARK: - WCSessionDelegate (background-queue callbacks)
+
+extension WatchSync: WCSessionDelegate {
+    nonisolated func session(_ session: WCSession,
+                             activationDidCompleteWith state: WCSessionActivationState,
+                             error: Error?) {
+        Task { @MainActor in
+            if let pending = self.pendingContext, state == .activated {
+                try? session.updateApplicationContext(pending)
+                self.pendingContext = nil
+            }
+        }
+    }
+
+    // iOS requires these two; re-activate after a paired-watch switch.
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
+    nonisolated func sessionDidDeactivate(_ session: WCSession) {
+        session.activate()
+    }
+
+    /// The watch asks for today's workout on launch (when reachable).
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any],
+                             replyHandler: @escaping ([String: Any]) -> Void) {
+        guard message["request"] as? String == "today" else {
+            replyHandler([:])
+            return
+        }
+        Task { @MainActor in
+            replyHandler(await self.todayReply())
+        }
+    }
+
+    /// The watch finished a workout and sent its completion payload.
+    nonisolated func session(_ session: WCSession,
+                             didReceiveUserInfo userInfo: [String: Any]) {
+        guard let data = userInfo["completion"] as? Data else { return }
+        Task { @MainActor in
+            do {
+                try await FaffAPI.shared.postWatchCompletion(data)
+                self.lastSyncStatus = "Workout completion uploaded ✓"
+            } catch {
+                self.lastSyncStatus = "Completion upload failed: \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+// MARK: - Lightweight peek at the /api/watch/today shape
+
+/// Just enough of the payload to decide workout-vs-rest without
+/// re-modeling the whole thing (we forward the raw Data either way).
+private struct TodayPeek: Decodable {
+    let workoutId: String?
+    let message: String?
+    let reason: String?
+}
