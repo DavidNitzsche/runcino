@@ -87,6 +87,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const maxFt = Math.round(stats.maxEleM * FT_PER_M);
 
   const plan = race.plan;
+
+  // Fueling plan + the gel schedule (fuel intervals anchored to miles).
+  const f = plan?.fueling;
+  const fueling = f ? {
+    gelBrand: f.gel_brand,
+    gelCount: f.gel_count,
+    gelCarbsG: f.gel_carbs_g,
+    totalCarbsG: f.total_carbs_g,
+    carbTargetGPerHr: f.carb_target_g_per_hr,
+    notes: f.notes,
+  } : null;
+  const gels = (plan?.intervals ?? [])
+    .filter((iv): iv is Extract<typeof iv, { kind: 'fuel' }> => iv.kind === 'fuel')
+    .map((iv) => ({ number: iv.gel_number, atMi: iv.at_mi, item: iv.item, label: iv.label }));
+
   const phases = (plan?.phases ?? []).map((p) => ({
     label: p.label,
     startMi: p.start_mi,
@@ -120,5 +135,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     coords,
     samples,
     phases,
+    fueling,
+    gels,
   });
 }
