@@ -204,6 +204,26 @@ final class FaffAPI {
         )
     }
 
+    // MARK: Daily check-in
+
+    /// Today's check-in if one is logged, else nil. Bearer auth.
+    func getCheckin() async throws -> Checkin? {
+        let r: CheckinGetResponse = try await request(method: "GET", path: "/api/checkin", authenticated: true)
+        return r.checkin
+    }
+
+    /// Log/overwrite today's check-in (1–10 each). Returns the saved row.
+    @discardableResult
+    func postCheckin(energy: Int, soreness: Int, stress: Int) async throws -> Checkin? {
+        struct Body: Encodable { let energy: Int; let soreness: Int; let stress: Int }
+        let r: CheckinPostResponse = try await request(
+            method: "POST", path: "/api/checkin",
+            body: Body(energy: energy, soreness: soreness, stress: stress),
+            authenticated: true
+        )
+        return r.checkin
+    }
+
     // MARK: Generic helpers
 
     private func request<Body: Encodable, T: Decodable>(
@@ -307,3 +327,14 @@ struct IngestResult: Decodable {
     let ingested: Int
     let skipped: Int
 }
+
+/// A logged daily check-in (1–10 scales). Decoded as Double so numeric
+/// JSON (int or float) is tolerated.
+struct Checkin: Decodable {
+    let energy: Double
+    let soreness: Double
+    let stress: Double
+    let notes: String?
+}
+struct CheckinGetResponse: Decodable { let ok: Bool; let today: String?; let checkin: Checkin? }
+struct CheckinPostResponse: Decodable { let ok: Bool; let checkin: Checkin? }

@@ -247,9 +247,12 @@ struct Badge: View {
 // MARK: - Daily check-in (Energy / Soreness / Stress)
 
 private struct CheckInCard: View {
-    @State private var energy: Double = 6
-    @State private var soreness: Double = 4
-    @State private var stress: Double = 2
+    @State private var energy: Double = 5
+    @State private var soreness: Double = 3
+    @State private var stress: Double = 3
+    @State private var logged = false       // true once today's row exists
+    @State private var loaded = false       // GET completed
+    @State private var saving = false
 
     // Softer, distinct hues (not the harsh error-red).
     private let energyColor   = Color(hex: 0x4FA45B)   // calm green
@@ -259,11 +262,15 @@ private struct CheckInCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 5) {
-                Text("Today's Check-in · Logged".uppercased())
+                Text((logged ? "Today's Check-in · Logged" : "Today's Check-in").uppercased())
                     .font(Faff.F.inter(10, .medium)).tracking(1.2)
                     .foregroundStyle(Faff.C.textDim)
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Faff.C.recovery)
+                if logged {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Faff.C.recovery)
+                } else {
+                    Text("· not yet").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint)
+                }
                 Spacer()
             }
             CheckInRow(label: "Energy",   value: $energy,   color: energyColor)
@@ -271,18 +278,44 @@ private struct CheckInCard: View {
             CheckInRow(label: "Stress",   value: $stress,   color: stressColor)
             HStack {
                 Spacer()
-                Button { } label: {
-                    Text("UPDATE")
+                Button { Task { await save() } } label: {
+                    Text(saving ? "SAVING…" : (logged ? "UPDATE" : "LOG CHECK-IN"))
                         .font(Faff.F.oswald(13, .semibold)).tracking(2)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 24).padding(.vertical, 11)
-                        .background(Faff.C.ink)
+                        .background(saving ? Faff.C.ink.opacity(0.6) : Faff.C.ink)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).disabled(saving)
             }
         }
         .faffCard()
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard !loaded else { return }
+        defer { loaded = true }
+        // Anonymous (not signed in) → leave as a blank input, never claim logged.
+        guard TokenStore.shared.accessToken != nil else { return }
+        if let c = try? await FaffAPI.shared.getCheckin() {
+            energy = c.energy; soreness = c.soreness; stress = c.stress
+            logged = true
+        } else {
+            logged = false
+        }
+    }
+
+    private func save() async {
+        guard !saving else { return }
+        saving = true
+        defer { saving = false }
+        let e = min(10, max(1, Int(energy.rounded())))
+        let s = min(10, max(1, Int(soreness.rounded())))
+        let st = min(10, max(1, Int(stress.rounded())))
+        if (try? await FaffAPI.shared.postCheckin(energy: e, soreness: s, stress: st)) != nil {
+            logged = true
+        }
     }
 }
 
