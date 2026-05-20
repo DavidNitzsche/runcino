@@ -40,7 +40,8 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
-import { resolveFitness } from '../../../lib/fitness-resolver';
+import { vdotSnapshot } from '../../../lib/vdot';
+import type { ResolvedFitness } from '../../../lib/fitness-types';
 import { describeWorkout, type WorkoutDescription } from '../../../lib/workout-descriptions';
 
 /** Map a real-plan workout (type + optional subLabel) to the
@@ -229,21 +230,31 @@ export async function GET(): Promise<Response> {
 
     // Enrich the plan workouts with the computed description (pace band
     // + structured steps + effort + why), the SAME describeWorkout the
-    // web modal uses. Computed from the real plan + resolved fitness so
-    // every client renders identical, real workouts. Defensive: any
-    // failure leaves planWeekWorkouts unenriched (base shape intact).
+    // web modal uses. Daniels pace bands come from the VDOT already in
+    // `state` (no extra DB round-trip), so every client renders the same
+    // real workout. Defensive: per-day try/catch keeps the base shape if
+    // anything goes sideways.
     let planWeekDescribed: Array<PlanWorkout | DescribedPlanWorkout> | null = planWeekWorkouts;
-    try {
-      if (planWeekWorkouts && planWeekWorkouts.length > 0) {
-        const fitness = await resolveFitness('me', today);
-        planWeekDescribed = planWeekWorkouts.map((w) => {
-          if (w.type === 'rest') return w;
+    if (planWeekWorkouts && planWeekWorkouts.length > 0) {
+      // describeWorkout reads only paces / racePaceBand / hrZones off the
+      // fitness object; build that subset from the state VDOT snapshot.
+      const vsnap = vdotSnapshot(state);
+      const fitness: ResolvedFitness | null = vsnap
+        ? ({
+            paces: vsnap.paces,
+            racePaceBand: { lowS: vsnap.paces.T.lowS, highS: vsnap.paces.T.highS, label: 'Race pace' },
+            hrZones: null,
+          } as unknown as ResolvedFitness)
+        : null;
+      planWeekDescribed = planWeekWorkouts.map((w) => {
+        if (w.type === 'rest') return w;
+        try {
           const label = describeKeyFromPlan(w.type, w.subLabel ?? null);
           const description = describeWorkout(label, w.type, fitness);
           return { ...w, label, description };
-        });
-      }
-    } catch { /* keep base planWeekWorkouts */ }
+        } catch { return w; }
+      });
+    }
 
     // Today's adjustForReality consumes the live state.checkin
     // aggregate so the engine can fold qualitative signals into the
