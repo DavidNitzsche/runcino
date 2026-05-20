@@ -706,7 +706,11 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
 }
 
 function toNextRace(r: SavedRace): NextRace {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Anchor both today and the race date at 12:00 UTC so the diff is a
+  // whole number of days. Using local midnight here added a 12-hour
+  // skew that rounded up (e.g. 88 → 89), disagreeing with the web's
+  // canonical daysUntil(). todayDate() is that same 12:00Z anchor.
+  const today = todayDate();
   const target = new Date(r.meta.date + 'T12:00:00Z');
   const daysAway = Math.round((target.getTime() - today.getTime()) / 86_400_000);
   return {
