@@ -110,7 +110,7 @@
               <div class="days">8 days</div>
               <div class="label">since your last run</div>
               <div style="font-size: 13px; color: var(--text-l-2); line-height: 1.4;">
-                Longer gaps deserve acknowledgment.  Pause adaptive signals during recovery from injury, or let me know if it's just life.
+                Longer gaps deserve acknowledgment. Mark the cause so adaptive signals know how to read the gap.
               </div>
               <div class="actions">
                 <button class="action-btn">Planned break</button>
@@ -120,20 +120,19 @@
             </div>
 
             <div class="susp-notice">
-              <div class="title">Adaptive signals suspended</div>
+              <div class="title">Signals suspended.</div>
               <div class="body">
-                Signal suspended while injury is marked.  Resumes when activity resumes.  Missed workouts during recovery shouldn't read as fitness regression.
+                Injury logged · holding fitness reads steady. Missed workouts during recovery don't read as regression. Update us when you ramp back.
               </div>
             </div>
 
             <div style="padding: 0 20px; font-size: 13px; color: var(--text-l-3);">
-              Today's prescribed workout won't sync to your watch while injured.  Mark "Just life" or resume activity to restart signal evaluation.
+              Today's prescribed workout won't sync to your watch while injured. Resume activity or change the marker to restart signal evaluation.
             </div>
 
           </div>
           <div class="tab-bar">
             <div class="tab active"><div class="ico">●</div>Today</div>
-            <div class="tab"><div class="ico">≡</div>History</div>
             <div class="tab"><div class="ico">🏁</div>Race</div>
             <div class="tab"><div class="ico">⚙</div>Settings</div>
           </div>
@@ -159,7 +158,7 @@
               <div class="days">8 days</div>
               <div class="label">since your last run</div>
               <div style="font-size: 13px; color: var(--text-d-2); line-height: 1.4;">
-                Longer gaps deserve acknowledgment.  Pause adaptive signals during recovery from injury, or let me know if it's just life.
+                Longer gaps deserve acknowledgment. Mark the cause so adaptive signals know how to read the gap.
               </div>
               <div class="actions">
                 <button class="action-btn">Planned break</button>
@@ -169,20 +168,19 @@
             </div>
 
             <div class="susp-notice">
-              <div class="title">Adaptive signals suspended</div>
+              <div class="title">Signals suspended.</div>
               <div class="body">
-                Signal suspended while injury is marked.  Resumes when activity resumes.  Missed workouts during recovery shouldn't read as fitness regression.
+                Injury logged · holding fitness reads steady. Missed workouts during recovery don't read as regression. Update us when you ramp back.
               </div>
             </div>
 
             <div style="padding: 0 20px; font-size: 13px; color: var(--text-d-3);">
-              Today's prescribed workout won't sync to your watch while injured.  Mark "Just life" or resume activity to restart signal evaluation.
+              Today's prescribed workout won't sync to your watch while injured. Resume activity or change the marker to restart signal evaluation.
             </div>
 
           </div>
           <div class="tab-bar">
             <div class="tab active"><div class="ico">●</div>Today</div>
-            <div class="tab"><div class="ico">≡</div>History</div>
             <div class="tab"><div class="ico">🏁</div>Race</div>
             <div class="tab"><div class="ico">⚙</div>Settings</div>
           </div>
@@ -198,8 +196,10 @@
       <li>Gap card mirrors the web's E1/E4 surface · same affordances (Planned / Injured / Just life)</li>
       <li>"Injured" pill stays visually selected while marker is active · runner sees their own status</li>
       <li>Suspension notice uses the canonical <code>INJURY_SUSPENDED</code> phrase from <code>lib/coach-voice.ts</code> · same voice across surfaces</li>
+      <li>Copy upgraded round 2 per V6 voice audit · uses "us" in "Update us when you ramp back" (coach verdict register) and impersonal observation for the fitness-reads-steady claim</li>
       <li>Footnote explains the consequence · watch sync paused while injured · explicit so the runner isn't confused about why their watch went silent</li>
       <li>Watch app on this day: shows "Rest day" or "No workout — injury marked" (similar shape to rest-day.html)</li>
+      <li>Tab bar dropped from 4 → 3 (History removed) per round 2 decision · history is web-screen work · iPhone is daily-touch</li>
     </ul>
   </div>
 

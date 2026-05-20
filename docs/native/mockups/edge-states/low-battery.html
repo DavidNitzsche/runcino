@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Edge · Low battery (watch · mid-workout safeguard)</title>
+<link rel="stylesheet" href="../assets/styles.css">
+<script defer src="../assets/annotate.js"></script>
+<style>
+  /* Warn-state battery overlay · slides up from bottom of active screen */
+  .battery-banner {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(232, 93, 38, 0.94);
+    color: #fff;
+    padding: 9px 12px 11px;
+    text-align: center;
+    font-family: var(--sf-compact);
+    z-index: 5;
+  }
+  .battery-banner .top {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .battery-banner .text {
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.25;
+    opacity: 0.96;
+  }
+
+  /* Red severity (under 5%) */
+  .battery-banner.red {
+    background: rgba(201, 42, 42, 0.95);
+  }
+
+  /* The minimal-mode watch screen · what the runner sees if they
+     choose to enter low-power workout mode */
+  .min-screen {
+    height: 100%;
+    padding: 14px 14px 10px;
+    display: flex; flex-direction: column;
+    background: #000;
+    text-align: center;
+  }
+  .min-screen .top {
+    font-family: var(--sf-compact);
+    font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 4px;
+  }
+  .min-screen .hero {
+    flex: 1;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+  }
+  .min-screen .hero .v {
+    font-family: var(--sf-compact);
+    font-weight: 800;
+    font-size: 100px;
+    line-height: 0.88;
+    letter-spacing: -4px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+  .min-screen .hero .u {
+    font-family: var(--sf-compact);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .min-screen .battery-row {
+    font-family: var(--sf-compact);
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.55);
+    padding-top: 6px;
+    border-top: 0.5px solid rgba(255,255,255,0.18);
+  }
+  .min-screen .battery-row .pct { color: var(--orange); font-weight: 800; }
+
+  /* Mid-workout active state with the banner overlay */
+  .active-with-banner {
+    position: relative;
+    height: 100%;
+    padding: 14px 14px 60px;
+    background: #000;
+    display: flex; flex-direction: column;
+  }
+  .active-with-banner .h {
+    display: flex; justify-content: space-between;
+    font-family: var(--sf-compact);
+    font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .active-with-banner .h .phase { color: var(--orange); }
+  .active-with-banner .h .rep { color: rgba(255,255,255,0.55); }
+  .active-with-banner .h .battery-chip { color: var(--orange); }
+  .active-with-banner .target {
+    font-family: var(--sf-compact);
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.70);
+    margin: 2px 0 4px;
+  }
+  .active-with-banner .target .l {
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: rgba(255,255,255,0.40);
+    margin-right: 5px;
+  }
+  .active-with-banner .hero {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .active-with-banner .hero .v {
+    font-family: var(--sf-compact);
+    font-weight: 800;
+    font-size: 90px;
+    line-height: 0.88;
+    letter-spacing: -3px;
+    color: #4ade80;
+    font-variant-numeric: tabular-nums;
+  }
+  .active-with-banner .hero .u {
+    font-family: var(--sf-compact);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Edge state · Low battery (watch · mid-workout)</h1>
+    <div class="subtitle">Battery banner appears mid-workout · doesn't pause · workout saves locally · two severity tiers + low-power fallback screen</div>
+    <div class="crumbs"><a href="../index.html">← back to index</a></div>
+  </div>
+
+  <div class="note">
+    <strong>Design rule</strong> · the watch never interrupts a workout. Low battery is
+    information; the runner decides what to do. The workout continues recording locally and saves
+    even if the watch dies mid-rep — HKLiveWorkoutBuilder persists samples to local storage
+    every few seconds. The banner exists to give the runner agency, not to stop them.
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       TIER 1 · 20% / 15% / 10% — orange banner overlay
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Tier 1 · 20-10% remaining · orange banner (informational)</div>
+
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">MID-INTERVAL (banner)</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:58</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="active-with-banner">
+              <div class="h">
+                <span class="phase">⬤ WORK · 4/6</span>
+                <span class="rep">800m</span>
+              </div>
+              <div class="target"><span class="l">TARGET</span>6:31</div>
+              <div class="hero">
+                <div class="v">6:29</div>
+                <div class="u">CURRENT · MIN/MI</div>
+              </div>
+              <div class="battery-banner">
+                <div class="top">Battery low · 15%</div>
+                <div class="text">Workout saving locally. Pause to swap watches?</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup-slot">
+      <div class="mode-label">DETAIL</div>
+      <div style="padding: 30px 20px; max-width: 360px; background: #f7f7f8; border-radius: 16px; font-size: 13px; line-height: 1.55; color: #333;">
+        <strong style="display: block; margin-bottom: 8px; color: #0D0F12;">What the banner says · V6 verified:</strong>
+        <div style="margin-bottom: 12px;">
+          <code style="background: #fff; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px;">Battery low · 15%</code><br>
+          <code style="background: #fff; padding: 2px 5px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px;">Workout saving locally. Pause to swap watches?</code>
+        </div>
+        <strong style="display: block; margin: 12px 0 6px; color: #0D0F12;">Why this phrasing:</strong>
+        <ul style="margin-left: 14px;">
+          <li>State the fact ("Battery low · 15%") · impersonal observation</li>
+          <li>State the safeguard ("Workout saving locally") · removes panic, gives the runner permission to keep going</li>
+          <li>Offer the option, don't push it ("Pause to swap watches?") · the question mark signals optionality without being warm or pleading</li>
+        </ul>
+        <strong style="display: block; margin: 12px 0 6px; color: #0D0F12;">Haptic:</strong>
+        Single soft pulse at the moment the banner appears · then silent · no nagging haptics during work intervals.<br>
+        <strong style="display: block; margin: 12px 0 6px; color: #0D0F12;">Dismiss:</strong>
+        Tap to dismiss · banner stays dismissed for current workout unless battery drops another tier.
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       TIER 2 · <5% — red banner, more urgent, optional low-power mode
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Tier 2 · &lt;5% remaining · red banner + low-power-mode prompt</div>
+
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">CRITICAL (banner)</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">10:14</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="active-with-banner">
+              <div class="h">
+                <span class="phase">⬤ WORK · 5/6</span>
+                <span class="rep">800m</span>
+              </div>
+              <div class="target"><span class="l">TARGET</span>6:31</div>
+              <div class="hero">
+                <div class="v">6:33</div>
+                <div class="u">CURRENT · MIN/MI</div>
+              </div>
+              <div class="battery-banner red">
+                <div class="top">Battery 4% · low-power mode?</div>
+                <div class="text">Pace + HR only. Saves ~30min of recording.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup-slot">
+      <div class="mode-label">LOW-POWER MODE (after accept)</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">10:14</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="min-screen">
+              <div class="top">LOW-POWER · WORK 5/6</div>
+              <div class="hero">
+                <div class="v">6:33</div>
+                <div class="u">CURRENT · MIN/MI</div>
+              </div>
+              <div class="battery-row">
+                <span class="pct">3%</span>  ·  HR 169  ·  6:33
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Low-power mode behavior:</strong>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Display drops to AOD-style minimal rendering · pure black bg, white numerals, no animations</li>
+      <li>HR sampling drops from 1Hz to 0.2Hz (every 5 seconds)</li>
+      <li>GPS sampling drops from 1Hz to 0.5Hz</li>
+      <li>Cadence + altitude recording paused</li>
+      <li>Haptics suppressed (drift alerts disabled · saves ~3% per hour)</li>
+      <li>Workout still records · just at lower fidelity · the summary marks the affected reps as "recorded in low-power mode"</li>
+    </ul>
+    <strong>Tradeoff is explicit:</strong> the prompt says "Saves ~30min of recording" so the
+    runner knows the cost · they choose informed.
+  </div>
+
+  <div class="note">
+    <strong>What this design refuses to do:</strong>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>Pause the workout automatically · the runner is mid-effort, that's not the watch's call</li>
+      <li>End the workout early · would lose data the runner earned</li>
+      <li>Show a modal that blocks the screen · the pace number stays primary, banner is overlay-only</li>
+      <li>Use "Critical" or panic language · the workout saves locally, panic isn't warranted</li>
+    </ul>
+  </div>
+
+  <div class="note">
+    <strong>Voice audit · banner copy</strong>:
+    <ul style="margin: 8px 0 0 20px;">
+      <li><code>Battery low · 15%</code> · impersonal observation + data · ✓ V6</li>
+      <li><code>Workout saving locally. Pause to swap watches?</code> · impersonal observation + question-as-option · ✓ V6</li>
+      <li><code>Battery 4% · low-power mode?</code> · data + question · ✓ V6</li>
+      <li><code>Pace + HR only. Saves ~30min of recording.</code> · impersonal observation · ✓ V6</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>
