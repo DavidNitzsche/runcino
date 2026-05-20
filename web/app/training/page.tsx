@@ -22,7 +22,9 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
-import { buildSyntheticPlan, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
+import { buildSyntheticPlan, realPlanToWeeks, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
+import { describeKeyFromPlan } from '@/lib/workout-descriptions';
+import { getCurrentPlan } from '@/coach/plan-lifecycle';
 import { getCompletedMileageByDate, isWorkoutComplete } from '@/lib/completed-runs';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
 import { TrainingCell } from './TrainingCellIsland';
@@ -51,7 +53,12 @@ export default async function TrainingPage() {
 
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
-  const weeks = buildSyntheticPlan();
+  // Real plan (same artifact /overview + /api/overview use); synthetic
+  // demo plan only as a fallback when the runner has no plan yet.
+  const planResult = await getCurrentPlan('me').catch(() => null);
+  const weeks = planResult?.plan
+    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
+    : buildSyntheticPlan();
   const currentWeek = weeks.find((w) => w.days.some((d) => d.date === today)) ?? weeks[0];
 
   // DONE only when actual miles ≥ 60% of planned. Bracket the full
