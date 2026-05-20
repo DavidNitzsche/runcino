@@ -21,27 +21,31 @@ import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 
 export async function GET(req: NextRequest) {
+  // Auth is optional. Logged-in users read their own row; anonymous
+  // callers (e.g. the simulator design-preview) fall back to the legacy
+  // 'me' demo account, mirroring /api/overview's anon behavior.
   const user = await getCurrentUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Date is optional; defaults to today in the user's timezone.
-  const date = req.nextUrl.searchParams.get('date') ?? todayISO(userTimezone(user.location));
+  const date = req.nextUrl.searchParams.get('date') ?? todayISO(userTimezone(user?.location));
 
-  // Prefer rows keyed by user_uuid. Fall back to 'me' for legacy.
+  // Prefer rows keyed by user_uuid. Fall back to 'me' for legacy/anon.
   const rows = await query<{ energy: number; soreness: number; stress: number; notes: string | null }>(
     `SELECT energy, soreness, stress, notes
      FROM daily_checkin
      WHERE date = $1 AND (user_uuid = $2 OR (user_uuid IS NULL AND user_id = 'me'))
      ORDER BY user_uuid NULLS LAST
      LIMIT 1;`,
-    [date, user.id],
+    [date, user?.id ?? null],
   );
   return NextResponse.json({ ok: true, today: date, checkin: rows[0] ?? null });
 }
 
 export async function POST(req: NextRequest) {
+  // Auth is optional — same anon→'me' fallback as GET. Anonymous writes
+  // land on the legacy demo row (user_uuid NULL, user_id 'me') so the
+  // simulator preview persists and feeds the coach state.
   const user = await getCurrentUser(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: { date?: string; energy?: number; soreness?: number; stress?: number; notes?: string };
   try { body = await req.json(); }
@@ -51,7 +55,7 @@ export async function POST(req: NextRequest) {
   // Date optional; defaults to today in the user's timezone.
   const date = body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
     ? body.date
-    : todayISO(userTimezone(user.location));
+    : todayISO(userTimezone(user?.location));
 
   if (typeof energy !== 'number' || typeof soreness !== 'number' || typeof stress !== 'number') {
     return NextResponse.json({ error: 'energy + soreness + stress required' }, { status: 400 });
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
        notes     = EXCLUDED.notes,
        logged_at = NOW()
      RETURNING energy, soreness, stress, notes;`,
-    [user.id, date, energy, soreness, stress, body.notes?.trim() || null],
+    [user?.id ?? null, date, energy, soreness, stress, body.notes?.trim() || null],
   );
 
   return NextResponse.json({ ok: true, checkin: rows[0] });

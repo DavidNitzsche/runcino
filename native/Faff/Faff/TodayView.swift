@@ -415,7 +415,8 @@ private struct CheckInCard: View {
     private func load() async {
         guard !loaded else { return }
         defer { loaded = true }
-        guard TokenStore.shared.accessToken != nil else { return }
+        // No token guard: /api/checkin serves the legacy 'me' demo row
+        // anonymously, so the design-preview round-trips too.
         if let c = try? await FaffAPI.shared.getCheckin() {
             energy = c.energy; soreness = c.soreness; stress = c.stress; logged = true
         } else { logged = false }
