@@ -193,11 +193,15 @@ struct PlanRangeResponse: Decodable {
     let days: [PlanRangeDay]?
 }
 
+struct OPaceBand: Decodable { let lowS: Double?; let highS: Double? }
+
 struct PlanRangeDay: Decodable, Identifiable {
     let date: String?
     let type: String?            // RunWorkoutType ("general_aerobic","long_steady","threshold","rest"…)
     let label: String?
     let distanceMi: Double?
+    let description: String?     // workout notes ("Easy run — conversational pace…")
+    let paceTargetSPerMi: OPaceBand?
     let isQuality: Bool?
     let isLong: Bool?
     let isToday: Bool?
@@ -205,11 +209,22 @@ struct PlanRangeDay: Decodable, Identifiable {
     var id: String { date ?? UUID().uuidString }
     var isRest: Bool { (type ?? "rest") == "rest" || (distanceMi ?? 0) <= 0 }
 
-    // The endpoint sends paceTargetSPerMi as a {lowS,highS} object and a
-    // string `description`/`hrZone` — we don't render those here, so they're
-    // intentionally omitted (extra JSON keys are ignored on decode).
+    /// "8:14–8:44" from the band, or single value, or "Easy" when no gate.
+    var paceDisplay: String {
+        guard let lo = paceTargetSPerMi?.lowS, lo > 0 else { return "Easy" }
+        let hi = paceTargetSPerMi?.highS ?? lo
+        func mmss(_ s: Double) -> String { let t = Int(s.rounded()); return "\(t/60):\(String(format: "%02d", t%60))" }
+        return hi > lo ? "\(mmss(lo))–\(mmss(hi))" : mmss(lo)
+    }
+    /// Estimated minutes from distance × mid-pace.
+    var durationMin: Int? {
+        guard let d = distanceMi, d > 0, let lo = paceTargetSPerMi?.lowS, lo > 0 else { return nil }
+        let mid = (lo + (paceTargetSPerMi?.highS ?? lo)) / 2
+        return Int((d * mid / 60).rounded())
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case date, type, label, distanceMi, isQuality, isLong, isToday, hasStrength
+        case date, type, label, distanceMi, description, paceTargetSPerMi, isQuality, isLong, isToday, hasStrength
     }
 }
 

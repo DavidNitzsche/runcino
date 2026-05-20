@@ -164,6 +164,7 @@ struct PlanView: View {
     let overview: OverviewResponse
     @State private var allDays: [PlanRangeDay] = []
     @State private var loaded = false
+    @State private var dayDetail: PlanRangeDay?
 
     var body: some View {
         FaffScreen(eyebrow: "\(overview.planCurrentPhase ?? "Plan") phase · \(weeks.count) weeks", title: "Full Plan") {
@@ -185,6 +186,7 @@ struct PlanView: View {
             }
         }
         .task { await load() }
+        .sheet(item: $dayDetail) { PlanDayDetailSheet(day: $0, phase: overview.planCurrentPhase) }
     }
 
     private func load() async {
@@ -247,24 +249,33 @@ struct PlanView: View {
         let isRest = d.isRest
         let isDone = isDoneRange(d)
         let nameColor = isToday ? Faff.C.amberInk : Faff.C.ink
-        return HStack(spacing: 11) {
-            statusDot(isToday: isToday, isPast: isPast, isRest: isRest, isDone: isDone).frame(width: 9, height: 9)
-            Text(shortDow(d.date)).font(Faff.F.inter(12.5, .semibold))
-                .foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(isRest ? "Rest" : (d.label ?? "Run")).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
-                Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
+        return Button {
+            if !isRest { dayDetail = d }
+        } label: {
+            HStack(spacing: 11) {
+                statusDot(isToday: isToday, isPast: isPast, isRest: isRest, isDone: isDone).frame(width: 9, height: 9)
+                Text(shortDow(d.date)).font(Faff.F.inter(12.5, .semibold))
+                    .foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(isRest ? "Rest" : (d.label ?? "Run")).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
+                    Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
+                }
+                Spacer()
+                if isDone {
+                    Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Faff.C.recovery)
+                } else {
+                    Text(isRest ? "—" : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(18))
+                        .foregroundStyle(isRest ? Faff.C.textFaint : nameColor)
+                }
+                if !isRest {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+                }
             }
-            Spacer()
-            if isDone {
-                Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Faff.C.recovery)
-            } else {
-                Text(isRest ? "—" : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(18))
-                    .foregroundStyle(isRest ? Faff.C.textFaint : nameColor)
-            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(first ? 0 : 1), alignment: .top)
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(first ? 0 : 1), alignment: .top)
+        .buttonStyle(.plain)
     }
     private func isDoneRange(_ d: PlanRangeDay) -> Bool {
         guard !d.isRest, let mi = d.distanceMi, mi > 0, let date = d.date else { return false }
@@ -758,6 +769,70 @@ struct MetricDetailSheet: View {
                 MetricTile(label: t.label, value: t.value, unit: t.unit,
                            delta: t.value == "—" ? "No data" : "7-day avg", deltaTone: .good)
             }
+        }
+    }
+}
+
+// MARK: - Plan day detail (sheet from a Plan row)
+
+struct PlanDayDetailSheet: View {
+    let day: PlanRangeDay
+    let phase: String?
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text(eyebrow.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                        Text(titleLine).font(Faff.F.display(46)).tracking(-0.5).foregroundStyle(Faff.C.ink)
+                            .lineSpacing(-8).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    SheetCloseButton { dismiss() }
+                }
+                HStack(spacing: Faff.S.inlineGap) {
+                    StatPill(value: OverviewFormat.distance(day.distanceMi), unit: "mi", label: "Distance")
+                    StatPill(value: day.paceDisplay, unit: day.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: day.isQuality ?? false)
+                    StatPill(value: day.durationMin.map { "~\($0)" } ?? "—", unit: day.durationMin != nil ? "min" : nil, label: "Time")
+                }
+                if let n = day.description, !n.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("THE WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                        Text(n).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.faffCard()
+                }
+                CoachVerdict("Focus", effort(day.type), color: Faff.C.milestone)
+                PrimaryButton(title: "Close", icon: nil) { dismiss() }
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
+    }
+    private var eyebrow: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        var when = ""
+        if let iso = day.date, let dt = f.date(from: String(iso.prefix(10))) {
+            let out = DateFormatter(); out.dateFormat = "EEEE · MMM d"; out.timeZone = TimeZone(identifier: "UTC")
+            when = out.string(from: dt)
+        }
+        return phase.map { "\(when) · \($0)" } ?? when
+    }
+    private var titleLine: String {
+        let label = (day.label ?? "Run").uppercased()
+        if let mi = day.distanceMi, mi > 0 { return "\(label)\n\(OverviewFormat.distance(mi)) MI" }
+        return label
+    }
+    private func effort(_ type: String?) -> String {
+        switch type ?? "" {
+        case "threshold": return "Comfortably hard — controlled threshold effort. You can say 2–3 words at a time, not a full sentence."
+        case "vo2", "interval": return "Hard reps with full recoveries. Hit the paces, don't exceed them."
+        case "long_steady", "long": return "Steady aerobic miles. Time on feet is the stimulus, not pace."
+        case "marathon_specific", "mp": return "Goal marathon-pace effort — controlled and rhythmic."
+        case "race": return "Race day — execute the plan; conserve early, commit late."
+        default: return "Easy and conversational. If you can't hold a sentence, slow down."
         }
     }
 }
