@@ -16,20 +16,26 @@ struct TodayView: View {
     @State private var overview: OverviewResponse?
     @State private var loadError: String?
     @State private var showDetail = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
-                topbar
+                topbar(overview)
                 content
             }
             .padding(.horizontal, Faff.S.pageEdge)
-            .padding(.top, 6)
+            .padding(.top, 4)
             .padding(.bottom, 24)
         }
         .background(Faff.C.bg.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) { FaffTabBar(active: .today) }
         .task { await load() }
+        // Re-pull on every foreground so it always shows the current day,
+        // never a stale yesterday.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await load() } }
+        }
         .sheet(isPresented: $showDetail) {
             if let o = overview { WorkoutDetailView(overview: o) }
         }
@@ -44,9 +50,11 @@ struct TodayView: View {
     // ── Content states ────────────────────────────────────────────
     @ViewBuilder private var content: some View {
         if let o = overview, o.ok {
+            weekStrip(o)
             coachStrip(o)
             Button { showDetail = true } label: { heroCard(o) }
                 .buttonStyle(.plain)
+            actionButtons
             readinessCard(o)
             CheckInCard()
         } else if let loadError {
@@ -54,23 +62,110 @@ struct TodayView: View {
         } else if let o = overview, !o.ok {
             stateCard("Couldn't load today", "The coach service returned an error.")
         } else {
-            stateCard("Loading today…", nil, spinner: true)
+            loadingView
         }
     }
 
-    // ── Topbar ────────────────────────────────────────────────────
-    private var topbar: some View {
-        HStack {
-            Text("FAFF")
-                .font(Faff.F.display(20)).italic().tracking(1.5)
+    // ── Branded loading moment ────────────────────────────────────
+    private var loadingView: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 120)
+            Text("FAFF").font(Faff.F.display(44)).italic().tracking(2)
                 .foregroundStyle(Color.faffMark)
+            ProgressView().tint(Faff.C.race)
+            Text("Loading today…").font(Faff.F.inter(11, .medium)).tracking(0.5)
+                .foregroundStyle(Faff.C.textDim)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 420)
+    }
+
+    // ── Week strip (Runna-style) ──────────────────────────────────
+    private func weekStrip(_ o: OverviewResponse) -> some View {
+        let days = o.planWeekWorkouts ?? []
+        return HStack(spacing: 0) {
+            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                let isToday = day.dateISO == o.today
+                VStack(spacing: 6) {
+                    Text(dow(day.dow)).font(Faff.F.inter(8.5, .semibold)).tracking(0.5)
+                        .foregroundStyle(Faff.C.textDim)
+                    Text(dom(day.dateISO)).font(Faff.F.display(18))
+                        .foregroundStyle(isToday ? .white : Faff.C.ink)
+                        .frame(width: 30, height: 30)
+                        .background(isToday ? Faff.C.ink : .clear, in: Circle())
+                    Circle().fill(dotColor(day))
+                        .frame(width: 5, height: 5)
+                        .opacity(hasWork(day) ? 1 : 0)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+    private func dow(_ d: Int?) -> String { ["SUN","MON","TUE","WED","THU","FRI","SAT"][(d ?? 0) % 7] }
+    private func dom(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "" }
+        return String(Int(iso.suffix(2)) ?? 0)
+    }
+    private func hasWork(_ d: OPlanDay) -> Bool { (d.type ?? "rest") != "rest" && (d.distanceMi ?? 0) > 0 }
+    private func dotColor(_ d: OPlanDay) -> Color {
+        guard hasWork(d) else { return .clear }
+        return (d.isQuality ?? false) ? Faff.C.race : Faff.C.recovery
+    }
+
+    // ── Open / Skip / Substitute ──────────────────────────────────
+    private var actionButtons: some View {
+        VStack(spacing: 8) {
+            Button { showDetail = true } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "play.fill").font(.system(size: 11, weight: .bold))
+                    Text("Open Workout").font(Faff.F.oswald(12)).tracking(1.3)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .foregroundStyle(.white).background(Faff.C.ink)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 8) {
+                ghostButton("Skip Today", icon: "forward.end")
+                ghostButton("Substitute", icon: "arrow.left.arrow.right")
+            }
+        }
+    }
+    private func ghostButton(_ label: String, icon: String) -> some View {
+        Button { } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 10, weight: .bold))
+                Text(label).font(Faff.F.oswald(11)).tracking(1.2)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 11)
+            .foregroundStyle(Faff.C.ink)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Faff.C.divider, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // ── Topbar ────────────────────────────────────────────────────
+    private func topbar(_ o: OverviewResponse?) -> some View {
+        HStack {
+            Circle().fill(Faff.C.race.opacity(0.14))
+                .frame(width: 34, height: 34)
+                .overlay(Text(initial(o)).font(Faff.F.inter(14, .bold)).foregroundStyle(Faff.C.race))
                 .onLongPressGesture { onLogout() }
             Spacer()
-            Text(dateLabel(overview?.today).uppercased())
-                .font(Faff.F.inter(9, .semibold)).tracking(1.3)
+            Text("FAFF").font(Faff.F.display(26)).italic().tracking(2)
+                .foregroundStyle(Color.faffMark)
+            Spacer()
+            Image(systemName: "calendar")
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Faff.C.textDim)
+                .frame(width: 34, height: 34)
         }
-        .padding(.top, 2)
+        .padding(.top, 2).padding(.bottom, 2)
+    }
+    private func initial(_ o: OverviewResponse?) -> String {
+        let name = (o?.profileName ?? "Faff").trimmingCharacters(in: .whitespaces)
+        return String(name.prefix(1)).uppercased()
     }
 
     // ── Coach strip ───────────────────────────────────────────────

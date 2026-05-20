@@ -67,6 +67,7 @@ struct OBriefing: Decodable {
 
 struct OPlanDay: Decodable {
     let dateISO: String?
+    let dow: Int?
     let type: String?
     let distanceMi: Double?
     let paceTargetSPerMi: Double?
