@@ -14,9 +14,13 @@ struct TodayView: View {
     let overview: OverviewResponse
     var onWhy: () -> Void = {}
     var onOpenWorkout: () -> Void = {}
+    var onReload: () -> Void = {}
 
     @State private var selected: String?   // nil = today
     @State private var recapDate: RecapDate?  // non-nil → show run recap sheet
+    @State private var reschedule: RescheduleTarget?
+    @State private var showSkipConfirm = false
+    @State private var working = false
     private struct RecapDate: Identifiable { let id: String }
 
     private var selDate: String { selected ?? overview.today ?? "" }
@@ -43,6 +47,26 @@ struct TodayView: View {
         }
         .background(Faff.C.bg)
         .sheet(item: $recapDate) { d in RunRecapView(date: d.id) }
+        .sheet(item: $reschedule) { t in
+            RescheduleSheet(action: t.action, fromDateISO: overview.today ?? "",
+                            days: overview.planWeekWorkouts ?? [],
+                            onDone: { onReload() })
+        }
+        .confirmationDialog("Skip today's \(overview.todayWorkout.label.lowercased())?",
+                            isPresented: $showSkipConfirm, titleVisibility: .visible) {
+            Button("Skip workout", role: .destructive) { Task { await skipToday() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The coach treats a skip as a recovery signal and adapts the days around it.")
+        }
+    }
+
+    private func skipToday() async {
+        let dw = overview.todayWorkout
+        guard let date = overview.today else { return }
+        working = true; defer { working = false }
+        try? await PlanActionAPI.skip(dateISO: date, type: dw.label, mi: dw.distanceMi)
+        onReload()
     }
 
     @ViewBuilder private var heroView: some View {
@@ -199,9 +223,10 @@ struct TodayView: View {
         VStack(spacing: 8) {
             PrimaryButton(title: "Open Workout", action: onOpenWorkout)
             HStack(spacing: 8) {
-                GhostButton(title: "Skip", icon: "forward.end")
-                GhostButton(title: "Substitute", icon: "arrow.left.arrow.right")
+                GhostButton(title: "Skip", icon: "forward.end") { showSkipConfirm = true }
+                GhostButton(title: "Substitute", icon: "arrow.left.arrow.right") { reschedule = RescheduleTarget(action: "swap") }
             }
+            .disabled(working)
         }
     }
 

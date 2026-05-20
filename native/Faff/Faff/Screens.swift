@@ -51,7 +51,7 @@ struct RootTabView: View {
                     FaffTabBar(active: tab) { tab = $0 }
                 }
                 .sheet(isPresented: $showProfile) { ProfileView(overview: o, onLogout: onLogout) }
-                .sheet(isPresented: $showDetail) { WorkoutDetailView(overview: o) }
+                .sheet(isPresented: $showDetail) { WorkoutDetailView(overview: o, onReload: { Task { await load() } }) }
                 .sheet(isPresented: $showWhy) { WhyThisSheet(overview: o) { showWhy = false; tab = .coach } }
             } else if let loadError {
                 FaffStateView(title: "Couldn't load", detail: loadError) { Task { await load() } }
@@ -74,7 +74,7 @@ struct RootTabView: View {
 
     @ViewBuilder private func screen(_ o: OverviewResponse) -> some View {
         switch tab {
-        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { showDetail = true })
+        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { showDetail = true }, onReload: { Task { await load() } })
         case .plan:   PlanView(overview: o)
         case .coach:  CoachView(overview: o)
         case .health: HealthView(overview: o)
@@ -353,16 +353,16 @@ struct HealthView: View {
     @ObservedObject private var hk = HealthKitManager.shared
     @State private var metric: MetricDetailSheet.Metric?
 
-    private struct Tile: Identifiable { let id = UUID(); let label, value: String; let unit, delta: String?; let tone: MetricTile.DeltaTone; let live: Bool }
+    private struct Tile: Identifiable { let id = UUID(); let label, value: String; let unit, delta: String?; let tone: MetricTile.DeltaTone; let live: Bool; var sampleType: String? = nil }
 
     var body: some View {
         let r = overview.state?.recovery
         let vitals: [Tile] = [
-            Tile(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil, delta: r?.hrv7dAvgMs != nil ? "7-day avg" : "No data", tone: .good, live: r?.hrv7dAvgMs != nil),
-            Tile(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil, delta: r?.rhrBpm != nil ? "7-day avg" : "No data", tone: .good, live: r?.rhrBpm != nil),
-            Tile(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil, delta: r?.sleep7dAvgHrs != nil ? "7-day avg" : "No data", tone: .good, live: r?.sleep7dAvgHrs != nil),
+            Tile(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil, delta: r?.hrv7dAvgMs != nil ? "7-day avg" : "No data", tone: .good, live: r?.hrv7dAvgMs != nil, sampleType: "hrv"),
+            Tile(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil, delta: r?.rhrBpm != nil ? "7-day avg" : "No data", tone: .good, live: r?.rhrBpm != nil, sampleType: "resting_hr"),
+            Tile(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil, delta: r?.sleep7dAvgHrs != nil ? "7-day avg" : "No data", tone: .good, live: r?.sleep7dAvgHrs != nil, sampleType: "sleep_hours"),
             Tile(label: "Respiration", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
-            Tile(label: "VO₂max", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+            Tile(label: "VO₂max", value: "—", unit: nil, delta: "No data", tone: .flat, live: false, sampleType: "vo2_max"),
             Tile(label: "Wrist temp", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
         ]
         let dynamics: [Tile] = ["Cadence", "Stride", "Vert Osc", "Grnd Contact", "Vert Ratio", "Run Power"].map {
@@ -400,7 +400,7 @@ struct HealthView: View {
             Text(title.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             MetricGrid(items: tiles) { t in
                 MetricTile(label: t.label, value: t.value, unit: t.unit, delta: t.delta, deltaTone: t.tone,
-                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live) })
+                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType) })
             }
         }
     }
@@ -441,7 +441,7 @@ struct RacesView: View {
         FaffScreen(eyebrow: "Next A-race", title: "Races") {
             if let r = overview.state?.races?.nextA {
                 Button { showDetail = true } label: { raceCard(r) }.buttonStyle(.plain)
-                    .sheet(isPresented: $showDetail) { RaceDetailView(race: r, phase: overview.planCurrentPhase, projection: overview.raceProjection) }
+                    .sheet(isPresented: $showDetail) { RaceDetailView(race: r, phase: overview.planCurrentPhase) }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("No race yet. Pick your goal and we'll plan backward from race day.")
@@ -532,7 +532,6 @@ struct RacesView: View {
 struct RaceDetailView: View {
     let race: ORace
     let phase: String?
-    var projection: ORaceProjection? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var course: RaceCourse?
     @State private var loadingCourse = true
@@ -572,18 +571,14 @@ struct RaceDetailView: View {
                         }
                     }
                     Divider().overlay(Color.white.opacity(0.25))
-                    HStack(spacing: 18) {
-                        rcStat("Goal time", race.goalDisplay ?? "—")
-                        if let pr = projection, let pd = pr.projectedDisplay { rcStat("Projected", "~\(pd)") }
-                        else if let d = race.distanceMi { rcStat("Distance", "\(OverviewFormat.distance(d)) mi") }
-                        if let v = projection?.vdot { rcStat("VDOT", "\(Int(v))") }
-                        else { rcStat("Phase", phase ?? "—") }
-                    }
-                    if let pr = projection, let h = pr.headroomSPerMi {
-                        Divider().overlay(Color.white.opacity(0.25))
-                        faffMarkdown(gapCopy(h))
-                            .font(Faff.F.inter(12)).foregroundStyle(.white.opacity(0.95)).lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if let pr = course?.projection, let cv = pr.currentVdot {
+                        readinessBlock(pr, cv: cv)
+                    } else {
+                        HStack(spacing: 18) {
+                            rcStat("Goal time", race.goalDisplay ?? "—")
+                            if let d = race.distanceMi { rcStat("Distance", "\(OverviewFormat.distance(d)) mi") }
+                            rcStat("Phase", phase ?? "—")
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(18)
@@ -596,6 +591,8 @@ struct RaceDetailView: View {
                 // ── Phase-by-phase pacing ───────────────────────────
                 if let c = course, let phases = c.phases, !phases.isEmpty {
                     pacingCard(phases, strategy: c.strategy)
+                    if let f = c.fueling { fuelingCard(f, gels: c.gels ?? []) }
+                    if c.briefGeneratesISO != nil || c.brief != nil { executionCard(c) }
                 } else if loadingCourse {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
@@ -752,7 +749,111 @@ struct RaceDetailView: View {
         }.padding(.vertical, 2)
     }
 
+    // MARK: Fueling
+    @ViewBuilder
+    private func fuelingCard(_ f: RaceFueling, gels: [RaceGel]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("FUELING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if let b = f.gelBrand { Text(b.uppercased()).font(Faff.F.inter(9.5, .semibold)).foregroundStyle(Faff.C.textMuted) }
+            }
+            HStack(spacing: Faff.S.inlineGap) {
+                StatPill(value: "\(f.gelCount ?? gels.count)", unit: "gels", label: "Carry")
+                StatPill(value: "\(f.totalCarbsG ?? 0)", unit: "g", label: "Total carbs")
+                StatPill(value: "\(f.carbTargetGPerHr ?? 0)", unit: "g/hr", label: "Target")
+            }
+            if !gels.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(gels.enumerated()), id: \.offset) { i, g in
+                        if i > 0 { Divider().overlay(Faff.C.divider).padding(.vertical, 9) }
+                        HStack(spacing: 10) {
+                            Text("\(g.number ?? i + 1)").font(Faff.F.display(13)).foregroundStyle(.white)
+                                .frame(width: 22, height: 22).background(Circle().fill(Faff.C.milestone))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(g.label ?? "Gel").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.ink)
+                                if let item = g.item { Text(item).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textDim) }
+                            }
+                            Spacer()
+                            Text("Mile \(OverviewFormat.distance(g.atMi))").font(Faff.F.display(16)).foregroundStyle(Faff.C.ink)
+                        }
+                    }
+                }
+            }
+            if let notes = f.notes, !notes.isEmpty {
+                Text(notes).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textMuted).lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }.faffCard()
+    }
+
+    // MARK: Race-day execution brief
+    @ViewBuilder
+    private func executionCard(_ c: RaceCourse) -> some View {
+        let genISO = c.briefGeneratesISO
+        let daysToBrief = (race.daysAway ?? 0) - 7
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("RACE-DAY EXECUTION").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                    Text("Race-week brief · packing list · wake-up timing · pre-race fueling")
+                        .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if let g = genISO {
+                    (Text("Generates ").foregroundColor(Faff.C.textDim)
+                     + Text(Self.shortDate(g)).foregroundColor(Faff.C.ink).bold()
+                     + Text(" (T−7d)").foregroundColor(Faff.C.textDim))
+                        .font(Faff.F.inter(9.5)).fixedSize()
+                }
+            }
+            if let b = c.brief, let narrative = b.narrative, !narrative.isEmpty {
+                Text(narrative).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let w = b.weatherInput, !w.isEmpty {
+                    Text("Weather: \(w)").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textMuted)
+                }
+                if let adj = b.adjustments, !adj.isEmpty {
+                    ForEach(adj) { a in
+                        Text("• \(a.reason ?? "")").font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("NO DATA YET · HONEST EMPTY STATE")
+                        .font(Faff.F.inter(9.5, .semibold)).tracking(1.2).foregroundStyle(Faff.C.amberInk)
+                    (Text("The race-day brief — ").foregroundColor(Faff.C.textMuted)
+                     + Text("shakeout sequencing, kit layout, wake-up time, pre-race fueling, and weather-adjusted pace tweaks").foregroundColor(Faff.C.ink)
+                     + Text(" — generates exactly 7 days out from gun time. The coach needs the actual weather window and your taper-week readiness before writing it. Don't plan it now; trust the system.").foregroundColor(Faff.C.textMuted))
+                        .font(Faff.F.inter(12.5)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+                    if let g = genISO {
+                        Text("AWAITING \(Self.longDate(g))\(daysToBrief > 0 ? " · \(daysToBrief) DAYS FROM TODAY" : "")")
+                            .font(Faff.F.inter(9.5, .semibold)).tracking(0.6).foregroundStyle(Faff.C.amberInk)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Faff.C.amberWash)
+                .clipShape(RoundedRectangle(cornerRadius: Faff.R.chip, style: .continuous))
+            }
+        }.faffCard()
+    }
+
     // MARK: Helpers
+    static func shortDate(_ iso: String) -> String {  // "Aug 9"
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let d = inF.date(from: String(iso.prefix(10))) else { return iso }
+        let out = DateFormatter(); out.dateFormat = "MMM d"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d)
+    }
+    static func longDate(_ iso: String) -> String {  // "SUN, AUG 9, 2026"
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let d = inF.date(from: String(iso.prefix(10))) else { return iso.uppercased() }
+        let out = DateFormatter(); out.dateFormat = "EEE, MMM d, yyyy"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d).uppercased()
+    }
     static func slugify(_ s: String) -> String {
         let lowered = s.lowercased()
         let mapped = lowered.map { ch -> Character in (ch.isLetter || ch.isNumber) ? ch : "-" }
@@ -796,12 +897,37 @@ struct RaceDetailView: View {
             Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.8).foregroundStyle(.white.opacity(0.85))
         }
     }
-    private func gapCopy(_ headroomSPerMi: Double) -> String {
-        let s = Int(abs(headroomSPerMi).rounded())
-        if headroomSPerMi >= 0 {
-            return "**Within reach** — current fitness projects ~\(s) s/mi inside goal pace. Hold the build."
-        }
-        return "**~\(s) s/mi to find** — your threshold work over the next blocks closes the gap to goal."
+    /// Mirrors the /races/[slug] web card: projected finish at current
+    /// VDOT, goal-required VDOT, and the gap (VDOT + T-pace seconds).
+    @ViewBuilder
+    private func readinessBlock(_ pr: RaceProjection, cv: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            (Text("Projected at current VDOT ").foregroundColor(.white.opacity(0.85))
+             + Text(String(format: "%.1f", cv)).foregroundColor(.white).bold()
+             + Text("   ").foregroundColor(.white)
+             + Text(pr.predictedDisplay ?? "—").foregroundColor(.white).bold())
+                .font(Faff.F.inter(12.5))
+            if let gv = pr.goalVdot {
+                (Text("Goal ").foregroundColor(.white.opacity(0.85))
+                 + Text(pr.goalDisplay ?? race.goalDisplay ?? "—").foregroundColor(.white).bold()
+                 + Text(" requires VDOT ").foregroundColor(.white.opacity(0.85))
+                 + Text(String(format: "%.1f", gv)).foregroundColor(.white).bold())
+                    .font(Faff.F.inter(12.5))
+            }
+            if pr.onPace == true {
+                Text("On pace — projection beats goal.")
+                    .font(Faff.F.inter(11.5, .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color.white.opacity(0.16)).clipShape(Capsule())
+            } else if let gap = pr.vdotGap {
+                (Text("Gap: ").foregroundColor(.white.opacity(0.9))
+                 + Text("\(String(format: "%.1f", gap)) VDOT").foregroundColor(.white).bold()
+                 + (pr.paceTGapS.map { Text(" / ~\(Int(abs($0))) sec/mi T pace").foregroundColor(.white.opacity(0.9)) } ?? Text("")))
+                    .font(Faff.F.inter(11.5))
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color.white.opacity(0.16)).clipShape(Capsule())
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -811,6 +937,9 @@ struct ProfileView: View {
     let overview: OverviewResponse
     let onLogout: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var shoes: [Shoe] = []
+    @State private var shoesLoaded = false
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -821,6 +950,7 @@ struct ProfileView: View {
             .padding(.horizontal, Faff.S.pageEdge).padding(.top, 18).padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                    // Identity
                     HStack(spacing: 14) {
                         FaffAvatar(initial: String((overview.profileName ?? "F").prefix(1)).uppercased(), size: 52)
                         VStack(alignment: .leading, spacing: 2) {
@@ -831,9 +961,11 @@ struct ProfileView: View {
                         }
                         Spacer()
                     }
+                    trainingCard
+                    shoeCard
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
-                        setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false))
+                        Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
+                        setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false), first: true)
                         setRow("Strava", connected: overview.connectors?.contains("strava") ?? false)
                         setRow("Apple Watch", connected: false)
                     }.faffCard()
@@ -847,15 +979,108 @@ struct ProfileView: View {
             }
         }
         .background(Faff.C.bg.ignoresSafeArea())
+        .task { await loadShoes() }
     }
-    private func setRow(_ name: String, connected: Bool) -> some View {
+
+    // ── Training snapshot ─────────────────────────────────────────
+    private var trainingCard: some View {
+        let v = overview.state?.volume
+        let vdot = overview.raceProjection?.vdot
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("TRAINING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            HStack(spacing: Faff.S.inlineGap) {
+                StatPill(value: vdot.map { String(Int($0)) } ?? "—", unit: vdot != nil ? "VDOT" : nil, label: "Fitness")
+                StatPill(value: OverviewFormat.distance(v?.last7Mi), unit: "mi", label: "Last 7d")
+                StatPill(value: OverviewFormat.distance(v?.weeklyAvg8w), unit: "mi", label: "8wk avg")
+            }
+            if let r = overview.state?.races?.nextA, let name = r.name {
+                Divider().overlay(Faff.C.divider)
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("NEXT RACE").font(Faff.F.inter(9, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                        Text(name).font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                    }
+                    Spacer()
+                    if let d = r.daysAway { Text("\(d) days").font(Faff.F.display(18)).foregroundStyle(Faff.C.race) }
+                }
+            }
+        }.faffCard()
+    }
+
+    // ── Shoe rotation ─────────────────────────────────────────────
+    private var shoeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("SHOE ROTATION").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if !shoes.isEmpty {
+                    Text("\(shoes.filter { !($0.retired ?? false) }.count) active").font(Faff.F.inter(9.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                }
+            }
+            if !shoesLoaded {
+                HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading…").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted) }
+            } else if shoes.isEmpty {
+                Text("No shoes yet. Add a pair on faff.run and assign your runs to track mileage.")
+                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                let active = shoes.filter { !($0.retired ?? false) }
+                ForEach(Array(active.enumerated()), id: \.element.id) { i, s in
+                    if i > 0 { Divider().overlay(Faff.C.divider) }
+                    shoeRow(s)
+                }
+                let retired = shoes.filter { $0.retired ?? false }
+                if !retired.isEmpty {
+                    Text("\(retired.count) retired").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint).padding(.top, 2)
+                }
+            }
+        }.faffCard()
+    }
+
+    private func shoeRow(_ s: Shoe) -> some View {
+        let mi = Int(s.mileage ?? 0)
+        let cap = Int(s.mileageCap ?? 0)
+        let wear = s.wearFraction
+        let barColor: Color = wear >= 0.9 ? Faff.C.warn : (wear >= 0.7 ? Faff.C.milestone : Faff.C.recovery)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(s.name).font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                if s.preferred == true {
+                    Text("PREFERRED").font(Faff.F.inter(7.5, .semibold)).tracking(0.5).foregroundStyle(Faff.C.recovery)
+                        .padding(.horizontal, 5).padding(.vertical, 2).background(Faff.C.greenWash).clipShape(Capsule())
+                }
+                Spacer()
+                (Text("\(mi)").font(Faff.F.display(16)).foregroundStyle(Faff.C.ink)
+                 + Text(cap > 0 ? " / \(cap) mi" : " mi").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim))
+            }
+            if cap > 0 {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Faff.C.track).frame(height: 6)
+                        Capsule().fill(barColor).frame(width: max(geo.size.width * wear, 4), height: 6)
+                    }
+                }.frame(height: 6)
+            }
+            if let types = s.runTypes, !types.isEmpty {
+                Text(types.joined(separator: " · ")).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textFaint)
+            }
+        }.padding(.vertical, 2)
+    }
+
+    private func loadShoes() async {
+        guard !shoesLoaded else { return }
+        shoes = (try? await ShoesAPI.fetch()) ?? []
+        shoesLoaded = true
+    }
+
+    private func setRow(_ name: String, connected: Bool, first: Bool = false) -> some View {
         HStack {
             Text(name).font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.ink)
             Spacer()
             Badge(text: connected ? "Connected" : "Connect", tone: connected ? .green : .grey)
         }
-        .padding(.vertical, 9)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
+        .padding(.vertical, 10)
+        .overlay(first ? nil : Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
     }
 }
 
@@ -898,10 +1123,16 @@ struct WhyThisSheet: View {
 // MARK: - Metric detail (sheet from a Health tile)
 
 struct MetricDetailSheet: View {
-    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true }
+    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil }
     let metric: Metric
     let overview: OverviewResponse
     @Environment(\.dismiss) private var dismiss
+    @State private var rangeDays = 30
+    @State private var series: [HealthSeriesPoint] = []
+    @State private var loadingSeries = false
+    private let rangeOptions = ["7D", "30D", "90D"]
+    private func days(for label: String) -> Int { label == "7D" ? 7 : (label == "90D" ? 90 : 30) }
+    private var rangeLabel: String { rangeDays == 7 ? "7D" : (rangeDays == 90 ? "90D" : "30D") }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
@@ -923,13 +1154,11 @@ struct MetricDetailSheet: View {
                     }
                 }.faffCard()
                 if metric.live {
-                    // Trend — honest placeholder until a daily series is wired.
+                    // Trend — real daily series from /api/health/series.
                     VStack(spacing: 12) {
-                        Segmented(options: ["7D", "30D", "90D"], selected: "30D")
-                        Text("30-day trend appears here as more days sync from Apple Health.")
-                            .font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
-                            .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
-                            .multilineTextAlignment(.center)
+                        Segmented(options: rangeOptions, selected: rangeLabel,
+                                  onSelect: { rangeDays = days(for: $0) })
+                        trendChart
                     }.faffCard()
                     CoachVerdict("What this means",
                                  "Your 7-day average from Apple Health. Day-to-day trend charts fill in here as more days sync.",
@@ -953,6 +1182,45 @@ struct MetricDetailSheet: View {
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
+        .task(id: rangeDays) { await loadSeries() }
+    }
+
+    @ViewBuilder
+    private var trendChart: some View {
+        if loadingSeries {
+            HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading…").font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim) }
+                .frame(maxWidth: .infinity, minHeight: 96)
+        } else if series.count >= 2 {
+            let vals = series.map(\.value)
+            let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1)
+            Chart(series) { p in
+                AreaMark(x: .value("Date", p.date), y: .value("Value", p.value))
+                    .foregroundStyle(LinearGradient(colors: [Faff.C.recovery.opacity(0.22), Faff.C.recovery.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                LineMark(x: .value("Date", p.date), y: .value("Value", p.value))
+                    .foregroundStyle(Faff.C.recovery)
+                    .lineStyle(StrokeStyle(lineWidth: 1.8))
+            }
+            .chartYScale(domain: (lo - (hi - lo) * 0.15 - 1)...(hi + (hi - lo) * 0.15 + 1))
+            .chartXAxis(.hidden)
+            .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
+                AxisValueLabel { if let d = v.as(Double.self) { Text("\(Int(d))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
+            } }
+            .frame(height: 96)
+        } else {
+            Text(series.count == 1
+                 ? "Only one day recorded so far — the trend fills in as more days sync."
+                 : "No \(metric.title.lowercased()) recorded in this window yet. It fills in as Apple Health syncs each day.")
+                .font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
+                .frame(maxWidth: .infinity, minHeight: 96, alignment: .center)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private func loadSeries() async {
+        guard metric.live, let type = metric.sampleType else { return }
+        loadingSeries = true
+        defer { loadingSeries = false }
+        series = (try? await HealthSeriesAPI.fetch(type: type, days: rangeDays)) ?? []
     }
 
     private var relatedTiles: some View {

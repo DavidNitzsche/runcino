@@ -260,6 +260,56 @@ struct RaceCourse: Decodable {
     let coords: [[Double]]?       // [[lat, lon], …] map polyline
     let samples: [RaceCourseSample]?
     let phases: [RacePhase]?
+    let fueling: RaceFueling?
+    let gels: [RaceGel]?
+    let projection: RaceProjection?
+    let brief: RaceBrief?
+    let briefGeneratesISO: String?
+}
+
+/// Race-day execution brief. Generated at T−7d; null until then.
+struct RaceBrief: Decodable {
+    let narrative: String?
+    let weatherInput: String?
+    let generatedAt: String?
+    let adjustments: [RaceBriefAdjustment]?
+}
+
+struct RaceBriefAdjustment: Decodable, Identifiable {
+    let phaseIdx: Int?
+    let paceDeltaSPerMi: Double?
+    let reason: String?
+    var id: Int { phaseIdx ?? 0 }
+}
+
+/// Race projection — same math as the /races/[slug] web page
+/// (computeAggregateVdot) so iPhone and web agree for the same user.
+struct RaceProjection: Decodable {
+    let currentVdot: Double?
+    let currentVdotLabel: String?
+    let predictedDisplay: String?
+    let goalDisplay: String?
+    let goalVdot: Double?
+    let vdotGap: Double?
+    let paceTGapS: Double?
+    let onPace: Bool?
+}
+
+struct RaceFueling: Decodable {
+    let gelBrand: String?
+    let gelCount: Int?
+    let gelCarbsG: Int?
+    let totalCarbsG: Int?
+    let carbTargetGPerHr: Int?
+    let notes: String?
+}
+
+struct RaceGel: Decodable, Identifiable {
+    let number: Int?
+    let atMi: Double?
+    let item: String?
+    let label: String?
+    var id: Int { number ?? 0 }
 }
 
 struct RaceCourseStats: Decodable {
@@ -306,6 +356,103 @@ enum RaceCourseAPI {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
         }
         return try JSONDecoder().decode(RaceCourse.self, from: data)
+    }
+}
+
+// MARK: - Shoes (gear rotation + mileage)
+
+struct ShoesResponse: Decodable { let shoes: [Shoe]? }
+
+struct Shoe: Decodable, Identifiable {
+    let id: Int
+    let brand: String?
+    let model: String?
+    let color: String?
+    let runTypes: [String]?
+    let mileage: Double?
+    let mileageCap: Double?
+    let retired: Bool?
+    let preferred: Bool?
+    let notes: String?
+
+    var name: String { [brand, model].compactMap { $0 }.joined(separator: " ") }
+    var wearFraction: Double {
+        guard let m = mileage, let cap = mileageCap, cap > 0 else { return 0 }
+        return min(max(m / cap, 0), 1)
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, brand, model, color, mileage, retired, preferred, notes
+        case runTypes = "run_types"
+        case mileageCap = "mileage_cap"
+    }
+}
+
+@MainActor
+enum ShoesAPI {
+    static func fetch() async throws -> [Shoe] {
+        guard let url = URL(string: "/api/shoes", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 30
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return (try JSONDecoder().decode(ShoesResponse.self, from: data)).shoes ?? []
+    }
+}
+
+// MARK: - Health daily series (metric-detail trend)
+
+struct HealthSeriesPoint: Decodable, Identifiable {
+    let date: String
+    let value: Double
+    var id: String { date }
+}
+private struct HealthSeriesResponse: Decodable { let series: [HealthSeriesPoint]? }
+
+@MainActor
+enum HealthSeriesAPI {
+    static func fetch(type: String, days: Int) async throws -> [HealthSeriesPoint] {
+        guard let url = URL(string: "/api/health/series?type=\(type)&days=\(days)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 30
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return (try JSONDecoder().decode(HealthSeriesResponse.self, from: data)).series ?? []
+    }
+}
+
+// MARK: - Plan actions (skip / move / swap)
+
+@MainActor
+enum PlanActionAPI {
+    @discardableResult
+    static func skip(dateISO: String, type: String?, mi: Double?) async throws -> Bool {
+        var body: [String: Any] = ["dateISO": dateISO]
+        if let type { body["plannedWorkoutType"] = type }
+        if let mi { body["plannedMi"] = mi }
+        return try await post(path: "/api/plan/skip", body: body)
+    }
+    @discardableResult
+    static func reschedule(action: String, from: String, to: String) async throws -> Bool {
+        try await post(path: "/api/plan/reschedule", body: ["action": action, "fromDateISO": from, "toDateISO": to])
+    }
+    private static func post(path: String, body: [String: Any]) async throws -> Bool {
+        guard let url = URL(string: path, relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.httpMethod = "POST"; req.timeoutInterval = 30
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8))
+        }
+        return true
     }
 }
 
