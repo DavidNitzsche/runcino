@@ -730,9 +730,10 @@ struct RaceDetailView: View {
                     HStack(spacing: 6) {
                         Text(p.label ?? "Segment").font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
                         Text(Self.gradeLabel(p.meanGradePct ?? 0))
-                            .font(Faff.F.inter(8, .semibold)).tracking(0.6).foregroundStyle(Faff.C.textMuted)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Faff.C.pillBg).clipShape(Capsule())
+                            .font(Faff.F.inter(8.5, .semibold)).tracking(0.2)
+                            .foregroundStyle(Self.gradeColor(p.meanGradePct ?? 0))
+                            .padding(.horizontal, 7).padding(.vertical, 2.5)
+                            .background(Self.gradeWash(p.meanGradePct ?? 0)).clipShape(Capsule())
                     }
                     Text("Mile \(OverviewFormat.distance(p.startMi)) → \(OverviewFormat.distance(p.endMi)) · \(OverviewFormat.distance(p.distanceMi)) mi")
                         .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
@@ -872,17 +873,38 @@ struct RaceDetailView: View {
             longitudeDelta: max((maxLon - minLon) * 1.35, 0.01))
         return MKCoordinateRegion(center: center, span: span)
     }
+    // Phase grade classification — mirrors the web /races/[slug] page
+    // (phaseColor + gradeLabel) EXACTLY so the iPhone and web agree.
+    enum PhaseTone { case orange, amber, blue, green }
+    static func phaseTone(_ g: Double) -> PhaseTone {
+        if g >= 2 { return .orange }    // hard climb
+        if g >= 0.3 { return .amber }   // gentle climb
+        if g <= -1.5 { return .blue }   // descent
+        return .green                   // flat / rolling
+    }
     static func gradeColor(_ g: Double) -> Color {
-        switch g {
-        case ..<(-4):        return Color(hex: 0x2563EB) // steep descent
-        case (-4)..<(-1.5):  return Color(hex: 0x60A5FA) // descent
-        case (-1.5)...1.5:   return Color(hex: 0x2CA82F) // flat
-        case 1.5..<4:        return Color(hex: 0xD4900A) // climb
-        default:             return Color(hex: 0xE85D26) // steep climb
+        switch phaseTone(g) {
+        case .orange: return Faff.C.race        // #E85D26
+        case .amber:  return Faff.C.milestone   // #D4900A
+        case .blue:   return Faff.C.dataBlue     // #2563EB
+        case .green:  return Faff.C.recovery     // #2CA82F
+        }
+    }
+    static func gradeWash(_ g: Double) -> Color {
+        switch phaseTone(g) {
+        case .orange: return Faff.C.orangeWash
+        case .amber:  return Faff.C.amberWash
+        case .blue:   return Faff.C.dataBlueWash
+        case .green:  return Faff.C.greenWash
         }
     }
     static func gradeLabel(_ g: Double) -> String {
-        g > 1.5 ? "CLIMB" : (g < -1.5 ? "DESCENT" : "ROLLING")
+        let v = String(format: "%.1f", g)
+        if abs(g) < 0.15 { return "flat 0.0%" }
+        if g >= 2 { return "+\(v)% hard climb" }
+        if g >= 0.3 { return "+\(v)% climb" }
+        if g <= -1.5 { return "\(v)% descent" }
+        return "\(g > 0 ? "+" : "")\(v)% rolling"
     }
     static func strategyLabel(_ s: String) -> String {
         switch s {
@@ -941,6 +963,8 @@ struct ProfileView: View {
     @ObservedObject private var watch = WatchSync.shared
     @State private var shoes: [Shoe] = []
     @State private var shoesLoaded = false
+    @State private var shoeEdit: ShoeEditTarget?
+    struct ShoeEditTarget: Identifiable { let id = UUID(); let shoe: Shoe? }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1024,35 +1048,47 @@ struct ProfileView: View {
             HStack {
                 Text("SHOE ROTATION").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
                 Spacer()
-                if !shoes.isEmpty {
-                    Text("\(shoes.filter { !($0.retired ?? false) }.count) active").font(Faff.F.inter(9.5, .semibold)).foregroundStyle(Faff.C.textMuted)
-                }
+                Button { shoeEdit = ShoeEditTarget(shoe: nil) } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                        Text("ADD").font(Faff.F.inter(9.5, .semibold)).tracking(0.5)
+                    }.foregroundStyle(Faff.C.race)
+                }.buttonStyle(.plain)
             }
             if !shoesLoaded {
                 HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading…").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted) }
             } else if shoes.isEmpty {
-                Text("No shoes yet. Add a pair on faff.run and assign your runs to track mileage.")
+                Text("No shoes yet. Tap ADD to start tracking mileage.")
                     .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 let active = shoes.filter { !($0.retired ?? false) }
                 ForEach(Array(active.enumerated()), id: \.element.id) { i, s in
                     if i > 0 { Divider().overlay(Faff.C.divider) }
-                    shoeRow(s)
+                    Button { shoeEdit = ShoeEditTarget(shoe: s) } label: { shoeRow(s) }.buttonStyle(.plain)
                 }
                 let retired = shoes.filter { $0.retired ?? false }
                 if !retired.isEmpty {
-                    Text("\(retired.count) retired").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint).padding(.top, 2)
+                    Divider().overlay(Faff.C.divider)
+                    ForEach(Array(retired.enumerated()), id: \.element.id) { _, s in
+                        Button { shoeEdit = ShoeEditTarget(shoe: s) } label: { shoeRow(s) }.buttonStyle(.plain)
+                            .opacity(0.5)
+                    }
                 }
             }
-        }.faffCard()
+        }
+        .faffCard()
+        .sheet(item: $shoeEdit) { t in
+            ShoeEditSheet(shoe: t.shoe, onSaved: { Task { shoesLoaded = false; await loadShoes() } })
+        }
     }
 
     private func shoeRow(_ s: Shoe) -> some View {
         let mi = Int(s.mileage ?? 0)
         let cap = Int(s.mileageCap ?? 0)
         let wear = s.wearFraction
-        let barColor: Color = wear >= 0.9 ? Faff.C.warn : (wear >= 0.7 ? Faff.C.milestone : Faff.C.recovery)
+        // Mirrors the web shoeStatus tones: ≥0.90 warn, ≥0.70 amber, else green.
+        let st = Shoe.status(wear)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(s.name).font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
@@ -1068,14 +1104,18 @@ struct ProfileView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Faff.C.track).frame(height: 6)
-                        Capsule().fill(barColor).frame(width: max(geo.size.width * wear, 4), height: 6)
+                        Capsule().fill(st.1).frame(width: max(geo.size.width * wear, 4), height: 6)
                     }
                 }.frame(height: 6)
             }
-            if let types = s.runTypes, !types.isEmpty {
-                Text(types.joined(separator: " · ")).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textFaint)
+            HStack(spacing: 6) {
+                if let types = s.runTypes, !types.isEmpty {
+                    Text(types.joined(separator: " · ")).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textFaint)
+                }
+                Spacer()
+                Text(st.0).font(Faff.F.inter(9, .semibold)).foregroundStyle(st.1)
             }
-        }.padding(.vertical, 2)
+        }.padding(.vertical, 2).contentShape(Rectangle())
     }
 
     private func loadShoes() async {

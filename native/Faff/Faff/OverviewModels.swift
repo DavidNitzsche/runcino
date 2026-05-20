@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 struct OverviewResponse: Decodable {
     let ok: Bool
@@ -381,6 +382,14 @@ struct Shoe: Decodable, Identifiable {
         guard let m = mileage, let cap = mileageCap, cap > 0 else { return 0 }
         return min(max(m / cap, 0), 1)
     }
+    /// Mirrors the web shoeStatus(): ≥0.90 Retire soon (warn), ≥0.70
+    /// Aging (amber), ≥0.20 Healthy (green), else Fresh (green).
+    static func status(_ wear: Double) -> (String, Color) {
+        if wear >= 0.90 { return ("Retire soon", Faff.C.warn) }
+        if wear >= 0.70 { return ("Aging", Faff.C.milestone) }
+        if wear >= 0.20 { return ("Healthy", Faff.C.recovery) }
+        return ("Fresh", Faff.C.recovery)
+    }
     private enum CodingKeys: String, CodingKey {
         case id, brand, model, color, mileage, retired, preferred, notes
         case runTypes = "run_types"
@@ -400,6 +409,29 @@ enum ShoesAPI {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
         }
         return (try JSONDecoder().decode(ShoesResponse.self, from: data)).shoes ?? []
+    }
+    /// Create a shoe: POST /api/shoes (brand, model, run_types required).
+    @discardableResult
+    static func create(_ fields: [String: Any]) async throws -> Bool {
+        try await send(method: "POST", path: "/api/shoes", body: fields)
+    }
+    /// Edit a shoe: PUT /api/shoes/[id] (any subset of fields).
+    @discardableResult
+    static func update(id: Int, _ fields: [String: Any]) async throws -> Bool {
+        try await send(method: "PUT", path: "/api/shoes/\(id)", body: fields)
+    }
+    private static func send(method: String, path: String, body: [String: Any]) async throws -> Bool {
+        guard let url = URL(string: path, relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.httpMethod = method; req.timeoutInterval = 30
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8))
+        }
+        return true
     }
 }
 
