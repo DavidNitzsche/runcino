@@ -23,6 +23,10 @@ struct OverviewResponse: Decodable {
     let briefing: CoachAnswer<OBriefing>?
     let planWeekWorkouts: [OPlanDay]?
     let state: OState?
+    /// Day-aware coach line, identical to the /overview web page
+    /// (server-composed via generateBriefing). Preferred over the
+    /// client-composed fallback.
+    let coachLine: String?
 }
 
 struct OState: Decodable {
@@ -350,6 +354,13 @@ extension OverviewResponse {
     /// clauses (greeting/body-state) + race. The backend briefing's
     /// workout clause is old-engine and disagrees with the plan, so we
     /// don't use it. Markdown bold preserved for AttributedString.
+    /// The coach line to render: the server's day-aware line when present
+    /// (matches the web), else the client-composed fallback.
+    var coachRead: String {
+        if let l = coachLine, !l.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return l }
+        return composedCoach
+    }
+
     var composedCoach: String {
         let dw = todayWorkout
         var parts: [String] = []

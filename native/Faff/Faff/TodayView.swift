@@ -134,7 +134,7 @@ struct TodayView: View {
                     .font(Faff.F.inter(10, .semibold)).tracking(1.4)
                     .foregroundStyle(Faff.C.textDim)
             }
-            faffMarkdown(o.composedCoach)
+            faffMarkdown(o.coachRead)
                 .font(Faff.F.inter(16)).foregroundStyle(Faff.C.ink)
                 .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
         }

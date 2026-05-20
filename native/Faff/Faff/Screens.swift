@@ -181,7 +181,7 @@ struct CoachView: View {
     var body: some View {
         let dw = overview.todayWorkout
         return FaffPage(eyebrow: overview.briefing?.answer.label ?? "Coach", title: "Today's read") {
-            faffMarkdown(overview.composedCoach)
+            faffMarkdown(overview.coachRead)
                 .font(Faff.F.inter(17)).foregroundStyle(Faff.C.ink).lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
             block("Focus", dw.guidance, Faff.C.recovery)
