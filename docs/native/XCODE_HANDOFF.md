@@ -60,14 +60,32 @@ Under `native/Faff/Faff/`:
 
 ---
 
-## Implementation phase order
+## Implementation phase order — iPhone first (David's call, 2026-05-19)
 
-1. **iPhone screens** (Login → Today → Settings → Race detail) — refine the v0 bridge
-2. **Watch idle / start screen** — simulator-testable
-3. **Watch workout screens** — state machine + phase rendering — simulator-testable
-4. **Watch `HKWorkoutSession` integration** — live HR / pace / distance — **needs physical Apple Watch**
-5. **Watch haptics + transitions** — **needs physical Apple Watch** for timing validation
-6. **Watch summary + completion writeback** → backend POST
+Build the **iPhone full companion first.** It is fully simulator-testable against endpoints
+that already exist, so it sidesteps the watch hardware-pairing blocker (below). Watch live-data
+work resumes once device pairing is fixed. Within iPhone, build the **backed** screens first
+(green in the handoff table) for real-data wins, then the net-new work.
+
+**iPhone — backed screens first (green):**
+1. **Today** (`api/overview`) — grow from the v0 `TodayView`. Coach line, hero workout card,
+   Send-to-Watch (WCSession), readiness ring, week strip. State-driven.
+2. **Workout detail** (`api/plan` / `plan-week` + pace doctrine) + Send-to-Watch action.
+3. **Plan** (`api/plan` / `plan-week` / `plan-range`), **Health** (`api/health/readiness` +
+   `readiness-score.ts`), **Races** (`api/races`), **Settings** (`api/profile` / `connectors`),
+   **Coach read** (`api/brief` — read-only, NOT a chat).
+
+**iPhone — net-new (amber/grey), after the backed loop:**
+4. **Run recap** + **run reconciliation** (HealthKit ingest exists; matching prescribed↔actual is new).
+5. **Race Day mode** (race plan/pacing exists; live execution is new).
+6. **iOS-native surfaces:** Live Activity (ActivityKit), widgets (WidgetKit), push (UserNotifications).
+
+**Watch — parallel / later, where simulator-testable:**
+7. Idle/start → state machine → phase rendering (simulator-testable; FaffWatch shell + WCSession
+   loop + pace-drift logic already in).
+8. `HKLiveWorkoutBuilder` live HR / pace / **cadence** + haptics + completion writeback
+   (`api/watch/today` and `api/watch/workouts/complete` exist) — **BLOCKED on a physical Apple
+   Watch** (device pairing unresolved, see below).
 
 ---
 
@@ -97,9 +115,21 @@ Do NOT test with that credential, and remind David to rotate it if he hasn't.
 
 ---
 
-## Design / UI status
+## Design / UI status — LOCKED (2026-05-19)
 
-UI design direction is **unresolved and not locked.** Do **not** start SwiftUI screen
-implementation against any prior design artifacts — build screens fresh against David's direct
-direction in the new session. The iPhone bridge v0 (above) is the only UI code worth keeping as a
-starting point.
+The design is now locked. Build SwiftUI screens **against these artifacts**, not from scratch.
+
+- **System:** light **v4** — `designs/V4_DESIGN_LAW.md` + `web/app/components/v4/tokens.ts`.
+  Warm `#EEECEA` ground, white cards + soft shadow (no borders), **Bebas Neue** numbers/titles,
+  **Inter** body, **Oswald** sub-headers; orange `#E85D26` brand, green `#2CA82F` on-plan,
+  amber `#D4900A` today, red `#F43F5E` errors. The iPhone is light. Only the **watch execution
+  face is dark** (`#000`).
+- **iPhone spec:** `docs/design/iphone-handoff.html` — every screen, the app map, native
+  surfaces, and a per-screen build table (job · **status** · data source · components).
+- **Watch spec:** `docs/design/watch-handoff.html` — six dark states, per-metric source + token.
+- **Scope:** `docs/native/05-iphone-app-scope.md` (iPhone full companion) and
+  `01-watchos-scoping.md` (watch).
+
+The HTML handoffs are **reference, not importable code**: read the layout, hierarchy, and
+data-source/status columns, then write SwiftUI. The iPhone bridge v0 under `native/Faff/Faff/`
+is the foundation to grow.
