@@ -49,7 +49,17 @@ struct TodayView: View {
         if isTodaySel {
             if overview.todayWorkout.isRest { restHero(overview) } else { runHero(overview) }
         } else if let d = selDay {
-            if isPastSel { recapHero(d) } else { previewHero(d) }
+            if isPastSel {
+                let dw = DerivedWorkout(plan: d, fallback: nil)
+                PastDayHero(
+                    date: d.dateISO ?? "",
+                    eyebrow: eyebrowDate(d.dateISO),
+                    title: dw.isRest ? "Rest" : heroTitle(dw),
+                    isRest: dw.isRest,
+                    plannedMi: d.distanceMi,
+                    onOpenRecap: { date in recapDate = RecapDate(id: date) }
+                )
+            } else { previewHero(d) }
         }
     }
     @ViewBuilder private var coachLineView: some View {
@@ -211,39 +221,6 @@ struct TodayView: View {
         .faffCard(padding: 17)
     }
 
-    // ── Past day · recap hero ─────────────────────────────────────
-    private func recapHero(_ d: OPlanDay) -> some View {
-        let dw = DerivedWorkout(plan: d, fallback: nil)
-        let done = overview.isPlanDayDone(d)
-        let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
-        let rest = dw.isRest
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("\(eyebrowDate(d.dateISO)) · \(rest ? "REST" : (done ? "DONE" : "MISSED"))")
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
-                Spacer()
-                if !rest { Badge(text: done ? "On plan" : "Missed", tone: done ? .green : .amber) }
-            }
-            Text((rest ? "REST" : heroTitle(dw)).uppercased())
-                .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
-                .padding(.top, 9).padding(.bottom, 14)
-            if !rest {
-                HStack(spacing: Faff.S.inlineGap) {
-                    StatPill(value: OverviewFormat.distance(d.distanceMi), unit: "mi", label: "Planned")
-                    StatPill(value: done ? OverviewFormat.distance(actual) : "—", unit: done ? "mi" : nil, label: "Ran", accent: done)
-                }
-                if done {
-                    HStack(spacing: 6) {
-                        Text("View recap").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
-                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Faff.C.race)
-                    }.padding(.top, 12)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
-        .contentShape(Rectangle())
-        .onTapGesture { if !rest && done, let date = d.dateISO { recapDate = RecapDate(id: date) } }
-    }
 
     // ── Future day · preview hero ─────────────────────────────────
     private func previewHero(_ d: OPlanDay) -> some View {
@@ -481,5 +458,65 @@ private struct CheckInSlider: View {
             .frame(height: thumb).frame(maxHeight: .infinity, alignment: .center)
         }
         .frame(height: thumb)
+    }
+}
+
+// ── Past day hero ─────────────────────────────────────────────────
+/// A selected past day. Loads the real run from /api/runs/by-date (the
+/// source of truth — works around flaky completedByDate detection) so
+/// the card shows the true result + a tap into the full recap (route,
+/// mile splits, HR). Honest "missed" when nothing synced.
+private struct PastDayHero: View {
+    let date: String
+    let eyebrow: String
+    let title: String
+    let isRest: Bool
+    let plannedMi: Double?
+    var onOpenRecap: (String) -> Void
+
+    @State private var run: RunRecap?
+    @State private var loaded = false
+
+    var body: some View {
+        let done = run != nil
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(eyebrow) · \(isRest ? "REST" : (done ? "DONE" : "MISSED"))")
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if !isRest { Badge(text: done ? "On plan" : "Missed", tone: done ? .green : .amber) }
+            }
+            Text(title.uppercased())
+                .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
+                .padding(.top, 9).padding(.bottom, 14)
+            if !isRest {
+                HStack(spacing: Faff.S.inlineGap) {
+                    StatPill(value: OverviewFormat.distance(plannedMi), unit: "mi", label: "Planned")
+                    StatPill(value: done ? OverviewFormat.distance(run?.distanceMi) : "—",
+                             unit: done ? "mi" : nil, label: "Ran", accent: done)
+                }
+                if let r = run {
+                    HStack(spacing: Faff.S.inlineGap) {
+                        StatPill(value: r.paceDisplay, unit: "/mi", label: "Avg pace")
+                        StatPill(value: r.durationDisplay, unit: nil, label: "Time")
+                        if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
+                    }.padding(.top, Faff.S.inlineGap)
+                }
+                HStack(spacing: 6) {
+                    Text("View full recap").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Faff.C.race)
+                }.padding(.top, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
+        .contentShape(Rectangle())
+        .onTapGesture { if !isRest, !date.isEmpty { onOpenRecap(date) } }
+        .task(id: date) { await load() }
+    }
+
+    private func load() async {
+        guard !isRest, !date.isEmpty else { return }
+        run = (try? await RunByDateAPI.fetch(date: date))?.run
+        loaded = true
     }
 }
