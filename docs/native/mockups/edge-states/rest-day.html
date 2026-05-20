@@ -2,66 +2,220 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Edge · Rest day</title>
+<title>Edge · Rest day (v2 · with coach insight)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <style>
-  .empty-content {
-    height: 100%;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center;
-    padding: 0 40px;
+  .day-header { padding: 16px 20px 8px; }
+  .day-header .day {
+    font-family: var(--sf-display); font-size: 34px; font-weight: 700; letter-spacing: -0.5px;
   }
-  .empty-content .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
-  .empty-content .headline {
-    font-family: var(--sf-display); font-size: 24px; font-weight: 700;
-    margin-bottom: 6px;
-  }
-  .empty-content .sub {
-    font-size: 15px; color: var(--text-l-2); line-height: 1.4;
-  }
-  .dark .empty-content .sub { color: var(--text-d-2); }
+  .day-header .sub { font-size: 14px; color: var(--text-l-2); margin-top: 2px; }
+  .dark .day-header .sub { color: var(--text-d-2); }
 
-  .watch-empty {
-    height: 100%;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center;
-    padding: 0 14px;
+  .rest-context {
+    margin: 0 20px 14px;
+    padding: 16px 18px;
+    background: var(--green-soft);
+    border-radius: 14px;
   }
-  .watch-empty .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
-  .watch-empty .text {
-    font-family: var(--sf-compact); font-size: 14px; font-weight: 600;
-    line-height: 1.2;
+  .rest-context .label {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--green); margin-bottom: 4px;
   }
-  .watch-empty .sub {
-    font-family: var(--sf-compact); font-size: 11px;
-    color: var(--text-l-2); margin-top: 4px;
+  .rest-context .headline {
+    font-family: var(--sf-display); font-size: 18px; font-weight: 700;
+    line-height: 1.2; margin-bottom: 4px;
   }
-  .dark .watch-empty .sub { color: var(--text-d-2); }
+  .rest-context .body {
+    font-size: 14px; line-height: 1.4; color: var(--text-l-2);
+  }
+  .dark .rest-context .body { color: var(--text-d-2); }
 
-  .tab-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 84px;
+  .section-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--text-l-3);
+    padding: 10px 24px 6px;
+  }
+  .dark .section-label { color: var(--text-d-3); }
+
+  .recovery-card {
+    margin: 0 20px 14px;
+    background: var(--bg-l-2);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .dark .recovery-card { background: var(--bg-d-2); }
+
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .signal-cell { text-align: center; }
+  .signal-cell .num {
+    font-family: var(--sf-display); font-size: 22px; font-weight: 800; line-height: 1;
+  }
+  .signal-cell .unit { font-size: 11px; color: var(--text-l-3); margin-top: 1px; }
+  .dark .signal-cell .unit { color: var(--text-d-3); }
+  .signal-cell .lbl {
+    font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-l-3); margin-top: 4px;
+  }
+  .dark .signal-cell .lbl { color: var(--text-d-3); }
+  .signal-cell .delta {
+    font-size: 10px; font-weight: 600;
+    color: var(--green); margin-top: 1px;
+  }
+  .signal-cell .delta.flat { color: var(--text-l-3); }
+  .dark .signal-cell .delta.flat { color: var(--text-d-3); }
+
+  .coach-line {
+    padding-top: 12px;
+    border-top: 0.5px solid var(--border-l);
+    font-size: 14px; line-height: 1.4;
+  }
+  .dark .coach-line { border-top-color: var(--border-d); }
+  .coach-line .who {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--orange); margin-bottom: 4px;
+  }
+
+  .next-up-card {
+    margin: 0 20px 14px;
+    background: var(--bg-l-2);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .dark .next-up-card { background: var(--bg-d-2); }
+  .next-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0;
+    border-bottom: 0.5px solid var(--border-l);
+  }
+  .dark .next-row { border-bottom-color: var(--border-d); }
+  .next-row:last-child { border-bottom: none; }
+  .next-row .when {
+    width: 60px;
+    text-align: left;
+  }
+  .next-row .when .day-num {
+    font-family: var(--sf-display); font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .next-row .meta { flex: 1; }
+  .next-row .meta .name {
+    font-size: 15px; font-weight: 600; line-height: 1.15;
+  }
+  .next-row .meta .detail {
+    font-size: 12px; color: var(--text-l-3); margin-top: 1px;
+  }
+  .dark .next-row .meta .detail { color: var(--text-d-3); }
+  .next-row .right {
+    font-family: var(--sf-display); font-size: 16px; font-weight: 700;
+  }
+
+  .week-card {
+    margin: 0 20px 16px;
+    background: var(--bg-l-2);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .dark .week-card { background: var(--bg-d-2); }
+  .week-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .week-row:last-child { margin-bottom: 0; }
+  .week-row .lbl { font-size: 13px; }
+  .week-row .val {
+    font-family: var(--sf-display); font-size: 15px; font-weight: 700;
+  }
+  .progress-track {
+    height: 5px;
+    background: var(--border-l);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .dark .progress-track { background: var(--border-d); }
+  .progress-track .fill {
+    height: 100%; background: var(--orange);
+  }
+
+  .tab-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 84px;
     background: var(--bg-l); border-top: 0.5px solid var(--border-l);
-    display: flex; padding: 8px 0 22px; }
+    display: flex; padding: 8px 0 22px;
+  }
   .dark .tab-bar { background: var(--bg-d); border-top-color: var(--border-d); }
-  .tab-bar > .tab { flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 4px; color: var(--text-l-3); font-size: 10px; font-weight: 500; }
+  .tab-bar > .tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 4px; color: var(--text-l-3); font-size: 10px; font-weight: 500;
+  }
   .dark .tab-bar > .tab { color: var(--text-d-3); }
   .tab-bar > .tab.active { color: var(--orange); }
   .tab-bar > .tab > .ico { font-size: 24px; }
+
+  /* ─── Watch rest day ─── */
+  .watch-rest {
+    height: 100%; padding: 18px 14px 12px;
+    display: flex; flex-direction: column;
+  }
+  .watch-rest .top {
+    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--green); margin-bottom: 8px;
+  }
+  .watch-rest .next-block {
+    flex: 1;
+    display: flex; flex-direction: column;
+    justify-content: center;
+  }
+  .watch-rest .next-block .lead {
+    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-l-3); margin-bottom: 4px;
+  }
+  .dark .watch-rest .next-block .lead { color: var(--text-d-3); }
+  .watch-rest .next-block .name {
+    font-family: var(--sf-compact); font-size: 22px; font-weight: 800;
+    line-height: 1.05; letter-spacing: -0.3px; margin-bottom: 4px;
+  }
+  .watch-rest .next-block .detail {
+    font-family: var(--sf-compact); font-size: 17px; font-weight: 600;
+    color: var(--orange); line-height: 1.15;
+  }
+  .watch-rest .recovery-row {
+    display: flex; justify-content: space-around;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--border-l);
+  }
+  .dark .watch-rest .recovery-row { border-top-color: var(--border-d); }
+  .watch-rest .recovery-row .cell { text-align: center; flex: 1; }
+  .watch-rest .recovery-row .cell .v {
+    font-family: var(--sf-compact); font-size: 15px; font-weight: 700;
+  }
+  .watch-rest .recovery-row .cell .l {
+    font-family: var(--sf-compact); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-l-3); margin-top: 1px;
+  }
+  .dark .watch-rest .recovery-row .cell .l { color: var(--text-d-3); }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>Edge state · Rest day</h1>
-    <div class="subtitle">Today is Saturday, the synthetic plan prescribes rest · how the surfaces behave</div>
+    <h1>Edge state · Rest day (v2 · coach insight)</h1>
+    <div class="subtitle">No workout today, but the screen earns its space · context · recovery signals · what's next · week progress</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
   <div class="section-title">iPhone</div>
   <div class="mode-pair">
+
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
       <div class="iphone-frame light">
@@ -69,15 +223,90 @@
         <div class="screen">
           <div class="status-bar"><span class="time">9:41</span></div>
           <div class="iphone-content">
-            <div style="padding: 16px 20px 0;">
-              <div style="font-family: var(--sf-display); font-size: 34px; font-weight: 700;">Saturday</div>
-              <div style="font-size: 15px; color: var(--text-l-2); margin-top: 2px;">May 23 · Week 1 · Base</div>
+
+            <div class="day-header">
+              <div class="day">Saturday</div>
+              <div class="sub">May 23 · Week 1 · Base</div>
             </div>
-            <div class="empty-content">
-              <div class="icon">😌</div>
-              <div class="headline">Rest day</div>
-              <div class="sub">Synthetic plan keeps Saturdays open.  Move freely, walk, stretch.  Watch app will stay quiet today.</div>
+
+            <div class="rest-context">
+              <div class="label">Rest day · planned</div>
+              <div class="headline">Recovery, not a gap.</div>
+              <div class="body">
+                Tuesday's threshold work + Thursday's intervals stacked up.  Sleep on it.  Sunday's long run is the next push.
+              </div>
             </div>
+
+            <div class="section-label">Recovery signals</div>
+            <div class="recovery-card">
+              <div class="signal-grid">
+                <div class="signal-cell">
+                  <div class="num">7<span class="unit">h</span>42<span class="unit">m</span></div>
+                  <div class="lbl">SLEEP</div>
+                  <div class="delta">+24 min vs avg</div>
+                </div>
+                <div class="signal-cell">
+                  <div class="num">41<span class="unit"> bpm</span></div>
+                  <div class="lbl">RESTING HR</div>
+                  <div class="delta flat">+1 vs baseline</div>
+                </div>
+                <div class="signal-cell">
+                  <div class="num">↑</div>
+                  <div class="lbl">HRV</div>
+                  <div class="delta">above 30-d avg</div>
+                </div>
+              </div>
+              <div class="coach-line">
+                <div class="who">Coach</div>
+                Recovery looks solid.  HRV trending up, RHR near baseline, sleep over target.  Hit Sunday's long run as written.
+              </div>
+            </div>
+
+            <div class="section-label">Next up</div>
+            <div class="next-up-card">
+              <div class="next-row">
+                <div class="when"><div class="day-num">TOMORROW</div></div>
+                <div class="meta">
+                  <div class="name">Long Run</div>
+                  <div class="detail">Easy aerobic · 8:30–9:30/mi</div>
+                </div>
+                <div class="right">11.0 mi</div>
+              </div>
+              <div class="next-row">
+                <div class="when"><div class="day-num">MON</div></div>
+                <div class="meta">
+                  <div class="name">Easy</div>
+                  <div class="detail">Recovery-paced</div>
+                </div>
+                <div class="right">5.5 mi</div>
+              </div>
+              <div class="next-row">
+                <div class="when"><div class="day-num">TUE</div></div>
+                <div class="meta">
+                  <div class="name">Cruise Intervals</div>
+                  <div class="detail">6 × 800m @ T-pace · 6:31</div>
+                </div>
+                <div class="right">7.0 mi</div>
+              </div>
+            </div>
+
+            <div class="section-label">This week</div>
+            <div class="week-card">
+              <div class="week-row">
+                <div class="lbl">Mileage</div>
+                <div class="val">14.5 / 22.0 mi</div>
+              </div>
+              <div class="progress-track"><div class="fill" style="width: 66%;"></div></div>
+              <div class="week-row" style="margin-top: 10px;">
+                <div class="lbl">Quality sessions</div>
+                <div class="val">2 / 2</div>
+              </div>
+              <div class="week-row" style="margin-top: 6px;">
+                <div class="lbl">Phase</div>
+                <div class="val">Base · Week 1 / 4</div>
+              </div>
+            </div>
+
           </div>
           <div class="tab-bar">
             <div class="tab active"><div class="ico">●</div>Today</div>
@@ -89,6 +318,7 @@
         </div>
       </div>
     </div>
+
     <div class="mockup-slot">
       <div class="mode-label">DARK</div>
       <div class="iphone-frame dark">
@@ -96,15 +326,90 @@
         <div class="screen">
           <div class="status-bar"><span class="time" style="color: white;">9:41</span></div>
           <div class="iphone-content">
-            <div style="padding: 16px 20px 0;">
-              <div style="font-family: var(--sf-display); font-size: 34px; font-weight: 700;">Saturday</div>
-              <div style="font-size: 15px; color: var(--text-d-2); margin-top: 2px;">May 23 · Week 1 · Base</div>
+
+            <div class="day-header">
+              <div class="day">Saturday</div>
+              <div class="sub">May 23 · Week 1 · Base</div>
             </div>
-            <div class="empty-content">
-              <div class="icon">😌</div>
-              <div class="headline">Rest day</div>
-              <div class="sub">Synthetic plan keeps Saturdays open.  Move freely, walk, stretch.  Watch app will stay quiet today.</div>
+
+            <div class="rest-context">
+              <div class="label">Rest day · planned</div>
+              <div class="headline">Recovery, not a gap.</div>
+              <div class="body">
+                Tuesday's threshold work + Thursday's intervals stacked up.  Sleep on it.  Sunday's long run is the next push.
+              </div>
             </div>
+
+            <div class="section-label">Recovery signals</div>
+            <div class="recovery-card">
+              <div class="signal-grid">
+                <div class="signal-cell">
+                  <div class="num">7<span class="unit">h</span>42<span class="unit">m</span></div>
+                  <div class="lbl">SLEEP</div>
+                  <div class="delta">+24 min vs avg</div>
+                </div>
+                <div class="signal-cell">
+                  <div class="num">41<span class="unit"> bpm</span></div>
+                  <div class="lbl">RESTING HR</div>
+                  <div class="delta flat">+1 vs baseline</div>
+                </div>
+                <div class="signal-cell">
+                  <div class="num">↑</div>
+                  <div class="lbl">HRV</div>
+                  <div class="delta">above 30-d avg</div>
+                </div>
+              </div>
+              <div class="coach-line">
+                <div class="who">Coach</div>
+                Recovery looks solid.  HRV trending up, RHR near baseline, sleep over target.  Hit Sunday's long run as written.
+              </div>
+            </div>
+
+            <div class="section-label">Next up</div>
+            <div class="next-up-card">
+              <div class="next-row">
+                <div class="when"><div class="day-num">TOMORROW</div></div>
+                <div class="meta">
+                  <div class="name">Long Run</div>
+                  <div class="detail">Easy aerobic · 8:30–9:30/mi</div>
+                </div>
+                <div class="right">11.0 mi</div>
+              </div>
+              <div class="next-row">
+                <div class="when"><div class="day-num">MON</div></div>
+                <div class="meta">
+                  <div class="name">Easy</div>
+                  <div class="detail">Recovery-paced</div>
+                </div>
+                <div class="right">5.5 mi</div>
+              </div>
+              <div class="next-row">
+                <div class="when"><div class="day-num">TUE</div></div>
+                <div class="meta">
+                  <div class="name">Cruise Intervals</div>
+                  <div class="detail">6 × 800m @ T-pace · 6:31</div>
+                </div>
+                <div class="right">7.0 mi</div>
+              </div>
+            </div>
+
+            <div class="section-label">This week</div>
+            <div class="week-card">
+              <div class="week-row">
+                <div class="lbl">Mileage</div>
+                <div class="val">14.5 / 22.0 mi</div>
+              </div>
+              <div class="progress-track"><div class="fill" style="width: 66%;"></div></div>
+              <div class="week-row" style="margin-top: 10px;">
+                <div class="lbl">Quality sessions</div>
+                <div class="val">2 / 2</div>
+              </div>
+              <div class="week-row" style="margin-top: 6px;">
+                <div class="lbl">Phase</div>
+                <div class="val">Base · Week 1 / 4</div>
+              </div>
+            </div>
+
           </div>
           <div class="tab-bar">
             <div class="tab active"><div class="ico">●</div>Today</div>
@@ -120,31 +425,45 @@
 
   <div class="section-title">Apple Watch</div>
   <div class="mode-pair">
+
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
       <div class="watch-frame light">
         <div class="watch-status">9:41</div>
         <div class="screen">
-          <div class="watch-content">
-            <div class="watch-empty">
-              <div class="icon">😌</div>
-              <div class="text">Rest day</div>
-              <div class="sub">No workout today</div>
+          <div class="watch-content watch-rest">
+            <div class="top">Rest day</div>
+            <div class="next-block">
+              <div class="lead">Tomorrow</div>
+              <div class="name">Long Run</div>
+              <div class="detail">11.0 mi<br>easy · 8:30–9:30</div>
+            </div>
+            <div class="recovery-row">
+              <div class="cell"><div class="v">7h42</div><div class="l">SLEEP</div></div>
+              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
+              <div class="cell"><div class="v">↑</div><div class="l">HRV</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
     <div class="mockup-slot">
       <div class="mode-label">DARK</div>
       <div class="watch-frame dark">
         <div class="watch-status">9:41</div>
         <div class="screen">
-          <div class="watch-content">
-            <div class="watch-empty">
-              <div class="icon">😌</div>
-              <div class="text">Rest day</div>
-              <div class="sub">No workout today</div>
+          <div class="watch-content watch-rest">
+            <div class="top">Rest day</div>
+            <div class="next-block">
+              <div class="lead">Tomorrow</div>
+              <div class="name">Long Run</div>
+              <div class="detail">11.0 mi<br>easy · 8:30–9:30</div>
+            </div>
+            <div class="recovery-row">
+              <div class="cell"><div class="v">7h42</div><div class="l">SLEEP</div></div>
+              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
+              <div class="cell"><div class="v">↑</div><div class="l">HRV</div></div>
             </div>
           </div>
         </div>
@@ -153,13 +472,14 @@
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong>Design notes (v2 · with coach insight)</strong>:
     <ul style="margin: 8px 0 0 20px;">
-      <li>Honest emptiness · no fake-positive "Way to recover!" copy</li>
-      <li>iPhone explains the plan structure briefly so a new runner understands</li>
-      <li>Watch is minimal · same vibe as Apple's native "No workout today" screens</li>
-      <li>No Start button on the watch · nothing to start · removes confusion</li>
-      <li>Backend behavior: <code>GET /api/watch/today</code> returns <code>{ workoutId: null, reason: 'rest' }</code> · client renders this state</li>
+      <li><strong>Context card with a one-line WHY</strong> · "Tuesday's threshold + Thursday's intervals stacked up · sleep on it" · names the recent work, frames the rest</li>
+      <li><strong>Recovery signals from HealthKit ingest</strong> · sleep, RHR, HRV with trend deltas · what the runner came to check</li>
+      <li><strong>"Coach" line</strong> · V6 voice · diagnosis + actionable verdict ("Hit Sunday's long run as written")</li>
+      <li><strong>Next-up shows three days forward</strong> · Tomorrow (the focus) + 2 days context · runs in long form so the runner sees the arc</li>
+      <li><strong>Week progress card</strong> · mileage progress bar + quality count + phase position · spatial orientation in the training block</li>
+      <li><strong>Watch screen</strong> · "Tomorrow: Long Run 11.0 mi" is the focal · recovery stats bottom row for at-a-glance confirmation · maximizes space, no dead zones</li>
     </ul>
   </div>
 

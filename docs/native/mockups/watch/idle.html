@@ -2,53 +2,96 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · Idle / Pre-workout</title>
+<title>Watch · Idle / Pre-workout (v3 · with coach insight)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <style>
   .idle-screen {
     height: 100%;
     display: flex; flex-direction: column;
-    padding: 28px 16px 14px;
+    padding: 20px 14px 12px;
   }
-  .idle-screen .greeting {
+  .idle-screen .top-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .idle-screen .top-label {
     font-family: var(--sf-compact);
-    font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.3px;
     text-transform: uppercase;
     color: var(--text-l-3);
-    margin-bottom: 4px;
   }
-  .dark .idle-screen .greeting { color: var(--text-d-3); }
+  .dark .idle-screen .top-label { color: var(--text-d-3); }
+  .idle-screen .ready-chip {
+    font-family: var(--sf-compact);
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--green);
+    background: var(--green-soft);
+    padding: 2px 7px; border-radius: 4px;
+  }
 
-  .workout-summary-card {
-    flex: 1;
-    display: flex; flex-direction: column;
-    justify-content: center;
-    margin-bottom: 16px;
-  }
-  .workout-summary-card .name {
+  .workout-headline {
     font-family: var(--sf-compact);
-    font-size: 19px; font-weight: 700;
-    line-height: 1.1;
-    margin-bottom: 6px;
+    font-size: 19px; font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.3px;
+    margin-bottom: 8px;
   }
-  .workout-summary-card .detail {
-    font-family: var(--sf-compact);
-    font-size: 15px;
-    color: var(--text-l-2);
-    line-height: 1.25;
-  }
-  .dark .workout-summary-card .detail { color: var(--text-d-2); }
 
-  .workout-summary-card .meta-line {
+  .structure-block {
+    background: var(--orange-soft);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .structure-block .big {
     font-family: var(--sf-compact);
-    font-size: 12px;
-    color: var(--text-l-3);
-    margin-top: 10px;
+    font-size: 22px; font-weight: 800; line-height: 1.05;
+    letter-spacing: -0.4px;
+    color: var(--orange);
+  }
+  .structure-block .sub {
+    font-family: var(--sf-compact);
+    font-size: 13px; font-weight: 600;
+    color: var(--text-l-2); margin-top: 2px;
+  }
+  .dark .structure-block .sub { color: var(--text-d-2); }
+
+  .coach-line {
+    font-family: var(--sf-compact);
+    font-size: 11px; font-weight: 500;
     line-height: 1.3;
+    color: var(--text-l-2);
+    margin-bottom: 8px;
   }
-  .dark .workout-summary-card .meta-line { color: var(--text-d-3); }
+  .dark .coach-line { color: var(--text-d-2); }
+
+  .recovery-row {
+    display: flex; justify-content: space-around;
+    padding: 7px 0;
+    margin-bottom: 10px;
+    border-top: 0.5px solid var(--border-l);
+    border-bottom: 0.5px solid var(--border-l);
+  }
+  .dark .recovery-row {
+    border-top-color: var(--border-d);
+    border-bottom-color: var(--border-d);
+  }
+  .recovery-row .cell { text-align: center; flex: 1; }
+  .recovery-row .cell .v {
+    font-family: var(--sf-compact); font-size: 13px; font-weight: 700;
+    line-height: 1;
+  }
+  .recovery-row .cell .l {
+    font-family: var(--sf-compact); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-l-3); margin-top: 1px;
+  }
+  .dark .recovery-row .cell .l { color: var(--text-d-3); }
+  .recovery-row .cell .v.up { color: var(--green); }
 
   .start-btn {
+    margin-top: auto;
     width: 100%;
     background: var(--orange);
     color: white;
@@ -57,8 +100,8 @@
     padding: 14px 12px;
     font-family: var(--sf-compact);
     font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
   }
 </style>
 </head>
@@ -66,8 +109,8 @@
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · Idle / Pre-workout</h1>
-    <div class="subtitle">App launch screen · today's workout summary + Start button</div>
+    <h1>Watch · Idle / Pre-workout (v3)</h1>
+    <div class="subtitle">Workout + structure + coach context + recovery signals · earns every pixel</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
@@ -79,11 +122,22 @@
         <div class="watch-status">9:41</div>
         <div class="screen">
           <div class="watch-content idle-screen">
-            <div class="greeting">Today · Tue</div>
-            <div class="workout-summary-card">
-              <div class="name">Cruise Intervals</div>
-              <div class="detail">6 × 800m @ 6:31<br>60s recovery</div>
-              <div class="meta-line">7.0 mi · ≈52 min · target 6:31/mi</div>
+            <div class="top-row">
+              <div class="top-label">Tue · Wk 1 Base</div>
+              <div class="ready-chip">Ready ✓</div>
+            </div>
+            <div class="workout-headline">Cruise Intervals</div>
+            <div class="structure-block">
+              <div class="big">6 × 800m @ 6:31</div>
+              <div class="sub">60s rec · 7.0 mi · ≈52 min</div>
+            </div>
+            <div class="coach-line">
+              <strong>Last time</strong> (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.
+            </div>
+            <div class="recovery-row">
+              <div class="cell"><div class="v up">7h42</div><div class="l">SLEEP</div></div>
+              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
+              <div class="cell"><div class="v up">↑</div><div class="l">HRV</div></div>
             </div>
             <button class="start-btn">▶ START</button>
           </div>
@@ -97,11 +151,22 @@
         <div class="watch-status">9:41</div>
         <div class="screen">
           <div class="watch-content idle-screen">
-            <div class="greeting">Today · Tue</div>
-            <div class="workout-summary-card">
-              <div class="name">Cruise Intervals</div>
-              <div class="detail">6 × 800m @ 6:31<br>60s recovery</div>
-              <div class="meta-line">7.0 mi · ≈52 min · target 6:31/mi</div>
+            <div class="top-row">
+              <div class="top-label">Tue · Wk 1 Base</div>
+              <div class="ready-chip">Ready ✓</div>
+            </div>
+            <div class="workout-headline">Cruise Intervals</div>
+            <div class="structure-block">
+              <div class="big">6 × 800m @ 6:31</div>
+              <div class="sub">60s rec · 7.0 mi · ≈52 min</div>
+            </div>
+            <div class="coach-line">
+              <strong>Last time</strong> (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.
+            </div>
+            <div class="recovery-row">
+              <div class="cell"><div class="v up">7h42</div><div class="l">SLEEP</div></div>
+              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
+              <div class="cell"><div class="v up">↑</div><div class="l">HRV</div></div>
             </div>
             <button class="start-btn">▶ START</button>
           </div>
@@ -112,14 +177,13 @@
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong>Design notes (v3 · with coach insight)</strong>:
     <ul style="margin: 8px 0 0 20px;">
-      <li>Single-screen launcher · all the runner needs to know before pressing Start fits without scrolling</li>
-      <li>Workout name is biggest text · runner confirms what they're about to do</li>
-      <li>Second line is the structured target · "6 × 800m @ 6:31 / 60s rec"</li>
-      <li>Meta line gives total distance + time + reference pace · low-priority but useful</li>
-      <li>Start button takes the full width · 60pt+ tall · easy to tap with wet/cold fingers · brand orange</li>
-      <li>Dark mode is the running default · light shown for completeness</li>
+      <li><strong>"Ready ✓" chip top-right</strong> · readiness summary at a glance · green when all recovery signals are go</li>
+      <li><strong>Structure block in orange-soft card</strong> · "6 × 800m @ 6:31" pops · this is what the runner is about to do</li>
+      <li><strong>Coach line from last-similar-session</strong> · "Last time (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps" · actionable insight, not generic encouragement</li>
+      <li><strong>Recovery row</strong> · sleep / RHR / HRV at a glance · same data as iPhone rest-day · confirms readiness</li>
+      <li>No dead vertical space · every section earns its pixels · still readable at 1-2 second glance</li>
     </ul>
   </div>
 
