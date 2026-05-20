@@ -56,6 +56,39 @@ export default async function HealthPage() {
     checkinWidth = Math.round((score / 10) * 100);
   }
 
+  // ── Biometrics from HealthKit ingest (health_samples), 7-day avgs ──
+  interface BioRow { sample_type: string; avg: number }
+  const bioRows = await query<BioRow>(
+    `SELECT sample_type, AVG(value)::float8 AS avg
+       FROM health_samples
+      WHERE user_id = $1
+        AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
+        AND sample_type IN ('resting_hr', 'hrv', 'sleep_hours')
+      GROUP BY sample_type`,
+    [auth.id],
+  ).catch(() => [] as BioRow[]);
+  const bio = new Map(bioRows.map((r) => [r.sample_type, Number(r.avg)]));
+  const rhr = bio.get('resting_hr') ?? null;
+  const hrv = bio.get('hrv') ?? null;
+  const sleep = bio.get('sleep_hours') ?? null;
+  const hasBio = rhr != null || hrv != null || sleep != null;
+  const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+  const sleepRow = sleep != null
+    ? { value: `${sleep.toFixed(1)} h`, tone: (sleep >= 7 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((sleep / 8) * 100) }
+    : { value: 'No data', tone: 'dim' as const, width: 0 };
+  const rhrRow = rhr != null
+    ? { value: `${Math.round(rhr)} bpm`, tone: (rhr <= 55 ? 'green' : 'amber') as 'green' | 'amber', width: clamp(((75 - rhr) / 35) * 100) }
+    : { value: 'No data', tone: 'dim' as const, width: 0 };
+  const hrvRow = hrv != null
+    ? { value: `${Math.round(hrv)} ms`, tone: (hrv >= 60 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((hrv / 120) * 100) }
+    : { value: 'No data', tone: 'dim' as const, width: 0 };
+
+  const heroTitle = hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA');
+  const readBody = hasBio
+    ? `From Apple Health (7-day average): ${rhr != null ? `resting HR ${Math.round(rhr)} bpm` : ''}${rhr != null && (hrv != null || sleep != null) ? ', ' : ''}${hrv != null ? `HRV ${Math.round(hrv)} ms` : ''}${hrv != null && sleep != null ? ', ' : ''}${sleep != null ? `${sleep.toFixed(1)} h sleep` : ''}. Trends build as more days sync.`
+    : 'No data. Once a wearable is connected (Apple Health, Whoop, Oura) or you’ve logged a few days of check-ins, daily readouts of HRV, resting HR, and sleep will land here.';
+
   return (
     <div className="health-v4-page">
       <Topbar activeTab="health" showAdmin={auth.is_admin} />
@@ -82,15 +115,11 @@ export default async function HealthPage() {
         <div className="health-hero">
           <div className="health-hero-left">
             <div className="health-hero-eyebrow">TODAY · {todayLabel} · HEALTH</div>
-            <div className="health-hero-title">{checkin ? 'CHECK IN LOGGED' : 'NO DATA'}</div>
+            <div className="health-hero-title">{heroTitle}</div>
             <div className="brief-sections">
               <div className="brief-section">
                 <div className="brief-section-label read">The Read</div>
-                <p className="brief-section-body">
-                  No data. Once a wearable is connected (Apple Health, Whoop, Oura) or you&apos;ve
-                  logged a few days of check-ins, daily readouts of HRV, resting HR, and sleep
-                  will land here.
-                </p>
+                <p className="brief-section-body">{readBody}</p>
               </div>
               <div className="brief-section">
                 <div className="brief-section-label work">What&apos;s Working</div>
@@ -123,9 +152,9 @@ export default async function HealthPage() {
             </div>
 
             <div className="health-trend-rows">
-              <HealthTrendRow label="Sleep 7d"   value="No data" tone="dim" width={0} />
-              <HealthTrendRow label="Resting HR" value="No data" tone="dim" width={0} />
-              <HealthTrendRow label="HRV"        value="No data" tone="dim" width={0} />
+              <HealthTrendRow label="Sleep 7d"   value={sleepRow.value} tone={sleepRow.tone} width={sleepRow.width} />
+              <HealthTrendRow label="Resting HR" value={rhrRow.value}   tone={rhrRow.tone}   width={rhrRow.width} />
+              <HealthTrendRow label="HRV"        value={hrvRow.value}   tone={hrvRow.tone}   width={hrvRow.width} />
               <HealthTrendRow label="Strain 7d"  value="No data" tone="dim" width={0} />
               <HealthTrendRow label="Check-In"   value={checkinValue} tone={checkinTone} width={checkinWidth} />
             </div>
@@ -191,9 +220,9 @@ export default async function HealthPage() {
             </div>
           </div>
           <div className="vitals-grid">
-            <VitalTile label="Sleep"      value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
-            <VitalTile label="Resting HR" value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
-            <VitalTile label="HRV"        value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
+            <VitalTile label="Sleep"      value={sleep != null ? sleep.toFixed(1) : '—'} unit={sleep != null ? 'h' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={sleep != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="Resting HR" value={rhr != null ? String(Math.round(rhr)) : '—'} unit={rhr != null ? 'bpm' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={rhr != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="HRV"        value={hrv != null ? String(Math.round(hrv)) : '—'} unit={hrv != null ? 'ms' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={hrv != null ? '7-day avg' : 'No data'} />
             <VitalTile label="Body Mass"  value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
           </div>
         </div>
