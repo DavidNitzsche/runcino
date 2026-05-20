@@ -248,7 +248,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-fon
 .w-stats{display:flex;margin-top:auto;border-top:1px solid rgba(13,15,18,.12);padding-top:6px}
 .w-stat{flex:1;padding-right:8px} .w-stat+.w-stat{border-left:1px solid rgba(13,15,18,.12);padding-left:10px;padding-right:0}
 .w-stat .v{font-family:var(--f-display);font-size:24px;line-height:.82} .w-stat .v small{font-family:var(--f-body);font-size:9px;font-weight:600;color:var(--t2);margin-left:1px}
-.w-stat .k{font-size:8px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--t2);margin-top:2px}
+.w-stat .k{display:none} /* unit is the label — no word clutter */
 .w-prog{margin-top:6px}
 .w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);margin-bottom:4px} .w-prog .lbl b{color:var(--ink)}
 .w-bar{height:5px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
@@ -630,12 +630,12 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-fon
             <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
             <div class="w-body">
               <div class="w-hero green tnum">6:33</div>
-              <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+              <div class="w-ref"><b>6:31</b> · <span class="up">+2s</span></div>
               <div class="w-stats">
                 <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
                 <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
               </div>
-              <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+              <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
             </div>
           </div></div>
           <div class="w-cap"><b>Work interval</b>Current pace is the hero. Green<br>on the band, amber on drift.</div>

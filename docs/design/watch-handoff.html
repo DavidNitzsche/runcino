@@ -104,7 +104,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-stat{flex:1;padding-right:10px} .w-stat+.w-stat{border-left:1px solid var(--wline);padding-left:12px;padding-right:0}
 .w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82;color:var(--wink)}
 .w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
-.w-stat .k{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--wt2);margin-top:3px}
+.w-stat .k{display:none} /* unit is the label — no word clutter */
 .w-prog{margin-top:7px}
 .w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
 .w-prog .lbl b{color:var(--wink)}
@@ -269,12 +269,12 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
           <div class="w-body">
             <div class="w-hero green tnum">6:33</div>
-            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-ref"><b>6:31</b> · <span class="up">+2s</span></div>
             <div class="w-stats">
               <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+            <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
           </div>
         </div></div>
         <div class="state-tag">3 · Work interval</div>

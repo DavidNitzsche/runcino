@@ -98,7 +98,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82;color:var(--wink)}
 .watch.lg .w-stat .v{font-size:34px}
 .w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
-.w-stat .k{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--wt2);margin-top:3px}
+.w-stat .k{display:none} /* the unit (bpm/spm) is the label — no word clutter on the wrist */
 /* rep progress */
 .w-prog{margin-top:8px}
 .w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
@@ -292,9 +292,9 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-seg"><i class="warm done"></i><i class="work done"></i><i class="rec done"></i><i class="work done"></i><i class="rec done"></i><i class="work now"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="rec"></i><i class="work"></i><i class="cool"></i></div>
           <div class="w-body">
             <div class="w-hero green tnum">6:33</div>
-            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-ref"><b>6:31</b> · <span class="up">+2s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Rep 3 of 6</span><span><b class="tnum">0:24</b> left</span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+            <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
           </div>
         </div></div>
       </div>
@@ -304,7 +304,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
         <div class="co"><span class="num">1</span><span class="z">Where you are</span><span class="d"><b>Rep 3 of 6</b> in amber, and a hairline strip of the whole session above it (done green, current orange). Orientation without thinking.</span></div>
         <div class="co"><span class="num">2</span><span class="z">Hero · pace</span><span class="d"><b>Current pace</b>, the biggest thing on the watch, <b>color-coded</b>. Green means on the band. You don't read it, you feel it.</span></div>
         <div class="co"><span class="num">3</span><span class="z">Reference</span><span class="d">Target and live delta, small. There when you want the exact number, ignorable when you don't.</span></div>
-        <div class="co"><span class="num">4</span><span class="z">Two stats</span><span class="d"><b>Heart rate + cadence</b>, equal weight, big enough to catch peripherally. The secondary read.</span></div>
+        <div class="co"><span class="num">4</span><span class="z">Two stats</span><span class="d"><b>Heart rate + cadence</b>, equal weight. The unit is the label, bpm and spm, no words to crowd the glance.</span></div>
         <div class="co"><span class="num">5</span><span class="z">Rep progress</span><span class="d">A bar and the time left in the rep. Pairs with the haptic that fires 3 seconds before the rep ends.</span></div>
       </div>
     </div>
@@ -319,7 +319,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
       <div class="unit">
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
-          <div class="w-body"><div class="w-hero green tnum">6:31</div><div class="w-ref">Target <b>6:31</b> · <span class="up">on pace</span></div>
+          <div class="w-body"><div class="w-hero green tnum">6:31</div><div class="w-ref"><b>6:31</b> · <span class="up">on pace</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
             <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>hold</span></div><div class="w-bar"><i class="green" style="width:50%"></i></div></div></div>
         </div></div>
@@ -328,7 +328,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
       <div class="unit">
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
-          <div class="w-body"><div class="w-hero amber tnum">6:44</div><div class="w-ref">Target <b>6:31</b> · <span class="mid">+13s</span></div>
+          <div class="w-body"><div class="w-hero amber tnum">6:44</div><div class="w-ref"><b>6:31</b> · <span class="mid">+13s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">164<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">176<small>spm</small></div><div class="k">Cadence</div></div></div>
             <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>lift it</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
         </div></div>
@@ -337,7 +337,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
       <div class="unit">
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
-          <div class="w-body"><div class="w-hero over tnum">6:51</div><div class="w-ref">Target <b>6:31</b> · <span class="down">+20s</span></div>
+          <div class="w-body"><div class="w-hero over tnum">6:51</div><div class="w-ref"><b>6:31</b> · <span class="down">+20s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">159<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">171<small>spm</small></div><div class="k">Cadence</div></div></div>
             <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>off pace</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
         </div></div>
@@ -430,7 +430,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
           <div class="w-body">
             <div class="w-hero green tnum">6:33</div>
-            <div class="w-ref">Target <b>6:31</b> · <span class="up">+2s</span></div>
+            <div class="w-ref"><b>6:31</b> · <span class="up">+2s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cad</div></div></div>
           </div>
         </div></div>
