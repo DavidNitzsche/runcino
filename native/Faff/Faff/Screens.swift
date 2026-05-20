@@ -162,64 +162,97 @@ private func dowLabel(_ d: Int?) -> String { ["SUN","MON","TUE","WED","THU","FRI
 
 struct PlanView: View {
     let overview: OverviewResponse
+    @State private var allDays: [PlanRangeDay] = []
+    @State private var loaded = false
+
     var body: some View {
+        FaffScreen(eyebrow: "\(overview.planCurrentPhase ?? "Plan") phase · \(weeks.count) weeks", title: "Full Plan") {
+            progressCard
+            ForEach(weeks) { wk in
+                Text("WEEK \(wk.index)\(wk.containsToday ? " · THIS WEEK" : "")")
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.6)
+                    .foregroundStyle(wk.containsToday ? Faff.C.race : Faff.C.textDim)
+                VStack(spacing: 0) {
+                    ForEach(Array(wk.days.enumerated()), id: \.offset) { i, d in rangeRow(d, first: i == 0) }
+                }.faffCard(padding: 0)
+            }
+            if !loaded { ProgressView().tint(Faff.C.race).frame(maxWidth: .infinity).padding(.vertical, 20) }
+            else if weeks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("No plan yet. Set a goal race and we'll build your weeks.")
+                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+                }.faffCard()
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard !loaded else { return }
+        if let r = try? await PlanRangeAPI.fetch(months: 8) { allDays = r.days ?? [] }
+        loaded = true
+    }
+
+    // ── Current-week progress (from overview) ─────────────────────
+    private var progressCard: some View {
         let days = overview.planWeekWorkouts ?? []
         let work = days.filter { ($0.type ?? "") != "rest" }
         let done = work.filter { overview.isPlanDayDone($0) }.count
         let planned = days.reduce(0.0) { $0 + ($1.distanceMi ?? 0) }
         let frac = work.isEmpty ? 0 : Double(done) / Double(work.count)
-        return FaffScreen(eyebrow: "\(overview.planCurrentPhase ?? "Plan") phase", title: "This Week") {
-            // Progress
-            VStack(spacing: 9) {
-                HStack {
-                    Text("\(done) of \(work.count) sessions done").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
-                    Spacer()
-                    (Text("\(Int(planned)) mi ").font(Faff.F.inter(12.5, .bold)).foregroundStyle(Faff.C.ink)
-                     + Text("planned").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted))
-                }
-                FaffProgressBar(fraction: frac)
+        return VStack(spacing: 9) {
+            HStack {
+                Text("\(done) of \(work.count) done this week").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                Spacer()
+                (Text("\(Int(planned)) mi ").font(Faff.F.inter(12.5, .bold)).foregroundStyle(Faff.C.ink)
+                 + Text("planned").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted))
             }
-            .faffCard(padding: 16)
-            // Week
-            VStack(spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.offset) { i, day in
-                    planRow(day, first: i == 0)
-                }
-            }
-            .faffCard(padding: 0)
-            // Coming up
-            if let fl = overview.planFutureLongRuns, !fl.isEmpty {
-                Text("COMING UP").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
-                VStack(spacing: 0) {
-                    ForEach(Array(fl.prefix(3).enumerated()), id: \.offset) { i, f in
-                        HStack {
-                            Text("Wk +\(i + 1)").font(Faff.F.display(17)).foregroundStyle(Faff.C.textMuted).frame(width: 48, alignment: .leading)
-                            Text("Long run \(OverviewFormat.distance(f.longMi)) mi").font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Faff.C.textDim)
-                        }
-                        .padding(.vertical, 11)
-                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(i == 0 ? 0 : 1), alignment: .top)
-                    }
-                }
-                .faffCard(padding: 0)
-            }
-        }
+            FaffProgressBar(fraction: frac)
+        }.faffCard(padding: 16)
     }
 
-    private func planRow(_ d: OPlanDay, first: Bool) -> some View {
-        let isToday = d.dateISO == overview.today
-        let isPast = (d.dateISO ?? "") < (overview.today ?? "")
-        let dw = DerivedWorkout(plan: d, fallback: nil)
-        let isRest = (d.type ?? "") == "rest"
-        let isDone = overview.isPlanDayDone(d)
+    // ── Group the full plan into weeks ────────────────────────────
+    private struct Week: Identifiable {
+        let id: String; let index: Int; let days: [PlanRangeDay]; let containsToday: Bool
+    }
+    private var weeks: [Week] {
+        var buckets: [String: [PlanRangeDay]] = [:]
+        for d in allDays { if let m = Self.mondayOf(d.date) { buckets[m, default: []].append(d) } }
+        var result: [Week] = []
+        var idx = 0
+        var started = false
+        for m in buckets.keys.sorted() {
+            let ds = (buckets[m] ?? []).sorted { ($0.date ?? "") < ($1.date ?? "") }
+            let hasWork = ds.contains { !$0.isRest }
+            if !hasWork { if started { break } else { continue } }   // skip leading rest; stop at trailing rest
+            started = true; idx += 1
+            result.append(Week(id: m, index: idx, days: ds, containsToday: ds.contains { ($0.isToday ?? false) }))
+        }
+        return result
+    }
+    static func mondayOf(_ iso: String?) -> String? {
+        guard let iso, iso.count >= 10 else { return nil }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = cal.timeZone
+        guard let d = f.date(from: String(iso.prefix(10))) else { return nil }
+        let wd = cal.component(.weekday, from: d)        // 1=Sun … 7=Sat
+        let offset = wd == 1 ? -6 : -(wd - 2)
+        guard let mon = cal.date(byAdding: .day, value: offset, to: d) else { return nil }
+        return f.string(from: mon)
+    }
+
+    private func rangeRow(_ d: PlanRangeDay, first: Bool) -> some View {
+        let isToday = d.isToday ?? false
+        let isPast = (d.date ?? "") < (overview.today ?? "")
+        let isRest = d.isRest
+        let isDone = isDoneRange(d)
         let nameColor = isToday ? Faff.C.amberInk : Faff.C.ink
         return HStack(spacing: 11) {
-            statusDot(d, isToday: isToday, isPast: isPast, isRest: isRest, isDone: isDone).frame(width: 9, height: 9)
-            Text(dowLabel(d.dow).capitalized.prefix(3) == "" ? "" : String(dowLabel(d.dow).capitalized.prefix(3)))
-                .font(Faff.F.inter(12.5, .semibold)).foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
+            statusDot(isToday: isToday, isPast: isPast, isRest: isRest, isDone: isDone).frame(width: 9, height: 9)
+            Text(shortDow(d.date)).font(Faff.F.inter(12.5, .semibold))
+                .foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
-                Text(isRest ? "Rest" : dw.label).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
+                Text(isRest ? "Rest" : (d.label ?? "Run")).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
                 Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
             }
             Spacer()
@@ -233,19 +266,30 @@ struct PlanView: View {
         .padding(.horizontal, 18).padding(.vertical, 12)
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(first ? 0 : 1), alignment: .top)
     }
-    @ViewBuilder private func statusDot(_ d: OPlanDay, isToday: Bool, isPast: Bool, isRest: Bool, isDone: Bool) -> some View {
+    private func isDoneRange(_ d: PlanRangeDay) -> Bool {
+        guard !d.isRest, let mi = d.distanceMi, mi > 0, let date = d.date else { return false }
+        return (overview.completedByDate?[date] ?? 0) >= mi * 0.6
+    }
+    @ViewBuilder private func statusDot(isToday: Bool, isPast: Bool, isRest: Bool, isDone: Bool) -> some View {
         if isRest { Circle().stroke(Faff.C.textFaint, lineWidth: 1.5) }
         else if isDone { Circle().fill(Faff.C.recovery) }
         else if isToday { Circle().fill(Faff.C.milestone) }
         else if isPast { Circle().fill(Faff.C.warn.opacity(0.5)) }
         else { Circle().fill(Faff.C.textFaint) }
     }
-    private func rowSub(_ d: OPlanDay, isRest: Bool, isToday: Bool, isDone: Bool) -> String {
+    private func rowSub(_ d: PlanRangeDay, isRest: Bool, isToday: Bool, isDone: Bool) -> String {
         if isRest { return "recovery" }
         let mi = "\(OverviewFormat.distance(d.distanceMi)) mi"
         if isToday { return "\(mi) · today" }
         if isDone { return "\(mi) · done" }
         return mi
+    }
+    private func shortDow(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "" }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let d = f.date(from: String(iso.prefix(10))) else { return "" }
+        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d)
     }
 }
 

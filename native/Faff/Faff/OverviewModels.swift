@@ -174,6 +174,49 @@ struct OLoopItem: Decodable {
     let hrTarget: String?
 }
 
+// MARK: - Full plan (GET /api/plan-range) — every week as built
+
+struct PlanRangeResponse: Decodable {
+    let ok: Bool
+    let today: String?
+    let days: [PlanRangeDay]?
+}
+
+struct PlanRangeDay: Decodable, Identifiable {
+    let date: String?
+    let type: String?            // RunWorkoutType ("general_aerobic","long_steady","threshold","rest"…)
+    let label: String?
+    let distanceMi: Double?
+    let isQuality: Bool?
+    let isLong: Bool?
+    let isToday: Bool?
+    let hasStrength: Bool?
+    var id: String { date ?? UUID().uuidString }
+    var isRest: Bool { (type ?? "rest") == "rest" || (distanceMi ?? 0) <= 0 }
+
+    // The endpoint sends paceTargetSPerMi as a {lowS,highS} object and a
+    // string `description`/`hrZone` — we don't render those here, so they're
+    // intentionally omitted (extra JSON keys are ignored on decode).
+    private enum CodingKeys: String, CodingKey {
+        case date, type, label, distanceMi, isQuality, isLong, isToday, hasStrength
+    }
+}
+
+@MainActor
+enum PlanRangeAPI {
+    static func fetch(months: Int = 6) async throws -> PlanRangeResponse {
+        guard let url = URL(string: "/api/plan-range?months=\(months)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 35
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return try JSONDecoder().decode(PlanRangeResponse.self, from: data)
+    }
+}
+
 // MARK: - Fetch (anonymous; hits API.baseURL)
 
 @MainActor
