@@ -40,6 +40,36 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
+import { resolveFitness } from '../../../lib/fitness-resolver';
+import { describeWorkout, type WorkoutDescription } from '../../../lib/workout-descriptions';
+
+/** Map a real-plan workout (type + optional subLabel) to the
+ *  describeWorkout template key, so every client renders the same
+ *  structured workout. describeWorkout falls back by type when the key
+ *  isn't an exact template, so this only needs to get close. */
+function describeKeyFromPlan(type: string, subLabel: string | null): string {
+  const sub = (subLabel ?? '').trim();
+  if (sub) {
+    if (sub.includes('·') || sub.includes('+')) return sub;
+    if (type === 'quality' || type === 'threshold' || type === 'tempo') return `Threshold · ${sub}`;
+    if (type === 'interval' || type === 'vo2') return sub;
+    return sub;
+  }
+  switch (type) {
+    case 'easy':
+    case 'recovery':
+    case 'shakeout': return 'Easy';
+    case 'long':     return 'Long';
+    case 'quality':
+    case 'threshold': return 'Threshold · Cruise Intervals';
+    case 'interval':
+    case 'vo2':      return 'Intervals';
+    case 'race':     return 'AFC Half';
+    default:         return 'Easy';
+  }
+}
+
+type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
 interface OverviewApiOk {
   ok: true;
@@ -70,8 +100,11 @@ interface OverviewApiOk {
   /** v4 · multi-sentence daily briefing the coach delivers at the top
    *  of /overview. Always present — composed from real signals. */
   briefing: CoachDecision<DailyBriefing>;
-  /** Plan-artifact workouts for the current Mon→Sun week. */
-  planWeekWorkouts: PlanWorkout[] | null;
+  /** Plan-artifact workouts for the current Mon→Sun week. Enriched with
+   *  a `label` + computed `description` (pace band + structured steps +
+   *  effort + why) when fitness resolves, so the iPhone app and any
+   *  client render the same structured workout the web modal shows. */
+  planWeekWorkouts: Array<PlanWorkout | DescribedPlanWorkout> | null;
   /** Current week's phase from the plan artifact (BASE/BUILD/PEAK/TAPER).
    *  Replaces coach.workout.answer.phaseLabel which reads from old engine. */
   planCurrentPhase: string | null;
@@ -193,6 +226,24 @@ export async function GET(): Promise<Response> {
         planCurrentPhase: phase?.label ?? null,
       };
     })();
+
+    // Enrich the plan workouts with the computed description (pace band
+    // + structured steps + effort + why), the SAME describeWorkout the
+    // web modal uses. Computed from the real plan + resolved fitness so
+    // every client renders identical, real workouts. Defensive: any
+    // failure leaves planWeekWorkouts unenriched (base shape intact).
+    let planWeekDescribed: Array<PlanWorkout | DescribedPlanWorkout> | null = planWeekWorkouts;
+    try {
+      if (planWeekWorkouts && planWeekWorkouts.length > 0) {
+        const fitness = await resolveFitness('me', today);
+        planWeekDescribed = planWeekWorkouts.map((w) => {
+          if (w.type === 'rest') return w;
+          const label = describeKeyFromPlan(w.type, w.subLabel ?? null);
+          const description = describeWorkout(label, w.type, fitness);
+          return { ...w, label, description };
+        });
+      }
+    } catch { /* keep base planWeekWorkouts */ }
 
     // Today's adjustForReality consumes the live state.checkin
     // aggregate so the engine can fold qualitative signals into the
@@ -323,7 +374,7 @@ export async function GET(): Promise<Response> {
       nextPushes,
       narrative,
       briefing,
-      planWeekWorkouts,
+      planWeekWorkouts: planWeekDescribed,
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,
       planFutureLongRuns,
