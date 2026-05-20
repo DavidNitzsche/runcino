@@ -17,6 +17,7 @@ import SwiftUI
 
 struct ActiveWorkoutView: View {
     @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
 
     var body: some View {
         ScrollView {
@@ -24,14 +25,15 @@ struct ActiveWorkoutView: View {
                 if let phase = engine.currentPhase {
                     switch phase.type {
                     case .warmup, .cooldown:
-                        WarmupCooldownScreen(engine: engine, phase: phase)
+                        WarmupCooldownScreen(engine: engine, tracker: tracker, phase: phase)
                     case .work:
-                        WorkIntervalScreen(engine: engine, phase: phase)
+                        WorkIntervalScreen(engine: engine, tracker: tracker, phase: phase)
                     case .recovery:
-                        RecoveryScreen(engine: engine, phase: phase)
+                        RecoveryScreen(engine: engine, tracker: tracker, phase: phase)
                     }
                 }
 
+                DistanceLine(tracker: tracker)
                 controls
             }
             .padding(.horizontal, 6)
@@ -62,28 +64,48 @@ struct ActiveWorkoutView: View {
     }
 }
 
-// MARK: - Shared live-metric placeholders
+// MARK: - Shared live-metric views (real, from the tracker)
 
-/// Live pace · placeholder until HKLiveWorkoutBuilder lands (phase 4).
+/// Live GPS pace. `zoneColor` tints it on WORK intervals; secondary
+/// (grey) when no fix yet or off a quality phase.
 private struct LivePace: View {
+    let paceSPerMi: Int
+    var zoneColor: Color? = nil
     var body: some View {
-        Text("—:—/mi")
+        Text(paceSPerMi > 0 ? "\(PaceFormat.mmss(paceSPerMi))/mi" : "—:—/mi")
             .font(.system(.body, design: .rounded))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(paceSPerMi > 0 ? (zoneColor ?? .primary) : .secondary)
     }
 }
 
-/// Live HR · placeholder until HKLiveWorkoutBuilder lands (phase 4).
+/// Live heart rate from the workout session.
 private struct LiveHR: View {
+    let bpm: Int
     var suffix: String? = nil
     var body: some View {
         HStack(spacing: 4) {
-            Text("— bpm")
+            Text(bpm > 0 ? "\(bpm) bpm" : "— bpm")
             if let suffix { Text("(\(suffix))").foregroundStyle(.secondary) }
         }
         .font(.system(.body, design: .rounded))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(bpm > 0 ? .primary : .secondary)
     }
+}
+
+/// Cumulative distance for the run, shown under the phase card.
+private struct DistanceLine: View {
+    @ObservedObject var tracker: WorkoutTracker
+    var body: some View {
+        if tracker.distanceMi > 0 {
+            Text(String(format: "%.2f mi", tracker.distanceMi))
+                .font(.system(.caption, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private func zoneColor(_ z: PaceZone) -> Color {
+    switch z { case .onTarget: return .green; case .drifting: return .orange; case .offTarget: return .red }
 }
 
 private struct ClockLine: View {
@@ -99,6 +121,7 @@ private struct ClockLine: View {
 
 private struct WarmupCooldownScreen: View {
     @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
     var body: some View {
@@ -107,8 +130,8 @@ private struct WarmupCooldownScreen: View {
                 .font(.caption).fontWeight(.bold)
                 .foregroundStyle(.secondary)
             ClockLine(elapsedSec: engine.phaseElapsedSec, targetSec: phase.durationSec)
-            LivePace()
-            LiveHR()
+            LivePace(paceSPerMi: tracker.paceSPerMi)
+            LiveHR(bpm: tracker.heartRate)
             ProgressView(value: engine.phaseProgress)
                 .tint(.blue)
         }
@@ -119,6 +142,7 @@ private struct WarmupCooldownScreen: View {
 
 private struct WorkIntervalScreen: View {
     @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
     var body: some View {
@@ -138,23 +162,20 @@ private struct WorkIntervalScreen: View {
                 }
             }
 
-            // Current pace + delta-vs-target · placeholders until live
-            // sensor data lands (phase 4).
-            //
-            // PHASE-4 HOOK: feed each live pace sample into a
-            //   PaceDriftEvaluator(targetPaceSPerMi: target,
-            //                      toleranceSPerMi: phase.tolerancePaceSPerMi ?? 10)
-            // and use the returned .zone to color this pace text
-            // (green/amber/red) + show result.deltaSPerMi as the "±" value,
-            // and fire Haptics.almostDone()-style cue when result.fireHaptic
-            // is true. The PaceDrift logic + tests already exist (PaceDrift.swift).
+            // Live GPS pace coloured by drift zone (green/amber/red) +
+            // signed delta vs target. The engine feeds the PaceDrift
+            // evaluator and fires a sustained-drift haptic.
             HStack(spacing: 6) {
-                LivePace()
-                Text("±—")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LivePace(paceSPerMi: tracker.paceSPerMi,
+                         zoneColor: phase.targetPaceSPerMi != nil ? zoneColor(engine.paceZone) : nil)
+                if tracker.paceSPerMi > 0, phase.targetPaceSPerMi != nil {
+                    Text(engine.paceDeltaSPerMi == 0 ? "±0"
+                         : (engine.paceDeltaSPerMi > 0 ? "+\(engine.paceDeltaSPerMi)" : "\(engine.paceDeltaSPerMi)"))
+                        .font(.caption)
+                        .foregroundStyle(zoneColor(engine.paceZone))
+                }
             }
-            LiveHR()
+            LiveHR(bpm: tracker.heartRate)
             ClockLine(elapsedSec: engine.phaseElapsedSec, targetSec: phase.durationSec)
             ProgressView(value: engine.phaseProgress)
                 .tint(.orange)
@@ -166,6 +187,7 @@ private struct WorkIntervalScreen: View {
 
 private struct RecoveryScreen: View {
     @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
     var body: some View {
@@ -174,8 +196,8 @@ private struct RecoveryScreen: View {
                 .font(.caption).fontWeight(.bold)
                 .foregroundStyle(.secondary)
             ClockLine(elapsedSec: engine.phaseElapsedSec, targetSec: phase.durationSec)
-            LivePace()
-            LiveHR(suffix: "cooling")
+            LivePace(paceSPerMi: tracker.paceSPerMi)
+            LiveHR(bpm: tracker.heartRate, suffix: "cooling")
             ProgressView(value: engine.phaseProgress)
                 .tint(.green)
             if let next = engine.nextPhase {
@@ -192,5 +214,5 @@ private struct RecoveryScreen: View {
         let e = WorkoutEngine(workout: .sample)
         e.start()
         return e
-    }())
+    }(), tracker: WorkoutTracker())
 }

@@ -35,7 +35,19 @@ final class WorkoutEngine: ObservableObject {
     /// Whole seconds elapsed across the whole workout.
     @Published private(set) var totalElapsedSec: Int = 0
 
+    /// Live pace-vs-target zone for the WORK screen (green/amber/red) and
+    /// the signed delta in s/mi. Updated from the tracker's GPS pace.
+    @Published private(set) var paceZone: PaceZone = .onTarget
+    @Published private(set) var paceDeltaSPerMi: Int = 0
+
     let workout: WatchWorkout
+
+    /// The run recorder underneath the phase clock. Set by the root model
+    /// before start(). When present, the engine records real metrics and
+    /// folds them into the completion; when nil it degrades to the
+    /// timer-only guide.
+    var tracker: WorkoutTracker?
+    private var driftEval: PaceDriftEvaluator?
 
     // MARK: Private timing state
 
@@ -93,8 +105,22 @@ final class WorkoutEngine: ObservableObject {
         didFireAlmostDone = false
         workoutStart = .now
         phaseStart = .now
+        tracker?.start()
+        prepDrift()
         if let p = currentPhase { Haptics.play(p.haptic) }
         startTimer()
+    }
+
+    /// Arm a fresh pace-drift evaluator when the current phase is a WORK
+    /// interval with a target pace; clear it otherwise.
+    private func prepDrift() {
+        if let p = currentPhase, p.type == .work, let target = p.targetPaceSPerMi {
+            driftEval = PaceDriftEvaluator(targetPaceSPerMi: target, toleranceSPerMi: p.tolerancePaceSPerMi ?? 10)
+        } else {
+            driftEval = nil
+        }
+        paceZone = .onTarget
+        paceDeltaSPerMi = 0
     }
 
     /// User tapped "End interval" — bank the current phase as ended
@@ -151,6 +177,17 @@ final class WorkoutEngine: ObservableObject {
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
 
+        // Live pace-drift on WORK intervals — color the pace + fire a
+        // single sustained-drift cue. Driven by the tracker's GPS pace.
+        if phase.type == .work, let pace = tracker?.paceSPerMi, pace > 0 {
+            let r = driftEval?.update(currentPaceSPerMi: pace)
+            if let r {
+                paceZone = r.zone
+                paceDeltaSPerMi = r.deltaSPerMi
+                if r.fireHaptic { Haptics.almostDone() }
+            }
+        }
+
         // "Almost done" cue · 3s before a WORK interval ends.
         if phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
             didFireAlmostDone = true
@@ -181,20 +218,23 @@ final class WorkoutEngine: ObservableObject {
         phaseElapsedSec = 0
         totalElapsedSec = bankedSec
         didFireAlmostDone = false
+        prepDrift()
         if let p = currentPhase { Haptics.play(p.haptic) }
     }
 
     private func recordCurrentPhase(completed: Bool) {
         guard let p = currentPhase else { return }
         let actual = Int(Date.now.timeIntervalSince(phaseStart))
+        let pace = tracker?.paceSPerMi ?? 0
+        let hr = tracker?.heartRate ?? 0
         results.append(WatchCompletionPhase(
             index: p.index,
             type: p.type.rawValue,
             label: p.label,
             targetPaceSPerMi: p.targetPaceSPerMi,
-            actualPaceSPerMi: nil,   // live pace lands in phase 4
+            actualPaceSPerMi: pace > 0 ? pace : nil,
             actualDurationSec: actual,
-            avgHr: nil,              // live HR lands in phase 4
+            avgHr: hr > 0 ? hr : nil,
             completed: completed
         ))
     }
@@ -204,6 +244,10 @@ final class WorkoutEngine: ObservableObject {
         state = .finished
         Haptics.play(.end)
         completion = buildCompletion(status: status)
+        // Persist the HKWorkout + GPS route to Health (async, best-effort).
+        if let tracker {
+            Task { await tracker.end() }
+        }
     }
 
     // MARK: Completion payload (ready for phase-6 writeback)
@@ -214,15 +258,17 @@ final class WorkoutEngine: ObservableObject {
 
     private func buildCompletion(status: String) -> WatchCompletion {
         let iso = ISO8601DateFormatter()
+        let dist = tracker?.distanceMi ?? 0
+        let maxHr = tracker?.maxHr ?? 0
         return WatchCompletion(
             workoutId: workout.workoutId,
             startedAt: iso.string(from: workoutStart),
             completedAt: iso.string(from: .now),
             status: status,
-            totalDistanceMi: nil,    // distance lands with HKWorkout in phase 4
+            totalDistanceMi: dist > 0 ? (dist * 100).rounded() / 100 : nil,
             totalDurationSec: totalElapsedSec,
-            avgHr: nil,
-            maxHr: nil,
+            avgHr: tracker?.avgHr,
+            maxHr: maxHr > 0 ? maxHr : nil,
             phases: results
         )
     }

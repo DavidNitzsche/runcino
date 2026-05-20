@@ -6,6 +6,8 @@
 	<string>Faff.run reads your live heart rate and workout data during a run to guide pacing and record your session.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Faff.run saves your completed workout to Apple Health so your training history stays in one place.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Faff.run records your route, distance, and pace during a run.</string>
 	<key>UIBackgroundModes</key>
 	<array/>
 	<key>WKBackgroundModes</key>

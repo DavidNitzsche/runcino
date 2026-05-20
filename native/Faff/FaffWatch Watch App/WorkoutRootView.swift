@@ -22,11 +22,19 @@ import Combine
 @MainActor
 final class WatchRootModel: ObservableObject {
     @Published var engine: WorkoutEngine?
+    /// One tracker for the app's lifetime; the engine binds to it per run.
+    let tracker = WorkoutTracker()
 
     func start(_ workout: WatchWorkout) {
-        let engine = WorkoutEngine(workout: workout)
-        self.engine = engine
-        engine.start()
+        Task {
+            // Prompt for HealthKit (+ location) before the session starts
+            // so the run is recorded from the first second.
+            await tracker.requestAuthorization()
+            let engine = WorkoutEngine(workout: workout)
+            engine.tracker = tracker
+            self.engine = engine
+            engine.start()
+        }
     }
 
     func reset() {
@@ -58,7 +66,7 @@ struct WorkoutRootView: View {
                     model.reset()
                 }
             } else {
-                ActiveWorkoutView(engine: engine)
+                ActiveWorkoutView(engine: engine, tracker: model.tracker)
             }
         } else if let workout = phone.todayWorkout {
             IdleView(workout: workout) { model.start(workout) }
