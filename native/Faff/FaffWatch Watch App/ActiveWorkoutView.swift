@@ -140,6 +140,14 @@ private struct WorkIntervalScreen: View {
 
             // Current pace + delta-vs-target · placeholders until live
             // sensor data lands (phase 4).
+            //
+            // PHASE-4 HOOK: feed each live pace sample into a
+            //   PaceDriftEvaluator(targetPaceSPerMi: target,
+            //                      toleranceSPerMi: phase.tolerancePaceSPerMi ?? 10)
+            // and use the returned .zone to color this pace text
+            // (green/amber/red) + show result.deltaSPerMi as the "±" value,
+            // and fire Haptics.almostDone()-style cue when result.fireHaptic
+            // is true. The PaceDrift logic + tests already exist (PaceDrift.swift).
             HStack(spacing: 6) {
                 LivePace()
                 Text("±—")

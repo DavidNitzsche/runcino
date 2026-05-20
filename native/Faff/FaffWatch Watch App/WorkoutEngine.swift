@@ -120,6 +120,7 @@ final class WorkoutEngine: ObservableObject {
         bankedSec = 0
         results = []
         didFireAlmostDone = false
+        completion = nil
     }
 
     // MARK: Timer tick
