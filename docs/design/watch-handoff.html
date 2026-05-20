@@ -95,6 +95,8 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)}
 .w-clock{font-size:12px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
 .w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+.w-body:has(.w-stats){justify-content:center} /* metric faces: center the block, no middle void */
+.w-body:has(.w-stats) .w-stats{margin-top:0}
 .w-hero{font-family:var(--f-display);font-size:72px;line-height:.74;letter-spacing:-2px;color:var(--wink);margin-top:2px}
 .w-hero.green{color:var(--green)} .w-hero.amber{color:var(--amber)} .w-hero.over{color:var(--warn)}
 .w-hero small{font-family:var(--f-body);font-size:18px;font-weight:600;color:var(--wt2);letter-spacing:0;margin-left:2px}
@@ -238,13 +240,13 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye green">Warmup</span><span class="w-clock tnum">7:16</span></div>
           <div class="w-body">
-            <div class="w-hero tnum">2:15<small>/10:00</small></div>
+            <div class="w-hero tnum">2:15</div>
             <div class="w-ref">Easy · <b>7:58</b>/mi</div>
             <div class="w-stats">
               <div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span>Warmup</span><span>next · Interval 1</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+            <div class="w-prog"><div class="lbl"><span><b class="tnum">7:45</b> left</span><span>Int 1 next</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
           </div>
         </div></div>
         <div class="state-tag">2 · Warmup</div>
@@ -331,13 +333,13 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye green">Cooldown</span><span class="w-clock tnum">8:01</span></div>
           <div class="w-body">
-            <div class="w-hero tnum">4:10<small>/10:00</small></div>
+            <div class="w-hero tnum">4:10</div>
             <div class="w-ref">Easy · <b>8:30</b>/mi</div>
             <div class="w-stats">
               <div class="w-stat"><div class="v tnum">138<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">160<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span>Cooldown</span><span>almost done</span></div><div class="w-bar"><i class="green" style="width:42%"></i></div></div>
+            <div class="w-prog"><div class="lbl"><span><b class="tnum">5:50</b> left</span><span>almost done</span></div><div class="w-bar"><i class="green" style="width:42%"></i></div></div>
           </div>
         </div></div>
         <div class="state-tag">5 · Cooldown</div>

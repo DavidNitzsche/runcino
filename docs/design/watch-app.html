@@ -80,6 +80,8 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)} .w-eye.orange{color:var(--orange)}
 .w-clock{font-size:11px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
 .w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
+.w-body:has(.w-stats){justify-content:center} /* metric faces: center the block, no middle void */
+.w-body:has(.w-stats) .w-stats{margin-top:0}
 /* whole-workout segment strip */
 .w-seg{display:flex;gap:2px;margin-top:6px}
 .w-seg i{height:4px;border-radius:2px;background:rgba(255,255,255,.16)}
@@ -267,10 +269,10 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
         <div class="watch"><div class="w-screen">
           <div class="w-top"><span class="w-eye green">Warmup</span><span class="w-clock tnum">7:16</span></div>
           <div class="w-body">
-            <div class="w-hero tnum">2:15<small>/10:00</small></div>
+            <div class="w-hero tnum">2:15</div>
             <div class="w-ref">Easy · <b>7:58</b>/mi</div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Warmup</span><span>next · Interval 1</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+            <div class="w-prog"><div class="lbl"><span><b class="tnum">7:45</b> left</span><span>Int 1 next</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
           </div>
         </div></div>
         <div class="lbl"><b>Warmup</b>No pace target. Hero is the clock<br>toward the warmup duration.</div>
