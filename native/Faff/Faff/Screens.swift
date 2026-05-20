@@ -263,6 +263,7 @@ struct PlanView: View {
                     Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
                 }
                 Spacer()
+                if d.hasStrength == true { StrengthMark(size: 17) }
                 if isDone {
                     Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Faff.C.recovery)
                 } else {
@@ -284,11 +285,11 @@ struct PlanView: View {
         return (overview.completedByDate?[date] ?? 0) >= mi * 0.6
     }
     @ViewBuilder private func statusDot(isToday: Bool, isPast: Bool, isRest: Bool, isDone: Bool) -> some View {
-        if isRest { Circle().stroke(Faff.C.textFaint, lineWidth: 1.5) }
-        else if isDone { Circle().fill(Faff.C.recovery) }
+        if isDone { Circle().fill(Faff.C.recovery) }       // green (row also shows a check)
+        else if isRest { Circle().stroke(Faff.C.textFaint, lineWidth: 1.5) }
         else if isToday { Circle().fill(Faff.C.milestone) }
-        else if isPast { Circle().fill(Faff.C.warn.opacity(0.5)) }
-        else { Circle().fill(Faff.C.textFaint) }
+        else if isPast { Circle().fill(Faff.C.textFaint) }  // "not logged" — neutral grey, not red
+        else { Circle().fill(Faff.C.textFaint.opacity(0.6)) }
     }
     private func rowSub(_ d: PlanRangeDay, isRest: Bool, isToday: Bool, isDone: Bool) -> String {
         if isRest { return "recovery" }

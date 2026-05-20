@@ -142,6 +142,7 @@ struct OPlanDay: Decodable {
     let durationMin: Double?
     let isQuality: Bool?
     let isLong: Bool?
+    let hasStrength: Bool?
     let notes: String?
     let subLabel: String?
     /// describeWorkout key the backend resolved, e.g. "Threshold · Cruise

@@ -394,6 +394,20 @@ struct StructureRow: View {
     }
 }
 
+// MARK: - Strength mark ("S" badge for days with a strength session)
+
+struct StrengthMark: View {
+    var size: CGFloat = 18
+    var body: some View {
+        Text("S")
+            .font(Faff.F.inter(size * 0.56, .bold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Circle().fill(Faff.C.ink))
+            .accessibilityLabel("Strength session")
+    }
+}
+
 // MARK: - Segmented control (Metric detail range)
 
 struct Segmented: View {

@@ -403,14 +403,17 @@ export async function GET(): Promise<Response> {
     // Actual miles logged per day this week, so clients show real
     // completion (≥60% of planned) instead of "any past day is done".
     // Authenticated only — the query is keyed to the user's UUID.
+    // Computed for anonymous (demo) reads too: getCompletedMileageByDate
+    // binds null → reads the legacy 'me' activities, so past days that
+    // were actually run show as DONE (green) instead of "not logged".
     const completedByDate: Record<string, number> = {};
     try {
-      if (userId && planWeekWorkouts && planWeekWorkouts.length > 0) {
+      if (planWeekWorkouts && planWeekWorkouts.length > 0) {
         const dates = planWeekWorkouts.map((w) => w.dateISO).filter(Boolean).sort();
         const from = dates[0];
         const to = dates[dates.length - 1];
         if (from && to) {
-          const m = await getCompletedMileageByDate(userId, from, to);
+          const m = await getCompletedMileageByDate(userId ?? null, from, to);
           for (const [k, v] of m) completedByDate[k] = v;
         }
       }

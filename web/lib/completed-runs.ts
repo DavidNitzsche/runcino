@@ -34,7 +34,7 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
  * 60% of the planned distance" — so a 3-mi shake-out doesn't mark
  * a 10-mi long run complete.
  */
-export async function getCompletedMileageByDate(userId: string, fromISO: string, toISO: string): Promise<Map<string, number>> {
+export async function getCompletedMileageByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
   interface Row { day: string; mi: string }
   const rows = await query<Row>(
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
@@ -43,7 +43,9 @@ export async function getCompletedMileageByDate(userId: string, fromISO: string,
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       GROUP BY day`,
-    [userId, fromISO, toISO],
+    // null (not 'me') so anon reads the legacy demo activities via the
+    // user_uuid IS NULL branch instead of failing the uuid cast.
+    [userId ?? null, fromISO, toISO],
   );
   const out = new Map<string, number>();
   for (const r of rows) {

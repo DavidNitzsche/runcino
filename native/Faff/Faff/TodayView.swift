@@ -81,6 +81,7 @@ struct TodayView: View {
                     title: dw.isRest ? "Rest" : heroTitle(dw),
                     isRest: dw.isRest,
                     plannedMi: d.distanceMi,
+                    hasStrength: d.hasStrength == true,
                     onOpenRecap: { date in recapDate = RecapDate(id: date) }
                 )
             } else { previewHero(d) }
@@ -102,22 +103,27 @@ struct TodayView: View {
             ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 let isToday = day.dateISO == o.today
                 let isSel = day.dateISO == selDate
+                let isDone = o.isPlanDayDone(day)
+                // Completed day → green fill (like the black today/selected
+                // mark, but green). Selected day stays ink. Either → white text.
+                let fill: Color = isSel ? Faff.C.ink : (isDone ? Faff.C.recovery : .clear)
+                let onFill = isSel || isDone
                 Button {
                     selected = (day.dateISO == o.today) ? nil : day.dateISO
                 } label: {
                     VStack(spacing: 5) {
                         Text(dow(day.dow)).font(Faff.F.inter(9.5, .bold)).tracking(0.5)
-                            .foregroundStyle(isSel ? .white : (isToday ? Faff.C.race : Faff.C.textDim))
+                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.race : Faff.C.textDim))
                         Text(dom(day.dateISO)).font(Faff.F.display(20))
-                            .foregroundStyle(isSel ? .white : (isToday ? Faff.C.race : Faff.C.textMuted))
-                        statusDot(o, day).frame(width: 5, height: 5)
+                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.race : Faff.C.textMuted))
+                        statusDot(o, day, onFill: onFill).frame(height: 7)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
-                    .background(isSel ? Faff.C.ink : .clear, in: RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
+                    .background(fill, in: RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: Faff.R.tile)
-                            .stroke(Faff.C.race.opacity(0.55), lineWidth: (isToday && !isSel) ? 1.5 : 0)
+                            .stroke(Faff.C.race.opacity(0.55), lineWidth: (isToday && !isSel && !isDone) ? 1.5 : 0)
                     )
                     .contentShape(Rectangle())
                 }
@@ -145,20 +151,23 @@ struct TodayView: View {
         let out = DateFormatter(); out.dateFormat = "EEEE"; out.timeZone = TimeZone(identifier: "UTC")
         return out.string(from: dt)
     }
-    @ViewBuilder private func statusDot(_ o: OverviewResponse, _ d: OPlanDay) -> some View {
+    @ViewBuilder private func statusDot(_ o: OverviewResponse, _ d: OPlanDay, onFill: Bool) -> some View {
         let isRest = (d.type ?? "") == "rest"
         let isToday = d.dateISO == o.today
         let isPast = (d.dateISO ?? "") < (o.today ?? "")
-        if isRest {
-            Circle().stroke(Faff.C.textFaint, lineWidth: 1.5)
-        } else if o.isPlanDayDone(d) {
-            Circle().fill(Faff.C.recovery)
+        if o.isPlanDayDone(d) {
+            // Green check on completed days (white when sitting on the green fill).
+            Image(systemName: "checkmark").font(.system(size: 7, weight: .black))
+                .foregroundStyle(onFill ? .white : Faff.C.recovery)
+        } else if isRest {
+            Circle().stroke(Faff.C.textFaint, lineWidth: 1.5).frame(width: 5, height: 5)
         } else if isToday {
-            Circle().fill(Faff.C.milestone)
+            Circle().fill(Faff.C.milestone).frame(width: 5, height: 5)
         } else if isPast {
-            Circle().fill(Faff.C.warn.opacity(0.5))
+            // "Not logged" — neutral grey, not an alarming red.
+            Circle().fill(Faff.C.textFaint).frame(width: 5, height: 5)
         } else {
-            Circle().fill(Faff.C.textFaint)
+            Circle().fill(Faff.C.textFaint.opacity(0.6)).frame(width: 5, height: 5)
         }
     }
     private func dow(_ d: Int?) -> String { ["S","M","T","W","T","F","S"][(d ?? 0) % 7] }
@@ -180,11 +189,13 @@ struct TodayView: View {
     private func runHero(_ o: OverviewResponse) -> some View {
         let dw = o.todayWorkout
         let phase = o.planCurrentPhase ?? "Today"
+        let hasStrength = o.planWeekWorkouts?.first { $0.dateISO == o.today }?.hasStrength == true
         return Button(action: onOpenWorkout) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: 8) {
                     Text("Today · \(phase)".uppercased())
                         .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                    if hasStrength { StrengthMark(size: 16) }
                     Spacer()
                     WhyChip(action: onWhy)
                 }
@@ -252,9 +263,10 @@ struct TodayView: View {
         let dw = DerivedWorkout(plan: d, fallback: nil)
         let rest = dw.isRest
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("\(eyebrowDate(d.dateISO)) · PLANNED")
                     .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                if d.hasStrength == true { StrengthMark(size: 16) }
                 Spacer()
                 Badge(text: "Upcoming", tone: .grey)
             }
@@ -497,6 +509,7 @@ private struct PastDayHero: View {
     let title: String
     let isRest: Bool
     let plannedMi: Double?
+    var hasStrength: Bool = false
     var onOpenRecap: (String) -> Void
 
     @State private var run: RunRecap?
@@ -505,11 +518,12 @@ private struct PastDayHero: View {
     var body: some View {
         let done = run != nil
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("\(eyebrow) · \(isRest ? "REST" : (done ? "DONE" : "MISSED"))")
+            HStack(spacing: 8) {
+                Text("\(eyebrow) · \(isRest ? "REST" : (done ? "DONE" : "NOT LOGGED"))")
                     .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                if hasStrength { StrengthMark(size: 16) }
                 Spacer()
-                if !isRest { Badge(text: done ? "On plan" : "Missed", tone: done ? .green : .amber) }
+                if !isRest { Badge(text: done ? "On plan" : "Not logged", tone: done ? .green : .grey) }
             }
             Text(title.uppercased())
                 .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
