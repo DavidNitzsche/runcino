@@ -21,7 +21,12 @@ for capture, glance, and on-the-go review; the watch stays the executor.
    Send-to-Watch, readiness, week strip, race countdown. State-driven.
 2. **Plan** — week + upcoming calendar/list. Light editing (move, swap,
    skip). Deep plan editing still defers to web.
-3. **Coach** — chat. Ask anything; contextual answers; suggested prompts.
+3. **Coach** — daily read (NOT a chat). The briefing narrative the engine
+   produces (`api/brief` DailyBriefing: label + signal-composed clauses),
+   the WHY / FOCUS / BACK OFF IF coach blocks, and signals/explanations.
+   Read-only. There is no conversational coach built or planned for v1; a
+   chat is not in scope. The coach voice also stays embedded in Today
+   (coach strip) and Workout detail (WHY block).
 4. **Health** — recovery score, HRV/RHR/sleep trends, training load.
 5. **More** → Races, Settings, Gear, Log.
 
