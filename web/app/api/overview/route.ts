@@ -44,7 +44,7 @@ import { vdotSnapshot } from '../../../lib/vdot';
 import type { ResolvedFitness } from '../../../lib/fitness-types';
 import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
 import { generateBriefing } from '../../../lib/coach-briefing';
-import { getWeekStats } from '../../../lib/completed-runs';
+import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
 import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
@@ -92,6 +92,11 @@ interface OverviewApiOk {
    *  web page renders, so the iPhone app and the website show identical
    *  coach copy. null when no plan / on any compute failure. */
   coachLine: string | null;
+  /** Actual miles logged per day this week (dateISO → mi), so clients
+   *  can mark a day "done" only when the run actually happened (≥60% of
+   *  planned), instead of assuming any past day is complete. Empty for
+   *  anonymous reads. */
+  completedByDate: Record<string, number>;
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
@@ -373,6 +378,22 @@ export async function GET(): Promise<Response> {
       }
     } catch { coachLine = null; }
 
+    // Actual miles logged per day this week, so clients show real
+    // completion (≥60% of planned) instead of "any past day is done".
+    // Authenticated only — the query is keyed to the user's UUID.
+    const completedByDate: Record<string, number> = {};
+    try {
+      if (userId && planWeekWorkouts && planWeekWorkouts.length > 0) {
+        const dates = planWeekWorkouts.map((w) => w.dateISO).filter(Boolean).sort();
+        const from = dates[0];
+        const to = dates[dates.length - 1];
+        if (from && to) {
+          const m = await getCompletedMileageByDate(userId, from, to);
+          for (const [k, v] of m) completedByDate[k] = v;
+        }
+      }
+    } catch { /* leave empty */ }
+
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
     const planFutureLongRuns = (() => {
       const plan = planResult.plan;
@@ -418,6 +439,7 @@ export async function GET(): Promise<Response> {
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,
       coachLine,
+      completedByDate,
       planFutureLongRuns,
     };
     return Response.json(body);
