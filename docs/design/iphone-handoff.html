@@ -167,6 +167,13 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .tbl td:first-child{color:var(--ink);font-weight:700;font-family:var(--f-sub);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
 .tbl tr:last-child td{border-bottom:0}
 .tbl code{font-family:var(--f-mono);font-size:11px;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+.status-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.st .d{width:8px;height:8px;border-radius:50%;flex:none}
+.st.green{color:var(--green)} .st.amber{color:var(--amber)} .st.grey{color:var(--t2)}
+.st.green .d{background:var(--green)} .st.amber .d{background:var(--amber)} .st.grey .d{background:var(--t2)}
+.status-note{font-size:12px;color:var(--t1);margin-top:14px;line-height:1.5;max-width:780px}
+.status-note b{color:var(--ink);font-weight:600}
 .frameworks{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 .fw{font-family:var(--f-mono);font-size:12px;background:var(--card);box-shadow:var(--shadow);border-radius:9px;padding:9px 13px;color:var(--ink)}
 .foot{margin-top:80px;padding-top:26px;border-top:1px solid var(--divider);font-size:12px;color:var(--t1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
@@ -429,22 +436,28 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 
   <!-- D · BUILD TABLE -->
   <section class="sec">
-    <div class="sec-h"><span class="n">D</span><h2>Per-screen build spec</h2><span class="note">Job · data source · key components · primary interaction. The agent builds against this.</span></div>
+    <div class="sec-h"><span class="n">D</span><h2>Per-screen build spec</h2><span class="note">Status · job · data source · interaction. The agent builds against this.</span></div>
+    <div class="status-legend">
+      <span class="st green"><span class="d"></span>Backed · endpoint exists</span>
+      <span class="st amber"><span class="d"></span>Partial · some backing, needs work</span>
+      <span class="st grey"><span class="d"></span>Net-new · no backend yet</span>
+    </div>
     <table class="tbl">
-      <tr><th>Screen</th><th>Job</th><th>Data source</th><th>Key components / interaction</th></tr>
-      <tr><td>Today</td><td>What now, in 2s</td><td><code>getOverviewSnapshot(userId,date)</code></td><td>Coach line, hero workout card, <b>Send-to-Watch</b> (WCSession), readiness ring, week strip. State-driven layout.</td></tr>
-      <tr><td>Workout detail</td><td>Brief + push to watch</td><td>Plan workout + <code>targetPaces</code> from VDOT</td><td>Structure rows, WHY block, fueling. Primary: Send-to-Watch. Secondary: move/swap/skip sheet.</td></tr>
-      <tr><td>Run recap</td><td>How did it go</td><td>HealthKit workout ← watch · <code>reconcileActivity()</code></td><td>Auto-modal on app open after a run. Hero stats, reps vs target, coach read, RPE capture, share.</td></tr>
-      <tr><td>Plan</td><td>See + lightly edit</td><td>Plan phases + per-day workouts</td><td>Week list, day rows, done/today markers. Tap day → detail. Move/swap/skip; deep edit → web.</td></tr>
-      <tr><td>Coach</td><td>Daily read + reasoning</td><td><code>api/brief</code> (DailyBriefing) + <code>api/coach</code></td><td>Briefing narrative (label + clauses), WHY/FOCUS/BACK OFF IF blocks, signals/explanations. Read-only. <b>Not a chat.</b></td></tr>
-      <tr><td>Health</td><td>How am I doing it</td><td>HealthKit / Oura / Whoop · <code>ReadinessScore</code></td><td>Recovery ring, HRV/RHR/sleep trends, ACWR. Tap a metric → detail sheet.</td></tr>
-      <tr><td>Races</td><td>Upcoming + past</td><td><code>races</code> table (actual_result first)</td><td>Orange race-countdown card, past recaps, PR strip. → Race day mode.</td></tr>
-      <tr><td>Race day mode</td><td>Guide me, racing now</td><td>Live run + race plan + fueling</td><td>Pace vs goal (color), splits, fuel cues, projection. Watch primary; phone secondary. Auto-recap at finish.</td></tr>
-      <tr><td>Settings</td><td>Manage account</td><td>Integration + permission state</td><td>Profile, integrations + sync status, notification prefs, units, watch management, card visibility.</td></tr>
-      <tr><td>Live Activity</td><td>Glance without opening</td><td>In-run feed · race countdown</td><td>ActivityKit. Lock screen + Dynamic Island. Live pace/HR/rep during runs.</td></tr>
-      <tr><td>Widgets</td><td>Home-screen presence</td><td>Widget timeline · cached snapshot</td><td>WidgetKit S/M/L: today's workout, readiness, race countdown.</td></tr>
-      <tr><td>Push</td><td>Reach out when useful</td><td>Server queue · category-tagged</td><td>Workout reminder, post-run prompt, recovery alert, race countdown. Quiet-hours aware.</td></tr>
+      <tr><th>Screen</th><th>Status</th><th>Job</th><th>Data source (verified)</th><th>Key components / interaction</th></tr>
+      <tr><td>Today</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>What now, in 2s</td><td><code>api/overview</code></td><td>Coach line, hero workout card, <b>Send-to-Watch</b> (WCSession), readiness ring, week strip. State-driven layout.</td></tr>
+      <tr><td>Workout detail</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>Brief + push to watch</td><td><code>api/plan</code> / <code>plan-week</code> + pace doctrine</td><td>Structure rows, WHY block, fueling. Primary: Send-to-Watch. Secondary: move/swap/skip sheet.</td></tr>
+      <tr><td>Run recap</td><td><span class="st amber"><span class="d"></span>Partial</span></td><td>How did it go</td><td>HealthKit workout ← watch; reconciliation not yet built</td><td>Auto-modal on app open after a run. Hero stats, reps vs target, coach read, RPE capture, share.</td></tr>
+      <tr><td>Plan</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>See + lightly edit</td><td><code>api/plan</code> / <code>plan-week</code> / <code>plan-range</code></td><td>Week list, day rows, done/today markers. Tap day → detail. Move/swap/skip; deep edit → web.</td></tr>
+      <tr><td>Coach</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>Daily read + reasoning</td><td><code>api/brief</code> (DailyBriefing) + <code>coach-briefing.ts</code></td><td>Briefing narrative (label + clauses), WHY/FOCUS/BACK OFF IF blocks, signals/explanations. Read-only. <b>Not a chat.</b></td></tr>
+      <tr><td>Health</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>How am I doing it</td><td><code>api/health/readiness</code> + <code>readiness-score.ts</code></td><td>Recovery ring, HRV/RHR/sleep trends, ACWR. Tap a metric → detail sheet.</td></tr>
+      <tr><td>Races</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>Upcoming + past</td><td><code>api/races</code> (actual_result first)</td><td>Orange race-countdown card, past recaps, PR strip. → Race day mode.</td></tr>
+      <tr><td>Race day mode</td><td><span class="st amber"><span class="d"></span>Partial</span></td><td>Guide me, racing now</td><td>Race plan / pacing exists; live execution net-new</td><td>Pace vs goal (color), splits, fuel cues, projection. Watch primary; phone secondary. Auto-recap at finish.</td></tr>
+      <tr><td>Settings</td><td><span class="st green"><span class="d"></span>Backed</span></td><td>Manage account</td><td><code>api/profile</code> / <code>connectors</code> / <code>auth</code></td><td>Profile, integrations + sync status, notification prefs, units, watch management, card visibility.</td></tr>
+      <tr><td>Live Activity</td><td><span class="st grey"><span class="d"></span>Net-new</span></td><td>Glance without opening</td><td>ActivityKit (none in <code>native/</code> yet)</td><td>Lock screen + Dynamic Island. Live pace/HR/rep during runs. Needs an in-run feed.</td></tr>
+      <tr><td>Widgets</td><td><span class="st amber"><span class="d"></span>Partial</span></td><td>Home-screen presence</td><td>Snapshot exists via <code>api/overview</code>; WidgetKit net-new</td><td>WidgetKit S/M/L: today's workout, readiness, race countdown.</td></tr>
+      <tr><td>Push</td><td><span class="st grey"><span class="d"></span>Net-new</span></td><td>Reach out when useful</td><td>No notification queue yet</td><td>Workout reminder, post-run prompt, recovery alert, race countdown. Quiet-hours aware.</td></tr>
     </table>
+    <p class="status-note"><b>Read this right:</b> every screen is net-new as native iPhone UI (the native app is the bridge today, not a companion). Status reflects the <b>backend behind each screen</b>: green = an endpoint already serves it (verified in <code>web/app/api</code>), amber = partial backing, grey = new backend work. Seven of the nine screens are backed today; the net-new work is the iOS-native surfaces (Live Activity, push) plus run reconciliation and live race-day execution.</p>
   </section>
 
   <!-- E · ARCHITECTURE -->
