@@ -30,7 +30,7 @@ struct ActiveWorkoutView: View {
                 case .warmup, .cooldown:
                     SteadyFace(engine: engine, tracker: tracker, phase: phase, accent: WatchTheme.C.t2)
                 case .recovery:
-                    SteadyFace(engine: engine, tracker: tracker, phase: phase, accent: WatchTheme.C.green)
+                    RecoveryFace(engine: engine, tracker: tracker, phase: phase)
                 }
             }
         }
@@ -188,8 +188,56 @@ private struct WorkIntervalFace: View {
     }
 }
 
-// MARK: - WARMUP / RECOVERY / COOLDOWN (steady, no target) — dark stub
-// Rebuilt to the canon next; for now a clean dark face so the flow runs.
+// MARK: - RECOVERY (countdown hero + next rep pre-loaded)
+
+private struct RecoveryFace: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    private var restOrdinal: (Int, Int) {
+        let recs = engine.workout.phases.filter { $0.type == .recovery }
+        let n = (recs.firstIndex { $0.index == phase.index }).map { $0 + 1 } ?? 1
+        return (n, recs.count)
+    }
+
+    var body: some View {
+        let (n, m) = restOrdinal
+        VStack(spacing: 0) {
+            TopStrip(eyebrow: "Rest \(n) / \(m)", eyebrowColor: WatchTheme.C.green, elapsedSec: engine.totalElapsedSec)
+            SegmentBar(engine: engine).padding(.top, 5)
+            Spacer(minLength: 4)
+            Text(PaceFormat.clock(engine.phaseRemainingSec))
+                .font(WatchTheme.display(86)).foregroundStyle(WatchTheme.C.green)
+                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
+            if let target = engine.nextPhase?.targetPaceSPerMi {
+                (Text("Next rep · ").foregroundColor(WatchTheme.C.t2)
+                 + Text("\(PaceFormat.mmss(target))/mi").foregroundColor(WatchTheme.C.ink).bold())
+                    .font(WatchTheme.body(13, .semibold))
+            } else if let next = engine.nextPhase {
+                Text("next · \(next.label)").font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t3)
+            }
+            Spacer(minLength: 4)
+            HStack(alignment: .firstTextBaseline) {
+                WStat(value: tracker.heartRate, unit: "bpm")
+                Spacer()
+                WStat(value: tracker.cadence, unit: "spm")
+            }
+            HStack(spacing: 7) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(WatchTheme.C.track)
+                        Capsule().fill(WatchTheme.C.green).frame(width: max(geo.size.width * engine.phaseProgress, 3))
+                    }
+                }.frame(height: 5)
+                Text("jog easy").font(WatchTheme.body(11, .medium)).foregroundStyle(WatchTheme.C.t2)
+            }.padding(.top, 3)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+    }
+}
+
+// MARK: - WARMUP / COOLDOWN (steady, no target)
 
 private struct SteadyFace: View {
     @ObservedObject var engine: WorkoutEngine
