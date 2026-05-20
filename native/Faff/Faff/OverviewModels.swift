@@ -39,6 +39,17 @@ struct OverviewResponse: Decodable {
     let readinessState: String?   // "green" | "yellow" | "red"
     /// Next weeks' long-run distances (Plan "Coming up").
     let planFutureLongRuns: [OFutureLong]?
+    /// A-race fitness projection (Race detail). nil when no A-race goal.
+    let raceProjection: ORaceProjection?
+}
+
+struct ORaceProjection: Decodable {
+    let projectedDisplay: String?
+    let vdot: Double?
+    let goalPaceSPerMi: Double?
+    let predictedPaceSPerMi: Double?
+    let headroomSPerMi: Double?
+    let confidence: String?
 }
 
 struct OFutureLong: Decodable, Identifiable {
