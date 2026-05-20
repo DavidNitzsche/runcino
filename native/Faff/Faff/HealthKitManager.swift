@@ -33,6 +33,22 @@ final class HealthKitManager: ObservableObject {
     @Published var status: Status = .idle
     @Published var lastMessage: String?
 
+    // ── Live display metrics (read straight from HealthKit for the
+    //    Health tab tiles — no backend round-trip needed to show them).
+    @Published var hrvMs: Double?
+    @Published var restingHrBpm: Double?
+    @Published var sleepHours: Double?
+    @Published var vo2Max: Double?
+    @Published var respiratoryRate: Double?
+    @Published var wristTempC: Double?
+    // Running dynamics from the most recent run.
+    @Published var cadenceSpm: Double?
+    @Published var strideM: Double?
+    @Published var vertOscCm: Double?
+    @Published var groundContactMs: Double?
+    @Published var vertRatioPct: Double?
+    @Published var runPowerW: Double?
+
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     /// Read scopes. Faff never writes to Health from the phone (the watch
@@ -42,6 +58,15 @@ final class HealthKitManager: ObservableObject {
         HKQuantityType(.heartRate),
         HKQuantityType(.heartRateVariabilitySDNN),
         HKQuantityType(.vo2Max),
+        HKQuantityType(.respiratoryRate),
+        HKQuantityType(.appleSleepingWristTemperature),
+        HKQuantityType(.stepCount),
+        HKQuantityType(.distanceWalkingRunning),
+        HKQuantityType(.runningSpeed),
+        HKQuantityType(.runningPower),
+        HKQuantityType(.runningStrideLength),
+        HKQuantityType(.runningVerticalOscillation),
+        HKQuantityType(.runningGroundContactTime),
         HKCategoryType(.sleepAnalysis),
         HKObjectType.workoutType(),
     ]
@@ -72,6 +97,9 @@ final class HealthKitManager: ObservableObject {
         }
 
         status = .syncing
+        // Populate the on-device display metrics first so the Health tab
+        // shows real values immediately (independent of the backend sync).
+        await refreshDisplayMetrics()
         let samples = await collectSamples(daysBack: daysBack)
 
         guard !samples.isEmpty else {
@@ -219,6 +247,68 @@ final class HealthKitManager: ObservableObject {
                 cont.resume(returning: byDay)
             }
             store.execute(query)
+        }
+    }
+
+    // MARK: - Live display metrics (direct HealthKit reads)
+
+    /// Read the latest vitals + the most-recent run's dynamics and publish
+    /// them for the Health tab tiles. Best-effort — any unavailable metric
+    /// stays nil and the tile shows its honest "No data" state.
+    func refreshDisplayMetrics() async {
+        guard isAvailable else { return }
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.heartRateVariabilitySDNN), unit: HKUnit.secondUnit(with: .milli)) { hrvMs = v.rounded() }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.restingHeartRate), unit: bpm) { restingHrBpm = v.rounded() }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.vo2Max), unit: HKUnit(from: "ml/kg*min")) { vo2Max = (v * 10).rounded() / 10 }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.respiratoryRate), unit: bpm) { respiratoryRate = (v * 10).rounded() / 10 }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.appleSleepingWristTemperature), unit: .degreeCelsius()) { wristTempC = (v * 10).rounded() / 10 }
+        let sleep = await sleepHoursByDay(days: 2)
+        if let latest = sleep.keys.sorted().last, let h = sleep[latest], h > 0 { sleepHours = (h * 10).rounded() / 10 }
+
+        // Running dynamics — averaged over the most recent running workout.
+        if let run = await mostRecentRun() {
+            let pred = HKQuery.predicateForObjects(from: run)
+            if let stride = await avg(HKQuantityType(.runningStrideLength), unit: .meter(), predicate: pred) { strideM = (stride * 100).rounded() / 100 }
+            if let osc = await avg(HKQuantityType(.runningVerticalOscillation), unit: HKUnit.meterUnit(with: .centi), predicate: pred) { vertOscCm = (osc * 10).rounded() / 10 }
+            if let gct = await avg(HKQuantityType(.runningGroundContactTime), unit: HKUnit.secondUnit(with: .milli), predicate: pred) { groundContactMs = gct.rounded() }
+            if let power = await avg(HKQuantityType(.runningPower), unit: .watt(), predicate: pred) { runPowerW = power.rounded() }
+            if let osc = vertOscCm, let st = strideM, st > 0 { vertRatioPct = ((osc / 100) / st * 1000).rounded() / 10 }
+            // Cadence (spm) = steps over the run ÷ minutes.
+            if let steps = await sum(HKQuantityType(.stepCount), unit: .count(), predicate: pred) {
+                let mins = run.duration / 60
+                if mins > 0 { cadenceSpm = (steps / mins).rounded() }
+            }
+        }
+    }
+
+    /// The most recent running workout (for per-run dynamics).
+    private nonisolated func mostRecentRun() async -> HKWorkout? {
+        await withCheckedContinuation { cont in
+            let pred = HKQuery.predicateForWorkouts(with: .running)
+            let sort = [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
+            let q = HKSampleQuery(sampleType: .workoutType(), predicate: pred, limit: 1, sortDescriptors: sort) { _, samples, _ in
+                cont.resume(returning: samples?.first as? HKWorkout)
+            }
+            store.execute(q)
+        }
+    }
+
+    private nonisolated func avg(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double? {
+        await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, stats, _ in
+                cont.resume(returning: stats?.averageQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(q)
+        }
+    }
+    private nonisolated func sum(_ type: HKQuantityType, unit: HKUnit, predicate: NSPredicate) async -> Double? {
+        await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+                cont.resume(returning: stats?.sumQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(q)
         }
     }
 

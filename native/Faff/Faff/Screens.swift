@@ -358,17 +358,38 @@ struct HealthView: View {
 
     var body: some View {
         let r = overview.state?.recovery
-        let vitals: [Tile] = [
-            Tile(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil, delta: r?.hrv7dAvgMs != nil ? "7-day avg" : "No data", tone: .good, live: r?.hrv7dAvgMs != nil, sampleType: "hrv"),
-            Tile(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil, delta: r?.rhrBpm != nil ? "7-day avg" : "No data", tone: .good, live: r?.rhrBpm != nil, sampleType: "resting_hr"),
-            Tile(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil, delta: r?.sleep7dAvgHrs != nil ? "7-day avg" : "No data", tone: .good, live: r?.sleep7dAvgHrs != nil, sampleType: "sleep_hours"),
-            Tile(label: "Respiration", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
-            Tile(label: "VO₂max", value: "—", unit: nil, delta: "No data", tone: .flat, live: false, sampleType: "vo2_max"),
-            Tile(label: "Wrist temp", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
-        ]
-        let dynamics: [Tile] = ["Cadence", "Stride", "Vert Osc", "Grnd Contact", "Vert Ratio", "Run Power"].map {
-            Tile(label: $0, value: "—", unit: nil, delta: "No data", tone: .flat, live: false)
+        func num(_ v: Double?, _ dec: Int = 0) -> String {
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "—"
         }
+        func vital(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0, sub: String, type: String? = nil) -> Tile {
+            Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
+                 delta: v != nil ? sub : "No data", tone: .good, live: v != nil, sampleType: type)
+        }
+        func dyn(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0) -> Tile {
+            Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
+                 delta: v != nil ? "last run" : "No data", tone: .flat, live: v != nil)
+        }
+        // Prefer live HealthKit values (read on-device); fall back to the
+        // backend 7-day rollup when HealthKit hasn't been read yet.
+        let hrv = hk.hrvMs ?? r?.hrv7dAvgMs
+        let rhr = hk.restingHrBpm ?? r?.rhrBpm
+        let slp = hk.sleepHours ?? r?.sleep7dAvgHrs
+        let vitals: [Tile] = [
+            vital("HRV", hrv, "ms", sub: "latest", type: "hrv"),
+            vital("Resting HR", rhr, "bpm", sub: "latest", type: "resting_hr"),
+            vital("Sleep", slp, "h", dec: 1, sub: "last night", type: "sleep_hours"),
+            vital("Respiration", hk.respiratoryRate, "br/m", dec: 1, sub: "latest"),
+            vital("VO₂max", hk.vo2Max, "", dec: 1, sub: "latest", type: "vo2_max"),
+            vital("Wrist temp", hk.wristTempC, "°C", dec: 1, sub: "sleep"),
+        ]
+        let dynamics: [Tile] = [
+            dyn("Cadence", hk.cadenceSpm, "spm"),
+            dyn("Stride", hk.strideM, "m", dec: 2),
+            dyn("Vert Osc", hk.vertOscCm, "cm", dec: 1),
+            dyn("Grnd Contact", hk.groundContactMs, "ms"),
+            dyn("Vert Ratio", hk.vertRatioPct, "%", dec: 1),
+            dyn("Run Power", hk.runPowerW, "W"),
+        ]
         let acwr = overview.acwrValue
         let load: [Tile] = [
             Tile(label: "Load · ACWR", value: acwr.map { String(format: "%.2f", $0) } ?? "—", unit: nil, delta: acwr != nil ? ((acwr ?? 0) > 1.3 ? "watching" : "ok") : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
@@ -394,6 +415,7 @@ struct HealthView: View {
             section("Training Load", load)
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
+        .task { if hk.hasConnected { await hk.refreshDisplayMetrics() } }
     }
 
     private func section(_ title: String, _ tiles: [Tile]) -> some View {
@@ -1108,6 +1130,7 @@ struct ProfileView: View {
     let onLogout: () -> Void
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var watch = WatchSync.shared
+    @ObservedObject private var health = HealthKitManager.shared
     @State private var shoes: [Shoe] = []
     @State private var shoesLoaded = false
     @State private var shoeEdit: ShoeEditTarget?
@@ -1138,19 +1161,17 @@ struct ProfileView: View {
                     shoeCard
                     VStack(alignment: .leading, spacing: 0) {
                         Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
-                        setRow("Apple Health",
-                               status: (overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false)) ? "Connected" : "Health tab",
-                               tone: (overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false)) ? .green : .grey,
-                               first: true)
-                        setRow("Strava",
-                               status: (overview.connectors?.contains("strava") ?? false) ? "Connected" : "Connect on web",
-                               tone: (overview.connectors?.contains("strava") ?? false) ? .green : .grey)
+                        // Apple Health — connect right here (tap → HealthKit auth + sync).
+                        let healthOn = overview.hasHealthData || health.hasConnected
+                        Button { Task { await health.connectAndSync() } } label: {
+                            setRow("Apple Health", status: healthStatusText(healthOn), tone: healthOn ? .green : .orange, first: true)
+                        }.buttonStyle(.plain).disabled(healthOn || health.status == .requesting || health.status == .syncing)
+                        // Strava — status only (linked via OAuth on faff.run).
+                        let stravaOn = overview.connectors?.contains("strava") ?? false
+                        setRow("Strava", status: stravaOn ? "Connected" : "Connect", tone: stravaOn ? .green : .grey)
+                        // Apple Watch — status only (the watch app is the link).
                         setRow("Apple Watch", status: watchStatus.0, tone: watchStatus.1)
                     }.faffCard()
-                    Text("Apple Watch links automatically through the Faff watch app — no setup here. Strava is connected on faff.run; Apple Health from the Health tab.")
-                        .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint).lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 2).padding(.top, -4)
                     Button { onLogout() } label: {
                         Text("SIGN OUT").font(Faff.F.oswald(12, .semibold)).tracking(1.5).foregroundStyle(Faff.C.warn)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -1272,11 +1293,20 @@ struct ProfileView: View {
     }
 
     /// Apple Watch status from real WCSession pairing — there's no
-    /// "connect" step, the watch app is the link.
+    /// "connect" step, the watch app is the link. A paired watch with the
+    /// Faff app reads as Connected.
     private var watchStatus: (String, Badge.Tone) {
-        if watch.isPaired && watch.isWatchAppInstalled { return ("Linked", .green) }
-        if watch.isPaired { return ("Install app", .amber) }
-        return ("No watch", .grey)
+        if watch.isWatchAppInstalled || watch.isPaired { return ("Connected", .green) }
+        return ("—", .grey)
+    }
+
+    private func healthStatusText(_ on: Bool) -> String {
+        if on { return "Connected" }
+        switch health.status {
+        case .requesting, .syncing: return "Connecting…"
+        case .unavailable: return "Unavailable"
+        default: return "Connect"
+        }
     }
 
     private func setRow(_ name: String, status: String, tone: Badge.Tone, first: Bool = false) -> some View {

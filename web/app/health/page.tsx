@@ -63,7 +63,7 @@ export default async function HealthPage() {
        FROM health_samples
       WHERE user_id = $1
         AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
-        AND sample_type IN ('resting_hr', 'hrv', 'sleep_hours')
+        AND sample_type IN ('resting_hr', 'hrv', 'sleep_hours', 'vo2_max')
       GROUP BY sample_type`,
     [auth.id],
   ).catch(() => [] as BioRow[]);
@@ -71,7 +71,8 @@ export default async function HealthPage() {
   const rhr = bio.get('resting_hr') ?? null;
   const hrv = bio.get('hrv') ?? null;
   const sleep = bio.get('sleep_hours') ?? null;
-  const hasBio = rhr != null || hrv != null || sleep != null;
+  const vo2 = bio.get('vo2_max') ?? null;
+  const hasBio = rhr != null || hrv != null || sleep != null || vo2 != null;
   const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
   const sleepRow = sleep != null
@@ -82,6 +83,9 @@ export default async function HealthPage() {
     : { value: 'No data', tone: 'dim' as const, width: 0 };
   const hrvRow = hrv != null
     ? { value: `${Math.round(hrv)} ms`, tone: (hrv >= 60 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((hrv / 120) * 100) }
+    : { value: 'No data', tone: 'dim' as const, width: 0 };
+  const vo2Row = vo2 != null
+    ? { value: `${vo2.toFixed(1)}`, tone: (vo2 >= 50 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((vo2 / 60) * 100) }
     : { value: 'No data', tone: 'dim' as const, width: 0 };
 
   const heroTitle = hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA');
@@ -155,7 +159,7 @@ export default async function HealthPage() {
               <HealthTrendRow label="Sleep 7d"   value={sleepRow.value} tone={sleepRow.tone} width={sleepRow.width} />
               <HealthTrendRow label="Resting HR" value={rhrRow.value}   tone={rhrRow.tone}   width={rhrRow.width} />
               <HealthTrendRow label="HRV"        value={hrvRow.value}   tone={hrvRow.tone}   width={hrvRow.width} />
-              <HealthTrendRow label="Strain 7d"  value="No data" tone="dim" width={0} />
+              <HealthTrendRow label="VO₂max"     value={vo2Row.value}   tone={vo2Row.tone}   width={vo2Row.width} />
               <HealthTrendRow label="Check-In"   value={checkinValue} tone={checkinTone} width={checkinWidth} />
             </div>
           </div>
