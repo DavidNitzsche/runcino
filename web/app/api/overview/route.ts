@@ -42,33 +42,7 @@ import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
 import { vdotSnapshot } from '../../../lib/vdot';
 import type { ResolvedFitness } from '../../../lib/fitness-types';
-import { describeWorkout, type WorkoutDescription } from '../../../lib/workout-descriptions';
-
-/** Map a real-plan workout (type + optional subLabel) to the
- *  describeWorkout template key, so every client renders the same
- *  structured workout. describeWorkout falls back by type when the key
- *  isn't an exact template, so this only needs to get close. */
-function describeKeyFromPlan(type: string, subLabel: string | null): string {
-  const sub = (subLabel ?? '').trim();
-  if (sub) {
-    if (sub.includes('·') || sub.includes('+')) return sub;
-    if (type === 'quality' || type === 'threshold' || type === 'tempo') return `Threshold · ${sub}`;
-    if (type === 'interval' || type === 'vo2') return sub;
-    return sub;
-  }
-  switch (type) {
-    case 'easy':
-    case 'recovery':
-    case 'shakeout': return 'Easy';
-    case 'long':     return 'Long';
-    case 'quality':
-    case 'threshold': return 'Threshold · Cruise Intervals';
-    case 'interval':
-    case 'vo2':      return 'Intervals';
-    case 'race':     return 'AFC Half';
-    default:         return 'Easy';
-  }
-}
+import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 

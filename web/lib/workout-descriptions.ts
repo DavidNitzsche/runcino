@@ -509,3 +509,34 @@ export function describeWorkout(
     ?? TEMPLATES['Easy'];
   return realizeTemplate(tpl, bands);
 }
+
+/**
+ * Map a real-plan workout (`type` + optional `subLabel`) to the
+ * describeWorkout template key + the human display label. Shared by the
+ * /api/overview enrichment and the /overview page's plan adapter so the
+ * iPhone app and the web render identical labels off the same plan.
+ * describeWorkout falls back by type when the key isn't an exact
+ * template, so this only has to get close.
+ */
+export function describeKeyFromPlan(type: string, subLabel: string | null): string {
+  const sub = (subLabel ?? '').trim();
+  if (sub) {
+    if (sub.includes('·') || sub.includes('+')) return sub;
+    if (type === 'quality' || type === 'threshold' || type === 'tempo') return `Threshold · ${sub}`;
+    return sub;
+  }
+  switch (type) {
+    case 'easy':
+    case 'recovery':
+    case 'shakeout':         return 'Easy';
+    case 'long':             return 'Long';
+    case 'quality':
+    case 'threshold':        return 'Threshold · Cruise Intervals';
+    case 'interval':
+    case 'vo2':              return 'Intervals';
+    case 'mp':               return 'Marathon Pace';
+    case 'race_week_tuneup': return 'Threshold · Cruise Intervals';
+    case 'race':             return 'AFC Half';
+    default:                 return 'Easy';
+  }
+}

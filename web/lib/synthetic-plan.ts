@@ -149,3 +149,87 @@ export function findTodayWorkout(weeks: PlanWeek[], today = todayISO()): PlanWee
   }
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Real-plan adapter
+//
+// Maps the persisted plan artifact (coach/plan-types `Plan`) into the
+// PlanWeek[] shape the /overview page already renders, so the page can
+// run off the runner's REAL plan instead of buildSyntheticPlan(). The
+// day label is resolved the same way /api/overview does (describeKey
+// FromPlan), keeping the web and the iPhone app in lockstep.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Map the plan artifact's WorkoutType onto the PlanWeekDay union the
+ *  page's render code understands. Quality variants collapse to
+ *  'quality'; easy variants to 'easy'. */
+function mapWorkoutType(t: string): PlanWeekDay['type'] {
+  switch (t) {
+    case 'long':              return 'long';
+    case 'race':              return 'race';
+    case 'rest':              return 'rest';
+    case 'threshold':
+    case 'interval':
+    case 'mp':
+    case 'race_week_tuneup':  return 'quality';
+    default:                  return 'easy'; // easy / recovery / shakeout
+  }
+}
+
+function mapPhaseLabel(label: string): PlanPhase {
+  switch (label) {
+    case 'BUILD':     return 'BUILD';
+    case 'PEAK':      return 'PEAK';
+    case 'TAPER':     return 'TAPER';
+    case 'RACE_WEEK': return 'RACE_WEEK';
+    default:          return 'BASE'; // BASE / MAINTENANCE / unknown
+  }
+}
+
+/** Convert the persisted plan into the page's PlanWeek[] view model.
+ *  `describeKey` is injected (the page passes describeKeyFromPlan) to
+ *  avoid a static import cycle through workout-descriptions. */
+export function realPlanToWeeks(
+  plan: {
+    phases: Array<{ id: string; label: string }>;
+    weeks: Array<{
+      weekStartISO: string;
+      phaseId: string;
+      workouts: Array<{ dateISO: string; type: string; distanceMi: number; subLabel?: string | null; hasStrength?: boolean }>;
+    }>;
+  },
+  describeKey: (type: string, subLabel: string | null) => string,
+): PlanWeek[] {
+  const phaseById = new Map(plan.phases.map((p) => [p.id, p.label]));
+  return plan.weeks.map((wk, i) => {
+    const phase = mapPhaseLabel(phaseById.get(wk.phaseId) ?? 'BASE');
+    const byDate = new Map(wk.workouts.map((w) => [w.dateISO, w]));
+    const days: PlanWeekDay[] = [];
+    for (let d = 0; d < 7; d++) {
+      const date = isoAdd(wk.weekStartISO, d);
+      const dow = DOW[d];
+      const w = byDate.get(date);
+      if (!w || w.type === 'rest' || w.distanceMi <= 0) {
+        days.push({ dow, date, type: 'rest', label: 'Rest', distanceMi: 0, isRest: true });
+      } else {
+        days.push({
+          dow,
+          date,
+          type: mapWorkoutType(w.type),
+          label: describeKey(w.type, w.subLabel ?? null),
+          distanceMi: w.distanceMi,
+          hasStrength: !!w.hasStrength,
+        });
+      }
+    }
+    const plannedMi = Math.round(days.reduce((s, x) => s + (x.distanceMi || 0), 0) * 10) / 10;
+    return {
+      weekNum: i + 1,
+      phase,
+      startDate: wk.weekStartISO,
+      endDate: isoAdd(wk.weekStartISO, 6),
+      plannedMi,
+      days,
+    };
+  });
+}

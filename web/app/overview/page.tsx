@@ -18,6 +18,7 @@ import { CheckInIsland } from './CheckInIsland';
 import { requireActiveUser } from '@/lib/auth';
 import {
   buildSyntheticPlan,
+  realPlanToWeeks,
   todayISO,
   daysBetween,
   findCurrentWeek,
@@ -29,7 +30,8 @@ import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/li
 import { generateBriefing } from '@/lib/coach-briefing';
 import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { resolveFitness } from '@/lib/fitness-resolver';
-import { describeWorkout } from '@/lib/workout-descriptions';
+import { describeWorkout, describeKeyFromPlan } from '@/lib/workout-descriptions';
+import { getCurrentPlan } from '@/coach/plan-lifecycle';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
@@ -86,7 +88,12 @@ export default async function OverviewPage() {
   // so the page matches their wall clock, not UTC.
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
-  const weeks = buildSyntheticPlan();
+  // Render the runner's REAL plan (same artifact /api/overview serves),
+  // falling back to the synthetic demo plan only when no plan exists.
+  const planResult = await getCurrentPlan('me').catch(() => null);
+  const weeks = planResult?.plan
+    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
+    : buildSyntheticPlan();
   const currentWeek = findCurrentWeek(weeks, today);
   const todayDay = findTodayWorkout(weeks, today);
   const isRest = !todayDay || todayDay.isRest === true || todayDay.distanceMi === 0;
