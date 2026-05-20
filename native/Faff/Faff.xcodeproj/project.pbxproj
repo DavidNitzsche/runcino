@@ -71,6 +71,16 @@
 		6393077D2FBD6666004C9428 /* FaffWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FaffWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		639307A22FBD6E79004C9428 /* Exceptions for "FaffWatch Watch App" folder in "FaffWatch Watch App" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"FaffWatch-Watch-App-Info.plist",
+			);
+			target = 639307662FBD6665004C9428 /* FaffWatch Watch App */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		639307322FBD29D7004C9428 /* Faff */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -89,6 +99,9 @@
 		};
 		639307682FBD6665004C9428 /* FaffWatch Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				639307A22FBD6E79004C9428 /* Exceptions for "FaffWatch Watch App" folder in "FaffWatch Watch App" target */,
+			);
 			path = "FaffWatch Watch App";
 			sourceTree = "<group>";
 		};
@@ -774,11 +787,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "FaffWatch Watch App/FaffWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = F26TM6BCR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FaffWatch-Watch-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = FaffWatch;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = run.faff.app;
@@ -807,11 +822,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "FaffWatch Watch App/FaffWatch Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = F26TM6BCR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FaffWatch-Watch-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = FaffWatch;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = run.faff.app;
