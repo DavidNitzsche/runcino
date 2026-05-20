@@ -76,7 +76,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .aod{opacity:.5;filter:brightness(.65) saturate(.85)}
 
 .w-top{display:flex;justify-content:space-between;align-items:center}
-.w-eye{font-size:12.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--wt2)}
+.w-eye{font-size:12.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--wt2);white-space:nowrap}
 .w-eye.amber{color:var(--amber)} .w-eye.green{color:var(--green)} .w-eye.orange{color:var(--orange)}
 .w-clock{font-size:11px;font-weight:700;color:var(--wt2);font-variant-numeric:tabular-nums}
 .w-body{flex:1;display:flex;flex-direction:column;padding-top:3px}
@@ -164,10 +164,10 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-done .grid .c .k{font-size:7.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--wt2);margin-top:2px;white-space:nowrap}
 .w-done .save{margin-top:12px;font-size:9.5px;color:var(--wt2);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
 /* glance / complication */
-.w-glance{flex:1;display:flex;flex-direction:column;justify-content:center}
-.w-glance .gh{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--wt2)}
-.w-glance .gv{font-family:var(--f-display);font-size:56px;line-height:.78;margin-top:4px}
-.w-glance .gs{font-size:11px;color:var(--wt1);font-weight:600;margin-top:6px}
+.w-glance{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.w-glance .gh{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--wt2)}
+.w-glance .gv{font-family:var(--f-display);font-size:96px;line-height:.74;margin-top:4px}
+.w-glance .gs{font-size:12px;color:var(--wt1);font-weight:600;margin-top:9px}
 .w-face{flex:1;position:relative;display:flex;align-items:center;justify-content:center}
 .w-face .ftime{font-family:var(--f-display);font-size:58px;color:var(--wink);letter-spacing:-1px}
 .w-comp{position:absolute;bottom:6px;left:0;right:0;display:flex;justify-content:center;gap:6px}
@@ -376,7 +376,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
       <div class="arrow">→</div>
       <div class="unit">
         <div class="watch"><div class="w-screen">
-          <div class="w-top"><span class="w-eye green">Recovery 3 / 6</span><span class="w-elapsed tnum">24:42</span></div>
+          <div class="w-top"><span class="w-eye green">Rec 3 / 6</span><span class="w-elapsed tnum">24:42</span></div>
           <div class="w-body">
             <div class="w-mid">
               <div class="w-rc tnum">0:42</div>
@@ -502,8 +502,8 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-glance">
             <div class="gh">Recovered</div>
             <div class="gv" style="color:var(--green)">82</div>
-            <div class="gs">HRV 68 · RHR 48 · slept 7:48</div>
-            <div class="gs" style="color:var(--wt2);margin-top:10px">CIM · 198 days</div>
+            <div class="gs">HRV 68 · RHR 48</div>
+            <div class="gs" style="color:var(--wt2);margin-top:12px">CIM · 198 days</div>
           </div>
         </div></div>
         <div class="lbl"><b>Glance</b>Readiness + race countdown.<br>The watch's slice of the phone read.</div>
