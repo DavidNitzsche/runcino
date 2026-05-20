@@ -2,137 +2,136 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · Paused</title>
+<title>Watch · PAUSED (v2 · Bebas brand type)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
-  .paused-screen { height: 100%; padding: 16px 14px 12px; display: flex; flex-direction: column; }
-  .paused-header {
-    text-align: center;
-    margin-bottom: 8px;
-  }
-  .paused-header .label {
-    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
-    color: var(--amber);
+  .pa-screen {
+    height: 100%;
+    padding: 12px 14px 10px;
+    display: flex; flex-direction: column;
+    color: #fff;
+    background: rgba(179, 69, 10, 0.18);
   }
 
-  .frozen-block {
+  .pa-top {
     text-align: center;
-    flex: 1;
-    display: flex; flex-direction: column; justify-content: center;
+    margin-bottom: 4px;
   }
-  .frozen-block .time {
-    font-family: var(--sf-compact);
-    font-size: 38px; font-weight: 700; line-height: 1;
-    color: var(--amber);
+  .pa-top .ribbon {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 14px;
+    letter-spacing: 0.10em;
+    color: var(--amber-bright);
   }
-  .frozen-block .what {
-    font-family: var(--sf-compact); font-size: 12px; font-weight: 500;
-    color: var(--text-l-2); margin-top: 4px;
-    line-height: 1.2;
+  .pa-top .ctx {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    line-height: 0.95;
+    color: #fff;
+    text-transform: uppercase;
+    margin-top: 4px;
   }
-  .dark .frozen-block .what { color: var(--text-d-2); }
+  .pa-top .ctx-sub {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.65);
+    margin-top: 3px;
+  }
 
-  .pause-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .pa-spacer { flex: 1; }
+
+  .pa-actions {
+    display: flex; flex-direction: column;
     gap: 8px;
   }
-  .pause-actions button {
+  .pa-btn {
     border: none;
-    border-radius: 16px;
-    padding: 12px 6px;
-    font-family: var(--sf-compact);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
+    border-radius: 18px;
+    padding: 12px;
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 17px;
+    letter-spacing: 0.10em;
+    text-align: center;
+    line-height: 1;
   }
-  .resume-btn { background: var(--green); color: white; }
-  .end-btn { background: var(--red); color: white; }
-
-  .skip-interval-btn {
-    margin-top: 6px;
-    width: 100%;
-    background: transparent;
-    color: var(--orange);
-    border: 1px solid var(--orange);
-    border-radius: 14px;
-    padding: 9px;
-    font-family: var(--sf-compact);
-    font-size: 11px;
-    font-weight: 600;
-  }
+  .pa-btn.resume { background: var(--gradient-brand); color: #fff; }
+  .pa-btn.end    { background: var(--red); color: #fff; }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · PAUSED</h1>
-    <div class="subtitle">User-initiated mid-workout pause · resume / end / skip-interval</div>
+    <h1 style="font-family: var(--f-display); font-style: italic; font-size: 42px; letter-spacing: -0.02em;">PAUSED · v2</h1>
+    <div class="subtitle">Amber-tinted bg · resume (gradient orange) + end (red) actions in Bebas brand</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
   <div class="mode-pair">
-
     <div class="mockup-slot">
-      <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
-        <div class="watch-status">10:02</div>
-        <div class="screen">
-          <div class="watch-content paused-screen">
-            <div class="paused-header">
-              <div class="label">PAUSED</div>
-            </div>
-            <div class="frozen-block">
-              <div class="time">⏸  0:23</div>
-              <div class="what">in Interval 3/6<br>frozen at 6:31 target</div>
-            </div>
-            <div class="pause-actions">
-              <button class="resume-btn">▶ RESUME</button>
-              <button class="end-btn">■ END</button>
-            </div>
-            <button class="skip-interval-btn">Skip this interval →</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="mockup-slot">
-      <div class="mode-label">DARK</div>
+      <div class="mode-label">PAUSED MID-INTERVAL</div>
       <div class="watch-frame dark">
-        <div class="watch-status">10:02</div>
+        <div class="watch-status">9:56</div>
         <div class="screen">
-          <div class="watch-content paused-screen">
-            <div class="paused-header">
-              <div class="label">PAUSED</div>
+          <div class="watch-content">
+            <div class="pa-screen">
+              <div class="pa-top">
+                <div class="ribbon">⏸ PAUSED</div>
+                <div class="ctx">In Interval 3/6</div>
+                <div class="ctx-sub">frozen at 6:31 target</div>
+              </div>
+
+              <div class="pa-spacer"></div>
+
+              <div class="pa-actions">
+                <button class="pa-btn resume">▶ RESUME</button>
+                <button class="pa-btn end">■ END</button>
+              </div>
             </div>
-            <div class="frozen-block">
-              <div class="time">⏸  0:23</div>
-              <div class="what">in Interval 3/6<br>frozen at 6:31 target</div>
-            </div>
-            <div class="pause-actions">
-              <button class="resume-btn">▶ RESUME</button>
-              <button class="end-btn">■ END</button>
-            </div>
-            <button class="skip-interval-btn">Skip this interval →</button>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="mockup-slot">
+      <div class="mode-label">PAUSED IN RECOVERY</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:58</div>
+        <div class="screen">
+          <div class="watch-content">
+            <div class="pa-screen">
+              <div class="pa-top">
+                <div class="ribbon">⏸ PAUSED</div>
+                <div class="ctx">In Recovery</div>
+                <div class="ctx-sub">after rep 3 · 60s window</div>
+              </div>
+
+              <div class="pa-spacer"></div>
+
+              <div class="pa-actions">
+                <button class="pa-btn resume">▶ RESUME</button>
+                <button class="pa-btn end">■ END</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong style="font-family: var(--f-display); font-style: italic; font-size: 18px;">DESIGN NOTES · PAUSED v2</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>Triggered by side-button press (Apple HIG convention for workout pause)</li>
-      <li>Amber color · paused = warning state, not error · the workout is intact, just frozen</li>
-      <li>Time + context shown · "in Interval 3/6 · frozen at 6:31 target" · runner knows exactly where they were when they paused</li>
-      <li>Two big buttons side by side · Resume (green) / End (red) · 44pt+ tap targets for cold/wet/gloved hands</li>
-      <li>"Skip this interval →" · the manual-lap override from the scoping doc · runner can bail on a bad rep without ending the whole workout</li>
-      <li>Pause itself does NOT trigger a haptic · the user initiated it, they know it happened</li>
+      <li><strong>Amber wash background</strong> — communicates "you're not actively running" state instantly</li>
+      <li><strong>Bebas italic context line:</strong> "In Interval 3/6" + impersonal observation sub-line "frozen at 6:31 target" — per V6 voice (no apology, no warmth, just state)</li>
+      <li><strong>RESUME in brand gradient orange</strong> — matches the iPhone Today START button, same gesture pattern</li>
+      <li><strong>END in red</strong> — destructive action gets red per HIG convention. Single tap; no confirmation modal (the runner just paused, they know what they're doing)</li>
     </ul>
   </div>
 

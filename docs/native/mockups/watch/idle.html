@@ -2,107 +2,130 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · Idle / Pre-workout (v3 · with coach insight)</title>
+<title>Watch · IDLE (v4 · Bebas brand type applied)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
   .idle-screen {
     height: 100%;
+    padding: 12px 14px 10px;
     display: flex; flex-direction: column;
-    padding: 20px 14px 12px;
-  }
-  .idle-screen .top-row {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 10px;
-  }
-  .idle-screen .top-label {
-    font-family: var(--sf-compact);
-    font-size: 11px; font-weight: 700; letter-spacing: 1.3px;
-    text-transform: uppercase;
-    color: var(--text-l-3);
-  }
-  .dark .idle-screen .top-label { color: var(--text-d-3); }
-  .idle-screen .ready-chip {
-    font-family: var(--sf-compact);
-    font-size: 9px; font-weight: 700; letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--green);
-    background: var(--green-soft);
-    padding: 2px 7px; border-radius: 4px;
+    color: #fff;
+    background: #000;
   }
 
-  .workout-headline {
-    font-family: var(--sf-compact);
-    font-size: 19px; font-weight: 800;
-    line-height: 1.05;
-    letter-spacing: -0.3px;
+  .idle-top {
+    display: flex; align-items: baseline; justify-content: space-between;
     margin-bottom: 8px;
   }
-
-  .structure-block {
-    background: var(--orange-soft);
-    border-radius: 10px;
-    padding: 10px 12px;
-    margin-bottom: 10px;
+  .idle-top .day {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.55);
   }
-  .structure-block .big {
-    font-family: var(--sf-compact);
-    font-size: 22px; font-weight: 800; line-height: 1.05;
-    letter-spacing: -0.4px;
-    color: var(--orange);
-  }
-  .structure-block .sub {
-    font-family: var(--sf-compact);
-    font-size: 13px; font-weight: 600;
-    color: var(--text-l-2); margin-top: 2px;
-  }
-  .dark .structure-block .sub { color: var(--text-d-2); }
-
-  .coach-line {
-    font-family: var(--sf-compact);
-    font-size: 11px; font-weight: 500;
-    line-height: 1.3;
-    color: var(--text-l-2);
-    margin-bottom: 8px;
-  }
-  .dark .coach-line { color: var(--text-d-2); }
-
-  .recovery-row {
-    display: flex; justify-content: space-around;
-    padding: 7px 0;
-    margin-bottom: 10px;
-    border-top: 0.5px solid var(--border-l);
-    border-bottom: 0.5px solid var(--border-l);
-  }
-  .dark .recovery-row {
-    border-top-color: var(--border-d);
-    border-bottom-color: var(--border-d);
-  }
-  .recovery-row .cell { text-align: center; flex: 1; }
-  .recovery-row .cell .v {
-    font-family: var(--sf-compact); font-size: 13px; font-weight: 700;
+  .idle-top .ready {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: #000;
+    background: var(--green-bright);
+    padding: 3px 8px 4px;
+    border-radius: 5px;
     line-height: 1;
   }
-  .recovery-row .cell .l {
-    font-family: var(--sf-compact); font-size: 8px; font-weight: 700;
-    letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3); margin-top: 1px;
-  }
-  .dark .recovery-row .cell .l { color: var(--text-d-3); }
-  .recovery-row .cell .v.up { color: var(--green); }
 
-  .start-btn {
+  .idle-workout-name {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    line-height: 0.9;
+    color: #fff;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .idle-prescription {
+    background: rgba(232, 93, 38, 0.18);
+    border-left: 3px solid var(--orange);
+    border-radius: 0 10px 10px 0;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+  .idle-prescription .struct {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--orange-light);
+  }
+  .idle-prescription .meta {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.65);
+    margin-top: 3px;
+  }
+
+  .idle-coach {
+    font-family: var(--f-body);
+    font-size: 11px;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 8px;
+  }
+  .idle-coach strong {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: #fff;
+    display: block;
+    margin-bottom: 1px;
+  }
+
+  .idle-recovery {
+    display: flex;
+    border-top: 0.5px solid rgba(255,255,255,0.15);
+    padding-top: 6px;
+    margin-bottom: 8px;
+  }
+  .idle-recovery .cell {
+    flex: 1; text-align: center;
+  }
+  .idle-recovery .cell .v {
+    font-family: var(--f-display);
+    font-size: 18px;
+    line-height: 1;
+    color: #fff;
+  }
+  .idle-recovery .cell .v.up { color: var(--green-bright); }
+  .idle-recovery .cell .l {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: rgba(255,255,255,0.50);
+    margin-top: 2px;
+  }
+
+  .idle-start {
     margin-top: auto;
-    width: 100%;
-    background: var(--orange);
-    color: white;
+    background: var(--gradient-brand);
+    color: #fff;
     border: none;
     border-radius: 22px;
-    padding: 14px 12px;
-    font-family: var(--sf-compact);
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: 0.8px;
+    padding: 12px;
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 18px;
+    letter-spacing: 0.10em;
+    text-align: center;
+    line-height: 1;
   }
 </style>
 </head>
@@ -110,81 +133,58 @@
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · Idle / Pre-workout (v3)</h1>
-    <div class="subtitle">Workout + structure + coach context + recovery signals · earns every pixel</div>
+    <h1 style="font-family: var(--f-display); font-style: italic; font-size: 42px; letter-spacing: -0.02em;">IDLE · v4</h1>
+    <div class="subtitle">Pre-workout · Bebas brand type · gradient orange CTA matches web</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
   <div class="mode-pair">
-
     <div class="mockup-slot">
-      <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
-        <div class="watch-status">9:41</div>
-        <div class="screen">
-          <div class="watch-content idle-screen">
-            <div class="top-row">
-              <div class="top-label">Tue · Wk 1 Base</div>
-              <div class="ready-chip">Ready ✓</div>
-            </div>
-            <div class="workout-headline">Cruise Intervals</div>
-            <div class="structure-block">
-              <div class="big">6 × 800m @ 6:31</div>
-              <div class="sub">60s rec · 7.0 mi · ≈52 min</div>
-            </div>
-            <div class="coach-line">
-              <strong>Last time</strong> (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.
-            </div>
-            <div class="recovery-row">
-              <div class="cell"><div class="v up">7h42</div><div class="l">SLEEP</div></div>
-              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
-              <div class="cell"><div class="v up">↑</div><div class="l">HRV</div></div>
-            </div>
-            <button class="start-btn">▶ START</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="mockup-slot">
-      <div class="mode-label">DARK</div>
+      <div class="mode-label">PRE-WORKOUT</div>
       <div class="watch-frame dark">
         <div class="watch-status">9:41</div>
         <div class="screen">
-          <div class="watch-content idle-screen">
-            <div class="top-row">
-              <div class="top-label">Tue · Wk 1 Base</div>
-              <div class="ready-chip">Ready ✓</div>
+          <div class="watch-content">
+            <div class="idle-screen">
+              <div class="idle-top">
+                <span class="day">TUE · WK 1 BASE</span>
+                <span class="ready">READY ✓</span>
+              </div>
+
+              <div class="idle-workout-name">Threshold —<br>Cruise Intervals</div>
+
+              <div class="idle-prescription">
+                <div class="struct">6 × 800M @ 6:31</div>
+                <div class="meta">60s rec · 7.0 mi · ≈52 min</div>
+              </div>
+
+              <div class="idle-coach">
+                <strong>LAST TIME · 4/15</strong>
+                Paced fast +5s/mi · stay disciplined first 2 reps.
+              </div>
+
+              <div class="idle-recovery">
+                <div class="cell"><div class="v up">7h42</div><div class="l">SLEEP</div></div>
+                <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
+                <div class="cell"><div class="v up">↑</div><div class="l">HRV</div></div>
+              </div>
+
+              <div class="idle-start">▶ START</div>
             </div>
-            <div class="workout-headline">Cruise Intervals</div>
-            <div class="structure-block">
-              <div class="big">6 × 800m @ 6:31</div>
-              <div class="sub">60s rec · 7.0 mi · ≈52 min</div>
-            </div>
-            <div class="coach-line">
-              <strong>Last time</strong> (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.
-            </div>
-            <div class="recovery-row">
-              <div class="cell"><div class="v up">7h42</div><div class="l">SLEEP</div></div>
-              <div class="cell"><div class="v">41</div><div class="l">RHR</div></div>
-              <div class="cell"><div class="v up">↑</div><div class="l">HRV</div></div>
-            </div>
-            <button class="start-btn">▶ START</button>
           </div>
         </div>
       </div>
     </div>
-
   </div>
 
   <div class="note">
-    <strong>Design notes (v3 · with coach insight)</strong>:
+    <strong style="font-family: var(--f-display); font-style: italic; font-size: 18px;">DESIGN NOTES · IDLE v4</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li><strong>"Ready ✓" chip top-right</strong> · readiness summary at a glance · green when all recovery signals are go</li>
-      <li><strong>Structure block in orange-soft card</strong> · "6 × 800m @ 6:31" pops · this is what the runner is about to do</li>
-      <li><strong>Coach line from last-similar-session</strong> · "Last time (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps" · actionable insight, not generic encouragement</li>
-      <li><strong>Recovery row</strong> · sleep / RHR / HRV at a glance · same data as iPhone rest-day · confirms readiness</li>
-      <li>No dead vertical space · every section earns its pixels · still readable at 1-2 second glance</li>
+      <li><strong>Bebas brand applied throughout:</strong> day eyebrow ALL CAPS Bebas italic, workout name Bebas italic 28pt stacked two lines, prescription Bebas 28pt with orange-light fill, recovery values Bebas, START button Bebas italic gradient</li>
+      <li><strong>Prescription card uses orange-soft tint + orange border-left</strong> — same pattern as the iPhone Today prescription · brand consistency across surfaces</li>
+      <li><strong>Coach insight kept</strong> (V5 doctrine — actionable, not generic): "LAST TIME · 4/15" eyebrow + the warm-second-person body copy</li>
+      <li><strong>READY ✓ chip in green</strong> · single-pulse Bebas pill</li>
+      <li><strong>START CTA</strong> · Bebas italic ALL CAPS at 18pt with brand gradient — matches the web's primary CTA exactly</li>
     </ul>
   </div>
 

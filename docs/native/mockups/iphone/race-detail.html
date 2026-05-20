@@ -2,105 +2,169 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>iPhone · Race detail</title>
+<title>iPhone · RACE DETAIL (v2 · Bebas brand type)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
+  .race-content { padding: 8px 0 80px; }
+
+  .race-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 20px 8px;
+  }
+  .race-topbar .faff-mark {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 22px;
+    letter-spacing: 0.10em;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .race-topbar .nav-title {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 14px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-l-2);
+  }
+  .dark .race-topbar .nav-title { color: var(--text-d-2); }
+
+  /* The race hero · gradient orange card with massive Bebas wordmark */
   .race-hero {
-    margin: 16px 20px 18px;
-    padding: 24px 20px;
-    background: linear-gradient(135deg, var(--orange) 0%, #d04f1f 100%);
-    border-radius: 20px;
-    color: white;
+    margin: 14px 20px 18px;
+    padding: 22px 20px 18px;
+    background: var(--gradient-brand);
+    border-radius: 22px;
+    color: #fff;
   }
-  .race-hero .priority-chip {
-    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
-    text-transform: uppercase; padding: 4px 8px;
-    background: rgba(255,255,255,0.20); border-radius: 6px;
-    display: inline-block; margin-bottom: 10px;
-  }
-  .race-hero .race-name {
-    font-family: var(--sf-display); font-size: 26px; font-weight: 700;
-    line-height: 1.15; margin-bottom: 6px;
-  }
-  .race-hero .race-date { font-size: 15px; opacity: 0.92; }
-
-  .countdown-grid {
-    display: flex; gap: 8px;
-    margin: 18px 0 4px;
-  }
-  .countdown-cell {
-    flex: 1; text-align: center;
-    background: rgba(255,255,255,0.18); border-radius: 12px; padding: 10px 6px;
-  }
-  .countdown-cell .num {
-    font-family: var(--sf-display); font-size: 26px; font-weight: 800; line-height: 1;
-  }
-  .countdown-cell .lbl {
-    font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
-    margin-top: 4px; opacity: 0.85;
-  }
-
-  .race-section {
-    margin: 0 20px 18px;
-  }
-  .race-section-title {
-    font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
-    color: var(--text-l-3);
-    margin: 10px 4px 10px;
-  }
-  .dark .race-section-title { color: var(--text-d-3); }
-
-  .trajectory-card {
-    background: var(--bg-l-2);
-    border-radius: 16px;
-    padding: 18px;
-  }
-  .dark .trajectory-card { background: var(--bg-d-2); }
-  .trajectory-state {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 10px;
-  }
-  .trajectory-state .dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: var(--green);
-  }
-  .trajectory-state .label {
-    font-family: var(--sf-display); font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
-  }
-  .trajectory-headline {
-    font-size: 14px; color: var(--text-l-2); line-height: 1.4;
+  .race-hero .a-race-chip {
+    display: inline-block;
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    background: rgba(0,0,0,0.22);
+    padding: 3px 9px 4px;
+    border-radius: 5px;
     margin-bottom: 12px;
   }
-  .dark .trajectory-headline { color: var(--text-d-2); }
-
-  .falsifier {
-    font-size: 12px; color: var(--text-l-3); line-height: 1.45;
-    padding-top: 10px;
-    border-top: 0.5px solid var(--border-l);
+  .race-hero .name {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    line-height: 0.92;
+    text-transform: uppercase;
   }
-  .dark .falsifier { color: var(--text-d-3); border-top-color: var(--border-d); }
-  .falsifier strong { color: var(--text-l-2); }
-  .dark .falsifier strong { color: var(--text-d-2); }
+  .race-hero .distance {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 24px;
+    letter-spacing: 0;
+    line-height: 1;
+    opacity: 0.92;
+    margin-top: 2px;
+  }
+  .race-hero .date {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+    margin-top: 8px;
+  }
+  .race-hero .countdown {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .race-hero .countdown .cell {
+    background: rgba(255,255,255,0.18);
+    padding: 10px 8px 8px;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .race-hero .countdown .cell .v {
+    font-family: var(--f-display);
+    font-size: 38px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .race-hero .countdown .cell .l {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    margin-top: 4px;
+    opacity: 0.85;
+  }
 
-  .pace-card {
-    background: var(--bg-l-2);
+  /* Trajectory section */
+  .traj-eyebrow {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--text-l-3);
+    margin: 6px 24px 10px;
+  }
+  .dark .traj-eyebrow { color: var(--text-d-3); }
+
+  .traj-card {
+    margin: 0 20px 16px;
+    padding: 18px 20px 16px;
+    background: var(--bg-l-warm);
     border-radius: 16px;
-    padding: 16px 18px;
   }
-  .dark .pace-card { background: var(--bg-d-2); }
-  .pace-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 0;
-    border-bottom: 0.5px solid var(--border-l);
-  }
-  .dark .pace-row { border-bottom-color: var(--border-d); }
-  .pace-row:last-child { border-bottom: none; }
-  .pace-row .label { font-size: 14px; }
-  .pace-row .value {
-    font-family: var(--sf-display); font-size: 16px; font-weight: 700;
-  }
+  .dark .traj-card { background: var(--bg-d-2); }
 
+  .traj-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .traj-head .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); }
+  .traj-head .state {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 32px;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    color: var(--text-l);
+    line-height: 1;
+  }
+  .dark .traj-head .state { color: var(--text-d); }
+
+  .traj-body {
+    font-family: var(--f-body);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text-l-2);
+    margin-bottom: 12px;
+  }
+  .dark .traj-body { color: var(--text-d-2); }
+
+  .traj-falsifier {
+    border-top: 0.5px solid var(--border-l);
+    padding-top: 10px;
+    font-family: var(--f-body);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-l-3);
+  }
+  .dark .traj-falsifier { border-top-color: var(--border-d); color: var(--text-d-3); }
+  .traj-falsifier strong {
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-l);
+  }
+  .dark .traj-falsifier strong { color: var(--text-d); }
+
+  /* Tab bar · 3 tabs */
   .tab-bar {
     position: absolute; bottom: 0; left: 0; right: 0;
     height: 84px;
@@ -111,20 +175,25 @@
   }
   .dark .tab-bar { background: var(--bg-d); border-top-color: var(--border-d); }
   .tab-bar > .tab {
-    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    color: var(--text-l-3); font-size: 10px; font-weight: 500;
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+    font-family: var(--f-display);
+    font-style: italic;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: rgba(13,15,18,0.45);
   }
-  .dark .tab-bar > .tab { color: var(--text-d-3); }
+  .dark .tab-bar > .tab { color: rgba(255,255,255,0.45); }
   .tab-bar > .tab.active { color: var(--orange); }
-  .tab-bar > .tab > .ico { font-size: 24px; }
+  .tab-bar > .tab > .ico { font-size: 22px; }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>iPhone · Race detail</h1>
-    <div class="subtitle">A-race countdown + V3 trajectory state + goal pace bands</div>
+    <h1 style="font-family: var(--f-display); font-style: italic; font-size: 42px; letter-spacing: -0.02em;">RACE DETAIL · v2</h1>
+    <div class="subtitle">Brand type applied · gradient orange hero · Bebas wordmark + trajectory · A-race countdown</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
@@ -135,75 +204,47 @@
       <div class="iphone-frame light">
         <div class="dynamic-island"></div>
         <div class="screen">
-          <div class="status-bar">
-            <span class="time">9:41</span>
-            <span class="icons">
-              <svg width="18" height="11"><path fill="currentColor" d="M1 4a3 3 0 013-3h10a3 3 0 013 3v3a3 3 0 01-3 3H4a3 3 0 01-3-3V4z"/></svg>
-              <svg width="24" height="11"><rect x="0" y="0" width="20" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1"/><rect x="2" y="2" width="14" height="7" rx="1" fill="currentColor"/></svg>
-            </span>
-          </div>
+          <div class="status-bar"><span class="time">9:41</span></div>
           <div class="iphone-content">
+            <div class="race-content">
 
-            <div style="padding: 14px 20px 8px; display: flex; justify-content: space-between; align-items: center;">
-              <div style="font-size: 17px; font-weight: 600;">Race</div>
-            </div>
-
-            <div class="race-hero">
-              <div class="priority-chip">A-RACE</div>
-              <div class="race-name">Americas Finest City</div>
-              <div class="race-name" style="font-size: 18px; font-weight: 600; opacity: 0.9;">Half-marathon</div>
-              <div class="race-date">Sun · Aug 16, 2026 · San Diego</div>
-
-              <div class="countdown-grid">
-                <div class="countdown-cell"><div class="num">89</div><div class="lbl">days</div></div>
-                <div class="countdown-cell"><div class="num">12</div><div class="lbl">weeks</div></div>
-                <div class="countdown-cell"><div class="num">2</div><div class="lbl">tune-up</div></div>
+              <div class="race-topbar">
+                <span class="faff-mark">FAFF.RUN</span>
+                <span class="nav-title">RACE</span>
               </div>
-            </div>
 
-            <div class="race-section">
-              <div class="race-section-title">Goal</div>
-              <div class="pace-card">
-                <div class="pace-row">
-                  <div class="label">Target finish</div>
-                  <div class="value">1:32:00</div>
-                </div>
-                <div class="pace-row">
-                  <div class="label">Goal pace</div>
-                  <div class="value">7:01 /mi</div>
-                </div>
-                <div class="pace-row">
-                  <div class="label">Predicted (VDOT 46.6)</div>
-                  <div class="value" style="color: var(--text-l-2);">1:34:54</div>
+              <div class="race-hero">
+                <div class="a-race-chip">A-RACE · PATH TO THE LINE</div>
+                <div class="name">Americas<br>Finest City</div>
+                <div class="distance">HALF-MARATHON</div>
+                <div class="date">SUN · AUG 16, 2026 · SAN DIEGO</div>
+                <div class="countdown">
+                  <div class="cell"><div class="v">89</div><div class="l">DAYS</div></div>
+                  <div class="cell"><div class="v">12</div><div class="l">WEEKS</div></div>
                 </div>
               </div>
-            </div>
 
-            <div class="race-section">
-              <div class="race-section-title">Trajectory</div>
-              <div class="trajectory-card">
-                <div class="trajectory-state">
-                  <div class="dot"></div>
-                  <div class="label">On track</div>
+              <div class="traj-eyebrow">TRAJECTORY</div>
+              <div class="traj-card">
+                <div class="traj-head">
+                  <span class="dot"></span>
+                  <span class="state">On Track</span>
                 </div>
-                <div class="trajectory-headline">
+                <div class="traj-body">
                   Single corroborating signal · one threshold workout trended faster at controlled HR.
                 </div>
-                <div class="falsifier">
-                  <strong>What would change our mind:</strong> a second corroborating signal — we'd revise to 'ahead.' A reversal in the firing signal — we'd revise to 'collecting evidence.'
+                <div class="traj-falsifier">
+                  <strong>What would change our mind:</strong> a second corroborating signal — we'd revise to 'ahead.'
                 </div>
               </div>
+
             </div>
-
           </div>
-
           <div class="tab-bar">
-            <div class="tab"><div class="ico">●</div>Today</div>
-            <div class="tab"><div class="ico">≡</div>History</div>
-            <div class="tab active"><div class="ico">🏁</div>Race</div>
-            <div class="tab"><div class="ico">⚙</div>Settings</div>
+            <div class="tab"><div class="ico">●</div>TODAY</div>
+            <div class="tab active"><div class="ico">🏁</div>RACE</div>
+            <div class="tab"><div class="ico">⚙</div>SETTINGS</div>
           </div>
-
           <div class="home-indicator"></div>
         </div>
       </div>
@@ -214,75 +255,47 @@
       <div class="iphone-frame dark">
         <div class="dynamic-island"></div>
         <div class="screen">
-          <div class="status-bar">
-            <span class="time" style="color: white;">9:41</span>
-            <span class="icons" style="color: white;">
-              <svg width="18" height="11"><path fill="currentColor" d="M1 4a3 3 0 013-3h10a3 3 0 013 3v3a3 3 0 01-3 3H4a3 3 0 01-3-3V4z"/></svg>
-              <svg width="24" height="11"><rect x="0" y="0" width="20" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1"/><rect x="2" y="2" width="14" height="7" rx="1" fill="currentColor"/></svg>
-            </span>
-          </div>
+          <div class="status-bar"><span class="time" style="color: #fff;">9:41</span></div>
           <div class="iphone-content">
+            <div class="race-content">
 
-            <div style="padding: 14px 20px 8px; display: flex; justify-content: space-between; align-items: center;">
-              <div style="font-size: 17px; font-weight: 600;">Race</div>
-            </div>
-
-            <div class="race-hero">
-              <div class="priority-chip">A-RACE</div>
-              <div class="race-name">Americas Finest City</div>
-              <div class="race-name" style="font-size: 18px; font-weight: 600; opacity: 0.9;">Half-marathon</div>
-              <div class="race-date">Sun · Aug 16, 2026 · San Diego</div>
-
-              <div class="countdown-grid">
-                <div class="countdown-cell"><div class="num">89</div><div class="lbl">days</div></div>
-                <div class="countdown-cell"><div class="num">12</div><div class="lbl">weeks</div></div>
-                <div class="countdown-cell"><div class="num">2</div><div class="lbl">tune-up</div></div>
+              <div class="race-topbar">
+                <span class="faff-mark">FAFF.RUN</span>
+                <span class="nav-title">RACE</span>
               </div>
-            </div>
 
-            <div class="race-section">
-              <div class="race-section-title">Goal</div>
-              <div class="pace-card">
-                <div class="pace-row">
-                  <div class="label">Target finish</div>
-                  <div class="value">1:32:00</div>
-                </div>
-                <div class="pace-row">
-                  <div class="label">Goal pace</div>
-                  <div class="value">7:01 /mi</div>
-                </div>
-                <div class="pace-row">
-                  <div class="label">Predicted (VDOT 46.6)</div>
-                  <div class="value" style="color: var(--text-d-2);">1:34:54</div>
+              <div class="race-hero">
+                <div class="a-race-chip">A-RACE · PATH TO THE LINE</div>
+                <div class="name">Americas<br>Finest City</div>
+                <div class="distance">HALF-MARATHON</div>
+                <div class="date">SUN · AUG 16, 2026 · SAN DIEGO</div>
+                <div class="countdown">
+                  <div class="cell"><div class="v">89</div><div class="l">DAYS</div></div>
+                  <div class="cell"><div class="v">12</div><div class="l">WEEKS</div></div>
                 </div>
               </div>
-            </div>
 
-            <div class="race-section">
-              <div class="race-section-title">Trajectory</div>
-              <div class="trajectory-card">
-                <div class="trajectory-state">
-                  <div class="dot"></div>
-                  <div class="label">On track</div>
+              <div class="traj-eyebrow">TRAJECTORY</div>
+              <div class="traj-card">
+                <div class="traj-head">
+                  <span class="dot"></span>
+                  <span class="state">On Track</span>
                 </div>
-                <div class="trajectory-headline">
+                <div class="traj-body">
                   Single corroborating signal · one threshold workout trended faster at controlled HR.
                 </div>
-                <div class="falsifier">
-                  <strong>What would change our mind:</strong> a second corroborating signal — we'd revise to 'ahead.' A reversal in the firing signal — we'd revise to 'collecting evidence.'
+                <div class="traj-falsifier">
+                  <strong>What would change our mind:</strong> a second corroborating signal — we'd revise to 'ahead.'
                 </div>
               </div>
+
             </div>
-
           </div>
-
           <div class="tab-bar">
-            <div class="tab"><div class="ico">●</div>Today</div>
-            <div class="tab"><div class="ico">≡</div>History</div>
-            <div class="tab active"><div class="ico">🏁</div>Race</div>
-            <div class="tab"><div class="ico">⚙</div>Settings</div>
+            <div class="tab"><div class="ico">●</div>TODAY</div>
+            <div class="tab active"><div class="ico">🏁</div>RACE</div>
+            <div class="tab"><div class="ico">⚙</div>SETTINGS</div>
           </div>
-
           <div class="home-indicator"></div>
         </div>
       </div>
@@ -291,13 +304,14 @@
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong style="font-family: var(--f-display); font-style: italic; font-size: 18px;">DESIGN NOTES · RACE DETAIL v2</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>Race hero uses brand orange gradient · big, bold, immediately identifiable as the A-race surface</li>
-      <li>Countdown grid · days/weeks/tune-up races · scannable in <1 second</li>
-      <li>Goal vs predicted finish times shown together · honest framing per Rule 1 + Rule 2</li>
-      <li>Trajectory card identical to web · same V3 states (AHEAD / ON-TRACK / BEHIND / COLLECTING), same canonical falsifier prefix · voice consistency across surfaces</li>
-      <li>Race projection chart (C9) defers to web · screen real estate doesn't favor charts on iPhone without scrolling, and David sees this on web before/after runs anyway</li>
+      <li><strong>Hero card uses brand gradient</strong> — race name "Americas Finest City" stacked over two lines in Bebas italic 38pt ALL CAPS, distance "HALF-MARATHON" at 24pt below</li>
+      <li><strong>A-RACE chip</strong> uses the canonical "Path to the Line" phrase from web · brand consistency across surfaces</li>
+      <li><strong>Countdown cells</strong>: 38pt Bebas numerals (89 days · 12 weeks) inside translucent white tiles on the gradient hero</li>
+      <li><strong>Trajectory state "On Track"</strong> in Bebas italic 32pt ALL CAPS with green dot · matches the V3 canonical 4-state vocab (AHEAD / ON TRACK / BEHIND / COLLECTING)</li>
+      <li><strong>Falsifier prefix</strong> "What would change our mind:" in Bebas italic ALL CAPS at 11pt — pulled verbatim from web V6 voice rules · coach "we"/"our" register</li>
+      <li><strong>3-tab bar</strong> (Today / Race / Settings) · Race tab active</li>
     </ul>
   </div>
 
