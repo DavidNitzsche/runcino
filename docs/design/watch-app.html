@@ -102,11 +102,11 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
 .w-stat .k{display:none} /* the unit (bpm/spm) is the label — no word clutter on the wrist */
 /* rep progress */
-.w-prog{margin-top:8px}
-.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
-.w-prog .lbl b{color:var(--wink)}
-.w-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.w-prog{margin-top:10px;display:flex;align-items:center;gap:10px}
+.w-bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
 .w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.green{background:var(--green)}
+.w-ptime{font-family:var(--f-display);font-size:18px;line-height:1;color:var(--wink);letter-spacing:-.3px;white-space:nowrap}
+.w-pcue{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--wt2);white-space:nowrap}
 
 /* home / pre-run */
 .w-logo{font-family:var(--f-display);font-style:italic;font-size:15px;letter-spacing:1.5px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -272,7 +272,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
             <div class="w-hero tnum">2:15</div>
             <div class="w-ref">Easy · <b>7:58</b>/mi</div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span><b class="tnum">7:45</b> left</span><span>Int 1 next</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:22%"></i></div><span class="w-ptime tnum">7:45</span></div>
           </div>
         </div></div>
         <div class="lbl"><b>Warmup</b>No pace target. Hero is the clock<br>toward the warmup duration.</div>
@@ -296,7 +296,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
             <div class="w-hero green tnum">6:33</div>
             <div class="w-ref"><b>6:31</b> · <span class="up">+2s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-ptime tnum">0:24</span></div>
           </div>
         </div></div>
       </div>
@@ -323,7 +323,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
           <div class="w-body"><div class="w-hero green tnum">6:31</div><div class="w-ref"><b>6:31</b> · <span class="up">on pace</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>hold</span></div><div class="w-bar"><i class="green" style="width:50%"></i></div></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:50%"></i></div><span class="w-pcue" style="color:var(--green)">hold</span></div></div>
         </div></div>
         <div class="lbl"><b class="green">Green · on the band</b>Within ±10s of target.<br>No haptic. Hold it.</div>
       </div>
@@ -332,7 +332,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
           <div class="w-body"><div class="w-hero amber tnum">6:44</div><div class="w-ref"><b>6:31</b> · <span class="mid">+13s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">164<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">176<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>lift it</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
+            <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-pcue" style="color:var(--amber)">lift it</span></div></div>
         </div></div>
         <div class="lbl"><b class="amber">Amber · drifting</b>10–15s off. One soft tap.<br>Nudge back, no alarm.</div>
       </div>
@@ -341,7 +341,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
           <div class="w-top"><span class="w-eye amber">Int 3 / 6</span><span class="w-clock tnum">7:31</span></div>
           <div class="w-body"><div class="w-hero over tnum">6:51</div><div class="w-ref"><b>6:31</b> · <span class="down">+20s</span></div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">159<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">171<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Rep 3</span><span>off pace</span></div><div class="w-bar"><i style="width:50%"></i></div></div></div>
+            <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-pcue" style="color:var(--warn)">off pace</span></div></div>
         </div></div>
         <div class="lbl"><b class="warn">Red · off pace</b>15s+ for several seconds.<br>The rep is slipping.</div>
       </div>
@@ -369,7 +369,7 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
             <div class="w-rc tnum">0:42</div>
             <div class="w-nx">Next rep · <b>6:31</b>/mi</div>
             <div class="w-stats"><div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart</div></div><div class="w-stat"><div class="v tnum">96<small>spm</small></div><div class="k">Cadence</div></div></div>
-            <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="green" style="width:70%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:70%"></i></div><span class="w-pcue">jog easy</span></div>
           </div>
         </div></div>
         <div class="lbl"><b>Recovery</b>Hero flips to the countdown.<br>No target. Next pace pre-loaded.</div>

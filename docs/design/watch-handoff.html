@@ -107,10 +107,10 @@ h1{font-family:var(--f-display);font-size:76px;letter-spacing:-.02em;line-height
 .w-stat .v{font-family:var(--f-display);font-size:28px;line-height:.82;color:var(--wink)}
 .w-stat .v small{font-family:var(--f-body);font-size:11px;font-weight:600;color:var(--wt2);margin-left:1px}
 .w-stat .k{display:none} /* unit is the label — no word clutter */
-.w-prog{margin-top:7px}
-.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--wt2);margin-bottom:5px}
-.w-prog .lbl b{color:var(--wink)}
-.w-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.w-prog{margin-top:9px;display:flex;align-items:center;gap:10px}
+.w-bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.w-ptime{font-family:var(--f-display);font-size:18px;line-height:1;color:var(--wink);letter-spacing:-.3px;white-space:nowrap}
+.w-pcue{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--wt2);white-space:nowrap}
 .w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.green{background:var(--green)}
 .w-name{font-family:var(--f-display);font-size:54px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:12px 0 6px}
 .w-namesub{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
@@ -246,7 +246,7 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
               <div class="w-stat"><div class="v tnum">142<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">168<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span><b class="tnum">7:45</b> left</span><span>Int 1 next</span></div><div class="w-bar"><i class="green" style="width:22%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:22%"></i></div><span class="w-ptime tnum">7:45</span></div>
           </div>
         </div></div>
         <div class="state-tag">2 · Warmup</div>
@@ -276,7 +276,7 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
               <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-ptime tnum">0:24</span></div>
           </div>
         </div></div>
         <div class="state-tag">3 · Work interval</div>
@@ -309,7 +309,7 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
               <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">92<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="green" style="width:70%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:70%"></i></div><span class="w-pcue">jog easy</span></div>
           </div>
         </div></div>
         <div class="state-tag">4 · Recovery</div>
@@ -339,7 +339,7 @@ pre .c{color:#8b909c} pre .k{color:#FF8A5C} pre .s{color:#7CD992}
               <div class="w-stat"><div class="v tnum">138<small>bpm</small></div><div class="k">Heart rate</div></div>
               <div class="w-stat"><div class="v tnum">160<small>spm</small></div><div class="k">Cadence</div></div>
             </div>
-            <div class="w-prog"><div class="lbl"><span><b class="tnum">5:50</b> left</span><span>almost done</span></div><div class="w-bar"><i class="green" style="width:42%"></i></div></div>
+            <div class="w-prog"><div class="w-bar"><i class="green" style="width:42%"></i></div><span class="w-ptime tnum">5:50</span></div>
           </div>
         </div></div>
         <div class="state-tag">5 · Cooldown</div>

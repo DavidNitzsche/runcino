@@ -172,10 +172,10 @@ body{padding:60px 24px 96px}
 .w-stat .k{display:none} /* unit is the label — no word clutter */
 
 /* rep progress */
-.w-prog{margin-top:6px}
-.w-prog .lbl{display:flex;justify-content:space-between;font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--t2);margin-bottom:5px}
-.w-prog .lbl b{color:var(--ink)}
-.w-bar{height:6px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-prog{margin-top:9px;display:flex;align-items:center;gap:10px}
+.w-bar{flex:1;height:6px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-ptime{font-family:var(--f-display);font-size:18px;line-height:1;color:#fff;letter-spacing:-.3px;white-space:nowrap}
+.w-pcue{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.45);white-space:nowrap}
 .w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.rec{background:var(--green)}
 
 /* pre-run */
@@ -372,7 +372,7 @@ body{padding:60px 24px 96px}
             <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
             <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
           </div>
-          <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+          <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-ptime tnum">0:24</span></div>
         </div>
       </div></div>
       <div class="w-cap"><b>Work interval</b>Current pace is the hero. Green<br>on the band, amber on drift.</div>
@@ -389,7 +389,7 @@ body{padding:60px 24px 96px}
             <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
             <div class="w-stat"><div class="v tnum">9:20<small>/mi</small></div><div class="k">Jog pace</div></div>
           </div>
-          <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="rec" style="width:70%"></i></div></div>
+          <div class="w-prog"><div class="w-bar"><i class="rec" style="width:70%"></i></div><span class="w-pcue">jog easy</span></div>
         </div>
       </div></div>
       <div class="w-cap"><b>Recovery</b>Big countdown to the next rep.<br>Haptics carry the transition.</div>

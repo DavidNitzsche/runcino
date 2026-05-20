@@ -250,9 +250,10 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-fon
 .w-stat{flex:1;padding-right:8px} .w-stat+.w-stat{border-left:1px solid rgba(13,15,18,.12);padding-left:10px;padding-right:0}
 .w-stat .v{font-family:var(--f-display);font-size:24px;line-height:.82} .w-stat .v small{font-family:var(--f-body);font-size:9px;font-weight:600;color:var(--t2);margin-left:1px}
 .w-stat .k{display:none} /* unit is the label — no word clutter */
-.w-prog{margin-top:6px}
-.w-prog .lbl{display:flex;justify-content:space-between;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);margin-bottom:4px} .w-prog .lbl b{color:var(--ink)}
-.w-bar{height:5px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-prog{margin-top:8px;display:flex;align-items:center;gap:9px}
+.w-bar{flex:1;height:5px;border-radius:4px;background:rgba(13,15,18,.10);overflow:hidden}
+.w-ptime{font-family:var(--f-display);font-size:16px;line-height:1;color:#fff;letter-spacing:-.3px;white-space:nowrap}
+.w-pcue{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.45);white-space:nowrap}
 .w-bar i{display:block;height:100%;border-radius:4px;background:var(--orange)} .w-bar i.rec{background:var(--green)}
 .w-name{font-family:var(--f-display);font-size:50px;line-height:.78;letter-spacing:-1.5px;text-transform:uppercase;margin:10px 0 5px}
 .w-namesub{font-family:var(--f-sub);font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--orange);text-transform:uppercase}
@@ -636,7 +637,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-fon
                 <div class="w-stat"><div class="v tnum">168<small>bpm</small></div><div class="k">Heart rate</div></div>
                 <div class="w-stat"><div class="v tnum">182<small>spm</small></div><div class="k">Cadence</div></div>
               </div>
-              <div class="w-prog"><div class="lbl"><span></span><span><b class="tnum">0:24</b></span></div><div class="w-bar"><i style="width:50%"></i></div></div>
+              <div class="w-prog"><div class="w-bar"><i style="width:50%"></i></div><span class="w-ptime tnum">0:24</span></div>
             </div>
           </div></div>
           <div class="w-cap"><b>Work interval</b>Current pace is the hero. Green<br>on the band, amber on drift.</div>
@@ -651,7 +652,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-fon
                 <div class="w-stat"><div class="v tnum">148<small>bpm</small></div><div class="k">Heart rate</div></div>
                 <div class="w-stat"><div class="v tnum">9:20<small>/mi</small></div><div class="k">Jog pace</div></div>
               </div>
-              <div class="w-prog"><div class="lbl"><span>Recovery</span><span>jog easy</span></div><div class="w-bar"><i class="rec" style="width:70%"></i></div></div>
+              <div class="w-prog"><div class="w-bar"><i class="rec" style="width:70%"></i></div><span class="w-pcue">jog easy</span></div>
             </div>
           </div></div>
           <div class="w-cap"><b>Recovery</b>Big countdown to the next rep.<br>Haptics carry the transition.</div>
