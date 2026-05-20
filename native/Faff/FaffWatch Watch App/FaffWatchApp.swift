@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct FaffWatch_Watch_AppApp: App {
+    init() { WatchTheme.registerFonts() }
     var body: some Scene {
         WindowGroup {
             ContentView()

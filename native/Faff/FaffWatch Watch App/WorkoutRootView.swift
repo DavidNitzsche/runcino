@@ -68,13 +68,25 @@ struct WorkoutRootView: View {
             } else {
                 ActiveWorkoutView(engine: engine, tracker: model.tracker)
             }
-        } else if let workout = phone.todayWorkout {
+        } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
             IdleView(workout: workout) { model.start(workout) }
         } else if let message = phone.noWorkoutMessage {
             NoWorkoutView(message: message)
         } else {
             WaitingForPhoneView()
         }
+    }
+
+    /// The watch is a companion (the phone pushes the workout over
+    /// WatchConnectivity). The simulator has no paired phone, so fall
+    /// back to the bundled sample — which mirrors the /api/watch/today
+    /// shape — so the faces + state machine are fully exercisable.
+    private static var simulatorWorkout: WatchWorkout? {
+        #if targetEnvironment(simulator)
+        return .sample
+        #else
+        return nil
+        #endif
     }
 }
 

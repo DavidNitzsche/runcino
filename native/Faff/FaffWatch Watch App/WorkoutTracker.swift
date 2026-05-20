@@ -33,8 +33,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
     @Published private(set) var heartRate: Int = 0       // current bpm
     @Published private(set) var distanceMi: Double = 0   // cumulative
     @Published private(set) var paceSPerMi: Int = 0      // instantaneous (GPS)
+    @Published private(set) var cadence: Int = 0         // spm (live; Phase-2 on device)
     @Published private(set) var activeEnergyKcal: Int = 0
     @Published private(set) var isRecording = false
+
+    private var mockTask: Task<Void, Never>?
 
     // ── Aggregates for the completion payload ─────────────────────
     private(set) var maxHr: Int = 0
@@ -68,6 +71,9 @@ final class WorkoutTracker: NSObject, ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
+        #if targetEnvironment(simulator)
+        startSimulatorMock(); return
+        #endif
         guard available, session == nil else { return }
         let config = HKWorkoutConfiguration()
         config.activityType = .running
@@ -103,7 +109,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     /// Stop the session and persist the HKWorkout + route to Health.
     func end() async {
-        guard let session, let builder else { return }
+        mockTask?.cancel(); mockTask = nil
+        guard let session, let builder else { isRecording = false; return }
         locationManager.stopUpdatingLocation()
         let end = Date()
         session.stopActivity(with: end)
@@ -140,6 +147,32 @@ final class WorkoutTracker: NSObject, ObservableObject {
         routeBuilder?.insertRouteData(locs) { _, _ in }
         if let last = locs.last, last.speed > 0 {
             paceSPerMi = Int((1609.344 / last.speed).rounded())
+        }
+    }
+
+    // MARK: - Simulator mock
+    /// The watch simulator has no HealthKit/GPS data, so emit plausible
+    /// live HR / pace / cadence (pace oscillates around ~6:31 so the
+    /// drift zones — green/amber/red — are exercisable). Real metrics
+    /// come from HKLiveWorkoutBuilder + GPS on a physical watch.
+    private func startSimulatorMock() {
+        guard mockTask == nil else { return }
+        isRecording = true
+        mockTask = Task { @MainActor [weak self] in
+            var t = 0.0
+            while !Task.isCancelled {
+                guard let self else { return }
+                t += 1
+                // Pace: sine drift ±18s around 6:31 → crosses tolerance bands.
+                let drift = Int((sin(t / 7) * 18).rounded())
+                self.paceSPerMi = 391 + drift
+                self.heartRate = 164 + Int((sin(t / 11) * 6).rounded())
+                self.cadence = 181 + Int((sin(t / 5) * 3).rounded())
+                self.distanceMi += 0.0024
+                self.hrSum += self.heartRate; self.hrCount += 1
+                self.maxHr = max(self.maxHr, self.heartRate)
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
     }
 }
