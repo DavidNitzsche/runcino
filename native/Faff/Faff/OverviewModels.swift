@@ -69,6 +69,7 @@ struct ORaces: Decodable {
     let recent: [ORecentRace]?
 }
 struct ORace: Decodable {
+    let slug: String?
     let name: String?
     let date: String?
     let distanceMi: Double?
@@ -240,6 +241,129 @@ enum PlanRangeAPI {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
         }
         return try JSONDecoder().decode(PlanRangeResponse.self, from: data)
+    }
+}
+
+// MARK: - Race course (downsampled geometry + phase pacing)
+
+/// Full course payload for the race-detail screen, served by
+/// /api/races/[slug]/course (the heavy GPX is parsed server-side).
+struct RaceCourse: Decodable {
+    let ok: Bool
+    let slug: String?
+    let name: String?
+    let date: String?
+    let distanceMi: Double?
+    let goalDisplay: String?
+    let strategy: String?
+    let stats: RaceCourseStats?
+    let coords: [[Double]]?       // [[lat, lon], …] map polyline
+    let samples: [RaceCourseSample]?
+    let phases: [RacePhase]?
+}
+
+struct RaceCourseStats: Decodable {
+    let gainFt: Double?
+    let lossFt: Double?
+    let netFt: Double?
+    let minFt: Double?
+    let maxFt: Double?
+    let distanceMi: Double?
+}
+
+/// One elevation-profile sample: distance (mi), elevation (ft), grade (%).
+struct RaceCourseSample: Decodable, Identifiable {
+    let d: Double
+    let e: Double
+    let g: Double
+    var id: Double { d }
+}
+
+struct RacePhase: Decodable, Identifiable {
+    let label: String?
+    let startMi: Double?
+    let endMi: Double?
+    let distanceMi: Double?
+    let targetPaceDisplay: String?
+    let targetPaceSPerMi: Double?
+    let cumulativeTimeDisplay: String?
+    let meanGradePct: Double?
+    let gainFt: Double?
+    let lossFt: Double?
+    let note: String?
+    var id: String { "\(label ?? "")-\(startMi ?? 0)" }
+}
+
+@MainActor
+enum RaceCourseAPI {
+    static func fetch(slug: String) async throws -> RaceCourse {
+        guard let url = URL(string: "/api/races/\(slug)/course", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 35
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return try JSONDecoder().decode(RaceCourse.self, from: data)
+    }
+}
+
+// MARK: - Run recap (a completed run synced from Strava/Apple Health)
+
+struct RunByDateResponse: Decodable {
+    let ok: Bool
+    let maxHr: Double?
+    let run: RunRecap?
+}
+
+struct RunRecap: Decodable {
+    let id: String?
+    let name: String?
+    let description: String?
+    let date: String?
+    let distanceMi: Double?
+    let movingTimeS: Double?
+    let paceSPerMi: Double?
+    let avgHr: Double?
+    let maxHr: Double?
+    let avgCadence: Double?
+    let elevGainFt: Double?
+    let type: String?
+    let splits: [RunSplit]?
+    let summaryPolyline: String?
+    let startLatLng: [Double]?
+    let endLatLng: [Double]?
+
+    var durationDisplay: String {
+        guard let s = movingTimeS, s > 0 else { return "—" }
+        let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+    var paceDisplay: String { OverviewFormat.pace(paceSPerMi) }
+}
+
+struct RunSplit: Decodable, Identifiable {
+    let mile: Int
+    let paceSPerMi: Double
+    let paceDisplay: String?
+    let avgHr: Double?
+    let elevDeltaFt: Double?
+    var id: Int { mile }
+}
+
+@MainActor
+enum RunByDateAPI {
+    static func fetch(date: String) async throws -> RunByDateResponse {
+        guard let url = URL(string: "/api/runs/by-date?date=\(date)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 35
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return try JSONDecoder().decode(RunByDateResponse.self, from: data)
     }
 }
 

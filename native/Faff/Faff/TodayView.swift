@@ -16,6 +16,8 @@ struct TodayView: View {
     var onOpenWorkout: () -> Void = {}
 
     @State private var selected: String?   // nil = today
+    @State private var recapDate: RecapDate?  // non-nil → show run recap sheet
+    private struct RecapDate: Identifiable { let id: String }
 
     private var selDate: String { selected ?? overview.today ?? "" }
     private var selDay: OPlanDay? { overview.planWeekWorkouts?.first { $0.dateISO == selDate } }
@@ -40,6 +42,7 @@ struct TodayView: View {
             .padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg)
+        .sheet(item: $recapDate) { d in RunRecapView(date: d.id) }
     }
 
     @ViewBuilder private var heroView: some View {
@@ -229,9 +232,17 @@ struct TodayView: View {
                     StatPill(value: OverviewFormat.distance(d.distanceMi), unit: "mi", label: "Planned")
                     StatPill(value: done ? OverviewFormat.distance(actual) : "—", unit: done ? "mi" : nil, label: "Ran", accent: done)
                 }
+                if done {
+                    HStack(spacing: 6) {
+                        Text("View recap").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Faff.C.race)
+                    }.padding(.top, 12)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
+        .contentShape(Rectangle())
+        .onTapGesture { if !rest && done, let date = d.dateISO { recapDate = RecapDate(id: date) } }
     }
 
     // ── Future day · preview hero ─────────────────────────────────

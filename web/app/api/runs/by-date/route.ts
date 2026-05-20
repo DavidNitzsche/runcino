@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireActiveUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { getActivityDetail } from '@/lib/sync-strava-user';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
@@ -23,12 +23,10 @@ interface ActivityRow {
 }
 
 export async function GET(req: NextRequest) {
-  let user;
-  try {
-    user = await requireActiveUser();
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // Auth optional — anonymous callers (simulator preview) fall back to
+  // the legacy 'me' demo account, mirroring /api/overview + /api/races.
+  const user = await getCurrentUser(req);
+  const uid = user?.id ?? 'me';
 
   const date = req.nextUrl.searchParams.get('date');
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -42,7 +40,7 @@ export async function GET(req: NextRequest) {
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) = $2
       ORDER BY (data->>'distanceMi')::NUMERIC DESC NULLS LAST
       LIMIT 1`,
-    [user.id, date],
+    [user?.id ?? null, date],
   );
   const row = rows[0];
   if (!row) return NextResponse.json({ ok: true, run: null });
@@ -72,7 +70,7 @@ export async function GET(req: NextRequest) {
   let startLatLng: [number, number] | null = null;
   let endLatLng: [number, number] | null = null;
   try {
-    const detail = await getActivityDetail(user.id, row.id);
+    const detail = await getActivityDetail(uid, row.id);
     const detailTyped = detail as unknown as {
       splits_standard?: StravaSplit[];
       map?: { summary_polyline?: string };
@@ -111,7 +109,7 @@ export async function GET(req: NextRequest) {
   // Max HR — prefer the user's manual override, fall back to the
   // value computed from their activity history (peak max_heartrate
   // across runs). null when neither is available.
-  const maxHr = await resolveEffectiveMaxHr(user.id);
+  const maxHr = await resolveEffectiveMaxHr(uid);
 
   // Resolve the user's full fitness so the modal can render
   // workout descriptions with race-goal-derived paces (HM Blocks
@@ -119,7 +117,7 @@ export async function GET(req: NextRequest) {
   // 7:30-7:50 from the pre-resolver era).
   const { resolveFitness } = await import('@/lib/fitness-resolver');
   const today = new Date().toISOString().slice(0, 10);
-  const fitness = await resolveFitness(user.id, today);
+  const fitness = await resolveFitness(uid, today);
 
   return NextResponse.json({
     ok: true,

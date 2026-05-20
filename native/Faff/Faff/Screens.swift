@@ -8,6 +8,8 @@
 //
 
 import SwiftUI
+import MapKit
+import Charts
 
 // MARK: - Root tab shell
 
@@ -530,6 +532,12 @@ struct RaceDetailView: View {
     let phase: String?
     var projection: ORaceProjection? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var course: RaceCourse?
+    @State private var loadingCourse = true
+
+    private var slug: String {
+        race.slug ?? RaceDetailView.slugify(race.name ?? "")
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
@@ -578,17 +586,196 @@ struct RaceDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(18)
                 .background(Color.faffMark).clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
-                // Honest note for the GPX-dependent sections.
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-                    Text("The course profile, grade band and phase-by-phase pacing build from the race GPX — open this race on faff.run for the full plan. The race-day brief unlocks at T−7.")
-                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.faffCard()
+
+                // ── Course map + elevation profile ──────────────────
+                if let c = course, let coords = c.coords, coords.count > 1 {
+                    courseCard(c, coords: coords)
+                }
+                // ── Phase-by-phase pacing ───────────────────────────
+                if let c = course, let phases = c.phases, !phases.isEmpty {
+                    pacingCard(phases, strategy: c.strategy)
+                } else if loadingCourse {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                        HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading course…").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted) }
+                    }.faffCard()
+                } else if course?.coords == nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                        Text("No course map for this race yet. Add a GPX on faff.run and the profile, grade bands and phase pacing will appear here.")
+                            .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.faffCard()
+                }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
+        .task { await loadCourse() }
+    }
+
+    private func loadCourse() async {
+        defer { loadingCourse = false }
+        course = try? await RaceCourseAPI.fetch(slug: slug)
+    }
+
+    // MARK: Course map + elevation profile
+    @ViewBuilder
+    private func courseCard(_ c: RaceCourse, coords: [[Double]]) -> some View {
+        let pts = coords.compactMap { $0.count == 2 ? CLLocationCoordinate2D(latitude: $0[0], longitude: $0[1]) : nil }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("COURSE").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            if pts.count > 1 {
+                Map(initialPosition: .region(Self.region(for: pts)), interactionModes: []) {
+                    MapPolyline(coordinates: pts).stroke(Faff.C.race, lineWidth: 3)
+                    Annotation("Start", coordinate: pts.first!) { courseDot(Faff.C.recovery) }
+                    Annotation("Finish", coordinate: pts.last!) { courseDot(Faff.C.race) }
+                }
+                .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+                .frame(height: 170)
+                .clipShape(RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
+                .allowsHitTesting(false)
+            }
+            // Net-elevation summary line.
+            if let s = c.stats {
+                let net = Int(s.netFt ?? 0)
+                (Text("\(OverviewFormat.distance(s.distanceMi)) mi").foregroundStyle(Faff.C.ink)
+                 + Text("  ·  +\(Int(s.gainFt ?? 0)) / −\(Int(s.lossFt ?? 0)) ft").foregroundStyle(Faff.C.textMuted)
+                 + Text("  ·  net \(net >= 0 ? "+" : "−")\(abs(net)) ft \(net <= -40 ? "(fast)" : net >= 40 ? "(climby)" : "")").foregroundStyle(net <= -40 ? Faff.C.recovery : net >= 40 ? Faff.C.warn : Faff.C.textMuted))
+                    .font(Faff.F.inter(11.5, .semibold))
+            }
+            // Elevation profile + grade band.
+            if let samples = c.samples, samples.count > 1 {
+                elevationProfile(samples)
+                gradeBand(samples)
+            }
+        }.faffCard()
+    }
+
+    private func courseDot(_ color: Color) -> some View {
+        Circle().fill(color).frame(width: 11, height: 11)
+            .overlay(Circle().stroke(.white, lineWidth: 2))
+    }
+
+    @ViewBuilder
+    private func elevationProfile(_ samples: [RaceCourseSample]) -> some View {
+        let minE = samples.map(\.e).min() ?? 0
+        let maxE = samples.map(\.e).max() ?? 1
+        Chart(samples) { s in
+            AreaMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+                .foregroundStyle(LinearGradient(colors: [Faff.C.ink.opacity(0.18), Faff.C.ink.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+            LineMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+                .foregroundStyle(Faff.C.ink.opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
+        }
+        .chartYScale(domain: (minE - 10)...(maxE + 10))
+        .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { v in
+            AxisValueLabel { if let mi = v.as(Double.self) { Text("\(Int(mi))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
+        } }
+        .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
+            AxisValueLabel { if let ft = v.as(Double.self) { Text("\(Int(ft))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
+        } }
+        .frame(height: 90)
+    }
+
+    /// Thin distance-proportional bar coloured by per-segment grade.
+    private func gradeBand(_ samples: [RaceCourseSample]) -> some View {
+        GeometryReader { geo in
+            let total = max((samples.last?.d ?? 1) - (samples.first?.d ?? 0), 0.0001)
+            HStack(spacing: 0) {
+                ForEach(Array(samples.enumerated()), id: \.offset) { i, s in
+                    let next = i < samples.count - 1 ? samples[i + 1].d : s.d
+                    let w = max(geo.size.width * CGFloat((next - s.d) / total), 0)
+                    Rectangle().fill(Self.gradeColor(s.g)).frame(width: w)
+                }
+            }
+        }
+        .frame(height: 6)
+        .clipShape(Capsule())
+    }
+
+    // MARK: Phase-by-phase pacing
+    @ViewBuilder
+    private func pacingCard(_ phases: [RacePhase], strategy: String?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("PHASE-BY-PHASE PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if let st = strategy { Text(Self.strategyLabel(st)).font(Faff.F.inter(9.5, .semibold)).foregroundStyle(Faff.C.textMuted) }
+            }
+            ForEach(Array(phases.enumerated()), id: \.offset) { i, p in
+                phaseRow(i + 1, p)
+                if i < phases.count - 1 { Divider().overlay(Faff.C.divider) }
+            }
+        }.faffCard()
+    }
+
+    private func phaseRow(_ n: Int, _ p: RacePhase) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 10) {
+                Text("\(n)").font(Faff.F.display(15)).foregroundStyle(.white)
+                    .frame(width: 24, height: 24).background(Circle().fill(Self.gradeColor(p.meanGradePct ?? 0)))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(p.label ?? "Segment").font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                        Text(Self.gradeLabel(p.meanGradePct ?? 0))
+                            .font(Faff.F.inter(8, .semibold)).tracking(0.6).foregroundStyle(Faff.C.textMuted)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Faff.C.pillBg).clipShape(Capsule())
+                    }
+                    Text("Mile \(OverviewFormat.distance(p.startMi)) → \(OverviewFormat.distance(p.endMi)) · \(OverviewFormat.distance(p.distanceMi)) mi")
+                        .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(p.targetPaceDisplay ?? "—").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                    if let t = p.cumulativeTimeDisplay { Text(t).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textDim) }
+                }
+            }
+            if let note = p.note, !note.isEmpty {
+                Text(note).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textMuted).lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true).padding(.leading, 34)
+            }
+        }.padding(.vertical, 2)
+    }
+
+    // MARK: Helpers
+    static func slugify(_ s: String) -> String {
+        let lowered = s.lowercased()
+        let mapped = lowered.map { ch -> Character in (ch.isLetter || ch.isNumber) ? ch : "-" }
+        let joined = String(mapped)
+        let parts = joined.split(separator: "-").map(String.init)
+        return parts.joined(separator: "-")
+    }
+    static func region(for pts: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        let lats = pts.map(\.latitude), lons = pts.map(\.longitude)
+        let minLat = lats.min() ?? 0, maxLat = lats.max() ?? 0
+        let minLon = lons.min() ?? 0, maxLon = lons.max() ?? 0
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 1.35, 0.01),
+            longitudeDelta: max((maxLon - minLon) * 1.35, 0.01))
+        return MKCoordinateRegion(center: center, span: span)
+    }
+    static func gradeColor(_ g: Double) -> Color {
+        switch g {
+        case ..<(-4):        return Color(hex: 0x2563EB) // steep descent
+        case (-4)..<(-1.5):  return Color(hex: 0x60A5FA) // descent
+        case (-1.5)...1.5:   return Color(hex: 0x2CA82F) // flat
+        case 1.5..<4:        return Color(hex: 0xD4900A) // climb
+        default:             return Color(hex: 0xE85D26) // steep climb
+        }
+    }
+    static func gradeLabel(_ g: Double) -> String {
+        g > 1.5 ? "CLIMB" : (g < -1.5 ? "DESCENT" : "ROLLING")
+    }
+    static func strategyLabel(_ s: String) -> String {
+        switch s {
+        case "even_effort": return "EVEN EFFORT"
+        case "even_split":  return "EVEN SPLITS"
+        case "negative_split": return "NEGATIVE SPLIT"
+        default: return s.uppercased()
+        }
     }
     private func rcStat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
