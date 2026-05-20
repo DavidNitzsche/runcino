@@ -47,6 +47,7 @@ import { generateBriefing } from '../../../lib/coach-briefing';
 import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
 import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 import { listUserConnectors } from '../../../lib/connectors';
+import { computeReadinessScore } from '../../../lib/readiness-score';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
@@ -102,6 +103,12 @@ interface OverviewApiOk {
    *  ["strava"]. Lets clients show real integration status instead of a
    *  hardcoded "Connect". Empty for anonymous reads. */
   connectors: string[];
+  /** Daily readiness score (0–100) + state for the Today/Health ring,
+   *  from computeReadinessScore. null when suppressed/silent or anon —
+   *  the client renders a dashed "No data" ring then. Surface-only;
+   *  never auto-edits the plan. */
+  readinessScore: number | null;
+  readinessState: 'green' | 'yellow' | 'red' | null;
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
@@ -406,6 +413,17 @@ export async function GET(): Promise<Response> {
       if (userId) connectors = (await listUserConnectors(userId)).map((c) => c.provider);
     } catch { connectors = []; }
 
+    // Daily readiness score for the Today/Health ring. Real, surface-only.
+    let readinessScore: number | null = null;
+    let readinessState: 'green' | 'yellow' | 'red' | null = null;
+    try {
+      if (userId) {
+        const r = await computeReadinessScore(userId, today, null, state.recovery?.rhrBpm ?? null);
+        readinessScore = r.score;
+        readinessState = r.score != null ? r.state : null;
+      }
+    } catch { /* silent → dashed ring */ }
+
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
     const planFutureLongRuns = (() => {
       const plan = planResult.plan;
@@ -453,6 +471,8 @@ export async function GET(): Promise<Response> {
       coachLine,
       completedByDate,
       connectors,
+      readinessScore,
+      readinessState,
       planFutureLongRuns,
     };
     return Response.json(body);

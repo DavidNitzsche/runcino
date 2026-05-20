@@ -97,7 +97,7 @@ struct TodayView: View {
                     Spacer()
                     WhyChip(action: onWhy)
                 }
-                Text(dw.label.uppercased())
+                Text(heroTitle(dw).uppercased())
                     .font(Faff.F.display(54)).tracking(-0.5)
                     .foregroundStyle(Faff.C.ink).lineLimit(2).minimumScaleFactor(0.6)
                     .fixedSize(horizontal: false, vertical: true)
@@ -116,6 +116,16 @@ struct TodayView: View {
             .faffCard(padding: 17)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Display label for the hero: bare types read better with "Run".
+    private func heroTitle(_ dw: DerivedWorkout) -> String {
+        switch dw.label.lowercased() {
+        case "easy": return "Easy Run"
+        case "long": return "Long Run"
+        case "recovery": return "Recovery Run"
+        default: return dw.label
+        }
     }
 
     private var actionButtons: some View {
@@ -145,24 +155,30 @@ struct TodayView: View {
     }
 
     // ── Readiness ─────────────────────────────────────────────────
-    // Honest: /api/overview exposes no 0–100 readiness score yet, so the
-    // ring is a dashed "No data" until computeReadinessScore is surfaced
-    // (flagged). The ACWR load read + badge below ARE real.
+    // Real 0–100 score from computeReadinessScore when available; dashed
+    // "No data" otherwise. Badge reflects state (or the ACWR load read).
     private func readinessCard(_ o: OverviewResponse) -> some View {
         let acwr = o.acwrValue
-        let (badgeText, tone): (String, Badge.Tone) = {
-            guard let a = acwr else { return ("No data", .grey) }
-            return a > 1.3 ? ("Watch load", .amber) : ("On track", .green)
+        let ringTone = Self.tone(for: o.readinessState)
+        let (badgeText, badgeTone): (String, Badge.Tone) = {
+            switch o.readinessState {
+            case "green": return ("Primed", .green)
+            case "yellow": return ("Watch load", .amber)
+            case "red": return ("Back off", .warn)
+            default:
+                guard let a = acwr else { return ("No data", .grey) }
+                return a > 1.3 ? ("Watch load", .amber) : ("On track", .green)
+            }
         }()
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(0.9)
                     .foregroundStyle(Faff.C.textDim)
                 Spacer()
-                Badge(text: badgeText, tone: tone)
+                Badge(text: badgeText, tone: badgeTone)
             }
             HStack(spacing: 14) {
-                ReadinessRing(score: nil, size: 54)
+                ReadinessRing(score: o.readinessScore, tone: ringTone, size: 54)
                 Text(readinessCopy(acwr))
                     .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -170,6 +186,14 @@ struct TodayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .faffCard()
+    }
+    static func tone(for state: String?) -> Color {
+        switch state {
+        case "green": return Faff.C.recovery
+        case "yellow": return Faff.C.milestone
+        case "red": return Faff.C.warn
+        default: return Faff.C.recovery
+        }
     }
     private func readinessCopy(_ acwr: Double?) -> String {
         guard let a = acwr else { return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep." }

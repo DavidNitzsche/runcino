@@ -33,6 +33,10 @@ struct OverviewResponse: Decodable {
     /// Active connector providers (e.g. ["strava"]). Real integration
     /// status for the More tab. Empty/absent for anonymous reads.
     let connectors: [String]?
+    /// Daily readiness score (0–100) + state; nil when suppressed/anon
+    /// (ring renders dashed "No data" then). Surface-only.
+    let readinessScore: Int?
+    let readinessState: String?   // "green" | "yellow" | "red"
 }
 
 struct OState: Decodable {
