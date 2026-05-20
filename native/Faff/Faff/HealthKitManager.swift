@@ -40,10 +40,16 @@ final class HealthKitManager: ObservableObject {
     nonisolated static let readTypes: Set<HKObjectType> = [
         HKQuantityType(.restingHeartRate),
         HKQuantityType(.heartRate),
+        HKQuantityType(.heartRateVariabilitySDNN),
         HKQuantityType(.vo2Max),
         HKCategoryType(.sleepAnalysis),
         HKObjectType.workoutType(),
     ]
+
+    /// Set once the user has granted (or been prompted for) Health access,
+    /// so we can quietly re-sync on later launches without re-prompting.
+    private let connectedKey = "faff.health.connected"
+    var hasConnected: Bool { UserDefaults.standard.bool(forKey: connectedKey) }
 
     // MARK: - Top-level flow
 
@@ -58,6 +64,7 @@ final class HealthKitManager: ObservableObject {
         status = .requesting
         do {
             try await store.requestAuthorization(toShare: [], read: Self.readTypes)
+            UserDefaults.standard.set(true, forKey: connectedKey)
         } catch {
             status = .error
             lastMessage = "Health authorization failed: \(error.localizedDescription)"
@@ -87,6 +94,13 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    /// Quiet re-sync on launch / foreground — only once the user has
+    /// connected, so it never prompts unprompted. No-ops otherwise.
+    func syncIfConnected() async {
+        guard hasConnected, isAvailable else { return }
+        await connectAndSync()
+    }
+
     // MARK: - Reads → backend sample shape
 
     /// Pull the last `daysBack` days of the four accepted streams.
@@ -105,6 +119,14 @@ final class HealthKitManager: ObservableObject {
         for (date, stat) in await dailyStats(HKQuantityType(.heartRate), options: .discreteMax, days: daysBack) {
             if let q = stat.maximumQuantity() {
                 out.append(HealthSample(type: "max_hr", value: q.doubleValue(for: bpm).rounded(),
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // HRV (SDNN) — daily average, in milliseconds.
+        let ms = HKUnit.secondUnit(with: .milli)
+        for (date, stat) in await dailyStats(HKQuantityType(.heartRateVariabilitySDNN), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "hrv", value: q.doubleValue(for: ms).rounded(),
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }

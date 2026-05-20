@@ -43,8 +43,17 @@ struct RootTabView: View {
             }
         }
         .background(Faff.C.bg.ignoresSafeArea())
-        .task { await load() }
-        .onChange(of: scenePhase) { _, p in if p == .active { Task { await load() } } }
+        .task {
+            await load()
+            // Quietly re-sync HealthKit on launch (no-op until connected).
+            await HealthKitManager.shared.syncIfConnected()
+        }
+        .onChange(of: scenePhase) { _, p in
+            if p == .active {
+                Task { await load() }
+                Task { await HealthKitManager.shared.syncIfConnected() }
+            }
+        }
     }
 
     @ViewBuilder private func screen(_ o: OverviewResponse) -> some View {
@@ -215,7 +224,7 @@ struct HealthView: View {
                     metricRow("HRV (7d)", overview.state?.recovery?.hrv7dAvgMs.map { "\(Int($0)) ms" } ?? "—")
                     metricRow("Sleep (7d)", overview.state?.recovery?.sleep7dAvgHrs.map { String(format: "%.1f h", $0) } ?? "—")
                 } else {
-                    Text("Connect Apple Health for resting heart rate, sleep, and VO₂max. Until then, readiness is estimated from training load only.")
+                    Text("Connect Apple Health for resting heart rate, HRV, sleep, and VO₂max. Until then, readiness is estimated from training load only.")
                         .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
