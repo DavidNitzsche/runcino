@@ -646,10 +646,9 @@ struct RaceDetailView: View {
                  + Text("  ·  net \(net >= 0 ? "+" : "−")\(abs(net)) ft \(net <= -40 ? "(fast)" : net >= 40 ? "(climby)" : "")").foregroundStyle(net <= -40 ? Faff.C.recovery : net >= 40 ? Faff.C.warn : Faff.C.textMuted))
                     .font(Faff.F.inter(11.5, .semibold))
             }
-            // Elevation profile + grade band.
+            // Elevation profile — area filled by phase.
             if let samples = c.samples, samples.count > 1 {
-                elevationProfile(samples)
-                gradeBand(samples)
+                elevationProfile(samples, phases: c.phases ?? [])
             }
         }.faffCard()
     }
@@ -659,41 +658,53 @@ struct RaceDetailView: View {
             .overlay(Circle().stroke(.white, lineWidth: 2))
     }
 
+    /// Elevation profile. One connected area, filled by a horizontal
+    /// gradient keyed to the race phases (climb = amber, descent = blue,
+    /// flat = green) so the colour under the curve maps to the pacing
+    /// table below. The line rides on top for definition.
     @ViewBuilder
-    private func elevationProfile(_ samples: [RaceCourseSample]) -> some View {
+    private func elevationProfile(_ samples: [RaceCourseSample], phases: [RacePhase]) -> some View {
         let minE = samples.map(\.e).min() ?? 0
         let maxE = samples.map(\.e).max() ?? 1
-        Chart(samples) { s in
-            AreaMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
-                .foregroundStyle(LinearGradient(colors: [Faff.C.ink.opacity(0.18), Faff.C.ink.opacity(0.02)], startPoint: .top, endPoint: .bottom))
-            LineMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
-                .foregroundStyle(Faff.C.ink.opacity(0.7))
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
+        let total = max(samples.last?.d ?? 1, 0.0001)
+        let stops = Self.phaseStops(phases, total: total)
+        Chart {
+            ForEach(samples) { s in
+                AreaMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+            }
+            .foregroundStyle(LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing))
+            ForEach(samples) { s in
+                LineMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+            }
+            .foregroundStyle(Faff.C.ink.opacity(0.55))
+            .lineStyle(StrokeStyle(lineWidth: 1.5))
         }
-        .chartYScale(domain: (minE - 10)...(maxE + 10))
+        .chartXScale(domain: 0...total)
+        .chartYScale(domain: (minE - 8)...(maxE + 12))
         .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { v in
             AxisValueLabel { if let mi = v.as(Double.self) { Text("\(Int(mi))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
         } }
         .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
             AxisValueLabel { if let ft = v.as(Double.self) { Text("\(Int(ft))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
         } }
-        .frame(height: 90)
+        .frame(height: 96)
     }
 
-    /// Thin distance-proportional bar coloured by per-segment grade.
-    private func gradeBand(_ samples: [RaceCourseSample]) -> some View {
-        GeometryReader { geo in
-            let total = max((samples.last?.d ?? 1) - (samples.first?.d ?? 0), 0.0001)
-            HStack(spacing: 0) {
-                ForEach(Array(samples.enumerated()), id: \.offset) { i, s in
-                    let next = i < samples.count - 1 ? samples[i + 1].d : s.d
-                    let w = max(geo.size.width * CGFloat((next - s.d) / total), 0)
-                    Rectangle().fill(Self.gradeColor(s.g)).frame(width: w)
-                }
-            }
+    /// Hard-edged gradient stops, one band per phase, coloured by grade.
+    static func phaseStops(_ phases: [RacePhase], total: Double) -> [Gradient.Stop] {
+        guard !phases.isEmpty, total > 0 else {
+            return [.init(color: Faff.C.ink.opacity(0.12), location: 0),
+                    .init(color: Faff.C.ink.opacity(0.04), location: 1)]
         }
-        .frame(height: 6)
-        .clipShape(Capsule())
+        var stops: [Gradient.Stop] = []
+        for p in phases {
+            let c = gradeColor(p.meanGradePct ?? 0).opacity(0.30)
+            let s = min(max((p.startMi ?? 0) / total, 0), 1)
+            let e = min(max((p.endMi ?? 0) / total, 0), 1)
+            stops.append(.init(color: c, location: s))
+            stops.append(.init(color: c, location: e))
+        }
+        return stops
     }
 
     // MARK: Phase-by-phase pacing
