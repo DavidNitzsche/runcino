@@ -472,3 +472,339 @@ html, body {
 }
 
 .dark .nav-row > .chevron { color: var(--text-d-3); }
+
+/* ═════════════════════════════════════════════════════════════════
+   ANNOTATION TOOLING (annotate.js companion styles)
+   Round 2 review infrastructure · sticky toolbar + pins + panel
+   ═════════════════════════════════════════════════════════════════ */
+
+/* ── Toolbar (sticky top) ───────────────────────────────────────── */
+#ann-toolbar {
+  position: fixed;
+  top: 12px; right: 12px;
+  z-index: 9999;
+  background: rgba(20, 20, 22, 0.96);
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.30);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+.ann-toolbar-row { display: flex; gap: 4px; align-items: center; }
+.ann-btn {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.ann-btn:hover { background: rgba(255,255,255,0.16); }
+.ann-btn-active { background: #E85D26; color: #fff; }
+.ann-btn-active:hover { background: #F07340; }
+.ann-btn-danger { color: #ff9494; }
+.ann-btn-danger:hover { background: rgba(255,68,68,0.20); color: #fff; }
+.ann-count {
+  display: inline-block;
+  background: #E85D26;
+  color: #fff;
+  border-radius: 9px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ── Annotate-mode cursor + hover hint ─────────────────────────── */
+body.ann-mode-active { cursor: crosshair; }
+body.ann-mode-active *:not(#ann-toolbar):not(#ann-toolbar *):not(.ann-pin):not(.ann-popup):not(.ann-popup *):not(#ann-panel):not(#ann-panel *):hover {
+  outline: 2px dashed #E85D26 !important;
+  outline-offset: 1px;
+}
+
+/* ── Numbered pins ─────────────────────────────────────────────── */
+.ann-pin {
+  position: absolute;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #E85D26;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  z-index: 9990;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.30);
+  border: 2px solid #fff;
+  transition: transform 0.15s;
+}
+.ann-pin:hover { transform: scale(1.18); }
+.ann-pin-approved { background: #1f6a21; }
+.ann-pin-iterate  { background: #E85D26; }
+.ann-pin-question { background: #6f42c1; }
+
+.ann-pin-num {
+  display: inline-block;
+  width: 18px; height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  background: #E85D26;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+/* Brief flash when jumping to an annotated element */
+.ann-flash {
+  animation: ann-flash-anim 1.2s ease-out;
+}
+@keyframes ann-flash-anim {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 93, 38, 0); }
+  30%      { box-shadow: 0 0 0 6px rgba(232, 93, 38, 0.50); }
+}
+
+/* ── Popup editor (near clicked element) ───────────────────────── */
+.ann-popup {
+  position: absolute;
+  width: 340px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.20);
+  padding: 14px;
+  z-index: 10000;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  font-size: 13px;
+  color: #0D0F12;
+}
+.ann-popup-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.ann-popup-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #888; }
+.ann-popup-sel {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 10px;
+  color: #555;
+  word-break: break-all;
+  background: #f4f4f5;
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex: 1;
+}
+.ann-popup-preview {
+  font-style: italic;
+  color: #666;
+  font-size: 11px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: #fffbe6;
+  border-left: 2px solid #E85D26;
+  border-radius: 0 4px 4px 0;
+}
+.ann-popup-text {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font: inherit;
+  resize: vertical;
+  min-height: 70px;
+}
+.ann-popup-text:focus { outline: 2px solid #E85D26; border-color: #E85D26; }
+.ann-popup-statusrow { display: flex; gap: 12px; margin: 10px 0; font-size: 12px; }
+.ann-popup-statusrow label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.ann-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ann-dot-approved { background: #1f6a21; }
+.ann-dot-iterate  { background: #E85D26; }
+.ann-dot-question { background: #6f42c1; }
+.ann-popup-actions { display: flex; gap: 6px; }
+.ann-popup-actions button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ann-btn-save   { background: #E85D26; color: #fff; }
+.ann-btn-save:hover   { background: #F07340; }
+.ann-btn-delete { background: #f4f4f5; color: #c92a2a; }
+.ann-btn-delete:hover { background: #fde0e0; }
+.ann-btn-cancel { background: #f4f4f5; color: #555; }
+.ann-btn-cancel:hover { background: #e4e4e6; }
+
+/* ── Side panel (notes list) ───────────────────────────────────── */
+#ann-panel {
+  position: fixed;
+  top: 0; right: -360px;
+  width: 340px;
+  height: 100vh;
+  background: #fff;
+  border-left: 1px solid #ddd;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.10);
+  z-index: 9995;
+  transition: right 0.22s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+#ann-panel.ann-panel-open { right: 0; }
+.ann-panel-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ann-btn-close {
+  background: transparent;
+  border: 0;
+  font-size: 22px;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+}
+.ann-btn-close:hover { color: #000; }
+.ann-panel-list { flex: 1; overflow-y: auto; padding: 8px; }
+.ann-panel-empty { padding: 16px; font-size: 13px; color: #888; line-height: 1.5; }
+.ann-panel-item {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-left: 3px solid #E85D26;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ann-panel-item:hover { background: #f0f0f0; }
+.ann-panel-item-approved { border-left-color: #1f6a21; }
+.ann-panel-item-iterate  { border-left-color: #E85D26; }
+.ann-panel-item-question { border-left-color: #6f42c1; }
+.ann-panel-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.ann-panel-item-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #555;
+  flex: 1;
+}
+.ann-panel-item-jump {
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  color: #555;
+}
+.ann-panel-item-jump:hover { background: #E85D26; color: #fff; border-color: #E85D26; }
+.ann-panel-preview {
+  font-style: italic;
+  color: #777;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.ann-panel-text {
+  color: #0D0F12;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+.ann-panel-sel {
+  display: block;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 10px;
+  color: #888;
+  word-break: break-all;
+}
+
+/* ── Export/Import modal ───────────────────────────────────────── */
+#ann-export-modal, #ann-import-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+}
+.ann-modal-inner {
+  background: #fff;
+  border-radius: 14px;
+  max-width: 760px;
+  width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+}
+.ann-modal-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+}
+.ann-modal-text {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 360px;
+  white-space: pre;
+}
+.ann-modal-text:focus { outline: 0; }
+.ann-modal-actions {
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ann-modal-actions .ann-btn {
+  background: #E85D26;
+  color: #fff;
+  padding: 9px 14px;
+  font-weight: 600;
+}
+.ann-modal-actions .ann-btn:hover { background: #F07340; }
+.ann-modal-actions .ann-btn-danger {
+  background: #f4f4f5;
+  color: #c92a2a;
+}
+.ann-modal-actions .ann-btn-danger:hover { background: #fde0e0; color: #c92a2a; }
+.ann-import-hint {
+  padding: 10px 16px;
+  background: #fffbe6;
+  border-bottom: 1px solid #f0e8c0;
+  font-size: 12px;
+  color: #5a4a0d;
+  line-height: 1.4;
+}
+
+/* Hide annotation UI when explicitly printing */
+@media print {
+  #ann-toolbar, #ann-panel, .ann-pin, .ann-popup,
+  #ann-export-modal, #ann-import-modal { display: none !important; }
+}
