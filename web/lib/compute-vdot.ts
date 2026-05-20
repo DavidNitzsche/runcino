@@ -145,14 +145,14 @@ const SIXTEEN_WEEKS_MS = 16 * 7 * 86_400_000;
  *  archived plan's earliest week start; falls through to active
  *  plan's earliest week, then to 16-week fallback (C1) when no
  *  plans exist. */
-export async function resolveCycleStart(userId: string, today: Date): Promise<Date> {
+export async function resolveCycleStart(userId: string | null | undefined, today: Date): Promise<Date> {
   // C3: most recently archived plan (covers current + previous cycle)
   const archived = await query<{ id: string }>(
     `SELECT id FROM training_plans
       WHERE user_id = $1 AND archived_iso IS NOT NULL
       ORDER BY archived_iso DESC
       LIMIT 1`,
-    [userId],
+    [userId ?? null],
   );
   if (archived.length > 0) {
     const start = await query<{ start: string | null }>(
@@ -167,7 +167,7 @@ export async function resolveCycleStart(userId: string, today: Date): Promise<Da
       WHERE user_id = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC
       LIMIT 1`,
-    [userId],
+    [userId ?? null],
   );
   if (active.length > 0) {
     const start = await query<{ start: string | null }>(
@@ -188,7 +188,7 @@ interface GoalRaceInfo { distanceKm: number; tier: RaceTier; name: string; dateI
  *  from the user's races table; falls back to most recently saved
  *  race regardless of date when no future race exists. Returns null
  *  only when the races table is empty. */
-export async function resolveGoalRace(userId: string, today: Date): Promise<GoalRaceInfo | null> {
+export async function resolveGoalRace(userId: string | null | undefined, today: Date): Promise<GoalRaceInfo | null> {
   const todayIso = today.toISOString().slice(0, 10);
   // Nearest upcoming
   const upcoming = await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
@@ -197,7 +197,7 @@ export async function resolveGoalRace(userId: string, today: Date): Promise<Goal
         AND meta->>'date' >= $2
       ORDER BY meta->>'date' ASC
       LIMIT 1`,
-    [userId, todayIso],
+    [userId ?? null, todayIso],
   );
   const pick = upcoming[0] ?? (await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
     // Fallback: most recently saved race
@@ -205,7 +205,7 @@ export async function resolveGoalRace(userId: string, today: Date): Promise<Goal
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
       ORDER BY meta->>'date' DESC
       LIMIT 1`,
-    [userId],
+    [userId ?? null],
   ))[0];
   if (!pick) return null;
   // Support both meta.distanceMi (TS field) and meta.distance_mi (snake_case fallback)
@@ -374,12 +374,12 @@ const PRIORITY_WEIGHT: Record<RaceEffortLevel, number> = {
  *  race result post-dates the override timestamp — race-first
  *  source-of-truth still wins long term. Returns null when no
  *  override or when override is stale (newer race exists). */
-async function checkVdotManualOverride(userId: string): Promise<number | null> {
+async function checkVdotManualOverride(userId: string | null | undefined): Promise<number | null> {
   try {
     const rows = await query<{ value: string | null; at: Date | null }>(
       `SELECT vdot_manual_override::TEXT AS value, vdot_manual_override_at AS at
          FROM users WHERE id = $1 LIMIT 1`,
-      [userId],
+      [userId ?? null],
     );
     const value = rows[0]?.value;
     const at = rows[0]?.at;
@@ -393,7 +393,7 @@ async function checkVdotManualOverride(userId: string): Promise<number | null> {
         WHERE (user_uuid = $1 OR user_uuid IS NULL)
           AND actual_result IS NOT NULL
           AND (meta->>'date') > $2`,
-      [userId, overrideDate],
+      [userId ?? null, overrideDate],
     );
     if (Number(newer[0]?.count ?? '0') > 0) {
       // Race-first wins. Override is stale.
@@ -405,7 +405,7 @@ async function checkVdotManualOverride(userId: string): Promise<number | null> {
   }
 }
 
-export async function computeAggregateVdot(userId: string): Promise<AggregateVdot | null> {
+export async function computeAggregateVdot(userId?: string | null): Promise<AggregateVdot | null> {
   const today = new Date();
   const yearAgoIso = new Date(today.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
 
@@ -439,7 +439,9 @@ export async function computeAggregateVdot(userId: string): Promise<AggregateVdo
         AND (meta->>'date') >= $2
       ORDER BY (meta->>'date') DESC
       LIMIT 50`,
-    [userId, yearAgoIso],
+    // Bind null (not the legacy string 'me') so the user_uuid IS NULL
+    // branch reads the legacy demo races. 'me' would fail the uuid cast.
+    [userId ?? null, yearAgoIso],
   );
   if (rows.length === 0) return null;
 

@@ -57,7 +57,18 @@ function distKeyFor(distanceMi: number): 'mileS' | 'km5S' | 'km10S' | 'km15S' | 
  * iPhone race detail and the web race page show the same projection for
  * the same user (computeAggregateVdot — not vdotSnapshot/resolveFitness).
  */
-async function computeProjection(userId: string, distanceMi: number, goalFinishS: number) {
+async function computeProjection(userId: string | null | undefined, distanceMi: number, goalFinishS: number) {
+  try {
+    return await computeProjectionInner(userId, distanceMi, goalFinishS);
+  } catch (e) {
+    // A projection failure must never take down the course payload — the
+    // map, profile and pacing still render without it.
+    console.warn('[api/races/course] projection failed for', userId, e);
+    return null;
+  }
+}
+
+async function computeProjectionInner(userId: string | null | undefined, distanceMi: number, goalFinishS: number) {
   if (!(goalFinishS > 0) || !(distanceMi > 0)) return null;
   const agg = await computeAggregateVdot(userId);
   if (!agg || agg.value <= 0) return null;
@@ -171,7 +182,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   // Race projection — identical math to the /races/[slug] web page.
   const projection = await computeProjection(
-    userId ?? 'me',
+    userId ?? null,
     race.meta.distanceMi,
     plan?.goal?.finish_time_s ?? 0,
   );

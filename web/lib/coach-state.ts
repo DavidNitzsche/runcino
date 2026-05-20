@@ -505,20 +505,22 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     }
   }
 
-  // Pre-load the aggregate VDOT when a userId is provided. This is
-  // the SAME value /profile's Coach Reads card shows; threading it
-  // into state.aggregateVdotValue means vdotSnapshot + paceTargetFromVdot
-  // pick the same number the UI displays.
+  // Pre-load the aggregate VDOT — the ONE canonical current-VDOT used
+  // everywhere (it's the SAME value /profile's Coach Reads card and the
+  // web race page show). Threading it into state.aggregateVdotValue
+  // makes vdotSnapshot + paceTargetFromVdot pick that number, so the
+  // coach engine, overview, and web all agree. Always compute it
+  // (including the anonymous demo, which resolves the legacy 'me' races
+  // via the null binding) so the single-best-race fallback never fires
+  // and silently diverges.
   let aggregateVdotValue: number | undefined;
-  if (opts.userId) {
-    try {
-      const { computeAggregateVdot } = await import('./compute-vdot');
-      const agg = await computeAggregateVdot(opts.userId);
-      if (agg && agg.value > 0) aggregateVdotValue = agg.value;
-    } catch {
-      // Aggregate VDOT is an optimization; engine falls back to
-      // single-best-race picker if the lookup fails.
-    }
+  try {
+    const { computeAggregateVdot } = await import('./compute-vdot');
+    const agg = await computeAggregateVdot(opts.userId ?? null);
+    if (agg && agg.value > 0) aggregateVdotValue = agg.value;
+  } catch {
+    // Aggregate VDOT is an optimization; engine falls back to
+    // single-best-race picker if the lookup fails.
   }
 
   return {
