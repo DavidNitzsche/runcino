@@ -246,6 +246,39 @@ enum PlanRangeAPI {
     }
 }
 
+// MARK: - Races list (upcoming + recent, lightweight)
+
+struct RaceSummary: Decodable, Identifiable {
+    let slug: String?
+    let name: String?
+    let date: String?
+    let distanceMi: Double?
+    let goalDisplay: String?
+    let priority: String?
+    let daysAway: Int?
+    let isPast: Bool?
+    let finishS: Double?
+    let finishDisplay: String?
+    let paceDisplay: String?
+    var id: String { slug ?? UUID().uuidString }
+}
+private struct RacesSummaryResponse: Decodable { let races: [RaceSummary]? }
+
+@MainActor
+enum RacesListAPI {
+    static func fetch() async throws -> [RaceSummary] {
+        guard let url = URL(string: "/api/races/summary", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 30
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
+        }
+        return (try JSONDecoder().decode(RacesSummaryResponse.self, from: data)).races ?? []
+    }
+}
+
 // MARK: - Race course (downsampled geometry + phase pacing)
 
 /// Full course payload for the race-detail screen, served by

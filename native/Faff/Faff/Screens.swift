@@ -437,43 +437,72 @@ struct HealthView: View {
 
 struct RacesView: View {
     let overview: OverviewResponse
-    @State private var showDetail = false
+    @State private var races: [RaceSummary] = []
+    @State private var loaded = false
+    @State private var detail: RaceHeader?
+
+    private var upcoming: [RaceSummary] {
+        races.filter { !($0.isPast ?? false) }.sorted { ($0.daysAway ?? 9999) < ($1.daysAway ?? 9999) }
+    }
+    private var recent: [RaceSummary] {
+        races.filter { ($0.isPast ?? false) && ($0.finishS ?? 0) > 0 }
+            .sorted { ($0.date ?? "") > ($1.date ?? "") }
+    }
+    private var hero: RaceSummary? {
+        upcoming.first { ($0.priority ?? "A") == "A" } ?? upcoming.first
+    }
+
     var body: some View {
-        FaffScreen(eyebrow: "Next A-race", title: "Races") {
-            if let r = overview.state?.races?.nextA {
-                Button { showDetail = true } label: { raceCard(r) }.buttonStyle(.plain)
-                    .sheet(isPresented: $showDetail) { RaceDetailView(race: r, phase: overview.planCurrentPhase) }
+        FaffScreen(eyebrow: "Goal races", title: "Races") {
+            if let h = hero {
+                Button { detail = RaceHeader(h) } label: { raceCard(h) }.buttonStyle(.plain)
+            } else if !loaded {
+                HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading races…").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted) }.faffCard()
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("No race yet. Pick your goal and we'll plan backward from race day.")
-                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
-                    GhostButton(title: "Add a race", icon: "flag.checkered")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No race yet. Add a goal race on faff.run and we'll plan backward from race day.")
+                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }.faffCard()
             }
-            if let recent = overview.state?.races?.recent, !recent.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("RECENT").font(Faff.F.inter(10, .semibold)).tracking(1.4)
-                        .foregroundStyle(Faff.C.textDim)
-                        .padding(.bottom, 14)
-                    ForEach(Array(recent.prefix(5).enumerated()), id: \.offset) { i, rr in
-                        if i > 0 { Divider().overlay(Faff.C.divider).padding(.vertical, 13) }
-                        HStack(alignment: .center, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(rr.name ?? "").font(Faff.F.inter(13.5, .semibold)).foregroundStyle(Faff.C.ink)
-                                Text("\(Self.prettyDate(rr.date ?? "")) · \(OverviewFormat.distance(rr.distanceMi)) mi")
-                                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
-                            }
-                            Spacer(minLength: 8)
-                            Text(Self.finish(rr.finishS)).font(Faff.F.display(19)).foregroundStyle(Faff.C.ink)
-                        }
+
+            // Upcoming (excluding the hero)
+            let restUpcoming = upcoming.filter { $0.slug != hero?.slug }
+            if !restUpcoming.isEmpty {
+                listCard("UPCOMING") {
+                    ForEach(Array(restUpcoming.enumerated()), id: \.element.id) { i, r in
+                        if i > 0 { Divider().overlay(Faff.C.divider) }
+                        Button { detail = RaceHeader(r) } label: { upcomingRow(r) }.buttonStyle(.plain)
                     }
-                }.faffCard()
+                }
+            }
+            // Recent results
+            if !recent.isEmpty {
+                listCard("RECENT") {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { i, r in
+                        if i > 0 { Divider().overlay(Faff.C.divider) }
+                        Button { detail = RaceHeader(r) } label: { recentRow(r) }.buttonStyle(.plain)
+                    }
+                }
             }
         }
+        .task { await load() }
+        .sheet(item: $detail) { RaceDetailView(header: $0, phase: overview.planCurrentPhase) }
     }
-    private func raceCard(_ r: ORace) -> some View {
+
+    private func load() async {
+        races = (try? await RacesListAPI.fetch()) ?? []
+        loaded = true
+    }
+
+    // ── Hero (orange countdown card) ──────────────────────────────
+    private func raceCard(_ r: RaceSummary) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text((r.name ?? "").uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+            HStack(spacing: 7) {
+                Text((r.name ?? "").uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+                priorityChip(r.priority, onDark: true)
+                Spacer()
+            }
             Text(RacesView.raceShort(r.name ?? "").uppercased()).font(Faff.F.display(30)).foregroundStyle(.white)
             if let d = r.date { Text(RacesView.prettyDate(d)).font(Faff.F.inter(12, .medium)).foregroundStyle(.white.opacity(0.9)) }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -482,8 +511,8 @@ struct RacesView: View {
             }.padding(.top, 2)
             HStack(spacing: 18) {
                 raceStat("Goal time", r.goalDisplay ?? "—")
-                if let p = RacesView.goalPace(r) { raceStat("Goal pace", p) }
-                raceStat("Phase", overview.planCurrentPhase ?? "—")
+                if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
+                raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi")
             }.padding(.top, 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -491,6 +520,60 @@ struct RacesView: View {
         .background(Color.faffMark)
         .clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
     }
+
+    @ViewBuilder
+    private func listCard<Content: View>(_ title: String, @ViewBuilder _ rows: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
+            rows()
+        }.faffCard()
+    }
+
+    private func upcomingRow(_ r: RaceSummary) -> some View {
+        HStack(spacing: 11) {
+            priorityChip(r.priority, onDark: false)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.name ?? "").font(Faff.F.inter(13.5, .semibold)).foregroundStyle(Faff.C.ink)
+                Text("\(RacesView.prettyDate(r.date ?? "")) · \(OverviewFormat.distance(r.distanceMi)) mi")
+                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(r.goalDisplay ?? "—").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                Text("\(r.daysAway ?? 0)d away").font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.race)
+            }
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+        }.padding(.vertical, 11).contentShape(Rectangle())
+    }
+
+    private func recentRow(_ r: RaceSummary) -> some View {
+        HStack(spacing: 11) {
+            priorityChip(r.priority, onDark: false)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.name ?? "").font(Faff.F.inter(13.5, .semibold)).foregroundStyle(Faff.C.ink)
+                Text("\(RacesView.prettyDate(r.date ?? "")) · \(OverviewFormat.distance(r.distanceMi)) mi")
+                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(r.finishDisplay ?? Self.finish(r.finishS)).font(Faff.F.display(18)).foregroundStyle(Faff.C.ink)
+                if let p = r.paceDisplay { Text("\(p)/mi").font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textDim) }
+            }
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+        }.padding(.vertical, 11).contentShape(Rectangle())
+    }
+
+    /// A / B / C priority pill — orange / amber / grey (mirrors web).
+    @ViewBuilder
+    private func priorityChip(_ p: String?, onDark: Bool) -> some View {
+        let pr = (p ?? "A").uppercased()
+        let letter = ["A", "B", "C"].contains(pr) ? pr : "•"
+        let color: Color = pr == "A" ? Faff.C.race : (pr == "B" ? Faff.C.milestone : Faff.C.textDim)
+        Text(letter).font(Faff.F.display(12)).foregroundStyle(.white)
+            .frame(width: 22, height: 22).background(Circle().fill(color))
+            .overlay(Circle().stroke(onDark ? .white.opacity(0.5) : .clear, lineWidth: 1))
+    }
+
     private func raceStat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
@@ -511,8 +594,8 @@ struct RacesView: View {
         let acr = core.count >= 2 ? core.compactMap { $0.first }.map(String.init).joined().uppercased() : (core.first ?? name)
         return typeWord != nil ? "\(acr) \(typeWord!)" : acr
     }
-    static func goalPace(_ r: ORace) -> String? {
-        guard let g = r.goalDisplay, let mi = r.distanceMi, mi > 0 else { return nil }
+    static func goalPace(_ goalDisplay: String?, _ distanceMi: Double?) -> String? {
+        guard let g = goalDisplay, let mi = distanceMi, mi > 0 else { return nil }
         let parts = g.split(separator: ":").compactMap { Int($0) }
         let secs: Int
         switch parts.count { case 3: secs = parts[0]*3600 + parts[1]*60 + parts[2]
@@ -528,43 +611,84 @@ struct RacesView: View {
     }
 }
 
+/// Lightweight header passed into RaceDetailView (works for upcoming or
+/// past races, from ORace or RaceSummary).
+struct RaceHeader: Identifiable {
+    let slug: String?
+    let name: String?
+    let date: String?
+    let distanceMi: Double?
+    let goalDisplay: String?
+    let priority: String?
+    let daysAway: Int?
+    let isPast: Bool
+    let finishDisplay: String?
+    let paceDisplay: String?
+    var id: String { slug ?? (name ?? UUID().uuidString) }
+
+    init(_ r: RaceSummary) {
+        slug = r.slug; name = r.name; date = r.date; distanceMi = r.distanceMi
+        goalDisplay = r.goalDisplay; priority = r.priority; daysAway = r.daysAway; isPast = r.isPast ?? false
+        finishDisplay = r.finishDisplay; paceDisplay = r.paceDisplay
+    }
+    init(_ r: ORace) {
+        slug = r.slug; name = r.name; date = r.date; distanceMi = r.distanceMi
+        goalDisplay = r.goalDisplay; priority = "A"; daysAway = r.daysAway; isPast = false
+        finishDisplay = nil; paceDisplay = nil
+    }
+}
+
 // MARK: - Race detail (sheet from a race card)
 
 struct RaceDetailView: View {
-    let race: ORace
+    let header: RaceHeader
     let phase: String?
     @Environment(\.dismiss) private var dismiss
     @State private var course: RaceCourse?
     @State private var loadingCourse = true
 
     private var slug: String {
-        race.slug ?? RaceDetailView.slugify(race.name ?? "")
+        header.slug ?? RaceDetailView.slugify(header.name ?? "")
+    }
+    private var eyebrow: String {
+        let pr = (header.priority ?? "A")
+        if header.isPast { return "RESULT" }
+        return "\(["A","B","C"].contains(pr) ? "\(pr)-RACE" : "RACE") · GOAL \(header.goalDisplay ?? "—")"
     }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 HStack {
-                    Text("RACE").font(Faff.F.oswald(13, .semibold)).tracking(1.5).foregroundStyle(Faff.C.ink)
+                    Text(header.isPast ? "RACE RESULT" : "RACE").font(Faff.F.oswald(13, .semibold)).tracking(1.5).foregroundStyle(Faff.C.ink)
                     Spacer()
                     Button("Done") { dismiss() }.font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.race)
                 }.padding(.top, 16)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("A-RACE · GOAL \(race.goalDisplay ?? "—")").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.race)
-                    Text(RacesView.raceShort(race.name ?? "").uppercased()).font(Faff.F.display(46)).foregroundStyle(Faff.C.ink)
-                    Text(race.name ?? "").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                    Text(eyebrow).font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.race)
+                    Text(RacesView.raceShort(header.name ?? "").uppercased()).font(Faff.F.display(46)).foregroundStyle(Faff.C.ink)
+                    Text(header.name ?? "").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
                 }
-                // Countdown card
+                // Countdown (upcoming) or Result (past) card
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("COUNTDOWN").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text("\(race.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
-                                Text("days to go").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
+                            Text(header.isPast ? "FINISH" : "COUNTDOWN").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+                            if header.isPast {
+                                Text(header.finishDisplay ?? "—").font(Faff.F.display(46)).foregroundStyle(.white)
+                            } else {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text("\(header.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
+                                    Text("days to go").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
+                                }
                             }
                         }
                         Spacer()
-                        if let p = RacesView.goalPace(race) {
+                        if header.isPast, let p = header.paceDisplay {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("AVG PACE").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+                                Text("\(p)/mi").font(Faff.F.display(30)).foregroundStyle(.white)
+                            }
+                        } else if let p = RacesView.goalPace(header.goalDisplay, header.distanceMi) {
                             VStack(alignment: .trailing, spacing: 4) {
                                 Text("GOAL PACE").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
                                 Text("\(p)/mi").font(Faff.F.display(30)).foregroundStyle(.white)
@@ -572,12 +696,18 @@ struct RaceDetailView: View {
                         }
                     }
                     Divider().overlay(Color.white.opacity(0.25))
-                    if let pr = course?.projection, let cv = pr.currentVdot {
+                    if header.isPast {
+                        HStack(spacing: 18) {
+                            rcStat("Goal", header.goalDisplay ?? "—")
+                            rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
+                            if let d = header.date { rcStat("Date", RacesView.prettyDate(d)) }
+                        }
+                    } else if let pr = course?.projection, let cv = pr.currentVdot {
                         readinessBlock(pr, cv: cv)
                     } else {
                         HStack(spacing: 18) {
-                            rcStat("Goal time", race.goalDisplay ?? "—")
-                            if let d = race.distanceMi { rcStat("Distance", "\(OverviewFormat.distance(d)) mi") }
+                            rcStat("Goal time", header.goalDisplay ?? "—")
+                            rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
                             rcStat("Phase", phase ?? "—")
                         }
                     }
@@ -593,7 +723,7 @@ struct RaceDetailView: View {
                 if let c = course, let phases = c.phases, !phases.isEmpty {
                     pacingCard(phases, strategy: c.strategy)
                     if let f = c.fueling { fuelingCard(f, gels: c.gels ?? []) }
-                    if c.briefGeneratesISO != nil || c.brief != nil { executionCard(c) }
+                    if !header.isPast, c.briefGeneratesISO != nil || c.brief != nil { executionCard(c) }
                 } else if loadingCourse {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
@@ -793,7 +923,7 @@ struct RaceDetailView: View {
     @ViewBuilder
     private func executionCard(_ c: RaceCourse) -> some View {
         let genISO = c.briefGeneratesISO
-        let daysToBrief = (race.daysAway ?? 0) - 7
+        let daysToBrief = (header.daysAway ?? 0) - 7
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -932,7 +1062,7 @@ struct RaceDetailView: View {
                 .font(Faff.F.inter(12.5))
             if let gv = pr.goalVdot {
                 (Text("Goal ").foregroundColor(.white.opacity(0.85))
-                 + Text(pr.goalDisplay ?? race.goalDisplay ?? "—").foregroundColor(.white).bold()
+                 + Text(pr.goalDisplay ?? header.goalDisplay ?? "—").foregroundColor(.white).bold()
                  + Text(" requires VDOT ").foregroundColor(.white.opacity(0.85))
                  + Text(String(format: "%.1f", gv)).foregroundColor(.white).bold())
                     .font(Faff.F.inter(12.5))
