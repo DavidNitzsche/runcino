@@ -109,6 +109,16 @@ interface OverviewApiOk {
    *  never auto-edits the plan. */
   readinessScore: number | null;
   readinessState: 'green' | 'yellow' | 'red' | null;
+  /** A-race fitness projection for the Race detail (from raceFitnessA).
+   *  null when no A-race goal. */
+  raceProjection: {
+    projectedDisplay: string;
+    vdot: number;
+    goalPaceSPerMi: number;
+    predictedPaceSPerMi: number;
+    headroomSPerMi: number;   // goal − predicted; + = room to spare
+    confidence: string;
+  } | null;
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
@@ -473,6 +483,14 @@ export async function GET(): Promise<Response> {
       connectors,
       readinessScore,
       readinessState,
+      raceProjection: raceFitnessA?.answer ? {
+        projectedDisplay: raceFitnessA.answer.predictedDisplay,
+        vdot: Math.round(raceFitnessA.answer.vdot),
+        goalPaceSPerMi: Math.round(raceFitnessA.answer.goalPaceSPerMi),
+        predictedPaceSPerMi: Math.round(raceFitnessA.answer.predictedPaceSPerMi),
+        headroomSPerMi: Math.round(raceFitnessA.answer.headroomSPerMi),
+        confidence: raceFitnessA.answer.confidence,
+      } : null,
       planFutureLongRuns,
     };
     return Response.json(body);
