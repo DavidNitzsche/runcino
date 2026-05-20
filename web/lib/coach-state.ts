@@ -17,6 +17,7 @@
  * the research doc lands without touching the data plumbing.
  */
 
+import { query } from './db';
 import { listRacesDB } from './race-store';
 import { getCachedActivities } from './strava-cache';
 import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './strava-stats';
@@ -248,6 +249,42 @@ export interface GatherCoachStateOpts {
   userId?: string;
 }
 
+/** Recovery biometrics from HealthKit ingest (health_samples), averaged
+ *  over the last 7 days. Only resolves for an authenticated user — anon
+ *  ('me'-legacy) reads return nulls so nothing fake surfaces. */
+async function gatherHealthBiometrics(userId: string | undefined): Promise<{
+  hrv7dAvgMs: number | null;
+  rhrBpm: number | null;
+  sleep7dAvgHrs: number | null;
+  available: boolean;
+}> {
+  const empty = { hrv7dAvgMs: null, rhrBpm: null, sleep7dAvgHrs: null, available: false };
+  if (!userId) return empty;
+  try {
+    const rows = await query<{ sample_type: string; avg: number }>(
+      `SELECT sample_type, AVG(value)::float8 AS avg
+         FROM health_samples
+        WHERE user_id = $1
+          AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
+          AND sample_type IN ('hrv', 'resting_hr', 'sleep_hours')
+        GROUP BY sample_type`,
+      [userId],
+    );
+    const by = new Map(rows.map((r) => [r.sample_type, Number(r.avg)]));
+    const hrv = by.get('hrv');
+    const rhr = by.get('resting_hr');
+    const sleep = by.get('sleep_hours');
+    return {
+      hrv7dAvgMs: hrv != null ? Math.round(hrv) : null,
+      rhrBpm: rhr != null ? Math.round(rhr) : null,
+      sleep7dAvgHrs: sleep != null ? Math.round(sleep * 10) / 10 : null,
+      available: rows.length > 0,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise<CoachState> {
   // "Today" in LA — server runs in UTC and would otherwise flip a day
   // early in the evening. todayDate() is anchored at noon UTC of the
@@ -255,7 +292,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   const today = todayDate();
   const todayISO = todayLAISO();
 
-  const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw, healthBio] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
@@ -278,6 +315,8 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     listRecentSkips({ sinceISO: isoDateOffset(today, -14) }).catch(
       () => [] as SkippedWorkout[],
     ),
+    // HealthKit biometrics (7-day averages) for the authenticated user.
+    gatherHealthBiometrics(opts.userId),
   ]);
 
   // Null `state.checkin` means "no rows in the last 7 days" — the
@@ -516,15 +555,15 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
         name: todayRun.name,
         activityId: todayRun.id,
       } : null,
-      hrv7dAvgMs: null,
-      rhrBpm: null,
-      sleep7dAvgHrs: null,
+      hrv7dAvgMs: healthBio.hrv7dAvgMs,
+      rhrBpm: healthBio.rhrBpm,
+      sleep7dAvgHrs: healthBio.sleep7dAvgHrs,
       strengthDaysThisWeek: null,
     },
     flags: {
       heavyBlockSuspected,
       rebuildAfterBreak,
-      healthKitAvailable: false,
+      healthKitAvailable: healthBio.available,
       recentSkips: recentSkipsRaw.map((s) => ({
         dateISO: s.dateISO,
         plannedWorkoutType: s.plannedWorkoutType,

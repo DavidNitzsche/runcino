@@ -46,7 +46,8 @@ export type HealthSampleType =
   | 'max_hr'
   | 'vo2_max'
   | 'sleep_hours'
-  | 'workout_hr_avg';
+  | 'workout_hr_avg'
+  | 'hrv';
 
 export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'resting_hr',
@@ -54,6 +55,7 @@ export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'vo2_max',
   'sleep_hours',
   'workout_hr_avg',
+  'hrv',
 ] as const;
 
 interface ValidationRange {
@@ -67,6 +69,9 @@ const RANGES: Record<HealthSampleType, ValidationRange> = {
   vo2_max:        { min: 20,  max: 90 },
   sleep_hours:    { min: 0,   max: 16 },
   workout_hr_avg: { min: 60,  max: 220 },
+  // HRV as SDNN in milliseconds. Plausible adult range spans single
+  // digits (high stress / poor recovery) to ~200 ms (very fit, rested).
+  hrv:            { min: 5,   max: 250 },
 };
 
 // ── Input shape · what /api/health/ingest accepts ────────────────

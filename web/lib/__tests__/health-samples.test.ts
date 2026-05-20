@@ -20,13 +20,14 @@ function daysAgo(n: number): string {
 }
 
 describe('SAMPLE_TYPES · canonical taxonomy', () => {
-  it('exposes the 5 known sample types', () => {
+  it('exposes the known sample types', () => {
     expect(SAMPLE_TYPES).toEqual([
       'resting_hr',
       'max_hr',
       'vo2_max',
       'sleep_hours',
       'workout_hr_avg',
+      'hrv',
     ]);
   });
 });
@@ -46,6 +47,9 @@ describe('validateSample · happy path · each type', () => {
   });
   it('accepts workout_hr_avg at 165 bpm', () => {
     expect(validateSample({ type: 'workout_hr_avg', value: 165, dateISO: today() })).toBeNull();
+  });
+  it('accepts hrv at 65 ms', () => {
+    expect(validateSample({ type: 'hrv', value: 65, dateISO: today() })).toBeNull();
   });
 });
 
