@@ -200,6 +200,7 @@ struct CoachView: View {
 
 struct HealthView: View {
     let overview: OverviewResponse
+    @ObservedObject private var hk = HealthKitManager.shared
     var body: some View {
         FaffPage(eyebrow: "Today", title: "Body state") {
             VStack(alignment: .leading, spacing: 8) {
@@ -214,10 +215,11 @@ struct HealthView: View {
                     metricRow("HRV (7d)", overview.state?.recovery?.hrv7dAvgMs.map { "\(Int($0)) ms" } ?? "—")
                     metricRow("Sleep (7d)", overview.state?.recovery?.sleep7dAvgHrs.map { String(format: "%.1f h", $0) } ?? "—")
                 } else {
-                    Text("Connect Apple Health for HRV, resting heart rate, and sleep. Until then, readiness is estimated from training load only.")
+                    Text("Connect Apple Health for resting heart rate, sleep, and VO₂max. Until then, readiness is estimated from training load only.")
                         .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                connectControl
             }
             .faffCard()
             VStack(alignment: .leading, spacing: 10) {
@@ -237,6 +239,37 @@ struct HealthView: View {
             Spacer()
             Text(v).font(Faff.F.inter(13, .semibold)).foregroundStyle(warn ? Faff.C.milestone : Faff.C.ink)
         }
+    }
+
+    // ── Apple Health connect / sync ───────────────────────────────
+    @ViewBuilder private var connectControl: some View {
+        let busy = hk.status == .requesting || hk.status == .syncing
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await hk.connectAndSync() }
+            } label: {
+                HStack(spacing: 7) {
+                    if busy {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Image(systemName: "heart.fill").font(.system(size: 11, weight: .bold))
+                    }
+                    Text(busy ? "Syncing…" : "Connect Apple Health")
+                        .font(Faff.F.oswald(12)).tracking(1.2)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .foregroundStyle(.white).background(busy ? Faff.C.ink.opacity(0.6) : Faff.C.ink)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(busy)
+            if let msg = hk.lastMessage {
+                Text(msg)
+                    .font(Faff.F.inter(11.5))
+                    .foregroundStyle(hk.status == .error ? Faff.C.warn : Faff.C.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 4)
     }
 }
 

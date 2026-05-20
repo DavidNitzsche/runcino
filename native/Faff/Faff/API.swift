@@ -188,6 +188,22 @@ final class FaffAPI {
         )
     }
 
+    // MARK: HealthKit ingest
+
+    /// Batch-upload HealthKit samples to POST /api/health/ingest. Bearer
+    /// auth; the backend UPSERTs by (type, dateISO) so re-sends are safe.
+    /// Returns the per-type ingest counts.
+    @discardableResult
+    func ingestHealthSamples(_ samples: [HealthSample]) async throws -> IngestResult {
+        struct Body: Encodable { let samples: [HealthSample] }
+        return try await request(
+            method: "POST",
+            path: "/api/health/ingest",
+            body: Body(samples: samples),
+            authenticated: true
+        )
+    }
+
     // MARK: Generic helpers
 
     private func request<Body: Encodable, T: Decodable>(
@@ -274,3 +290,20 @@ final class FaffAPI {
 // MARK: - Helper types
 
 struct EmptyResponse: Decodable {}
+
+/// One HealthKit reading in the backend's ingest shape. `type` must be one
+/// of the server's accepted strings (resting_hr, max_hr, vo2_max,
+/// sleep_hours, workout_hr_avg). `dateISO` is "yyyy-MM-dd".
+struct HealthSample: Codable {
+    let type: String
+    let value: Double
+    let dateISO: String
+    let source: String
+}
+
+/// POST /api/health/ingest response.
+struct IngestResult: Decodable {
+    let ok: Bool
+    let ingested: Int
+    let skipped: Int
+}
