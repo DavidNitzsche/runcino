@@ -153,10 +153,12 @@ struct PlanView: View {
         let isPast = (d.dateISO ?? "") < (overview.today ?? "")
         let dw = DerivedWorkout(plan: d, fallback: nil)
         let isRest = (d.type ?? "") == "rest"
+        let isDone = overview.isPlanDayDone(d)   // real ≥60%-of-planned completion
         return HStack(spacing: 12) {
             ZStack {
-                if isToday { Circle().fill(Faff.C.milestone).frame(width: 9, height: 9) }
-                else if isPast && !isRest { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Faff.C.recovery) }
+                if isDone { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Faff.C.recovery) }
+                else if isToday { Circle().fill(Faff.C.milestone).frame(width: 9, height: 9) }
+                else if isPast && !isRest { Circle().fill(Faff.C.warn.opacity(0.5)).frame(width: 7, height: 7) }  // missed
                 else { Circle().fill(Faff.C.textFaint).frame(width: 7, height: 7) }
             }.frame(width: 16)
             Text(dowLabel(d.dow)).font(Faff.F.display(17)).foregroundStyle(Faff.C.textDim).frame(width: 36, alignment: .leading)

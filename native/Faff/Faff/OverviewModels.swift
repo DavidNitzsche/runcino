@@ -27,6 +27,9 @@ struct OverviewResponse: Decodable {
     /// (server-composed via generateBriefing). Preferred over the
     /// client-composed fallback.
     let coachLine: String?
+    /// Actual miles logged per day this week (dateISO → mi). Drives
+    /// honest "done" markers. Empty/absent for anonymous reads.
+    let completedByDate: [String: Double]?
 }
 
 struct OState: Decodable {
@@ -336,6 +339,13 @@ struct DerivedWorkout {
 
 extension OverviewResponse {
     var planToday: OPlanDay? { planWeekWorkouts?.first { $0.dateISO == today } }
+    /// A plan day is "done" only when a real run covered ≥60% of the
+    /// planned distance — not merely because the date is in the past.
+    func isPlanDayDone(_ d: OPlanDay) -> Bool {
+        guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
+        let actual = completedByDate?[date] ?? 0
+        return actual >= planned * 0.6
+    }
     var todayWorkout: DerivedWorkout { DerivedWorkout(plan: planToday, fallback: workout?.answer) }
     var raceCountdown: (name: String, days: Int)? {
         if let r = state?.races?.nextA, let n = r.name, let d = r.daysAway { return (n, d) }
