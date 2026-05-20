@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice consistency audit · V6 rules across native</title>
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/annotate.js"></script>
+<style>
+  .audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 26px;
+    font-size: 13px;
+  }
+  .audit-table th, .audit-table td {
+    border: 1px solid #e0e0e0;
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .audit-table th {
+    background: #f4f4f5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #555;
+  }
+  .audit-table .col-screen { width: 16%; font-weight: 700; color: #0D0F12; }
+  .audit-table .col-copy { width: 38%; }
+  .audit-table .col-rule { width: 20%; }
+  .audit-table .col-verdict { width: 12%; text-align: center; }
+  .audit-table .col-note { width: 14%; font-size: 11px; color: #555; }
+
+  .audit-table .copy-string {
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 12px;
+    color: #0D0F12;
+    background: #fafafa;
+    padding: 2px 5px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .verdict-ok   { color: #1f6a21; font-weight: 700; }
+  .verdict-fix  { color: #c92a2a; font-weight: 700; }
+  .verdict-na   { color: #888; }
+
+  .rule-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.4px;
+  }
+  .rule-warm { background: #f0e0d0; color: #8a4a0a; }
+  .rule-data { background: #d0e8d4; color: #1f6a21; }
+  .rule-coach { background: #d0e0f0; color: #1c4087; }
+  .rule-na    { background: #f0f0f0; color: #777; }
+
+  .v6-recap {
+    background: #fffbe6;
+    border-left: 3px solid #d4a017;
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .v6-recap strong { color: #2c1c00; }
+  .v6-recap ul { margin: 6px 0 0 20px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>Voice consistency audit · V6 across native</h1>
+    <div class="subtitle">Every copy string on every screen · tagged by V6 voice rule · deviations flagged</div>
+    <div class="crumbs"><a href="index.html">← back to index</a></div>
+  </div>
+
+  <div class="v6-recap">
+    <strong>V6 voice rules (from web docs/V6.md, mirrored to native):</strong>
+    <ul>
+      <li><strong>Warm second-person</strong> · when speaking to the runner's body or state ("Ease down. Nice work." · "Take it slow today.")</li>
+      <li><strong>Impersonal observation</strong> · when reporting data ("3 threshold workouts trended faster" · "RHR up 4 bpm vs 7-day baseline")</li>
+      <li><strong>"We"/"Our"</strong> · when the coach is making a verdict ("What would change our mind:" · "Our read: ahead by ~30s")</li>
+      <li><strong>No emoji, no exclamation marks</strong> · the watch is a stoic interface. No "Great job! 🎉"</li>
+      <li><strong>Avoid generic encouragement</strong> · "Keep going!" is banned. Specifics or silence.</li>
+      <li><strong>Numbers don't get adjectives</strong> · "6:31 target" not "ambitious 6:31 target"</li>
+    </ul>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       iPHONE COPY AUDIT
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">iPhone copy strings · every visible string on every screen</div>
+
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th class="col-screen">Screen</th>
+        <th class="col-copy">Copy string</th>
+        <th class="col-rule">Voice rule</th>
+        <th class="col-verdict">V6</th>
+        <th class="col-note">Notes / fixes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-screen">Login</td>
+        <td><span class="copy-string">faff.run</span></td>
+        <td><span class="rule-tag rule-na">brand</span></td>
+        <td class="verdict-na">—</td>
+        <td>Wordmark</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Login</td>
+        <td><span class="copy-string">Email</span> / <span class="copy-string">Password</span></td>
+        <td><span class="rule-tag rule-data">data label</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Impersonal, single-word labels</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Login</td>
+        <td><span class="copy-string">Sign in</span></td>
+        <td><span class="rule-tag rule-na">CTA verb</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Imperative · not warm</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">Cruise Intervals</span></td>
+        <td><span class="rule-tag rule-data">workout name</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Plan-derived label</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">6 × 800m @ 6:31</span></td>
+        <td><span class="rule-tag rule-data">prescription</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Pure data</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">Last time (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.</span></td>
+        <td><span class="rule-tag rule-warm">warm second-person</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Body/behavior · imperative + observational, no exclamation</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">Ready ✓</span></td>
+        <td><span class="rule-tag rule-data">state chip</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Single-word state · stoic</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">Sleep · RHR · HRV</span></td>
+        <td><span class="rule-tag rule-data">data labels</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Today</td>
+        <td><span class="copy-string">▶ START</span></td>
+        <td><span class="rule-tag rule-na">CTA verb</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Imperative</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">A-RACE</span></td>
+        <td><span class="rule-tag rule-data">designation</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">Americas Finest City · Half-marathon · Sun · Aug 16, 2026 · San Diego</span></td>
+        <td><span class="rule-tag rule-data">race facts</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">89 days · 12 weeks</span></td>
+        <td><span class="rule-tag rule-data">data</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">On track</span></td>
+        <td><span class="rule-tag rule-data">V3 trajectory state</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Canonical 4-state vocab</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">Single corroborating signal · one threshold workout trended faster at controlled HR.</span></td>
+        <td><span class="rule-tag rule-data">impersonal observation</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Mirrors web V6 voice</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Race detail</td>
+        <td><span class="copy-string">What would change our mind: a second corroborating signal — we'd revise to 'ahead.'</span></td>
+        <td><span class="rule-tag rule-coach">coach verdict ("we"/"our")</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Canonical falsifier prefix</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Settings</td>
+        <td><span class="copy-string">Notifications · Watch · Account · Help · Sign out</span></td>
+        <td><span class="rule-tag rule-data">nav labels</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Native settings convention</td>
+      </tr>
+      <tr>
+        <td class="col-screen">History</td>
+        <td><span class="copy-string">Workouts trending faster at controlled HR (3 of 4 last week).</span></td>
+        <td><span class="rule-tag rule-data">impersonal observation</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       WATCH COPY AUDIT
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Watch copy strings · every prose moment</div>
+
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th class="col-screen">Screen</th>
+        <th class="col-copy">Copy string</th>
+        <th class="col-rule">Voice rule</th>
+        <th class="col-verdict">V6</th>
+        <th class="col-note">Notes / fixes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-screen">Idle</td>
+        <td><span class="copy-string">Tue · Wk 1 Base</span></td>
+        <td><span class="rule-tag rule-data">plan context</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Idle</td>
+        <td><span class="copy-string">Ready ✓</span></td>
+        <td><span class="rule-tag rule-data">state chip</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Idle</td>
+        <td><span class="copy-string">Last time (4/15): paced fast +5s/mi · stay disciplined on the first 2 reps.</span></td>
+        <td><span class="rule-tag rule-warm">warm second-person</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Mirrors iPhone (intentional · same coach voice)</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Warmup</td>
+        <td><span class="copy-string">▶ WARMUP</span> / <span class="copy-string">HR · BPM · Z1</span></td>
+        <td><span class="rule-tag rule-data">phase + data label</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Work interval</td>
+        <td><span class="copy-string">⬤ WORK · 2/6</span> / <span class="copy-string">TARGET</span> / <span class="copy-string">CURRENT · MIN/MI</span></td>
+        <td><span class="rule-tag rule-data">labels</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Pace drift (amber)</td>
+        <td><span class="copy-string">⚠ DRIFTING · 2/6</span> / <span class="copy-string">+15s</span> / <span class="copy-string">↑ slower</span></td>
+        <td><span class="rule-tag rule-data">state + data</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>"slower" is observational, not warm</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Pace drift (red)</td>
+        <td><span class="copy-string">⚠ WELL OFF · 2/6</span></td>
+        <td><span class="rule-tag rule-data">state</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Pace drift (red)</td>
+        <td><span class="copy-string">PUSH IT</span></td>
+        <td><span class="rule-tag rule-warm">warm imperative</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Brief · imperative · no exclamation</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Recovery</td>
+        <td><span class="copy-string">● RECOVERY · after rep 2</span> / <span class="copy-string">ELAPSED</span></td>
+        <td><span class="rule-tag rule-data">labels</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Recovery</td>
+        <td><span class="copy-string">READY ✓</span></td>
+        <td><span class="rule-tag rule-data">state chip</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Body-state signal · ✓ checkmark not "Great!"</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Cooldown</td>
+        <td><span class="copy-string">Ease down. Nice work.</span></td>
+        <td><span class="rule-tag rule-warm">warm second-person</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Low-stakes warmth · the workout is over, this is the only place prose is permitted</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Paused</td>
+        <td><span class="copy-string">in Interval 3/6 · frozen at 6:31 target</span></td>
+        <td><span class="rule-tag rule-data">state context</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Paused</td>
+        <td><span class="copy-string">RESUME</span> / <span class="copy-string">END</span></td>
+        <td><span class="rule-tag rule-na">CTA</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Imperative</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Summary</td>
+        <td><span class="copy-string">Workout complete · 5/6 reps on target</span></td>
+        <td><span class="rule-tag rule-data">summary fact</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>No adjective on the 5/6 · just the number</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Summary</td>
+        <td><span class="copy-string">SAVE</span></td>
+        <td><span class="rule-tag rule-na">CTA</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       EDGE STATE COPY AUDIT
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Edge-state copy strings · the language deviations live here</div>
+
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th class="col-screen">Screen</th>
+        <th class="col-copy">Copy string</th>
+        <th class="col-rule">Voice rule</th>
+        <th class="col-verdict">V6</th>
+        <th class="col-note">Notes / fixes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-screen">Rest day</td>
+        <td><span class="copy-string">Tuesday's threshold + Thursday's intervals stacked up — sleep on it.</span></td>
+        <td><span class="rule-tag rule-warm">warm second-person</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Body-state cue · imperative without urgency</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Signals suspended</td>
+        <td><span class="copy-string">Signals suspended.</span></td>
+        <td><span class="rule-tag rule-data">state</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Single-clause state declaration</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Signals suspended</td>
+        <td><span class="copy-string">Injury logged · holding fitness reads steady. Update us when you ramp back.</span></td>
+        <td><span class="rule-tag rule-warm">warm + coach "us"</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Per-finding filter context (Rule 5) made explicit · uses "us" for the coach side, second-person warm for the runner side</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Network error (iPhone)</td>
+        <td><span class="copy-string">Can't reach faff.run · showing your last sync.</span></td>
+        <td><span class="rule-tag rule-data">state + impersonal observation</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>Doesn't blame user · doesn't apologize · just reports state</td>
+      </tr>
+      <tr>
+        <td class="col-screen">Network error (iPhone)</td>
+        <td><span class="copy-string">Last synced 9 min ago</span></td>
+        <td><span class="rule-tag rule-data">data</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Network error (iPhone)</td>
+        <td><span class="copy-string">Retry</span></td>
+        <td><span class="rule-tag rule-na">CTA</span></td>
+        <td class="verdict-ok">✓</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="col-screen">Low battery (watch)</td>
+        <td><span class="copy-string">Battery low · 8% · workout saving locally.</span></td>
+        <td><span class="rule-tag rule-data">state + impersonal observation</span></td>
+        <td class="verdict-ok">✓</td>
+        <td>State the fact, state the safeguard (data won't be lost), don't editorialize</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ════════════════════════════════════════════════════════════════
+       DEVIATIONS LIST
+       ════════════════════════════════════════════════════════════════ -->
+  <div class="section-title">Documented deviations from V6 web voice (none currently)</div>
+
+  <div class="note">
+    <strong>Native does not deviate from V6 web voice at this round.</strong> Every prose moment
+    on watch and every prose moment on iPhone maps cleanly to one of the three V6 categories
+    (warm second-person · impersonal observation · coach verdict). If a deviation is identified
+    during round 3 annotation, it gets logged here with the reason and the proposed fix.
+  </div>
+
+  <div class="note">
+    <strong>Voice carries across surfaces by design.</strong> The "Last time (4/15)…" coach line
+    appears identically on the iPhone Today screen and on the watch idle screen. This is
+    intentional · the runner experiences one coach with one voice, regardless of which surface
+    surfaces the cue. The same canonical V3 trajectory state ("On track") and the same canonical
+    falsifier prefix ("What would change our mind:") appear on the iPhone race detail screen
+    and on the web race hero · web ↔ iPhone parity is enforced.
+  </div>
+
+  <div class="note">
+    <strong>Banned patterns checked for · none found:</strong>
+    <ul style="margin: 6px 0 0 20px;">
+      <li>No exclamation marks anywhere · ✓</li>
+      <li>No emoji except utility marks (✓, ⚠, ▶, etc. · functional iconography, not emotional decoration)</li>
+      <li>No "Great job", "Keep going", "Almost there" generics · ✓</li>
+      <li>No adjectives on numbers ("ambitious 6:31") · ✓</li>
+      <li>No second-person warmth on pure data ("Your current pace") · we say "CURRENT · MIN/MI" instead · ✓</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

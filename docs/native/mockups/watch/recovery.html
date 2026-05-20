@@ -2,78 +2,120 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Watch · RECOVERY</title>
+<title>Watch · RECOVERY (v2 · count UP with HR-readiness signal)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <script defer src="../assets/annotate.js"></script>
 <style>
-  .phase-screen { height: 100%; padding: 16px 14px 12px; display: flex; flex-direction: column; }
+  .phase-screen { height: 100%; padding: 14px 14px 10px; display: flex; flex-direction: column; }
   .phase-header {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
   }
   .phase-header .phase-type {
-    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
+    font-family: var(--sf-compact); font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
     color: var(--green);
   }
   .phase-header .interval-count {
-    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
+    font-family: var(--sf-compact); font-size: 11px; font-weight: 800;
     color: var(--text-l-2);
   }
   .dark .phase-header .interval-count { color: var(--text-d-2); }
 
   .progress-line {
     width: 100%; height: 3px; background: rgba(255,255,255,0.15);
-    border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+    border-radius: 2px; overflow: hidden; margin-bottom: 4px;
   }
   .light .progress-line { background: var(--border-l); }
-  .progress-line .fill { height: 100%; background: var(--green); width: 35%; }
+  .progress-line .fill { height: 100%; background: var(--green); width: 60%; }
 
-  .countdown-block {
-    text-align: center;
+  /* Hero · the count-UP elapsed timer at 100pt · big green number */
+  .hero {
     flex: 1;
-    display: flex; flex-direction: column; justify-content: center;
+    text-align: center;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative;
   }
-  .countdown-label {
-    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
-    letter-spacing: 1.2px; text-transform: uppercase;
-    color: var(--text-l-3); margin-bottom: 6px;
-  }
-  .dark .countdown-label { color: var(--text-d-3); }
-  .countdown {
+  .hero .elapsed {
     font-family: var(--sf-compact);
-    font-size: 72px; font-weight: 800; line-height: 0.95;
-    letter-spacing: -3px;
+    font-size: 100px;
+    font-weight: 800;
+    line-height: 0.88;
+    letter-spacing: -4px;
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero .elapsed.ready { color: #1f6a21; }   /* deeper green when HR has recovered enough */
+  .hero .unit {
+    font-family: var(--sf-compact);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--text-l-3);
+    margin-top: 0;
+  }
+  .dark .hero .unit { color: var(--text-d-3); }
+
+  /* "Ready" chip · appears when HR has dropped below readiness
+     threshold (e.g., 130 bpm) signaling the runner can start the next
+     rep ahead of the recovery window */
+  .ready-chip {
+    position: absolute;
+    top: 0; right: 0;
+    background: #1f6a21;
+    color: #fff;
+    font-family: var(--sf-compact);
+    font-size: 12px; font-weight: 800;
+    padding: 4px 9px;
+    border-radius: 6px;
+    letter-spacing: 0.4px;
+  }
+
+  /* Next-up preview · primes the runner for the next rep */
+  .next-up {
+    background: var(--green-soft);
+    border-radius: 12px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .next-up .arrow {
+    font-family: var(--sf-compact);
+    font-size: 16px;
+    font-weight: 800;
     color: var(--green);
   }
-
-  .next-up {
-    text-align: center;
-    background: var(--green-soft);
-    border-radius: 14px;
-    padding: 10px 12px;
-    margin-bottom: 6px;
-  }
   .next-up .label {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 800;
     letter-spacing: 1.2px; text-transform: uppercase;
-    color: var(--green); margin-bottom: 2px;
+    color: var(--green);
   }
   .next-up .text {
-    font-family: var(--sf-compact); font-size: 13px; font-weight: 600;
+    font-family: var(--sf-compact); font-size: 13px; font-weight: 700;
+    flex: 1;
   }
 
+  /* Footer · HR drop tells the runner about recovery quality */
   .stat-bar {
-    display: flex; justify-content: space-around;
-    padding-top: 4px;
+    display: flex; justify-content: space-between;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--border-l);
   }
+  .dark .stat-bar { border-top-color: var(--border-d); }
   .stat-bar .stat { text-align: center; flex: 1; }
   .stat-bar .stat .num {
-    font-family: var(--sf-compact); font-size: 14px; font-weight: 700;
+    font-family: var(--sf-compact); font-size: 22px; font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
+  .stat-bar .stat .num.green { color: var(--green); }
   .stat-bar .stat .lbl {
-    font-family: var(--sf-compact); font-size: 8px; font-weight: 600;
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
     letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3);
+    color: var(--text-l-3); margin-top: 2px;
   }
   .dark .stat-bar .stat .lbl { color: var(--text-d-3); }
 </style>
@@ -82,13 +124,34 @@
 <div class="page">
 
   <div class="page-header">
-    <h1>Watch · RECOVERY</h1>
-    <div class="subtitle">Recovery phase · countdown to next interval · next-up preview · HR drifting down</div>
+    <h1>Watch · RECOVERY (v2)</h1>
+    <div class="subtitle">Counts UP through recovery · HR drop is the readiness signal · "Ready" chip appears when HR ≤ readiness threshold</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
-  <div class="mode-pair">
+  <div class="note">
+    <strong>Why count UP, not down · documented for future agents:</strong>
+    <ul style="margin: 8px 0 0 20px;">
+      <li><strong>The relevant question during recovery is "how long has this lasted?"</strong>
+          not "how much is left?" The runner asks "am I ready to start the next rep?" The HR drop
+          is the answer to that, not the clock.</li>
+      <li><strong>Counting down adds psychological pressure of recovery ending.</strong> A countdown
+          says "your rest is shrinking, hurry to enjoy it." That's the opposite of recovery's
+          purpose.</li>
+      <li><strong>Count-up turns recovery into a measurement.</strong> "I've taken 0:36 to recover.
+          HR dropped 16 BPM in that time. I'm ready (or not)." That's what the runner needs.</li>
+      <li><strong>The planned recovery duration is still visible</strong> · "60s planned" lives in
+          the next-up card so the runner knows the workout's intent without having a countdown in
+          their face.</li>
+      <li><strong>The "Ready" chip appears earlier than 60s if HR has dropped enough.</strong>
+          This is the V5 lift · pushed from web · the watch should not enforce a fixed clock
+          recovery if the runner's CV system has already cleared.</li>
+    </ul>
+  </div>
 
+  <div class="section-title">State A · mid-recovery (HR still dropping, not yet at readiness floor)</div>
+
+  <div class="mode-pair">
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
       <div class="watch-frame light">
@@ -96,21 +159,25 @@
         <div class="screen">
           <div class="watch-content phase-screen">
             <div class="phase-header">
-              <div class="phase-type">RECOVERY</div>
-              <div class="interval-count">3 / 6</div>
+              <div class="phase-type">● RECOVERY · after rep 2</div>
+              <div class="interval-count">~60s planned</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="countdown-block">
-              <div class="countdown-label">REMAINING</div>
-              <div class="countdown">0:39</div>
+            <div class="hero">
+              <div class="elapsed">0:36</div>
+              <div class="unit">ELAPSED</div>
             </div>
             <div class="next-up">
-              <div class="label">NEXT UP</div>
-              <div class="text">Interval 4/6 · 6:31 pace</div>
+              <span class="arrow">→</span>
+              <div>
+                <div class="label">NEXT</div>
+                <div class="text">Rep 3 · 800m @ 6:31</div>
+              </div>
             </div>
             <div class="stat-bar">
-              <div class="stat"><div class="num">8:54</div><div class="lbl">PACE</div></div>
-              <div class="stat"><div class="num">154</div><div class="lbl">BPM ↓</div></div>
+              <div class="stat"><div class="num green">152</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num green">↓16</div><div class="lbl">HR DROP</div></div>
+              <div class="stat"><div class="num">24s</div><div class="lbl">TO GO</div></div>
             </div>
           </div>
         </div>
@@ -124,38 +191,125 @@
         <div class="screen">
           <div class="watch-content phase-screen">
             <div class="phase-header">
-              <div class="phase-type">RECOVERY</div>
-              <div class="interval-count">3 / 6</div>
+              <div class="phase-type">● RECOVERY · after rep 2</div>
+              <div class="interval-count">~60s planned</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="countdown-block">
-              <div class="countdown-label">REMAINING</div>
-              <div class="countdown">0:39</div>
+            <div class="hero">
+              <div class="elapsed">0:36</div>
+              <div class="unit">ELAPSED</div>
             </div>
             <div class="next-up">
-              <div class="label">NEXT UP</div>
-              <div class="text">Interval 4/6 · 6:31 pace</div>
+              <span class="arrow">→</span>
+              <div>
+                <div class="label">NEXT</div>
+                <div class="text">Rep 3 · 800m @ 6:31</div>
+              </div>
             </div>
             <div class="stat-bar">
-              <div class="stat"><div class="num">8:54</div><div class="lbl">PACE</div></div>
-              <div class="stat"><div class="num">154</div><div class="lbl">BPM ↓</div></div>
+              <div class="stat"><div class="num green">152</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num green">↓16</div><div class="lbl">HR DROP</div></div>
+              <div class="stat"><div class="num">24s</div><div class="lbl">TO GO</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">State B · HR cleared (≤130 bpm) before planned recovery ends · "Ready" chip appears</div>
+
+  <div class="mode-pair">
+    <div class="mockup-slot">
+      <div class="mode-label">LIGHT</div>
+      <div class="watch-frame light">
+        <div class="watch-status">9:58</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header">
+              <div class="phase-type">● RECOVERY · after rep 2</div>
+              <div class="interval-count">~60s planned</div>
+            </div>
+            <div class="progress-line"><div class="fill" style="width: 85%;"></div></div>
+            <div class="hero">
+              <div class="ready-chip">READY ✓</div>
+              <div class="elapsed ready">0:51</div>
+              <div class="unit">ELAPSED</div>
+            </div>
+            <div class="next-up">
+              <span class="arrow">→</span>
+              <div>
+                <div class="label">NEXT</div>
+                <div class="text">Rep 3 · 800m @ 6:31</div>
+              </div>
+            </div>
+            <div class="stat-bar">
+              <div class="stat"><div class="num green">128</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num green">↓40</div><div class="lbl">HR DROP</div></div>
+              <div class="stat"><div class="num">9s</div><div class="lbl">TO GO</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="mockup-slot">
+      <div class="mode-label">DARK</div>
+      <div class="watch-frame dark">
+        <div class="watch-status">9:58</div>
+        <div class="screen">
+          <div class="watch-content phase-screen">
+            <div class="phase-header">
+              <div class="phase-type">● RECOVERY · after rep 2</div>
+              <div class="interval-count">~60s planned</div>
+            </div>
+            <div class="progress-line"><div class="fill" style="width: 85%;"></div></div>
+            <div class="hero">
+              <div class="ready-chip">READY ✓</div>
+              <div class="elapsed ready">0:51</div>
+              <div class="unit">ELAPSED</div>
+            </div>
+            <div class="next-up">
+              <span class="arrow">→</span>
+              <div>
+                <div class="label">NEXT</div>
+                <div class="text">Rep 3 · 800m @ 6:31</div>
+              </div>
+            </div>
+            <div class="stat-bar">
+              <div class="stat"><div class="num green">128</div><div class="lbl">BPM</div></div>
+              <div class="stat"><div class="num green">↓40</div><div class="lbl">HR DROP</div></div>
+              <div class="stat"><div class="num">9s</div><div class="lbl">TO GO</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong>State transitions · spec for the SwiftUI state machine:</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>Countdown is the BIG number · green (recovery / OK to relax) · counts down to next work interval</li>
-      <li><strong>No pace target during recovery</strong> · runner just jogs · pace shown as informational</li>
-      <li>"Next up" card primes the runner for what's coming · they're already mentally preparing</li>
-      <li>HR shown with a small <strong>↓</strong> arrow when trending down · "cooling" · positive cue</li>
-      <li>3-second pre-end haptic at 0:03 remaining · "interval 4 is about to start"</li>
+      <li><strong>State A → State B trigger</strong>: HR ≤ readiness_threshold (default: 130 bpm
+          or 72% of max HR, whichever is lower) FOR sustained 3 seconds.</li>
+      <li><strong>State B does NOT auto-advance.</strong> The runner taps the screen (or twists the
+          crown) to start the next rep early. Watch buzzes a soft single-pulse haptic when ready
+          chip appears (cue: "you can go").</li>
+      <li><strong>Recovery max-cap.</strong> If the runner ignores the ready chip and lets the
+          clock run, the watch still ends recovery at the planned duration (60s here) and
+          auto-advances to the next rep. The plan is the upper bound; HR-clear is the floor.</li>
+      <li><strong>If HR doesn't clear by the planned end</strong>: ready chip never appears,
+          the rep starts on schedule, and the watch flags it later in the summary as "rep 3
+          started with elevated HR."</li>
     </ul>
+  </div>
+
+  <div class="note">
+    <strong>What this design assumes about the runner:</strong> they trust their body. The
+    countdown-to-zero pattern (common on Garmin / Polar) assumes the workout's clock is the
+    authority. This design says the workout's clock is the <em>upper bound</em>, but the runner's
+    CV recovery is the actual authority on when to start the next rep. That's V5 doctrine ·
+    physiology over prescription, prescription over guess.
   </div>
 
 </div>
