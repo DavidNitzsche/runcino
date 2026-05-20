@@ -19,10 +19,26 @@ import Foundation
 // MARK: - Configuration
 
 enum API {
-    /// Backend base URL.  Production: https://faff.run.  Override
-    /// to http://localhost:3000 (or your Mac's LAN IP) during local
-    /// dev against `cd web && npm run dev`.
-    static let baseURL = URL(string: "https://faff.run")!
+    /// Backend base URL.  Defaults to production (faff.run) in
+    /// release builds; falls back to localhost in DEBUG builds so
+    /// the iPhone simulator hits the Mac's `npm run dev` server.
+    ///
+    /// To override either default for one-off testing, set the
+    /// FAFF_API_BASE_URL environment variable on the Xcode scheme
+    /// (Product → Scheme → Edit Scheme → Run → Arguments → Environment
+    /// Variables).  Useful for pointing at a staging deploy or your
+    /// Mac's LAN IP if testing from a physical iPhone on the same Wi-Fi.
+    static let baseURL: URL = {
+        if let override = ProcessInfo.processInfo.environment["FAFF_API_BASE_URL"],
+           let url = URL(string: override) {
+            return url
+        }
+        #if DEBUG
+        return URL(string: "http://localhost:3000")!
+        #else
+        return URL(string: "https://faff.run")!
+        #endif
+    }()
 }
 
 // MARK: - Error types
