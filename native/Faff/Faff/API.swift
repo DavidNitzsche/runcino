@@ -36,7 +36,9 @@ enum API {
         #if DEBUG
         return URL(string: "http://localhost:3000")!
         #else
-        return URL(string: "https://faff.run")!
+        // Canonical API host. The apex faff.run 301-redirects to www, and
+        // redirects can mangle POST bodies (login), so target www directly.
+        return URL(string: "https://www.faff.run")!
         #endif
     }()
 }
