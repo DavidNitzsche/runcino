@@ -786,29 +786,36 @@ struct RaceDetailView: View {
             .overlay(Circle().stroke(.white, lineWidth: 2))
     }
 
-    /// Elevation profile. One connected area, filled by a horizontal
-    /// gradient keyed to the race phases (climb = amber, descent = blue,
-    /// flat = green) so the colour under the curve maps to the pacing
-    /// table below. The line rides on top for definition.
+    /// Elevation profile. The area under the curve is coloured per
+    /// PHASE (climb = amber, descent = blue, flat = green) — each sample
+    /// segment gets its phase's solid colour, so the fill reads as clean
+    /// bands that map to the pacing table (no per-segment gradient
+    /// striping). Monotone interpolation keeps the curve smooth without
+    /// overshoot. The ink line rides on top for definition.
     @ViewBuilder
     private func elevationProfile(_ samples: [RaceCourseSample], phases: [RacePhase]) -> some View {
         let minE = samples.map(\.e).min() ?? 0
         let maxE = samples.map(\.e).max() ?? 1
         let total = max(samples.last?.d ?? 1, 0.0001)
-        let stops = Self.phaseStops(phases, total: total)
+        let pad = max((maxE - minE) * 0.12, 8)
+        let base = minE - pad
         Chart {
             ForEach(samples) { s in
-                AreaMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+                AreaMark(x: .value("Mile", s.d),
+                         yStart: .value("base", base),
+                         yEnd: .value("Elevation", s.e))
+                    .foregroundStyle(Self.phaseColorAt(s.d, phases).opacity(0.24))
+                    .interpolationMethod(.monotone)
             }
-            .foregroundStyle(LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing))
             ForEach(samples) { s in
                 LineMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
+                    .foregroundStyle(Faff.C.ink.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1.6, lineJoin: .round))
+                    .interpolationMethod(.monotone)
             }
-            .foregroundStyle(Faff.C.ink.opacity(0.55))
-            .lineStyle(StrokeStyle(lineWidth: 1.5))
         }
         .chartXScale(domain: 0...total)
-        .chartYScale(domain: (minE - 8)...(maxE + 12))
+        .chartYScale(domain: base...(maxE + pad))
         .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { v in
             AxisValueLabel { if let mi = v.as(Double.self) { Text("\(Int(mi))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
         } }
@@ -818,21 +825,10 @@ struct RaceDetailView: View {
         .frame(height: 96)
     }
 
-    /// Hard-edged gradient stops, one band per phase, coloured by grade.
-    static func phaseStops(_ phases: [RacePhase], total: Double) -> [Gradient.Stop] {
-        guard !phases.isEmpty, total > 0 else {
-            return [.init(color: Faff.C.ink.opacity(0.12), location: 0),
-                    .init(color: Faff.C.ink.opacity(0.04), location: 1)]
-        }
-        var stops: [Gradient.Stop] = []
-        for p in phases {
-            let c = gradeColor(p.meanGradePct ?? 0).opacity(0.30)
-            let s = min(max((p.startMi ?? 0) / total, 0), 1)
-            let e = min(max((p.endMi ?? 0) / total, 0), 1)
-            stops.append(.init(color: c, location: s))
-            stops.append(.init(color: c, location: e))
-        }
-        return stops
+    /// Phase colour for a given mile — used to band the elevation fill.
+    static func phaseColorAt(_ mile: Double, _ phases: [RacePhase]) -> Color {
+        let p = phases.first { mile >= ($0.startMi ?? 0) && mile <= ($0.endMi ?? 0) } ?? phases.last
+        return gradeColor(p?.meanGradePct ?? 0)
     }
 
     // MARK: Phase-by-phase pacing
