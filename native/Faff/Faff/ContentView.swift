@@ -17,6 +17,22 @@ struct ContentView: View {
     @State private var isAuthenticated: Bool = TokenStore.shared.isLoggedIn
 
     var body: some View {
+        #if DEBUG
+        // Design-review hooks: launch with `-uiPreview` / `-previewDetail`
+        // to render a screen directly (no login) for simulator
+        // screenshots. Stripped from release builds.
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-previewDetail") {
+            return AnyView(DetailPreviewLoader())
+        }
+        if args.contains("-uiPreview") {
+            return AnyView(TodayView(onLogout: {}))
+        }
+        #endif
+        return AnyView(routed)
+    }
+
+    private var routed: some View {
         Group {
             if isAuthenticated {
                 TodayView(onLogout: {
@@ -39,6 +55,21 @@ struct ContentView: View {
         .onAppear { WatchSync.shared.activate() }
     }
 }
+
+#if DEBUG
+/// Fetches the overview, then shows the detail with real data (for the
+/// `-previewDetail` screenshot path).
+private struct DetailPreviewLoader: View {
+    @State private var overview: OverviewResponse?
+    var body: some View {
+        Group {
+            if let overview { WorkoutDetailView(overview: overview) }
+            else { ProgressView() }
+        }
+        .task { overview = try? await OverviewAPI.fetch() }
+    }
+}
+#endif
 
 #Preview {
     ContentView()
