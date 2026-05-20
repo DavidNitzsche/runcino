@@ -198,34 +198,206 @@ the cue.  Prose copy only appears on:
 
 ---
 
-## Open design questions for David
+## Open design questions for David · ANSWERED in round 2
 
-These warrant a quick call before implementation starts:
+These were the 6 open questions from round 1. All answered + locked
+in round 2 deliverables. Original questions kept for archaeology;
+answers below each.
 
 1. **App icon · wordmark vs pictogram?**  Mockup uses lowercase "faff"
    wordmark on orange gradient.  Alternative: orange "F" monogram,
    or a running-stride pictogram.
+
+   **ANSWERED · dual-asset split, Apple-standard pattern.**
+   - iPhone: wordmark "faff" (italic Bebas Neue, orange gradient) — reads cleanly at 60×60+ pt
+   - Watch: italic "f" monogram — 24pt-legible, matches Apple Watch home grid rhythm
+   - Pictogram REJECTED · visually indistinguishable from Apple Workout (brand-recognition risk)
+   - Capital "F" REJECTED · loses italic-wordmark brand link
+   - See `watch/icon-options.html` for rendered candidates at 100pt / 50pt / 24pt + honeycomb context
 
 2. **Light mode default vs dark mode default?**  Currently: light on
    iPhone (matches iOS system default), dark on watch during
    workouts (battery + glare).  Alternative: full system-respect
    (dark when iOS is dark, light when iOS is light).
 
+   **ANSWERED:**
+   - iPhone: respect system setting. No surprises.
+   - Watch: nuanced. During active workouts, force dark regardless of system (OLED battery + outdoor glare + sweat-on-screen contrast). Outside workouts, follow system.
+   - The transition (watch in light mode pre-workout → workout starts → screen goes dark) must feel intentional, not glitchy. Implementation requirement for SwiftUI animation.
+
 3. **iPhone tab bar · 4 tabs (Today / History / Race / Settings) or
    fewer?**  4 tabs is the iOS sweet spot.  If you'd rather defer
    History to a "+ menu" or drop it, the tab count goes to 3.
 
+   **ANSWERED · three tabs for v1: Today / Race / Settings. History dropped.**
+   - Reasoning: history is web-screen-real-estate work (trends, splits, retrospectives). iPhone is daily-touch.
+   - Cascading impact: Race detail does not link to "see all past races" so no rerouting needed. Per-workout history access (rare) comes via the Race detail screen or a Settings sub-screen.
+   - All mockups using a 4-tab bar (signals-suspended.html, others) updated round 2 to 3-tab layout.
+
 4. **Race detail screen · projection chart deferred?**  C9 chart not
    shown on iPhone v1.  Web has it.  Easy to add if you want it on
    iPhone too — would push the trajectory card down on the screen.
+
+   **ANSWERED · defer C9 chart on iPhone v1.** Trajectory tile (AHEAD / ON TRACK / BEHIND / COLLECTING) carries the read. Chart's depth-across-12-weeks value needs screen real estate, doesn't compress to iPhone. Web keeps the chart; native users wanting depth open web for deep race planning.
 
 5. **Drift alerts · audible vs haptic-only?**  Currently haptic-only
    (the watch buzzes).  Adding an audible cue ("ding") for sustained
    red drift could help on noisy runs · but requires user permission
    for audio playback during workouts.  Defer or include?
 
+   **ANSWERED · haptic-only for v1.** No audio. Audio = permission management, music conflicts, headphone routing, no-headphones edge cases. The watch buzz is the entire point. If v1 testing reveals haptics aren't catching attention during hard intervals (sweat, motion, sleeve coverage), revisit. Don't add audio speculatively.
+
 6. **Watch app icon · approval needed.**  Mockup shows the wordmark
    on the orange gradient.  Approve or send back for iteration.
+
+   **ANSWERED in #1 — italic "f" monogram (not wordmark) on watch.**
+
+---
+
+## Round 2 design decisions · captured for SwiftUI implementation
+
+### Work interval screen · ONE pattern, THREE configurations
+
+Highest-stakes screen. One layout pattern adapts to workout context.
+
+**Hero metric defended** — current pace, not target. During execution
+the runner is working AGAINST current pace; target is the prescription
+already known going in. Delta chip color carries the read in 0.5s
+(green/amber/red).
+
+**Three variants:**
+1. **Threshold/interval** — pace prescription · current pace hero ·
+   target reference · HR small in footer
+2. **Easy / Z2 ceiling** — HR prescription · HR hero · ceiling
+   reference (labeled "CEILING" not "TARGET") · pace demoted to footer ·
+   phase chip turns green
+3. **Race-pace + HR ceiling** — both prescriptions · pace hero
+   (like #1) · amber/red HR-ceiling chip overlay top-left when CV
+   cost climbs into the warning band
+
+**Decision tree** (lives in code):
+```
+pace_target AND NOT hr_ceiling → V1
+hr_ceiling AND NOT pace_target → V2
+both → V3
+```
+
+See `watch/work-interval.html` for all three variants + inline
+design defenses.
+
+### Recovery screen · counts UP, not down
+
+The relevant question during recovery is "how long has this lasted?"
+not "how much is left?" The runner asks "am I ready to start the next
+rep?" HR drop is the answer to that, not the clock.
+
+**State machine:**
+- State A (mid-recovery): HR still elevated, elapsed counter counts up
+- State B (HR cleared, ≤130 bpm or 72% of max HR): "READY ✓" chip
+  appears + soft single-pulse haptic; runner can tap to start next rep early
+- Recovery max-cap: planned duration (60s) is the upper bound; HR-clear
+  is the floor; auto-advance at planned end even without HR clear
+- If HR didn't clear by planned end: rep starts on schedule, watch
+  flags it in summary as "rep N started with elevated HR"
+
+This is V5 doctrine · physiology over prescription, prescription over guess.
+
+See `watch/recovery.html` for both states.
+
+### Always-on display · designed separately, not just dimmed
+
+Six AOD design principles applied uniformly across all four phase
+screens (warmup / work / recovery / cooldown):
+
+1. Pure black background always (overrides system light-mode setting)
+2. Hero numeral desaturates to pure white (highest-contrast value)
+3. State color collapses from saturated fill to a 2px accent strip
+   (orange=work, green=recovery, blue=warmup, purple=cooldown, amber/red=drift)
+4. Delta chip loses background fill, becomes tinted text only
+5. Footer labels shrink to 8pt at 40% opacity but are kept (safety
+   net for sweat / sleeve coverage / late-night conditions)
+6. Refresh: HR/pace/cadence at 1Hz, elapsed at 1Hz, distance at 0.5Hz
+
+**SwiftUI implementation requirement:** use the `isLuminanceReduced`
+EnvironmentValue. Each phase view renders a conditional branch on
+this value · don't compute AOD layout from active layout at runtime ·
+ship two distinct render paths so each can be optimized independently.
+
+See `watch/always-on.html` for active + AOD pairings per phase.
+
+### OLED orange tuning
+
+Brand orange `#E85D26` on web is sRGB-tuned for backlit LCD. On
+Apple Watch OLED it appears more saturated and "loud" with halation
+around the boundary.
+
+**Proposed dark-mode palette** (Assets.xcassets ColorSets with Light + Dark variants):
+
+| Color | Light (web hex) | Dark (OLED-tuned) | Δ |
+|---|---|---|---|
+| race-color | #E85D26 | #DC5F2E | −4% saturation |
+| recovery | #2CA82F | #4ade80 | lighter for OLED |
+| warn | #B3450A | #F3AD38 | much lighter — readable on black |
+| red | #c92a2a | #ff7070 | lighter for OLED contrast |
+| blue-warmup | #2c5fc7 | #6f9bff | lighter |
+| purple-cooldown | #6f42c1 | #b85cff | slightly desaturated |
+
+**Open issue:** final lock requires physical device testing at three
+light conditions (indoor / sunlight / dawn-dusk). Mockup approves
+the candidate range; hardware approves the final hex.
+
+See `watch/oled-orange-test.html` for swatch grid + side-by-side
+work-interval rendering at 100% vs 96% saturation.
+
+### Dynamic Type 2× survival
+
+Most-cluttered Today layout rendered at 1.0× / 1.5× / 2.0× scales.
+Hierarchy survives all three. One known fix:
+
+- Recovery row (Sleep / RHR / HRV) switches to vertical stack at
+  >1.8× DT via SwiftUI ViewThatFits
+
+Optional: cap large-title at 1.8× via `.dynamicTypeSize` modifier so
+"Tuesday" doesn't dominate the viewport at 3×.
+
+See `iphone/today-dynamic-type.html` for the rendered comparison.
+
+### Voice consistency · V6 maintained across surfaces
+
+Every copy string on every screen tagged by V6 voice rule (warm
+second-person · impersonal observation · coach verdict "we"/"our").
+35+ strings audited; no deviations currently.
+
+Banned patterns confirmed absent:
+- No exclamation marks
+- No emoji except utility marks (✓, ⚠, ▶, etc.)
+- No "Keep going" / "Great job" generics
+- No adjectives on numbers
+- No second-person warmth on pure data
+
+Coach line "Last time (4/15)…" deliberately identical on iPhone Today
+and watch idle — runner experiences one coach voice regardless of surface.
+
+See `voice-audit.html` for the full string-by-string audit.
+
+### Annotation tooling · round 2 review infrastructure
+
+Self-bootstrapping inline-note system shared by all mockup pages
+(`assets/annotate.js` + companion CSS). Toolbar top-right gives:
+
+- **Annotate** · click any element to leave a status-tagged note (approved / iterate / question)
+- **Notes** · side panel listing all notes on current page, click to jump-scroll
+- **Export all** · single markdown doc, all pages, status counts per page
+- **Import** · paste markdown back, notes re-anchor by CSS selector
+
+Notes persist via localStorage. Status pins (numbered, color-coded by
+status) overlay each annotated element.
+
+**Workflow:** David toggles Annotate, leaves notes, exports MD, sends
+back. Claude opens any mockup, hits Import, pastes the markdown — sees
+every note re-anchored in context. Round 3 iterates from that input.
+
+---
 
 ---
 
