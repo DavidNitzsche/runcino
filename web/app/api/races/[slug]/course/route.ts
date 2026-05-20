@@ -29,9 +29,9 @@ import { getRaceDB } from '@/lib/race-store';
 import { ensureSeed } from '@/lib/seed-server';
 import { requireActiveUser } from '@/lib/auth';
 import { analyzeGpx } from '@/lib/gpx-analysis';
-import { computeAggregateVdot } from '@/lib/compute-vdot';
-import { vdotRow } from '@/lib/vdot';
+import { vdotRow, vdotSnapshot } from '@/lib/vdot';
 import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
+import { gatherCoachState } from '@/lib/coach-state';
 
 const M_PER_MI = 1609.344;
 const FT_PER_M = 3.28084;
@@ -53,9 +53,13 @@ function distKeyFor(distanceMi: number): 'mileS' | 'km5S' | 'km10S' | 'km15S' | 
 }
 
 /**
- * Mirror the /races/[slug] web page's readiness-VDOT math EXACTLY so the
- * iPhone race detail and the web race page show the same projection for
- * the same user (computeAggregateVdot — not vdotSnapshot/resolveFitness).
+ * Race projection. Sources current VDOT from vdotSnapshot — the ONE
+ * unified accessor (Tier 1 = aggregate, the same number /profile + the
+ * web race page show; Tier 2 = single-best fallback when there are no
+ * curated races). Identical to what the overview/coach engine use, so
+ * the iPhone race detail, the overview, and the web all agree for a
+ * given account. The goal-VDOT inverse lookup + T-pace gap mirror the
+ * /races/[slug] web page exactly.
  */
 async function computeProjection(userId: string | null | undefined, distanceMi: number, goalFinishS: number) {
   try {
@@ -70,9 +74,10 @@ async function computeProjection(userId: string | null | undefined, distanceMi: 
 
 async function computeProjectionInner(userId: string | null | undefined, distanceMi: number, goalFinishS: number) {
   if (!(goalFinishS > 0) || !(distanceMi > 0)) return null;
-  const agg = await computeAggregateVdot(userId);
-  if (!agg || agg.value <= 0) return null;
-  const cv = agg.value;
+  const state = await gatherCoachState({ userId: userId ?? undefined });
+  const snap = vdotSnapshot(state);
+  if (!snap || snap.vdot <= 0) return null;
+  const cv = snap.vdot;
   const row = vdotRow(cv);
   const distKey = distKeyFor(distanceMi);
   if (!row || !distKey) return null;
@@ -100,7 +105,7 @@ async function computeProjectionInner(userId: string | null | undefined, distanc
   }
   return {
     currentVdot: Math.round(cv * 10) / 10,
-    currentVdotLabel: agg.windowLabel,
+    currentVdotLabel: snap.source?.name ?? 'Aggregate fitness',
     predictedFinishS: Math.round(predicted),
     predictedDisplay: fmtTime(predicted),
     goalFinishS,
