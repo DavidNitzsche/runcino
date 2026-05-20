@@ -325,8 +325,8 @@ struct MoreView: View {
             }
             VStack(alignment: .leading, spacing: 0) {
                 Text("INTEGRATIONS").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim).padding(.bottom, 4)
-                setRow("Apple Health", connected: overview.hasHealthData)
-                setRow("Strava", connected: false)
+                setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false))
+                setRow("Strava", connected: overview.connectors?.contains("strava") ?? false)
                 setRow("Apple Watch", connected: false)
             }
             .faffCard()

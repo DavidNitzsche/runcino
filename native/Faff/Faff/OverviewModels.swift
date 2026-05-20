@@ -30,6 +30,9 @@ struct OverviewResponse: Decodable {
     /// Actual miles logged per day this week (dateISO → mi). Drives
     /// honest "done" markers. Empty/absent for anonymous reads.
     let completedByDate: [String: Double]?
+    /// Active connector providers (e.g. ["strava"]). Real integration
+    /// status for the More tab. Empty/absent for anonymous reads.
+    let connectors: [String]?
 }
 
 struct OState: Decodable {
