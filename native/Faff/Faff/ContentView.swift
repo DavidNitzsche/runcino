@@ -26,7 +26,7 @@ struct ContentView: View {
             return AnyView(DetailPreviewLoader())
         }
         if args.contains("-uiPreview") {
-            return AnyView(TodayView(onLogout: {}))
+            return AnyView(RootTabView(onLogout: {}))
         }
         #endif
         return AnyView(routed)
@@ -35,7 +35,7 @@ struct ContentView: View {
     private var routed: some View {
         Group {
             if isAuthenticated {
-                TodayView(onLogout: {
+                RootTabView(onLogout: {
                     Task {
                         await FaffAPI.shared.logout()
                         isAuthenticated = false

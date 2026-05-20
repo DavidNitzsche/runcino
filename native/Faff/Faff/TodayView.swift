@@ -11,73 +11,30 @@
 import SwiftUI
 
 struct TodayView: View {
+    let overview: OverviewResponse
     let onLogout: () -> Void
 
-    @State private var overview: OverviewResponse?
-    @State private var loadError: String?
     @State private var showDetail = false
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 topbar(overview)
-                content
+                weekStrip(overview)
+                Button { showDetail = true } label: { heroCard(overview) }
+                    .buttonStyle(.plain)
+                actionButtons
+                readinessCard(overview)
+                CheckInCard()
             }
             .padding(.horizontal, Faff.S.pageEdge)
             .padding(.top, 4)
             .padding(.bottom, 24)
         }
         .background(Faff.C.bg.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom, spacing: 0) { FaffTabBar(active: .today) }
-        .task { await load() }
-        // Re-pull on every foreground so it always shows the current day,
-        // never a stale yesterday.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await load() } }
-        }
         .sheet(isPresented: $showDetail) {
-            if let o = overview { WorkoutDetailView(overview: o) }
+            WorkoutDetailView(overview: overview)
         }
-    }
-
-    private func load() async {
-        loadError = nil
-        do { overview = try await OverviewAPI.fetch() }
-        catch { loadError = error.localizedDescription }
-    }
-
-    // ── Content states ────────────────────────────────────────────
-    @ViewBuilder private var content: some View {
-        if let o = overview, o.ok {
-            weekStrip(o)
-            coachStrip(o)
-            Button { showDetail = true } label: { heroCard(o) }
-                .buttonStyle(.plain)
-            actionButtons
-            readinessCard(o)
-            CheckInCard()
-        } else if let loadError {
-            stateCard("Couldn't load today", loadError)
-        } else if let o = overview, !o.ok {
-            stateCard("Couldn't load today", "The coach service returned an error.")
-        } else {
-            loadingView
-        }
-    }
-
-    // ── Branded loading moment ────────────────────────────────────
-    private var loadingView: some View {
-        VStack(spacing: 14) {
-            Spacer(minLength: 120)
-            Text("FAFF").font(Faff.F.display(44)).italic().tracking(2)
-                .foregroundStyle(Color.faffMark)
-            ProgressView().tint(Faff.C.race)
-            Text("Loading today…").font(Faff.F.inter(11, .medium)).tracking(0.5)
-                .foregroundStyle(Faff.C.textDim)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, minHeight: 420)
     }
 
     // ── Week strip (Runna-style) ──────────────────────────────────
@@ -168,41 +125,6 @@ struct TodayView: View {
         return String(name.prefix(1)).uppercased()
     }
 
-    // ── Coach strip ───────────────────────────────────────────────
-    private func coachStrip(_ o: OverviewResponse) -> some View {
-        let label = o.briefing?.answer.label ?? "COACH"
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Circle().fill(Faff.C.recovery).frame(width: 7, height: 7)
-                Text(label.uppercased())
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.4)
-                    .foregroundStyle(Faff.C.textDim)
-            }
-            Text(coachBody(o))
-                .font(Faff.F.inter(21))
-                .foregroundStyle(Faff.C.ink)
-                .lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4).padding(.bottom, 2)
-    }
-
-    /// Coach line composed from the PLAN workout + race countdown (the
-    /// /api/overview briefing text is built from the old engine and can
-    /// disagree with the plan, so we summarize the plan ourselves).
-    private func coachBody(_ o: OverviewResponse) -> String {
-        let dw = o.todayWorkout
-        var parts: [String] = []
-        if dw.isRest {
-            parts.append("Rest day. Let the work absorb.")
-        } else {
-            parts.append("Today is \(dw.label.lowercased()) at \(distanceStr(dw.distanceMi)) mi. \(dw.guidance)")
-        }
-        if let rc = o.raceCountdown { parts.append("\(rc.days) days to \(rc.name).") }
-        return parts.joined(separator: " ")
-    }
-
     // ── Hero workout card ─────────────────────────────────────────
     private func heroCard(_ o: OverviewResponse) -> some View {
         let dw = o.todayWorkout
@@ -234,10 +156,16 @@ struct TodayView: View {
         .faffCard()
     }
 
-    // ── Readiness (load-based level + message; honest, no fake score)
+    // ── Readiness (honest: load-based until Health is connected) ──
     private func readinessCard(_ o: OverviewResponse) -> some View {
-        let r = o.readiness?.answer
-        let (badgeText, tone) = OverviewFormat.readinessBadge(r?.level)
+        let hasHealth = o.hasHealthData
+        let acwr = o.acwrValue
+        // Without biometrics, readiness is a load read, not a recovery score.
+        let (badgeText, tone): (String, OverviewFormat.ReadinessTone) = {
+            guard let a = acwr else { return ("No data", .none) }
+            if a > 1.3 { return ("Watch load", .amber) }
+            return ("On track", .green)
+        }()
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("READINESS")
@@ -246,32 +174,25 @@ struct TodayView: View {
                 Spacer()
                 Badge(text: badgeText, tone: tone)
             }
-            if let msg = r?.message, !msg.isEmpty {
-                coachText(msg)
-                    .font(Faff.F.inter(12.5))
-                    .foregroundStyle(Faff.C.textMuted)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("No recovery data yet. Connect Apple Health for HRV, resting HR and sleep.")
-                    .font(Faff.F.inter(12.5))
-                    .foregroundStyle(Faff.C.textMuted)
-            }
+            Text(readinessCopy(hasHealth: hasHealth, acwr: acwr))
+                .font(Faff.F.inter(12.5))
+                .foregroundStyle(Faff.C.textMuted)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .faffCard()
     }
 
-    // ── State card (loading / error) ──────────────────────────────
-    private func stateCard(_ title: String, _ detail: String?, spinner: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if spinner { ProgressView() }
-            Text(title).font(Faff.F.inter(14, .semibold)).foregroundStyle(Faff.C.ink)
-            if let detail { Text(detail).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted) }
+    private func readinessCopy(hasHealth: Bool, acwr: Double?) -> String {
+        if let a = acwr {
+            let load = a > 1.3
+                ? String(format: "Load is climbing (ACWR %.2f). Keep easy days easy.", a)
+                : String(format: "Training load is balanced (ACWR %.2f).", a)
+            return hasHealth ? load
+                : load + " Connect Apple Health for HRV, resting HR and sleep."
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .faffCard()
-        .padding(.top, 20)
+        return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep."
     }
 
     // ── small helpers ─────────────────────────────────────────────
@@ -295,28 +216,6 @@ struct TodayView: View {
     private func distanceStr(_ mi: Double?) -> String {
         guard let mi else { return "—" }
         return mi == mi.rounded() ? String(Int(mi)) : String(format: "%.1f", mi)
-    }
-    private func planDayToday(_ o: OverviewResponse) -> OPlanDay? {
-        o.planWeekWorkouts?.first { $0.dateISO == o.today }
-    }
-    private func planPaceToday(_ o: OverviewResponse) -> Double? { planDayToday(o)?.paceTargetSPerMi }
-    private func planDurationToday(_ o: OverviewResponse) -> Double? { planDayToday(o)?.durationMin }
-
-    private func dateLabel(_ iso: String?) -> String {
-        guard let iso else { return "" }
-        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
-        guard let d = inF.date(from: String(iso.prefix(10))) else { return "" }
-        let out = DateFormatter(); out.dateFormat = "EEE · d MMM"
-        out.timeZone = TimeZone(identifier: "UTC")
-        return out.string(from: d)
-    }
-
-    /// Render coach copy with **markdown bold** support.
-    private func coachText(_ s: String) -> Text {
-        if let a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return Text(a)
-        }
-        return Text(s)
     }
 }
 
@@ -461,6 +360,7 @@ private struct CheckInSlider: View {
 struct FaffTabBar: View {
     enum Tab: String, CaseIterable { case today, plan, coach, health, more }
     let active: Tab
+    var onSelect: (Tab) -> Void = { _ in }
     private func icon(_ t: Tab) -> String {
         switch t {
         case .today: return "house"
@@ -473,12 +373,16 @@ struct FaffTabBar: View {
     var body: some View {
         HStack {
             ForEach(Tab.allCases, id: \.self) { t in
-                VStack(spacing: 3) {
-                    Image(systemName: icon(t)).font(.system(size: 18))
-                    Text(t.rawValue.uppercased()).font(Faff.F.inter(7.5, .semibold)).tracking(0.3)
+                Button { onSelect(t) } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: icon(t)).font(.system(size: 18))
+                        Text(t.rawValue.uppercased()).font(Faff.F.inter(7.5, .semibold)).tracking(0.3)
+                    }
+                    .foregroundStyle(t == active ? Faff.C.race : Faff.C.textDim)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(t == active ? Faff.C.race : Faff.C.textDim)
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.plain)
             }
         }
         .padding(.top, 10).padding(.bottom, 6)
@@ -488,4 +392,3 @@ struct FaffTabBar: View {
     }
 }
 
-#Preview { TodayView(onLogout: {}) }

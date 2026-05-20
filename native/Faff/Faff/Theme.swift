@@ -91,6 +91,14 @@ extension View {
     }
 }
 
+/// Render coach copy with **markdown bold** support.
+func faffMarkdown(_ s: String) -> Text {
+    if let a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+        return Text(a)
+    }
+    return Text(s)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 extension Color {
     init(hex: UInt32) {

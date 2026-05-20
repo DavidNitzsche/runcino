@@ -38,6 +38,10 @@ struct WorkoutDetailView: View {
                     Divider().overlay(Faff.C.divider)
                     if !workoutText.isEmpty { section("The workout", workoutText) }
                     section("Effort", effortText)
+                    if !coachText.isEmpty {
+                        Divider().overlay(Faff.C.divider)
+                        coachSection
+                    }
                     Button { dismiss() } label: {
                         Text("CLOSE").font(Faff.F.oswald(13, .semibold)).tracking(2)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -90,6 +94,21 @@ struct WorkoutDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: Faff.R.pill, style: .continuous))
     }
 
+    private var coachSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle().fill(Faff.C.recovery).frame(width: 7, height: 7)
+                Text((overview?.briefing?.answer.label ?? "Coach").uppercased())
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.4)
+                    .foregroundStyle(Faff.C.textDim)
+            }
+            faffMarkdown(coachText)
+                .font(Faff.F.inter(15)).foregroundStyle(Faff.C.ink)
+                .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func section(_ label: String, _ body: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label.uppercased()).font(Faff.F.inter(10, .bold)).tracking(1.4)
@@ -133,6 +152,7 @@ struct WorkoutDetailView: View {
         return pace == "Easy" ? "Run \(distanceStr) mi easy, conversational." : "Run \(distanceStr) mi at \(pace)/mi."
     }
     private var effortText: String { dw?.guidance ?? "Controlled, sustainable work for today's phase." }
+    private var coachText: String { overview?.composedCoach ?? "" }
 }
 
 #Preview { WorkoutDetailView() }

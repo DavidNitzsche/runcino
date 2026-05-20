@@ -25,9 +25,41 @@ struct OverviewResponse: Decodable {
     let state: OState?
 }
 
-struct OState: Decodable { let races: ORaces? }
-struct ORaces: Decodable { let nextA: ORace? }
-struct ORace: Decodable { let name: String?; let daysAway: Int? }
+struct OState: Decodable {
+    let races: ORaces?
+    let recovery: ORecovery?
+    let volume: OVolume?
+    let flags: OFlags?
+}
+struct ORaces: Decodable {
+    let nextA: ORace?
+    let recent: [ORecentRace]?
+}
+struct ORace: Decodable {
+    let name: String?
+    let date: String?
+    let distanceMi: Double?
+    let goalDisplay: String?
+    let daysAway: Int?
+}
+struct ORecentRace: Decodable {
+    let name: String?
+    let date: String?
+    let distanceMi: Double?
+    let finishS: Double?
+}
+struct ORecovery: Decodable {
+    let hrv7dAvgMs: Double?
+    let rhrBpm: Double?
+    let sleep7dAvgHrs: Double?
+    let daysSinceLastRun: Int?
+}
+struct OVolume: Decodable {
+    let last7Mi: Double?
+    let last28Mi: Double?
+    let weeklyAvg8w: Double?
+}
+struct OFlags: Decodable { let healthKitAvailable: Bool? }
 
 /// CoachDecision<T> envelope — we only read `answer`.
 struct CoachAnswer<T: Decodable>: Decodable { let answer: T }
@@ -63,7 +95,9 @@ struct OReadiness: Decodable {
 struct OBriefing: Decodable {
     let text: String?
     let label: String?
+    let clauses: [OClause]?
 }
+struct OClause: Decodable { let kind: String?; let text: String? }
 
 struct OPlanDay: Decodable {
     let dateISO: String?
@@ -104,6 +138,11 @@ enum OverviewAPI {
 // MARK: - Display helpers (real data → strings, honest about missing)
 
 enum OverviewFormat {
+    /// Distance number, integer when whole. nil → em dash.
+    static func distance(_ mi: Double?) -> String {
+        guard let mi else { return "—" }
+        return mi == mi.rounded() ? String(Int(mi)) : String(format: "%.1f", mi)
+    }
     /// "7:11" from 431 s/mi. nil → "Easy" (an easy run has no pace gate).
     static func pace(_ sPerMi: Double?) -> String {
         guard let s = sPerMi, s > 0 else { return "Easy" }
@@ -230,5 +269,29 @@ extension OverviewResponse {
     var raceCountdown: (name: String, days: Int)? {
         if let r = state?.races?.nextA, let n = r.name, let d = r.daysAway { return (n, d) }
         return nil
+    }
+    /// True only when real recovery biometrics exist (HRV/RHR/sleep).
+    var hasHealthData: Bool {
+        let r = state?.recovery
+        return (r?.hrv7dAvgMs != nil) || (r?.rhrBpm != nil) || (r?.sleep7dAvgHrs != nil)
+    }
+    var acwrValue: Double? {
+        guard let l7 = state?.volume?.last7Mi, let avg = state?.volume?.weeklyAvg8w, avg > 0 else { return nil }
+        return l7 / avg
+    }
+    /// Coach copy composed from the PLAN workout + accurate briefing
+    /// clauses (greeting/body-state) + race. The backend briefing's
+    /// workout clause is old-engine and disagrees with the plan, so we
+    /// don't use it. Markdown bold preserved for AttributedString.
+    var composedCoach: String {
+        let dw = todayWorkout
+        var parts: [String] = []
+        for c in (briefing?.answer.clauses ?? []) where c.kind == "greeting" || c.kind == "body-state" {
+            if let t = c.text, !t.isEmpty { parts.append(t) }
+        }
+        if dw.isRest { parts.append("Today is a rest day. Let the work absorb.") }
+        else { parts.append("Today is \(dw.label.lowercased()) at \(OverviewFormat.distance(dw.distanceMi)) mi. \(dw.guidance)") }
+        if let rc = raceCountdown { parts.append("\(rc.days) days to \(rc.name).") }
+        return parts.joined(separator: " ")
     }
 }
