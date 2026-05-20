@@ -379,25 +379,12 @@ struct HealthView: View {
 
 struct RacesView: View {
     let overview: OverviewResponse
+    @State private var showDetail = false
     var body: some View {
         FaffScreen(eyebrow: "Next A-race", title: "Races") {
             if let r = overview.state?.races?.nextA {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text((r.name ?? "").uppercased()).font(Faff.F.display(28)).foregroundStyle(.white)
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
-                        Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
-                    }
-                    HStack(spacing: 16) {
-                        raceStat("Goal time", r.goalDisplay ?? "—")
-                        if let d = r.distanceMi { raceStat("Distance", "\(OverviewFormat.distance(d)) mi") }
-                    }
-                    .padding(.top, 6)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
-                .background(Color.faffMark)
-                .clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
+                Button { showDetail = true } label: { raceCard(r) }.buttonStyle(.plain)
+                    .sheet(isPresented: $showDetail) { RaceDetailView(race: r, phase: overview.planCurrentPhase) }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("No race yet. Pick your goal and we'll plan backward from race day.")
@@ -424,6 +411,26 @@ struct RacesView: View {
             }
         }
     }
+    private func raceCard(_ r: ORace) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text((r.name ?? "").uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+            Text(RacesView.raceShort(r.name ?? "").uppercased()).font(Faff.F.display(30)).foregroundStyle(.white)
+            if let d = r.date { Text(RacesView.prettyDate(d)).font(Faff.F.inter(12, .medium)).foregroundStyle(.white.opacity(0.9)) }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
+                Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
+            }.padding(.top, 2)
+            HStack(spacing: 18) {
+                raceStat("Goal time", r.goalDisplay ?? "—")
+                if let p = RacesView.goalPace(r) { raceStat("Goal pace", p) }
+                raceStat("Phase", overview.planCurrentPhase ?? "—")
+            }.padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(Color.faffMark)
+        .clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
+    }
     private func raceStat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
@@ -434,6 +441,96 @@ struct RacesView: View {
         guard let s, s > 0 else { return "—" }
         let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+    /// "Americas Finest City Half" → "AFC Half" (acronym + type word).
+    static func raceShort(_ name: String) -> String {
+        let types: Set<String> = ["half", "marathon", "10k", "5k", "15k", "mile", "miler", "5km", "10km"]
+        let words = name.split(separator: " ").map(String.init)
+        let typeWord = words.last(where: { types.contains($0.lowercased()) })
+        let core = words.filter { !types.contains($0.lowercased()) && $0.lowercased() != "the" }
+        let acr = core.count >= 2 ? core.compactMap { $0.first }.map(String.init).joined().uppercased() : (core.first ?? name)
+        return typeWord != nil ? "\(acr) \(typeWord!)" : acr
+    }
+    static func goalPace(_ r: ORace) -> String? {
+        guard let g = r.goalDisplay, let mi = r.distanceMi, mi > 0 else { return nil }
+        let parts = g.split(separator: ":").compactMap { Int($0) }
+        let secs: Int
+        switch parts.count { case 3: secs = parts[0]*3600 + parts[1]*60 + parts[2]
+                             case 2: secs = parts[0]*60 + parts[1]; default: return nil }
+        let per = Int((Double(secs) / mi).rounded())
+        return "\(per/60):\(String(format: "%02d", per%60))"
+    }
+    static func prettyDate(_ iso: String) -> String {
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let d = inF.date(from: String(iso.prefix(10))) else { return iso }
+        let out = DateFormatter(); out.dateFormat = "d MMM yyyy"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d)
+    }
+}
+
+// MARK: - Race detail (sheet from a race card)
+
+struct RaceDetailView: View {
+    let race: ORace
+    let phase: String?
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                HStack {
+                    Text("RACE").font(Faff.F.oswald(13, .semibold)).tracking(1.5).foregroundStyle(Faff.C.ink)
+                    Spacer()
+                    Button("Done") { dismiss() }.font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.race)
+                }.padding(.top, 16)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("A-RACE · GOAL \(race.goalDisplay ?? "—")").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.race)
+                    Text(RacesView.raceShort(race.name ?? "").uppercased()).font(Faff.F.display(46)).foregroundStyle(Faff.C.ink)
+                    Text(race.name ?? "").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                }
+                // Countdown card
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("COUNTDOWN").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("\(race.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
+                                Text("days to go").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
+                            }
+                        }
+                        Spacer()
+                        if let p = RacesView.goalPace(race) {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("GOAL PACE").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+                                Text("\(p)/mi").font(Faff.F.display(30)).foregroundStyle(.white)
+                            }
+                        }
+                    }
+                    Divider().overlay(Color.white.opacity(0.25))
+                    HStack(spacing: 18) {
+                        rcStat("Goal time", race.goalDisplay ?? "—")
+                        if let d = race.distanceMi { rcStat("Distance", "\(OverviewFormat.distance(d)) mi") }
+                        rcStat("Phase", phase ?? "—")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(18)
+                .background(Color.faffMark).clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
+                // Honest note for the GPX-dependent sections.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("COURSE & PACING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                    Text("The course profile, grade band and phase-by-phase pacing build from the race GPX — open this race on faff.run for the full plan. The race-day brief unlocks at T−7.")
+                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.faffCard()
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
+    }
+    private func rcStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
+            Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.8).foregroundStyle(.white.opacity(0.85))
+        }
     }
 }
 
