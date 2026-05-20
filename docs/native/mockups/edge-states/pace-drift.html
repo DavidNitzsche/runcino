@@ -2,219 +2,265 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Edge · Pace drift</title>
+<title>Edge · Pace drift (v2 · screen-filling state)</title>
 <link rel="stylesheet" href="../assets/styles.css">
 <style>
-  .phase-screen { height: 100%; padding: 16px 14px 12px; display: flex; flex-direction: column; }
-  .phase-header {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
-  }
-  .phase-header .phase-type {
-    font-family: var(--sf-compact); font-size: 10px; font-weight: 700;
-    letter-spacing: 1.5px; text-transform: uppercase;
-    color: var(--orange);
-  }
-  .phase-header .interval-count {
-    font-family: var(--sf-compact); font-size: 11px; font-weight: 700;
-    color: var(--text-l-2);
-  }
-  .dark .phase-header .interval-count { color: var(--text-d-2); }
+  /* Tinted backgrounds communicate state at a glance · runner glances
+     down mid-stride and sees "warning" instantly, before reading any
+     number. */
+  .watch-frame.drift-amber .screen { background: #FFF4E6; }
+  .watch-frame.drift-amber.dark .screen { background: #1F1308; }
+  .watch-frame.drift-red .screen { background: #FFEBE8; }
+  .watch-frame.drift-red.dark .screen { background: #1F0808; }
 
-  .progress-line {
-    width: 100%; height: 3px; background: rgba(255,255,255,0.15);
-    border-radius: 2px; overflow: hidden; margin-bottom: 8px;
+  .drift-screen {
+    height: 100%;
+    padding: 14px 14px 10px;
+    display: flex; flex-direction: column;
   }
-  .light .progress-line { background: var(--border-l); }
-  .progress-line .fill { height: 100%; background: var(--orange); width: 35%; }
 
-  .pace-block { text-align: center; padding: 6px 0 8px; }
-  .pace-block .target-label {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
-    letter-spacing: 1.2px; text-transform: uppercase;
-    color: var(--text-l-3); margin-bottom: 2px;
+  .drift-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
   }
-  .dark .pace-block .target-label { color: var(--text-d-3); }
-  .pace-block .target-pace {
-    font-family: var(--sf-compact); font-size: 32px; font-weight: 700; line-height: 1;
-    color: var(--text-l-2); margin-bottom: 8px;
-  }
-  .dark .pace-block .target-pace { color: var(--text-d-2); }
-
-  .current-block.amber { text-align: center; margin-bottom: 8px; }
-  .current-block.amber .current-pace {
-    font-family: var(--sf-compact);
-    font-size: 64px; font-weight: 800; line-height: 0.92;
-    letter-spacing: -3px;
+  .drift-header .label {
+    font-family: var(--sf-compact); font-size: 10px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
     color: var(--amber);
   }
-  .current-block.amber .delta {
-    font-family: var(--sf-compact); font-size: 16px; font-weight: 700;
-    color: var(--amber); margin-top: 2px;
+  .drift-red .drift-header .label { color: var(--red); }
+  .drift-header .interval-count {
+    font-family: var(--sf-compact); font-size: 11px; font-weight: 800;
+    color: var(--amber);
   }
-  .current-block.amber .alert-mark {
-    font-size: 12px; color: var(--amber); margin-top: 2px;
-    font-weight: 700; letter-spacing: 1px;
-  }
+  .drift-red .drift-header .interval-count { color: var(--red); }
 
-  .current-block.red .current-pace { color: var(--red); }
-  .current-block.red .delta { color: var(--red); }
-  .current-block.red .alert-mark { color: var(--red); }
+  .progress-line {
+    width: 100%; height: 3px;
+    background: rgba(179,69,10,0.20);
+    border-radius: 2px; overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .drift-red .progress-line { background: rgba(201,42,42,0.20); }
+  .progress-line .fill { height: 100%; background: var(--amber); width: 35%; }
+  .drift-red .progress-line .fill { background: var(--red); width: 40%; }
+
+  .target-strip {
+    display: flex; align-items: baseline; gap: 6px;
+    justify-content: center;
+    padding: 4px 0 2px;
+  }
+  .target-strip .lbl {
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 800;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-l-3);
+  }
+  .dark .target-strip .lbl { color: var(--text-d-3); }
+  .target-strip .val {
+    font-family: var(--sf-compact); font-size: 24px; font-weight: 700;
+    line-height: 1; letter-spacing: -0.5px;
+    color: var(--text-l-2);
+  }
+  .dark .target-strip .val { color: var(--text-d-2); }
+
+  .current-mega {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .current-mega .pace {
+    font-family: var(--sf-compact);
+    font-size: 92px;
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -4px;
+    color: var(--amber);
+  }
+  .drift-red .current-mega .pace { color: var(--red); }
+
+  .current-mega .delta-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 6px;
+    font-family: var(--sf-compact);
+    font-size: 20px; font-weight: 800;
+    color: var(--amber);
+  }
+  .drift-red .current-mega .delta-row { color: var(--red); }
+
+  .current-mega .warn-text {
+    font-family: var(--sf-compact);
+    font-size: 11px; font-weight: 800;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--amber);
+    margin-top: 4px;
+  }
+  .drift-red .current-mega .warn-text { color: var(--red); }
 
   .footer-row {
-    display: flex; justify-content: space-between;
-    margin-top: auto; padding-top: 6px;
-    border-top: 0.5px solid var(--border-l);
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 6px;
+    border-top: 0.5px solid rgba(179,69,10,0.20);
   }
-  .dark .footer-row { border-top-color: var(--border-d); }
+  .drift-red .footer-row { border-top-color: rgba(201,42,42,0.20); }
   .footer-row .stat { text-align: center; flex: 1; }
-  .footer-row .stat .num { font-family: var(--sf-compact); font-size: 17px; font-weight: 700; }
+  .footer-row .stat .num {
+    font-family: var(--sf-compact); font-size: 22px; font-weight: 800;
+    line-height: 1;
+  }
+  .footer-row .stat .num.amber { color: var(--amber); }
+  .footer-row .stat .num.red { color: var(--red); }
   .footer-row .stat .lbl {
-    font-family: var(--sf-compact); font-size: 9px; font-weight: 600;
+    font-family: var(--sf-compact); font-size: 9px; font-weight: 700;
     letter-spacing: 0.8px; text-transform: uppercase;
-    color: var(--text-l-3); margin-top: 1px;
+    color: var(--text-l-3); margin-top: 2px;
   }
   .dark .footer-row .stat .lbl { color: var(--text-d-3); }
-  .footer-row .stat .timer { font-family: var(--sf-compact); font-size: 17px; font-weight: 700; color: var(--orange); }
 </style>
 </head>
 <body>
 <div class="page">
 
   <div class="page-header">
-    <h1>Edge state · Pace drift</h1>
-    <div class="subtitle">Work interval · current pace outside tolerance band · two severities</div>
+    <h1>Edge state · Pace drift (v2)</h1>
+    <div class="subtitle">Background tint communicates state · current pace fills the screen · no dead space</div>
     <div class="crumbs"><a href="../index.html">← back to index</a></div>
   </div>
 
-  <div class="section-title">Amber · drift (5+ sec >10s/mi off target)</div>
+  <div class="section-title">Amber · drift (10-15 s/mi off target, sustained 5+ sec)</div>
   <div class="mode-pair">
+
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
+      <div class="watch-frame drift-amber light">
         <div class="watch-status">9:55</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">2 / 6</div>
+          <div class="watch-content drift-screen">
+            <div class="drift-header">
+              <div class="label">⚠ DRIFTING · 2/6</div>
+              <div class="interval-count">+15s</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-            <div class="current-block amber">
-              <div class="current-pace">6:46</div>
-              <div class="delta">+15 s/mi</div>
-              <div class="alert-mark">DRIFTING</div>
+            <div class="current-mega">
+              <div class="pace">6:46</div>
+              <div class="delta-row">↑ slower</div>
             </div>
             <div class="footer-row">
-              <div class="stat"><div class="timer">2:08</div><div class="lbl">REMAINING</div></div>
+              <div class="stat"><div class="num amber">2:08</div><div class="lbl">LEFT</div></div>
               <div class="stat"><div class="num">172</div><div class="lbl">BPM</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
     <div class="mockup-slot">
       <div class="mode-label">DARK</div>
-      <div class="watch-frame dark">
+      <div class="watch-frame drift-amber dark">
         <div class="watch-status">9:55</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">2 / 6</div>
+          <div class="watch-content drift-screen">
+            <div class="drift-header">
+              <div class="label">⚠ DRIFTING · 2/6</div>
+              <div class="interval-count">+15s</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-            <div class="current-block amber">
-              <div class="current-pace">6:46</div>
-              <div class="delta">+15 s/mi</div>
-              <div class="alert-mark">DRIFTING</div>
+            <div class="current-mega">
+              <div class="pace">6:46</div>
+              <div class="delta-row">↑ slower</div>
             </div>
             <div class="footer-row">
-              <div class="stat"><div class="timer">2:08</div><div class="lbl">REMAINING</div></div>
+              <div class="stat"><div class="num amber">2:08</div><div class="lbl">LEFT</div></div>
               <div class="stat"><div class="num">172</div><div class="lbl">BPM</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
   </div>
 
-  <div class="section-title">Red · sustained drift (>15s/mi for 10+ sec)</div>
+  <div class="section-title">Red · sustained drift (>15 s/mi for 10+ sec)</div>
   <div class="mode-pair">
+
     <div class="mockup-slot">
       <div class="mode-label">LIGHT</div>
-      <div class="watch-frame light">
+      <div class="watch-frame drift-red light">
         <div class="watch-status">9:56</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">2 / 6</div>
+          <div class="watch-content drift-screen">
+            <div class="drift-header">
+              <div class="label">⚠ WELL OFF · 2/6</div>
+              <div class="interval-count">+31s</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-            <div class="current-block red">
-              <div class="current-pace">7:02</div>
-              <div class="delta">+31 s/mi</div>
-              <div class="alert-mark">⚠ WELL OFF TARGET</div>
+            <div class="current-mega">
+              <div class="pace">7:02</div>
+              <div class="delta-row">↑↑ much slower</div>
+              <div class="warn-text">PUSH IT</div>
             </div>
             <div class="footer-row">
-              <div class="stat"><div class="timer">1:24</div><div class="lbl">REMAINING</div></div>
+              <div class="stat"><div class="num red">1:24</div><div class="lbl">LEFT</div></div>
               <div class="stat"><div class="num">178</div><div class="lbl">BPM</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
     <div class="mockup-slot">
       <div class="mode-label">DARK</div>
-      <div class="watch-frame dark">
+      <div class="watch-frame drift-red dark">
         <div class="watch-status">9:56</div>
         <div class="screen">
-          <div class="watch-content phase-screen">
-            <div class="phase-header">
-              <div class="phase-type">WORK · INTERVAL</div>
-              <div class="interval-count">2 / 6</div>
+          <div class="watch-content drift-screen">
+            <div class="drift-header">
+              <div class="label">⚠ WELL OFF · 2/6</div>
+              <div class="interval-count">+31s</div>
             </div>
             <div class="progress-line"><div class="fill"></div></div>
-            <div class="pace-block">
-              <div class="target-label">TARGET</div>
-              <div class="target-pace">6:31</div>
+            <div class="target-strip">
+              <span class="lbl">TARGET</span>
+              <span class="val">6:31</span>
             </div>
-            <div class="current-block red">
-              <div class="current-pace">7:02</div>
-              <div class="delta">+31 s/mi</div>
-              <div class="alert-mark">⚠ WELL OFF TARGET</div>
+            <div class="current-mega">
+              <div class="pace">7:02</div>
+              <div class="delta-row">↑↑ much slower</div>
+              <div class="warn-text">PUSH IT</div>
             </div>
             <div class="footer-row">
-              <div class="stat"><div class="timer">1:24</div><div class="lbl">REMAINING</div></div>
+              <div class="stat"><div class="num red">1:24</div><div class="lbl">LEFT</div></div>
               <div class="stat"><div class="num">178</div><div class="lbl">BPM</div></div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
   </div>
 
   <div class="note">
-    <strong>Design notes</strong>:
+    <strong>Design notes (v2)</strong> · screen-filling state, instant recognition:
     <ul style="margin: 8px 0 0 20px;">
-      <li><strong>Tolerance band</strong>: ±10 s/mi · color stays green within band</li>
-      <li><strong>Amber drift</strong>: 10-15 s/mi off · "DRIFTING" label · single subtle haptic at 5-second sustained threshold</li>
-      <li><strong>Red severe</strong>: >15 s/mi off · "⚠ WELL OFF TARGET" · second haptic at 10-second sustained</li>
-      <li>HR rises with pace (172 → 178) · informational, not gated · just shows the effort climbing</li>
-      <li>Haptic cadence intentional · brief amber haptic = subtle correction nudge · severe red = stronger get-attention</li>
-      <li>Runner can ignore both and finish the rep · the system reports but doesn't punish</li>
+      <li><strong>Tinted background</strong> · amber/red wash on the whole screen · runner sees "warning" before reading any number · light tint in light mode, deeper in dark mode (preserves OLED battery)</li>
+      <li><strong>Current pace at 92pt</strong> · fills 60% of the vertical space · this is the focal element during drift · no dead middle zone</li>
+      <li><strong>Header is the warning</strong> · "⚠ DRIFTING · 2/6" + delta chip ("+15s") · spatial context (which rep) + severity in 0.5 seconds</li>
+      <li><strong>Target as a thin strip</strong> · "TARGET 6:31" small + horizontal · the target is reference, not focal · runner already knows it</li>
+      <li><strong>Action verb on red</strong> · "PUSH IT" · brief, imperative · the runner can ignore but the cue is clear</li>
+      <li><strong>Footer bigger</strong> · 22pt time-remaining is now meaningful · runner uses this to decide effort allocation</li>
+      <li><strong>Haptic cadence unchanged</strong> · subtle amber haptic at sustained 5s · stronger red haptic at sustained 10s · visual reinforces, not replaces</li>
     </ul>
   </div>
 
