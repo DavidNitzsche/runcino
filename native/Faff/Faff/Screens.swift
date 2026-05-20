@@ -1050,33 +1050,54 @@ struct RaceDetailView: View {
     /// VDOT, goal-required VDOT, and the gap (VDOT + T-pace seconds).
     @ViewBuilder
     private func readinessBlock(_ pr: RaceProjection, cv: Double) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            (Text("Projected at current VDOT ").foregroundColor(.white.opacity(0.85))
-             + Text(String(format: "%.1f", cv)).foregroundColor(.white).bold()
-             + Text("   ").foregroundColor(.white)
-             + Text(pr.predictedDisplay ?? "—").foregroundColor(.white).bold())
-                .font(Faff.F.inter(12.5))
-            if let gv = pr.goalVdot {
-                (Text("Goal ").foregroundColor(.white.opacity(0.85))
-                 + Text(pr.goalDisplay ?? header.goalDisplay ?? "—").foregroundColor(.white).bold()
-                 + Text(" requires VDOT ").foregroundColor(.white.opacity(0.85))
-                 + Text(String(format: "%.1f", gv)).foregroundColor(.white).bold())
-                    .font(Faff.F.inter(12.5))
+        let goalT = pr.goalDisplay ?? header.goalDisplay
+        let pSec = Self.parseSecs(pr.predictedDisplay)
+        let gSec = Self.parseSecs(goalT)
+        let onPace = pr.onPace == true || (pSec != nil && gSec != nil && pSec! <= gSec!)
+        VStack(alignment: .leading, spacing: 12) {
+            // Projected (now) → Goal comparison.
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PROJECTED").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
+                    Text(pr.predictedDisplay ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
+                    Text("at VDOT \(String(format: "%.1f", cv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.55))
+                Spacer(minLength: 4)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("GOAL").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
+                    Text(goalT ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
+                    if let gv = pr.goalVdot {
+                        Text("needs VDOT \(String(format: "%.1f", gv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
+                    }
+                }
             }
-            if pr.onPace == true {
-                Text("On pace — projection beats goal.")
+            // One verdict pill.
+            HStack(spacing: 6) {
+                Image(systemName: onPace ? "checkmark.circle.fill" : "arrow.up.circle.fill")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                Text(Self.verdictText(pr, pSec: pSec, gSec: gSec, onPace: onPace))
                     .font(Faff.F.inter(11.5, .semibold)).foregroundStyle(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.white.opacity(0.16)).clipShape(Capsule())
-            } else if let gap = pr.vdotGap {
-                (Text("Gap: ").foregroundColor(.white.opacity(0.9))
-                 + Text("\(String(format: "%.1f", gap)) VDOT").foregroundColor(.white).bold()
-                 + (pr.paceTGapS.map { Text(" / ~\(Int(abs($0))) sec/mi T pace").foregroundColor(.white.opacity(0.9)) } ?? Text("")))
-                    .font(Faff.F.inter(11.5))
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.white.opacity(0.16)).clipShape(Capsule())
             }
+            .padding(.horizontal, 11).padding(.vertical, 6)
+            .background(Color.white.opacity(0.18)).clipShape(Capsule())
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    static func parseSecs(_ display: String?) -> Int? {
+        guard let d = display else { return nil }
+        let p = d.split(separator: ":").compactMap { Int($0) }
+        switch p.count { case 3: return p[0]*3600 + p[1]*60 + p[2]; case 2: return p[0]*60 + p[1]; default: return nil }
+    }
+    static func mmss(_ s: Int) -> String { "\(s/60):\(String(format: "%02d", s%60))" }
+    static func verdictText(_ pr: RaceProjection, pSec: Int?, gSec: Int?, onPace: Bool) -> String {
+        if onPace, let p = pSec, let g = gSec, g >= p { return "On pace — beats goal by \(mmss(g - p))" }
+        if let gap = pr.vdotGap {
+            let pace = pr.paceTGapS.map { " · ~\(Int(abs($0)))s/mi" } ?? ""
+            return "\(String(format: "%.1f", abs(gap))) VDOT to find\(pace)"
+        }
+        return "Building toward goal"
     }
 }
 
