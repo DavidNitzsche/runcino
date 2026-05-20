@@ -22,8 +22,17 @@ final class WorkoutEngine: ObservableObject {
 
     enum State: Equatable {
         case idle
+        case countingDown
         case running
         case finished
+    }
+
+    /// A brief full-screen flip the UI overlays at the edges of a rep —
+    /// "Ease off · 3s left" before a work interval ends, "Go · Int 4" when
+    /// the next work interval begins (watch-app.html §C3). Self-clearing.
+    enum TransitionCue: Equatable {
+        case headsUp(title: String, sub: String)   // amber, before a rep ends
+        case go(title: String, sub: String?)       // green, entering a work rep
     }
 
     // MARK: Published surface (views bind to these)
@@ -34,6 +43,13 @@ final class WorkoutEngine: ObservableObject {
     @Published private(set) var phaseElapsedSec: Int = 0
     /// Whole seconds elapsed across the whole workout.
     @Published private(set) var totalElapsedSec: Int = 0
+    /// True while the run is paused (stoplights, water stops). The clock
+    /// freezes and the tracked session pauses with it.
+    @Published private(set) var isPaused = false
+    /// 3 · 2 · 1 pre-roll value, shown by CountdownView while .countingDown.
+    @Published private(set) var countdownValue = 0
+    /// A transient transition flip; nil most of the time.
+    @Published var transition: TransitionCue?
 
     /// Live pace-vs-target zone for the WORK screen (green/amber/red) and
     /// the signed delta in s/mi. Updated from the tracker's GPS pace.
@@ -52,8 +68,12 @@ final class WorkoutEngine: ObservableObject {
     // MARK: Private timing state
 
     private var ticker: Task<Void, Never>?
+    private var countdownTask: Task<Void, Never>?
+    private var transitionClear: Task<Void, Never>?
     private var phaseStart: Date = .now
     private var workoutStart: Date = .now
+    /// When the current pause began (nil when running).
+    private var pauseStart: Date?
     /// Wall-clock seconds already banked from completed phases (so the
     /// total clock survives the per-phase resets).
     private var bankedSec: Int = 0
@@ -92,10 +112,77 @@ final class WorkoutEngine: ObservableObject {
         return max(0, p.durationSec - phaseElapsedSec)
     }
 
+    // MARK: Splits + session map (the on-demand pages)
+
+    enum SplitState { case done, current, upcoming }
+
+    struct Split: Identifiable {
+        let id: Int            // phase index
+        let repNo: Int         // 1-based work-rep ordinal
+        let label: String
+        let targetSPerMi: Int?
+        let paceSPerMi: Int?   // banked (done) or live (current); nil upcoming
+        let state: SplitState
+    }
+
+    /// One row per WORK interval: banked pace for finished reps, live pace
+    /// for the current one, dash for the rest (watch-app.html §D · Splits).
+    var splits: [Split] {
+        let works = workout.phases.filter { $0.type == .work }
+        return works.enumerated().map { (i, p) in
+            if let r = results.first(where: { $0.index == p.index }) {
+                return Split(id: p.index, repNo: i + 1, label: p.label,
+                             targetSPerMi: p.targetPaceSPerMi, paceSPerMi: r.actualPaceSPerMi, state: .done)
+            }
+            if p.index == currentIndex {
+                let live = (tracker?.paceSPerMi).flatMap { $0 > 0 ? $0 : nil }
+                return Split(id: p.index, repNo: i + 1, label: p.label,
+                             targetSPerMi: p.targetPaceSPerMi, paceSPerMi: live, state: .current)
+            }
+            return Split(id: p.index, repNo: i + 1, label: p.label,
+                         targetSPerMi: p.targetPaceSPerMi, paceSPerMi: nil, state: .upcoming)
+        }
+    }
+
+    /// Zone for a banked/live split pace vs its own target (for coloring
+    /// the splits + session map without re-running the live evaluator).
+    func zone(forPace pace: Int?, target: Int?) -> PaceZone {
+        guard let pace, let target else { return .onTarget }
+        let d = abs(pace - target)
+        if d <= 10 { return .onTarget }
+        if d <= 15 { return .drifting }
+        return .offTarget
+    }
+
     // MARK: Lifecycle
 
-    func start() {
+    /// Pre-roll 3 · 2 · 1 (each with a tick), then start for real. Gives
+    /// the GPS a beat to lock so the first seconds aren't a panic.
+    func beginCountdown() {
         guard state == .idle else { return }
+        state = .countingDown
+        countdownValue = 3
+        Haptics.tick()
+        // Start the recorder NOW so the workout session keeps the app
+        // awake through the count (watchOS suspends an app with no active
+        // session — that would freeze the countdown). The phase clock
+        // doesn't begin until start() resets phaseStart below.
+        tracker?.start()
+        countdownTask?.cancel()
+        countdownTask = Task { [weak self] in
+            for n in [3, 2, 1] {
+                guard let self, self.state == .countingDown else { return }
+                self.countdownValue = n
+                Haptics.tick()
+                try? await Task.sleep(for: .seconds(1))
+            }
+            guard let self, self.state == .countingDown else { return }
+            self.start()
+        }
+    }
+
+    func start() {
+        guard state == .idle || state == .countingDown else { return }
         state = .running
         currentIndex = 0
         phaseElapsedSec = 0
@@ -137,8 +224,34 @@ final class WorkoutEngine: ObservableObject {
         finish(status: "abandoned")
     }
 
+    /// Freeze the clock for a stoplight / water stop. Elapsed time and
+    /// phase progress hold; the tracked session pauses with them.
+    func pause() {
+        guard state == .running, !isPaused else { return }
+        isPaused = true
+        pauseStart = .now
+        transition = nil
+        tracker?.pause()
+        Haptics.play(.transitionCooldown)
+    }
+
+    /// Resume from a pause — shift the phase + workout origins forward by
+    /// the paused interval so the time off the clock never counts.
+    func resume() {
+        guard state == .running, isPaused, let ps = pauseStart else { return }
+        let delta = Date.now.timeIntervalSince(ps)
+        phaseStart = phaseStart.addingTimeInterval(delta)
+        workoutStart = workoutStart.addingTimeInterval(delta)
+        pauseStart = nil
+        isPaused = false
+        tracker?.resume()
+        Haptics.play(.transitionWork)
+    }
+
     func reset() {
         stopTimer()
+        countdownTask?.cancel(); countdownTask = nil
+        transitionClear?.cancel(); transitionClear = nil
         state = .idle
         currentIndex = 0
         phaseElapsedSec = 0
@@ -146,7 +259,23 @@ final class WorkoutEngine: ObservableObject {
         bankedSec = 0
         results = []
         didFireAlmostDone = false
+        isPaused = false
+        pauseStart = nil
+        countdownValue = 0
+        transition = nil
         completion = nil
+    }
+
+    /// Show a transition flip for a beat, then clear it (unless something
+    /// newer replaced it in the meantime).
+    private func flash(_ cue: TransitionCue, for seconds: Double) {
+        transition = cue
+        transitionClear?.cancel()
+        transitionClear = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, self.transition == cue else { return }
+            self.transition = nil
+        }
     }
 
     // MARK: Timer tick
@@ -172,7 +301,7 @@ final class WorkoutEngine: ObservableObject {
     }
 
     private func tick() {
-        guard state == .running, let phase = currentPhase else { return }
+        guard state == .running, !isPaused, let phase = currentPhase else { return }
 
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
@@ -188,10 +317,12 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
-        // "Almost done" cue · 3s before a WORK interval ends.
+        // "Almost done" cue · 3s before a WORK interval ends — haptic +
+        // a full-screen heads-up flip ("Ease off") so you don't overrun.
         if phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
             didFireAlmostDone = true
             Haptics.almostDone()
+            flash(.headsUp(title: "Ease off", sub: "\(phaseRemainingSec)s left"), for: 2.6)
         }
 
         if phaseElapsedSec >= phase.durationSec {
@@ -219,7 +350,16 @@ final class WorkoutEngine: ObservableObject {
         totalElapsedSec = bankedSec
         didFireAlmostDone = false
         prepDrift()
-        if let p = currentPhase { Haptics.play(p.haptic) }
+        if let p = currentPhase {
+            Haptics.play(p.haptic)
+            // Entering a work rep gets a green "Go" flip with the target;
+            // the warmup (first phase) is opened from the countdown, not a flip.
+            if p.type == .work {
+                let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
+                let sub = p.targetPaceSPerMi.map { "Target \(PaceFormat.mmss($0))/mi" }
+                flash(.go(title: "Go · Int \(n)", sub: sub), for: 1.5)
+            }
+        }
     }
 
     private func recordCurrentPhase(completed: Bool) {

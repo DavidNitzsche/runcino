@@ -38,6 +38,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
     @Published private(set) var isRecording = false
 
     private var mockTask: Task<Void, Never>?
+    private var mockPaused = false
 
     // ── Aggregates for the completion payload ─────────────────────
     private(set) var maxHr: Int = 0
@@ -107,6 +108,26 @@ final class WorkoutTracker: NSObject, ObservableObject {
         }
     }
 
+    /// Pause the tracked session (stoplight / water stop). Live sampling
+    /// and the route halt; resume() picks them back up.
+    func pause() {
+        #if targetEnvironment(simulator)
+        mockPaused = true; return
+        #else
+        session?.pause()
+        locationManager.stopUpdatingLocation()
+        #endif
+    }
+
+    func resume() {
+        #if targetEnvironment(simulator)
+        mockPaused = false; return
+        #else
+        session?.resume()
+        locationManager.startUpdatingLocation()
+        #endif
+    }
+
     /// Stop the session and persist the HKWorkout + route to Health.
     func end() async {
         mockTask?.cancel(); mockTask = nil
@@ -162,6 +183,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
             var t = 0.0
             while !Task.isCancelled {
                 guard let self else { return }
+                if self.mockPaused { try? await Task.sleep(for: .seconds(1)); continue }
                 t += 1
                 // Pace: sine drift ±18s around 6:31 → crosses tolerance bands.
                 let drift = Int((sin(t / 7) * 18).rounded())

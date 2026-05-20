@@ -24,6 +24,11 @@ final class WatchRootModel: ObservableObject {
     @Published var engine: WorkoutEngine?
     /// One tracker for the app's lifetime; the engine binds to it per run.
     let tracker = WorkoutTracker()
+    /// Forwards the engine's phase-state changes so the router below re-runs
+    /// when the engine moves countdown → running → finished. Without this the
+    /// root only observes `model`, so a state flip after the engine is
+    /// assigned (e.g. the countdown completing) would never re-render.
+    private var stateForward: AnyCancellable?
 
     func start(_ workout: WatchWorkout) {
         Task {
@@ -32,12 +37,16 @@ final class WatchRootModel: ObservableObject {
             await tracker.requestAuthorization()
             let engine = WorkoutEngine(workout: workout)
             engine.tracker = tracker
+            stateForward = engine.$state
+                .removeDuplicates()
+                .sink { [weak self] _ in self?.objectWillChange.send() }
             self.engine = engine
-            engine.start()
+            engine.beginCountdown()
         }
     }
 
     func reset() {
+        stateForward?.cancel(); stateForward = nil
         engine?.reset()
         engine = nil
     }
@@ -58,14 +67,17 @@ struct WorkoutRootView: View {
     @ViewBuilder
     private var content: some View {
         if let engine = model.engine {
-            if engine.state == .finished {
+            switch engine.state {
+            case .finished:
                 SummaryView(workout: engine.workout, completion: engine.completion) {
                     if let completion = engine.completion {
                         phone.sendCompletion(completion)
                     }
                     model.reset()
                 }
-            } else {
+            case .countingDown:
+                CountdownView(engine: engine)
+            case .idle, .running:
                 ActiveWorkoutView(engine: engine, tracker: model.tracker)
             }
         } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
@@ -90,19 +102,30 @@ struct WorkoutRootView: View {
     }
 }
 
-/// Rest / race / no-plan day — nothing to execute.
+/// Rest / race / no-plan day — nothing to execute (watch-app.html §A ·
+/// rest day): green eyebrow, a plain "REST" hero, and the body read.
 private struct NoWorkoutView: View {
     let message: String
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "moon.zzz.fill")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("FAFF").font(WatchTheme.sub(12, .semibold)).tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                Spacer()
+            }
+            Spacer(minLength: 4)
+            HStack(spacing: 5) {
+                Circle().fill(WatchTheme.C.green).frame(width: 6, height: 6)
+                Text("Rest day").font(WatchTheme.sub(13, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.green)
+            }
+            Text("REST").font(WatchTheme.display(46)).foregroundStyle(WatchTheme.C.ink)
             Text(message)
-                .font(.callout)
-                .multilineTextAlignment(.center)
+                .font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t2)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+            Spacer(minLength: 4)
         }
-        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 9).padding(.bottom, 2)
+        .background(WatchTheme.C.bg.ignoresSafeArea())
     }
 }
 
@@ -110,13 +133,15 @@ private struct NoWorkoutView: View {
 private struct WaitingForPhoneView: View {
     var body: some View {
         VStack(spacing: 10) {
-            ProgressView()
+            ProgressView().tint(WatchTheme.C.orange)
             Text("Open Faff on your iPhone to load today's workout.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(WatchTheme.body(12, .medium))
+                .foregroundStyle(WatchTheme.C.t2)
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(WatchTheme.C.bg.ignoresSafeArea())
     }
 }
 

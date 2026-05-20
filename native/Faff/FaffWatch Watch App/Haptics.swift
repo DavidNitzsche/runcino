@@ -39,4 +39,9 @@ enum Haptics {
     static func almostDone() {
         WKInterfaceDevice.current().play(.notification)
     }
+
+    /// A single light tick · each beat of the 3 · 2 · 1 countdown.
+    static func tick() {
+        WKInterfaceDevice.current().play(.click)
+    }
 }
