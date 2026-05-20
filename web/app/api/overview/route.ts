@@ -46,6 +46,7 @@ import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '.
 import { generateBriefing } from '../../../lib/coach-briefing';
 import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
 import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
+import { listUserConnectors } from '../../../lib/connectors';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
@@ -97,6 +98,10 @@ interface OverviewApiOk {
    *  planned), instead of assuming any past day is complete. Empty for
    *  anonymous reads. */
   completedByDate: Record<string, number>;
+  /** Active (non-disconnected) connector providers for the user, e.g.
+   *  ["strava"]. Lets clients show real integration status instead of a
+   *  hardcoded "Connect". Empty for anonymous reads. */
+  connectors: string[];
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
@@ -394,6 +399,13 @@ export async function GET(): Promise<Response> {
       }
     } catch { /* leave empty */ }
 
+    // Active connectors (Strava etc.) so clients show real integration
+    // status. Authenticated only; empty + non-fatal for anonymous reads.
+    let connectors: string[] = [];
+    try {
+      if (userId) connectors = (await listUserConnectors(userId)).map((c) => c.provider);
+    } catch { connectors = []; }
+
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
     const planFutureLongRuns = (() => {
       const plan = planResult.plan;
@@ -440,6 +452,7 @@ export async function GET(): Promise<Response> {
       profileName: profileRow?.full_name?.trim() || null,
       coachLine,
       completedByDate,
+      connectors,
       planFutureLongRuns,
     };
     return Response.json(body);
