@@ -31,6 +31,19 @@ final class WatchSync: NSObject, ObservableObject {
     /// Human-readable last-sync state, surfaced on the iPhone TodayView.
     @Published private(set) var lastSyncStatus: String?
 
+    /// Real pairing state (WCSession), surfaced in Profile so the Apple
+    /// Watch row reflects whether a watch is paired with the Faff watch
+    /// app installed — there is no "connect" step; pairing is the link.
+    @Published private(set) var isPaired = false
+    @Published private(set) var isWatchAppInstalled = false
+
+    @MainActor private func refreshPairing() {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        isPaired = s.isPaired
+        isWatchAppInstalled = s.isWatchAppInstalled
+    }
+
     /// Latest context we want the watch to have, retained until the
     /// session is activated (updateApplicationContext fails pre-activation).
     private var pendingContext: [String: Any]?
@@ -103,6 +116,7 @@ extension WatchSync: WCSessionDelegate {
                              activationDidCompleteWith state: WCSessionActivationState,
                              error: Error?) {
         Task { @MainActor in
+            self.refreshPairing()
             if let pending = self.pendingContext, state == .activated {
                 try? session.updateApplicationContext(pending)
                 self.pendingContext = nil

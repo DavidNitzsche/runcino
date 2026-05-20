@@ -938,6 +938,7 @@ struct ProfileView: View {
     let overview: OverviewResponse
     let onLogout: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var watch = WatchSync.shared
     @State private var shoes: [Shoe] = []
     @State private var shoesLoaded = false
 
@@ -966,10 +967,19 @@ struct ProfileView: View {
                     shoeCard
                     VStack(alignment: .leading, spacing: 0) {
                         Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
-                        setRow("Apple Health", connected: overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false), first: true)
-                        setRow("Strava", connected: overview.connectors?.contains("strava") ?? false)
-                        setRow("Apple Watch", connected: false)
+                        setRow("Apple Health",
+                               status: (overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false)) ? "Connected" : "Health tab",
+                               tone: (overview.hasHealthData || (overview.connectors?.contains("apple_health") ?? false)) ? .green : .grey,
+                               first: true)
+                        setRow("Strava",
+                               status: (overview.connectors?.contains("strava") ?? false) ? "Connected" : "Connect on web",
+                               tone: (overview.connectors?.contains("strava") ?? false) ? .green : .grey)
+                        setRow("Apple Watch", status: watchStatus.0, tone: watchStatus.1)
                     }.faffCard()
+                    Text("Apple Watch links automatically through the Faff watch app — no setup here. Strava is connected on faff.run; Apple Health from the Health tab.")
+                        .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 2).padding(.top, -4)
                     Button { onLogout() } label: {
                         Text("SIGN OUT").font(Faff.F.oswald(12, .semibold)).tracking(1.5).foregroundStyle(Faff.C.warn)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -980,7 +990,7 @@ struct ProfileView: View {
             }
         }
         .background(Faff.C.bg.ignoresSafeArea())
-        .task { await loadShoes() }
+        .task { WatchSync.shared.activate(); await loadShoes() }
     }
 
     // ── Training snapshot ─────────────────────────────────────────
@@ -1074,11 +1084,19 @@ struct ProfileView: View {
         shoesLoaded = true
     }
 
-    private func setRow(_ name: String, connected: Bool, first: Bool = false) -> some View {
+    /// Apple Watch status from real WCSession pairing — there's no
+    /// "connect" step, the watch app is the link.
+    private var watchStatus: (String, Badge.Tone) {
+        if watch.isPaired && watch.isWatchAppInstalled { return ("Linked", .green) }
+        if watch.isPaired { return ("Install app", .amber) }
+        return ("No watch", .grey)
+    }
+
+    private func setRow(_ name: String, status: String, tone: Badge.Tone, first: Bool = false) -> some View {
         HStack {
             Text(name).font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.ink)
             Spacer()
-            Badge(text: connected ? "Connected" : "Connect", tone: connected ? .green : .grey)
+            Badge(text: status, tone: tone)
         }
         .padding(.vertical, 10)
         .overlay(first ? nil : Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
