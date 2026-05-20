@@ -45,6 +45,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { ingestSamples, type HealthSampleInput } from '@/lib/health-samples';
+import { query } from '@/lib/db';
 
 interface IngestBody {
   samples?: unknown;
@@ -74,5 +75,27 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await ingestSamples(user.id, body.samples as HealthSampleInput[]);
+
+  // Mark Apple Health as a connected source so every surface (the
+  // /profile connectors card, /api/overview connectors, the iPhone More
+  // tab) reflects that the phone is syncing. apple_health is device-
+  // driven, not OAuth — the access_token is a placeholder. Non-fatal.
+  if (result.ingested > 0) {
+    try {
+      await query(
+        `INSERT INTO connector_tokens
+           (user_id, provider, access_token, last_sync_at, last_sync_status, activities_count, connected_at, updated_at, disconnected_at)
+         VALUES ($1, 'apple_health', 'healthkit-device', NOW(), 'success', $2, NOW(), NOW(), NULL)
+         ON CONFLICT (user_id, provider) DO UPDATE SET
+           last_sync_at = NOW(),
+           last_sync_status = 'success',
+           activities_count = EXCLUDED.activities_count,
+           disconnected_at = NULL,
+           updated_at = NOW()`,
+        [user.id, result.ingested],
+      );
+    } catch { /* connector marker is best-effort */ }
+  }
+
   return NextResponse.json({ ok: true, ...result });
 }

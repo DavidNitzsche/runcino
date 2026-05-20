@@ -136,6 +136,7 @@ export function ConnectorsCard() {
   const isLoaded = connectors !== null;
   const connectedSet = new Set((connectors || []).map((c) => c.provider));
   const stravaConn = (connectors || []).find((c) => c.provider === 'strava');
+  const appleConn = (connectors || []).find((c) => c.provider === 'apple_health');
 
   return (
     <Card span={12}>
@@ -202,12 +203,30 @@ export function ConnectorsCard() {
           </div>
         )}
 
+        {/* Apple Health — connected when the iPhone app has ingested
+            biometrics (writes a connector marker on each sync). */}
+        {appleConn && (
+          <div className="faff-conn-row connected">
+            <div className="faff-conn-icon apple">♥</div>
+            <div>
+              <div className="faff-conn-name">Apple Health</div>
+              <div className="faff-conn-meta">
+                <span className="faff-dot green" />
+                <strong>Synced from iPhone</strong> · last sync {timeAgo(appleConn.last_sync_at)}
+                {appleConn.activities_count > 0 && <> · <strong>{appleConn.activities_count}</strong> readings</>}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Compact future-connectors */}
         <div className="faff-conn-section-label">Coming soon · activity sources</div>
         <div className="faff-conn-pills">
-          {['apple_health','garmin','coros','polar','suunto','wahoo','google_fit'].map((p) => (
-            <FuturePill key={p} provider={p} status={p === 'apple_health' || p === 'garmin' ? 'soon' : 'planned'} statusLabel={p === 'apple_health' ? 'iOS app' : p === 'garmin' ? 'Soon' : 'Planned'} />
-          ))}
+          {['apple_health','garmin','coros','polar','suunto','wahoo','google_fit']
+            .filter((p) => !connectedSet.has(p))
+            .map((p) => (
+              <FuturePill key={p} provider={p} status={p === 'apple_health' || p === 'garmin' ? 'soon' : 'planned'} statusLabel={p === 'apple_health' ? 'iOS app' : p === 'garmin' ? 'Soon' : 'Planned'} />
+            ))}
         </div>
 
         <div className="faff-conn-section-label">Coach plan platforms · plan-source mode</div>
