@@ -109,6 +109,7 @@ interface OverviewApiOk {
    *  never auto-edits the plan. */
   readinessScore: number | null;
   readinessState: 'green' | 'yellow' | 'red' | null;
+  readinessRecommendation: string | null;
   /** A-race fitness projection for the Race detail (from raceFitnessA).
    *  null when no A-race goal. */
   raceProjection: {
@@ -429,11 +430,16 @@ export async function GET(): Promise<Response> {
     // Daily readiness score for the Today/Health ring. Real, surface-only.
     let readinessScore: number | null = null;
     let readinessState: 'green' | 'yellow' | 'red' | null = null;
+    // The SAME recommendation string the web overview ring shows — shipped
+    // so the iPhone renders the coach's readiness voice verbatim instead
+    // of composing its own. Null when there's no health-derived score.
+    let readinessRecommendation: string | null = null;
     try {
       if (userId) {
         const r = await computeReadinessScore(userId, today, null, state.recovery?.rhrBpm ?? null);
         readinessScore = r.score;
         readinessState = r.score != null ? r.state : null;
+        readinessRecommendation = r.score != null && r.recommendation ? r.recommendation : null;
       }
     } catch { /* silent → dashed ring */ }
 
@@ -486,6 +492,7 @@ export async function GET(): Promise<Response> {
       connectors,
       readinessScore,
       readinessState,
+      readinessRecommendation,
       raceProjection: raceFitnessA?.answer ? {
         projectedDisplay: raceFitnessA.answer.predictedDisplay,
         vdot: Math.round(raceFitnessA.answer.vdot),

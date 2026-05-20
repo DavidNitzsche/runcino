@@ -38,6 +38,7 @@ struct OverviewResponse: Decodable {
     /// (ring renders dashed "No data" then). Surface-only.
     let readinessScore: Int?
     let readinessState: String?   // "green" | "yellow" | "red"
+    let readinessRecommendation: String?  // verbatim coach copy (web parity)
     /// Next weeks' long-run distances (Plan "Coming up").
     let planFutureLongRuns: [OFutureLong]?
     /// A-race fitness projection (Race detail). nil when no A-race goal.

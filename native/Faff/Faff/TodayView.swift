@@ -359,6 +359,10 @@ struct TodayView: View {
         }
     }
     private func readinessCopy(_ acwr: Double?) -> String {
+        // Prefer the coach's recommendation verbatim (same string the web
+        // shows) when a health-derived score exists; fall back to the
+        // load-based line only when there's no health readiness yet.
+        if let rec = overview.readinessRecommendation, !rec.isEmpty { return rec }
         guard let a = acwr else { return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep." }
         let load = a > 1.3
             ? String(format: "Load is climbing (ACWR %.2f). Keep easy days easy.", a)
