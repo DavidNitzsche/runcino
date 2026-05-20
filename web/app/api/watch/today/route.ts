@@ -30,7 +30,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { resolveFitness } from '@/lib/fitness-resolver';
-import { buildSyntheticPlan, todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { buildSyntheticPlan, realPlanToWeeks, todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { describeKeyFromPlan } from '@/lib/workout-descriptions';
+import { getCurrentPlan } from '@/coach/plan-lifecycle';
 import { buildWatchWorkout } from '@/lib/watch-workout';
 
 export async function GET(req: NextRequest) {
@@ -42,10 +44,14 @@ export async function GET(req: NextRequest) {
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
 
-  // Find today's workout in the synthetic plan · same source the
-  // web TodayCard reads from, so what the runner sees in the app
-  // matches what gets pushed to the watch.
-  const weeks = buildSyntheticPlan();
+  // Find today's workout in the REAL plan artifact — the same source
+  // /overview, /training and /api/overview read from, so the watch
+  // pushes the runner's actual workout (not the synthetic demo plan).
+  // Falls back to the synthetic plan only when no plan exists.
+  const planResult = await getCurrentPlan('me').catch(() => null);
+  const weeks = planResult?.plan
+    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
+    : buildSyntheticPlan();
   let todayDay = null;
   for (const week of weeks) {
     const day = week.days.find((d) => d.date === today);
