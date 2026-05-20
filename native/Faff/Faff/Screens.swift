@@ -397,7 +397,7 @@ struct HealthView: View {
             Tile(label: "Form · TSB", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
         ]
 
-        return FaffScreen(eyebrow: overview.hasHealthData ? "Apple Health · synced" : "Apple Health", title: "Body State") {
+        return FaffScreen(eyebrow: localHealth ? "Apple Health · connected" : "Apple Health", title: "Body State") {
             // Hero ring
             HStack(spacing: 14) {
                 ReadinessRing(score: overview.readinessScore, tone: TodayView.tone(for: overview.readinessState), size: 70)
@@ -408,35 +408,48 @@ struct HealthView: View {
                 }
             }.faffCard()
 
-            if !overview.hasHealthData { connectControl }
+            // Connect lives in Profile; only show it here when NOT connected.
+            if !localHealth { connectControl }
 
-            section("Recovery & Vitals", vitals)
-            section("Running Dynamics · last run", dynamics)
-            section("Training Load", load)
+            section("Recovery & Vitals", vitals, lastRun: false)
+            section("Running Dynamics · last run", dynamics, lastRun: true)
+            section("Training Load", load, lastRun: false)
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
-        .task { if hk.hasConnected { await hk.refreshDisplayMetrics() } }
+        // Always read whatever HealthKit has authorized so the tiles fill
+        // in once access is granted (in Profile) — not gated on a flag.
+        .task { await hk.refreshDisplayMetrics() }
     }
 
-    private func section(_ title: String, _ tiles: [Tile]) -> some View {
+    /// HealthKit is usable on THIS device — drives the hero + hides the
+    /// in-tab connect button (connecting happens in Profile).
+    private var localHealth: Bool {
+        overview.hasHealthData || hk.hasConnected
+            || hk.hrvMs != nil || hk.restingHrBpm != nil || hk.sleepHours != nil
+    }
+
+    private func section(_ title: String, _ tiles: [Tile], lastRun: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             MetricGrid(items: tiles) { t in
                 MetricTile(label: t.label, value: t.value, unit: t.unit, delta: t.delta, deltaTone: t.tone,
-                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType) })
+                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType, lastRun: lastRun) })
             }
         }
     }
 
     private var badgeText: String {
-        switch overview.readinessState { case "green": return "Primed"; case "yellow": return "Hold easy"; case "red": return "Back off"; default: return overview.hasHealthData ? "Tracked" : "No data" }
+        switch overview.readinessState { case "green": return "Primed"; case "yellow": return "Hold easy"; case "red": return "Back off"; default: return localHealth ? "Tracked" : "No data" }
     }
     private var badgeTone: Badge.Tone {
-        switch overview.readinessState { case "green": return .green; case "yellow": return .amber; case "red": return .warn; default: return .grey }
+        switch overview.readinessState { case "green": return .green; case "yellow": return .amber; case "red": return .warn; default: return localHealth ? .green : .grey }
     }
     private var heroCopy: String {
         if overview.hasHealthData {
             return "Vitals from Apple Health (7-day average). Acute load is what's holding the score — stay aerobic until it settles."
+        }
+        if localHealth {
+            return "Reading vitals from Apple Health on this device. They sync into your readiness score as days accumulate."
         }
         return "Connect Apple Health for HRV, resting heart rate, sleep and VO₂max. Until then, readiness reads from training load only."
     }
@@ -1359,7 +1372,7 @@ struct WhyThisSheet: View {
 // MARK: - Metric detail (sheet from a Health tile)
 
 struct MetricDetailSheet: View {
-    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil }
+    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil; var lastRun: Bool = false }
     let metric: Metric
     let overview: OverviewResponse
     @Environment(\.dismiss) private var dismiss
@@ -1380,24 +1393,30 @@ struct MetricDetailSheet: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("\(metric.title)\(metric.live ? " · 7-day average" : "")").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                        Text("\(metric.title)\(metric.live ? (metric.lastRun ? " · last run" : " · latest") : "")").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
                         Spacer()
-                        Badge(text: metric.live ? "Tracked" : "No data", tone: metric.live ? .green : .grey)
+                        Badge(text: metric.live ? (metric.lastRun ? "Last run" : "Tracked") : "No data", tone: metric.live ? .green : .grey)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(metric.value).font(Faff.F.display(58)).foregroundStyle(metric.live ? Faff.C.recovery : Faff.C.textFaint)
                         if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
                     }
                 }.faffCard()
-                if metric.live {
-                    // Trend — real daily series from /api/health/series.
+                if metric.live && metric.lastRun {
+                    // Per-run metric — no daily series; show the run context.
+                    CoachVerdict("From your last run",
+                                 "\(metric.title) measured across your most recent run, read from Apple Health. Per-run history will chart here as you log more runs.",
+                                 color: Faff.C.recovery)
+                    relatedTiles
+                } else if metric.live {
+                    // Cumulative vital — real daily series from /api/health/series.
                     VStack(spacing: 12) {
                         Segmented(options: rangeOptions, selected: rangeLabel,
                                   onSelect: { rangeDays = days(for: $0) })
                         trendChart
                     }.faffCard()
                     CoachVerdict("What this means",
-                                 "Your 7-day average from Apple Health. Day-to-day trend charts fill in here as more days sync.",
+                                 "Your latest reading from Apple Health; the chart trends it over the window you pick.",
                                  color: Faff.C.recovery)
                     if let s = overview.readinessScore {
                         HStack(spacing: 12) {
