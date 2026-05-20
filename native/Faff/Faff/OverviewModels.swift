@@ -37,6 +37,14 @@ struct OverviewResponse: Decodable {
     /// (ring renders dashed "No data" then). Surface-only.
     let readinessScore: Int?
     let readinessState: String?   // "green" | "yellow" | "red"
+    /// Next weeks' long-run distances (Plan "Coming up").
+    let planFutureLongRuns: [OFutureLong]?
+}
+
+struct OFutureLong: Decodable, Identifiable {
+    let weekStartISO: String?
+    let longMi: Double?
+    var id: String { weekStartISO ?? UUID().uuidString }
 }
 
 struct OState: Decodable {

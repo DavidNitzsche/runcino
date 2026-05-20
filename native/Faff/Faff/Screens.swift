@@ -83,7 +83,19 @@ struct RootTabView: View {
     private func initial(_ o: OverviewResponse) -> String {
         String((o.profileName ?? "F").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
     }
-    private func shortRace(_ n: String) -> String { n.count > 16 ? String(n.prefix(14)) + "…" : n }
+    /// Abbreviate a race name to an acronym for the chip (never truncate
+    /// mid-word): "Americas Finest City Half" → "AFC". Drops distance/type
+    /// words; falls back to a short clip for single-word names.
+    private func shortRace(_ n: String) -> String {
+        let drop: Set<String> = ["half", "marathon", "10k", "5k", "15k", "mile", "miler", "run", "race", "the"]
+        let words = n.split(separator: " ").map(String.init)
+        let core = words.filter { !drop.contains($0.lowercased()) }
+        if core.count >= 2 {
+            let acr = core.compactMap { $0.first }.map(String.init).joined().uppercased()
+            return String(acr.prefix(4))
+        }
+        return n.count > 12 ? String(n.prefix(11)) + "…" : n
+    }
 
     private func load() async {
         loadError = nil
@@ -152,46 +164,88 @@ struct PlanView: View {
     let overview: OverviewResponse
     var body: some View {
         let days = overview.planWeekWorkouts ?? []
+        let work = days.filter { ($0.type ?? "") != "rest" }
+        let done = work.filter { overview.isPlanDayDone($0) }.count
         let planned = days.reduce(0.0) { $0 + ($1.distanceMi ?? 0) }
-        return FaffPage(eyebrow: "\(overview.planCurrentPhase ?? "Plan") · this week", title: "Plan") {
+        let frac = work.isEmpty ? 0 : Double(done) / Double(work.count)
+        return FaffScreen(eyebrow: "\(overview.planCurrentPhase ?? "Plan") phase", title: "This Week") {
+            // Progress
+            VStack(spacing: 9) {
+                HStack {
+                    Text("\(done) of \(work.count) sessions done").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                    Spacer()
+                    (Text("\(Int(planned)) mi ").font(Faff.F.inter(12.5, .bold)).foregroundStyle(Faff.C.ink)
+                     + Text("planned").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted))
+                }
+                FaffProgressBar(fraction: frac)
+            }
+            .faffCard(padding: 16)
+            // Week
             VStack(spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, day in planRow(day) }
+                ForEach(Array(days.enumerated()), id: \.offset) { i, day in
+                    planRow(day, first: i == 0)
+                }
             }
-            .faffCard(padding: 8)
-            HStack {
-                Text("\(Int(planned)) mi planned this week")
-                    .font(Faff.F.inter(11, .semibold)).foregroundStyle(Faff.C.textMuted)
-                Spacer()
+            .faffCard(padding: 0)
+            // Coming up
+            if let fl = overview.planFutureLongRuns, !fl.isEmpty {
+                Text("COMING UP").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                VStack(spacing: 0) {
+                    ForEach(Array(fl.prefix(3).enumerated()), id: \.offset) { i, f in
+                        HStack {
+                            Text("Wk +\(i + 1)").font(Faff.F.display(17)).foregroundStyle(Faff.C.textMuted).frame(width: 48, alignment: .leading)
+                            Text("Long run \(OverviewFormat.distance(f.longMi)) mi").font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Faff.C.textDim)
+                        }
+                        .padding(.vertical, 11)
+                        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(i == 0 ? 0 : 1), alignment: .top)
+                    }
+                }
+                .faffCard(padding: 0)
             }
-            .padding(.horizontal, 4)
         }
     }
 
-    private func planRow(_ d: OPlanDay) -> some View {
+    private func planRow(_ d: OPlanDay, first: Bool) -> some View {
         let isToday = d.dateISO == overview.today
         let isPast = (d.dateISO ?? "") < (overview.today ?? "")
         let dw = DerivedWorkout(plan: d, fallback: nil)
         let isRest = (d.type ?? "") == "rest"
-        let isDone = overview.isPlanDayDone(d)   // real ≥60%-of-planned completion
-        return HStack(spacing: 12) {
-            ZStack {
-                if isDone { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Faff.C.recovery) }
-                else if isToday { Circle().fill(Faff.C.milestone).frame(width: 9, height: 9) }
-                else if isPast && !isRest { Circle().fill(Faff.C.warn.opacity(0.5)).frame(width: 7, height: 7) }  // missed
-                else { Circle().fill(Faff.C.textFaint).frame(width: 7, height: 7) }
-            }.frame(width: 16)
-            Text(dowLabel(d.dow)).font(Faff.F.display(17)).foregroundStyle(Faff.C.textDim).frame(width: 36, alignment: .leading)
+        let isDone = overview.isPlanDayDone(d)
+        let nameColor = isToday ? Faff.C.amberInk : Faff.C.ink
+        return HStack(spacing: 11) {
+            statusDot(d, isToday: isToday, isPast: isPast, isRest: isRest, isDone: isDone).frame(width: 9, height: 9)
+            Text(dowLabel(d.dow).capitalized.prefix(3) == "" ? "" : String(dowLabel(d.dow).capitalized.prefix(3)))
+                .font(Faff.F.inter(12.5, .semibold)).foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
-                Text(dw.label).font(Faff.F.inter(13, .semibold))
-                    .foregroundStyle(isToday ? Faff.C.milestone : Faff.C.ink)
-                Text(isRest ? "Rest day" : "\(OverviewFormat.distance(d.distanceMi)) mi").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+                Text(isRest ? "Rest" : dw.label).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
+                Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
             }
             Spacer()
-            Text(isRest ? "—" : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(17))
-                .foregroundStyle(isRest ? Faff.C.textFaint : (isToday ? Faff.C.milestone : Faff.C.ink))
+            if isDone {
+                Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Faff.C.recovery)
+            } else {
+                Text(isRest ? "—" : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(18))
+                    .foregroundStyle(isRest ? Faff.C.textFaint : nameColor)
+            }
         }
-        .padding(.horizontal, 8).padding(.vertical, 11)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider), alignment: .top)
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Faff.C.divider).opacity(first ? 0 : 1), alignment: .top)
+    }
+    @ViewBuilder private func statusDot(_ d: OPlanDay, isToday: Bool, isPast: Bool, isRest: Bool, isDone: Bool) -> some View {
+        if isRest { Circle().stroke(Faff.C.textFaint, lineWidth: 1.5) }
+        else if isDone { Circle().fill(Faff.C.recovery) }
+        else if isToday { Circle().fill(Faff.C.milestone) }
+        else if isPast { Circle().fill(Faff.C.warn.opacity(0.5)) }
+        else { Circle().fill(Faff.C.textFaint) }
+    }
+    private func rowSub(_ d: OPlanDay, isRest: Bool, isToday: Bool, isDone: Bool) -> String {
+        if isRest { return "recovery" }
+        let mi = "\(OverviewFormat.distance(d.distanceMi)) mi"
+        if isToday { return "\(mi) · today" }
+        if isDone { return "\(mi) · done" }
+        return mi
     }
 }
 
@@ -201,105 +255,123 @@ struct CoachView: View {
     let overview: OverviewResponse
     var body: some View {
         let dw = overview.todayWorkout
-        return FaffPage(eyebrow: overview.briefing?.answer.label ?? "Coach", title: "Today's read") {
-            faffMarkdown(overview.coachRead)
-                .font(Faff.F.inter(17)).foregroundStyle(Faff.C.ink).lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
-            block("Focus", dw.guidance, Faff.C.recovery)
-            if let acwr = overview.acwrValue {
-                block("Load",
-                      String(format: "Last 7 days are %.0f%% of your 8-week average (ACWR %.2f). %@",
-                             acwr * 100, acwr, acwr > 1.3 ? "Keep the easy days honest." : "Balanced."),
-                      acwr > 1.3 ? Faff.C.milestone : Faff.C.recovery)
+        return FaffScreen(eyebrow: "Coach", title: "Today's Read") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle().fill(Faff.C.recovery).frame(width: 6, height: 6)
+                    Text((overview.briefing?.answer.label ?? "Coach").uppercased())
+                        .font(Faff.F.inter(10, .bold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                }
+                faffMarkdown(overview.coachRead)
+                    .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink).lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            CoachVerdict("Focus", dw.guidance, color: Faff.C.milestone)
+            if let acwr = overview.acwrValue, acwr > 1.3 {
+                CoachVerdict("Back off if",
+                             "Resting HR stays high two mornings, or the legs feel dead — we'll trade the long run for easy miles.",
+                             color: Faff.C.warn)
+            }
+            Text("SIGNALS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+            VStack(alignment: .leading, spacing: 12) {
+                if let acwr = overview.acwrValue {
+                    SignalRow("Watching", tone: .amber,
+                              String(format: "Acute load is %.0f%% of your 8-week base (ACWR %.2f). Hold easy until it settles under 1.3.", acwr * 100, acwr))
+                }
+                let bankedMi = (overview.completedByDate ?? [:]).values.reduce(0, +)
+                if bankedMi > 0 {
+                    SignalRow("On track", tone: .green,
+                              String(format: "%.1f mi banked this week at conversational effort.", bankedMi))
+                }
+            }
+            .faffCard()
         }
-    }
-    private func block(_ label: String, _ body: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased()).font(Faff.F.inter(9, .bold)).tracking(1.2).foregroundStyle(color)
-            Text(body).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 12)
-        .overlay(Rectangle().frame(width: 3).foregroundStyle(color), alignment: .leading)
     }
 }
 
-// MARK: - Health
+// MARK: - Health (tile dashboard)
 
 struct HealthView: View {
     let overview: OverviewResponse
     @ObservedObject private var hk = HealthKitManager.shared
+    @State private var metric: MetricDetailSheet.Metric?
+
+    private struct Tile: Identifiable { let id = UUID(); let label, value: String; let unit, delta: String?; let tone: MetricTile.DeltaTone; let live: Bool }
+
     var body: some View {
-        FaffPage(eyebrow: "Today", title: "Body state") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("RECOVERY").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim)
-                    Spacer()
-                    Badge(text: overview.hasHealthData ? "Tracked" : "No data",
-                          tone: overview.hasHealthData ? .green : .grey)
-                }
-                if overview.hasHealthData {
-                    metricRow("Resting HR", overview.state?.recovery?.rhrBpm.map { "\(Int($0)) bpm" } ?? "—")
-                    metricRow("HRV (7d)", overview.state?.recovery?.hrv7dAvgMs.map { "\(Int($0)) ms" } ?? "—")
-                    metricRow("Sleep (7d)", overview.state?.recovery?.sleep7dAvgHrs.map { String(format: "%.1f h", $0) } ?? "—")
-                } else {
-                    Text("Connect Apple Health for resting heart rate, HRV, sleep, and VO₂max. Until then, readiness is estimated from training load only.")
-                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+        let r = overview.state?.recovery
+        let vitals: [Tile] = [
+            Tile(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil, delta: r?.hrv7dAvgMs != nil ? "7-day avg" : "No data", tone: .good, live: r?.hrv7dAvgMs != nil),
+            Tile(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil, delta: r?.rhrBpm != nil ? "7-day avg" : "No data", tone: .good, live: r?.rhrBpm != nil),
+            Tile(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil, delta: r?.sleep7dAvgHrs != nil ? "7-day avg" : "No data", tone: .good, live: r?.sleep7dAvgHrs != nil),
+            Tile(label: "Respiration", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+            Tile(label: "VO₂max", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+            Tile(label: "Wrist temp", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+        ]
+        let dynamics: [Tile] = ["Cadence", "Stride", "Vert Osc", "Grnd Contact", "Vert Ratio", "Run Power"].map {
+            Tile(label: $0, value: "—", unit: nil, delta: "No data", tone: .flat, live: false)
+        }
+        let acwr = overview.acwrValue
+        let load: [Tile] = [
+            Tile(label: "Load · ACWR", value: acwr.map { String(format: "%.2f", $0) } ?? "—", unit: nil, delta: acwr != nil ? ((acwr ?? 0) > 1.3 ? "watching" : "ok") : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
+            Tile(label: "Volume", value: OverviewFormat.distance(overview.state?.volume?.last7Mi), unit: "mi", delta: "last 7d", tone: .flat, live: true),
+            Tile(label: "Form · TSB", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+        ]
+
+        return FaffScreen(eyebrow: overview.hasHealthData ? "Apple Health · synced" : "Apple Health", title: "Body State") {
+            // Hero ring
+            HStack(spacing: 14) {
+                ReadinessRing(score: overview.readinessScore, tone: TodayView.tone(for: overview.readinessState), size: 70)
+                VStack(alignment: .leading, spacing: 7) {
+                    Badge(text: badgeText, tone: badgeTone)
+                    Text(heroCopy).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                connectControl
-            }
-            .faffCard()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("TRAINING LOAD").font(Faff.F.inter(10, .medium)).tracking(0.8).foregroundStyle(Faff.C.textDim)
-                metricRow("Last 7 days", "\(OverviewFormat.distance(overview.state?.volume?.last7Mi)) mi")
-                metricRow("Last 28 days", "\(OverviewFormat.distance(overview.state?.volume?.last28Mi)) mi")
-                if let acwr = overview.acwrValue {
-                    metricRow("Acute : chronic", String(format: "%.2f", acwr), warn: acwr > 1.3)
-                }
-            }
-            .faffCard()
+            }.faffCard()
+
+            if !overview.hasHealthData { connectControl }
+
+            section("Recovery & Vitals", vitals)
+            section("Running Dynamics · last run", dynamics)
+            section("Training Load", load)
         }
+        .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
     }
-    private func metricRow(_ k: String, _ v: String, warn: Bool = false) -> some View {
-        HStack {
-            Text(k).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
-            Spacer()
-            Text(v).font(Faff.F.inter(13, .semibold)).foregroundStyle(warn ? Faff.C.milestone : Faff.C.ink)
+
+    private func section(_ title: String, _ tiles: [Tile]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            MetricGrid(items: tiles) { t in
+                MetricTile(label: t.label, value: t.value, unit: t.unit, delta: t.delta, deltaTone: t.tone,
+                           onTap: t.live ? { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit) } : nil)
+            }
         }
     }
 
-    // ── Apple Health connect / sync ───────────────────────────────
+    private var badgeText: String {
+        switch overview.readinessState { case "green": return "Primed"; case "yellow": return "Hold easy"; case "red": return "Back off"; default: return overview.hasHealthData ? "Tracked" : "No data" }
+    }
+    private var badgeTone: Badge.Tone {
+        switch overview.readinessState { case "green": return .green; case "yellow": return .amber; case "red": return .warn; default: return .grey }
+    }
+    private var heroCopy: String {
+        if overview.hasHealthData {
+            return "Vitals from Apple Health (7-day average). Acute load is what's holding the score — stay aerobic until it settles."
+        }
+        return "Connect Apple Health for HRV, resting heart rate, sleep and VO₂max. Until then, readiness reads from training load only."
+    }
+
     @ViewBuilder private var connectControl: some View {
         let busy = hk.status == .requesting || hk.status == .syncing
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
+        VStack(alignment: .leading, spacing: 6) {
+            PrimaryButton(title: busy ? "Syncing…" : "Connect Apple Health", icon: "heart.fill") {
                 Task { await hk.connectAndSync() }
-            } label: {
-                HStack(spacing: 7) {
-                    if busy {
-                        ProgressView().controlSize(.small).tint(.white)
-                    } else {
-                        Image(systemName: "heart.fill").font(.system(size: 11, weight: .bold))
-                    }
-                    Text(busy ? "Syncing…" : "Connect Apple Health")
-                        .font(Faff.F.oswald(12)).tracking(1.2)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                .foregroundStyle(.white).background(busy ? Faff.C.ink.opacity(0.6) : Faff.C.ink)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .buttonStyle(.plain).disabled(busy)
             if let msg = hk.lastMessage {
-                Text(msg)
-                    .font(Faff.F.inter(11.5))
-                    .foregroundStyle(hk.status == .error ? Faff.C.warn : Faff.C.textMuted)
+                Text(msg).font(Faff.F.inter(11.5)).foregroundStyle(hk.status == .error ? Faff.C.warn : Faff.C.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.top, 4)
     }
 }
 
@@ -445,6 +517,43 @@ struct WhyThisSheet: View {
                 PrimaryButton(title: "Open today's coach read", icon: "questionmark.circle") { dismiss(); onOpenCoach() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.top, 24).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
+    }
+}
+
+// MARK: - Metric detail (sheet from a Health tile)
+
+struct MetricDetailSheet: View {
+    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String? }
+    let metric: Metric
+    let overview: OverviewResponse
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                Capsule().fill(Faff.C.textFaint).frame(width: 38, height: 5)
+                    .frame(maxWidth: .infinity).padding(.top, 8)
+                Text("APPLE HEALTH").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(metric.title) · 7-day average").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(metric.value).font(Faff.F.display(58)).foregroundStyle(Faff.C.recovery)
+                        if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
+                    }
+                }.faffCard()
+                CoachVerdict("What this means",
+                             "Your 7-day average from Apple Health. Day-to-day trend charts fill in here as more days sync.",
+                             color: Faff.C.recovery)
+                if let s = overview.readinessScore {
+                    HStack(spacing: 12) {
+                        ReadinessRing(score: s, tone: TodayView.tone(for: overview.readinessState), size: 42)
+                        Text("Feeds your readiness score (\(s)).").font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                    }.faffCard()
+                }
+                PrimaryButton(title: "Close", icon: nil) { dismiss() }
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
     }

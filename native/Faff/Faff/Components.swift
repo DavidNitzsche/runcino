@@ -279,6 +279,112 @@ struct CoachVerdict: View {
     }
 }
 
+// MARK: - Signal row (Coach / Why-this)
+
+struct SignalRow: View {
+    let badge: String
+    var tone: Badge.Tone = .green
+    let body_: String
+    init(_ badge: String, tone: Badge.Tone = .green, _ body: String) {
+        self.badge = badge; self.tone = tone; self.body_ = body
+    }
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Badge(text: badge, tone: tone)
+            Text(body_).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// MARK: - Metric tile (Health dashboard)
+
+struct MetricTile: View {
+    let label: String
+    var value: String           // "—" when no data
+    var unit: String? = nil
+    var delta: String? = nil    // "↑ 6 · 7d" / "No data"
+    enum DeltaTone { case good, watch, flat }
+    var deltaTone: DeltaTone = .flat
+    var onTap: (() -> Void)? = nil
+    private var dColor: Color {
+        switch deltaTone { case .good: return Faff.C.recovery; case .watch: return Faff.C.amberInk; case .flat: return Faff.C.textDim }
+    }
+    var body: some View {
+        let content = VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.6)
+                .foregroundStyle(Faff.C.textDim).lineLimit(1).minimumScaleFactor(0.7)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(Faff.F.display(26)).foregroundStyle(Faff.C.ink)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                if let unit { Text(unit).font(Faff.F.inter(8.5, .medium)).foregroundStyle(Faff.C.textMuted) }
+            }
+            Text(delta ?? " ").font(Faff.F.inter(8.5, .bold)).foregroundStyle(dColor).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Faff.S.tilePadding)
+        .background(Faff.C.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 1, x: 0, y: 1)
+        if let onTap {
+            Button(action: onTap) { content }.buttonStyle(.plain)
+        } else { content }
+    }
+}
+
+/// 3-column metric grid.
+struct MetricGrid<T: Identifiable, Cell: View>: View {
+    let items: [T]
+    @ViewBuilder let cell: (T) -> Cell
+    private let cols = [GridItem(.flexible(), spacing: Faff.S.tileGap),
+                        GridItem(.flexible(), spacing: Faff.S.tileGap),
+                        GridItem(.flexible(), spacing: Faff.S.tileGap)]
+    var body: some View {
+        LazyVGrid(columns: cols, spacing: Faff.S.tileGap) {
+            ForEach(items) { cell($0) }
+        }
+    }
+}
+
+// MARK: - Structure row (Workout detail)
+
+struct StructureRow: View {
+    let name: String
+    let sub: String
+    let distance: String
+    var work: Bool = false
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(work ? Faff.C.recovery : Faff.C.ink.opacity(0.14))
+                .frame(width: 4, height: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(Faff.F.inter(15.5, .bold)).foregroundStyle(work ? Faff.C.recovery : Faff.C.ink)
+                Text(sub).font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
+            }
+            Spacer()
+            Text(distance).font(Faff.F.display(27)).foregroundStyle(Faff.C.ink)
+        }
+        .padding(.vertical, 7)
+    }
+}
+
+// MARK: - Progress bar
+
+struct FaffProgressBar: View {
+    var fraction: Double          // 0…1
+    var tint: Color = Faff.C.recovery
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Faff.C.track).frame(height: 6)
+                Capsule().fill(tint).frame(width: geo.size.width * max(0, min(1, fraction)), height: 6)
+            }
+        }
+        .frame(height: 6)
+    }
+}
+
 // MARK: - Page scaffold (eyebrow + big title) under the sticky bar
 
 struct FaffScreen<Content: View>: View {
