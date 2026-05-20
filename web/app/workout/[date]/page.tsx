@@ -11,18 +11,17 @@ import { Caption } from '../../../components/nav';
 import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import { resolvePlanUserId } from '../../../lib/plan-user';
 import { vdotSnapshot, pacesFromVdot } from '../../../lib/vdot';
 import { gatherCoachState } from '../../../lib/coach-state';
+import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
+import type { ResolvedFitness } from '../../../lib/fitness-resolver';
 import type { PlanWorkout, PhaseLabel } from '../../../coach/plan-types';
 
 function fmtPace(sPerMi: number): string {
   const m = Math.floor(sPerMi / 60);
   const s = Math.round(sPerMi % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function fmtMin(distMi: number, sPerMi: number): string {
-  return `~${Math.round((distMi * sPerMi) / 60)} min`;
 }
 
 const TYPE_DISPLAY: Record<string, string> = {
@@ -52,7 +51,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
 
   // Load plan + state in parallel.
   const [planResult, state] = await Promise.all([
-    getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
+    getCurrentPlan(await resolvePlanUserId()).catch(() => ({ plan: null, action: 'error' })),
     gatherCoachState().catch(() => null),
   ]);
 
@@ -99,16 +98,24 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
   const typeDisplay = workout ? (TYPE_DISPLAY[workout.type] ?? workout.type) : 'Workout';
   const phaseChip = phaseLabel ? PHASE_CHIP[phaseLabel] : null;
 
-  // Warm-up / main / cool-down split.
   const totalMi = workout?.distanceMi ?? 0;
-  const warmMi = workout && workout.type !== 'rest' ? Math.max(0.4, Math.round(totalMi * 0.16 * 10) / 10) : 0;
-  const coolMi = workout && workout.type !== 'rest' ? Math.max(0.4, Math.round(totalMi * 0.16 * 10) / 10) : 0;
-  const mainMi = Math.max(0, Math.round((totalMi - warmMi - coolMi) * 10) / 10);
   const easyPaceS = paces?.E ? Math.round((paces.E.lowS + paces.E.highS) / 2) : 540;
-  const warmS = Math.round(warmMi * (easyPaceS + 30));
-
   const isQuality = workout?.isQuality ?? false;
   const subLabel = workout?.subLabel;
+
+  // Structure + effort + why from the SAME describeWorkout the overview
+  // modal and the iPhone use — no bespoke warm-up/main/cool-down split.
+  const fitness: ResolvedFitness | null = paces
+    ? ({
+        paces,
+        racePaceBand: { lowS: paces.T.lowS, highS: paces.T.highS, label: 'Race pace' },
+        hrZones: null,
+      } as unknown as ResolvedFitness)
+    : null;
+  const desc: WorkoutDescription | null =
+    workout && workout.type !== 'rest'
+      ? describeWorkout(describeKeyFromPlan(workout.type, workout.subLabel ?? null), workout.type, fitness)
+      : null;
 
   return (
     <>
@@ -211,8 +218,9 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                   </div>
                 )}
 
-                {/* Structure */}
-                {workout.type !== 'rest' && totalMi > 0 && (
+                {/* Structure — from describeWorkout (same source as the
+                    overview modal + iPhone), not a bespoke split. */}
+                {workout.type !== 'rest' && totalMi > 0 && desc && desc.steps.length > 0 && (
                   <div className="tile">
                     <div className="tile-h">
                       <div className="tile-lbl">Structure</div>
@@ -223,26 +231,49 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                         Total · {totalMi.toFixed(1)} mi · ~{Math.round((totalMi * (workout.paceTargetSPerMi ?? easyPaceS)) / 60)} min
                       </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <StructBlock
-                        start="0:00"
-                        name={`Warm-up · ${warmMi.toFixed(1)} mi easy`}
-                        pace={`${fmtPace(easyPaceS + 30)}/mi`}
-                        duration={fmtMin(warmMi, easyPaceS + 30)}
-                      />
-                      <StructBlock
-                        start={fmtClock(warmS)}
-                        name={`Main · ${mainMi.toFixed(1)} mi${subLabel ? ` · ${subLabel}` : ''}`}
-                        pace={`${paceDisplay}/mi`}
-                        duration={fmtMin(mainMi, workout.paceTargetSPerMi ?? easyPaceS)}
-                        highlight={isQuality}
-                      />
-                      <StructBlock
-                        start={fmtClock(Math.round(warmS + mainMi * (workout.paceTargetSPerMi ?? easyPaceS)))}
-                        name={`Cool-down · ${coolMi.toFixed(1)} mi easy`}
-                        pace={`${fmtPace(easyPaceS + 30)}/mi`}
-                        duration={fmtMin(coolMi, easyPaceS + 30)}
-                      />
+                    <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {desc.steps.map((s, i) => (
+                        <li key={i} style={{ display: 'flex', gap: 10 }}>
+                          <span style={{
+                            flex: '0 0 auto', width: 22, height: 22, borderRadius: 11,
+                            background: 'var(--color-l3)', color: 'var(--color-t2)',
+                            fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>{i + 1}</span>
+                          <div style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--color-t1)' }}>
+                            {s.kind === 'simple' ? (
+                              <span>
+                                <strong>{s.name}</strong> — <strong>{s.duration}</strong> at <strong>{s.pace}</strong>{' '}
+                                <span style={{ color: 'var(--color-t3)' }}>({s.zone})</span>
+                                {s.hrTarget && <span style={{ color: 'var(--color-t3)' }}> · HR <strong>{s.hrTarget}</strong></span>}
+                              </span>
+                            ) : (
+                              <div>
+                                <strong>{s.name}</strong>
+                                <div style={{ color: 'var(--color-corporate)', fontFamily: 'var(--font-data)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', margin: '4px 0' }}>
+                                  {s.times} rounds of:
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                  {s.items.map((it, j) => (
+                                    <li key={j} style={{ marginBottom: 2 }}>
+                                      {it.verb} <strong>{it.duration}</strong>
+                                      {it.pace && <> at <strong>{it.pace}</strong></>}
+                                      {it.zone && <span style={{ color: 'var(--color-t3)' }}> ({it.zone})</span>}
+                                      {it.suffix && <> {it.suffix}</>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--color-l2)' }}>
+                      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>How it should feel</div>
+                      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--color-t1)' }}>{desc.effort}</p>
+                      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase', margin: '12px 0 4px' }}>Why this workout</div>
+                      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--color-t1)' }}>{desc.why}</p>
                     </div>
                   </div>
                 )}
@@ -382,36 +413,3 @@ function Kpi({ value, unit, label, accent }: { value: string; unit: string; labe
   );
 }
 
-function StructBlock({ start, name, pace, duration, highlight }: {
-  start: string; name: string; pace: string; duration: string; highlight?: boolean;
-}) {
-  return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '60px 1fr auto auto',
-      gap: 14, alignItems: 'center', padding: '12px 14px',
-      background: highlight ? 'var(--active-wash)' : 'var(--color-l3)',
-      borderRadius: 8,
-      borderLeft: `3px solid ${highlight ? 'var(--color-corporate)' : 'var(--color-l5)'}`,
-    }}>
-      <span style={{
-        fontFamily: 'var(--font-data)', fontSize: 10.5,
-        color: highlight ? 'var(--color-corporate)' : 'var(--color-t3)', fontWeight: 700,
-      }}>{start}</span>
-      <span style={{ fontSize: 13.5, fontWeight: highlight ? 700 : 500, color: 'var(--color-t1)' }}>{name}</span>
-      <span style={{
-        fontFamily: 'var(--font-data)', fontSize: 13,
-        color: highlight ? 'var(--color-corporate)' : 'var(--color-t1)', fontWeight: 700,
-      }}>{pace}</span>
-      <span style={{
-        fontFamily: 'var(--font-data)', fontSize: 10.5,
-        color: highlight ? 'rgba(79,143,247,.6)' : 'var(--color-t3)',
-      }}>{duration}</span>
-    </div>
-  );
-}
-
-function fmtClock(totalSec: number): string {
-  const m = Math.floor(totalSec / 60);
-  const s = Math.round(totalSec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}

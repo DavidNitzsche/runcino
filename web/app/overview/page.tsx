@@ -32,6 +32,7 @@ import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { describeWorkout, describeKeyFromPlan } from '@/lib/workout-descriptions';
 import { getCurrentPlan } from '@/coach/plan-lifecycle';
+import { resolvePlanUserId } from '@/lib/plan-user';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
 import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
@@ -90,7 +91,7 @@ export default async function OverviewPage() {
   const today = todayISO(tz);
   // Render the runner's REAL plan (same artifact /api/overview serves),
   // falling back to the synthetic demo plan only when no plan exists.
-  const planResult = await getCurrentPlan('me').catch(() => null);
+  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
   const weeks = planResult?.plan
     ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
     : buildSyntheticPlan();

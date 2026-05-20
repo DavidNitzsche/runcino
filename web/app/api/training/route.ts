@@ -38,6 +38,7 @@ import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import { resolvePlanUserId } from '../../../lib/plan-user';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 
@@ -122,7 +123,7 @@ export async function GET(): Promise<Response> {
 
     // Resolve plan + profile in parallel before building the rest.
     const [planResult, profileRow] = await Promise.all([
-      getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
+      getCurrentPlan(await resolvePlanUserId()).catch(() => ({ plan: null, action: 'error' })),
       getProfile('me').catch(() => null),
     ]);
 

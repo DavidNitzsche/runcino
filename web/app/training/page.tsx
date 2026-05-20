@@ -25,7 +25,9 @@ import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { buildSyntheticPlan, realPlanToWeeks, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { describeKeyFromPlan } from '@/lib/workout-descriptions';
 import { getCurrentPlan } from '@/coach/plan-lifecycle';
-import { getCompletedMileageByDate, isWorkoutComplete } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
+import { generateBriefing } from '@/lib/coach-briefing';
+import { resolvePlanUserId } from '@/lib/plan-user';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
 import { TrainingCell } from './TrainingCellIsland';
 import { listRacesDB } from '@/lib/race-store';
@@ -55,7 +57,7 @@ export default async function TrainingPage() {
   const today = todayISO(tz);
   // Real plan (same artifact /overview + /api/overview use); synthetic
   // demo plan only as a fallback when the runner has no plan yet.
-  const planResult = await getCurrentPlan('me').catch(() => null);
+  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
   const weeks = planResult?.plan
     ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
     : buildSyntheticPlan();
@@ -80,6 +82,32 @@ export default async function TrainingPage() {
   const phaseWeekTotal = phaseWeeks.length;
   const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
+
+  // Coach brief — the SAME generateBriefing the Today/overview surfaces
+  // use, not hardcoded prose. Inputs assembled like /api/overview.
+  const curWeekIdx = weeks.indexOf(currentWeek);
+  const previousWeek = curWeekIdx > 0 ? weeks[curWeekIdx - 1] : null;
+  const emptyStats = { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
+  const yISO = (() => { const d = new Date(today + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); })();
+  const lastWeekStats = previousWeek
+    ? await getWeekStats(user.id, previousWeek.startDate, previousWeek.endDate).catch(() => emptyStats)
+    : emptyStats;
+  const thisWeekSoFar = yISO >= currentWeek.startDate
+    ? await getWeekStats(user.id, currentWeek.startDate, yISO).catch(() => emptyStats)
+    : emptyStats;
+  const localHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()));
+  const coachBriefing = generateBriefing({
+    firstName: user.name?.trim().split(' ')[0] || '',
+    today,
+    daysToRace,
+    raceLabel: 'AFC Half',
+    currentWeek,
+    previousWeek,
+    lastWeekStats,
+    thisWeekSoFar,
+    todayDay: currentWeek.days.find((d) => d.date === today) ?? null,
+    localHour,
+  });
 
   const phasePeak = Math.max(...phaseWeeks.map((w) => w.plannedMi));
   const phaseLong = Math.max(...phaseWeeks.flatMap((w) => w.days.map((d) => d.distanceMi)));
@@ -184,9 +212,7 @@ export default async function TrainingPage() {
               <span className="dot-green"></span>
               COACH · THE ARC · BUILDING TOWARD AFC
             </div>
-            <p className="coach-briefing">
-              You&rsquo;re in week {currentWeek.weekNum} of {PHASES.find((p) => p.key === phaseKey)?.label} — <strong>the aerobic engine is just starting to take shape</strong>. The Build phase opens in {daysUntilNextPhase} days and brings the first real threshold dose; that&rsquo;s where the half-marathon pace starts to feel sustainable. <strong>Trust the easy. The fast pays for the patient.</strong>
-            </p>
+            <p className="coach-briefing">{coachBriefing}</p>
           </div>
           <div className="cycle-next">
             <div className="cycle-next-label">Next milestone</div>

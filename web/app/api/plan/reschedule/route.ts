@@ -15,8 +15,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
 import { getActivePlan, updateWorkout } from '@/lib/plan-store';
+import { resolvePlanUserId } from '@/lib/plan-user';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 function dowOf(iso: string): number {
@@ -24,8 +24,6 @@ function dowOf(iso: string): number {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser(req);
-
   let body: { action?: string; fromDateISO?: string; toDateISO?: string };
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
@@ -41,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
   if (from === to) return NextResponse.json({ ok: true, noop: true });
 
-  const plan = await getActivePlan(user?.id ?? 'me');
+  const plan = await getActivePlan(await resolvePlanUserId());
   if (!plan) return NextResponse.json({ error: 'No active plan' }, { status: 404 });
 
   const all = plan.weeks.flatMap((w) => w.workouts);

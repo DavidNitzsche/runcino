@@ -33,6 +33,7 @@ import { resolveFitness } from '@/lib/fitness-resolver';
 import { buildSyntheticPlan, realPlanToWeeks, todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { describeKeyFromPlan } from '@/lib/workout-descriptions';
 import { getCurrentPlan } from '@/coach/plan-lifecycle';
+import { resolvePlanUserId } from '@/lib/plan-user';
 import { buildWatchWorkout } from '@/lib/watch-workout';
 
 export async function GET(req: NextRequest) {
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
   // /overview, /training and /api/overview read from, so the watch
   // pushes the runner's actual workout (not the synthetic demo plan).
   // Falls back to the synthetic plan only when no plan exists.
-  const planResult = await getCurrentPlan('me').catch(() => null);
+  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
   const weeks = planResult?.plan
     ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
     : buildSyntheticPlan();

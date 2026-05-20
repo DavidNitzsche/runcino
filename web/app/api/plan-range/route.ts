@@ -16,6 +16,7 @@
  */
 
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import { resolvePlanUserId } from '../../../lib/plan-user';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { requireActiveUser } from '../../../lib/auth';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../../../lib/vdot';
@@ -136,7 +137,7 @@ export async function GET(req: Request) {
     // it separately here to get the VDOT snapshot for pace targets.
     // Passing userId loads aggregate VDOT so engine matches /profile.
     const [{ plan }, state] = await Promise.all([
-      getCurrentPlan('me'),
+      getCurrentPlan(await resolvePlanUserId()),
       gatherCoachState({ userId }),
     ]);
 

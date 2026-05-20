@@ -37,6 +37,7 @@ import type { FreshnessMap } from '../../../lib/freshness-types';
 import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrative';
 import { dailyBriefing, type DailyBriefing } from '../../../coach/coach-briefing';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+import { resolvePlanUserId } from '../../../lib/plan-user';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
@@ -149,7 +150,7 @@ export async function GET(): Promise<Response> {
 
     // Resolve plan first so trajectory14wk can consume actual plan volumes.
     const [planResult, profileRow] = await Promise.all([
-      getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
+      getCurrentPlan(await resolvePlanUserId()).catch(() => ({ plan: null, action: 'error' })),
       getProfile('me').catch(() => null),
     ]);
 
