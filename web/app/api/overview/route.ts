@@ -43,6 +43,9 @@ import { greeting } from '../../../lib/dates';
 import { vdotSnapshot } from '../../../lib/vdot';
 import type { ResolvedFitness } from '../../../lib/fitness-types';
 import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
+import { generateBriefing } from '../../../lib/coach-briefing';
+import { getWeekStats } from '../../../lib/completed-runs';
+import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
@@ -85,6 +88,10 @@ interface OverviewApiOk {
   planCurrentPhase: string | null;
   /** Runner display name from the profile table. null when no profile row. */
   profileName: string | null;
+  /** The day-aware coach line — the SAME generateBriefing the /overview
+   *  web page renders, so the iPhone app and the website show identical
+   *  coach copy. null when no plan / on any compute failure. */
+  coachLine: string | null;
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
@@ -318,6 +325,54 @@ export async function GET(): Promise<Response> {
       todayMonthDay: `${monthNames[todayDate.getUTCMonth()]} ${todayDate.getUTCDate()}`,
     });
 
+    // Day-aware coach line — assembled exactly like the /overview web
+    // page so the iPhone app and the website render identical copy (one
+    // source of truth). Replaces the app's old client-side compose, and
+    // sidesteps dailyBriefing's stale "cleaning up from the race" clause.
+    // Defensive: any failure leaves coachLine null and the app falls back.
+    let coachLine: string | null = null;
+    try {
+      const plan = planResult.plan;
+      if (plan) {
+        const weeks = realPlanToWeeks(plan, describeKeyFromPlan);
+        const currentWeek = weeks.find((w) => w.days.some((d) => d.date === today)) ?? weeks[0];
+        if (currentWeek) {
+          const previousWeek = weeks[weeks.findIndex((w) => w === currentWeek) - 1] ?? null;
+          const todayDay = currentWeek.days.find((d) => d.date === today) ?? null;
+          const statsUser = userId ?? 'me';
+          const yISO = (() => {
+            const d = new Date(today + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() - 1);
+            return d.toISOString().slice(0, 10);
+          })();
+          const emptyStats = { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
+          const lastWeekStats = previousWeek
+            ? await getWeekStats(statsUser, previousWeek.startDate, previousWeek.endDate).catch(() => emptyStats)
+            : emptyStats;
+          const thisWeekSoFar = yISO >= currentWeek.startDate
+            ? await getWeekStats(statsUser, currentWeek.startDate, yISO).catch(() => emptyStats)
+            : emptyStats;
+          const raceDate = weeks[weeks.length - 1]?.days[6]?.date ?? stateNextA?.date ?? '2026-08-16';
+          const daysToRace = Math.max(0, daysBetween(today, raceDate));
+          const localHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
+          }).format(new Date()));
+          coachLine = generateBriefing({
+            firstName: (profileRow?.full_name?.trim().split(' ')[0]) || '',
+            today,
+            daysToRace,
+            raceLabel: stateNextA?.name ?? 'AFC Half',
+            currentWeek,
+            previousWeek,
+            lastWeekStats,
+            thisWeekSoFar,
+            todayDay,
+            localHour,
+          });
+        }
+      }
+    } catch { coachLine = null; }
+
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
     const planFutureLongRuns = (() => {
       const plan = planResult.plan;
@@ -362,6 +417,7 @@ export async function GET(): Promise<Response> {
       planWeekWorkouts: planWeekDescribed,
       planCurrentPhase,
       profileName: profileRow?.full_name?.trim() || null,
+      coachLine,
       planFutureLongRuns,
     };
     return Response.json(body);
