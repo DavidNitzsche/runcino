@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · iPhone App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Faff — iPhone app · full companion · light v4
+   System: designs/V4_DESIGN_LAW.md
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --bg:#EEECEA; --bg-2:#E7E4E1; --card:#FFFFFF; --ink:#0D0F12;
+  --t0:#0D0F12; --t1:rgba(13,15,18,.56); --t2:rgba(13,15,18,.38); --t3:rgba(13,15,18,.20);
+  --divider:rgba(13,15,18,.07); --pill-bg:rgba(13,15,18,.038); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --warn:#F43F5E;
+  --green-wash:rgba(44,168,47,.12); --orange-wash:rgba(232,93,38,.12); --amber-wash:rgba(212,144,10,.15);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.05);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);
+  --shadow-lg:0 4px 14px rgba(0,0,0,.10),0 30px 60px rgba(0,0,0,.18);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif; --f-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:
+    radial-gradient(1200px 600px at 15% -5%,rgba(232,93,38,.06),transparent 60%),
+    radial-gradient(1000px 700px at 100% 0%,rgba(212,144,10,.05),transparent 55%),
+    var(--bg);
+  color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5;
+  padding:64px 6vw 120px;min-height:100vh}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ── doc masthead ── */
+.wrap{max-width:1340px;margin:0 auto}
+.logo{font-family:var(--f-display);font-style:italic;font-size:34px;letter-spacing:3px;line-height:1;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--orange);margin-top:24px}
+h1{font-family:var(--f-display);font-size:84px;letter-spacing:-.01em;line-height:.84;text-transform:uppercase;margin:12px 0 18px}
+.intro{font-size:16px;color:var(--t1);max-width:680px;line-height:1.62}
+.intro b{color:var(--ink);font-weight:600}
+.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:26px}
+.chip{font-size:12px;font-weight:600;padding:9px 14px;border-radius:11px;background:var(--card);box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:8px}
+.chip .d{width:8px;height:8px;border-radius:50%}
+
+.sec-h{display:flex;align-items:baseline;gap:14px;margin:84px 0 30px}
+.sec-h h2{font-family:var(--f-display);font-size:40px;line-height:.9;text-transform:uppercase}
+.sec-h .note{margin-left:auto;font-size:13px;color:var(--t1);max-width:420px;text-align:right}
+
+/* ── gallery ── */
+.gallery{display:flex;gap:54px 46px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.unit{width:390px;display:flex;flex-direction:column;align-items:center;gap:20px}
+.cap{text-align:center;font-size:13px;color:var(--t1);font-weight:500;line-height:1.5;max-width:340px}
+.cap b{display:block;font-family:var(--f-sub);color:var(--ink);font-weight:600;font-size:13px;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px}
+
+/* ── device frame ── */
+.device{width:412px;padding:11px;border-radius:58px;
+  background:linear-gradient(145deg,#48484d,#202024 38%,#0d0d10);
+  box-shadow:var(--shadow-lg),inset 0 0 0 2px rgba(255,255,255,.06)}
+.screen{position:relative;width:390px;height:844px;border-radius:48px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+.island{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:118px;height:34px;background:#000;border-radius:18px;z-index:30}
+.statusbar{flex:none;height:54px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 6px;font-size:15px;font-weight:600}
+.statusbar .sys{display:flex;align-items:center;gap:6px}
+.homebar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:rgba(13,15,18,.28);z-index:25}
+
+/* scroll body */
+.body{flex:1;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:12px 20px 22px;display:flex;flex-direction:column;gap:14px}
+.scroll::-webkit-scrollbar{display:none}
+.scroll>*{flex-shrink:0}
+
+/* app header */
+.apphead{display:flex;align-items:center;justify-content:space-between;padding-top:2px}
+.apphead .lg{font-family:var(--f-display);font-style:italic;font-size:23px;letter-spacing:1.6px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.iconbtn{width:34px;height:34px;border-radius:11px;background:var(--card);box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;color:var(--t1)}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#F3AD38,#E85D26 70%);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--f-sub);font-weight:600;font-size:14px}
+
+/* sticky top nav bar (brand + race chip + avatar) */
+.stickyhead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 16px 6px;border-bottom:1px solid var(--divider);background:rgba(238,236,234,.78);backdrop-filter:blur(20px);position:relative;z-index:10}
+.stickyhead .lg{font-family:var(--f-display);font-style:italic;font-size:22px;letter-spacing:1.5px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stickyhead .rt{display:flex;align-items:center;gap:8px}
+.stickyhead .avatar{width:28px;height:28px;font-size:12px}
+.racechip{padding:5px 10px}
+.racechip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:11px;background:var(--orange-wash);color:var(--orange);font-size:12px;font-weight:700;letter-spacing:.01em}
+.racechip svg{width:13px;height:13px}
+.racechip .dd{opacity:.7;font-weight:600}
+
+/* date strip */
+.datestrip{display:flex;justify-content:space-between;gap:4px}
+.dcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 0 8px;border-radius:14px}
+.dcol .dl{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--t2);text-transform:uppercase}
+.dcol .dn{font-family:var(--f-display);font-size:20px;line-height:1;color:var(--t1)}
+.dcol .dd{width:5px;height:5px;border-radius:50%;background:var(--green)}
+.dcol .dd.amber{background:var(--amber)} .dcol .dd.none{background:var(--t3)} .dcol .dd.rest{background:transparent;border:1.5px solid var(--t3)}
+.dcol.on{background:var(--ink)}
+.dcol.on .dl{color:rgba(255,255,255,.6)} .dcol.on .dn{color:#fff}
+.dcol.today:not(.on){box-shadow:inset 0 0 0 1.5px rgba(232,93,38,.55)}
+.dcol.today:not(.on) .dl,.dcol.today:not(.on) .dn{color:var(--orange)}
+
+/* coach label + brief */
+.coach-lbl{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+.coach-lbl .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.brief{font-size:14px;line-height:1.5;color:var(--t0)}
+.brief b{font-weight:700}
+.brief .race{color:var(--orange);font-weight:600}
+
+/* card */
+.c{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:17px}
+.eyb{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--t2)}
+.title{font-family:var(--f-display);font-size:54px;line-height:.82;letter-spacing:-.5px;text-transform:uppercase;margin:9px 0 15px}
+.whychip{display:inline-flex;align-items:center;gap:5px;font-family:var(--f-sub);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t1);background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:9px;padding:5px 10px;cursor:pointer}
+.whychip svg{width:12px;height:12px;color:var(--t2)}
+
+/* stat pills */
+.spills{display:flex;gap:7px}
+.spill{flex:1;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:12px;padding:11px 12px 10px}
+.spill .v{display:flex;align-items:baseline;gap:3px}
+.spill .v .n{font-family:var(--f-display);font-size:27px;line-height:.9}
+.spill .v .n.o{color:var(--orange)} .spill .v .n.dim{color:var(--t3)}
+.spill .v .u{font-size:11px;color:var(--t1);font-weight:500}
+.spill .l{font-size:9px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--t2);margin-top:5px}
+
+/* structure mini bar */
+.struct{display:flex;gap:2px;margin-top:13px}
+.struct i{height:7px;border-radius:2px;background:rgba(13,15,18,.07)}
+.struct i.warm{flex:1.4;background:rgba(13,15,18,.13)} .struct i.work{flex:1;background:var(--orange)} .struct i.rec{flex:.5;background:var(--orange-wash)} .struct i.cool{flex:1.4;background:rgba(13,15,18,.13)} .struct i.easy{flex:6;background:var(--green)}
+
+/* buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:none;border-radius:13px;padding:13px;font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:default}
+.btn-primary{background:var(--ink);color:#fff}
+.btn-row{display:flex;gap:9px}
+.btn-ghost{flex:1;background:var(--card);border:1.5px solid var(--pill-line);color:var(--t0);box-shadow:var(--shadow-sm)}
+
+/* readiness inline */
+.ready-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ready-head .lbl{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+.badge{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:7px}
+.badge.green{color:var(--green);background:var(--green-wash)} .badge.amber{color:#B3450A;background:var(--amber-wash)} .badge.orange{color:#fff;background:var(--orange)} .badge.grey{color:var(--t2);background:var(--pill-bg)} .badge.warn{color:var(--warn);background:rgba(244,63,94,.12)}
+.ready-body{display:flex;gap:14px;align-items:center}
+.ring{position:relative;flex:none}
+.ring .vv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .vv .n{font-family:var(--f-display);line-height:.8}
+.ring .vv .s{font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);margin-top:2px}
+.ready-copy{font-size:12.5px;line-height:1.45;color:var(--t1)} .ready-copy b{color:var(--t0);font-weight:600}
+
+/* check-in slider */
+.checkin-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.checkin-head .lbl{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t2)}
+.checkin-head .ok{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green)}
+.slider{display:flex;align-items:center;gap:12px}
+.slider .sl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);width:54px}
+.track{flex:1;height:7px;border-radius:4px;background:rgba(13,15,18,.08);position:relative}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:linear-gradient(90deg,#9bd49c,var(--green))}
+.track .thumb{position:absolute;top:50%;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translate(-50%,-50%)}
+.slider .sv{font-family:var(--f-display);font-size:21px;width:22px;text-align:right}
+
+/* generic rows */
+.row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--divider)}
+.row:first-child{border-top:0}
+.row .lf{display:flex;align-items:center;gap:11px}
+.row .day{font-family:var(--f-display);font-size:20px;color:var(--t2);min-width:34px}
+.row .nm{font-size:13.5px;font-weight:600;color:var(--t0)} .row .nm small{display:block;font-weight:400;color:var(--t2);font-size:11px;margin-top:1px}
+.row .rt{font-family:var(--f-display);font-size:20px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.ok{background:var(--green)} .dot.now{background:var(--amber)} .dot.up{background:var(--t3)} .dot.rest{background:transparent;border:1.5px solid var(--t3)}
+
+/* screen big heading */
+.screen-h{font-family:var(--f-display);font-size:40px;line-height:.86;text-transform:uppercase;letter-spacing:-.5px;margin-top:2px}
+.screen-eyb{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--t2)}
+
+/* progress bar */
+.pbar{height:7px;border-radius:4px;background:rgba(13,15,18,.08);overflow:hidden}
+.pbar i{display:block;height:100%;border-radius:4px;background:var(--green)}
+.metaline{display:flex;justify-content:space-between;font-size:11.5px;color:var(--t1);font-weight:500;padding:0 2px}
+.metaline b{color:var(--t0);font-weight:700}
+
+/* trend rows (health) */
+.trend{margin-top:13px}
+.trend:first-child{margin-top:0}
+.trend .tt{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.trend .tt .k{color:var(--t2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:10.5px}
+.trend .tt .v{font-weight:700;font-size:13px} .trend .tt .v.green{color:var(--green)} .trend .tt .v.amber{color:#B3450A}
+.trend .bar{height:7px;border-radius:4px;background:rgba(13,15,18,.07);overflow:hidden}
+.trend .bar i{display:block;height:100%;border-radius:4px;background:var(--green)} .trend .bar i.dim{background:rgba(13,15,18,.28)} .trend .bar i.amber{background:var(--amber)}
+
+/* metric dashboard grid (Health) */
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mtile{background:var(--card);border-radius:14px;box-shadow:var(--shadow-sm);padding:12px 11px 13px;min-width:0}
+.mtile .mk{font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mtile .mrow{display:flex;align-items:baseline;gap:2px;margin-top:6px}
+.mtile .mv{font-family:var(--f-display);font-size:26px;line-height:.8}
+.mtile .mu{font-size:8.5px;color:var(--t1);font-weight:500}
+.mtile .md{font-size:8.5px;font-weight:700;margin-top:6px}
+.mtile .md.good{color:var(--green)} .mtile .md.watch{color:#B3450A} .mtile .md.flat{color:var(--t2)}
+
+/* segmented control (metric detail range toggle) */
+.seg{display:flex;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:9px;padding:3px;gap:3px}
+.seg .si{flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px 0;border-radius:7px;color:var(--t1)}
+.seg .si.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
+.chart-x{display:flex;justify-content:space-between;font-size:9px;font-weight:600;color:var(--t2);margin-top:6px;letter-spacing:.02em}
+
+/* run-recap splits */
+.splitrow{display:flex;align-items:center;gap:11px;padding:5px 0}
+.splitrow .sm{font-family:var(--f-display);font-size:17px;color:var(--t2);width:14px;text-align:center}
+.sbar{flex:1;height:6px;border-radius:3px;background:rgba(13,15,18,.07);overflow:hidden}
+.sbar i{display:block;height:100%;background:var(--green);border-radius:3px}
+.splitrow .sp{font-family:var(--f-display);font-size:18px;min-width:42px;text-align:right}
+.splitrow .sh{font-size:10px;color:var(--t2);font-weight:600;min-width:30px;text-align:right}
+
+/* coach verdict blocks */
+.cv{border-radius:14px;padding:14px 16px;border-left:3px solid var(--green);background:var(--card);box-shadow:var(--shadow)}
+.cv.focus{border-left-color:var(--amber)} .cv.backoff{border-left-color:var(--warn)}
+.cv .cv-l{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px;color:var(--green)}
+.cv.focus .cv-l{color:#B3450A} .cv.backoff .cv-l{color:var(--warn)}
+.cv .cv-b{font-size:13px;line-height:1.45;color:var(--t0)}
+.signal{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--t1);line-height:1.45;padding:2px}
+.signal .badge{flex:none}
+
+/* race card */
+.race-card{background:linear-gradient(150deg,#F3AD38,#E85D26 55%,#C73E0B);border-radius:18px;padding:20px;color:#fff;box-shadow:0 10px 30px rgba(232,93,38,.28)}
+.race-card .e{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.race-card .nm{font-family:var(--f-display);font-size:34px;line-height:.9;text-transform:uppercase;margin:8px 0 4px}
+.race-card .loc{font-size:11.5px;color:rgba(255,255,255,.9);font-weight:500}
+.race-card .cd{display:flex;align-items:baseline;gap:8px;margin-top:16px}
+.race-card .cd .n{font-family:var(--f-display);font-size:62px;line-height:.78} .race-card .cd .u{font-size:13px;color:rgba(255,255,255,.92);font-weight:600}
+.race-card .goal{display:flex;gap:18px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.22)}
+.race-card .goal .g .gv{font-family:var(--f-display);font-size:24px;line-height:.9} .race-card .goal .g .gk{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.8);margin-top:3px}
+
+/* PR chips */
+.prs{display:flex;gap:7px}
+.pr{flex:1;background:var(--pill-bg);border:1px solid var(--pill-line);border-radius:12px;padding:11px 10px;text-align:center}
+.pr .pv{font-family:var(--f-display);font-size:23px;line-height:.9} .pr .pk{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t2);margin-top:5px}
+
+/* settings rows */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid var(--divider);font-size:13.5px}
+.set-row:first-child{border-top:0}
+.set-row .lf{display:flex;align-items:center;gap:11px}
+.set-row .ic{width:30px;height:30px;border-radius:9px;background:var(--pill-bg);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--t1)}
+.set-row .ic svg{width:17px;height:17px}
+.set-row .rt{color:var(--t2);font-size:12.5px;display:flex;align-items:center;gap:5px}
+
+/* tab bar */
+.tabbar{flex:none;height:84px;padding-bottom:22px;border-top:1px solid var(--divider);background:rgba(238,236,234,.86);backdrop-filter:blur(20px);display:flex;align-items:flex-start;justify-content:space-around;padding-top:11px}
+.ti{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--t2);font-size:9.5px;font-weight:600;letter-spacing:.02em}
+.ti.on{color:var(--orange)}
+.ti .ic{width:23px;height:23px}
+
+/* sheet handle (workout detail) */
+.sheet-grab{width:38px;height:5px;border-radius:3px;background:var(--t3);margin:10px auto 4px}
+
+/* ── race detail ── */
+.detail-head{display:flex;align-items:center;justify-content:space-between;padding-top:2px}
+.detail-head .bk{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:600;color:var(--t1)}
+.detail-head .bk svg{color:var(--orange)}
+.elev-wrap{margin-top:9px}
+.elev-wrap svg{display:block;width:100%;height:auto}
+.routemap{position:relative;height:140px;background:linear-gradient(155deg,#eef1f3,#e7ebee)}
+.routemap svg{display:block;width:100%;height:100%}
+.routemap .mlabel{position:absolute;display:flex;align-items:center;gap:4px;font-size:8.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;background:rgba(255,255,255,.92);padding:3px 7px;border-radius:6px;color:var(--t1);box-shadow:var(--shadow-sm)}
+.routemap .mlabel .pd{width:6px;height:6px;border-radius:50%}
+
+/* workout structure rows */
+.strow{display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--divider)}
+.strow:first-child{border-top:0}
+.strow .sbar{width:4px;align-self:stretch;min-height:36px;border-radius:2px;flex:none;background:rgba(13,15,18,.14)}
+.strow .sbar.work{background:var(--green)}
+.strow .sbody{flex:1;min-width:0}
+.strow .snm{font-size:15.5px;font-weight:700;color:var(--t0)}
+.strow .snm.work{color:var(--green)}
+.strow .ssub{font-size:11.5px;color:var(--t2);margin-top:3px}
+.strow .sdist{font-family:var(--f-display);font-size:27px;line-height:.9;flex:none}
+.strow .sdist span{font-size:11px;color:var(--t1);font-weight:500;margin-left:2px}
+.gradeband{display:flex;height:8px;border-radius:3px;overflow:hidden;margin-top:7px}
+.gradeband i{height:100%}
+.gradeband i.green{background:rgba(44,168,47,.55)} .gradeband i.amber{background:rgba(212,144,10,.6)} .gradeband i.blue{background:rgba(37,99,235,.5)} .gradeband i.orange{background:rgba(232,93,38,.6)}
+.elev-legend{display:flex;justify-content:space-between;font-size:9.5px;color:var(--t2);font-weight:600;margin-top:6px;padding:0 1px}
+.phaserow{display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--divider)}
+.phaserow:first-child{border-top:0}
+.phaserow .pn{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:15px;color:#fff;flex:none}
+.phaserow .pn.green{background:var(--green)} .phaserow .pn.amber{background:var(--amber)} .phaserow .pn.blue{background:#2563EB} .phaserow .pn.orange{background:var(--orange)}
+.phaserow .pb{flex:1;min-width:0}
+.phaserow .pb .pnm{font-size:13px;font-weight:600;color:var(--t0)}
+.phaserow .pb .prg{font-size:10.5px;color:var(--t2);margin-top:1px}
+.phaserow .pp{text-align:right;flex:none}
+.phaserow .pp .ppn{font-family:var(--f-display);font-size:20px;line-height:.9}
+.phaserow .pp .ppu{font-size:8px;color:var(--t2);letter-spacing:.07em;text-transform:uppercase;margin-top:2px}
+.phaserow .pp .ppn.fin{color:var(--orange)}
+.gpill{display:inline-block;font-size:8px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 5px;border-radius:5px;margin-left:6px;vertical-align:middle}
+.gpill.green{color:var(--green);background:var(--green-wash)} .gpill.amber{color:#B3450A;background:var(--amber-wash)} .gpill.blue{color:#2563EB;background:rgba(37,99,235,.12)} .gpill.orange{color:#fff;background:var(--orange)}
+.fuelline{position:relative;height:42px;margin-top:14px}
+.fuelline .ft{position:absolute;top:9px;left:2px;right:2px;height:3px;border-radius:2px;background:rgba(13,15,18,.10)}
+.fuelline .fm{position:absolute;top:2px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
+.fuelline .fm .fd{width:18px;height:18px;border-radius:50%;background:var(--orange);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.fuelline .fm .fl{font-size:8.5px;color:var(--t1);font-weight:600;white-space:nowrap}
+.gap-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:5px 9px;border-radius:8px;background:var(--orange-wash);color:#B5430D;margin-top:8px}
+.gap-pill.on{background:var(--green-wash);color:#1f6a21}
+
+@media(max-width:760px){.sec-h .note{display:none}h1{font-size:60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- masthead -->
+  <header>
+    <div class="logo">FAFF</div>
+    <div class="kicker">iPhone App · Full Companion</div>
+    <h1>Your coach,<br>in your pocket.</h1>
+    <p class="intro">The whole web app, reborn as a native iPhone experience. The <b>web</b> is the command
+      center; the <b>watch</b> executes; the <b>phone</b> is where you live day to day. Every screen does one job:
+      a 2-second glance at <b>today</b>, the <b>plan</b> at a tap, the <b>coach's read</b>, your <b>body's state</b>,
+      and the <b>races</b> you're chasing. Light, fast, and quiet — color only when it means something.</p>
+    <div class="chips">
+      <div class="chip"><span class="d" style="background:var(--orange)"></span>Hero workout · one-tap open</div>
+      <div class="chip"><span class="d" style="background:var(--green)"></span>Readiness &amp; check-in</div>
+      <div class="chip"><span class="d" style="background:var(--amber)"></span>Coach daily read</div>
+      <div class="chip"><span class="d" style="background:var(--ink)"></span>Bebas + Inter + Oswald · light v4</div>
+    </div>
+  </header>
+
+  <div class="sec-h"><h2>The app</h2><span class="note">Five-tab base — Today · Plan · Coach · Health · Races. A sticky top bar carries the race countdown chip everywhere; the avatar opens Profile. Workout &amp; race detail push on top.</span></div>
+
+  <div class="gallery">
+
+    <!-- ════════ TODAY ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys">
+          <svg width="17" height="11" viewBox="0 0 18 12" fill="none"><rect x="0" y="8" width="3" height="4" rx="1" fill="#0D0F12"/><rect x="5" y="5" width="3" height="7" rx="1" fill="#0D0F12"/><rect x="10" y="2.5" width="3" height="9.5" rx="1" fill="#0D0F12"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#0D0F12"/></svg>
+          <svg width="16" height="11" viewBox="0 0 16 12" fill="none"><path d="M8 2.5c2 0 3.8.8 5.1 2l1.4-1.5A9.5 9.5 0 0 0 8 .2 9.5 9.5 0 0 0 1.5 3l1.4 1.5A7.4 7.4 0 0 1 8 2.5Z" fill="#0D0F12"/><path d="M8 6c1 0 2 .4 2.7 1.1l1.4-1.4A6 6 0 0 0 8 4a6 6 0 0 0-4.1 1.7l1.4 1.4A3.8 3.8 0 0 1 8 6Z" fill="#0D0F12"/><circle cx="8" cy="9.6" r="1.6" fill="#0D0F12"/></svg>
+          <svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg>
+        </span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+
+          <div class="datestrip">
+            <div class="dcol"><span class="dl">M</span><span class="dn">18</span><span class="dd"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">19</span><span class="dd amber"></span></div>
+            <div class="dcol on today"><span class="dl">W</span><span class="dn">20</span><span class="dd none" style="background:#fff"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">21</span><span class="dd up"></span></div>
+            <div class="dcol"><span class="dl">F</span><span class="dn">22</span><span class="dd rest"></span></div>
+            <div class="dcol"><span class="dl">S</span><span class="dn">23</span><span class="dd up"></span></div>
+            <div class="dcol"><span class="dl">S</span><span class="dn">24</span><span class="dd up"></span></div>
+          </div>
+
+          <p class="brief">Good afternoon, David. Your body is <b>still cleaning up from the race</b> — let it finish before we push. Easy <b>5.5&nbsp;mi</b> today, conversational. <span class="race">89 days to Americas Finest City.</span></p>
+
+          <div class="c" style="padding:17px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div class="eyb">Today · Base</div>
+              <button class="whychip"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.2 9.4a2.8 2.8 0 1 1 3.8 2.6c-.7.3-1 .8-1 1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.2" r="1.05" fill="currentColor"/></svg>Why this</button>
+            </div>
+            <div class="title">EASY RUN</div>
+            <div class="spills">
+              <div class="spill"><div class="v"><span class="n tnum">5.5</span><span class="u">mi</span></div><div class="l">Distance</div></div>
+              <div class="spill"><div class="v"><span class="n o tnum">8:29</span><span class="u">/mi</span></div><div class="l">Pace</div></div>
+              <div class="spill"><div class="v"><span class="n tnum">~47</span><span class="u">min</span></div><div class="l">Time</div></div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:13px"><svg width="13" height="13" viewBox="0 0 24 24" fill="#fff"><path d="M7 5v14l11-7z"/></svg>Open Workout</button>
+            <div class="btn-row" style="margin-top:9px">
+              <button class="btn btn-ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 4l10 8-10 8M19 4v16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Skip</button>
+              <button class="btn btn-ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 8h13l-3-3M20 16H7l3 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Substitute</button>
+            </div>
+          </div>
+
+          <div class="c" style="padding:16px">
+            <div class="ready-head"><span class="lbl">Readiness</span><span class="badge amber">Watch Load</span></div>
+            <div class="ready-body">
+              <div class="ring" style="width:54px;height:54px">
+                <svg width="54" height="54" viewBox="0 0 54 54"><circle cx="27" cy="27" r="22" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="5.5"/><circle cx="27" cy="27" r="22" fill="none" stroke="#D4900A" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="138" stroke-dashoffset="50" transform="rotate(-90 27 27)"/></svg>
+                <div class="vv"><div class="n tnum" style="font-size:23px;color:#B3450A">64</div></div>
+              </div>
+              <div class="ready-copy"><b>Load is climbing (ACWR 1.42).</b> Keep easy days easy. Connect Apple Health for HRV &amp; sleep.</div>
+            </div>
+          </div>
+
+          <div class="c" style="padding:16px">
+            <div class="checkin-head"><span class="lbl">Today's Check-in</span><span class="ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Logged</span></div>
+            <div class="slider"><span class="sl">Energy</span><div class="track"><div class="fill" style="width:60%"></div><div class="thumb" style="left:60%"></div></div><span class="sv tnum">6</span></div>
+          </div>
+
+        </div></div>
+        <div class="tabbar">
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Today</b>The 2-second glance. Coach line, hero workout, one-tap open, readiness, check-in. State-driven — rest days swap the hero for recovery.</div>
+    </div>
+
+    <!-- ════════ TODAY · RECAP (past date) ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+
+          <div class="datestrip">
+            <div class="dcol on"><span class="dl">M</span><span class="dn">18</span><span class="dd none" style="background:#fff"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">19</span><span class="dd"></span></div>
+            <div class="dcol today"><span class="dl">W</span><span class="dn">20</span><span class="dd amber"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">21</span><span class="dd up"></span></div>
+            <div class="dcol"><span class="dl">F</span><span class="dn">22</span><span class="dd rest"></span></div>
+            <div class="dcol"><span class="dl">S</span><span class="dn">23</span><span class="dd up"></span></div>
+            <div class="dcol"><span class="dl">S</span><span class="dn">24</span><span class="dd up"></span></div>
+          </div>
+
+          <p class="brief">Monday's easy run, logged. Relaxed and even — HR sat in <b>Zone 2</b> the whole way; you're absorbing the race well. <span class="race">89 days to Americas Finest City.</span></p>
+
+          <div class="c" style="padding:17px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><div class="eyb">Mon May 18 · Done</div><span class="badge green">On plan</span></div>
+            <div class="title">EASY RUN</div>
+            <div class="spills">
+              <div class="spill"><div class="v"><span class="n tnum">5.1</span><span class="u">mi</span></div><div class="l">Distance</div></div>
+              <div class="spill"><div class="v"><span class="n o tnum">8:34</span><span class="u">/mi</span></div><div class="l">Avg pace</div></div>
+              <div class="spill"><div class="v"><span class="n tnum">43:42</span></div><div class="l">Time</div></div>
+            </div>
+            <div style="font-size:11px;color:var(--t2);margin-top:8px">5.1 / 5.0 mi planned · ran it right</div>
+            <button class="btn btn-ghost" style="margin-top:11px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 20V11M10 20V4M16 20v-7M21 20H3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>View full recap</button>
+          </div>
+
+          <div class="cv"><div class="cv-l">Coach</div><div class="cv-b">Even pacing, no surge. Exactly the easy day the plan wanted — easy days easy so the hard days can be hard.</div></div>
+
+          <div class="c" style="padding:16px">
+            <div class="checkin-head"><span class="lbl">Logged Mon morning</span><span class="ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-11" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Logged</span></div>
+            <div class="slider"><span class="sl">Energy</span><div class="track"><div class="fill" style="width:60%"></div><div class="thumb" style="left:60%"></div></div><span class="sv tnum">6</span></div>
+            <div class="slider" style="margin-top:10px"><span class="sl">RPE</span><div class="track"><div class="fill" style="width:30%"></div><div class="thumb" style="left:30%"></div></div><span class="sv tnum">3</span></div>
+          </div>
+
+        </div></div>
+        <div class="tabbar">
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Today · past day</b>Tap a past date and the hero becomes a <b>recap</b> — actual distance / pace / time vs plan, the coach's read, and the check-in you logged that morning.</div>
+    </div>
+
+    <!-- ════════ TODAY · PREVIEW (future date) ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+
+          <div class="datestrip">
+            <div class="dcol"><span class="dl">M</span><span class="dn">18</span><span class="dd"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">19</span><span class="dd"></span></div>
+            <div class="dcol today"><span class="dl">W</span><span class="dn">20</span><span class="dd amber"></span></div>
+            <div class="dcol"><span class="dl">T</span><span class="dn">21</span><span class="dd up"></span></div>
+            <div class="dcol"><span class="dl">F</span><span class="dn">22</span><span class="dd rest"></span></div>
+            <div class="dcol on"><span class="dl">S</span><span class="dn">23</span><span class="dd none" style="background:#fff"></span></div>
+            <div class="dcol"><span class="dl">S</span><span class="dn">24</span><span class="dd up"></span></div>
+          </div>
+
+          <p class="brief">Saturday's long run — <b>12 easy aerobic miles</b>. Time on feet rebuilds the base; keep it conversational, the distance is the work. <span class="race">89 days to Americas Finest City.</span></p>
+
+          <div class="c" style="padding:17px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><div class="eyb">Sat May 23 · Planned</div><span class="badge grey">Upcoming</span></div>
+            <div class="title">LONG RUN</div>
+            <div class="spills">
+              <div class="spill"><div class="v"><span class="n tnum">12</span><span class="u">mi</span></div><div class="l">Distance</div></div>
+              <div class="spill"><div class="v"><span class="n o tnum">8:45</span><span class="u">/mi</span></div><div class="l">Pace</div></div>
+              <div class="spill"><div class="v"><span class="n tnum">~1:45</span></div><div class="l">Time</div></div>
+            </div>
+            <div style="font-size:11px;color:var(--t2);margin-top:8px">Fuel + hydrate — effort over 90 min</div>
+            <button class="btn btn-ghost" style="margin-top:11px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Open workout</button>
+          </div>
+
+          <div class="c" style="padding:16px">
+            <div class="ready-head"><span class="lbl">Readiness</span><span class="badge grey">Sat AM</span></div>
+            <div style="display:flex;align-items:center;gap:13px">
+              <div class="ring" style="width:48px;height:48px;flex:none"><svg width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="19" fill="none" stroke="rgba(13,15,18,.10)" stroke-width="5" stroke-dasharray="3 6" stroke-linecap="round"/></svg><div class="vv"><div class="n tnum" style="font-size:20px;color:var(--t3)">—</div></div></div>
+              <div style="font-size:12px;color:var(--t2);line-height:1.45">Your readiness score posts <b style="color:var(--t1)">Saturday morning</b>, once sleep &amp; HRV sync.</div>
+            </div>
+          </div>
+
+          <div class="c" style="padding:16px">
+            <div class="checkin-head"><span class="lbl">Today's Check-in</span><span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t2)">Opens Sat AM</span></div>
+            <div class="slider" style="opacity:.4"><span class="sl">Energy</span><div class="track"><div class="thumb" style="left:50%"></div></div><span class="sv tnum" style="color:var(--t3)">—</span></div>
+          </div>
+
+        </div></div>
+        <div class="tabbar">
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Today · future day</b>Tap a future date and it becomes a <b>preview</b> — the planned workout and the coach's why, with live-only modules (readiness, check-in) collapsed until that morning.</div>
+    </div>
+
+    <!-- ════════ WORKOUT DETAIL ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body" style="background:rgba(13,15,18,.04)"><div class="scroll" style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:26px;gap:14px;box-shadow:0 -10px 40px rgba(0,0,0,.10)">
+          <div class="sheet-grab"></div>
+          <div class="screen-eyb">Easy · Base · today</div>
+          <div class="screen-h">EASY RUN<br>5.5&nbsp;MI</div>
+
+          <div class="c" style="padding:16px">
+            <div class="eyb" style="margin-bottom:10px">Structure</div>
+            <div class="strow"><span class="sbar"></span><div class="sbody"><div class="snm">Warm-up</div><div class="ssub">First mile relaxed, settle in</div></div><div class="sdist tnum">1.0<span>mi</span></div></div>
+            <div class="strow"><span class="sbar work"></span><div class="sbody"><div class="snm work">Easy · conversational</div><div class="ssub">8:29 /mi · Zone 2</div></div><div class="sdist tnum">4.0<span>mi</span></div></div>
+            <div class="strow"><span class="sbar"></span><div class="sbody"><div class="snm">Cool-down</div><div class="ssub">Last half-mile soft</div></div><div class="sdist tnum">0.5<span>mi</span></div></div>
+          </div>
+
+          <div class="cv"><div class="cv-l">Why this run</div><div class="cv-b">You raced eleven days ago. Easy miles flush the legs without re-stressing tissue that's still repairing — duration is the stimulus, not pace.</div></div>
+          <div class="cv focus"><div class="cv-l">Focus</div><div class="cv-b">Hold a sentence the whole way. If the watch buzzes you over 8:29, ease off — slower is fine today.</div></div>
+
+          <div class="c" style="padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none;color:var(--amber)"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.5M12 19v2.5M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2.5 12H5M19 12h2.5M4.2 19.8 6 18M18 6l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span style="font-weight:600">62°F · light breeze</span><span style="color:var(--t2);margin-left:auto;font-size:11px">good easy weather</span></div>
+            <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;margin-top:9px;padding-top:9px;border-top:1px solid var(--divider)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none;color:var(--t1)"><path d="M3 16.5v-2.6l4-1.1 2.8-2.8 1.8 1.9 5 1.1c2 .4 3.4 1.3 3.4 3.1v.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.5 12.8l1.7 1.7M10.3 11l1.5 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span style="font-weight:600">Endorphin Speed 4</span><span style="color:var(--t2);margin-left:auto;font-size:11px">182 mi</span></div>
+          </div>
+
+          <button class="btn btn-primary"><svg width="13" height="13" viewBox="0 0 24 24" fill="#fff"><path d="M7 5v14l11-7z"/></svg>Start Run</button>
+          <div class="btn-row"><button class="btn btn-ghost">Move</button><button class="btn btn-ghost">Skip</button><button class="btn btn-ghost">Swap</button></div>
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Workout detail</b>Pushed up as a sheet from Today. Full structure, the coach's why, conditions &amp; gear. Start Run is the primary action; move / skip / swap sit beneath.</div>
+    </div>
+
+    <!-- ════════ RUN RECAP (View full recap) ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body" style="background:rgba(13,15,18,.04)"><div class="scroll" style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:26px;gap:14px;box-shadow:0 -10px 40px rgba(0,0,0,.10)">
+          <div class="sheet-grab"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center"><div class="screen-eyb">Mon May 18 · Synced from Apple Watch</div><span class="badge green">On plan</span></div>
+          <div class="screen-h" style="font-size:40px">EASY RUN</div>
+
+          <div class="c" style="padding:17px">
+            <div class="spills">
+              <div class="spill"><div class="v"><span class="n tnum">5.1</span><span class="u">mi</span></div><div class="l">Distance</div></div>
+              <div class="spill"><div class="v"><span class="n o tnum">8:34</span><span class="u">/mi</span></div><div class="l">Avg pace</div></div>
+              <div class="spill"><div class="v"><span class="n tnum">43:42</span></div><div class="l">Time</div></div>
+              <div class="spill"><div class="v"><span class="n tnum">142</span><span class="u">bpm</span></div><div class="l">Avg HR</div></div>
+            </div>
+          </div>
+
+          <div class="c" style="padding:0;overflow:hidden">
+            <div class="routemap">
+              <img src="route-recap.png" alt="Run route" style="display:block;width:100%;height:140px;border:0">
+              <div class="mlabel" style="left:9%;bottom:7px"><span class="pd" style="background:#2CA82F"></span>Start · Finish</div>
+            </div>
+          </div>
+
+          <div class="c">
+            <div class="eyb" style="margin-bottom:8px">Mile splits · target 8:29–9:19</div>
+            <div class="splitrow"><span class="sm">1</span><div class="sbar"><i style="width:70%"></i></div><span class="sp tnum">8:41</span><span class="sh tnum">138</span></div>
+            <div class="splitrow"><span class="sm">2</span><div class="sbar"><i style="width:76%"></i></div><span class="sp tnum">8:36</span><span class="sh tnum">141</span></div>
+            <div class="splitrow"><span class="sm">3</span><div class="sbar"><i style="width:80%"></i></div><span class="sp tnum">8:33</span><span class="sh tnum">143</span></div>
+            <div class="splitrow"><span class="sm">4</span><div class="sbar"><i style="width:84%"></i></div><span class="sp tnum">8:30</span><span class="sh tnum">144</span></div>
+            <div class="splitrow"><span class="sm">5</span><div class="sbar"><i style="width:88%"></i></div><span class="sp tnum">8:28</span><span class="sh tnum">146</span></div>
+          </div>
+
+          <div class="cv"><div class="cv-l">Coach</div><div class="cv-b">Even and controlled — finished a touch quicker than you started, with HR holding Zone 2 throughout. Textbook easy day; you're absorbing the race well.</div></div>
+
+          <div class="c" style="padding:14px 16px;display:flex;align-items:center;gap:13px">
+            <div style="text-align:center;flex:none"><div style="font-family:var(--f-display);font-size:30px;line-height:.85;color:var(--green)">3</div><div style="font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t2);margin-top:2px">RPE / 10</div></div>
+            <div style="flex:1;font-size:12px;color:var(--t1);line-height:1.45"><b style="color:var(--t0)">Felt easy</b> — you logged it conversational with fresh legs. Matches the data.</div>
+          </div>
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Run recap</b>What "View full recap" opens — slides up like Workout detail. Hero stats, the route, mile splits vs target with HR, the coach's read, and the RPE you logged. Auto-prompts after a synced run.</div>
+    </div>
+
+    <!-- ════════ WHY THIS (Why-chip tap) ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body" style="background:rgba(13,15,18,.04)"><div class="scroll" style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:26px;gap:14px;box-shadow:0 -10px 40px rgba(0,0,0,.10)">
+          <div class="sheet-grab"></div>
+          <div class="screen-eyb">Coach · why this workout</div>
+          <div class="screen-h">Why easy<br>today</div>
+
+          <p class="brief">You're <b>11 days past the race</b> and still in the base phase. Easy aerobic miles are the highest-value thing you can do right now — they rebuild the engine without re-stressing tissue that's still repairing.</p>
+
+          <div class="cv"><div class="cv-l">Where you are</div><div class="cv-b">Base · week 3 of 14. We're banking aerobic volume so the engine work later lands on a deeper, healthier foundation.</div></div>
+          <div class="cv focus"><div class="cv-l">What it builds</div><div class="cv-b">Conversational running grows capillary density and mitochondria and flushes residual race fatigue — adaptations you can't rush with hard days.</div></div>
+          <div class="cv backoff"><div class="cv-l">Why not harder</div><div class="cv-b">Quality returns in ~2 weeks once tissue fully recovers. Pushing now trades a small gain today for a setback next week.</div></div>
+
+          <div class="c" style="display:flex;flex-direction:column;gap:11px">
+            <div class="signal"><span class="badge green">Evidence</span><span>Easy-day HR is down 4 bpm at the same pace over three weeks — the aerobic base is taking.</span></div>
+            <div class="signal"><span class="badge amber">Watching</span><span>Acute load (ACWR 1.42) is still elevated post-race, which is why today stays easy, not threshold.</span></div>
+          </div>
+
+          <button class="btn btn-ghost"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.2 9.4a2.8 2.8 0 1 1 3.8 2.6c-.7.3-1 .8-1 1.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.2" r="1.05" fill="currentColor"/></svg>Open today's coach read</button>
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Why this</b>What the "Why this" chip opens — slides up. The coach's rationale for the day's workout: where you are in the plan, what it builds, why not harder, and the evidence behind it. Read-only.</div>
+    </div>
+
+    <!-- ════════ PLAN ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+          <div class="screen-eyb">Base · week 3 of 14</div>
+          <div class="screen-h">This Week</div>
+
+          <div class="c" style="padding:14px 16px">
+            <div class="metaline" style="margin-bottom:9px"><span>2 of 5 sessions done</span><span><b>43&nbsp;mi</b> planned</span></div>
+            <div class="pbar"><i style="width:33%"></i></div>
+          </div>
+
+          <div class="c" style="padding:6px 18px">
+            <div class="row"><span class="lf"><span class="dot ok"></span><span class="day">Mon</span><span class="nm">Easy<small>5 mi · done</small></span></span><span class="rt" style="color:var(--green)">✓</span></div>
+            <div class="row"><span class="lf"><span class="dot ok"></span><span class="day">Tue</span><span class="nm">Easy + strides<small>4 mi · done</small></span></span><span class="rt" style="color:var(--green)">✓</span></div>
+            <div class="row"><span class="lf"><span class="dot now"></span><span class="day" style="color:var(--amber)">Wed</span><span class="nm" style="color:#B3450A">Easy run<small>5.5 mi · today</small></span></span><span class="rt" style="color:#B3450A">5.5</span></div>
+            <div class="row"><span class="lf"><span class="dot up"></span><span class="day">Thu</span><span class="nm">Easy<small>6 mi</small></span></span><span class="rt" style="color:var(--t1)">6</span></div>
+            <div class="row"><span class="lf"><span class="dot rest"></span><span class="day">Fri</span><span class="nm">Rest<small>recovery</small></span></span><span class="rt" style="color:var(--t2)">—</span></div>
+            <div class="row"><span class="lf"><span class="dot up"></span><span class="day">Sat</span><span class="nm">Long run<small>12 mi · aerobic</small></span></span><span class="rt" style="color:var(--t1)">12</span></div>
+            <div class="row"><span class="lf"><span class="dot up"></span><span class="day">Sun</span><span class="nm">Easy<small>5 mi</small></span></span><span class="rt" style="color:var(--t1)">5</span></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Coming up</div>
+          <div class="c" style="padding:4px 16px">
+            <div class="row"><span class="lf"><span class="day" style="font-size:15px">Wk4</span><span class="nm">Build volume · 48 mi <span style="color:var(--t2);font-weight:400">first tempo</span></span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--t2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="row"><span class="lf"><span class="day" style="font-size:15px">Wk5</span><span class="nm">Cutback · 38 mi <span style="color:var(--t2);font-weight:400">absorb</span></span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--t2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Plan</b>The week at a glance with done / today / upcoming markers, plus a peek at the phases ahead. Light editing here; the full builder is on web.</div>
+    </div>
+
+    <!-- ════════ COACH ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+          <div class="screen-eyb">Coach</div>
+          <div class="screen-h">Today's Read</div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="coach-lbl"><span class="dot"></span>Wed May 20 · Base week 3</div>
+            <p class="brief">Good afternoon, David. You're <b>eleven days out from the race</b> and the legs are still settling — exactly on schedule. Easy today; we rebuild the base, then the engine work starts. <span class="race">89 days to Americas Finest City.</span></p>
+          </div>
+
+          <div class="cv"><div class="cv-l">Why</div><div class="cv-b">Tissue repair isn't finished. Easy volume rebuilds without re-loading damaged fibers.</div></div>
+          <div class="cv focus"><div class="cv-l">Focus</div><div class="cv-b">Conversational only. The win is consistency at low stress, not any run feeling fast.</div></div>
+          <div class="cv backoff"><div class="cv-l">Back off if</div><div class="cv-b">Resting HR stays high two mornings, or the legs feel dead by Thursday — we'll trade the long run for easy miles.</div></div>
+
+          <div class="screen-eyb" style="margin-top:4px">Signals</div>
+          <div class="c" style="display:flex;flex-direction:column;gap:10px">
+            <div class="signal"><span class="badge green">On track</span><span>Two easy days banked at conversational effort. Discipline paying off.</span></div>
+            <div class="signal"><span class="badge amber">Watching</span><span>Acute load up 42% (ACWR 1.42). Normal post-race — hold easy until it settles under 1.3.</span></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Coach</b>The daily briefing plus WHY / FOCUS / BACK OFF IF and the signals the engine produces. Read-only — it's a coach, not a chatbot.</div>
+    </div>
+
+    <!-- ════════ HEALTH ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+          <div class="screen-eyb">Apple Health · synced 2m ago</div>
+          <div class="screen-h" style="font-size:40px">Body State</div>
+
+          <div class="c" style="display:flex;gap:14px;align-items:center;padding:16px">
+            <div class="ring" style="width:70px;height:70px;flex:none">
+              <svg width="70" height="70" viewBox="0 0 70 70"><circle cx="35" cy="35" r="28" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="7"/><circle cx="35" cy="35" r="28" fill="none" stroke="#D4900A" stroke-width="7" stroke-linecap="round" stroke-dasharray="176" stroke-dashoffset="63" transform="rotate(-90 35 35)"/></svg>
+              <div class="vv"><div class="n tnum" style="font-size:32px;color:#B3450A">64</div></div>
+            </div>
+            <div style="flex:1;min-width:0"><span class="badge amber">Hold easy</span><div style="font-size:12px;color:var(--t1);margin-top:7px;line-height:1.45">Vitals are strong — but acute load is elevated post-race. Stay aerobic until it settles.</div></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Recovery &amp; Vitals</div>
+          <div class="mgrid">
+            <div class="mtile"><div class="mk">HRV</div><div class="mrow"><span class="mv tnum">68</span><span class="mu">ms</span></div><div class="md good">↑ 6 · 7d</div></div>
+            <div class="mtile"><div class="mk">Resting HR</div><div class="mrow"><span class="mv tnum">48</span><span class="mu">bpm</span></div><div class="md good">↓ 2</div></div>
+            <div class="mtile"><div class="mk">Sleep</div><div class="mrow"><span class="mv tnum">7:48</span></div><div class="md good">need 7:30</div></div>
+            <div class="mtile"><div class="mk">Respiration</div><div class="mrow"><span class="mv tnum">14.2</span><span class="mu">/min</span></div><div class="md flat">steady</div></div>
+            <div class="mtile"><div class="mk">VO₂max</div><div class="mrow"><span class="mv tnum">51</span><span class="mu">ml/kg</span></div><div class="md good">↑ 1</div></div>
+            <div class="mtile"><div class="mk">Wrist temp</div><div class="mrow"><span class="mv tnum">+0.2</span><span class="mu">°F</span></div><div class="md flat">normal</div></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Running Dynamics <span style="color:var(--t3);font-weight:500;letter-spacing:0;text-transform:none">· last run</span></div>
+          <div class="mgrid">
+            <div class="mtile"><div class="mk">Cadence</div><div class="mrow"><span class="mv tnum">178</span><span class="mu">spm</span></div><div class="md good">↑ 3</div></div>
+            <div class="mtile"><div class="mk">Stride</div><div class="mrow"><span class="mv tnum">1.18</span><span class="mu">m</span></div><div class="md flat">steady</div></div>
+            <div class="mtile"><div class="mk">Vert Osc</div><div class="mrow"><span class="mv tnum">8.2</span><span class="mu">cm</span></div><div class="md good">efficient</div></div>
+            <div class="mtile"><div class="mk">Grnd Contact</div><div class="mrow"><span class="mv tnum">242</span><span class="mu">ms</span></div><div class="md good">↓ 6</div></div>
+            <div class="mtile"><div class="mk">Vert Ratio</div><div class="mrow"><span class="mv tnum">6.9</span><span class="mu">%</span></div><div class="md good">good</div></div>
+            <div class="mtile"><div class="mk">Run Power</div><div class="mrow"><span class="mv tnum">287</span><span class="mu">W</span></div><div class="md flat">avg</div></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Training Load</div>
+          <div class="mgrid">
+            <div class="mtile"><div class="mk">Load · ACWR</div><div class="mrow"><span class="mv tnum">1.42</span></div><div class="md watch">watching</div></div>
+            <div class="mtile"><div class="mk">Volume</div><div class="mrow"><span class="mv tnum">9.5</span><span class="mu">/43 mi</span></div><div class="md good">on pace</div></div>
+            <div class="mtile"><div class="mk">Form · TSB</div><div class="mrow"><span class="mv tnum">−4</span></div><div class="md flat">fresh</div></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Health</b>The instrument panel. A live grid pulling Apple Health — recovery vitals (HRV, RHR, sleep, VO₂max), running dynamics (cadence, stride, vertical oscillation, ground contact), and training load. Tap any tile for its 30-day trend.</div>
+    </div>
+
+    <!-- ════════ METRIC DETAIL · HRV (tile tap) ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body" style="background:rgba(13,15,18,.04)"><div class="scroll" style="background:var(--bg);border-radius:24px 24px 0 0;margin-top:26px;gap:14px;box-shadow:0 -10px 40px rgba(0,0,0,.10)">
+          <div class="sheet-grab"></div>
+          <div class="screen-eyb">Recovery &amp; Vitals · Apple Health</div>
+
+          <div class="c">
+            <div class="ready-head"><span class="lbl">HRV · 7-day average</span><span class="badge green">Well recovered</span></div>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-top:5px"><span style="font-family:var(--f-display);font-size:58px;line-height:.78;color:var(--green)">68</span><span style="font-size:15px;color:var(--t1);font-weight:500">ms</span><span style="margin-left:7px;font-size:12.5px;font-weight:700;color:var(--green)">↑ 6 vs 30-day</span></div>
+            <div style="font-size:11.5px;color:var(--t2);margin-top:5px">Baseline 58–66 ms · CV 5.1% · stable</div>
+          </div>
+
+          <div class="c">
+            <div class="seg"><div class="si">7D</div><div class="si on">30D</div><div class="si">90D</div></div>
+            <div style="margin-top:12px">
+              <svg viewBox="0 0 350 116" preserveAspectRatio="none" style="display:block;width:100%;height:120px">
+                <rect x="0" y="58" width="350" height="22" fill="rgba(44,168,47,.10)"/>
+                <line x1="0" y1="69" x2="350" y2="69" stroke="rgba(44,168,47,.35)" stroke-width="1" stroke-dasharray="4 4"/>
+                <path d="M6,80 L31,72 L55,86 L79,66 L103,78 L127,84 L151,70 L175,82 L199,64 L223,74 L247,58 L271,66 L295,52 L319,46 L344,40" fill="none" stroke="#2CA82F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="344" cy="40" r="4.5" fill="#2CA82F" stroke="#fff" stroke-width="2.5"/>
+              </svg>
+              <div class="chart-x"><span>Apr 20</span><span>May 5</span><span>Today</span></div>
+            </div>
+          </div>
+
+          <div class="cv"><div class="cv-l">What this means</div><div class="cv-b">Your 7-day average sits above your 30-day baseline with low day-to-day variation (CV 5.1%). The parasympathetic system is well-recovered — a green light for quality once acute load settles.</div></div>
+
+          <div class="c" style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <div class="ring" style="width:42px;height:42px;flex:none"><svg width="42" height="42" viewBox="0 0 42 42"><circle cx="21" cy="21" r="16" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="5"/><circle cx="21" cy="21" r="16" fill="none" stroke="#D4900A" stroke-width="5" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="36" transform="rotate(-90 21 21)"/></svg><div class="vv"><div class="n tnum" style="font-size:16px;color:#B3450A">64</div></div></div>
+            <div style="flex:1;font-size:11.5px;line-height:1.4;color:var(--t1)"><b style="color:var(--t0)">Feeds Readiness</b> · HRV is the strongest positive input — load is what's holding the score at 64.</div>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex:none"><path d="M9 6l6 6-6 6" stroke="var(--t2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Related</div>
+          <div class="mgrid">
+            <div class="mtile"><div class="mk">Resting HR</div><div class="mrow"><span class="mv tnum">48</span><span class="mu">bpm</span></div><div class="md good">↓ 2</div></div>
+            <div class="mtile"><div class="mk">Sleep</div><div class="mrow"><span class="mv tnum">7:48</span></div><div class="md good">need 7:30</div></div>
+            <div class="mtile"><div class="mk">Respiration</div><div class="mrow"><span class="mv tnum">14.2</span><span class="mu">/min</span></div><div class="md flat">steady</div></div>
+          </div>
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Metric detail</b>What a tile opens — slides up over the dashboard, swipe to dismiss. Big value + baseline, a 30-day trend with your normal-range band, the plain-language read, how it feeds Readiness, and related metrics. One template for every tile.</div>
+    </div>
+
+    <!-- ════════ RACES ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body">
+          <div class="stickyhead">
+            <span class="lg">FAFF</span>
+            <div class="rt"><span class="racechip"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span><div class="avatar">D</div></div>
+          </div>
+          <div class="scroll">
+          <div class="screen-eyb">Next A-race</div>
+
+          <div class="race-card">
+            <div class="e">Americas Finest City Half</div>
+            <div class="nm">AFC Half</div>
+            <div class="loc">San Diego · 17 Aug 2026</div>
+            <div class="cd"><span class="n tnum">89</span><span class="u">days out</span></div>
+            <div class="goal">
+              <div class="g"><div class="gv tnum">1:38</div><div class="gk">Goal time</div></div>
+              <div class="g"><div class="gv tnum">7:28</div><div class="gk">Goal pace</div></div>
+              <div class="g"><div class="gv">Base</div><div class="gk">Phase · wk 3/14</div></div>
+            </div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:4px">Recent</div>
+          <div class="c" style="padding:6px 18px">
+            <div class="row"><span class="lf"><span class="nm">Carlsbad Half<small>9 May · A-race</small></span></span><span class="rt" style="color:var(--amber)">1:41</span></div>
+            <div class="row"><span class="lf"><span class="nm">La Jolla 10K<small>22 Mar · tune-up</small></span></span><span class="rt">44:12</span></div>
+            <div class="row"><span class="lf"><span class="nm">Resolution Run 5K<small>1 Jan</small></span></span><span class="rt">20:38</span></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:4px">Personal bests</div>
+          <div class="prs">
+            <div class="pr"><div class="pv tnum">20:14</div><div class="pk">5K</div></div>
+            <div class="pr"><div class="pv tnum">43:50</div><div class="pk">10K</div></div>
+            <div class="pr"><div class="pv tnum">1:39</div><div class="pk">Half</div></div>
+            <div class="pr"><div class="pv tnum">3:42</div><div class="pk">Full</div></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 11.5 12 4l9 7.5M5 10v9h14v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Today</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 9h18" stroke="currentColor" stroke-width="2"/></svg>Plan</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9 10a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.5" r="1.1" fill="currentColor"/></svg>Coach</div>
+          <div class="ti"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M3 13h3l2-6 4 12 3-9 2 3h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Health</div>
+          <div class="ti on"><svg class="ic" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</div>
+        </div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Races</b>Now its own tab — plus the sticky countdown chip on every screen. The orange countdown card, goal pacing, recent results and PRs. Tap a race for the full plan.</div>
+    </div>
+
+    <!-- ════════ RACE DETAIL ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body"><div class="scroll">
+
+          <div class="detail-head">
+            <span class="bk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Races</span>
+            <div class="iconbtn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L8 8m4-4l4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+
+          <div>
+            <div class="screen-eyb" style="color:var(--orange)">A-Race · Goal 1:38</div>
+            <div class="screen-h" style="font-size:46px">AFC HALF</div>
+            <div style="font-size:12px;color:var(--t1);margin-top:3px">Americas Finest City · San Diego · Aug 17</div>
+          </div>
+
+          <div class="race-card" style="padding:18px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between">
+              <div><div class="e">Countdown</div><div class="cd" style="margin-top:5px"><span class="n tnum" style="font-size:54px">89</span><span class="u">days to go</span></div></div>
+              <div style="text-align:right"><div class="e">Goal pace</div><div style="font-family:var(--f-display);font-size:32px;line-height:.9;margin-top:5px">7:28<span style="font-size:12px;font-weight:500;opacity:.9">/mi</span></div></div>
+            </div>
+            <div class="goal" style="margin-top:14px">
+              <div class="g"><div class="gv tnum">1:38</div><div class="gk">Goal time</div></div>
+              <div class="g"><div class="gv tnum">~1:40</div><div class="gk">Projected · VDOT 49</div></div>
+              <div class="g"><div class="gv">Even</div><div class="gk">Strategy · ±10s</div></div>
+            </div>
+            <div style="margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.22);font-size:12px;line-height:1.5;color:rgba(255,255,255,.95)"><b style="font-weight:700">Within reach</b> — your threshold work over the next two blocks closes the <b style="font-weight:700">~8 s/mi</b> gap to goal.</div>
+          </div>
+
+          <div class="c" style="padding:0;overflow:hidden">
+            <div class="routemap">
+              <img src="route-race.png" alt="Race route" style="display:block;width:100%;height:140px;border:0">
+              <div class="mlabel" style="left:6%;top:7px"><span class="pd" style="background:#2CA82F"></span>Start</div>
+              <div class="mlabel" style="right:4%;bottom:7px"><span class="pd" style="background:#E85D26"></span>Finish</div>
+            </div>
+            <div style="padding:16px">
+            <div class="ready-head" style="margin-bottom:3px"><span class="lbl">Course</span><span style="font-size:10.5px;color:var(--t2);font-weight:600">Route &amp; profile · GPX</span></div>
+            <div style="font-size:11px;color:var(--t1);font-weight:500">13.11 mi · +180 / −310 ft · <b style="color:var(--t0)">net −130 ft (fast)</b></div>
+            <div class="elev-wrap">
+              <svg viewBox="0 0 350 80" preserveAspectRatio="none" style="height:58px">
+                <path d="M0,20 L27,19 L53,24 L80,40 L107,54 L134,62 L160,60 L187,61 L214,58 L240,60 L267,57 L294,54 L320,56 L350,50 L350,80 L0,80 Z" fill="rgba(13,15,18,.05)"/>
+                <path d="M0,20 L27,19 L53,24 L80,40 L107,54 L134,62 L160,60 L187,61 L214,58 L240,60 L267,57 L294,54 L320,56 L350,50" fill="none" stroke="#0D0F12" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+                <line x1="53" y1="12" x2="53" y2="80" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+                <line x1="134" y1="12" x2="134" y2="80" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+                <line x1="267" y1="12" x2="267" y2="80" stroke="rgba(13,15,18,.08)" stroke-width="1" stroke-dasharray="3 3"/>
+              </svg>
+            </div>
+            <div class="gradeband"><i class="green" style="width:15.3%"></i><i class="blue" style="width:22.9%"></i><i class="green" style="width:38.1%"></i><i class="amber" style="width:23.7%"></i></div>
+            </div>
+          </div>
+
+          <div class="c" style="padding:16px">
+            <div class="eyb" style="margin-bottom:6px">Phase-by-Phase Pacing</div>
+            <div class="phaserow"><span class="pn green">1</span><div class="pb"><div class="pnm">Opening rollers<span class="gpill green">Rolling</span></div><div class="prg">Mile 0.0 → 2.0 · 2.0 mi</div></div><div class="pp"><div class="ppn tnum">7:35</div><div class="ppu">15:10 cum</div></div></div>
+            <div class="phaserow"><span class="pn blue">2</span><div class="pb"><div class="pnm">Hwy 163 descent<span class="gpill blue">−2.4%</span></div><div class="prg">Mile 2.0 → 5.0 · 3.0 mi</div></div><div class="pp"><div class="ppn tnum">7:12</div><div class="ppu">36:46 cum</div></div></div>
+            <div class="phaserow"><span class="pn green">3</span><div class="pb"><div class="pnm">Bayfront flat<span class="gpill green">Flat</span></div><div class="prg">Mile 5.0 → 10.0 · 5.0 mi</div></div><div class="pp"><div class="ppn tnum">7:28</div><div class="ppu">1:14:06 cum</div></div></div>
+            <div class="phaserow"><span class="pn amber">4</span><div class="pb"><div class="pnm">Harbor finish<span class="gpill amber">+0.6%</span></div><div class="prg">Mile 10.0 → 13.1 · 3.1 mi</div></div><div class="pp"><div class="ppn tnum fin">7:33</div><div class="ppu">1:37:48 finish</div></div></div>
+          </div>
+
+          <button class="btn btn-ghost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Race-day brief unlocks Aug 10 · T−7</button>
+
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Race detail</b>Pushed from Races. The fitness gap to your goal, the course profile from the GPX, phase-by-phase pacing, the fueling plan, and the race-day brief that unlocks at T−7.</div>
+    </div>
+
+    <!-- ════════ MORE / PROFILE ════════ -->
+    <div class="unit">
+      <div class="device"><div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="tnum">9:41</span><span class="sys"><svg width="25" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="#0D0F12" stroke-opacity=".4"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#0D0F12" fill-opacity=".4"/><rect x="3" y="3" width="16" height="7" rx="1.5" fill="#0D0F12"/></svg></span></div>
+        <div class="body"><div class="scroll">
+          <div class="detail-head">
+            <span class="bk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</span>
+            <span style="font-family:var(--f-sub);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Profile</span>
+            <span style="font-size:13px;font-weight:600;color:var(--orange)">Done</span>
+          </div>
+          <div class="c" style="display:flex;align-items:center;gap:14px;padding:18px">
+            <div class="avatar" style="width:52px;height:52px;font-size:22px">D</div>
+            <div style="flex:1"><div style="font-family:var(--f-sub);font-weight:600;font-size:18px;text-transform:uppercase;letter-spacing:.4px">David Nitzsche</div><div style="font-size:12px;color:var(--t1);margin-top:2px">VDOT 49 · Half-marathon focus</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--t2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">Integrations</div>
+          <div class="c" style="padding:4px 18px">
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 20s-7-4.5-9-9a4.5 4.5 0 0 1 8-3 4.5 4.5 0 0 1 8 3c-2 4.5-7 9-7 9z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>Apple Health</span><span class="badge grey">Connect</span></div>
+            <div class="set-row"><span class="lf"><span class="ic">S</span>Strava</span><span class="rt" style="color:var(--green)">Connected ✓</span></div>
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="7" y="6.5" width="10" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M9 6.5 9.6 4h4.8L15 6.5M9 17.5l.6 2.5h4.8l.6-2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Apple Watch</span><span class="rt" style="color:var(--green)">Paired ✓</span></div>
+            <div class="set-row"><span class="lf"><span class="ic">G</span>Garmin</span><span class="badge grey">Connect</span></div>
+          </div>
+
+          <div class="screen-eyb" style="margin-top:2px">App</div>
+          <div class="c" style="padding:4px 18px">
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Races</span><span class="rt">AFC Half ›</span></div>
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>Run log</span><span class="rt">142 runs ›</span></div>
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M18 8a6 6 0 1 0-12 0c0 7-2.4 9-2.4 9h16.8S18 15 18 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>Notifications</span><span class="rt">4 on ›</span></div>
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="8" width="19" height="8" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M7 8v3.5M11 8v4.5M15 8v3.5M19 8v4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>Units</span><span class="rt">Miles ›</span></div>
+            <div class="set-row"><span class="lf"><span class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4.5" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M9 20h6M12 16.5V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>Open on web</span><span class="rt">faff.run ›</span></div>
+          </div>
+        </div></div>
+        <div class="homebar"></div>
+      </div></div>
+      <div class="cap"><b>Profile</b>Now reached by tapping the avatar in the sticky header — no tab needed. Identity, integrations with live sync status, run log, notifications, units, and the bridge to web.</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:80px;padding-top:26px;border-top:1px solid var(--divider);font-size:12.5px;color:var(--t1);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px">
+    <div>Light v4 · Bebas Neue + Inter + Oswald · <b style="color:var(--ink)">docs/design/faff-app.html</b></div>
+    <div>web = command center · watch = executor · <b style="color:var(--ink)">phone = the daily driver</b></div>
+  </div>
+
+</div>
+
+<script>
+/* Make key entry points navigate in the mockup:
+   - the sticky race chip (every tab) + the Races race-card → Race detail
+   - any Health metric tile → Metric detail (the HRV example sheet) */
+(function () {
+  var units = [].slice.call(document.querySelectorAll('.unit'));
+  function capIs(u, name) {
+    var b = u.querySelector('.cap b');
+    return b && b.textContent.trim() === name;
+  }
+  function unitNamed(name) {
+    return units.filter(function (u) { return capIs(u, name); })[0];
+  }
+  function linker(target, ring) {
+    return function (e) {
+      e.preventDefault();
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var dev = target.querySelector('.device');
+      if (!dev) return;
+      dev.style.transition = 'box-shadow .25s ease';
+      var prev = dev.style.boxShadow;
+      dev.style.boxShadow = '0 0 0 3px ' + ring + ', var(--shadow-lg)';
+      setTimeout(function () { dev.style.boxShadow = prev; }, 900);
+    };
+  }
+
+  var goRace = linker(unitNamed('Race detail'), 'rgba(232,93,38,.55)');
+  document.querySelectorAll('.racechip').forEach(function (el) {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', goRace);
+  });
+  units.forEach(function (u) {
+    if (capIs(u, 'Races')) {
+      var card = u.querySelector('.race-card');
+      if (card) { card.style.cursor = 'pointer'; card.addEventListener('click', goRace); }
+    }
+  });
+
+  var health = unitNamed('Health');
+  var metric = unitNamed('Metric detail');
+  if (health && metric) {
+    var goMetric = linker(metric, 'rgba(44,168,47,.55)');
+    health.querySelectorAll('.mtile').forEach(function (t) {
+      t.style.cursor = 'pointer';
+      t.addEventListener('click', goMetric);
+    });
+  }
+
+  /* Today-state action buttons → their slide-up sheets. */
+  var workout = unitNamed('Workout detail');
+  var recap = unitNamed('Run recap');
+  function wireBtn(unitName, sel, target, ring) {
+    var u = unitNamed(unitName);
+    if (!u || !target) return;
+    var b = u.querySelector(sel);
+    if (!b) return;
+    b.style.cursor = 'pointer';
+    b.addEventListener('click', linker(target, ring));
+  }
+  wireBtn('Today · past day', '.btn-ghost', recap, 'rgba(44,168,47,.55)');
+  wireBtn('Today · future day', '.btn-ghost', workout, 'rgba(232,93,38,.55)');
+  wireBtn('Today', '.btn-primary', workout, 'rgba(232,93,38,.55)');
+
+  /* Why-this chip → Why-this sheet; its button → Coach. */
+  var why = unitNamed('Why this');
+  var todayUnit = unitNamed('Today');
+  if (todayUnit && why) {
+    var chip = todayUnit.querySelector('.whychip');
+    if (chip) { chip.style.cursor = 'pointer'; chip.addEventListener('click', linker(why, 'rgba(212,144,10,.6)')); }
+  }
+  wireBtn('Why this', '.btn-ghost', unitNamed('Coach'), 'rgba(44,168,47,.55)');
+})();
+</script>
+</body>
+</html>

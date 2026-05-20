@@ -37,6 +37,16 @@ enum Faff {
         static let greenWash  = Color(hex: 0x2CA82F).opacity(0.12)
         static let amberWash  = Color(hex: 0xD4900A).opacity(0.14)
         static let orangeWash = Color(hex: 0xE85D26).opacity(0.12)
+
+        // ➕ v4 handoff additions.
+        /// Darkened amber for TEXT/icons on `amberWash` (milestone #D4900A
+        /// fails contrast as on-wash text). Readiness number, "Watch Load".
+        static let amberInk   = Color(hex: 0xB3450A)
+        /// Data-viz only — descent/elevation grade (Race detail). Not chrome.
+        static let dataBlue   = Color(hex: 0x2563EB)
+        static let dataBlueWash = Color(hex: 0x2563EB).opacity(0.12)
+        /// Hairline border on stat pills / ghost buttons.
+        static let pillLine   = Color(hex: 0x0D0F12).opacity(0.10)
     }
 
     // ── Type ladder ───────────────────────────────────────────────
@@ -57,37 +67,52 @@ enum Faff {
 
     // ── Spacing (the only allowed values) ─────────────────────────
     enum S {
-        static let rowGap: CGFloat       = 10   // between feed rows (phone-tightened)
-        static let cardPadding: CGFloat  = 14   // card interior (phone)
+        static let rowGap: CGFloat       = 14   // between feed cards (v4)
+        static let cardPadding: CGFloat  = 16   // card interior (heroes 17, tiles 12)
         static let blockGap: CGFloat     = 8    // label → value inside a card
-        static let inlineGap: CGFloat    = 5    // between pills / segments
-        static let pageEdge: CGFloat     = 13   // feed horizontal padding
+        static let inlineGap: CGFloat    = 7    // between pills / segments
+        static let pageEdge: CGFloat     = 20   // feed horizontal padding
+        // ➕ v4 handoff additions.
+        static let tilePadding: CGFloat  = 12   // metric-tile interior
+        static let tileGap: CGFloat      = 8    // gap between tiles in the grid
+        static let scrollTop: CGFloat    = 12   // inset under the sticky bar
+        static let scrollBottom: CGFloat = 22   // inset before the tab bar
     }
 
     // ── Radii ─────────────────────────────────────────────────────
     enum R {
-        static let card: CGFloat  = 15
-        static let pill: CGFloat  = 8
-        static let chip: CGFloat  = 6
+        static let card: CGFloat   = 18
+        static let pill: CGFloat   = 12
+        static let chip: CGFloat   = 8
+        // ➕ v4 handoff additions.
+        static let tile: CGFloat   = 14   // metric tiles
+        static let sheet: CGFloat  = 24   // slide-up sheets (top corners)
+        static let chipSm: CGFloat = 10   // race chip, sticky-bar buttons, segments
     }
 }
 
 // ── Card surface modifier (white, soft shadow, NO border) ─────────
 private struct FaffCard: ViewModifier {
     var padding: CGFloat = Faff.S.cardPadding
+    var radius: CGFloat = Faff.R.card
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .background(Faff.C.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
-            .shadow(color: .black.opacity(0.06), radius: 1.5, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            // v4 handoff: softer card shadow (0 1px2 .04 + 0 6px20 .05).
+            .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
     }
 }
 
 extension View {
-    func faffCard(padding: CGFloat = Faff.S.cardPadding) -> some View {
-        modifier(FaffCard(padding: padding))
+    func faffCard(padding: CGFloat = Faff.S.cardPadding, radius: CGFloat = Faff.R.card) -> some View {
+        modifier(FaffCard(padding: padding, radius: radius))
+    }
+    /// Upward shadow for slide-up sheets (0 -10px 40 .10).
+    func faffSheetShadow() -> some View {
+        shadow(color: .black.opacity(0.10), radius: 20, x: 0, y: -10)
     }
 }
 
