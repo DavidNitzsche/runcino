@@ -414,32 +414,25 @@ private struct ControlsPage: View {
     @State private var confirmEnd = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Text("Controls").font(WatchTheme.sub(13, .semibold)).tracking(1)
                 .foregroundStyle(WatchTheme.C.t2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Pause / Resume — the primary, stoplight-sized target.
-            Button {
-                if engine.isPaused { engine.resume(); backToFace() } else { engine.pause() }
-            } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: engine.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text(engine.isPaused ? "RESUME" : "PAUSE")
-                        .font(WatchTheme.sub(15, .semibold)).tracking(1.5)
+            // watch-app.html §D — a row of three: Pause/Resume (the primary,
+            // filled), End, Lock. Pause is the largest, easiest stoplight tap.
+            HStack(alignment: .top, spacing: 8) {
+                control(engine.isPaused ? "play.fill" : "pause.fill",
+                        engine.isPaused ? "Resume" : "Pause",
+                        size: 64, filled: true,
+                        tint: engine.isPaused ? WatchTheme.C.green : WatchTheme.C.amber) {
+                    if engine.isPaused { engine.resume(); backToFace() } else { engine.pause() }
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .foregroundStyle(Color(red: 0.10, green: 0.07, blue: 0.0))
-                .background(engine.isPaused ? WatchTheme.C.green : WatchTheme.C.amber, in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            HStack(spacing: 10) {
-                roundControl("stop.fill", "End", tint: WatchTheme.C.warn) { confirmEnd = true }
-                roundControl("lock.fill", "Lock", tint: WatchTheme.C.t2) {
-                    WKInterfaceDevice.current().enableWaterLock()
-                    backToFace()
+                control("stop.fill", "End", size: 50, filled: false, tint: WatchTheme.C.warn) {
+                    confirmEnd = true
+                }
+                control("lock.fill", "Lock", size: 50, filled: false, tint: WatchTheme.C.t2) {
+                    WKInterfaceDevice.current().enableWaterLock(); backToFace()
                 }
             }
         }
@@ -452,13 +445,16 @@ private struct ControlsPage: View {
         }
     }
 
-    private func roundControl(_ icon: String, _ label: String, tint: Color, _ action: @escaping () -> Void) -> some View {
+    private func control(_ icon: String, _ label: String, size: CGFloat, filled: Bool,
+                         tint: Color, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 16, weight: .bold))
-                    .frame(width: 46, height: 46)
-                    .foregroundStyle(tint)
-                    .overlay(Circle().stroke(tint.opacity(0.6), lineWidth: 1.5))
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: size * 0.34, weight: .bold))
+                    .frame(width: size, height: size)
+                    .foregroundStyle(filled ? Color(red: 0.10, green: 0.07, blue: 0.0) : tint)
+                    .background(filled ? tint : .clear, in: Circle())
+                    .overlay(Circle().stroke(filled ? .clear : tint.opacity(0.6), lineWidth: 1.5))
                 Text(label).font(WatchTheme.body(10, .semibold)).foregroundStyle(WatchTheme.C.t2)
             }
             .frame(maxWidth: .infinity)
