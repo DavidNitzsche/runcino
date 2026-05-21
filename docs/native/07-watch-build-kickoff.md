@@ -92,6 +92,14 @@ If anything looks small or empty, it's not matching `watch-app.html`. Re-diff.
 
 ## Reference implementation — copy this, don't reinterpret
 
+**Full copy-ready SwiftUI for the work-interval and race faces is in
+`docs/native/reference/WatchFaces.swift`** — palette, fonts, shared components (hero, segment
+strip, stats, progress), both faces, and previews whose sample data matches `scripts/watch/refs/`.
+Port it. It already fixes the recurring bugs (elapsed not wall-clock; left stat `bpm`, right stat
+`spm`; hero fills the width; progress time inline). Build the rest of the faces in the same style.
+
+The core pattern, for reference:
+
 The recurring bug is a small hero floating in empty space. The hero must **fill the width**.
 Use this pattern verbatim (bundle Bebas Neue / Inter / Oswald in the target; these are not system
 fonts):
