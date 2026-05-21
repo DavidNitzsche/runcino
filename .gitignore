@@ -27,3 +27,6 @@ xcuserdata/
 *.log
 npm-debug.log*
 .claude/worktrees/
+
+# App Store Connect upload secrets (issuer id + key path)
+native/.asc.env
