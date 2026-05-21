@@ -65,8 +65,8 @@ struct IdleView: View {
     @ViewBuilder private var raceBody: some View {
         VStack(spacing: 5) {
             HStack(spacing: 5) {
-                Text("\(workout.name) · Ready".uppercased())
-                    .font(WatchTheme.body(11, .bold)).tracking(1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
+                Text(workout.name.uppercased())
+                    .font(WatchTheme.body(12.5, .bold)).tracking(1.1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
             }
             Text(workout.goalSec.map { PaceFormat.hm($0) } ?? workout.name)
                 .font(WatchTheme.display(64)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)

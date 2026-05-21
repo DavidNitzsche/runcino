@@ -245,7 +245,7 @@ struct RecoveryFace: View {
         VStack(spacing: 0) {
             FaceHeader(label: rest, color: WP.green)
             VStack(spacing: -8) {
-                Hero(value: countdown, color: WP.green)
+                Hero(value: countdown, color: WP.green, size: 150)
                 if !nextRef.isEmpty {
                     Text(nextRef).font(WF.interBold(12)).tracking(0.4).textCase(.uppercase)
                         .foregroundStyle(WP.muted).lineLimit(1)
@@ -281,7 +281,7 @@ struct SteadyFace: View {
         VStack(spacing: 0) {
             FaceHeader(label: label, color: accent)
             VStack(spacing: -10) {
-                Hero(value: hero, color: WP.ink)
+                Hero(value: hero, color: WP.ink, size: 150)
                 if let refPace {
                     (Text(refLabel.uppercased() + " · ").foregroundStyle(WP.muted)
                      + Text(refPace + "/MI").foregroundStyle(WP.ink))
@@ -418,18 +418,50 @@ struct SplitsFace: View {
 
 private struct SessionMapPage: View {
     @ObservedObject var engine: WorkoutEngine
-    var body: some View {
-        SessionMapFace(rows: engine.workout.phases.map { p in
-            SessionMapFace.Row(label: p.label, value: value(for: p), state: state(p.index))
-        })
-    }
-    private func state(_ idx: Int) -> SegState {
+    var body: some View { SessionMapFace(rows: groupedRows) }
+
+    private func seg(_ idx: Int) -> SegState {
         idx < engine.currentIndex ? .done : (idx == engine.currentIndex ? .current : .upcoming)
     }
-    private func value(for p: WatchPhase) -> String {
-        if p.index < engine.currentIndex { return "✓" }
-        if p.index == engine.currentIndex { return PaceFormat.clock(engine.phaseRemainingSec) }
-        return PaceFormat.clock(p.durationSec)
+
+    /// Collapse the interval block so a 5×7 doesn't list 12 rows: warmup,
+    /// done reps as one line, the current rep/recovery, upcoming reps as one
+    /// line, cooldown. Stays ~5 readable rows regardless of rep count.
+    private var groupedRows: [SessionMapFace.Row] {
+        let phases = engine.workout.phases
+        let cur = engine.currentIndex
+        let totalReps = phases.filter { $0.type == .work }.count
+        let doneReps = phases.filter { $0.type == .work && $0.index < cur }.count
+        let curPhase = phases.indices.contains(cur) ? phases[cur] : nil
+        var out: [SessionMapFace.Row] = []
+
+        if let wu = phases.first(where: { $0.type == .warmup }) {
+            out.append(.init(label: "Warmup",
+                             value: cur > wu.index ? "✓" : PaceFormat.clock(cur == wu.index ? engine.phaseRemainingSec : wu.durationSec),
+                             state: seg(wu.index)))
+        }
+        if doneReps > 0 {
+            out.append(.init(label: doneReps == 1 ? "Rep 1" : "Reps 1–\(doneReps)", value: "✓", state: .done))
+        }
+        if let cp = curPhase, cp.type == .work {
+            out.append(.init(label: "Rep \(doneReps + 1) · now",
+                             value: cp.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? PaceFormat.clock(engine.phaseRemainingSec),
+                             state: .current))
+        } else if let cp = curPhase, cp.type == .recovery {
+            out.append(.init(label: "Recovery · now", value: PaceFormat.clock(engine.phaseRemainingSec), state: .current))
+        }
+        let curIsWork = curPhase?.type == .work
+        let upcoming = totalReps - doneReps - (curIsWork ? 1 : 0)
+        if upcoming > 0 {
+            let first = totalReps - upcoming + 1
+            out.append(.init(label: upcoming == 1 ? "Rep \(first)" : "Reps \(first)–\(totalReps)", value: "\(upcoming)×", state: .upcoming))
+        }
+        if let cd = phases.first(where: { $0.type == .cooldown }) {
+            out.append(.init(label: "Cooldown",
+                             value: cur > cd.index ? "✓" : PaceFormat.clock(cd.durationSec),
+                             state: seg(cd.index)))
+        }
+        return out
     }
 }
 

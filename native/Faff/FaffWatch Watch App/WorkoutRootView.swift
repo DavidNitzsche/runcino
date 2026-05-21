@@ -129,22 +129,20 @@ private struct NoWorkoutView: View {
                 Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
                 Spacer()
             }
-            Spacer(minLength: 4)
-            // w-rest (deck §A): green eyebrow, big green REST, the body read.
-            VStack(spacing: 8) {
-                Text("Rest day").font(WatchTheme.body(11, .bold)).tracking(0.5)
-                    .foregroundStyle(WatchTheme.C.green).textCase(.uppercase)
-                Text("REST").font(WatchTheme.display(70)).tracking(-1).foregroundStyle(WatchTheme.C.green)
-                Text(message)
-                    .font(WatchTheme.body(12.5, .medium)).foregroundStyle(WatchTheme.C.t2)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity)
-            Spacer(minLength: 4)
+            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
+            Spacer()
+            // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
+            Text("REST").font(WatchTheme.display(80)).foregroundStyle(WatchTheme.C.green)
+            Text(message)
+                .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 180).padding(.top, 8)
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, 10).padding(.bottom, 2)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .background(WatchTheme.C.bg.ignoresSafeArea())
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 

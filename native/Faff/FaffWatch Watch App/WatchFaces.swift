@@ -116,9 +116,12 @@ extension View {
 struct Hero: View {
     let value: String
     var color: Color = WP.ink
+    /// Base size. Faces with more room + narrow time values (warmup/cooldown/recovery,
+    /// no strip or ref) pass a larger size; the work/race face keeps the default.
+    var size: CGFloat = 118
     var body: some View {
         Text(value)
-            .font(WF.bebas(118))
+            .font(WF.bebas(size))
             .foregroundStyle(color)
             .lineLimit(1)
             .minimumScaleFactor(0.5)
