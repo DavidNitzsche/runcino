@@ -190,11 +190,14 @@ export async function computeReadinessScore(
 
   // Pull last 14 days of activities in one query.
   const rows = await query<ActivityRow>(
+    // HR fields can be decimals (e.g. 143.7) on HealthKit-enriched
+    // activities, so cast via NUMERIC + ROUND — a bare ::INTEGER throws
+    // "invalid input syntax for type integer" and nulls the whole score.
     `SELECT data->>'date'              AS date,
-            (data->>'workoutType')::INTEGER AS workout_type,
+            ROUND((data->>'workoutType')::NUMERIC)::INTEGER AS workout_type,
             (data->>'distanceMi')::TEXT  AS distance,
-            (data->>'avgHr')::INTEGER    AS avg_hr,
-            (data->>'maxHr')::INTEGER    AS max_hr
+            ROUND((data->>'avgHr')::NUMERIC)::INTEGER    AS avg_hr,
+            ROUND((data->>'maxHr')::NUMERIC)::INTEGER    AS max_hr
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'date') >= $2
