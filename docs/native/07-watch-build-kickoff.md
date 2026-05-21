@@ -154,24 +154,31 @@ row. Diff against `watch-app.html` — if the hero isn't the biggest thing filli
 
 ## Build order
 
-**Phase 1 — the engine + workout faces (simulator-testable):**
-1. State machine that walks a flat phases/intervals array (cursor, forward-only). Drives the faces.
-2. Faces: home / pre-run → countdown → warmup → work interval → recovery → cooldown → summary,
-   matching watch-app.html. Pace color logic: green within ±tolerance, amber 10–15s, red >15s.
+**Phase 0 — the in-run face, then STOP for approval. Do this FIRST and ALONE.**
+Build only the **in-run work-interval face** — the active-workout primary screen: the big
+color-coded current pace, the target + delta, HR + cadence, the rep progress bar, the segment
+strip, elapsed top-right. It is the highest-stakes face and the one the build keeps getting wrong,
+so it is the proof of fidelity for everything else.
+1. Bundle the fonts. Port `WorkIntervalFace` from `docs/native/reference/WatchFaces.swift` verbatim.
+2. Match it: screenshot the 45mm sim to `scripts/watch/build/work-interval.png`, run
+   `node scripts/watch/compare.mjs refs/work-interval.png build/work-interval.png`, iterate to PASS.
+3. **STOP. Post the reference and your build side by side (with the %) and wait for approval.
+   Do NOT build any other face until the in-run face is signed off.** This gate is the whole point —
+   we get one face exactly right before scaling, not twelve faces all slightly wrong.
+
+**Phase 1 — the rest of the workout faces (only after the in-run face is approved; simulator-testable):**
+1. The state machine that walks a flat phases array (forward-only cursor) and drives the faces.
+2. home / pre-run → countdown → warmup → recovery → cooldown → summary, plus the pace color
+   states, heads-up, splits, session-map, controls, always-on. Gate EACH on `compare.mjs`.
 
 **Phase 2 — live data + haptics (needs a physical Apple Watch):**
-3. `HKWorkoutSession` + `HKLiveWorkoutBuilder` for live HR, pace (smoothed; `CMPedometer`
-   fallback for the first ~30s before GPS lock), and **cadence**.
-4. Transition + drift haptics (`WKInterfaceDevice.play`).
-5. Completion: write `HKWorkout` with per-interval metadata → phone ingests → backend.
+3. `HKWorkoutSession` + `HKLiveWorkoutBuilder` for live HR, smoothed pace (`CMPedometer` fallback
+   first ~30s), and **cadence**; transition + drift haptics; `HKWorkout` completion writeback.
 
-**Phase 3 — race day (same engine, fed the race):**
-6. The race plan is a **flat list of `pace` + `fuel` segments** (see watch-handoff payload). Reuse
-   the Phase-1 state machine: `pace` segments are course phases with their own target pace (even
-   *effort*, so the target shifts by terrain); `fuel` segments fire a gel cue + haptic.
-7. Race faces: pre-race (goal, strategy, gels), race view (current pace vs **current phase**
-   target, projected finish + distance, next-gel on the bar), fuel cue, phase-transition card,
-   finish. All in watch-app.html's race-day section.
+**Phase 3 — race day (in v1, same engine, fed the race):**
+4. The race plan is a **flat list of `pace` + `fuel` segments** — reuse the Phase-1 state machine.
+   `pace` segments are course phases with their own terrain-aware target; `fuel` segments fire a
+   gel cue + haptic. Build pre-race, race-view, fuel-cue, phase-change, finish.
 
 ## Constraints
 
@@ -192,9 +199,15 @@ row. Diff against `watch-app.html` — if the hero isn't the biggest thing filli
   `intervals` array of pace/fuel segments + fueling). A `GET /api/watch/race` (or equivalent) that
   returns the flat segment list for the watch is the net-new backend piece for race day.
 
-## First task
+## First task — the in-run face only, then stop
 
-Build the **workout execution state machine + the work-interval face** against the
-`/api/watch/today` payload, in the simulator, matching the work-interval face in watch-app.html
-(centered auto-scaling hero, color-coded pace, HR + cadence, rep progress bar). Show me the
-SwiftUI before wiring live HealthKit, then we iterate face by face.
+Build **only** the in-run work-interval face. Nothing else.
+
+1. Bundle Bebas Neue / Inter / Oswald (target + Info.plist `UIAppFonts`); confirm the hero renders
+   in Bebas, not San Francisco.
+2. Port `WorkIntervalFace` from `docs/native/reference/WatchFaces.swift` verbatim (it already has
+   the correct bindings: elapsed not wall-clock, `bpm` vs `spm`, hero fills the width).
+3. Screenshot the 45mm sim → `scripts/watch/build/work-interval.png`, run
+   `node scripts/watch/compare.mjs refs/work-interval.png build/work-interval.png`, iterate to PASS.
+4. **Reply with the reference and your build side by side + the mismatch %, then wait for approval.
+   Do not start any other face until this one is approved.**
