@@ -22,6 +22,9 @@ import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { computeReadinessScore } from '@/lib/readiness-score';
+import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
+import { resolveFitness } from '@/lib/fitness-resolver';
 import './health-v4.css';
 
 export default async function HealthPage() {
@@ -116,10 +119,41 @@ export default async function HealthPage() {
     ? { value: `${vo2.toFixed(1)}`, tone: (vo2 >= 50 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((vo2 / 60) * 100) }
     : { value: 'No data', tone: 'dim' as const, width: 0 };
 
-  const heroTitle = hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA');
-  const readBody = hasBio
-    ? `From Apple Health (7-day average): ${rhr != null ? `resting HR ${Math.round(rhr)} bpm` : ''}${rhr != null && (hrv != null || sleep != null) ? ', ' : ''}${hrv != null ? `HRV ${Math.round(hrv)} ms` : ''}${hrv != null && sleep != null ? ', ' : ''}${sleep != null ? `${sleep.toFixed(1)} h sleep` : ''}. Trends build as more days sync.`
-    : 'No data. Once a wearable is connected (Apple Health, Whoop, Oura) or you’ve logged a few days of check-ins, daily readouts of HRV, resting HR, and sleep will land here.';
+  // ── Readiness + coach brief (real, not placeholder) ──
+  const fitness = await resolveFitness(auth.id, today).catch(() => null);
+  const z2Finding = fitness
+    ? await computeZ2CoverageFinding(auth.id, today, fitness.maxHr.value, fitness.restingHr.value, fitness.vdot.value).catch(() => null)
+    : null;
+  const readiness = fitness
+    ? await computeReadinessScore(auth.id, today, fitness.maxHr.value, fitness.restingHr.value, z2Finding).catch(() => null)
+    : null;
+  const readyScore = readiness?.score ?? null;
+  const readyState = readiness?.state ?? null;
+  const stateColor = readyState === 'green' ? '#2CA82F' : readyState === 'yellow' ? '#D4900A' : readyState === 'red' ? '#F43F5E' : 'rgba(13,15,18,.32)';
+  const stateWord = readyState === 'green' ? 'Recovered' : readyState === 'yellow' ? 'Hold steady' : readyState === 'red' ? 'Back off' : 'Waiting on data';
+  // Build the four-section brief from the readiness inputs + vitals.
+  const posInputs = (readiness?.inputs ?? []).filter((i) => i.delta > 0).map((i) => i.note);
+  const negInputs = (readiness?.inputs ?? []).filter((i) => i.delta < 0).map((i) => i.note);
+  const vitalBits: string[] = [];
+  if (hrv != null) vitalBits.push(`HRV ${Math.round(hrv)}ms`);
+  if (rhr != null) vitalBits.push(`resting HR ${Math.round(rhr)}`);
+  if (sleep != null) vitalBits.push(`${sleep.toFixed(1)}h sleep`);
+  const briefRead = readiness?.recommendation
+    ?? (hasBio ? readBodyShort() : 'Connect a wearable or log check-ins and a daily readiness read lands here.');
+  const briefWorking = posInputs.length ? cap(posInputs.join('; ')) + '.' : (vitalBits.length ? `${cap(vitalBits.join(', '))} — vitals tracking.` : 'No positive signals logged yet.');
+  const briefWatch = negInputs.length ? cap(negInputs.join('; ')) + '.' : 'Nothing flagged — no elevated load or drift signals.';
+  const briefFrame = [
+    readyScore != null ? `Readiness ${readyScore}/100` : null,
+    vo2 != null ? `VO₂max ${vo2.toFixed(1)}` : null,
+    readiness?.missingInputs?.length ? `Missing: ${readiness.missingInputs.join(', ')}` : null,
+  ].filter(Boolean).join(' · ') || 'The frame fills in as more days of data accumulate.';
+
+  function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function readBodyShort(): string {
+    return `From Apple Health: ${vitalBits.join(', ')}. Trends build as more days sync.`;
+  }
+
+  const heroTitle = readyState ? stateWord.toUpperCase() : (hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA'));
 
   return (
     <div className="health-v4-page">
@@ -136,8 +170,10 @@ export default async function HealthPage() {
               COACH · {todayLabel} · HEALTH READOUT
             </div>
             <p className="coach-briefing">
-              No wearable data yet. Connect Apple Health, Whoop, or Oura from <a href="/profile" style={{ color: 'var(--green)', textDecoration: 'underline' }}>your profile</a> to see daily readiness, HR trends, sleep, and strain readouts here.
-              {checkin ? <> Your check-in today: <strong>{checkin.energy} energy · {checkin.soreness} soreness · {checkin.stress} stress</strong>.</> : <> Log a quick check-in on the right to get started.</>}
+              {readyScore != null
+                ? <>Readiness <strong>{readyScore}/100 · {stateWord.toLowerCase()}</strong>. {briefRead}</>
+                : <>Connect Apple Health from <a href="/profile" style={{ color: 'var(--green)', textDecoration: 'underline' }}>your profile</a> to see daily readiness, HR trends, and sleep here.</>}
+              {checkin ? <> Today&apos;s check-in: <strong>{checkin.energy} energy · {checkin.soreness} soreness · {checkin.stress} stress</strong>.</> : <> Log a quick check-in on the right.</>}
             </p>
           </div>
           <CheckInMiniIsland today={today} />
@@ -151,19 +187,19 @@ export default async function HealthPage() {
             <div className="brief-sections">
               <div className="brief-section">
                 <div className="brief-section-label read">The Read</div>
-                <p className="brief-section-body">{readBody}</p>
+                <p className="brief-section-body">{briefRead}</p>
               </div>
               <div className="brief-section">
                 <div className="brief-section-label work">What&apos;s Working</div>
-                <p className="brief-section-body">No data yet.</p>
+                <p className="brief-section-body">{briefWorking}</p>
               </div>
               <div className="brief-section">
                 <div className="brief-section-label watch">The Watch</div>
-                <p className="brief-section-body">No data yet.</p>
+                <p className="brief-section-body">{briefWatch}</p>
               </div>
               <div className="brief-section">
                 <div className="brief-section-label frame">The Frame</div>
-                <p className="brief-section-body">No data yet.</p>
+                <p className="brief-section-body">{briefFrame}</p>
               </div>
             </div>
           </div>
@@ -176,11 +212,18 @@ export default async function HealthPage() {
               <div className="health-hero-ring">
                 <svg viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
                   <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
-                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill="rgba(13,15,18,.32)" textAnchor="middle">—</text>
-                  <text x="150" y="200" fontFamily="Inter" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
+                  {readyScore != null && (
+                    <circle
+                      cx="150" cy="150" r="130" fill="none" stroke={stateColor} strokeWidth="16"
+                      strokeDasharray={`${(readyScore / 100) * 816.81} 816.81`} strokeLinecap="round"
+                      transform="rotate(-90 150 150)"
+                    />
+                  )}
+                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill={readyScore != null ? '#0D0F12' : 'rgba(13,15,18,.32)'} textAnchor="middle">{readyScore ?? '—'}</text>
+                  <text x="150" y="200" fontFamily="Inter" fontSize="11" fontWeight="600" fill={stateColor} textAnchor="middle" letterSpacing="1">{(readyState ?? 'no data').toUpperCase()}</text>
                 </svg>
               </div>
-              <div className="health-hero-state" style={{ color: 'rgba(13,15,18,.45)' }}>Waiting on data</div>
+              <div className="health-hero-state" style={{ color: stateColor }}>{stateWord}</div>
             </div>
 
             <div className="health-trend-rows">
