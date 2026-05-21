@@ -39,6 +39,9 @@ export interface DebriefInput {
    *  present, an elevated-HR / off-day read names the actual cause instead
    *  of "possible fatigue — worth a check". */
   recovery?: RecoveryContext | null;
+  /** Weather at the run's start. Heat/humidity is cited as a cause of an
+   *  elevated HR before blaming fatigue. */
+  weather?: { tempF: number; humidityPct: number; isHot: boolean } | null;
 }
 
 export interface RecoveryContext {
@@ -152,9 +155,12 @@ export function generateRunDebrief(input: DebriefInput): string {
   const {
     planType, planDistanceMi, paceLow, paceHigh,
     actualDistanceMi, actualPaceSPerMi, actualAvgHr,
-    splits = [], maxHr, recovery,
+    splits = [], maxHr, recovery, weather,
   } = input;
   const rec = recoveryRead(recovery);
+  const heat = weather?.isHot
+    ? `it was ${weather.tempF}°F${weather.humidityPct >= 65 ? ` / ${weather.humidityPct}% humidity` : ''}`
+    : null;
 
   const sentences: string[] = [];
   // Track whether the pace sentence already cited HR + %max so we don't
@@ -235,12 +241,14 @@ export function generateRunDebrief(input: DebriefInput): string {
       } else if (hrStatus === 'moderate') {
         sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix} — moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
       } else if (hrStatus === 'elevated') {
-        if (rec.offFactors.length > 0) {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — and your recovery shows why: ${joinList(rec.offFactors)}. Under-recovered, not the run.`);
+        const causes = [...rec.offFactors];
+        if (heat) causes.push(heat);
+        if (causes.length > 0) {
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — and the data shows why: ${joinList(causes)}. Not the run.`);
         } else if (rec.hasData) {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, yet recovery looks normal (${joinList(rec.normalFactors)}) — likely heat or in-run dehydration, not fatigue.`);
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, yet recovery looks normal (${joinList(rec.normalFactors)})${weather ? ` and it was a mild ${weather.tempF}°F` : ''} — likely in-run dehydration, not fatigue.`);
         } else {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — possible heat, fatigue, or sleep deficit. Worth a check.`);
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}${heat ? ` — and ${heat}, which alone can do it` : ' — possible heat, fatigue, or sleep deficit. Worth a check'}.`);
         }
       } else {
         sentences.push(`Pace held in the target band at ${pace}/mi.`);

@@ -189,6 +189,72 @@ function weatherCodeToText(code: number): string {
   return 'Mixed';
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * Per-run weather — compact conditions at a run's GPS start + time,
+ * for run recaps + the coach take. Open-Meteo, no key. Recent dates
+ * come from the forecast endpoint (serves recent past), older from the
+ * archive endpoint. Exposes humidity (the archive WeatherSummary path
+ * doesn't), since heat+humidity is what inflates HR.
+ * ───────────────────────────────────────────────────────────────── */
+
+export interface RunWeather {
+  tempF: number;
+  humidityPct: number;
+  windMph: number;
+  code: number;
+  label: string;
+  /** Conditions that plausibly inflate HR / RPE (heat or humidity). */
+  isHot: boolean;
+}
+
+/** Fetch weather at a run's start. null on any failure — enrichment only. */
+export async function fetchRunWeather(
+  lat: number | null | undefined,
+  lon: number | null | undefined,
+  startISO: string | null | undefined,
+): Promise<RunWeather | null> {
+  if (lat == null || lon == null || !startISO) return null;
+  const date = startISO.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  const ageDays = Math.floor((Date.now() - new Date(date + 'T12:00:00Z').getTime()) / 86_400_000);
+  const apiBase = ageDays > 80
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+  const url = `${apiBase}?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}`
+    + `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code`
+    + `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`
+    + `&start_date=${date}&end_date=${date}`;
+
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, next: { revalidate: 86_400 } });
+    if (!res.ok) return null;
+    const h = (await res.json() as { hourly?: {
+      time?: string[]; temperature_2m?: number[];
+      relative_humidity_2m?: number[]; wind_speed_10m?: number[]; weather_code?: number[];
+    } }).hourly;
+    if (!h?.time || !h.temperature_2m) return null;
+
+    const startHour = new Date(startISO).getHours();
+    let idx = h.time.findIndex((t) => new Date(t).getHours() === startHour);
+    if (idx < 0) idx = Math.min(12, h.time.length - 1);
+    if (idx < 0) return null;
+
+    const tempF = Math.round(h.temperature_2m[idx] ?? NaN);
+    if (!Number.isFinite(tempF)) return null;
+    const humidityPct = Math.round(h.relative_humidity_2m?.[idx] ?? 0);
+    const windMph = Math.round(h.wind_speed_10m?.[idx] ?? 0);
+    const code = h.weather_code?.[idx] ?? 0;
+    return {
+      tempF, humidityPct, windMph, code,
+      label: weatherCodeToText(code),
+      isHot: tempF >= 75 || humidityPct >= 70,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildNarrative(a: WeatherPeriod, b: WeatherPeriod | null): string {
   const lines: string[] = [];
   lines.push(

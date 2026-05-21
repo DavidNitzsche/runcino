@@ -347,6 +347,9 @@ interface RunDynamics {
   verticalOscillation: number | null; groundContactTime: number | null;
   verticalRatio: number | null; runPower: number | null;
 }
+interface RunWeatherT {
+  tempF: number; humidityPct: number; windMph: number; label: string; isHot: boolean;
+}
 
 function fmtPaceMS(sPerMi: number): string {
   if (!sPerMi || sPerMi <= 0) return '—';
@@ -409,6 +412,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const [userMaxHrSource, setUserMaxHrSource] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<RecoveryCtx | null>(null);
   const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
+  const [weather, setWeather] = useState<RunWeatherT | null>(null);
 
   // Always load fitness on modal open — even for future workouts where
   // we never hit by-date. This is what threads the user's actual race
@@ -443,6 +447,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         setUserMaxHrSource(j.maxHrSource ?? null);
         setRecovery(j.recovery ?? null);
         setDynamics(j.dynamics ?? null);
+        setWeather(j.weather ?? null);
         if (j.fitness) setUserFitness(j.fitness);
       })
       .catch(() => { if (!cancelled) setActual(null); });
@@ -654,6 +659,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                   restingHrBpm: recovery.restingHrBpm, restingHrBaselineBpm: recovery.restingHrBaselineBpm,
                   sleepHours: recovery.sleepHours,
                 } : null,
+                weather: weather ? { tempF: weather.tempF, humidityPct: weather.humidityPct, isHot: weather.isHot } : null,
               });
               const maxHrLabel = userMaxHr
                 ? `Max HR ${userMaxHr} · ${userMaxHrSource === 'manual' ? 'manual' : userMaxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
@@ -1345,6 +1351,7 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined);
   const [recovery, setRecovery] = useState<RecoveryCtx | null>(null);
   const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
+  const [weather, setWeather] = useState<RunWeatherT | null>(null);
   const [maxHr, setMaxHr] = useState<number | null>(null);
   const [maxHrSource, setMaxHrSource] = useState<string | null>(null);
   const [fitness, setFitness] = useState<unknown>(null);
@@ -1358,6 +1365,7 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
         setActual(j.run ?? null);
         setRecovery(j.recovery ?? null);
         setDynamics(j.dynamics ?? null);
+        setWeather(j.weather ?? null);
         setMaxHr(j.maxHr ?? null);
         setMaxHrSource(j.maxHrSource ?? null);
         if (j.fitness) setFitness(j.fitness);
@@ -1386,6 +1394,7 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
       restingHrBpm: recovery.restingHrBpm, restingHrBaselineBpm: recovery.restingHrBaselineBpm,
       sleepHours: recovery.sleepHours,
     } : null,
+    weather: weather ? { tempF: weather.tempF, humidityPct: weather.humidityPct, isHot: weather.isHot } : null,
   });
   const maxHrLabel = maxHr
     ? `Max HR ${maxHr} · ${maxHrSource === 'manual' ? 'manual' : maxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
@@ -1422,6 +1431,14 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
           </div>
         ))}
       </div>
+
+      {/* Weather at the start */}
+      {weather && (
+        <div style={{ marginTop: 12, fontFamily: 'Inter, sans-serif', fontSize: 12.5, color: 'rgba(13,15,18,.55)' }}>
+          <strong style={{ color: '#0D0F12' }}>{weather.tempF}°F</strong> · {weather.humidityPct}% humidity · {weather.windMph} mph wind · {weather.label}
+          {weather.isHot && <span style={{ color: '#C97000' }}> · warm</span>}
+        </div>
+      )}
 
       {/* Coach take */}
       <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(13,15,18,.04)', borderLeft: '3px solid #E85D26', borderRadius: '0 8px 8px 0' }}>

@@ -145,6 +145,14 @@ export async function GET(req: NextRequest) {
     runPower: dayMap.get('run_power') ?? null,
   };
 
+  // Weather at the run's start (Open-Meteo) — surfaced on the recap and
+  // fed to the coach take (heat/humidity explains an elevated HR).
+  const { fetchRunWeather } = await import('@/lib/weather');
+  const runStartISO = (d.startLocal as string | undefined) || (d.date ? `${d.date}T07:00:00` : null);
+  const weather = startLatLng
+    ? await fetchRunWeather(startLatLng[0], startLatLng[1], runStartISO)
+    : null;
+
   // Max HR — prefer the user's manual override, fall back to the
   // value computed from their activity history (peak max_heartrate
   // across runs). null when neither is available.
@@ -164,6 +172,7 @@ export async function GET(req: NextRequest) {
     maxHrSource: maxHr.source,
     recovery,
     dynamics,
+    weather,
     fitness: {
       paces: fitness.paces,
       racePaceBand: fitness.racePaceBand,
