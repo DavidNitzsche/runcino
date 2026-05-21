@@ -52,6 +52,7 @@ struct IdleView: View {
                 .font(WatchTheme.display(52)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
                 .lineLimit(2).minimumScaleFactor(0.4).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2).padding(.bottom, -2)   // Bebas sits ~4px high in its line-box; nudge the glyph down to optically center it between pill and pace (net height unchanged)
             Text(paceLine)
                 .font(WatchTheme.sub(15, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
                 .textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.6)
