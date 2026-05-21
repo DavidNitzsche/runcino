@@ -95,15 +95,22 @@ def main():
 
     elif cmd == "comply":
         # Declare no non-exempt encryption on the latest build so it clears
-        # export compliance and becomes internally testable.
+        # export compliance. No-op (409) when the binary already self-declared
+        # via INFOPLIST_KEY_ITSAppUsesNonExemptEncryption=NO — which is fine.
         builds = recent_builds(env)
         if not builds:
             print("no builds"); return
         b = builds[0]
-        call(env, "PATCH", f"/v1/builds/{b['id']}",
-             {"data": {"type": "builds", "id": b["id"],
-                       "attributes": {"usesNonExemptEncryption": False}}})
-        print(f"✓ build {b['attributes'].get('version')} export-compliance set (no encryption).")
+        try:
+            call(env, "PATCH", f"/v1/builds/{b['id']}",
+                 {"data": {"type": "builds", "id": b["id"],
+                           "attributes": {"usesNonExemptEncryption": False}}})
+            print(f"✓ build {b['attributes'].get('version')} export-compliance set (no encryption).")
+        except SystemExit as e:
+            if "409" in str(e) or "already set" in str(e):
+                print(f"✓ build {b['attributes'].get('version')} already export-compliant (declared in Info.plist).")
+            else:
+                raise
 
     elif cmd == "autoship":
         group = sys.argv[2] if len(sys.argv) > 2 else "1faa228e-0164-492c-b8c4-0d8b94f039bd"
