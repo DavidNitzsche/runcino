@@ -80,6 +80,12 @@ final class WorkoutTracker: NSObject, ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
+        // Fresh per run — never carry distance / HR / cadence across
+        // sessions (otherwise a second run starts with stale totals, e.g.
+        // a race reading "0 to go / fuel done" before it begins).
+        distanceMi = 0; paceSPerMi = 0; heartRate = 0; cadence = 0; activeEnergyKcal = 0
+        maxHr = 0; hrSum = 0; hrCount = 0; cadSum = 0; cadCount = 0
+        mockPaused = false
         #if targetEnvironment(simulator)
         startSimulatorMock(); return
         #endif

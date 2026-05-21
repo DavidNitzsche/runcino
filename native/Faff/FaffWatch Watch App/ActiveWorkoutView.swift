@@ -73,6 +73,30 @@ struct ActiveWorkoutView: View {
     }
 }
 
+// MARK: - Hero number (fills the width · watch-app.html)
+
+/// The one giant centered number per face. Sized off the available WIDTH
+/// (not height) so 4- and 5-char values both fill the screen — the bug
+/// before was a height-constrained Text that shrank to a fraction. The
+/// width multiplier fills ~90% for a 4-char time; longer strings auto-
+/// scale down via minimumScaleFactor. No negative tracking (canon).
+private struct HeroNumber: View {
+    let text: String
+    var color: Color = WatchTheme.C.ink
+    /// Vertical room the hero zone claims (the centered middle band).
+    var zoneHeight: CGFloat = 104
+    var body: some View {
+        GeometryReader { g in
+            Text(text)
+                .font(WatchTheme.display(g.size.width * 0.62))
+                .foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.4)
+                .frame(width: g.size.width, height: g.size.height, alignment: .center)
+        }
+        .frame(height: zoneHeight)
+    }
+}
+
 // MARK: - Shared face chrome
 
 /// Top strip: orientation eyebrow (left) + elapsed workout time (right).
@@ -247,11 +271,7 @@ private struct WorkIntervalFace: View {
             Spacer(minLength: 2)
 
             // Hero — current pace, the biggest thing on the watch, color-coded.
-            Text(hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—")
-                .font(WatchTheme.display(110)).tracking(-1.5)
-                .foregroundStyle(heroColor)
-                .lineLimit(1).minimumScaleFactor(0.4)
-                .frame(maxWidth: .infinity)
+            HeroNumber(text: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—", color: heroColor)
             if let target = phase.targetPaceSPerMi {
                 RefLine(target: target, status: refStatus.0, statusColor: refStatus.1).padding(.top, 4)
             }
@@ -322,9 +342,7 @@ private struct RaceFace: View {
             SegmentBar(engine: engine).padding(.top, 6)
             Spacer(minLength: 2)
             // Hero — current pace vs this phase's terrain-aware target.
-            Text(hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—")
-                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(heroColor)
-                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
+            HeroNumber(text: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—", color: heroColor)
             if let target = phase.targetPaceSPerMi {
                 RefLine(target: target, status: refStatus.0, statusColor: refStatus.1).padding(.top, 4)
             }
@@ -377,9 +395,7 @@ private struct RecoveryFace: View {
             TopStrip(eyebrow: "Rest \(n) / \(m)", eyebrowColor: WatchTheme.C.green, elapsedSec: engine.totalElapsedSec)
             SegmentBar(engine: engine).padding(.top, 6)
             Spacer(minLength: 2)
-            Text(PaceFormat.clock(engine.phaseRemainingSec))
-                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(WatchTheme.C.green)
-                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
+            HeroNumber(text: PaceFormat.clock(engine.phaseRemainingSec), color: WatchTheme.C.green)
             // Next rep pre-loaded (deck .w-nx 11/700/.4 uppercase, b=white).
             if let target = engine.nextPhase?.targetPaceSPerMi {
                 (Text("NEXT REP · ").foregroundStyle(WatchTheme.C.t3)
@@ -422,9 +438,7 @@ private struct SteadyFace: View {
             Spacer(minLength: 2)
             // Hero counts UP toward the phase duration (white); the progress
             // bar carries the time REMAINING. Two different numbers.
-            Text(PaceFormat.clock(engine.phaseElapsedSec))
-                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
+            HeroNumber(text: PaceFormat.clock(engine.phaseElapsedSec), color: WatchTheme.C.ink)
             if let next = engine.nextPhase {
                 Text("NEXT · \(next.label.uppercased())").font(WatchTheme.body(11, .bold)).tracking(0.4)
                     .foregroundStyle(WatchTheme.C.t3)
