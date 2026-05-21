@@ -37,12 +37,8 @@ struct SummaryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                Circle().stroke(WatchTheme.C.green, lineWidth: 3)
-                    .frame(width: 38, height: 38)
-                    .overlay(Image(systemName: "checkmark").font(.system(size: 16, weight: .bold)).foregroundStyle(WatchTheme.C.green))
-                    .padding(.top, 6)
                 Text(titleText.uppercased())
-                    .font(WatchTheme.display(28)).foregroundStyle(WatchTheme.C.ink).padding(.top, 6)
+                    .font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink).padding(.top, 8)
 
                 if workout.isRace {
                     raceFinish

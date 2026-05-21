@@ -14,18 +14,16 @@ struct CountdownView: View {
     @ObservedObject var engine: WorkoutEngine
 
     var body: some View {
-        VStack(spacing: 6) {
-            Text("Get ready")
-                .font(WatchTheme.body(12, .bold)).tracking(0.8)
-                .foregroundStyle(WatchTheme.C.green).textCase(.uppercase)
-            Text("\(max(engine.countdownValue, 1))")
-                .font(WatchTheme.display(130))
-                .foregroundStyle(WatchTheme.C.green)
-                .monospacedDigit()
-                .contentTransition(.numericText(countsDown: true))
-                .animation(.snappy, value: engine.countdownValue)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WatchTheme.C.bg.ignoresSafeArea())
+        // Just the huge number, owning the whole screen (approved §B redesign).
+        Text("\(max(engine.countdownValue, 1))")
+            .font(WatchTheme.display(240))
+            .foregroundStyle(WatchTheme.C.green)
+            .monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.3)
+            .contentTransition(.numericText(countsDown: true))
+            .animation(.snappy, value: engine.countdownValue)
+            .offset(y: 10)        // optically center (Bebas line box rides high)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WatchTheme.C.bg.ignoresSafeArea())
     }
 }
