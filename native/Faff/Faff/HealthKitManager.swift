@@ -267,19 +267,22 @@ final class HealthKitManager: ObservableObject {
         let sleep = await sleepHoursByDay(days: 2)
         if let latest = sleep.keys.sorted().last, let h = sleep[latest], h > 0 { sleepHours = (h * 10).rounded() / 10 }
 
-        // Running dynamics — averaged over the most recent running workout.
-        if let run = await mostRecentRun() {
-            let pred = HKQuery.predicateForObjects(from: run)
-            if let stride = await avg(HKQuantityType(.runningStrideLength), unit: .meter(), predicate: pred) { strideM = (stride * 100).rounded() / 100 }
-            if let osc = await avg(HKQuantityType(.runningVerticalOscillation), unit: HKUnit.meterUnit(with: .centi), predicate: pred) { vertOscCm = (osc * 10).rounded() / 10 }
-            if let gct = await avg(HKQuantityType(.runningGroundContactTime), unit: HKUnit.secondUnit(with: .milli), predicate: pred) { groundContactMs = gct.rounded() }
-            if let power = await avg(HKQuantityType(.runningPower), unit: .watt(), predicate: pred) { runPowerW = power.rounded() }
-            if let osc = vertOscCm, let st = strideM, st > 0 { vertRatioPct = ((osc / 100) / st * 1000).rounded() / 10 }
-            // Cadence (spm) = steps over the run ÷ minutes.
-            if let steps = await sum(HKQuantityType(.stepCount), unit: .count(), predicate: pred) {
-                let mins = run.duration / 60
-                if mins > 0 { cadenceSpm = (steps / mins).rounded() }
-            }
+        // Running dynamics — CUMULATIVE: a 30-day average across every run,
+        // not the last run. The per-run breakdown lives on the run recap.
+        // The dynamics quantities are only recorded by the watch during
+        // runs, so a windowed discreteAverage naturally averages over runs.
+        let now = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+        let win = HKQuery.predicateForSamples(withStart: start, end: now, options: .strictStartDate)
+        if let stride = await avg(HKQuantityType(.runningStrideLength), unit: .meter(), predicate: win) { strideM = (stride * 100).rounded() / 100 }
+        if let osc = await avg(HKQuantityType(.runningVerticalOscillation), unit: HKUnit.meterUnit(with: .centi), predicate: win) { vertOscCm = (osc * 10).rounded() / 10 }
+        if let gct = await avg(HKQuantityType(.runningGroundContactTime), unit: HKUnit.secondUnit(with: .milli), predicate: win) { groundContactMs = gct.rounded() }
+        if let power = await avg(HKQuantityType(.runningPower), unit: .watt(), predicate: win) { runPowerW = power.rounded() }
+        if let osc = vertOscCm, let st = strideM, st > 0 { vertRatioPct = ((osc / 100) / st * 1000).rounded() / 10 }
+        // Cadence (spm) over the window = avg running speed (m/min) ÷ stride (m).
+        let mps = HKUnit.meter().unitDivided(by: .second())
+        if let spd = await avg(HKQuantityType(.runningSpeed), unit: mps, predicate: win), let st = strideM, st > 0 {
+            cadenceSpm = (spd * 60 / st).rounded()
         }
     }
 

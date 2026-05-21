@@ -367,7 +367,7 @@ struct HealthView: View {
         }
         func dyn(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0) -> Tile {
             Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
-                 delta: v != nil ? "last run" : "No data", tone: .flat, live: v != nil)
+                 delta: v != nil ? "30d avg" : "No data", tone: .flat, live: v != nil)
         }
         // Prefer live HealthKit values (read on-device); fall back to the
         // backend 7-day rollup when HealthKit hasn't been read yet.
@@ -411,9 +411,9 @@ struct HealthView: View {
             // Connect lives in Profile; only show it here when NOT connected.
             if !localHealth { connectControl }
 
-            section("Recovery & Vitals", vitals, lastRun: false)
-            section("Running Dynamics · last run", dynamics, lastRun: true)
-            section("Training Load", load, lastRun: false)
+            section("Recovery & Vitals", vitals)
+            section("Running Dynamics · 30-day avg", dynamics)
+            section("Training Load", load)
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
         // Always read whatever HealthKit has authorized so the tiles fill
@@ -428,12 +428,12 @@ struct HealthView: View {
             || hk.hrvMs != nil || hk.restingHrBpm != nil || hk.sleepHours != nil
     }
 
-    private func section(_ title: String, _ tiles: [Tile], lastRun: Bool) -> some View {
+    private func section(_ title: String, _ tiles: [Tile]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             MetricGrid(items: tiles) { t in
                 MetricTile(label: t.label, value: t.value, unit: t.unit, delta: t.delta, deltaTone: t.tone,
-                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType, lastRun: lastRun) })
+                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType) })
             }
         }
     }
@@ -1372,7 +1372,7 @@ struct WhyThisSheet: View {
 // MARK: - Metric detail (sheet from a Health tile)
 
 struct MetricDetailSheet: View {
-    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil; var lastRun: Bool = false }
+    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil }
     let metric: Metric
     let overview: OverviewResponse
     @Environment(\.dismiss) private var dismiss
@@ -1393,19 +1393,20 @@ struct MetricDetailSheet: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("\(metric.title)\(metric.live ? (metric.lastRun ? " · last run" : " · latest") : "")").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                        Text("\(metric.title)\(metric.live ? (metric.sampleType != nil ? " · latest" : " · 30-day avg") : "")").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
                         Spacer()
-                        Badge(text: metric.live ? (metric.lastRun ? "Last run" : "Tracked") : "No data", tone: metric.live ? .green : .grey)
+                        Badge(text: metric.live ? "Tracked" : "No data", tone: metric.live ? .green : .grey)
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(metric.value).font(Faff.F.display(58)).foregroundStyle(metric.live ? Faff.C.recovery : Faff.C.textFaint)
                         if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
                     }
                 }.faffCard()
-                if metric.live && metric.lastRun {
-                    // Per-run metric — no daily series; show the run context.
-                    CoachVerdict("From your last run",
-                                 "\(metric.title) measured across your most recent run, read from Apple Health. Per-run history will chart here as you log more runs.",
+                if metric.live && metric.sampleType == nil {
+                    // Cumulative running dynamic — a 30-day average across every
+                    // run (no daily vitals series). Per-run detail is on the recap.
+                    CoachVerdict("Your 30-day average",
+                                 "\(metric.title) averaged across every run in the last 30 days, from Apple Health. The breakdown for a single run lives on that run's recap.",
                                  color: Faff.C.recovery)
                     relatedTiles
                 } else if metric.live {
