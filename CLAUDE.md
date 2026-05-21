@@ -218,3 +218,24 @@ The candidate-stage naming worked. The splits-preservation bug fix in `d114c35` 
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
+
+---
+
+## Branching & integration — `main` is the working line (locked 2026-05-20)
+
+`main` is the active working line. Build here. **Before writing any code, confirm your base is current:** `git fetch`, then check whether `main` is ahead of whatever branch your worktree started on. A worktree's starting branch is often NOT current.
+
+- The `claude/build-runcino-app-OIRJr` branch and the adjective-noun-hex worktree branches (`funny-chandrasekhar-…`, `objective-black-…`, etc.) are parallel-session branches and may be **behind** `main`. Never assume your worktree's base branch is the source of truth.
+- Integrate to `main`. When moving a commit from another branch onto `main`, dry-run the cherry-pick/merge in an **isolated detached worktree** (never the parent checkout another agent may be using), inspect the conflicts, and abort if it would regress. Diverged branches can carry deprecated logic.
+- A second agent is frequently committing to `main` at the same time. Fetch immediately before any push, **fast-forward only, never force**. Expect overlap in coach-core files.
+
+### Cautionary example (2026-05-20) — what we almost did
+
+An agent ran a full HR/VDOT/pace audit and fix, built and verified it green on the stale `claude/build-runcino-app-OIRJr` branch, then went to cherry-pick it onto `main`. The cherry-pick conflicted in `web/lib/coach-state.ts` and `web/lib/vdot.ts` because `main` had already moved further in those exact areas:
+
+- `gatherCoachState` on `main` is multi-tenant (`opts.userId`) and already populates `recovery.rhrBpm` (plus HRV/sleep) from HealthKit biometrics. The stale-branch commit would have replaced that with manual-profile RHR and nulled HRV/sleep — a regression.
+- `pacesFromVdot` on `main` was re-architected to delegate to `resolveTrainingPaces` (canonical Daniels Table 2). The old `E = M + 75` / `R = mile-pace` formula was deprecated as systematically wrong (see `docs/2026-05-19-sim-sweep.md`). The stale-branch commit would have revived it.
+
+The cherry-pick was aborted in an isolated worktree; `main` was never touched. The fix's *ideas* (personalize HR thresholds off real HRmax, name-or-HR hard-day detection, the dormant marathon VDOT correction) still hold, but they must be **re-derived on `main`'s current architecture**, not transplanted.
+
+**Lesson:** confirm `main` is your base before building, and never transplant a commit across diverged branches without dry-running the merge and reading the conflicts. Building on a stale branch produces work that is redundant (already done better on `main`) or deprecated (already removed from `main`).
