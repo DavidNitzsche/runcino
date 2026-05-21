@@ -217,7 +217,7 @@ extension WatchWorkout {
         let total = phases.reduce(0) { $0 + $1.durationSec }
         return WatchWorkout(
             workoutId: "sample-threshold",
-            name: "5×7 Threshold",
+            name: "5×7",
             summary: "5×7 min @ 6:31 · 90s rec",
             totalEstimatedMinutes: total / 60,
             phases: phases,

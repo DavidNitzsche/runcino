@@ -108,21 +108,26 @@ struct WorkoutRootView: View {
 private struct NoWorkoutView: View {
     let message: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             HStack {
-                Text("FAFF").font(WatchTheme.sub(12, .semibold)).tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
                 Spacer()
             }
             Spacer(minLength: 4)
-            Text("Rest day").font(WatchTheme.sub(13, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.green)
-            Text("REST").font(WatchTheme.display(54)).foregroundStyle(WatchTheme.C.green)
-            Text(message)
-                .font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t2)
-                .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+            // w-rest (deck §A): green eyebrow, big green REST, the body read.
+            VStack(spacing: 8) {
+                Text("Rest day").font(WatchTheme.body(11, .bold)).tracking(0.5)
+                    .foregroundStyle(WatchTheme.C.green).textCase(.uppercase)
+                Text("REST").font(WatchTheme.display(70)).tracking(-1).foregroundStyle(WatchTheme.C.green)
+                Text(message)
+                    .font(WatchTheme.body(12.5, .medium)).foregroundStyle(WatchTheme.C.t2)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
             Spacer(minLength: 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, 9).padding(.bottom, 2)
+        .padding(.horizontal, 10).padding(.bottom, 2)
         .background(WatchTheme.C.bg.ignoresSafeArea())
     }
 }

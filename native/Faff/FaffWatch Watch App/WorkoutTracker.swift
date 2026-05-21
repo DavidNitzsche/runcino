@@ -39,6 +39,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     private var mockTask: Task<Void, Never>?
     private var mockPaused = false
+    /// The pace the simulator mock oscillates around (s/mi). The engine sets
+    /// this to the current phase's target so the mock crosses the drift bands
+    /// realistically for BOTH workouts and races (a race target of 8:46 vs a
+    /// workout target of 6:31). Defaults to a threshold pace.
+    var mockCenterPace = 391
 
     // ── Aggregates for the completion payload ─────────────────────
     private(set) var maxHr: Int = 0
@@ -188,12 +193,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
                 guard let self else { return }
                 if self.mockPaused { try? await Task.sleep(for: .seconds(1)); continue }
                 t += 1
-                // Pace: sine drift ±18s around 6:31 → crosses tolerance bands.
+                // Pace: sine drift ±18s around the current target → crosses
+                // the tolerance bands (green/amber/red) for any target pace.
                 let drift = Int((sin(t / 7) * 18).rounded())
-                self.paceSPerMi = 391 + drift
+                self.paceSPerMi = self.mockCenterPace + drift
                 self.heartRate = 164 + Int((sin(t / 11) * 6).rounded())
                 self.cadence = 181 + Int((sin(t / 5) * 3).rounded())
-                self.distanceMi += 0.0024
+                self.distanceMi += 0.0045
                 self.hrSum += self.heartRate; self.hrCount += 1
                 self.cadSum += self.cadence; self.cadCount += 1
                 self.maxHr = max(self.maxHr, self.heartRate)

@@ -73,7 +73,7 @@ struct SummaryView: View {
 
     @ViewBuilder private var raceFinish: some View {
         Text(PaceFormat.hms(completion?.totalDurationSec ?? 0))
-            .font(WatchTheme.display(50)).foregroundStyle(WatchTheme.C.green)
+            .font(WatchTheme.display(56)).tracking(-1).foregroundStyle(WatchTheme.C.green)
             .lineLimit(1).minimumScaleFactor(0.5).padding(.top, 8)
         if let (text, color) = goalDelta {
             Text(text).font(WatchTheme.body(13, .semibold)).foregroundStyle(color).padding(.top, 4)

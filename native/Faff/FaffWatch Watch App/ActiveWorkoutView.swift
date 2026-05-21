@@ -63,7 +63,8 @@ struct ActiveWorkoutView: View {
                 case .work:
                     WorkIntervalFace(engine: engine, tracker: tracker, phase: phase)
                 case .warmup, .cooldown:
-                    SteadyFace(engine: engine, tracker: tracker, phase: phase, accent: WatchTheme.C.t2)
+                    SteadyFace(engine: engine, tracker: tracker, phase: phase,
+                               accent: phase.type == .warmup ? WatchTheme.C.green : WatchTheme.C.t2)
                 case .recovery:
                     RecoveryFace(engine: engine, tracker: tracker, phase: phase)
                 }
@@ -75,46 +76,69 @@ struct ActiveWorkoutView: View {
 // MARK: - Shared face chrome
 
 /// Top strip: orientation eyebrow (left) + elapsed workout time (right).
+/// Deck: .w-eye 12.5/700/1.1 uppercase; .w-elapsed 11/700 wt2 tabular.
 private struct TopStrip: View {
     let eyebrow: String
     let eyebrowColor: Color
     let elapsedSec: Int
+    /// Race uses h:mm:ss; workout uses m:ss.
+    var hms: Bool = false
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(eyebrow.uppercased())
-                .font(WatchTheme.sub(13, .semibold)).tracking(0.8)
+                .font(WatchTheme.body(12.5, .bold)).tracking(1.1)
                 .foregroundStyle(eyebrowColor)
                 .lineLimit(1)
-            Spacer()
-            Text(PaceFormat.clock(elapsedSec))
-                .font(WatchTheme.body(13, .semibold)).monospacedDigit()
-                .foregroundStyle(WatchTheme.C.t2)
+            Spacer(minLength: 6)
+            Text(hms ? PaceFormat.hms(elapsedSec) : PaceFormat.clock(elapsedSec))
+                .font(WatchTheme.body(11, .bold)).monospacedDigit()
+                .foregroundStyle(WatchTheme.C.t3)
         }
     }
 }
 
 /// A hairline strip of the whole session — one cell per phase, sized by
-/// duration. Done = green, current = orange, upcoming = track.
+/// duration. Done = green, current = orange, upcoming = track (white .16).
+/// Deck: .w-seg height 4, gap 2, radius 2.
 private struct SegmentBar: View {
     @ObservedObject var engine: WorkoutEngine
     var body: some View {
         let phases = engine.workout.phases
         let total = max(phases.reduce(0) { $0 + $1.durationSec }, 1)
         GeometryReader { geo in
-            HStack(spacing: 1.5) {
+            HStack(spacing: 2) {
                 ForEach(phases) { p in
                     let w = geo.size.width * CGFloat(p.durationSec) / CGFloat(total)
-                    Capsule().fill(color(for: p.index))
-                        .frame(width: max(w - 1.5, 2))
+                    RoundedRectangle(cornerRadius: 2, style: .continuous).fill(color(for: p.index))
+                        .frame(width: max(w - 2, 2))
                 }
             }
         }
-        .frame(height: 3)
+        .frame(height: 4)
     }
     private func color(for idx: Int) -> Color {
         if idx < engine.currentIndex { return WatchTheme.C.green }
         if idx == engine.currentIndex { return WatchTheme.C.orange }
-        return WatchTheme.C.track
+        return Color.white.opacity(0.16)
+    }
+}
+
+/// Bottom stats row with the deck's hairline top border + center divider.
+/// Deck: .w-stats border-top wline, pad-top 9; .w-stat .v Bebas 34, small 11.
+private struct StatsRow: View {
+    let hr: Int
+    let cadence: Int
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(WatchTheme.C.track).frame(height: 1)
+            HStack(spacing: 0) {
+                WStat(value: hr, unit: "bpm").frame(maxWidth: .infinity, alignment: .leading)
+                Rectangle().fill(WatchTheme.C.track).frame(width: 1, height: 26)
+                WStat(value: cadence, unit: "spm").frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 12)
+            }
+            .padding(.top, 8)
+        }
     }
 }
 
@@ -123,29 +147,30 @@ private struct WStat: View {
     let value: Int
     let unit: String
     var body: some View {
-        (Text(value > 0 ? "\(value)" : "—").font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink)
-         + Text(unit).font(WatchTheme.body(12, .semibold)).foregroundStyle(WatchTheme.C.t2))
-            .lineLimit(1)
+        (Text(value > 0 ? "\(value)" : "—").font(WatchTheme.display(34)).foregroundStyle(WatchTheme.C.ink)
+         + Text(unit).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t3))
+            .lineLimit(1).minimumScaleFactor(0.6)
     }
 }
 
 /// Rep progress bar + time left in the phase.
+/// Deck: .w-bar height 6 radius 4 track white.14; .w-ptime Bebas 18 white.
 private struct RepProgress: View {
     let progress: Double
     let remainingSec: Int
     var fill: Color = WatchTheme.C.orange
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 10) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(WatchTheme.C.track)
                     Capsule().fill(fill).frame(width: max(geo.size.width * progress, 3))
                 }
             }
-            .frame(height: 5)
+            .frame(height: 6)
             Text(PaceFormat.clock(remainingSec))
-                .font(WatchTheme.body(12, .semibold)).monospacedDigit()
-                .foregroundStyle(WatchTheme.C.t2)
+                .font(WatchTheme.display(18)).monospacedDigit()
+                .foregroundStyle(WatchTheme.C.ink)
         }
     }
 }
@@ -157,16 +182,31 @@ private struct CueProgress: View {
     let cue: String
     var fill: Color = WatchTheme.C.green
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 10) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(WatchTheme.C.track)
                     Capsule().fill(fill).frame(width: max(geo.size.width * progress, 3))
                 }
             }
-            .frame(height: 5)
-            Text(cue).font(WatchTheme.body(11, .medium)).foregroundStyle(WatchTheme.C.t2)
+            .frame(height: 6)
+            Text(cue.uppercased()).font(WatchTheme.body(10, .bold)).tracking(0.6)
+                .foregroundStyle(WatchTheme.C.t3)
         }
+    }
+}
+
+/// The target + live-delta reference line (deck .w-ref 11/700/.4 uppercase;
+/// target = white, status coloured by zone).
+private struct RefLine: View {
+    let target: Int
+    let status: String
+    let statusColor: Color
+    var body: some View {
+        (Text(PaceFormat.mmss(target)).foregroundStyle(WatchTheme.C.ink)
+         + Text("  ·  ").foregroundStyle(WatchTheme.C.t3)
+         + Text(status.uppercased()).foregroundStyle(statusColor))
+            .font(WatchTheme.body(11, .bold))
     }
 }
 
@@ -202,37 +242,29 @@ private struct WorkIntervalFace: View {
         VStack(spacing: 0) {
             TopStrip(eyebrow: "Int \(n) / \(m)", eyebrowColor: WatchTheme.C.amber,
                      elapsedSec: engine.totalElapsedSec)
-            SegmentBar(engine: engine).padding(.top, 5)
+            SegmentBar(engine: engine).padding(.top, 6)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
-            // Hero — current pace, centered + auto-scaled, color-coded.
+            // Hero — current pace, the biggest thing on the watch, color-coded.
             Text(hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—")
-                .font(WatchTheme.display(86))
+                .font(WatchTheme.display(110)).tracking(-1.5)
                 .foregroundStyle(heroColor)
-                .lineLimit(1).minimumScaleFactor(0.45)
+                .lineLimit(1).minimumScaleFactor(0.4)
                 .frame(maxWidth: .infinity)
-            // Reference — target + live delta.
             if let target = phase.targetPaceSPerMi {
-                (Text(PaceFormat.mmss(target)).foregroundStyle(WatchTheme.C.ink).bold()
-                 + Text("  ·  ").foregroundStyle(WatchTheme.C.t3)
-                 + Text(refStatus.0).foregroundStyle(refStatus.1))
-                    .font(WatchTheme.body(13, .semibold))
+                RefLine(target: target, status: refStatus.0, statusColor: refStatus.1).padding(.top, 4)
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
-            HStack(alignment: .firstTextBaseline) {
-                WStat(value: tracker.heartRate, unit: "bpm")
-                Spacer()
-                WStat(value: tracker.cadence, unit: "spm")
-            }
+            StatsRow(hr: tracker.heartRate, cadence: tracker.cadence)
             RepProgress(progress: engine.phaseProgress, remainingSec: engine.phaseRemainingSec,
                         fill: hasPace ? .zone(engine.paceZone) : WatchTheme.C.orange)
-                .padding(.top, 3)
+                .padding(.top, 10)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
     }
 }
 
@@ -246,11 +278,11 @@ private struct RaceStat: View {
     let label: String
     var align: HorizontalAlignment = .leading
     var body: some View {
-        VStack(alignment: align, spacing: 0) {
-            (Text(value).font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink)
-             + (unit.map { Text($0).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t2) } ?? Text("")))
+        VStack(alignment: align, spacing: 2) {
+            (Text(value).font(WatchTheme.display(34)).foregroundStyle(WatchTheme.C.ink)
+             + (unit.map { Text($0).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t3) } ?? Text("")))
                 .lineLimit(1).minimumScaleFactor(0.6)
-            Text(label.uppercased()).font(WatchTheme.body(8, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.t3)
+            Text(label.uppercased()).font(WatchTheme.body(8.5, .bold)).tracking(0.7).foregroundStyle(WatchTheme.C.t3)
         }
     }
 }
@@ -285,46 +317,44 @@ private struct RaceFace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Phase eyebrow (orange) + total elapsed at race scale.
-            HStack(alignment: .firstTextBaseline) {
-                Text(phase.label.uppercased())
-                    .font(WatchTheme.sub(13, .semibold)).tracking(0.8)
-                    .foregroundStyle(WatchTheme.C.orange).lineLimit(1)
-                Spacer()
-                Text(PaceFormat.hms(engine.totalElapsedSec))
-                    .font(WatchTheme.body(13, .semibold)).monospacedDigit().foregroundStyle(WatchTheme.C.t2)
-            }
-            SegmentBar(engine: engine).padding(.top, 5)
-            Spacer(minLength: 4)
+            TopStrip(eyebrow: phase.label, eyebrowColor: WatchTheme.C.orange,
+                     elapsedSec: engine.totalElapsedSec, hms: true)
+            SegmentBar(engine: engine).padding(.top, 6)
+            Spacer(minLength: 2)
             // Hero — current pace vs this phase's terrain-aware target.
             Text(hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—")
-                .font(WatchTheme.display(80)).foregroundStyle(heroColor)
-                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
+                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(heroColor)
+                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
             if let target = phase.targetPaceSPerMi {
-                (Text(PaceFormat.mmss(target)).foregroundStyle(WatchTheme.C.ink).bold()
-                 + Text("  ·  ").foregroundStyle(WatchTheme.C.t3)
-                 + Text(refStatus.0).foregroundStyle(refStatus.1))
-                    .font(WatchTheme.body(13, .semibold))
+                RefLine(target: target, status: refStatus.0, statusColor: refStatus.1).padding(.top, 4)
             }
-            Spacer(minLength: 4)
-            // On-goal read: projected finish + distance to go.
-            HStack(alignment: .firstTextBaseline) {
-                RaceStat(value: engine.projectedFinishSec.map { PaceFormat.hm($0) } ?? "—", label: "proj finish")
-                Spacer()
-                RaceStat(value: engine.distanceToGoMi.map { String(format: "%.1f", $0) } ?? "—",
-                         unit: "mi", label: "to go", align: .trailing)
+            Spacer(minLength: 2)
+            // On-goal read: projected finish + distance to go, with the
+            // deck's hairline top border + center divider.
+            VStack(spacing: 0) {
+                Rectangle().fill(WatchTheme.C.track).frame(height: 1)
+                HStack(spacing: 0) {
+                    RaceStat(value: engine.projectedFinishSec.map { PaceFormat.hm($0) } ?? "—", label: "proj finish")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Rectangle().fill(WatchTheme.C.track).frame(width: 1, height: 30)
+                    RaceStat(value: engine.distanceToGoMi.map { String(format: "%.1f", $0) } ?? "—",
+                             unit: "mi", label: "to go", align: .trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 12)
+                }
+                .padding(.top, 8)
             }
-            HStack(spacing: 7) {
+            HStack(spacing: 10) {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(WatchTheme.C.track)
                         Capsule().fill(WatchTheme.C.orange).frame(width: max(geo.size.width * raceProgress, 3))
                     }
-                }.frame(height: 5)
-                Text(gelCue).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t2).lineLimit(1)
-            }.padding(.top, 3)
+                }.frame(height: 6)
+                Text(gelCue.uppercased()).font(WatchTheme.body(10, .bold)).tracking(0.6)
+                    .foregroundStyle(WatchTheme.C.t3).lineLimit(1)
+            }.padding(.top, 10)
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+        .padding(.horizontal, 7).padding(.vertical, 5)
     }
 }
 
@@ -345,28 +375,26 @@ private struct RecoveryFace: View {
         let (n, m) = restOrdinal
         VStack(spacing: 0) {
             TopStrip(eyebrow: "Rest \(n) / \(m)", eyebrowColor: WatchTheme.C.green, elapsedSec: engine.totalElapsedSec)
-            SegmentBar(engine: engine).padding(.top, 5)
-            Spacer(minLength: 4)
+            SegmentBar(engine: engine).padding(.top, 6)
+            Spacer(minLength: 2)
             Text(PaceFormat.clock(engine.phaseRemainingSec))
-                .font(WatchTheme.display(86)).foregroundStyle(WatchTheme.C.green)
-                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
+                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(WatchTheme.C.green)
+                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
+            // Next rep pre-loaded (deck .w-nx 11/700/.4 uppercase, b=white).
             if let target = engine.nextPhase?.targetPaceSPerMi {
-                (Text("Next rep · ").foregroundColor(WatchTheme.C.t2)
-                 + Text("\(PaceFormat.mmss(target))/mi").foregroundColor(WatchTheme.C.ink).bold())
-                    .font(WatchTheme.body(13, .semibold))
+                (Text("NEXT REP · ").foregroundStyle(WatchTheme.C.t3)
+                 + Text("\(PaceFormat.mmss(target))/MI").foregroundStyle(WatchTheme.C.ink))
+                    .font(WatchTheme.body(11, .bold)).tracking(0.4)
             } else if let next = engine.nextPhase {
-                Text("next · \(next.label)").font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t3)
+                Text("NEXT · \(next.label.uppercased())").font(WatchTheme.body(11, .bold)).tracking(0.4)
+                    .foregroundStyle(WatchTheme.C.t3)
             }
-            Spacer(minLength: 4)
-            HStack(alignment: .firstTextBaseline) {
-                WStat(value: tracker.heartRate, unit: "bpm")
-                Spacer()
-                WStat(value: tracker.cadence, unit: "spm")
-            }
+            Spacer(minLength: 2)
+            StatsRow(hr: tracker.heartRate, cadence: tracker.cadence)
             CueProgress(progress: engine.phaseProgress, cue: "jog easy", fill: WatchTheme.C.green)
-                .padding(.top, 3)
+                .padding(.top, 10)
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+        .padding(.horizontal, 7).padding(.vertical, 5)
     }
 }
 
@@ -380,28 +408,33 @@ private struct SteadyFace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopStrip(eyebrow: phase.label, eyebrowColor: accent, elapsedSec: engine.totalElapsedSec)
-            SegmentBar(engine: engine).padding(.top, 5)
-            Spacer(minLength: 4)
-            // Canon §B: the hero counts UP toward the phase duration; the
-            // progress bar carries the time REMAINING. Two different numbers,
-            // so no duplication.
-            Text(PaceFormat.clock(engine.phaseElapsedSec))
-                .font(WatchTheme.display(86)).foregroundStyle(accent)
-                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
-            if let next = engine.nextPhase {
-                Text("next · \(next.label)").font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t3)
-            }
-            Spacer(minLength: 4)
-            HStack(alignment: .firstTextBaseline) {
-                WStat(value: tracker.heartRate, unit: "bpm")
+            // Canon §B: green eyebrow, NO app clock on the right (the OS
+            // clock already shows the time of day there — putting total
+            // elapsed here would just duplicate the hero during the warmup,
+            // since the first phase's elapsed == the total).
+            HStack {
+                Text(phase.label.uppercased())
+                    .font(WatchTheme.body(12.5, .bold)).tracking(1.1)
+                    .foregroundStyle(accent).lineLimit(1)
                 Spacer()
-                WStat(value: tracker.cadence, unit: "spm")
             }
+            SegmentBar(engine: engine).padding(.top, 6)
+            Spacer(minLength: 2)
+            // Hero counts UP toward the phase duration (white); the progress
+            // bar carries the time REMAINING. Two different numbers.
+            Text(PaceFormat.clock(engine.phaseElapsedSec))
+                .font(WatchTheme.display(110)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
+                .lineLimit(1).minimumScaleFactor(0.4).frame(maxWidth: .infinity)
+            if let next = engine.nextPhase {
+                Text("NEXT · \(next.label.uppercased())").font(WatchTheme.body(11, .bold)).tracking(0.4)
+                    .foregroundStyle(WatchTheme.C.t3)
+            }
+            Spacer(minLength: 2)
+            StatsRow(hr: tracker.heartRate, cadence: tracker.cadence)
             RepProgress(progress: engine.phaseProgress, remainingSec: engine.phaseRemainingSec, fill: accent)
-                .padding(.top, 3)
+                .padding(.top, 10)
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+        .padding(.horizontal, 7).padding(.vertical, 5)
     }
 }
 
@@ -554,13 +587,15 @@ private struct TransitionFlip: View {
             }
         }()
         return VStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 30, weight: .bold)).foregroundStyle(tint)
-            Text(title).font(WatchTheme.display(30)).foregroundStyle(tint)
+            Image(systemName: icon).font(.system(size: 36, weight: .bold)).foregroundStyle(tint)
+            Text(title).font(WatchTheme.display(40)).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.5)
             if let sub {
-                Text(sub).font(WatchTheme.body(12, .semibold)).foregroundStyle(WatchTheme.C.t2)
+                Text(sub.uppercased()).font(WatchTheme.body(12, .semibold)).tracking(0.5)
+                    .foregroundStyle(WatchTheme.C.t2).multilineTextAlignment(.center)
             }
         }
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WatchTheme.C.bg.ignoresSafeArea())
     }

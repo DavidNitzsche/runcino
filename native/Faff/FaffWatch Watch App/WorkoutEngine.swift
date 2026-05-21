@@ -132,7 +132,7 @@ final class WorkoutEngine: ObservableObject {
     /// Projected finish time (s), pace-of-the-day extrapolated to the full
     /// distance. Nil until enough distance has banked to be meaningful.
     var projectedFinishSec: Int? {
-        guard let total = workout.distanceMi, coveredMi > 0.3 else { return nil }
+        guard let total = workout.distanceMi, coveredMi > 0.08 else { return nil }
         return Int(Double(totalElapsedSec) * total / coveredMi)
     }
 
@@ -242,6 +242,7 @@ final class WorkoutEngine: ObservableObject {
     private func prepDrift() {
         if let p = currentPhase, p.type == .work, let target = p.targetPaceSPerMi {
             driftEval = PaceDriftEvaluator(targetPaceSPerMi: target, toleranceSPerMi: p.tolerancePaceSPerMi ?? 10)
+            tracker?.mockCenterPace = target          // sim mock crosses this band
         } else {
             driftEval = nil
         }
