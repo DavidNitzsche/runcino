@@ -83,7 +83,7 @@ export function useModal(): ModalContextValue {
  * Hero actions — OPEN WORKOUT + SKIP TODAY
  * ─────────────────────────────────────────────────────────────────── */
 
-export function HeroActions({ today, todayDay }: { today: string; todayDay: WorkoutDay | null }) {
+export function HeroActions({ today, todayDay, completed }: { today: string; todayDay: WorkoutDay | null; completed?: boolean }) {
   const { openFor } = useModal();
   const [skipping, setSkipping] = useState(false);
   const [skipped, setSkipped]   = useState(false);
@@ -145,6 +145,15 @@ export function HeroActions({ today, todayDay }: { today: string; todayDay: Work
 
   if (!todayDay) return null;
 
+  // Post-run: the workout's done — the only action is reviewing it.
+  if (completed) {
+    return (
+      <button type="button" className="btn-primary" onClick={() => openFor(todayDay)}>
+        ▶&nbsp;&nbsp;VIEW RECAP
+      </button>
+    );
+  }
+
   return (
     <>
       <button
@@ -191,6 +200,7 @@ export function WeekStripCells({
   days,
   today,
   completedMileage,
+  skippedDates = [],
 }: {
   days: WorkoutDay[];
   today: string;
@@ -198,8 +208,11 @@ export function WeekStripCells({
    *  when actual is ≥ 60% of planned. Serialized from a Map at the
    *  server-component boundary. */
   completedMileage: Record<string, number>;
+  /** Dates the runner explicitly skipped. */
+  skippedDates?: string[];
 }) {
   const { openFor } = useModal();
+  const skipSet = new Set(skippedDates);
 
   return (
     <div className="day-grid">
@@ -212,6 +225,7 @@ export function WeekStripCells({
         // had to wait until tomorrow for confirmation. Now: today
         // shows DONE the moment actual ≥ 60% planned.
         const isDone = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
+        const isSkipped = !isDone && !d.isRest && skipSet.has(d.date);
         const dateNum = parseInt(d.date.slice(-2), 10);
         return (
           <button
@@ -229,7 +243,8 @@ export function WeekStripCells({
                 <div className="day-workout-name">{d.label}</div>
                 <div className="day-distance">{d.distanceMi}<small>mi</small></div>
                 {isDone && <div className="day-status-done">DONE</div>}
-                {d.hasStrength && !isDone && <span className="day-strength" title="Strength training">S</span>}
+                {isSkipped && <div className="day-status-skipped">SKIPPED</div>}
+                {d.hasStrength && !isDone && !isSkipped && <span className="day-strength" title="Strength training">S</span>}
               </>
             )}
           </button>
@@ -249,6 +264,12 @@ export function WeekStripCells({
           transition: background 120ms ease;
         }
         .day-col-btn:hover { background: rgba(13, 15, 18, 0.03); }
+        .day-status-skipped {
+          margin-top: 6px;
+          font-family: 'Inter', sans-serif;
+          font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
+          text-transform: uppercase; color: rgba(13,15,18,.40);
+        }
       `}</style>
     </div>
   );

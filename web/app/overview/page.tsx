@@ -27,6 +27,7 @@ import {
   type PlanWeek,
 } from '@/lib/synthetic-plan';
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
+import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { resolveFitness } from '@/lib/fitness-resolver';
@@ -110,6 +111,15 @@ export default async function OverviewPage() {
   const completedMileage = await getCompletedMileageByDate(user.id, currentWeek.startDate, today);
   const isComplete = (dateISO: string, plannedMi: number) =>
     isWorkoutComplete(dateISO, plannedMi, completedMileage);
+
+  // Skipped workouts this week (the runner explicitly skipped) — so the
+  // hero + week strip can mark them, not show them as unaddressed.
+  const weekSkips = await listRecentSkips({ sinceISO: currentWeek.startDate, untilISO: currentWeek.endDate }).catch(() => []);
+  const skippedDates = weekSkips.map((s) => s.dateISO);
+  const todaySkipped = skippedDates.includes(today);
+  // Today done = today's run met the 60% completion bar.
+  const todayActualMi = completedMileage.get(today) ?? 0;
+  const todayComplete = !!todayDay && !todayDay.isRest && todayDay.distanceMi > 0 && isComplete(today, todayDay.distanceMi);
 
   // Stats the coach briefing references: previous calendar week +
   // current week through yesterday. Done as two ranged queries.
@@ -358,6 +368,31 @@ export default async function OverviewPage() {
               <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, lineHeight: 1.6, color: 'var(--t1)', marginTop: 24, maxWidth: 540 }}>
                 No run on the schedule today. <strong style={{ color: 'var(--t0)' }}>Recovery is part of training</strong> &mdash; let the body absorb the work from this week and come into the next session fresh.
               </p>
+            ) : todayComplete ? (
+              <>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(44,168,47,.12)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: '#1f7a22' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2CA82F' }} />
+                  COMPLETED · {todayActualMi.toFixed(1)} MI LOGGED
+                </div>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, lineHeight: 1.6, color: 'var(--t1)', marginTop: 16, maxWidth: 540 }}>
+                  Today&rsquo;s {(todayDay?.label ?? 'run').toLowerCase()} is done. Open the recap for splits, heart rate, running form, and the coach take on how it landed against the plan.
+                </p>
+                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 20 }}>
+                  <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} completed />
+                </div>
+              </>
+            ) : todaySkipped ? (
+              <>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(13,15,18,.06)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: 'rgba(13,15,18,.55)' }}>
+                  SKIPPED TODAY
+                </div>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, lineHeight: 1.6, color: 'var(--t1)', marginTop: 16, maxWidth: 540 }}>
+                  You marked today&rsquo;s {(todayDay?.label ?? 'workout').toLowerCase()} as skipped. The coach treats that as ground truth and will factor it into this week&rsquo;s load. Changed your mind?
+                </p>
+                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 20 }}>
+                  <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
+                </div>
+              </>
             ) : (
               <>
                 <div className="stats-row">
@@ -578,6 +613,7 @@ export default async function OverviewPage() {
             days={currentWeek.days as WorkoutDay[]}
             today={today}
             completedMileage={Object.fromEntries(completedMileage)}
+            skippedDates={skippedDates}
           />
         </div>
       </div>
