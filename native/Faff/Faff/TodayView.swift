@@ -69,9 +69,29 @@ struct TodayView: View {
         onReload()
     }
 
+    /// Today's plan-week row (for completion detection).
+    private var todayPlanDay: OPlanDay? { overview.planWeekWorkouts?.first { $0.dateISO == overview.today } }
+    private var todayDone: Bool { todayPlanDay.map { overview.isPlanDayDone($0) } ?? false }
+
     @ViewBuilder private var heroView: some View {
         if isTodaySel {
-            if overview.todayWorkout.isRest { restHero(overview) } else { runHero(overview) }
+            if overview.todayWorkout.isRest {
+                restHero(overview)
+            } else if todayDone, let d = todayPlanDay {
+                // Post-run: today's run is logged — show the recap hero
+                // (loads actuals + taps into the full recap), matching web.
+                PastDayHero(
+                    date: overview.today ?? "",
+                    eyebrow: "Today",
+                    title: heroTitle(overview.todayWorkout),
+                    isRest: false,
+                    plannedMi: d.distanceMi,
+                    hasStrength: d.hasStrength == true,
+                    onOpenRecap: { date in recapDate = RecapDate(id: date) }
+                )
+            } else {
+                runHero(overview)
+            }
         } else if let d = selDay {
             if isPastSel {
                 let dw = DerivedWorkout(plan: d, fallback: nil)
