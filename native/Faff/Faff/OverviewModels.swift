@@ -34,6 +34,11 @@ struct OverviewResponse: Decodable {
     /// Dates the runner deliberately SKIPPED this week — distinct from a
     /// missed/unlogged day so the strip + heroes can mark them differently.
     let skippedDates: [String]?
+    /// Recent coach plan adaptations (last 7d), grouped by reason — drives the
+    /// dismissible "Coach updated your plan" card. `adaptationsLatestTs` lets
+    /// the card show only when there's something newer than last dismissed.
+    let coachAdaptations: [OCoachAdaptation]?
+    let adaptationsLatestTs: String?
     /// Active connector providers (e.g. ["strava"]). Real integration
     /// status for the More tab. Empty/absent for anonymous reads.
     let connectors: [String]?
@@ -190,6 +195,16 @@ struct OLoopItem: Decodable {
     let zone: String?
     let suffix: String?
     let hrTarget: String?
+}
+
+/// One grouped coach adaptation (from /api/overview coachAdaptations).
+struct OCoachAdaptation: Decodable, Identifiable {
+    let reason: String
+    let citation: String?
+    let count: Int
+    let days: [String]
+    let ts: String
+    var id: String { reason }
 }
 
 // MARK: - Full plan (GET /api/plan-range) — every week as built

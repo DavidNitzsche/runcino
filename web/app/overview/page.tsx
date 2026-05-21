@@ -14,6 +14,7 @@
 
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
+import { CoachAdaptedIsland } from './CoachAdaptedIsland';
 import { CheckInIsland } from './CheckInIsland';
 import { requireActiveUser } from '@/lib/auth';
 import {
@@ -326,6 +327,9 @@ export default async function OverviewPage() {
       <WorkoutModalProvider today={today}>
 
       <div className="page">
+
+        {/* Coach adaptations — dismissible, only when something changed */}
+        <CoachAdaptedIsland />
 
         {/* ── SECTION 1 · COACH STRIP ── */}
         <div className="coach-strip">

@@ -38,6 +38,7 @@ struct TodayView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                CoachAdaptationsCard(overview: overview)
                 dateStrip(overview)
                 coachLineView
                 heroView
@@ -437,6 +438,59 @@ struct TodayView: View {
         return load + (o_hasHealth ? "" : " Connect Apple Health for HRV & sleep.")
     }
     private var o_hasHealth: Bool { overview.hasHealthData }
+}
+
+// MARK: - Coach adaptations card (dismissible, top of Today)
+
+/// "Coach updated your plan" — shows recent plan adaptations (grouped by
+/// reason, with the day(s) touched + the research citation) so a change never
+/// happens silently. Appears only when there's an adaptation newer than the
+/// one this device last dismissed (local seen-tracking via @AppStorage).
+private struct CoachAdaptationsCard: View {
+    let overview: OverviewResponse
+    @AppStorage("faff.coach.adaptSeenTs") private var seenTs = ""
+
+    private var groups: [OCoachAdaptation] { overview.coachAdaptations ?? [] }
+    private var latest: String { overview.adaptationsLatestTs ?? "" }
+    private var shouldShow: Bool { !latest.isEmpty && !groups.isEmpty && latest != seenTs }
+
+    var body: some View {
+        if shouldShow {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "wand.and.stars").font(.system(size: 12, weight: .bold)).foregroundStyle(Faff.C.race)
+                    Text("COACH UPDATED YOUR PLAN").font(Faff.F.inter(10, .semibold)).tracking(1.2).foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    Button { seenTs = latest } label: {
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Faff.C.textDim)
+                    }.buttonStyle(.plain)
+                }
+                ForEach(groups) { g in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(g.reason).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+                            .fixedSize(horizontal: false, vertical: true).lineSpacing(2)
+                        HStack(spacing: 6) {
+                            Text(dayList(g.days)).font(Faff.F.inter(11, .semibold)).foregroundStyle(Faff.C.race)
+                            if let c = g.citation, !c.isEmpty {
+                                Text("· \(c)").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .faffCard()
+        }
+    }
+
+    /// "Thu, Fri, Sun" from ISO dates (or "N days" when many).
+    private func dayList(_ days: [String]) -> String {
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
+        let names = days.compactMap { inF.date(from: String($0.prefix(10))).map { out.string(from: $0) } }
+        if names.count > 4 { return "\(names.count) days" }
+        return names.joined(separator: ", ")
+    }
 }
 
 // MARK: - Structure bar (quality days) — kept from the prior build

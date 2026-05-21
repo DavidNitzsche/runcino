@@ -39,6 +39,7 @@ import { dailyBriefing, type DailyBriefing } from '../../../coach/coach-briefing
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { resolvePlanUserId } from '../../../lib/plan-user';
 import { listRecentSkips } from '../../../lib/skip-store';
+import { listMutations } from '../../../lib/plan-store';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
@@ -104,6 +105,12 @@ interface OverviewApiOk {
   /** Dates the runner deliberately SKIPPED — distinct from "missed/not
    *  logged" so clients can mark them differently. */
   skippedDates: string[];
+  /** Recent coach plan adaptations (last 7d), grouped by reason, for the
+   *  "Coach updated your plan" card. Each carries the cited reason + the
+   *  days it touched. `adaptationsLatestTs` lets clients show the card only
+   *  when there's something newer than the user last dismissed. */
+  coachAdaptations: Array<{ reason: string; citation: string | null; count: number; days: string[]; ts: string }>;
+  adaptationsLatestTs: string | null;
   /** Active (non-disconnected) connector providers for the user, e.g.
    *  ["strava"]. Lets clients show real integration status instead of a
    *  hardcoded "Connect". Empty for anonymous reads. */
@@ -442,6 +449,32 @@ export async function GET(req: Request): Promise<Response> {
       }
     } catch { /* leave empty */ }
 
+    // Recent coach adaptations (last 7d), grouped by reason, for the
+    // "Coach updated your plan" card. Reason is always present; we group on
+    // it (trigger_kind can be null on legacy rows).
+    let coachAdaptations: Array<{ reason: string; citation: string | null; count: number; days: string[]; ts: string }> = [];
+    let adaptationsLatestTs: string | null = null;
+    try {
+      const plan = planResult.plan;
+      if (plan) {
+        const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+        const muts = await listMutations(plan.id, since);
+        if (muts.length > 0) {
+          adaptationsLatestTs = muts.reduce((mx, m) => (m.ts > mx ? m.ts : mx), muts[0].ts);
+          const byReason = new Map<string, { reason: string; citation: string | null; days: Set<string>; ts: string }>();
+          for (const m of muts) {
+            const g = byReason.get(m.reason) ?? { reason: m.reason, citation: m.citation, days: new Set<string>(), ts: m.ts };
+            g.days.add(m.workoutDateISO);
+            if (m.ts > g.ts) g.ts = m.ts;
+            byReason.set(m.reason, g);
+          }
+          coachAdaptations = [...byReason.values()]
+            .map((g) => ({ reason: g.reason, citation: g.citation, count: g.days.size, days: [...g.days].sort(), ts: g.ts }))
+            .sort((a, b) => (a.ts < b.ts ? 1 : -1));
+        }
+      }
+    } catch { /* leave empty */ }
+
     // Active connectors (Strava etc.) so clients show real integration
     // status. Authenticated only; empty + non-fatal for anonymous reads.
     let connectors: string[] = [];
@@ -512,6 +545,8 @@ export async function GET(req: Request): Promise<Response> {
       coachLine,
       completedByDate,
       skippedDates,
+      coachAdaptations,
+      adaptationsLatestTs,
       connectors,
       readinessScore,
       readinessState,
