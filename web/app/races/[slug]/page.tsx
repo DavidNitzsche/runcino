@@ -25,8 +25,7 @@ import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { vdotRow } from '@/lib/vdot';
 import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
-import { getRealPlanWeeks } from '@/lib/plan-weeks';
-import { resolvePlanUserId } from '@/lib/plan-user';
+import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
 import { GoalEditIsland } from './GoalEditIsland';
@@ -291,7 +290,7 @@ export default async function RacePlanPage({ params }: PageProps) {
     ? `${fmtPaceS(racePaceLow)}–${fmtPaceS(racePaceHigh)}`
     : '—';
 
-  const synthWeeks = await getRealPlanWeeks(await resolvePlanUserId());
+  const synthWeeks = await getActivePlanWeeks();
   const planFirstDate = synthWeeks[0]?.startDate ?? '';
   const planLastDate = synthWeeks[synthWeeks.length - 1]?.endDate ?? '';
   const linkedWorkouts: Array<{ weekNum: number; date: string; label: string; sub: string; pace: string; paceSub: string; tag: 'threshold' | 'long' | 'race-sim' }> = [];

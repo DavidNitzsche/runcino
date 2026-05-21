@@ -11,8 +11,7 @@
 import { NextResponse } from 'next/server';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { getRealPlanWeeks } from '@/lib/plan-weeks';
-import { resolvePlanUserId } from '@/lib/plan-user';
+import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import { describeWorkout } from '@/lib/workout-descriptions';
 
 interface ActivityRow {
@@ -58,7 +57,7 @@ export async function GET(
   const dateISO = (d.date || (d.startLocal || '').slice(0, 10));
 
   // Find a matching planned workout for the run's date, from the REAL plan.
-  const weeks = await getRealPlanWeeks(await resolvePlanUserId());
+  const weeks = await getActivePlanWeeks();
   let matchedDay = null;
   let matchedWeek = null;
   for (const w of weeks) {
