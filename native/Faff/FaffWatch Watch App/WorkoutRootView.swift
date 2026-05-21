@@ -96,7 +96,21 @@ struct WorkoutRootView: View {
             case .idle, .running:
                 ActiveWorkoutView(engine: engine, tracker: model.tracker)
             }
-        } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
+        } else {
+            // Home: the workout launchpad (default) + the readiness glance one
+            // swipe away (watch-app.html §G — glance as a home page, not a
+            // legacy Glance).
+            TabView {
+                idleHome.tag(0)
+                ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness).tag(1)
+            }
+            .tabViewStyle(.page)
+        }
+    }
+
+    @ViewBuilder
+    private var idleHome: some View {
+        if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
             IdleView(workout: workout) { model.start(workout) }
         } else if let message = phone.noWorkoutMessage {
             NoWorkoutView(message: message)
@@ -113,6 +127,19 @@ struct WorkoutRootView: View {
         #if targetEnvironment(simulator)
         // Launch with -race to exercise the race-day faces (watch-app.html §F).
         return ProcessInfo.processInfo.arguments.contains("-race") ? .sampleRace : .sample
+        #else
+        return nil
+        #endif
+    }
+
+    /// Sim has no paired phone → show a sample readiness read so the glance
+    /// page is exercisable.
+    private static var simulatorReadiness: WatchReadiness? {
+        #if targetEnvironment(simulator)
+        return WatchReadiness(score: 82, state: "green", label: "Primed",
+                              recommendation: "Green. Hit today's prescription as written.",
+                              hrvMs: 68, rhrBpm: 48, suppressReason: nil,
+                              nextRace: .init(name: "CIM", slug: "cim", daysAway: 198))
         #else
         return nil
         #endif

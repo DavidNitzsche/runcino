@@ -211,6 +211,28 @@ struct WatchCompletion: Encodable {
     let phases: [WatchCompletionPhase]
 }
 
+// MARK: - Readiness glance (watch-app.html §G · GET /api/watch/readiness)
+
+/// The watch's slice of the phone's readiness read. Available any day
+/// (rest/race/workout), unlike the workout payload. `score == nil` means the
+/// read is suppressed (injured / no data) → the glance renders its empty state.
+struct WatchReadiness: Codable {
+    let score: Int?                 // 0–100, or nil when suppressed
+    let state: String               // "green" | "yellow" | "red"
+    let label: String               // "Primed" / "Hold easy" / "Back off"
+    let recommendation: String      // plain-language coach line (may be "")
+    let hrvMs: Int?                 // 7-day avg HRV
+    let rhrBpm: Int?                // resting HR
+    let suppressReason: String?     // present only when score is nil
+    let nextRace: NextRace?
+
+    struct NextRace: Codable {
+        let name: String
+        let slug: String
+        let daysAway: Int
+    }
+}
+
 // MARK: - Sample · drives the simulator UI flow before WCSession exists
 
 extension WatchWorkout {

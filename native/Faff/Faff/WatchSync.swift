@@ -66,20 +66,23 @@ final class WatchSync: NSObject, ObservableObject {
     /// refresh — never from a user-facing button.
     func syncTodayToWatch() async {
         guard WCSession.isSupported() else { return }
+        var ctx: [String: Any] = [:]
+        // Readiness glance (§G) — available any day; push it alongside the workout.
+        if let readiness = try? await FaffAPI.shared.fetchReadinessRaw() { ctx["readiness"] = readiness }
         do {
             let data = try await FaffAPI.shared.fetchTodayRaw()
             let peek = try? JSONDecoder().decode(TodayPeek.self, from: data)
             if let peek, peek.workoutId != nil {
-                sendContext(["workout": data])
+                ctx["workout"] = data
                 lastSyncStatus = "Synced to watch ✓"
             } else {
-                let message = peek?.message ?? "No workout today"
-                sendContext(["noWorkout": message])
-                lastSyncStatus = "Watch: \(message)"
+                ctx["noWorkout"] = peek?.message ?? "No workout today"
+                lastSyncStatus = "Watch: \(peek?.message ?? "No workout today")"
             }
         } catch {
             lastSyncStatus = "Watch sync failed: \(error.localizedDescription)"
         }
+        if !ctx.isEmpty { sendContext(ctx) }
     }
 
     private func sendContext(_ context: [String: Any]) {
@@ -98,14 +101,15 @@ final class WatchSync: NSObject, ObservableObject {
 
     /// Reply payload for a watch-initiated request (synchronous-ish).
     fileprivate func todayReply() async -> [String: Any] {
+        var reply: [String: Any] = [:]
+        if let readiness = try? await FaffAPI.shared.fetchReadinessRaw() { reply["readiness"] = readiness }
         do {
             let data = try await FaffAPI.shared.fetchTodayRaw()
             let peek = try? JSONDecoder().decode(TodayPeek.self, from: data)
-            if let peek, peek.workoutId != nil { return ["workout": data] }
-            return ["noWorkout": peek?.message ?? "No workout today"]
-        } catch {
-            return [:]
-        }
+            if let peek, peek.workoutId != nil { reply["workout"] = data }
+            else { reply["noWorkout"] = peek?.message ?? "No workout today" }
+        } catch {}
+        return reply
     }
 }
 

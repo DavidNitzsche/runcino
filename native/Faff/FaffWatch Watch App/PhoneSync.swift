@@ -24,6 +24,8 @@ final class PhoneSync: NSObject, ObservableObject {
 
     /// Today's workout, once received from the iPhone. nil until synced.
     @Published private(set) var todayWorkout: WatchWorkout?
+    /// The §G readiness read — pushed alongside the workout, available any day.
+    @Published private(set) var readiness: WatchReadiness?
     /// Set instead of `todayWorkout` on rest/race/no-plan days.
     @Published private(set) var noWorkoutMessage: String?
     /// True once we've received any context (so the UI can distinguish
@@ -61,6 +63,12 @@ final class PhoneSync: NSObject, ObservableObject {
     // MARK: Apply incoming context / reply
 
     fileprivate func apply(_ payload: [String: Any]) {
+        // Readiness rides alongside the workout (or arrives on its own) — decode
+        // it independently so a rest/race day still lights up the glance.
+        if let rData = payload["readiness"] as? Data,
+           let r = try? JSONDecoder().decode(WatchReadiness.self, from: rData) {
+            readiness = r
+        }
         if let data = payload["workout"] as? Data,
            let workout = try? JSONDecoder().decode(WatchWorkout.self, from: data) {
             todayWorkout = workout

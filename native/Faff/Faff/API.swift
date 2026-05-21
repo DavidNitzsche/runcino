@@ -197,8 +197,15 @@ final class FaffAPI {
     /// Raw GET /api/watch/today body, forwarded verbatim to the watch via
     /// WatchConnectivity so the watch decodes the exact backend shape (no
     /// cross-target re-encode mismatch).
-    func fetchTodayRaw() async throws -> Data {
-        guard let url = URL(string: "/api/watch/today", relativeTo: API.baseURL) else {
+    func fetchTodayRaw() async throws -> Data { try await rawGet("/api/watch/today") }
+
+    /// Raw GET /api/watch/readiness body — the §G glance payload, forwarded
+    /// verbatim to the watch alongside the workout.
+    func fetchReadinessRaw() async throws -> Data { try await rawGet("/api/watch/readiness") }
+
+    /// Shared authenticated raw GET — returns the response body verbatim.
+    private func rawGet(_ path: String) async throws -> Data {
+        guard let url = URL(string: path, relativeTo: API.baseURL) else {
             throw APIError.invalidURL
         }
         var req = URLRequest(url: url)

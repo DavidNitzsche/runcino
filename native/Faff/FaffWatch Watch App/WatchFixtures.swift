@@ -145,7 +145,15 @@ struct WatchFixtureView: View {
 
         // ── §G · on the watch face ────────────────────────────────────────
         case "glance":
-            GlanceFixture()
+            ReadinessGlanceView(readiness: WatchReadiness(
+                score: 82, state: "green", label: "Primed",
+                recommendation: "Green. Hit today's prescription as written.",
+                hrvMs: 68, rhrBpm: 48, suppressReason: nil,
+                nextRace: .init(name: "CIM", slug: "cim", daysAway: 198)))
+        case "glance-empty":
+            ReadinessGlanceView(readiness: WatchReadiness(
+                score: nil, state: "yellow", label: "Hold easy", recommendation: "",
+                hrvMs: nil, rhrBpm: nil, suppressReason: "no-data", nextRace: nil))
 
         default:
             WorkIntervalFace(rep: "Int 3 / 6", elapsed: "24:18", segments: workSegs,
@@ -499,49 +507,6 @@ private struct RaceFinishFixture: View {
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .background(WP.bg)
-    }
-}
-
-/// Readiness glance (deck §G): the watch's slice of the phone's readiness read.
-/// Score + the actionable call (the model's green/yellow/red interpretation) + the REAL
-/// drivers behind it (load / freshness / volume / HR-pace drift) — not HRV/RHR, which the
-/// readiness model doesn't use and aren't integrated yet.
-private struct GlanceFixture: View {
-    private let score = 82
-    private let drivers = ["5 days fresh", "On-plan volume", "Pace trending fit"]
-
-    /// Mirrors readiness-score.ts: 80+ green · 60-79 yellow · <60 red.
-    private var state: (color: Color, call: String) {
-        if score >= 80 { return (WP.green, "Hit today as written") }
-        if score >= 60 { return (WP.amber, "Watch effort today") }
-        return (WP.warn, "Swap for easy")
-    }
-
-    var body: some View {
-        let s = state
-        VStack(spacing: 0) {
-            HStack {
-                Text("READINESS").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(s.color)
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 8).padding(.top, 20)
-            Spacer(minLength: 0)
-            Text("\(score)").font(WF.bebas(86)).foregroundStyle(s.color)
-            Text(s.call.uppercased()).font(WF.interBold(12)).tracking(0.7).foregroundStyle(s.color)
-                .lineLimit(1).minimumScaleFactor(0.7).padding(.top, 2)
-            VStack(spacing: 3) {
-                ForEach(drivers, id: \.self) { d in
-                    Text(d.uppercased()).font(WF.interSemi(10)).tracking(0.4).foregroundStyle(WP.muted)
-                }
-            }
-            .padding(.top, 12)
-            Spacer(minLength: 0)
-            Text("CIM · 198 DAYS").font(WF.interSemi(10)).tracking(0.5).foregroundStyle(WP.faint)
-        }
-        .padding(.horizontal, 14).padding(.bottom, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WP.bg)
-        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
