@@ -63,4 +63,18 @@ xcrun altool --upload-app -f /tmp/FaffExport/Faff.ipa -t ios \
 
 echo "$((BUILD + 1))" > "$BUILD_FILE"
 echo "✓ Uploaded build $BUILD. native/.asc.build bumped to $((BUILD + 1)) — commit it."
-echo "  It appears in App Store Connect → TestFlight after ~5–15 min of processing."
+
+# Wait for processing, then clear export compliance + distribute to the
+# internal beta group so it's actually installable (not just "uploaded").
+echo "→ Waiting for App Store Connect to finish processing build $BUILD…"
+for i in $(seq 1 30); do
+  state="$(python3 "$ROOT/scripts/asc.py" status 2>/dev/null || true)"
+  echo "   $state"
+  case "$state" in
+    *"$BUILD: VALID"*) break ;;
+  esac
+  sleep 20
+done
+python3 "$ROOT/scripts/asc.py" comply || true
+python3 "$ROOT/scripts/asc.py" autoship || true
+echo "✓ Build $BUILD distributed to Internal Testers — open the TestFlight app."

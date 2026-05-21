@@ -626,6 +626,7 @@
 				DEVELOPMENT_TEAM = F26TM6BCR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Faff.run reads your resting heart rate, sleep duration, VO2max, and workout heart rate from Apple Health to compute training zones and adapt your plan based on recovery state.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Faff.run writes completed workouts to Apple Health so your training history stays in one place across apps.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -661,6 +662,7 @@
 				DEVELOPMENT_TEAM = F26TM6BCR3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Faff.run reads your resting heart rate, sleep duration, VO2max, and workout heart rate from Apple Health to compute training zones and adapt your plan based on recovery state.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Faff.run writes completed workouts to Apple Health so your training history stays in one place across apps.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
