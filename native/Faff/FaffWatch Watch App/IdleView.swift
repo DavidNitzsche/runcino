@@ -16,23 +16,24 @@ struct IdleView: View {
     let onStart: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            // w-top: brand mark left (the OS clock provides the time, right).
-            HStack {
-                Text("FAFF").font(WatchTheme.display(15)).italic()
-                    .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
-                Spacer()
+        // Authored for the Ultra canvas; ResponsiveFace scales it to any watch.
+        ResponsiveFace {
+            VStack(spacing: 0) {
+                // w-top: brand mark left (the OS clock provides the time, right).
+                HStack {
+                    Text("FAFF").font(WatchTheme.display(15)).italic()
+                        .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                    Spacer()
+                }
+                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
+                Spacer(minLength: 2)
+                if workout.isRace { raceBody } else { workoutBody }
+                Spacer(minLength: 6)
+                startButton
             }
-            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
-            Spacer(minLength: 2)
-            if workout.isRace { raceBody } else { workoutBody }
-            Spacer(minLength: 6)
-            startButton
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 10).padding(.bottom, 12)   // small bottom inset: START anchors near the edge, clearing the page dots
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, 10).padding(.bottom, 2)
-        .background(WatchTheme.C.bg.ignoresSafeArea())
-        .ignoresSafeArea(.container, edges: .top)
     }
 
     // Workout day (watch-app.html §A): readiness pill, name hero, pace.
