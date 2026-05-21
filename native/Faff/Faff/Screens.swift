@@ -635,7 +635,11 @@ struct RacesView: View {
     static func raceShort(_ name: String) -> String {
         let types: Set<String> = ["half", "marathon", "10k", "5k", "15k", "mile", "miler", "5km", "10km"]
         let words = name.split(separator: " ").map(String.init)
-        let typeWord = words.last(where: { types.contains($0.lowercased()) })
+        // A "Half Marathon" IS a half — prefer "Half" over the trailing
+        // "Marathon" so "Sombrero Half Marathon" reads "Sombrero Half", not
+        // "Sombrero Marathon". Otherwise take the last race-type word.
+        let typeWord: String? = words.first(where: { $0.lowercased() == "half" }).map { _ in "Half" }
+            ?? words.last(where: { types.contains($0.lowercased()) })
         let core = words.filter { !types.contains($0.lowercased()) && $0.lowercased() != "the" }
         let acr = core.count >= 2 ? core.compactMap { $0.first }.map(String.init).joined().uppercased() : (core.first ?? name)
         return typeWord != nil ? "\(acr) \(typeWord!)" : acr
