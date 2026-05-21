@@ -71,6 +71,60 @@ the layout holds on the other sizes.
 
 If anything looks small or empty, it's not matching `watch-app.html`. Re-diff.
 
+## Reference implementation — copy this, don't reinterpret
+
+The recurring bug is a small hero floating in empty space. The hero must **fill the width**.
+Use this pattern verbatim (bundle Bebas Neue / Inter / Oswald in the target; these are not system
+fonts):
+
+```swift
+// THE HERO. Large base font + minimumScaleFactor => it scales to FILL the width.
+// 3- and 4-digit values (6:33, 0:55, 10:42) all end up large. Never hardcode a small size.
+Text(value)                                  // "0:55"
+    .font(.custom("BebasNeue-Regular", size: 130))   // big base; it will scale DOWN to fit
+    .minimumScaleFactor(0.3)
+    .lineLimit(1)
+    .foregroundStyle(paceColor)              // .green / amber / red, or .white for time
+    .frame(maxWidth: .infinity)              // own the full width
+    .multilineTextAlignment(.center)
+
+// THE METRIC FACE: three zones, hero centered and dominant.
+VStack(spacing: 0) {
+    // top: orientation + elapsed (pinned top)
+    HStack {
+        Text("WARMUP").font(.custom("Inter-Bold", size: 13)).tracking(1).foregroundStyle(.green)
+        Spacer()
+        Text(elapsed).font(.system(size: 13, weight: .bold)).foregroundStyle(.secondary)
+    }
+    SegmentStrip(phases)                     // the thin phase strip
+
+    // middle: hero + target ref, centered, absorbs the slack
+    VStack(spacing: 6) {
+        Spacer(minLength: 0)
+        hero                                 // the Text above — fills the width
+        Text("\(target) · \(delta)")         // small reference line
+            .font(.custom("Inter-Bold", size: 12)).tracking(0.5).foregroundStyle(.secondary)
+        Spacer(minLength: 0)
+    }
+
+    // bottom: stats + progress, anchored to the bottom
+    HStack(spacing: 12) {
+        Stat(value: "159", unit: "bpm"); Divider().frame(height: 26); Stat(value: "179", unit: "spm")
+    }
+    HStack(spacing: 10) {                     // progress bar + time inline (no label row)
+        ProgressView(value: fraction).tint(.orange)
+        Text(timeLeft).font(.custom("BebasNeue-Regular", size: 18))
+    }
+}
+.padding(.horizontal, 14)
+.containerBackground(.black, for: .navigation)
+```
+
+Key points the build keeps missing: the hero is `.frame(maxWidth: .infinity)` with a **large base
+font + minimumScaleFactor** (so it fills, not a fixed 40pt); the stat labels are the **units**
+(`bpm`/`spm`), not words; the progress time sits **inline at the end of the bar**, not on its own
+row. Diff against `watch-app.html` — if the hero isn't the biggest thing filling the width, it's wrong.
+
 ## Build order
 
 **Phase 1 — the engine + workout faces (simulator-testable):**
