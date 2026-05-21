@@ -79,6 +79,12 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     // MARK: - Lifecycle
 
+    /// Freeze the published metrics to exact values (visual-regression
+    /// fixtures — render a face with watch-app.html's canonical numbers).
+    func setFixture(pace: Int, hr: Int, cadence: Int, distanceMi: Double) {
+        self.paceSPerMi = pace; self.heartRate = hr; self.cadence = cadence; self.distanceMi = distanceMi
+    }
+
     func start() {
         // Fresh per run — never carry distance / HR / cadence across
         // sessions (otherwise a second run starts with stale totals, e.g.

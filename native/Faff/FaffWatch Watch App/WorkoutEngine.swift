@@ -91,6 +91,21 @@ final class WorkoutEngine: ObservableObject {
         self.workout = workout
     }
 
+    /// A frozen engine for visual-regression fixtures — exact state, no
+    /// timers/tracker — so a face renders watch-app.html's canonical values
+    /// and the diff measures LAYOUT, not live data.
+    static func fixture(workout: WatchWorkout, currentIndex: Int, phaseElapsedSec: Int,
+                        totalElapsedSec: Int, zone: PaceZone = .onTarget, deltaSPerMi: Int = 0) -> WorkoutEngine {
+        let e = WorkoutEngine(workout: workout)
+        e.state = .running
+        e.currentIndex = currentIndex
+        e.phaseElapsedSec = phaseElapsedSec
+        e.totalElapsedSec = totalElapsedSec
+        e.paceZone = zone
+        e.paceDeltaSPerMi = deltaSPerMi
+        return e
+    }
+
     // MARK: Derived
 
     var currentPhase: WatchPhase? {

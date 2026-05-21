@@ -254,10 +254,11 @@ private struct WorkIntervalFace: View {
     private var refStatus: (String, Color) {
         guard phase.targetPaceSPerMi != nil, hasPace else { return ("warming", WatchTheme.C.t3) }
         let d = engine.paceDeltaSPerMi
+        let delta = d == 0 ? "on pace" : (d > 0 ? "+\(d)s" : "\(d)s")
         switch engine.paceZone {
-        case .onTarget: return ("on pace", WatchTheme.C.green)
-        case .drifting: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.amber)
-        case .offTarget: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.warn)
+        case .onTarget: return (delta, WatchTheme.C.green)
+        case .drifting: return (delta, WatchTheme.C.amber)
+        case .offTarget: return (delta, WatchTheme.C.warn)
         }
     }
 
@@ -283,8 +284,8 @@ private struct WorkIntervalFace: View {
                         fill: hasPace ? .zone(engine.paceZone) : WatchTheme.C.orange)
                 .padding(.top, 10)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 17)
+        .padding(.vertical, 16)
     }
 }
 
@@ -320,10 +321,11 @@ private struct RaceFace: View {
     private var refStatus: (String, Color) {
         guard phase.targetPaceSPerMi != nil, hasPace else { return ("warming", WatchTheme.C.t3) }
         let d = engine.paceDeltaSPerMi
+        let delta = d == 0 ? "on pace" : (d > 0 ? "+\(d)s" : "\(d)s")
         switch engine.paceZone {
-        case .onTarget: return ("on pace", WatchTheme.C.green)
-        case .drifting: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.amber)
-        case .offTarget: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.warn)
+        case .onTarget: return (delta, WatchTheme.C.green)
+        case .drifting: return (delta, WatchTheme.C.amber)
+        case .offTarget: return (delta, WatchTheme.C.warn)
         }
     }
     private var raceProgress: Double {
@@ -644,6 +646,61 @@ private struct PausedVeil: View {
     }
 }
 
+// MARK: - Visual-regression fixtures (scripts/watch)
+//
+// Render a single face with watch-app.html's EXACT canonical values
+// (frozen engine + tracker, no timers) so the headless reference and the
+// simulator screenshot line up — the diff then measures layout, not live
+// data. Launched via `-face <name>` (see WorkoutRootView).
+
+/// The 6×interval workout behind the work/color/recovery faces: warmup,
+/// 6 work reps @ 6:31 with 90s recoveries, cooldown. The "now" cursor at
+/// the 3rd work rep reproduces the deck's done/now/upcoming strip.
+private func fixtureIntervals() -> WatchWorkout {
+    var phases: [WatchPhase] = []; var i = 0
+    func add(_ t: WatchPhaseType, _ label: String, _ sec: Int, _ target: Int?) {
+        phases.append(WatchPhase(index: i, type: t, label: label, durationSec: sec,
+                                 targetPaceSPerMi: target, tolerancePaceSPerMi: target != nil ? 10 : nil,
+                                 haptic: .transitionWork)); i += 1
+    }
+    add(.warmup, "Warmup", 600, nil)
+    for r in 1...6 { add(.work, "Interval \(r)/6", 420, 391); if r < 6 { add(.recovery, "Recovery \(r)/5", 90, nil) } }
+    add(.cooldown, "Cooldown", 600, nil)
+    return WatchWorkout(workoutId: "fixture", name: "6×800", summary: "", totalEstimatedMinutes: 52,
+                        phases: phases, completionEndpoint: "", expiresAt: "")
+}
+
+struct WatchFixtureView: View {
+    let face: String
+    var body: some View {
+        // Fill to the top edge so the eyebrow aligns with the design mock
+        // (watch-app.html's .w-screen has no OS status bar). The simulator's
+        // status-bar clock still overlays the top-right; the harness diff is
+        // judged on the content, which now lines up.
+        ZStack { WatchTheme.C.bg; content }.ignoresSafeArea()
+    }
+
+    @ViewBuilder private var content: some View {
+        switch face {
+        case "work-interval":     workFace(zone: .onTarget, delta: 2, pace: 393, hr: 168, cad: 182)
+        case "green-on-the-band": workFace(zone: .onTarget, delta: 0, pace: 391, hr: 168, cad: 182)
+        case "amber-drifting":    workFace(zone: .drifting, delta: 13, pace: 404, hr: 164, cad: 176)
+        case "red-off-pace":      workFace(zone: .offTarget, delta: 20, pace: 411, hr: 159, cad: 171)
+        default:                  workFace(zone: .onTarget, delta: 2, pace: 393, hr: 168, cad: 182)
+        }
+    }
+
+    /// The work-interval face frozen at rep 3/6, 24:18 elapsed, bar ~50%.
+    private func workFace(zone: PaceZone, delta: Int, pace: Int, hr: Int, cad: Int) -> some View {
+        let w = fixtureIntervals()
+        let engine = WorkoutEngine.fixture(workout: w, currentIndex: 5, phaseElapsedSec: 210,
+                                           totalElapsedSec: 1458, zone: zone, deltaSPerMi: delta)
+        let tracker = WorkoutTracker()
+        tracker.setFixture(pace: pace, hr: hr, cadence: cad, distanceMi: 3.2)
+        return WorkIntervalFace(engine: engine, tracker: tracker, phase: engine.currentPhase!)
+    }
+}
+
 #Preview {
     ActiveWorkoutView(engine: {
         let e = WorkoutEngine(workout: .sample)
@@ -651,3 +708,4 @@ private struct PausedVeil: View {
         return e
     }(), tracker: WorkoutTracker())
 }
+#Preview("Fixture · work") { WatchFixtureView(face: "work-interval") }

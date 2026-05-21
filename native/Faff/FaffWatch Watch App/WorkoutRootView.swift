@@ -56,7 +56,23 @@ struct WorkoutRootView: View {
     @ObservedObject private var phone = PhoneSync.shared
     @StateObject private var model = WatchRootModel()
 
+    /// Visual-regression fixture: `-face <name>` renders one face with the
+    /// canonical values so scripts/watch can diff it. Short-circuits the app.
+    private static var fixtureFace: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-face"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
     var body: some View {
+        if let face = Self.fixtureFace {
+            WatchFixtureView(face: face)
+        } else {
+            appBody
+        }
+    }
+
+    private var appBody: some View {
         content
             .onAppear {
                 phone.activate()
