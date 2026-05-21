@@ -143,6 +143,51 @@ final class FaffAPI {
         TokenStore.shared.clear()
     }
 
+    // MARK: Session refresh
+    //
+    // The access token is short-lived (24h). Without refresh, expired calls
+    // silently degrade: strict endpoints 401, but auth-OPTIONAL ones (e.g.
+    // /api/runs/by-date) just return anonymous data — which is why a logged-in
+    // user could see "no run" for a run that's actually theirs. We refresh
+    // proactively on launch/foreground (so even auth-optional calls carry a
+    // valid token) and reactively on a 401.
+
+    /// In-flight refresh, so concurrent callers coalesce onto ONE network
+    /// call. Critical: the backend ROTATES the refresh token, so two parallel
+    /// refreshes would invalidate each other and force a spurious logout.
+    private var refreshTask: Task<Bool, Never>?
+
+    /// Exchange the stored refresh token for a fresh access token (rotating
+    /// the refresh token too). Returns true on success. Clears the session on
+    /// a hard auth failure so the UI routes back to login; keeps tokens on a
+    /// transient/offline error.
+    @discardableResult
+    func refreshAccessToken() async -> Bool {
+        if let task = refreshTask { return await task.value }
+        let task = Task { () -> Bool in
+            defer { refreshTask = nil }
+            guard let refresh = TokenStore.shared.refreshToken else { return false }
+            struct Body: Encodable { let refreshToken: String }
+            struct Resp: Decodable { let accessToken: String; let refreshToken: String; let expiresIn: Int }
+            do {
+                let r: Resp = try await request(
+                    method: "POST", path: "/api/auth/token/refresh",
+                    body: Body(refreshToken: refresh), authenticated: false)
+                TokenStore.shared.accessToken = r.accessToken
+                TokenStore.shared.refreshToken = r.refreshToken
+                return true
+            } catch APIError.unauthorized {
+                TokenStore.shared.clear(); return false
+            } catch APIError.http(let status, _) where status == 400 || status == 401 {
+                TokenStore.shared.clear(); return false
+            } catch {
+                return false   // offline / transient — keep tokens, try later
+            }
+        }
+        refreshTask = task
+        return await task.value
+    }
+
     // MARK: Watch
 
     func fetchToday() async throws -> WatchWorkout {
@@ -261,7 +306,8 @@ final class FaffAPI {
         path: String,
         body: Data?,
         authenticated: Bool,
-        as: T.Type
+        as: T.Type,
+        allowRefresh: Bool = true
     ) async throws -> T {
         guard let url = URL(string: path, relativeTo: API.baseURL) else {
             throw APIError.invalidURL
@@ -288,6 +334,13 @@ final class FaffAPI {
         }
 
         if http.statusCode == 401 {
+            // Access token expired — refresh once and retry the call. The
+            // refresh is coalesced, so parallel 401s share one rotation.
+            if authenticated, allowRefresh, await refreshAccessToken() {
+                return try await perform(method: method, path: path, body: body,
+                                         authenticated: authenticated, as: T.self,
+                                         allowRefresh: false)
+            }
             throw APIError.unauthorized
         }
         guard (200..<300).contains(http.statusCode) else {

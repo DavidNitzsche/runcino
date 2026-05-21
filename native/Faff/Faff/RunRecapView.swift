@@ -26,7 +26,7 @@ struct RunRecapView: View {
                     HStack(spacing: 8) { ProgressView().scaleEffect(0.85); Text("Loading run…").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted) }
                         .padding(.top, 40).frame(maxWidth: .infinity)
                 } else if let r = run {
-                    content(r)
+                    RunRecapContent(run: r, dynamics: dynamics, fallbackDate: date)
                 } else {
                     emptyState
                 }
@@ -47,52 +47,125 @@ struct RunRecapView: View {
         dynamics = await HealthKitManager.shared.runDynamics(forDateISO: run?.date ?? date)
     }
 
-    // MARK: Populated recap
-    @ViewBuilder
-    private func content(_ r: RunRecap) -> some View {
+    // MARK: Empty state (honest — no fabricated run)
+    private var emptyState: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Text("\(RunRecapView.prettyDate(r.date ?? date)) · SYNCED")
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-                Badge(text: r.type ?? "Run", tone: .green)
-                Spacer()
+            Text("\(RunRecapView.prettyDate(date)) · RECAP")
+                .font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            Text("NO RUN YET").font(Faff.F.display(40)).foregroundStyle(Faff.C.ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("No run has synced for this day. Connect Strava in Profile and your Apple Watch runs land here with route, mile splits and heart rate.")
+                    .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.faffCard().padding(.top, 10)
+        }.padding(.top, 6)
+    }
+
+    // MARK: Helpers
+    static func prettyDate(_ iso: String) -> String {
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        guard let d = inF.date(from: String(iso.prefix(10))) else { return iso }
+        let out = DateFormatter(); out.dateFormat = "EEE MMM d"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d).uppercased()
+    }
+
+    /// Factual split-trend line (computed, not generated narrative).
+    static func splitSummary(_ splits: [RunSplit]) -> String? {
+        guard splits.count >= 2 else { return nil }
+        let first = splits.first!.paceSPerMi, last = splits.last!.paceSPerMi
+        let delta = Int((first - last).rounded())   // + = finished faster
+        if delta >= 8 { return "Negative split — finished \(delta) s/mi quicker than you started." }
+        if delta <= -8 { return "Positive split — faded \(abs(delta)) s/mi over the run." }
+        return "Even pacing — held within \(abs(delta)) s/mi start to finish."
+    }
+
+    // (decodePolyline below)
+    /// Decode a Google encoded polyline into coordinates.
+    static func decodePolyline(_ encoded: String?) -> [CLLocationCoordinate2D]? {
+        guard let encoded, !encoded.isEmpty else { return nil }
+        var coords: [CLLocationCoordinate2D] = []
+        var index = encoded.startIndex
+        var lat = 0, lon = 0
+        let chars = Array(encoded.unicodeScalars)
+        var i = 0
+        func next() -> Int {
+            var result = 0, shift = 0, b = 0
+            repeat {
+                guard i < chars.count else { break }
+                b = Int(chars[i].value) - 63
+                i += 1
+                result |= (b & 0x1f) << shift
+                shift += 5
+            } while b >= 0x20
+            return (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
+        }
+        _ = index
+        while i < chars.count {
+            lat += next()
+            lon += next()
+            coords.append(CLLocationCoordinate2D(latitude: Double(lat) / 1e5, longitude: Double(lon) / 1e5))
+        }
+        return coords.isEmpty ? nil : coords
+    }
+}
+
+// MARK: - Reusable recap body
+//
+// The populated recap — header, stats, route, mile splits, summary, per-run
+// dynamics, note. Lives in its own view so it can render BOTH in the recap
+// sheet (RunRecapView) and inline on the Today tab (past-day / just-finished
+// runs), instead of hiding the data behind a "View full recap" tap.
+struct RunRecapContent: View {
+    let run: RunRecap
+    var dynamics: HealthKitManager.RunDynamics?
+    var fallbackDate: String = ""
+    /// The sheet shows its own header; the inline Today usage already has the
+    /// hero above it, so it can hide the duplicate title/date row.
+    var showHeader: Bool = true
+
+    var body: some View {
+        let r = run
+        VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+            if showHeader {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text("\(RunRecapView.prettyDate(r.date ?? fallbackDate)) · SYNCED")
+                            .font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                        Badge(text: r.type ?? "Run", tone: .green)
+                        Spacer()
+                    }
+                    Text((r.name ?? "Run").uppercased()).font(Faff.F.display(40)).foregroundStyle(Faff.C.ink)
+                }
+                HStack(spacing: Faff.S.inlineGap) {
+                    StatPill(value: OverviewFormat.distance(r.distanceMi), unit: "mi", label: "Distance")
+                    StatPill(value: r.paceDisplay, unit: "/mi", label: "Avg pace", accent: true)
+                    StatPill(value: r.durationDisplay, unit: nil, label: "Time")
+                    if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
+                }
             }
-            Text((r.name ?? "Run").uppercased()).font(Faff.F.display(40)).foregroundStyle(Faff.C.ink)
-        }
-        // Header stats
-        HStack(spacing: Faff.S.inlineGap) {
-            StatPill(value: OverviewFormat.distance(r.distanceMi), unit: "mi", label: "Distance")
-            StatPill(value: r.paceDisplay, unit: "/mi", label: "Avg pace", accent: true)
-            StatPill(value: r.durationDisplay, unit: nil, label: "Time")
-            if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
-        }
-        // Route
-        if let coords = RunRecapView.decodePolyline(r.summaryPolyline), coords.count > 1 {
-            routeCard(coords)
-        }
-        // Splits
-        if let splits = r.splits, !splits.isEmpty {
-            splitsCard(splits, target: r.paceSPerMi)
-            if let line = RunRecapView.splitSummary(splits) {
+            if let coords = RunRecapView.decodePolyline(r.summaryPolyline), coords.count > 1 {
+                routeCard(coords)
+            }
+            if let splits = r.splits, !splits.isEmpty {
+                splitsCard(splits)
+                if let line = RunRecapView.splitSummary(splits) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("SUMMARY").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                        Text(line).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.faffCard()
+                }
+            }
+            if let dyn = dynamics, dyn.hasAny { dynamicsCard(dyn) }
+            if let d = r.description, !d.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("SUMMARY").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-                    Text(line).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(2)
+                    Text("NOTE").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                    Text(d).font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }.faffCard()
             }
         }
-        // Running dynamics for THIS run (Apple Health, per-run).
-        if let dyn = dynamics, dyn.hasAny {
-            dynamicsCard(dyn)
-        }
-        // Strava description, if the runner wrote one (real, not generated).
-        if let d = r.description, !d.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("NOTE").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-                Text(d).font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }.faffCard()
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func routeCard(_ coords: [CLLocationCoordinate2D]) -> some View {
@@ -114,7 +187,7 @@ struct RunRecapView: View {
         }.faffCard()
     }
 
-    private func splitsCard(_ splits: [RunSplit], target: Double?) -> some View {
+    private func splitsCard(_ splits: [RunSplit]) -> some View {
         let paces = splits.map(\.paceSPerMi)
         let fast = paces.min() ?? 1, slow = paces.max() ?? 1
         return VStack(alignment: .leading, spacing: 10) {
@@ -159,65 +232,5 @@ struct RunRecapView: View {
                            delta: t.unit != nil ? "this run" : "No data", deltaTone: .flat)
             }
         }
-    }
-
-    // MARK: Empty state (honest — no fabricated run)
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(RunRecapView.prettyDate(date)) · RECAP")
-                .font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-            Text("NO RUN YET").font(Faff.F.display(40)).foregroundStyle(Faff.C.ink)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("No run has synced for this day. Connect Strava in Profile and your Apple Watch runs land here with route, mile splits and heart rate.")
-                    .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }.faffCard().padding(.top, 10)
-        }.padding(.top, 6)
-    }
-
-    // MARK: Helpers
-    static func prettyDate(_ iso: String) -> String {
-        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
-        guard let d = inF.date(from: String(iso.prefix(10))) else { return iso }
-        let out = DateFormatter(); out.dateFormat = "EEE MMM d"; out.timeZone = TimeZone(identifier: "UTC")
-        return out.string(from: d).uppercased()
-    }
-
-    /// Factual split-trend line (computed, not generated narrative).
-    static func splitSummary(_ splits: [RunSplit]) -> String? {
-        guard splits.count >= 2 else { return nil }
-        let first = splits.first!.paceSPerMi, last = splits.last!.paceSPerMi
-        let delta = Int((first - last).rounded())   // + = finished faster
-        if delta >= 8 { return "Negative split — finished \(delta) s/mi quicker than you started." }
-        if delta <= -8 { return "Positive split — faded \(abs(delta)) s/mi over the run." }
-        return "Even pacing — held within \(abs(delta)) s/mi start to finish."
-    }
-
-    /// Decode a Google encoded polyline into coordinates.
-    static func decodePolyline(_ encoded: String?) -> [CLLocationCoordinate2D]? {
-        guard let encoded, !encoded.isEmpty else { return nil }
-        var coords: [CLLocationCoordinate2D] = []
-        var index = encoded.startIndex
-        var lat = 0, lon = 0
-        let chars = Array(encoded.unicodeScalars)
-        var i = 0
-        func next() -> Int {
-            var result = 0, shift = 0, b = 0
-            repeat {
-                guard i < chars.count else { break }
-                b = Int(chars[i].value) - 63
-                i += 1
-                result |= (b & 0x1f) << shift
-                shift += 5
-            } while b >= 0x20
-            return (result & 1) != 0 ? ~(result >> 1) : (result >> 1)
-        }
-        _ = index
-        while i < chars.count {
-            lat += next()
-            lon += next()
-            coords.append(CLLocationCoordinate2D(latitude: Double(lat) / 1e5, longitude: Double(lon) / 1e5))
-        }
-        return coords.isEmpty ? nil : coords
     }
 }

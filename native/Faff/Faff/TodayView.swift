@@ -23,6 +23,13 @@ struct TodayView: View {
     @State private var working = false
     private struct RecapDate: Identifiable { let id: String }
 
+    // The logged run for the selected day (past, or a completed today) — drives
+    // both the hero's actuals AND the inline recap surfaced below it, so the
+    // run's route / splits / dynamics fill the space instead of hiding behind
+    // a "View full recap" tap.
+    @State private var selRun: RunRecap?
+    @State private var selDynamics: HealthKitManager.RunDynamics?
+
     private var selDate: String { selected ?? overview.today ?? "" }
     private var selDay: OPlanDay? { overview.planWeekWorkouts?.first { $0.dateISO == selDate } }
     private var isTodaySel: Bool { selDate == overview.today }
@@ -34,6 +41,12 @@ struct TodayView: View {
                 dateStrip(overview)
                 coachLineView
                 heroView
+                // Inline recap — when the selected day has a logged run, surface
+                // its route, mile splits, summary and per-run dynamics right
+                // here instead of leaving the space empty.
+                if let r = selRun {
+                    RunRecapContent(run: r, dynamics: selDynamics, showHeader: false)
+                }
                 if isTodaySel {
                     readinessCard(overview)
                     CheckInCard()
@@ -46,6 +59,7 @@ struct TodayView: View {
             .padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg)
+        .task(id: selDate) { await loadSelRun() }
         .sheet(item: $recapDate) { d in RunRecapView(date: d.id) }
         .sheet(item: $reschedule) { t in
             RescheduleSheet(action: t.action, fromDateISO: overview.today ?? "",
@@ -73,6 +87,26 @@ struct TodayView: View {
     private var todayPlanDay: OPlanDay? { overview.planWeekWorkouts?.first { $0.dateISO == overview.today } }
     private var todayDone: Bool { todayPlanDay.map { overview.isPlanDayDone($0) } ?? false }
 
+    /// Whether the selected day is rest (so we never fetch a run for it).
+    private var selIsRest: Bool {
+        if isTodaySel { return overview.todayWorkout.isRest }
+        return (selDay?.type ?? "") == "rest"
+    }
+
+    /// Load the logged run (+ per-run dynamics) for the selected day, for the
+    /// hero actuals and the inline recap. Only past days or a completed today;
+    /// cleared otherwise so switching to a future/rest day shows nothing.
+    private func loadSelRun() async {
+        let date = selDate
+        let wantsRun = !date.isEmpty && !selIsRest && (isPastSel || (isTodaySel && todayDone))
+        guard wantsRun else { selRun = nil; selDynamics = nil; return }
+        selRun = nil; selDynamics = nil
+        let r = (try? await RunByDateAPI.fetch(date: date))?.run
+        guard date == selDate else { return }   // a faster tap won the race
+        selRun = r
+        if let r { selDynamics = await HealthKitManager.shared.runDynamics(forDateISO: r.date ?? date) }
+    }
+
     @ViewBuilder private var heroView: some View {
         if isTodaySel {
             if overview.todayWorkout.isRest {
@@ -87,6 +121,7 @@ struct TodayView: View {
                     isRest: false,
                     plannedMi: d.distanceMi,
                     hasStrength: d.hasStrength == true,
+                    run: selRun,
                     onOpenRecap: { date in recapDate = RecapDate(id: date) }
                 )
             } else {
@@ -102,6 +137,7 @@ struct TodayView: View {
                     isRest: dw.isRest,
                     plannedMi: d.distanceMi,
                     hasStrength: d.hasStrength == true,
+                    run: selRun,
                     onOpenRecap: { date in recapDate = RecapDate(id: date) }
                 )
             } else { previewHero(d) }
@@ -534,10 +570,10 @@ private struct PastDayHero: View {
     let isRest: Bool
     let plannedMi: Double?
     var hasStrength: Bool = false
+    /// The logged run, loaded by the parent (TodayView) so the inline recap
+    /// below the hero shares the same fetch. nil → "not logged" state.
+    var run: RunRecap?
     var onOpenRecap: (String) -> Void
-
-    @State private var run: RunRecap?
-    @State private var loaded = false
 
     var body: some View {
         let done = run != nil
@@ -564,22 +600,17 @@ private struct PastDayHero: View {
                         StatPill(value: r.durationDisplay, unit: nil, label: "Time")
                         if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
                     }.padding(.top, Faff.S.inlineGap)
+                } else {
+                    // Nothing synced for this day — say so plainly (no recap to
+                    // surface below).
+                    Text("No run synced for this day yet.")
+                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                        .padding(.top, 10)
                 }
-                HStack(spacing: 6) {
-                    Text("View full recap").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Faff.C.race)
-                }.padding(.top, 12)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
         .contentShape(Rectangle())
         .onTapGesture { if !isRest, !date.isEmpty { onOpenRecap(date) } }
-        .task(id: date) { await load() }
-    }
-
-    private func load() async {
-        guard !isRest, !date.isEmpty else { return }
-        run = (try? await RunByDateAPI.fetch(date: date))?.run
-        loaded = true
     }
 }

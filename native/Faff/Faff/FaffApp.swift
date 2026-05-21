@@ -15,6 +15,11 @@ struct FaffApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // The v4 design is light-only (cream ground, white cards, no
+                // dark tokens). Without this, dark-mode renders the adaptive
+                // bits — the .ultraThinMaterial sticky header, the status bar —
+                // dark/gray against the cream content. Pin to light everywhere.
+                .preferredColorScheme(.light)
         }
     }
 }

@@ -77,11 +77,27 @@ final class HealthKitManager: ObservableObject {
     private let connectedKey = "faff.health.connected"
     var hasConnected: Bool { UserDefaults.standard.bool(forKey: connectedKey) }
 
+    /// Set once the one-time historical backfill has succeeded, so later
+    /// syncs only pull a short rolling window instead of a full year again.
+    private let backfilledKey = "faff.health.backfilled"
+
+    /// How far back to read. The FIRST sync backfills a full year so Faff has
+    /// a deep history to coach from; after that, a rolling 30-day window keeps
+    /// recent days fresh (the backend UPSERTs by (type, date), so re-sending
+    /// is idempotent). The backend caps a batch at 1000 samples, so a year's
+    /// worth is uploaded in chunks.
+    private let backfillDays = 365
+    private let rollingDays = 30
+    private let uploadChunk = 500
+
     // MARK: - Top-level flow
 
-    /// Request authorization, read recent samples, and (when signed in)
-    /// push them to the backend. Drives `status` / `lastMessage` for the UI.
-    func connectAndSync(daysBack: Int = 14) async {
+    /// Request authorization, read samples, and (when signed in) push them to
+    /// the backend. Drives `status` / `lastMessage` for the UI.
+    ///
+    /// `daysBack` defaults to nil = auto: a full-year backfill the first time,
+    /// then a rolling 30-day window. Pass an explicit value to override.
+    func connectAndSync(daysBack: Int? = nil) async {
         guard isAvailable else {
             status = .unavailable
             lastMessage = "Apple Health isn't available on this device."
@@ -101,7 +117,10 @@ final class HealthKitManager: ObservableObject {
         // Populate the on-device display metrics first so the Health tab
         // shows real values immediately (independent of the backend sync).
         await refreshDisplayMetrics()
-        let samples = await collectSamples(daysBack: daysBack)
+
+        let isBackfill = !UserDefaults.standard.bool(forKey: backfilledKey)
+        let window = daysBack ?? (isBackfill ? backfillDays : rollingDays)
+        let samples = await collectSamples(daysBack: window)
 
         guard !samples.isEmpty else {
             status = .done
@@ -114,9 +133,20 @@ final class HealthKitManager: ObservableObject {
             return
         }
         do {
-            let result = try await FaffAPI.shared.ingestHealthSamples(samples)
+            // The backend caps a batch at 1000 samples, so a year's worth is
+            // uploaded in chunks. Each (type, date) UPSERTs, so order/overlap
+            // is safe.
+            var ingested = 0
+            for chunk in stride(from: 0, to: samples.count, by: uploadChunk) {
+                let slice = Array(samples[chunk ..< min(chunk + uploadChunk, samples.count)])
+                let result = try await FaffAPI.shared.ingestHealthSamples(slice)
+                ingested += result.ingested
+            }
+            UserDefaults.standard.set(true, forKey: backfilledKey)
             status = .done
-            lastMessage = "Synced \(result.ingested) readings from Apple Health."
+            lastMessage = isBackfill
+                ? "Imported \(ingested) readings from the past year of Apple Health."
+                : "Synced \(ingested) readings from Apple Health."
         } catch {
             status = .error
             lastMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription

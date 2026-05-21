@@ -365,9 +365,9 @@ struct HealthView: View {
             Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
                  delta: v != nil ? sub : "No data", tone: .good, live: v != nil, sampleType: type)
         }
-        func dyn(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0) -> Tile {
+        func dyn(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0, type: String) -> Tile {
             Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
-                 delta: v != nil ? "30d avg" : "No data", tone: .flat, live: v != nil)
+                 delta: v != nil ? "30d avg" : "No data", tone: .flat, live: v != nil, sampleType: type)
         }
         // Prefer live HealthKit values (read on-device); fall back to the
         // backend 7-day rollup when HealthKit hasn't been read yet.
@@ -378,17 +378,17 @@ struct HealthView: View {
             vital("HRV", hrv, "ms", sub: "latest", type: "hrv"),
             vital("Resting HR", rhr, "bpm", sub: "latest", type: "resting_hr"),
             vital("Sleep", slp, "h", dec: 1, sub: "last night", type: "sleep_hours"),
-            vital("Respiration", hk.respiratoryRate, "br/m", dec: 1, sub: "latest"),
+            vital("Respiration", hk.respiratoryRate, "br/m", dec: 1, sub: "latest", type: "respiratory_rate"),
             vital("VO₂max", hk.vo2Max, "", dec: 1, sub: "latest", type: "vo2_max"),
-            vital("Wrist temp", hk.wristTempC, "°C", dec: 1, sub: "sleep"),
+            vital("Wrist temp", hk.wristTempC, "°C", dec: 1, sub: "sleep", type: "wrist_temp"),
         ]
         let dynamics: [Tile] = [
-            dyn("Cadence", hk.cadenceSpm, "spm"),
-            dyn("Stride", hk.strideM, "m", dec: 2),
-            dyn("Vert Osc", hk.vertOscCm, "cm", dec: 1),
-            dyn("Grnd Contact", hk.groundContactMs, "ms"),
-            dyn("Vert Ratio", hk.vertRatioPct, "%", dec: 1),
-            dyn("Run Power", hk.runPowerW, "W"),
+            dyn("Cadence", hk.cadenceSpm, "spm", type: "cadence"),
+            dyn("Stride", hk.strideM, "m", dec: 2, type: "stride_length"),
+            dyn("Vert Osc", hk.vertOscCm, "cm", dec: 1, type: "vertical_oscillation"),
+            dyn("Grnd Contact", hk.groundContactMs, "ms", type: "ground_contact_time"),
+            dyn("Vert Ratio", hk.vertRatioPct, "%", dec: 1, type: "vertical_ratio"),
+            dyn("Run Power", hk.runPowerW, "W", type: "run_power"),
         ]
         let acwr = overview.acwrValue
         let load: [Tile] = [
@@ -433,7 +433,7 @@ struct HealthView: View {
             Text(title.uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             MetricGrid(items: tiles) { t in
                 MetricTile(label: t.label, value: t.value, unit: t.unit, delta: t.delta, deltaTone: t.tone,
-                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType) })
+                           onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType, caption: t.live ? t.delta : nil) })
             }
         }
     }
@@ -1372,7 +1372,10 @@ struct WhyThisSheet: View {
 // MARK: - Metric detail (sheet from a Health tile)
 
 struct MetricDetailSheet: View {
-    struct Metric: Identifiable { let id = UUID(); let title: String; let value: String; let unit: String?; var live: Bool = true; var sampleType: String? = nil }
+    struct Metric: Identifiable {
+        let id = UUID(); let title: String; let value: String; let unit: String?
+        var live: Bool = true; var sampleType: String? = nil; var caption: String? = nil
+    }
     let metric: Metric
     let overview: OverviewResponse
     @Environment(\.dismiss) private var dismiss
@@ -1382,6 +1385,8 @@ struct MetricDetailSheet: View {
     private let rangeOptions = ["7D", "30D", "90D"]
     private func days(for label: String) -> Int { label == "7D" ? 7 : (label == "90D" ? 90 : 30) }
     private var rangeLabel: String { rangeDays == 7 ? "7D" : (rangeDays == 90 ? "90D" : "30D") }
+    private var guide: MetricGuide? { MetricGuide.lookup(sampleType: metric.sampleType, title: metric.title) }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
@@ -1391,43 +1396,20 @@ struct MetricDetailSheet: View {
                     Spacer()
                     SheetCloseButton { dismiss() }
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("\(metric.title)\(metric.live ? (metric.sampleType != nil ? " · latest" : " · 30-day avg") : "")").font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
-                        Spacer()
-                        Badge(text: metric.live ? "Tracked" : "No data", tone: metric.live ? .green : .grey)
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(metric.value).font(Faff.F.display(58)).foregroundStyle(metric.live ? Faff.C.recovery : Faff.C.textFaint)
-                        if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
-                    }
-                }.faffCard()
-                if metric.live && metric.sampleType == nil {
-                    // Cumulative running dynamic — a 30-day average across every
-                    // run (no daily vitals series). Per-run detail is on the recap.
-                    CoachVerdict("Your 30-day average",
-                                 "\(metric.title) averaged across every run in the last 30 days, from Apple Health. The breakdown for a single run lives on that run's recap.",
-                                 color: Faff.C.recovery)
-                    relatedTiles
-                } else if metric.live {
-                    // Cumulative vital — real daily series from /api/health/series.
+                valueCard
+                if metric.live, metric.sampleType != nil {
+                    // Every health metric gets the full daily history graph.
                     VStack(spacing: 12) {
                         Segmented(options: rangeOptions, selected: rangeLabel,
                                   onSelect: { rangeDays = days(for: $0) })
                         trendChart
                     }.faffCard()
-                    CoachVerdict("What this means",
-                                 "Your latest reading from Apple Health; the chart trends it over the window you pick.",
-                                 color: Faff.C.recovery)
-                    if let s = overview.readinessScore {
-                        HStack(spacing: 12) {
-                            ReadinessRing(score: s, tone: TodayView.tone(for: overview.readinessState), size: 42)
-                            Text("**Feeds Readiness** — load is what's holding the score at \(s).")
-                                .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
-                            Spacer()
-                        }.faffCard()
-                    }
-                    relatedTiles
+                    if let t = trendRead { CoachVerdict("Your trend", t.text, color: t.color) }
+                    guideCards
+                    readinessNote
+                } else if metric.live {
+                    // Non-series metrics (ACWR, Volume) — explanation, no chart.
+                    guideCards
                 } else {
                     CoachVerdict("No data yet",
                                  "\(metric.title) isn't syncing yet. Connect Apple Health (Health tab) and it'll appear here once your watch or phone records it.",
@@ -1441,11 +1423,75 @@ struct MetricDetailSheet: View {
         .task(id: rangeDays) { await loadSeries() }
     }
 
+    private var valueCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("\(metric.title)\(metric.caption.map { " · \($0)" } ?? "")")
+                    .font(Faff.F.inter(12.5, .semibold)).foregroundStyle(Faff.C.textMuted)
+                Spacer()
+                Badge(text: metric.live ? "Tracked" : "No data", tone: metric.live ? .green : .grey)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(metric.value).font(Faff.F.display(58)).foregroundStyle(metric.live ? Faff.C.recovery : Faff.C.textFaint)
+                if let u = metric.unit { Text(u).font(Faff.F.inter(15, .medium)).foregroundStyle(Faff.C.textMuted) }
+            }
+        }.faffCard()
+    }
+
+    /// What-it-is / what's-good / how-to-improve — the guidance the user
+    /// actually wants, per metric. Colored accents: neutral → green → orange.
+    @ViewBuilder private var guideCards: some View {
+        if let g = guide {
+            CoachVerdict("What it is", g.what, color: Faff.C.textDim)
+            CoachVerdict("What's good", g.good, color: Faff.C.recovery)
+            CoachVerdict("How to improve", g.improve, color: Faff.C.race)
+        }
+    }
+
+    /// Only the recovery vitals feed the readiness score — note it where true.
+    @ViewBuilder private var readinessNote: some View {
+        if let s = overview.readinessScore,
+           ["hrv", "resting_hr", "sleep_hours"].contains(metric.sampleType ?? "") {
+            HStack(spacing: 12) {
+                ReadinessRing(score: s, tone: TodayView.tone(for: overview.readinessState), size: 42)
+                Text("**Feeds your readiness** — recovery vitals like this set today's score of \(s).")
+                    .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                Spacer()
+            }.faffCard()
+        }
+    }
+
+    /// A computed read on the direction of travel over the chosen window,
+    /// interpreted against whether lower or higher is better for this metric.
+    private var trendRead: (text: String, color: Color)? {
+        guard series.count >= 3 else { return nil }
+        let vals = series.map(\.value)
+        let n = vals.count
+        let head = Array(vals.prefix(max(1, n / 3)))
+        let tail = Array(vals.suffix(max(1, n / 3)))
+        let a = head.reduce(0, +) / Double(head.count)
+        let b = tail.reduce(0, +) / Double(tail.count)
+        guard a != 0 else { return nil }
+        let pct = (b - a) / abs(a) * 100
+        let mag = abs(pct)
+        if mag < 3 {
+            return ("Holding steady over \(rangeLabel) — within a few percent of where it started.", Faff.C.textMuted)
+        }
+        let up = b > a
+        let phrase = "Trending \(up ? "up" : "down") ~\(Int(mag.rounded()))% over \(rangeLabel)"
+        if let lowerBetter = guide?.goodWhenLower {
+            let good = (lowerBetter && !up) || (!lowerBetter && up)
+            return (phrase + (good ? " — that's the direction you want." : " — worth keeping an eye on."),
+                    good ? Faff.C.recovery : Faff.C.milestone)
+        }
+        return (phrase + ".", Faff.C.textMuted)
+    }
+
     @ViewBuilder
     private var trendChart: some View {
         if loadingSeries {
             HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading…").font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim) }
-                .frame(maxWidth: .infinity, minHeight: 96)
+                .frame(maxWidth: .infinity, minHeight: 110)
         } else if series.count >= 2 {
             let vals = series.map(\.value)
             let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1)
@@ -1455,19 +1501,20 @@ struct MetricDetailSheet: View {
                 LineMark(x: .value("Date", p.date), y: .value("Value", p.value))
                     .foregroundStyle(Faff.C.recovery)
                     .lineStyle(StrokeStyle(lineWidth: 1.8))
+                    .interpolationMethod(.catmullRom)
             }
             .chartYScale(domain: (lo - (hi - lo) * 0.15 - 1)...(hi + (hi - lo) * 0.15 + 1))
             .chartXAxis(.hidden)
             .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
                 AxisValueLabel { if let d = v.as(Double.self) { Text("\(Int(d))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
             } }
-            .frame(height: 96)
+            .frame(height: 130)
         } else {
             Text(series.count == 1
                  ? "Only one day recorded so far — the trend fills in as more days sync."
                  : "No \(metric.title.lowercased()) recorded in this window yet. It fills in as Apple Health syncs each day.")
                 .font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
-                .frame(maxWidth: .infinity, minHeight: 96, alignment: .center)
+                .frame(maxWidth: .infinity, minHeight: 110, alignment: .center)
                 .multilineTextAlignment(.center)
         }
     }
@@ -1478,21 +1525,105 @@ struct MetricDetailSheet: View {
         defer { loadingSeries = false }
         series = (try? await HealthSeriesAPI.fetch(type: type, days: rangeDays)) ?? []
     }
+}
 
-    private var relatedTiles: some View {
-        struct T: Identifiable { let id = UUID(); let label, value: String; let unit: String? }
-        let r = overview.state?.recovery
-        let tiles = [
-            T(label: "Resting HR", value: r?.rhrBpm.map { "\(Int($0))" } ?? "—", unit: r?.rhrBpm != nil ? "bpm" : nil),
-            T(label: "HRV", value: r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", unit: r?.hrv7dAvgMs != nil ? "ms" : nil),
-            T(label: "Sleep", value: r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", unit: r?.sleep7dAvgHrs != nil ? "h" : nil),
-        ]
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("RELATED").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
-            MetricGrid(items: tiles) { t in
-                MetricTile(label: t.label, value: t.value, unit: t.unit,
-                           delta: t.value == "—" ? "No data" : "7-day avg", deltaTone: .good)
-            }
+// MARK: - Per-metric guidance (what it is / what's good / how to improve)
+
+struct MetricGuide {
+    let what: String
+    let good: String
+    let improve: String
+    /// true → lower readings are better, false → higher is better, nil → neutral
+    /// (no single "good" direction). Drives the trend interpretation.
+    var goodWhenLower: Bool? = nil
+
+    static func lookup(sampleType: String?, title: String) -> MetricGuide? {
+        switch sampleType {
+        case "hrv":
+            return MetricGuide(
+                what: "Heart-rate variability (HRV) is the beat-to-beat variation in your pulse — a window into recovery and how balanced your nervous system is.",
+                good: "There's no universal 'good' number — your own baseline is what matters. Stable or rising HRV means you're absorbing training; a sharp drop often comes before fatigue or illness.",
+                improve: "Protect sleep, keep easy days genuinely easy, hydrate, and manage life stress. HRV responds to total load, not just running.",
+                goodWhenLower: false)
+        case "resting_hr":
+            return MetricGuide(
+                what: "Resting heart rate (RHR) is your pulse at full rest — a simple, sensitive marker of aerobic fitness and recovery.",
+                good: "Lower trends are generally better. A morning reading 5+ bpm above your baseline usually means under-recovery or an oncoming bug.",
+                improve: "Build an aerobic base with easy mileage, prioritise sleep, and avoid stacking hard days. It drops over months, not days.",
+                goodWhenLower: true)
+        case "sleep_hours":
+            return MetricGuide(
+                what: "Nightly sleep duration — the single biggest lever on recovery, adaptation and staying injury-free.",
+                good: "Most endurance runners do best on 7–9 hours, and consistency night-to-night matters as much as the total.",
+                improve: "Hold a fixed wake time, dim screens before bed, and treat sleep as part of the plan — not the leftover.",
+                goodWhenLower: false)
+        case "vo2_max":
+            return MetricGuide(
+                what: "VO₂max estimates your aerobic ceiling — how much oxygen you can use at max effort.",
+                good: "Higher is better and it climbs with consistent training. Apple's estimate is directional, so watch the trend, not the exact figure.",
+                improve: "Easy Z2 volume builds the engine; controlled intervals sharpen the top end. Both, over weeks.",
+                goodWhenLower: false)
+        case "respiratory_rate":
+            return MetricGuide(
+                what: "Breaths per minute at rest, measured overnight.",
+                good: "Stable is healthy. A rise of a couple of breaths above your norm can flag illness, poor sleep or piled-up fatigue.",
+                improve: "It mostly tracks health and recovery — protect sleep and back off when it spikes.",
+                goodWhenLower: true)
+        case "wrist_temp":
+            return MetricGuide(
+                what: "Overnight wrist temperature, tracked against your own baseline.",
+                good: "Steady near baseline is normal. A jump often precedes illness or signals heavy training stress.",
+                improve: "You don't train this — use it as an early-warning flag to add recovery when it climbs.")
+        case "cadence":
+            return MetricGuide(
+                what: "Cadence is your step rate while running (steps per minute).",
+                good: "Many runners are efficient around 170–185 spm, but the right number is individual. A higher cadence usually shortens your stride and cuts overstriding and impact.",
+                improve: "To raise it, nudge up ~5% at a time — run to a metronome or a playlist at the target beat for short stretches.",
+                goodWhenLower: false)
+        case "stride_length":
+            return MetricGuide(
+                what: "Stride length is the distance you cover per step.",
+                good: "It grows naturally as you speed up and pairs with cadence to set your pace — there's no single ideal, it's part of your form signature.",
+                improve: "It improves on its own with strength, mobility and aerobic fitness. Reaching for a longer stride directly usually causes overstriding.")
+        case "vertical_oscillation":
+            return MetricGuide(
+                what: "Vertical oscillation is how much you bounce up-and-down each step (cm).",
+                good: "Lower is generally more economical — roughly 6–9 cm is common for efficient runners.",
+                improve: "A slightly higher cadence and a tall, relaxed posture usually reduce the bounce. Don't force it.",
+                goodWhenLower: true)
+        case "ground_contact_time":
+            return MetricGuide(
+                what: "Ground contact time is how long each foot stays on the ground (milliseconds).",
+                good: "Quicker (lower) is generally more economical — efficient runners are often around 200–250 ms.",
+                improve: "Higher cadence, strides and strength/plyometric work tend to shorten it over time.",
+                goodWhenLower: true)
+        case "vertical_ratio":
+            return MetricGuide(
+                what: "Vertical ratio is your bounce relative to your stride (oscillation ÷ stride length, %). It normalises 'bounciness' for speed.",
+                good: "Lower is more efficient — you're moving forward, not up and down.",
+                improve: "It comes down with higher cadence and better posture; it's a cleaner economy signal than raw oscillation.",
+                goodWhenLower: true)
+        case "run_power":
+            return MetricGuide(
+                what: "Running power estimates your mechanical output in watts.",
+                good: "Use it relative to your own runs. Steadier power on hills and into wind helps you pace by effort instead of pace.",
+                improve: "It's most useful live for pacing; for trends, watch your power-at-a-given-heart-rate as fitness improves.")
+        default:
+            break
+        }
+        switch title {
+        case "Load · ACWR":
+            return MetricGuide(
+                what: "Acute:Chronic Workload Ratio compares your last 7 days of training to your rolling 28-day average.",
+                good: "Roughly 0.8–1.3 is the sweet spot. Above ~1.5 means you're ramping fast — a higher injury-risk zone.",
+                improve: "Build mileage gradually and follow a hard week with an easier one to keep the ratio in range.")
+        case "Volume":
+            return MetricGuide(
+                what: "Total running distance over the last 7 days.",
+                good: "Progress it gradually — big week-to-week jumps are a classic injury trigger.",
+                improve: "Add roughly 10% a week at most, and bank a down week every few weeks to absorb the work.")
+        default:
+            return nil
         }
     }
 }
