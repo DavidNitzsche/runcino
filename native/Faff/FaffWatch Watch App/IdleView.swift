@@ -24,45 +24,39 @@ struct IdleView: View {
                 Spacer()
             }
             .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
-            Group {
-                if workout.isRace { raceBody } else { workoutBody }
-            }
-            .padding(.top, 14)
-            Spacer(minLength: 8)                       // pushes START to the bottom edge
+            Spacer(minLength: 2)
+            if workout.isRace { raceBody } else { workoutBody }
+            Spacer(minLength: 6)
             startButton
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, 10).padding(.bottom, 8)
+        .padding(.horizontal, 10).padding(.bottom, 2)
         .background(WatchTheme.C.bg.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
     }
 
     // Workout day (watch-app.html §A): readiness pill, name hero, pace.
     @ViewBuilder private var workoutBody: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 5) {
             if let score = workout.readinessScore {
                 HStack(spacing: 5) {
-                    Circle().fill(readinessColor).frame(width: 7, height: 7)
+                    Circle().fill(readinessColor).frame(width: 6, height: 6)
                     Text("\(score) · \(workout.readinessLabel ?? "Ready")".uppercased())
-                        .font(WatchTheme.body(11.5, .bold)).tracking(0.5)
+                        .font(WatchTheme.body(10, .bold)).tracking(0.5)
                         .foregroundStyle(readinessColor)
                 }
-                .padding(.vertical, 5).padding(.horizontal, 10)
+                .padding(.vertical, 4).padding(.horizontal, 9)
                 .background(readinessColor.opacity(0.15), in: Capsule())
             }
-            // Sized to stay legible on the Ultra without overflowing a 41mm;
-            // minimumScaleFactor + 2-line wrap absorb longer names.
             Text(workout.name)
-                .font(WatchTheme.display(58)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
+                .font(WatchTheme.display(52)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
                 .lineLimit(2).minimumScaleFactor(0.4).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
             Text(paceLine)
-                .font(WatchTheme.sub(22, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
+                .font(WatchTheme.sub(15, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
                 .textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.6)
             Text(estLine)
-                .font(WatchTheme.body(19, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
-                .lineLimit(1).minimumScaleFactor(0.7)
+                .font(WatchTheme.body(13, .semibold)).tracking(0.4).foregroundStyle(WatchTheme.C.t3)
         }
         .frame(maxWidth: .infinity)
     }
@@ -75,16 +69,15 @@ struct IdleView: View {
                     .font(WatchTheme.body(12.5, .bold)).tracking(1.1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
             }
             Text(workout.goalSec.map { PaceFormat.hm($0) } ?? workout.name)
-                .font(WatchTheme.display(68)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
+                .font(WatchTheme.display(64)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
+                .lineLimit(1).minimumScaleFactor(0.5)
             if let strategy = workout.strategyLabel {
                 Text(strategy)
-                    .font(WatchTheme.sub(22, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
+                    .font(WatchTheme.sub(15, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
                     .lineLimit(1).minimumScaleFactor(0.6)
             }
             Text(raceMetaLine)
-                .font(WatchTheme.body(19, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
-                .lineLimit(1).minimumScaleFactor(0.7)
+                .font(WatchTheme.body(13, .semibold)).tracking(0.4).foregroundStyle(WatchTheme.C.t3)
             courseStrip.padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
