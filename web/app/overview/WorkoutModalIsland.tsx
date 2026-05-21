@@ -298,12 +298,24 @@ interface ActualRun {
   paceSPerMi: number;
   avgHr: number | null;
   maxHr: number | null;
+  avgCadence: number | null;
   elevGainFt: number;
   workoutType: number | null;
   splits: ActualSplit[];
   summaryPolyline: string | null;
   startLatLng: [number, number] | null;
   endLatLng: [number, number] | null;
+}
+
+interface RecoveryCtx {
+  hrvMs: number | null; hrvBaselineMs: number | null;
+  restingHrBpm: number | null; restingHrBaselineBpm: number | null;
+  sleepHours: number | null; respiratoryRate: number | null;
+}
+interface RunDynamics {
+  cadence: number | null; strideLength: number | null;
+  verticalOscillation: number | null; groundContactTime: number | null;
+  verticalRatio: number | null; runPower: number | null;
 }
 
 function fmtPaceMS(sPerMi: number): string {
@@ -365,6 +377,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
   const [userMaxHr, setUserMaxHr] = useState<number | null>(null);
   const [userMaxHrSource, setUserMaxHrSource] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryCtx | null>(null);
+  const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
 
   // Always load fitness on modal open — even for future workouts where
   // we never hit by-date. This is what threads the user's actual race
@@ -397,6 +411,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         setActual(j.run ?? null);
         setUserMaxHr(j.maxHr ?? null);
         setUserMaxHrSource(j.maxHrSource ?? null);
+        setRecovery(j.recovery ?? null);
+        setDynamics(j.dynamics ?? null);
         if (j.fitness) setUserFitness(j.fitness);
       })
       .catch(() => { if (!cancelled) setActual(null); });
@@ -458,10 +474,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
-            {(actual.elevGainFt > 0 || actual.maxHr) && (
+            {(actual.elevGainFt > 0 || actual.maxHr || actual.avgCadence) && (
               <div className="wm-debrief-meta">
                 {actual.elevGainFt > 0 && <span><strong>{actual.elevGainFt}</strong> ft elev</span>}
                 {actual.maxHr && <span><strong>{actual.maxHr}</strong> max HR</span>}
+                {actual.avgCadence && <span><strong>{actual.avgCadence}</strong> cadence</span>}
                 <span>{actual.name}</span>
               </div>
             )}
@@ -556,6 +573,33 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               </div>
             </div>
 
+            {/* Running form — per-run dynamics from Apple Health */}
+            {(() => {
+              const cad = actual.avgCadence ?? dynamics?.cadence ?? null;
+              const cells: Array<{ label: string; value: string; unit: string }> = [
+                { label: 'Cadence',      value: cad != null ? String(Math.round(cad)) : '—', unit: cad != null ? 'spm' : '' },
+                { label: 'Stride',       value: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '—', unit: dynamics?.strideLength != null ? 'm' : '' },
+                { label: 'Vert Osc',     value: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '—', unit: dynamics?.verticalOscillation != null ? 'cm' : '' },
+                { label: 'Grnd Contact', value: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '—', unit: dynamics?.groundContactTime != null ? 'ms' : '' },
+                { label: 'Vert Ratio',   value: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '—', unit: dynamics?.verticalRatio != null ? '%' : '' },
+                { label: 'Run Power',    value: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '—', unit: dynamics?.runPower != null ? 'W' : '' },
+              ];
+              if (!cells.some((c) => c.value !== '—')) return null;
+              return (
+                <div className="wm-form">
+                  <div className="wm-sub-label">Running form · Apple Health</div>
+                  <div className="wm-form-grid">
+                    {cells.map((c) => (
+                      <div key={c.label} className="wm-form-cell">
+                        <div className="wm-form-val">{c.value}{c.unit && <small>{c.unit}</small>}</div>
+                        <div className="wm-form-lbl">{c.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Coach take — dynamic response based on actuals vs plan */}
             {(() => {
               const [paceLow, paceHigh] = parsePaceBounds(desc.paceTarget);
@@ -570,6 +614,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 actualAvgHr: actual.avgHr,
                 splits: actual.splits.map((s) => ({ mile: s.mile, paceSPerMi: s.paceSPerMi, avgHr: s.avgHr })),
                 maxHr: userMaxHr,
+                recovery: recovery ? {
+                  hrvMs: recovery.hrvMs, hrvBaselineMs: recovery.hrvBaselineMs,
+                  restingHrBpm: recovery.restingHrBpm, restingHrBaselineBpm: recovery.restingHrBaselineBpm,
+                  sleepHours: recovery.sleepHours,
+                } : null,
               });
               const maxHrLabel = userMaxHr
                 ? `Max HR ${userMaxHr} · ${userMaxHrSource === 'manual' ? 'manual' : userMaxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
@@ -1015,6 +1064,35 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 12px; color: rgba(13,15,18,.55);
         }
         .wm-debrief-meta strong { color: #0D0F12; font-weight: 600; }
+
+        .wm-form { margin-bottom: 22px; }
+        .wm-form-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+          gap: 8px;
+          margin-top: 8px;
+        }
+        .wm-form-cell {
+          background: rgba(13,15,18,.03);
+          border: 1px solid rgba(13,15,18,.06);
+          border-radius: 8px;
+          padding: 10px 12px;
+        }
+        .wm-form-val {
+          font-family: 'Bebas Neue', sans-serif;
+          font-size: 24px; line-height: 1; color: #0D0F12;
+        }
+        .wm-form-val small {
+          font-family: 'Inter', sans-serif;
+          font-size: 10px; font-weight: 600; color: rgba(13,15,18,.40);
+          margin-left: 2px;
+        }
+        .wm-form-lbl {
+          font-family: 'Inter', sans-serif;
+          font-size: 8.5px; font-weight: 700; letter-spacing: .08em;
+          text-transform: uppercase; color: rgba(13,15,18,.40);
+          margin-top: 4px;
+        }
 
         .wm-debrief-grid {
           display: grid;

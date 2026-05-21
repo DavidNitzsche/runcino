@@ -35,6 +35,62 @@ export interface DebriefInput {
   /** User's max HR (bpm). When set, HR commentary uses %max zones
    *  instead of qualitative ranges. */
   maxHr?: number | null;
+  /** The morning's recovery vitals + 30-day baselines (Apple Health). When
+   *  present, an elevated-HR / off-day read names the actual cause instead
+   *  of "possible fatigue — worth a check". */
+  recovery?: RecoveryContext | null;
+}
+
+export interface RecoveryContext {
+  hrvMs: number | null;
+  hrvBaselineMs: number | null;
+  restingHrBpm: number | null;
+  restingHrBaselineBpm: number | null;
+  sleepHours: number | null;
+}
+
+/** Join ["a","b","c"] → "a, b and c". */
+function joinList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * Read the recovery context into "off" factors (meaningfully worse than
+ * baseline) and "normal" factors. Drives whether an elevated-HR run gets
+ * a concrete cause ("HRV down 22%, 5.8h sleep") or a clean bill.
+ */
+export function recoveryRead(r?: RecoveryContext | null): {
+  hasData: boolean; offFactors: string[]; normalFactors: string[];
+} {
+  const off: string[] = [];
+  const normal: string[] = [];
+  let has = false;
+  if (!r) return { hasData: false, offFactors: off, normalFactors: normal };
+
+  if (r.hrvMs != null) {
+    has = true;
+    if (r.hrvBaselineMs != null && r.hrvBaselineMs > 0) {
+      const pct = Math.round((1 - r.hrvMs / r.hrvBaselineMs) * 100);
+      if (pct >= 10) off.push(`HRV ${Math.round(r.hrvMs)}ms (down ${pct}% from your ${Math.round(r.hrvBaselineMs)}ms baseline)`);
+      else normal.push(`HRV ${Math.round(r.hrvMs)}ms`);
+    }
+  }
+  if (r.restingHrBpm != null) {
+    has = true;
+    if (r.restingHrBaselineBpm != null && r.restingHrBaselineBpm > 0) {
+      const delta = Math.round(r.restingHrBpm - r.restingHrBaselineBpm);
+      if (delta >= 4) off.push(`resting HR ${Math.round(r.restingHrBpm)} (+${delta} over your ${Math.round(r.restingHrBaselineBpm)} baseline)`);
+      else normal.push(`resting HR ${Math.round(r.restingHrBpm)}`);
+    }
+  }
+  if (r.sleepHours != null) {
+    has = true;
+    if (r.sleepHours < 6.5) off.push(`only ${r.sleepHours.toFixed(1)}h sleep`);
+    else normal.push(`${r.sleepHours.toFixed(1)}h sleep`);
+  }
+  return { hasData: has, offFactors: off, normalFactors: normal };
 }
 
 function fmtPace(s: number): string {
@@ -96,8 +152,9 @@ export function generateRunDebrief(input: DebriefInput): string {
   const {
     planType, planDistanceMi, paceLow, paceHigh,
     actualDistanceMi, actualPaceSPerMi, actualAvgHr,
-    splits = [], maxHr,
+    splits = [], maxHr, recovery,
   } = input;
+  const rec = recoveryRead(recovery);
 
   const sentences: string[] = [];
   // Track whether the pace sentence already cited HR + %max so we don't
@@ -178,7 +235,13 @@ export function generateRunDebrief(input: DebriefInput): string {
       } else if (hrStatus === 'moderate') {
         sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix} — moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
       } else if (hrStatus === 'elevated') {
-        sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — possible heat, fatigue, or sleep deficit. Worth a check.`);
+        if (rec.offFactors.length > 0) {
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — and your recovery shows why: ${joinList(rec.offFactors)}. Under-recovered, not the run.`);
+        } else if (rec.hasData) {
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, yet recovery looks normal (${joinList(rec.normalFactors)}) — likely heat or in-run dehydration, not fatigue.`);
+        } else {
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — possible heat, fatigue, or sleep deficit. Worth a check.`);
+        }
       } else {
         sentences.push(`Pace held in the target band at ${pace}/mi.`);
       }
@@ -205,7 +268,11 @@ export function generateRunDebrief(input: DebriefInput): string {
     } else {
       // slow
       if (hrStatus === 'elevated') {
-        sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — strong signal of an off day. Sleep, hydration, or accumulated fatigue. Real recovery needed.`);
+        if (rec.offFactors.length > 0) {
+          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — and the data backs it up: ${joinList(rec.offFactors)}. That's a real off day; recovery needed.`);
+        } else {
+          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — strong signal of an off day. Sleep, hydration, or accumulated fatigue. Real recovery needed.`);
+        }
       } else {
         sentences.push(`Slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — possibly fatigue, heat, or terrain. Worth a check.`);
       }

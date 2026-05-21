@@ -106,6 +106,45 @@ export async function GET(req: NextRequest) {
     // Splits stay empty; the rest of the response still works
   }
 
+  // ── Apple Health for this date: per-run dynamics + the morning's
+  //    recovery vitals (with 30-day baselines) so the coach take can
+  //    cite the actual cause of an off day instead of guessing. ──
+  interface SampleRow { sample_type: string; value: number }
+  const daySamples = await query<SampleRow>(
+    `SELECT sample_type, value FROM health_samples
+      WHERE user_id = $1 AND sample_date = $2
+        AND sample_type = ANY($3)`,
+    [uid, date, ['hrv', 'resting_hr', 'sleep_hours', 'respiratory_rate',
+                 'cadence', 'stride_length', 'vertical_oscillation',
+                 'ground_contact_time', 'vertical_ratio', 'run_power']],
+  ).catch(() => [] as SampleRow[]);
+  const baselineRows = await query<{ sample_type: string; avg: number }>(
+    `SELECT sample_type, AVG(value)::float8 AS avg FROM health_samples
+      WHERE user_id = $1
+        AND sample_date >= ($2::date - INTERVAL '30 days') AND sample_date < $2
+        AND sample_type = ANY($3)
+      GROUP BY sample_type`,
+    [uid, date, ['hrv', 'resting_hr']],
+  ).catch(() => [] as { sample_type: string; avg: number }[]);
+  const dayMap = new Map(daySamples.map((r) => [r.sample_type, Number(r.value)]));
+  const baseMap = new Map(baselineRows.map((r) => [r.sample_type, Number(r.avg)]));
+  const recovery = {
+    hrvMs: dayMap.get('hrv') ?? null,
+    hrvBaselineMs: baseMap.get('hrv') ?? null,
+    restingHrBpm: dayMap.get('resting_hr') ?? null,
+    restingHrBaselineBpm: baseMap.get('resting_hr') ?? null,
+    sleepHours: dayMap.get('sleep_hours') ?? null,
+    respiratoryRate: dayMap.get('respiratory_rate') ?? null,
+  };
+  const dynamics = {
+    cadence: dayMap.get('cadence') ?? null,
+    strideLength: dayMap.get('stride_length') ?? null,
+    verticalOscillation: dayMap.get('vertical_oscillation') ?? null,
+    groundContactTime: dayMap.get('ground_contact_time') ?? null,
+    verticalRatio: dayMap.get('vertical_ratio') ?? null,
+    runPower: dayMap.get('run_power') ?? null,
+  };
+
   // Max HR — prefer the user's manual override, fall back to the
   // value computed from their activity history (peak max_heartrate
   // across runs). null when neither is available.
@@ -123,6 +162,8 @@ export async function GET(req: NextRequest) {
     ok: true,
     maxHr: maxHr.value,
     maxHrSource: maxHr.source,
+    recovery,
+    dynamics,
     fitness: {
       paces: fitness.paces,
       racePaceBand: fitness.racePaceBand,
