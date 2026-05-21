@@ -156,7 +156,7 @@ private struct NoWorkoutView: View {
                 Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
                 Spacer()
             }
-            .padding(.leading, 8).padding(.top, WatchTheme.brandTopInset)   // FAFF level with the OS clock
+            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
             Spacer()
             // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
             Text("REST").font(WatchTheme.display(80)).foregroundStyle(WatchTheme.C.green)

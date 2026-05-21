@@ -155,10 +155,8 @@ struct Stat: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 Text(value).font(WF.bebas(36)).foregroundStyle(color).monospacedDigit()
-                    .lineLimit(1).minimumScaleFactor(0.6)
                 if let unit { Text(unit).font(WF.interSemi(13)).foregroundStyle(WP.muted) }
             }
-            .layoutPriority(1)
             if let label {
                 Text(label.uppercased())
                     .font(WF.interBold(9)).tracking(0.7)

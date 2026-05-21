@@ -10,20 +10,8 @@
 
 import SwiftUI
 import CoreText
-import WatchKit
 
 enum WatchTheme {
-
-    // MARK: Layout — adaptive top lift for the Bebas wordmark
-    /// The brand mark / eyebrow is lifted into the OS status row so it baseline-
-    /// aligns with the wall clock. The Bebas wordmark's caps reach higher in its
-    /// line box than the Inter eyebrows, so on the smaller 40/41mm watches the
-    /// fixed lift clips it against the tighter top curve — those screens get a few
-    /// extra points. Larger watches (44mm+, Ultra) keep the tight lift that sits
-    /// FAFF level with the clock.
-    static var brandTopInset: CGFloat {
-        WKInterfaceDevice.current().screenBounds.height < 210 ? 38 : 20
-    }
 
     // MARK: Semantic colours (v4 dark variant — match watch-app.html)
     enum C {

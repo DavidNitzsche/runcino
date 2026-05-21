@@ -16,6 +16,11 @@ import SwiftUI
 
 struct OverviewResponse: Decodable {
     let ok: Bool
+    /// Whether the server resolved an authenticated user. /api/overview is
+    /// auth-optional (serves the 'me' plan anonymously), so a stale token
+    /// silently downgrades userId-gated fields (readiness, connectors). The
+    /// fetch path uses this to refresh+retry once. Absent on old payloads → nil.
+    let authenticated: Bool?
     let today: String?
     let planCurrentPhase: String?
     let profileName: String?
@@ -659,6 +664,21 @@ enum RunByDateAPI {
 @MainActor
 enum OverviewAPI {
     static func fetch() async throws -> OverviewResponse {
+        let first = try await fetchOnce()
+        // /api/overview is auth-optional: an expired access token doesn't 401,
+        // it silently returns anonymous 'me' data with userId-gated fields
+        // (readiness, connectors) empty. The reactive 401-refresh in FaffAPI
+        // never fires here. So if we HAD a token but the server says we weren't
+        // authenticated, the token is stale — refresh once and retry.
+        if first.authenticated == false, TokenStore.shared.accessToken != nil {
+            if await FaffAPI.shared.refreshAccessToken() {
+                return try await fetchOnce()
+            }
+        }
+        return first
+    }
+
+    private static func fetchOnce() async throws -> OverviewResponse {
         guard let url = URL(string: "/api/overview", relativeTo: API.baseURL) else {
             throw APIError.invalidURL
         }

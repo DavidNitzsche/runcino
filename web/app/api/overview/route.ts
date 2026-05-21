@@ -56,6 +56,12 @@ type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutD
 
 interface OverviewApiOk {
   ok: true;
+  /** Whether the request resolved an authenticated user (Bearer/cookie).
+   *  /overview is auth-OPTIONAL — it serves the single-tenant 'me' plan
+   *  even anonymously — so userId-gated fields (readiness, connectors)
+   *  silently go empty when a token is expired. Native clients read this
+   *  to detect a stale-token downgrade and refresh+retry. */
+  authenticated: boolean;
   today: string;
   state: Awaited<ReturnType<typeof gatherCoachState>>;
   workout: CoachDecision<WorkoutPrescription>;
@@ -523,17 +529,12 @@ export async function GET(req: Request): Promise<Response> {
     // of composing its own. Null when there's no health-derived score.
     let readinessRecommendation: string | null = null;
     try {
-      // Single-tenant: readiness resolves through the SAME 'me' fallback as the
-      // plan / ACWR / completion data, so the ring shows a real score even when
-      // the request's Bearer token didn't resolve a userId (expired/refresh
-      // lag). Previously this was gated behind `if (userId)`, which is why the
-      // ring went dashed for an authed user whose token momentarily didn't
-      // resolve while everything else (plan, ACWR) still rendered off 'me'.
-      const readinessUid = userId ?? (await resolvePlanUserId());
-      const r = await computeReadinessScore(readinessUid, today, null, state.recovery?.rhrBpm ?? null);
-      readinessScore = r.score;
-      readinessState = r.score != null ? r.state : null;
-      readinessRecommendation = r.score != null && r.recommendation ? r.recommendation : null;
+      if (userId) {
+        const r = await computeReadinessScore(userId, today, null, state.recovery?.rhrBpm ?? null);
+        readinessScore = r.score;
+        readinessState = r.score != null ? r.state : null;
+        readinessRecommendation = r.score != null && r.recommendation ? r.recommendation : null;
+      }
     } catch { /* silent → dashed ring */ }
 
     // Future long runs: next 4 weeks after this week, largest isLong workout in each.
@@ -561,6 +562,7 @@ export async function GET(req: Request): Promise<Response> {
 
     const body: OverviewApiOk = {
       ok: true,
+      authenticated: userId != null,
       today,
       state,
       workout,

@@ -15,50 +15,31 @@ struct IdleView: View {
     let workout: WatchWorkout
     let onStart: () -> Void
 
-    /// The hero block is authored ONCE at this full size, then uniformly scaled
-    /// to fit whatever room a given watch leaves. No per-device branching.
-    private struct Tier { let hero: CGFloat; let mid: CGFloat; let sub: CGFloat; let spacing: CGFloat }
-    private static let base = Tier(hero: 58, mid: 22, sub: 19, spacing: 8)
-
     var body: some View {
-        GeometryReader { geo in
-            // Reclaim the top inset (the OS clock's row) so we have the full
-            // screen height to work with and FAFF can sit up alongside the clock.
-            let topInset = geo.safeAreaInsets.top
-            VStack(spacing: 0) {
-                // w-top: brand mark left (the OS clock owns the time, top-right).
-                HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic()
-                        .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, max(12, topInset - 22))   // lift into the clock row, never clipped
-                // Author the block at full size; scale it to fit the leftover
-                // region between FAFF and START — big on the Ultra, proportionally
-                // smaller on the 40mm, always fits, never clips.
-                GeometryReader { mid in
-                    heroBlock(Self.base)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .modifier(ScaleToFitHeight(available: mid.size.height))
-                        .frame(width: mid.size.width, height: mid.size.height)
-                }
-                startButton
+        VStack(spacing: 0) {
+            // w-top: brand mark left (the OS clock provides the time, right).
+            HStack {
+                Text("FAFF").font(WatchTheme.display(15)).italic()
+                    .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                Spacer()
             }
-            .frame(width: geo.size.width, height: geo.size.height + topInset, alignment: .top)
-            .ignoresSafeArea(.container, edges: .top)
+            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
+            Group {
+                if workout.isRace { raceBody } else { workoutBody }
+            }
+            .padding(.top, 14)
+            Spacer(minLength: 8)                       // pushes START to the bottom edge
+            startButton
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 10).padding(.bottom, 8)
         .background(WatchTheme.C.bg.ignoresSafeArea())
-    }
-
-    @ViewBuilder private func heroBlock(_ t: Tier) -> some View {
-        if workout.isRace { raceBody(t) } else { workoutBody(t) }
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     // Workout day (watch-app.html §A): readiness pill, name hero, pace.
-    @ViewBuilder private func workoutBody(_ t: Tier) -> some View {
-        VStack(spacing: t.spacing) {
+    @ViewBuilder private var workoutBody: some View {
+        VStack(spacing: 7) {
             if let score = workout.readinessScore {
                 HStack(spacing: 5) {
                     Circle().fill(readinessColor).frame(width: 7, height: 7)
@@ -69,35 +50,40 @@ struct IdleView: View {
                 .padding(.vertical, 5).padding(.horizontal, 10)
                 .background(readinessColor.opacity(0.15), in: Capsule())
             }
+            // Sized to stay legible on the Ultra without overflowing a 41mm;
+            // minimumScaleFactor + 2-line wrap absorb longer names.
             Text(workout.name)
-                .font(WatchTheme.display(t.hero)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(1).minimumScaleFactor(0.4)
+                .font(WatchTheme.display(58)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
+                .lineLimit(2).minimumScaleFactor(0.4).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
             Text(paceLine)
-                .font(WatchTheme.sub(t.mid, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
+                .font(WatchTheme.sub(22, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
                 .textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.6)
             Text(estLine)
-                .font(WatchTheme.body(t.sub, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
+                .font(WatchTheme.body(19, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
     }
 
     // Pre-race (watch-app.html §F): goal hero, strategy, distance · gels, strip.
-    @ViewBuilder private func raceBody(_ t: Tier) -> some View {
-        VStack(spacing: t.spacing) {
-            Text(workout.name.uppercased())
-                .font(WatchTheme.body(12.5, .bold)).tracking(1.1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
+    @ViewBuilder private var raceBody: some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 5) {
+                Text(workout.name.uppercased())
+                    .font(WatchTheme.body(12.5, .bold)).tracking(1.1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
+            }
             Text(workout.goalSec.map { PaceFormat.hm($0) } ?? workout.name)
-                .font(WatchTheme.display(t.hero + 10)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
+                .font(WatchTheme.display(68)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
                 .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
             if let strategy = workout.strategyLabel {
                 Text(strategy)
-                    .font(WatchTheme.sub(t.mid, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
+                    .font(WatchTheme.sub(22, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
                     .lineLimit(1).minimumScaleFactor(0.6)
             }
             Text(raceMetaLine)
-                .font(WatchTheme.body(t.sub, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
+                .font(WatchTheme.body(19, .semibold)).tracking(0.3).foregroundStyle(WatchTheme.C.t3)
                 .lineLimit(1).minimumScaleFactor(0.7)
             courseStrip.padding(.top, 4)
         }
@@ -162,28 +148,6 @@ struct IdleView: View {
             }
         }
         .frame(height: 5)
-    }
-}
-
-/// Measures its content's natural height and uniformly scales it down (never up)
-/// so it fits `available`. scaleEffect is a render transform, so the background
-/// GeometryReader still reports the un-scaled height — no measurement feedback loop.
-private struct FaffNaturalHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
-private struct ScaleToFitHeight: ViewModifier {
-    let available: CGFloat
-    @State private var natural: CGFloat = 0
-    func body(content: Content) -> some View {
-        let scale = (natural > 0 && available > 0) ? min(1, available / natural) : 1
-        return content
-            .background(GeometryReader { g in
-                Color.clear.preference(key: FaffNaturalHeightKey.self, value: g.size.height)
-            })
-            .scaleEffect(scale, anchor: .center)
-            .onPreferenceChange(FaffNaturalHeightKey.self) { natural = $0 }
     }
 }
 
