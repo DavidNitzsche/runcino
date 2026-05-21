@@ -103,16 +103,24 @@ struct WatchWorkout: Codable {
     let readinessLabel: String?     // "Primed" / "Hold easy" / "Back off"
     let distanceMi: Double?
     let paceLabel: String?          // training-zone tag, e.g. "T", "I", "E"
+    // Race day (watch-app.html §F). isRace flips the faces to the race
+    // layout (proj finish / to-go / gel cues) fed by these fields.
+    let isRace: Bool
+    let goalSec: Int?               // goal finish time
+    let strategyLabel: String?      // "Even effort · 8:46 flat"
+    let gelsMi: [Double]?           // gel marker mile points
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
+        case isRace, goalSec, strategyLabel, gelsMi
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
          phases: [WatchPhase], completionEndpoint: String, expiresAt: String,
          readinessScore: Int? = nil, readinessLabel: String? = nil,
-         distanceMi: Double? = nil, paceLabel: String? = nil) {
+         distanceMi: Double? = nil, paceLabel: String? = nil,
+         isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -124,6 +132,10 @@ struct WatchWorkout: Codable {
         self.readinessLabel = readinessLabel
         self.distanceMi = distanceMi
         self.paceLabel = paceLabel
+        self.isRace = isRace
+        self.goalSec = goalSec
+        self.strategyLabel = strategyLabel
+        self.gelsMi = gelsMi
     }
 
     init(from decoder: Decoder) throws {
@@ -138,6 +150,10 @@ struct WatchWorkout: Codable {
         self.readinessLabel = try c.decodeIfPresent(String.self, forKey: .readinessLabel)
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.paceLabel = try c.decodeIfPresent(String.self, forKey: .paceLabel)
+        self.isRace = try c.decodeIfPresent(Bool.self, forKey: .isRace) ?? false
+        self.goalSec = try c.decodeIfPresent(Int.self, forKey: .goalSec)
+        self.strategyLabel = try c.decodeIfPresent(String.self, forKey: .strategyLabel)
+        self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
         // Re-stamp each phase with its cursor index.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
@@ -170,6 +186,7 @@ struct WatchCompletion: Encodable {
     let totalDurationSec: Int
     let avgHr: Int?
     let maxHr: Int?
+    var avgCadence: Int? = nil
     let phases: [WatchCompletionPhase]
 }
 
@@ -212,6 +229,48 @@ extension WatchWorkout {
             paceLabel: "T"
         )
     }
+
+    /// A point-to-point race fed to the same engine (watch-app.html §F):
+    /// a flat list of terrain-aware course phases, each with its own even-
+    /// effort target pace, plus gel markers. Drives the race faces in the
+    /// simulator (launch with -race) before phone race sync exists.
+    static var sampleRace: WatchWorkout {
+        var phases: [WatchPhase] = []
+        var idx = 0
+        func add(_ label: String, _ sec: Int, target: Int, tol: Int = 12) {
+            phases.append(WatchPhase(index: idx, type: .work, label: label, durationSec: sec,
+                                     targetPaceSPerMi: target, tolerancePaceSPerMi: tol,
+                                     haptic: .transitionWork))
+            idx += 1
+        }
+        // Big Sur-shaped: rolling start, the Hurricane Point climb (slow
+        // target), the descent (fast), then the long run-in. Targets are
+        // even EFFORT, so pace shifts with terrain.
+        add("Opening rollers", 1500, target: 526)   // 8:46
+        add("Bixby descent",   900,  target: 502)    // 8:22
+        add("Hurricane climb", 1140, target: 638)    // 10:38
+        add("Point descent",   720,  target: 514)    // 8:34
+        add("Coast miles",     3120, target: 532)    // 8:52
+        add("Carmel run-in",   1500, target: 520)    // 8:40
+        let total = phases.reduce(0) { $0 + $1.durationSec }
+        return WatchWorkout(
+            workoutId: "sample-bigsur",
+            name: "Big Sur",
+            summary: "Even effort · 8:46 flat",
+            totalEstimatedMinutes: total / 60,
+            phases: phases,
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2026-05-21T08:00:00Z",
+            readinessScore: 88,
+            readinessLabel: "Race ready",
+            distanceMi: 26.2,
+            paceLabel: "Goal",
+            isRace: true,
+            goalSec: 13_800,            // 3:50:00
+            strategyLabel: "Even effort · 8:46 flat",
+            gelsMi: [4, 8, 12, 16, 20, 23]
+        )
+    }
 }
 
 // MARK: - Pace formatting helpers
@@ -229,5 +288,21 @@ enum PaceFormat {
         let m = seconds / 60
         let s = seconds % 60
         return "\(m):\(String(format: "%02d", s))"
+    }
+
+    /// "1:34:20" / "3:50" — h:mm:ss for race-length clocks, m:ss under an hour.
+    static func hms(_ seconds: Int) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        if h > 0 { return "\(h):\(String(format: "%02d", m)):\(String(format: "%02d", s))" }
+        return "\(m):\(String(format: "%02d", s))"
+    }
+
+    /// "3:50" — hours:minutes, for goal/projection at race scale.
+    static func hm(_ seconds: Int) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        return "\(h):\(String(format: "%02d", m))"
     }
 }

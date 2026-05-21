@@ -95,7 +95,8 @@ struct WorkoutRootView: View {
     /// shape — so the faces + state machine are fully exercisable.
     private static var simulatorWorkout: WatchWorkout? {
         #if targetEnvironment(simulator)
-        return .sample
+        // Launch with -race to exercise the race-day faces (watch-app.html §F).
+        return ProcessInfo.processInfo.arguments.contains("-race") ? .sampleRace : .sample
         #else
         return nil
         #endif

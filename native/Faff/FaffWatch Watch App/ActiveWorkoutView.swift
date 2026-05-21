@@ -56,13 +56,17 @@ struct ActiveWorkoutView: View {
     @ViewBuilder
     private var faceRouter: some View {
         if let phase = engine.currentPhase {
-            switch phase.type {
-            case .work:
-                WorkIntervalFace(engine: engine, tracker: tracker, phase: phase)
-            case .warmup, .cooldown:
-                SteadyFace(engine: engine, tracker: tracker, phase: phase, accent: WatchTheme.C.t2)
-            case .recovery:
-                RecoveryFace(engine: engine, tracker: tracker, phase: phase)
+            if engine.isRace {
+                RaceFace(engine: engine, tracker: tracker, phase: phase)
+            } else {
+                switch phase.type {
+                case .work:
+                    WorkIntervalFace(engine: engine, tracker: tracker, phase: phase)
+                case .warmup, .cooldown:
+                    SteadyFace(engine: engine, tracker: tracker, phase: phase, accent: WatchTheme.C.t2)
+                case .recovery:
+                    RecoveryFace(engine: engine, tracker: tracker, phase: phase)
+                }
             }
         }
     }
@@ -229,6 +233,98 @@ private struct WorkIntervalFace: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - RACE (the interval face, retargeted · watch-app.html §F)
+
+/// One race stat: big Bebas value (+ optional small unit) over a small
+/// rank label — "3:49 / proj finish", "15.8 mi / to go".
+private struct RaceStat: View {
+    let value: String
+    var unit: String? = nil
+    let label: String
+    var align: HorizontalAlignment = .leading
+    var body: some View {
+        VStack(alignment: align, spacing: 0) {
+            (Text(value).font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink)
+             + (unit.map { Text($0).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t2) } ?? Text("")))
+                .lineLimit(1).minimumScaleFactor(0.6)
+            Text(label.uppercased()).font(WatchTheme.body(8, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.t3)
+        }
+    }
+}
+
+private struct RaceFace: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    private var hasPace: Bool { tracker.paceSPerMi > 0 }
+    private var heroColor: Color {
+        guard hasPace, phase.targetPaceSPerMi != nil else { return WatchTheme.C.t3 }
+        return .zone(engine.paceZone)
+    }
+    private var refStatus: (String, Color) {
+        guard phase.targetPaceSPerMi != nil, hasPace else { return ("warming", WatchTheme.C.t3) }
+        let d = engine.paceDeltaSPerMi
+        switch engine.paceZone {
+        case .onTarget: return ("on pace", WatchTheme.C.green)
+        case .drifting: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.amber)
+        case .offTarget: return (d > 0 ? "+\(d)s" : "\(d)s", WatchTheme.C.warn)
+        }
+    }
+    private var raceProgress: Double {
+        guard let total = engine.workout.distanceMi, total > 0 else { return engine.phaseProgress }
+        return min(1, tracker.distanceMi / total)
+    }
+    private var gelCue: String {
+        if let g = engine.nextGel { return "Gel \(g.number) · \(String(format: "%.1f", g.toGoMi))mi" }
+        return "fuel done"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Phase eyebrow (orange) + total elapsed at race scale.
+            HStack(alignment: .firstTextBaseline) {
+                Text(phase.label.uppercased())
+                    .font(WatchTheme.sub(13, .semibold)).tracking(0.8)
+                    .foregroundStyle(WatchTheme.C.orange).lineLimit(1)
+                Spacer()
+                Text(PaceFormat.hms(engine.totalElapsedSec))
+                    .font(WatchTheme.body(13, .semibold)).monospacedDigit().foregroundStyle(WatchTheme.C.t2)
+            }
+            SegmentBar(engine: engine).padding(.top, 5)
+            Spacer(minLength: 4)
+            // Hero — current pace vs this phase's terrain-aware target.
+            Text(hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—")
+                .font(WatchTheme.display(80)).foregroundStyle(heroColor)
+                .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
+            if let target = phase.targetPaceSPerMi {
+                (Text(PaceFormat.mmss(target)).foregroundStyle(WatchTheme.C.ink).bold()
+                 + Text("  ·  ").foregroundStyle(WatchTheme.C.t3)
+                 + Text(refStatus.0).foregroundStyle(refStatus.1))
+                    .font(WatchTheme.body(13, .semibold))
+            }
+            Spacer(minLength: 4)
+            // On-goal read: projected finish + distance to go.
+            HStack(alignment: .firstTextBaseline) {
+                RaceStat(value: engine.projectedFinishSec.map { PaceFormat.hm($0) } ?? "—", label: "proj finish")
+                Spacer()
+                RaceStat(value: engine.distanceToGoMi.map { String(format: "%.1f", $0) } ?? "—",
+                         unit: "mi", label: "to go", align: .trailing)
+            }
+            HStack(spacing: 7) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(WatchTheme.C.track)
+                        Capsule().fill(WatchTheme.C.orange).frame(width: max(geo.size.width * raceProgress, 3))
+                    }
+                }.frame(height: 5)
+                Text(gelCue).font(WatchTheme.body(11, .semibold)).foregroundStyle(WatchTheme.C.t2).lineLimit(1)
+            }.padding(.top, 3)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
     }
 }
 
@@ -457,6 +553,8 @@ private struct TransitionFlip: View {
             switch cue {
             case .headsUp(let t, let s): return ("clock", t, s, WatchTheme.C.amber)
             case .go(let t, let s):      return ("arrow.right", t, s, WatchTheme.C.green)
+            case .phase(let t, let s):   return ("mountain.2.fill", t, s, WatchTheme.C.orange)
+            case .fuel(let t, let s):    return ("bolt.fill", t, s, WatchTheme.C.orange)
             }
         }()
         return VStack(spacing: 8) {

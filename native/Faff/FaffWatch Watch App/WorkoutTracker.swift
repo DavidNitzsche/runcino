@@ -45,6 +45,9 @@ final class WorkoutTracker: NSObject, ObservableObject {
     private var hrSum = 0
     private var hrCount = 0
     var avgHr: Int? { hrCount > 0 ? Int((Double(hrSum) / Double(hrCount)).rounded()) : nil }
+    private var cadSum = 0
+    private var cadCount = 0
+    var avgCadence: Int? { cadCount > 0 ? Int((Double(cadSum) / Double(cadCount)).rounded()) : nil }
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -192,6 +195,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
                 self.cadence = 181 + Int((sin(t / 5) * 3).rounded())
                 self.distanceMi += 0.0024
                 self.hrSum += self.heartRate; self.hrCount += 1
+                self.cadSum += self.cadence; self.cadCount += 1
                 self.maxHr = max(self.maxHr, self.heartRate)
                 try? await Task.sleep(for: .seconds(1))
             }

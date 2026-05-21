@@ -33,6 +33,8 @@ final class WorkoutEngine: ObservableObject {
     enum TransitionCue: Equatable {
         case headsUp(title: String, sub: String)   // amber, before a rep ends
         case go(title: String, sub: String?)       // green, entering a work rep
+        case phase(title: String, sub: String?)    // orange, race phase change
+        case fuel(title: String, sub: String?)     // orange, gel cue
     }
 
     // MARK: Published surface (views bind to these)
@@ -78,6 +80,8 @@ final class WorkoutEngine: ObservableObject {
     /// total clock survives the per-phase resets).
     private var bankedSec: Int = 0
     private var didFireAlmostDone = false
+    /// Gel markers already cued (race mode), so each fires once.
+    private var firedGels: Set<Int> = []
 
     /// Per-phase execution record, accumulated as the workout runs.
     /// `completed` flips to false when the user ends a phase early.
@@ -110,6 +114,41 @@ final class WorkoutEngine: ObservableObject {
     var phaseRemainingSec: Int {
         guard let p = currentPhase else { return 0 }
         return max(0, p.durationSec - phaseElapsedSec)
+    }
+
+    // MARK: Race-derived (watch-app.html §F)
+
+    var isRace: Bool { workout.isRace }
+
+    /// Distance covered (GPS / tracked), in miles.
+    private var coveredMi: Double { tracker?.distanceMi ?? 0 }
+
+    /// Miles still to run.
+    var distanceToGoMi: Double? {
+        guard let total = workout.distanceMi else { return nil }
+        return max(0, total - coveredMi)
+    }
+
+    /// Projected finish time (s), pace-of-the-day extrapolated to the full
+    /// distance. Nil until enough distance has banked to be meaningful.
+    var projectedFinishSec: Int? {
+        guard let total = workout.distanceMi, coveredMi > 0.3 else { return nil }
+        return Int(Double(totalElapsedSec) * total / coveredMi)
+    }
+
+    /// Seconds vs the goal (− = ahead of goal).
+    var projectedDeltaSec: Int? {
+        guard let proj = projectedFinishSec, let goal = workout.goalSec else { return nil }
+        return proj - goal
+    }
+
+    /// The next gel marker and how far to it (mi).
+    var nextGel: (number: Int, toGoMi: Double)? {
+        guard let gels = workout.gelsMi else { return nil }
+        for (i, mark) in gels.enumerated() where mark > coveredMi {
+            return (i + 1, mark - coveredMi)
+        }
+        return nil
     }
 
     // MARK: Splits + session map (the on-demand pages)
@@ -259,6 +298,7 @@ final class WorkoutEngine: ObservableObject {
         bankedSec = 0
         results = []
         didFireAlmostDone = false
+        firedGels = []
         isPaused = false
         pauseStart = nil
         countdownValue = 0
@@ -319,10 +359,20 @@ final class WorkoutEngine: ObservableObject {
 
         // "Almost done" cue · 3s before a WORK interval ends — haptic +
         // a full-screen heads-up flip ("Ease off") so you don't overrun.
-        if phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
+        // (Workout only — a race phase boundary is terrain, not a rep end.)
+        if !isRace, phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
             didFireAlmostDone = true
             Haptics.almostDone()
             flash(.headsUp(title: "Ease off", sub: "\(phaseRemainingSec)s left"), for: 2.6)
+        }
+
+        // Gel cue (race) — fire once as the runner reaches each marker.
+        if isRace, let gels = workout.gelsMi {
+            for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
+                firedGels.insert(i)
+                Haptics.almostDone()
+                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water · on track"), for: 3)
+            }
         }
 
         if phaseElapsedSec >= phase.durationSec {
@@ -352,9 +402,14 @@ final class WorkoutEngine: ObservableObject {
         prepDrift()
         if let p = currentPhase {
             Haptics.play(p.haptic)
-            // Entering a work rep gets a green "Go" flip with the target;
-            // the warmup (first phase) is opened from the countdown, not a flip.
-            if p.type == .work {
+            if isRace {
+                // Race: a phase boundary is a new course segment — orange
+                // flip with the new target + a two-word cue.
+                let sub = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi · hold effort" }
+                flash(.phase(title: p.label, sub: sub), for: 1.8)
+            } else if p.type == .work {
+                // Workout: entering a work rep gets a green "Go" flip with
+                // the target (warmup is opened from the countdown, not a flip).
                 let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
                 let sub = p.targetPaceSPerMi.map { "Target \(PaceFormat.mmss($0))/mi" }
                 flash(.go(title: "Go · Int \(n)", sub: sub), for: 1.5)
@@ -409,6 +464,7 @@ final class WorkoutEngine: ObservableObject {
             totalDurationSec: totalElapsedSec,
             avgHr: tracker?.avgHr,
             maxHr: maxHr > 0 ? maxHr : nil,
+            avgCadence: tracker?.avgCadence,
             phases: results
         )
     }

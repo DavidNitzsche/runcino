@@ -16,51 +16,77 @@ struct IdleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("FAFF").font(WatchTheme.sub(12, .semibold)).tracking(1.5).foregroundStyle(WatchTheme.C.orange)
-                Spacer()
-            }
-            Spacer(minLength: 2)
-
-            // Readiness glance — one word + score (watch-app.html §A).
-            if let score = workout.readinessScore {
-                HStack(spacing: 5) {
-                    Circle().fill(readinessColor).frame(width: 6, height: 6)
-                    Text("\(score) · \(workout.readinessLabel ?? "Ready")")
-                        .font(WatchTheme.sub(12, .semibold)).tracking(0.5)
-                        .foregroundStyle(readinessColor)
-                }
-            }
-
-            // Hero — today's session.
-            Text(workout.name)
-                .font(WatchTheme.display(34)).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(2).minimumScaleFactor(0.5).fixedSize(horizontal: false, vertical: true)
-            // Pace line — zone tag · target · recovery.
-            Text(paceLine)
-                .font(WatchTheme.body(11.5, .semibold)).foregroundStyle(WatchTheme.C.orange)
-                .lineLimit(1).minimumScaleFactor(0.6)
-            // Est time + distance.
-            Text(estLine)
-                .font(WatchTheme.body(10.5)).foregroundStyle(WatchTheme.C.t3).padding(.top, 1)
-
-            segments.padding(.top, 7)
+            if workout.isRace { raceHome } else { workoutHome }
             Spacer(minLength: 6)
-
-            Button(action: onStart) {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
-                    Text("START").font(WatchTheme.sub(15, .semibold)).tracking(2)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 11)
-                .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
-                .background(WatchTheme.C.green, in: Capsule())
-            }
-            .buttonStyle(.plain)
+            startButton
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, 8).padding(.bottom, 2)
         .background(WatchTheme.C.bg.ignoresSafeArea())
+    }
+
+    // Workout day (watch-app.html §A): readiness glance, name hero, pace.
+    @ViewBuilder private var workoutHome: some View {
+        HStack {
+            Text("FAFF").font(WatchTheme.sub(12, .semibold)).tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+            Spacer()
+        }
+        Spacer(minLength: 2)
+        if let score = workout.readinessScore {
+            HStack(spacing: 5) {
+                Circle().fill(readinessColor).frame(width: 6, height: 6)
+                Text("\(score) · \(workout.readinessLabel ?? "Ready")")
+                    .font(WatchTheme.sub(12, .semibold)).tracking(0.5)
+                    .foregroundStyle(readinessColor)
+            }
+        }
+        Text(workout.name)
+            .font(WatchTheme.display(34)).foregroundStyle(WatchTheme.C.ink)
+            .lineLimit(2).minimumScaleFactor(0.5).fixedSize(horizontal: false, vertical: true)
+        Text(paceLine)
+            .font(WatchTheme.body(11.5, .semibold)).foregroundStyle(WatchTheme.C.orange)
+            .lineLimit(1).minimumScaleFactor(0.6)
+        Text(estLine)
+            .font(WatchTheme.body(10.5)).foregroundStyle(WatchTheme.C.t3).padding(.top, 1)
+        segments.padding(.top, 7)
+    }
+
+    // Pre-race (watch-app.html §F): goal hero, strategy, distance · gels.
+    @ViewBuilder private var raceHome: some View {
+        HStack {
+            Text("\(workout.name) · ready".uppercased())
+                .font(WatchTheme.sub(12, .semibold)).tracking(1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
+            Spacer()
+        }
+        Spacer(minLength: 2)
+        Text(workout.goalSec.map { PaceFormat.hm($0) } ?? workout.name)
+            .font(WatchTheme.display(56)).foregroundStyle(WatchTheme.C.ink).lineLimit(1).minimumScaleFactor(0.5)
+        if let strategy = workout.strategyLabel {
+            Text(strategy).font(WatchTheme.body(11.5, .semibold)).foregroundStyle(WatchTheme.C.orange)
+                .lineLimit(1).minimumScaleFactor(0.6)
+        }
+        Text(raceMetaLine).font(WatchTheme.body(10.5)).foregroundStyle(WatchTheme.C.t3).padding(.top, 1)
+        segments.padding(.top, 7)
+    }
+
+    private var startButton: some View {
+        Button(action: onStart) {
+            HStack(spacing: 6) {
+                Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
+                Text("START").font(WatchTheme.sub(15, .semibold)).tracking(2)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 11)
+            .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
+            .background(WatchTheme.C.green, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var raceMetaLine: String {
+        var s = ""
+        if let d = workout.distanceMi { s += String(format: "%.1f mi", d) }
+        if let gels = workout.gelsMi { s += s.isEmpty ? "\(gels.count) gels" : " · \(gels.count) gels" }
+        return s.uppercased()
     }
 
     private var readinessColor: Color {
