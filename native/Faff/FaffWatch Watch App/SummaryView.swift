@@ -38,7 +38,7 @@ struct SummaryView: View {
         // Authored for the Ultra canvas, scaled to fit any watch (no scroll needed).
         ResponsiveFace {
             VStack(spacing: 0) {
-                Spacer(minLength: 0)
+                Spacer(minLength: 30)   // keep the title clear of the OS clock row
                 Text(titleText.uppercased())
                     .font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink)
 
@@ -58,7 +58,7 @@ struct SummaryView: View {
                         .overlay(Capsule().stroke(WatchTheme.C.track, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain).padding(.top, 12)
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
