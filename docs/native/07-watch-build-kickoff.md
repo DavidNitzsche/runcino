@@ -50,8 +50,20 @@ this file, not from something you can't see.
 `node render-refs.mjs` writes the approved faces to `scripts/watch/refs/` (committed), and
 `node compare.mjs refs/<face>.png build/<face>.png` diffs your simulator screenshot against the
 reference and exits non-zero until it matches. **This is the acceptance gate — use it on every
-face.** Definition of done: the compare passes AND you paste the ref + your build side by side
-(with the %) in your report. "Looks close" is not done.
+face.**
+
+> ## DEFINITION OF DONE — hard line, no exceptions
+>
+> The watch is done **only** when `node scripts/watch/verify-all.mjs` prints **`24/24 faces
+> passing`**, and you have **pasted that table** in your report.
+>
+> - Per face, you are done only when `compare.mjs` PASSes and the overlay shows no structural
+>   drift — never "looks close," never "should be good."
+> - Drop each built face's simulator screenshot in `scripts/watch/build/<face>.png` (same base
+>   name as the ref), then run `verify-all.mjs`. The table tells you exactly which faces still
+>   FAIL — fix those, re-run, repeat until 24/24.
+> - **Do not claim the watch is finished without a 24/24 table.** A claim of "done" with no table,
+>   or a table that isn't 24/24, is not done — keep going.
 
 **The loop:**
 
