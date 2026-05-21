@@ -727,6 +727,52 @@ async function bootstrap(): Promise<void> {
  *  migration runs exactly once (guarded by `data_migrations` table)
  *  so deploys don't keep re-applying them. */
 async function runDataMigrations(client: PoolClient): Promise<void> {
+  // ── 2026-05-21 · claim legacy 'me' connector_tokens to the owner ──
+  //
+  // The signup backfill (maybeBackfillLegacyOwner) reassigned the user_uuid
+  // tables and the user_id-text tables, but MISSED connector_tokens — which
+  // is keyed by user_id (text). So the owner's Strava OAuth row stayed under
+  // 'me' while strava_activities got claimed to the owner's UUID. Result:
+  // listUserConnectors(ownerId) returned nothing, and every client showed
+  // Strava as "Connect" despite a live, syncing connection.
+  //
+  // Reassign each legacy 'me' connector to the owner, per-provider, skipping
+  // any provider the owner already holds (so we never violate the
+  // (user_id, provider) uniqueness — e.g. an apple_health row from ingest).
+  // Self-gated by its own name so it runs regardless of the block below.
+  const CONN_MIG = '2026-05-21-claim-connector-tokens';
+  const connDone = await client.query<{ name: string }>(
+    `SELECT name FROM data_migrations WHERE name = $1 LIMIT 1`, [CONN_MIG],
+  );
+  if (connDone.rows.length === 0) {
+    try {
+      const legacy = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
+      const owner = await client.query<{ id: string }>(
+        `SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [legacy],
+      );
+      const ownerId = owner.rows[0]?.id;
+      if (ownerId) {
+        await client.query(
+          `UPDATE connector_tokens ct
+              SET user_id = $1, updated_at = NOW()
+            WHERE ct.user_id = 'me'
+              AND ct.disconnected_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM connector_tokens o
+                 WHERE o.user_id = $1 AND o.provider = ct.provider
+                   AND o.disconnected_at IS NULL)`,
+          [ownerId],
+        );
+      }
+      await client.query(
+        `INSERT INTO data_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+        [CONN_MIG],
+      );
+    } catch (e) {
+      console.error('[data-migrations] connector_tokens claim failed:', e);
+    }
+  }
+
   // ── 2026-05-19 · race priorities + Rose Bowl seed + pace-ack ──
   //
   // David's overnight review on 2026-05-19 produced three corrections
@@ -920,6 +966,17 @@ export async function maybeBackfillLegacyOwner(userId: string, email: string): P
       for (const tbl of ['recovery_sessions', 'shoes', 'strava_activities', 'races']) {
         await client.query(`UPDATE ${tbl} SET user_uuid = $1 WHERE user_uuid IS NULL;`, [userId]);
       }
+      // connector_tokens is keyed by user_id (text) — reassign legacy 'me'
+      // rows, skipping any provider the new owner already holds so the
+      // (user_id, provider) uniqueness is never violated.
+      await client.query(
+        `UPDATE connector_tokens ct SET user_id = $1, updated_at = NOW()
+          WHERE ct.user_id = 'me' AND ct.disconnected_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM connector_tokens o
+                             WHERE o.user_id = $1 AND o.provider = ct.provider
+                               AND o.disconnected_at IS NULL);`,
+        [userId],
+      );
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');

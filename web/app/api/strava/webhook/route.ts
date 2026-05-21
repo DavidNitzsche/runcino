@@ -43,7 +43,7 @@ import {
   markDeauthorized,
 } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
-import { buildSyntheticPlan } from '@/lib/synthetic-plan';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { pushWorkoutNameToStrava } from '@/lib/strava-writeback';
 
 function verifyToken(): string {
@@ -161,8 +161,9 @@ async function tryWriteback(userId: string, activityId: number): Promise<void> {
   const dateISO = row.data.date || (row.data.startLocal || '').slice(0, 10);
   if (!dateISO) return;
 
-  // Find the planned day in the synthetic plan that matches this activity's date.
-  const weeks = buildSyntheticPlan();
+  // Find the planned day in the runner's REAL plan that matches this
+  // activity's date. No plan / no match → skip the writeback (no fake plan).
+  const weeks = await getRealPlanWeeks(userId);
   let matchedDay = null;
   let matchedWeek = null;
   for (const w of weeks) {

@@ -30,9 +30,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { resolveFitness } from '@/lib/fitness-resolver';
-import { buildSyntheticPlan, realPlanToWeeks, todayISO, userTimezone } from '@/lib/synthetic-plan';
-import { describeKeyFromPlan } from '@/lib/workout-descriptions';
-import { getCurrentPlan } from '@/coach/plan-lifecycle';
+import { todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { buildWatchWorkout } from '@/lib/watch-workout';
 
@@ -46,13 +45,10 @@ export async function GET(req: NextRequest) {
   const today = todayISO(tz);
 
   // Find today's workout in the REAL plan artifact — the same source
-  // /overview, /training and /api/overview read from, so the watch
-  // pushes the runner's actual workout (not the synthetic demo plan).
-  // Falls back to the synthetic plan only when no plan exists.
-  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
-  const weeks = planResult?.plan
-    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
-    : buildSyntheticPlan();
+  // /overview, /training and /api/overview read from, so the watch pushes
+  // the runner's actual workout. No synthetic fallback: an empty plan just
+  // yields the honest "no-plan-window" response below.
+  const weeks = await getRealPlanWeeks(await resolvePlanUserId());
   let todayDay = null;
   for (const week of weeks) {
     const day = week.days.find((d) => d.date === today);

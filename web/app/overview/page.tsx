@@ -17,8 +17,6 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInIsland } from './CheckInIsland';
 import { requireActiveUser } from '@/lib/auth';
 import {
-  buildSyntheticPlan,
-  realPlanToWeeks,
   todayISO,
   daysBetween,
   findCurrentWeek,
@@ -26,13 +24,13 @@ import {
   userTimezone,
   type PlanWeek,
 } from '@/lib/synthetic-plan';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { resolveFitness } from '@/lib/fitness-resolver';
-import { describeWorkout, describeKeyFromPlan } from '@/lib/workout-descriptions';
-import { getCurrentPlan } from '@/coach/plan-lifecycle';
+import { describeWorkout } from '@/lib/workout-descriptions';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, InlineRecap, type WorkoutDay } from './WorkoutModalIsland';
@@ -90,12 +88,28 @@ export default async function OverviewPage() {
   // so the page matches their wall clock, not UTC.
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
-  // Render the runner's REAL plan (same artifact /api/overview serves),
-  // falling back to the synthetic demo plan only when no plan exists.
-  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
-  const weeks = planResult?.plan
-    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
-    : buildSyntheticPlan();
+  // The runner's REAL coach-generated plan (same artifact /api/overview
+  // serves). No synthetic fallback — if there's no plan yet, say so.
+  const weeks = await getRealPlanWeeks(await resolvePlanUserId());
+  if (weeks.length === 0) {
+    return (
+      <div className="overview-v4-page">
+        <Topbar activeTab="overview" showAdmin={user.is_admin} />
+        <ConnectBannerIsland />
+        <div className="page">
+          <div className="coach-strip">
+            <div className="coach-left">
+              <div className="coach-label"><span className="dot-green"></span><span>Today</span></div>
+              <p className="coach-briefing">
+                No active training plan yet. Set a goal race in your profile and your coach will
+                build your plan — today&apos;s session will appear here.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const currentWeek = findCurrentWeek(weeks, today);
   const todayDay = findTodayWorkout(weeks, today);
   const isRest = !todayDay || todayDay.isRest === true || todayDay.distanceMi === 0;

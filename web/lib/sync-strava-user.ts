@@ -145,10 +145,10 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
   // (skips when the name already looks like a runcino-set name).
   try {
     const { pushWorkoutNameToStrava } = await import('./strava-writeback');
-    const { buildSyntheticPlan } = await import('./synthetic-plan');
+    const { getRealPlanWeeks } = await import('./plan-weeks');
     const dateISO = norm.date || (norm.startLocal || '').slice(0, 10);
     if (dateISO) {
-      const weeks = buildSyntheticPlan();
+      const weeks = await getRealPlanWeeks(userId);
       let matchedDay = null;
       let matchedWeek = null;
       for (const w of weeks) {
@@ -191,10 +191,10 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
   // UPDATE handles concurrent writes from the manual /shoe endpoint.
   try {
     const { pickShoeForWorkout } = await import('./shoe-picker');
-    const { buildSyntheticPlan } = await import('./synthetic-plan');
+    const { getRealPlanWeeks } = await import('./plan-weeks');
     const dateISO = norm.date || (norm.startLocal || '').slice(0, 10);
     if (dateISO) {
-      const weeks = buildSyntheticPlan();
+      const weeks = await getRealPlanWeeks(userId);
       let matchedDay = null;
       for (const w of weeks) {
         const d = w.days.find((dd) => dd.date === dateISO);

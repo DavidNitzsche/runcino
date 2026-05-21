@@ -24,7 +24,9 @@ import { query } from '@/lib/db';
 import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { vdotRow } from '@/lib/vdot';
 import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
-import { buildSyntheticPlan, todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
+import { resolvePlanUserId } from '@/lib/plan-user';
 import { parseGpx } from '@/lib/gpx';
 import type { FaffPlan } from '@/lib/types';
 import { GoalEditIsland } from './GoalEditIsland';
@@ -277,8 +279,8 @@ export default async function RacePlanPage({ params }: PageProps) {
   const goalFinishS = race.plan?.goal?.finish_time_s ?? 0;
   const fuelMarkers = (race.plan?.intervals ?? []).filter((it) => it.kind === 'fuel');
 
-  // Find race-pointed workouts from the synthetic plan
-  // (only show if the race is within the synthetic-plan horizon — 14 weeks)
+  // Find race-pointed workouts from the runner's REAL plan
+  // (only show if the race falls within the plan's date range).
   // Race-pace band derived from THIS race's goal — single source of
   // truth for every workout that says "half-marathon goal pace".
   // (1:30:00 / 13.1 mi = 6:52/mi ± 10 sec tolerance.)
@@ -289,7 +291,7 @@ export default async function RacePlanPage({ params }: PageProps) {
     ? `${fmtPaceS(racePaceLow)}–${fmtPaceS(racePaceHigh)}`
     : '—';
 
-  const synthWeeks = buildSyntheticPlan();
+  const synthWeeks = await getRealPlanWeeks(await resolvePlanUserId());
   const planFirstDate = synthWeeks[0]?.startDate ?? '';
   const planLastDate = synthWeeks[synthWeeks.length - 1]?.endDate ?? '';
   const linkedWorkouts: Array<{ weekNum: number; date: string; label: string; sub: string; pace: string; paceSub: string; tag: 'threshold' | 'long' | 'race-sim' }> = [];

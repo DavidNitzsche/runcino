@@ -22,9 +22,8 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from './ConnectBannerIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
-import { buildSyntheticPlan, realPlanToWeeks, todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
-import { describeKeyFromPlan } from '@/lib/workout-descriptions';
-import { getCurrentPlan } from '@/coach/plan-lifecycle';
+import { todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { resolvePlanUserId } from '@/lib/plan-user';
@@ -55,12 +54,29 @@ export default async function TrainingPage() {
 
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
-  // Real plan (same artifact /overview + /api/overview use); synthetic
-  // demo plan only as a fallback when the runner has no plan yet.
-  const planResult = await getCurrentPlan(await resolvePlanUserId()).catch(() => null);
-  const weeks = planResult?.plan
-    ? realPlanToWeeks(planResult.plan, describeKeyFromPlan)
-    : buildSyntheticPlan();
+  // The runner's REAL coach-generated plan (same artifact /overview +
+  // /api/overview serve). No synthetic fallback — when there's no plan yet,
+  // we say so honestly rather than render a fabricated one.
+  const weeks = await getRealPlanWeeks(await resolvePlanUserId());
+  if (weeks.length === 0) {
+    return (
+      <div className="training-v4-page">
+        <Topbar activeTab="training" showAdmin={user.is_admin} />
+        <ConnectBannerIsland />
+        <div className="page">
+          <div className="coach-strip">
+            <div className="coach-left">
+              <div className="coach-label"><span className="dot-green"></span><span>Plan</span></div>
+              <p className="coach-briefing">
+                No active training plan yet. Your coach builds it from your goal race and recent
+                training — set a goal race in your profile and your weeks will appear here.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const currentWeek = weeks.find((w) => w.days.some((d) => d.date === today)) ?? weeks[0];
 
   // DONE only when actual miles ≥ 60% of planned. Bracket the full
