@@ -40,6 +40,37 @@ The HTML is reference, not importable code: read layout/hierarchy/source, then w
 - Top-right shows **elapsed workout/race time**, not the wall clock.
 - Haptics carry transitions. No coach prose on the wrist.
 
+## Build fidelity — don't drift from the design
+
+**The approved design is `docs/design/watch-app.html`. There is no Figma or other
+source. That file is the canon.** If a build looks "too small" or off, it's drifting from
+this file, not from something you can't see.
+
+**Run a visual-regression loop (do this, it's the fail-safe):**
+
+1. Render each face from `watch-app.html` in a headless browser, scaled to the target watch
+   screen, and save it as the reference set.
+2. Screenshot your SwiftUI build of that face at the same size.
+3. Overlay-diff the two. A face is **done only when the overlay matches** — layout, hero size,
+   centering, spacing. Not "looks close."
+
+The face aspect ratio in `watch-app.html` already matches ~45mm Apple Watch (≈198×242 pt), so
+scaled renders are proportionally faithful. Build and diff against **45mm** as the reference;
+the layout holds on the other sizes.
+
+**The "too small" fix — size the hero to FILL, never a fixed point size:**
+
+- The hero is a large base font + `.minimumScaleFactor(0.4)` + `.lineLimit(1)`, sized to fill
+  the content width (screen minus ~16 pt side margins), centered. That's why `6:33` and `10:42`
+  both look big and centered. **Do not hardcode a small font** — that's the bug.
+- Zone proportions, top → bottom: orientation strip (eyebrow + elapsed) pinned top; the hero +
+  target block centered in the middle; the stats row + progress bar anchored to the bottom.
+- Starting element sizes at 45mm (then the overlay-diff is the real arbiter): hero fills ~85% of
+  width via auto-scale; eyebrow / elapsed ~13 pt; target ref ~12 pt; stat value ~26 pt with ~11 pt
+  unit; progress time ~18 pt. The hero is the biggest thing on the screen by a wide margin.
+
+If anything looks small or empty, it's not matching `watch-app.html`. Re-diff.
+
 ## Build order
 
 **Phase 1 — the engine + workout faces (simulator-testable):**
