@@ -18,7 +18,7 @@
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { resolvePlanUserId } from '../../../lib/plan-user';
 import { gatherCoachState } from '../../../lib/coach-state';
-import { requireActiveUser } from '../../../lib/auth';
+import { getCurrentUser } from '../../../lib/auth';
 import { getCompletedMileageByDate } from '../../../lib/completed-runs';
 import { listRecentSkips } from '../../../lib/skip-store';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../../../lib/vdot';
@@ -140,8 +140,9 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const monthsAhead = Math.max(1, Math.min(12, Number(url.searchParams.get('months') ?? '4')));
 
-    let userId: string | undefined;
-    try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+    // Bearer-aware so the native app's token resolves the user (cookie-only
+    // requireActiveUser would treat the iPhone as anonymous → no completion).
+    const userId: string | undefined = (await getCurrentUser(req))?.id;
     // Run plan lifecycle + coach state in parallel.
     // getCurrentPlan internally calls gatherCoachState, but we also call
     // it separately here to get the VDOT snapshot for pace targets.

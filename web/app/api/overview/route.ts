@@ -14,7 +14,7 @@
  */
 
 import { gatherCoachState } from '../../../lib/coach-state';
-import { requireActiveUser } from '../../../lib/auth';
+import { getCurrentUser } from '../../../lib/auth';
 import { coach } from '../../../coach/coach';
 import type {
   CoachDecision,
@@ -135,10 +135,12 @@ interface OverviewApiErr {
   error: string;
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   try {
-    let userId: string | undefined;
-    try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+    // Bearer-aware: getCurrentUser(req) honors the native app's
+    // Authorization: Bearer token (requireActiveUser is cookie-only, so the
+    // iPhone was being treated as anonymous → empty completion/readiness).
+    const userId: string | undefined = (await getCurrentUser(req))?.id;
     const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 
