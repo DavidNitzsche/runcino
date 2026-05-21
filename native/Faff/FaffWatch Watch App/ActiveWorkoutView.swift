@@ -83,15 +83,20 @@ struct ActiveWorkoutView: View {
 private struct HeroNumber: View {
     let text: String
     var color: Color = WatchTheme.C.ink
-    /// Vertical room the hero zone claims (the centered middle band).
-    var zoneHeight: CGFloat = 104
+    /// The hero zone is a TIGHT box (~glyph height). The width-derived font
+    /// fills the screen width; the box clips Bebas's line-height overhead so
+    /// the glyph stays large (matching the deck's tight line-height) without
+    /// the over-tall box pushing the bottom half down / compressing it.
+    var zoneHeight: CGFloat = 92
     var body: some View {
         GeometryReader { g in
             Text(text)
                 .font(WatchTheme.display(g.size.width * 0.62))
                 .foregroundStyle(color)
-                .lineLimit(1).minimumScaleFactor(0.4)
+                .lineLimit(1).minimumScaleFactor(0.55)
+                .fixedSize(horizontal: false, vertical: true)   // natural height; width scales
                 .frame(width: g.size.width, height: g.size.height, alignment: .center)
+                .clipped()                                       // trim line-height, keep glyph
         }
         .frame(height: zoneHeight)
     }
@@ -426,32 +431,34 @@ private struct SteadyFace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Canon §B: green eyebrow, NO app clock on the right (the OS
-            // clock already shows the time of day there — putting total
-            // elapsed here would just duplicate the hero during the warmup,
-            // since the first phase's elapsed == the total).
+            // Canon §B: green eyebrow, NO segment strip, NO app clock on the
+            // right (the OS clock shows the time of day there). Hero counts UP
+            // toward the phase duration (white); the EASY pace ref sits under
+            // it; the progress bar carries the time REMAINING.
             HStack {
                 Text(phase.label.uppercased())
                     .font(WatchTheme.body(12.5, .bold)).tracking(1.1)
                     .foregroundStyle(accent).lineLimit(1)
                 Spacer()
             }
-            SegmentBar(engine: engine).padding(.top, 6)
             Spacer(minLength: 2)
-            // Hero counts UP toward the phase duration (white); the progress
-            // bar carries the time REMAINING. Two different numbers.
             HeroNumber(text: PaceFormat.clock(engine.phaseElapsedSec), color: WatchTheme.C.ink)
-            if let next = engine.nextPhase {
+            if let target = phase.targetPaceSPerMi {
+                (Text(easyLabel + " · ").foregroundStyle(WatchTheme.C.t3)
+                 + Text("\(PaceFormat.mmss(target))/mi").foregroundStyle(WatchTheme.C.ink))
+                    .font(WatchTheme.body(11, .bold)).tracking(0.4).textCase(.uppercase).padding(.top, 4)
+            } else if let next = engine.nextPhase {
                 Text("NEXT · \(next.label.uppercased())").font(WatchTheme.body(11, .bold)).tracking(0.4)
-                    .foregroundStyle(WatchTheme.C.t3)
+                    .foregroundStyle(WatchTheme.C.t3).padding(.top, 4)
             }
             Spacer(minLength: 2)
             StatsRow(hr: tracker.heartRate, cadence: tracker.cadence)
             RepProgress(progress: engine.phaseProgress, remainingSec: engine.phaseRemainingSec, fill: accent)
                 .padding(.top, 10)
         }
-        .padding(.horizontal, 7).padding(.vertical, 5)
+        .padding(.horizontal, 17).padding(.vertical, 16)
     }
+    private var easyLabel: String { phase.type == .cooldown ? "Cool" : "Easy" }
 }
 
 // MARK: - CONTROLS (swipe-in · pause / end / water-lock)
@@ -686,8 +693,24 @@ struct WatchFixtureView: View {
         case "green-on-the-band": workFace(zone: .onTarget, delta: 0, pace: 391, hr: 168, cad: 182)
         case "amber-drifting":    workFace(zone: .drifting, delta: 13, pace: 404, hr: 164, cad: 176)
         case "red-off-pace":      workFace(zone: .offTarget, delta: 20, pace: 411, hr: 159, cad: 171)
+        case "warmup":            steadyFace()
         default:                  workFace(zone: .onTarget, delta: 2, pace: 393, hr: 168, cad: 182)
         }
+    }
+
+    /// Warmup frozen at 2:15 elapsed of a 10:00 warmup, easy 7:58/mi, 142/168.
+    private func steadyFace() -> some View {
+        var phases: [WatchPhase] = []
+        phases.append(WatchPhase(index: 0, type: .warmup, label: "Warmup", durationSec: 600,
+                                 targetPaceSPerMi: 478, tolerancePaceSPerMi: nil, haptic: .start))
+        phases.append(WatchPhase(index: 1, type: .work, label: "Interval 1/5", durationSec: 420,
+                                 targetPaceSPerMi: 391, tolerancePaceSPerMi: 10, haptic: .transitionWork))
+        let w = WatchWorkout(workoutId: "fixture", name: "", summary: "", totalEstimatedMinutes: 50,
+                             phases: phases, completionEndpoint: "", expiresAt: "")
+        let engine = WorkoutEngine.fixture(workout: w, currentIndex: 0, phaseElapsedSec: 135, totalElapsedSec: 135)
+        let tracker = WorkoutTracker()
+        tracker.setFixture(pace: 478, hr: 142, cadence: 168, distanceMi: 0.3)
+        return SteadyFace(engine: engine, tracker: tracker, phase: engine.currentPhase!, accent: WatchTheme.C.green)
     }
 
     /// The work-interval face frozen at rep 3/6, 24:18 elapsed, bar ~50%.
