@@ -51,6 +51,7 @@ import { computeWeatherSlowdown, formatSlowdownForBrief, type WeatherSlowdownInp
 import { gradeAdjustmentFactor } from '../lib/minetti';
 import { M_PER_MI } from '../lib/time';
 import { TAPER_BY_DISTANCE, RACE_DAY_FUELING } from './doctrine/race_week';
+import { RIEGEL_EXPONENT } from './doctrine/race_prediction';
 import { TISSUE_RECOVERY_TIMELINES } from './doctrine/recovery_protocols';
 import { getCurrentPlan } from './plan-lifecycle';
 
@@ -1656,7 +1657,7 @@ class CoachImpl implements Coach {
 
     const row = vdotRow(snapshot.vdot);
     const equivAtTarget = row ? riegelScaleFromVdotRow(row, raceDistanceMi) : null;
-    const predictedTimeS = equivAtTarget ?? snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, 1.06);
+    const predictedTimeS = equivAtTarget ?? snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, RIEGEL_EXPONENT);
     const predictedPace = predictedTimeS / raceDistanceMi;
     const headroomSPerMi = goalPace - predictedPace;
     // Stretch: another 3% off predicted pace — what fitness alone could
@@ -2464,7 +2465,7 @@ class CoachImpl implements Coach {
     const row = vdotRow(snapshot.vdot);
     const predictedTimeS = row
       ? riegelScaleFromVdotRow(row, raceDistanceMi)
-      : snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, 1.06);
+      : snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, RIEGEL_EXPONENT);
     const predictedPaceSPerMi = predictedTimeS / raceDistanceMi;
     const gapSPerMi = goalPaceSPerMi - predictedPaceSPerMi;
     const sPerMiToGain = -gapSPerMi;
@@ -2885,7 +2886,7 @@ function riegelScaleFromVdotRow(
       best = c;
     }
   }
-  return best.s * Math.pow(targetMi / best.mi, 1.06);
+  return best.s * Math.pow(targetMi / best.mi, RIEGEL_EXPONENT);
 }
 
 function numOrZero(v: unknown): number {

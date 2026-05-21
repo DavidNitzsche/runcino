@@ -568,6 +568,14 @@ function isProbablyHard(a: NormalizedActivity): boolean {
   return HARD_NAME_RE.test(a.name);
 }
 
+/** Name-pattern "is this a hard session?" test, exposed for the engine's
+ *  24h-recovery gate (which only has the run's name + avg HR, not the
+ *  full activity). Mirrors isProbablyHard so the gate and the 80/20
+ *  effort-balance calc classify intent identically. */
+export function isHardByName(name: string): boolean {
+  return HARD_NAME_RE.test(name);
+}
+
 export function effortBalance(activities: NormalizedActivity[], windowDays = 14, hrThreshold = 152): EffortBalance {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
@@ -695,11 +703,15 @@ export function scoreQualitySession(
 
 /** Score continuous quality sessions from the last windowDays.
  *  getPrescribed(date) returns the plan's paceTargetSPerMi for that date, or null.
+ *  hrCeiling: avg HR above which the session is "redlined". Omit to use
+ *  the population default (170); pass the runner's personalized redline
+ *  (0.90×HRmax) when their HRmax is known.
  *  Results are newest-first. Interval/rep sessions are excluded (unreliable overall pace). */
 export function scoreRecentQualitySessions(
   activities: NormalizedActivity[],
   getPrescribed: (date: string) => number | null,
   windowDays = 42,
+  hrCeiling?: number,
 ): QualitySessionScore[] {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayISO = today.toISOString().slice(0, 10);
@@ -710,5 +722,5 @@ export function scoreRecentQualitySessions(
   return activities
     .filter(a => a.date >= cutoffISO && a.date < todayISO && isScorable(a))
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map(a => scoreQualitySession(a, getPrescribed(a.date)));
+    .map(a => scoreQualitySession(a, getPrescribed(a.date), hrCeiling));
 }

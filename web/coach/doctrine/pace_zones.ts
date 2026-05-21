@@ -392,6 +392,17 @@ export const HANSONS_PACE_OFFSETS_S_PER_MI: Cited<Record<HansonsPace, {
   ],
 };
 
+/** Daniels' Easy-pace offset from marathon pace, in s/mi. Daniels
+ *  defines E as a deliberately wide effort band, 60-90 s/mi slower than
+ *  M; the engine anchors the E-band center at +75 (the band midpoint).
+ *  @research Research/01 §Daniels training paces (Easy). */
+export const DANIELS_E_OFFSET_S_PER_MI: Cited<{ low: number; center: number; high: number }> = {
+  value: { low: 60, center: 75, high: 90 },
+  citations: [
+    cite('Daniels training paces › Easy (E)', 'Easy running is 60-90 sec/mi slower than marathon pace.', 'research', '01'),
+  ],
+};
+
 // ── Pace zone width and lock-in rules ──────────────────────────────
 
 /** Tolerance window per pace zone, in sec/mi (or sec/rep where the

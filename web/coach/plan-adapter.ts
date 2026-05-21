@@ -18,6 +18,7 @@
 
 import type { CoachState } from '../lib/coach-state';
 import { scoreRecentQualitySessions } from '../lib/strava-stats';
+import { qualityRedlineHrBpm } from '../lib/coach-principles';
 import { newId, insertMutation, updateWorkout } from '../lib/plan-store';
 import type {
   Plan, PlanWorkout, PlanMutation, TriggerKind, SignalSnapshot,
@@ -291,6 +292,8 @@ export async function adaptPlan(plan: Plan, state: CoachState, today: string, op
     const scores = scoreRecentQualitySessions(
       state.activities ?? [],
       (date) => workoutsByDate.get(date)?.paceTargetSPerMi ?? null,
+      42,
+      qualityRedlineHrBpm(state.profile?.effectiveHrmaxBpm),
     );
     const recent6 = scores.slice(0, 6);
     const scoredCount = recent6.filter(s => s.verdict !== 'no_data').length;

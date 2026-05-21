@@ -25,6 +25,8 @@
 import {
   VDOT_LOOKUP_TABLE,
   PACE_ZONE_WIDTH,
+  DANIELS_E_OFFSET_S_PER_MI,
+  MARATHON_VDOT_CORRECTION,
   type DanielsPace,
 } from '../coach/doctrine';
 import type { CoachState } from './coach-state';
@@ -154,9 +156,9 @@ export function pacesFromVdot(vdot: number): DanielsPaceSet | null {
   const iCenterS = row.km5S / 3.107;
   // R pace — mile race pace
   const rCenterS = row.mileS / 1;
-  // E pace — Daniels says E is 60-90 sec/mi slower than M; use 75
-  // as the center
-  const eCenterS = mCenterS + 75;
+  // E pace — Daniels says E is 60-90 sec/mi slower than M; anchor the
+  // center at the cited band midpoint.
+  const eCenterS = mCenterS + DANIELS_E_OFFSET_S_PER_MI.value.center;
 
   const widthFor = (zone: DanielsPace): number => PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
 
@@ -252,8 +254,35 @@ export interface VdotPaceTarget {
   zone: DanielsPace;
 }
 
+/** True when the runner shows a marathon-specific block: a long run
+ *  ≥18 mi in at least 6 distinct weeks of the last ~10. This is the
+ *  long-run half of MARATHON_VDOT_CORRECTION.blockDefinition. The
+ *  "MP work ≥6 mi" half is not separately verified — there's no reliable
+ *  marathon-pace-segment signal yet — so this is a conservative proxy:
+ *  it confirms a block from long-run evidence only, and returns false
+ *  (block unproven) when there's no activity history to inspect.
+ *  @research Research/01 §Marathon-specific correction */
+function hasMarathonSpecificBlock(state: CoachState): boolean {
+  const acts = state.activities;
+  if (!acts || acts.length === 0) return false;
+  const weeks = new Set<number>();
+  for (const a of acts) {
+    const bucket = Math.floor((Date.now() - Date.parse(a.date)) / (7 * 86_400_000));
+    if (bucket >= 0 && bucket < 10 && a.distanceMi >= 18) weeks.add(bucket);
+  }
+  return weeks.size >= 6;
+}
+
 /** Return a VDOT-derived pace target for the given workout type, or
- *  null when no recent race is available (caller uses legacy table). */
+ *  null when no recent race is available (caller uses legacy table).
+ *
+ *  Marathon-pace prescription (M zone) applies the marathon-specific
+ *  VDOT correction: a 5K/10K-derived VDOT over-predicts marathon
+ *  fitness, so when the source race is short AND we can see the runner
+ *  has NOT built a marathon-specific block, we subtract the cited
+ *  correction before deriving M pace. We only apply it when activity
+ *  history is present (so "no block" is an observation, not an
+ *  assumption). @research Research/01 §Marathon-specific correction */
 export function paceTargetFromVdot(
   state: CoachState,
   workoutType: RunWorkoutType,
@@ -264,9 +293,22 @@ export function paceTargetFromVdot(
   if (vdot == null) return null;
   const zone = zoneForWorkout(workoutType);
   if (zone == null) return null;
-  const set = pacesFromVdot(vdot);
+
+  let effVdot = vdot;
+  const sourceIsShort = race.distanceMi <= 7;   // 5K / 10K, not half+
+  if (
+    zone === 'M' &&
+    sourceIsShort &&
+    (state.activities?.length ?? 0) > 0 &&
+    !hasMarathonSpecificBlock(state)
+  ) {
+    effVdot = vdot - MARATHON_VDOT_CORRECTION.value.subtractVdotPoints;
+  }
+
+  const set = pacesFromVdot(effVdot);
   if (!set) return null;
   const band = set[zone];
+  // Report the source VDOT (true fitness), not the marathon-adjusted one.
   return { lowS: band.lowS, highS: band.highS, vdot, zone };
 }
 

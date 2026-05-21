@@ -19,6 +19,7 @@ import {
   ACWR_BAND, SINGLE_SESSION_SPIKE,
   LONG_RUN, STRIDES,
   SLEEP,
+  HARD_EFFORT_HRMAX_FRACTION, QUALITY_REDLINE_HRMAX_FRACTION,
 } from '../coach/doctrine';
 
 /* ── 1. Race-window math (§2.1) ──────────────────────────────────
@@ -234,12 +235,31 @@ export const SLEEP_HOURS_HIGH_LOAD = SLEEP.value.highLoadHoursLow;
 export const HRV_DROP_FLAG_PCT = 0.12;  // 12 % drop from baseline = recovery day
 
 /* ── 14b. Hard-effort HR threshold (Research 03 §4) ──────────────
-   Default cutoff for "yesterday was hard." 152 bpm ≈ 80% of HRmax
-   190 — the bottom of HRMAX_ZONES_5 threshold zone in
-   coach/doctrine/hr_zones.ts. Reasonable default for typical
-   recreational runners; should become user-specific (0.80 × user
-   HRmax) once HRmax lands in CoachState. */
+   Population-default cutoffs, used ONLY when the runner's HRmax is
+   unknown. 152 ≈ 80% × 190 (Z4 threshold floor); 170 ≈ 90% × 190 (Z4
+   ceiling / VO2max floor). When HRmax is known, the helpers below
+   personalize off it via the HRMAX_FRACTION doctrine anchors. */
 export const HARD_EFFORT_HR_DEFAULT_BPM = 152;
+export const QUALITY_REDLINE_HR_DEFAULT_BPM = 170;
+
+/** bpm at/above which a sustained effort counts as "hard" for the
+ *  hard-day/easy-day spacing rule. Personalized to 0.80 × HRmax when
+ *  known; else the population default. @research Research/03 §4 */
+export function hardEffortHrThresholdBpm(effectiveHrmaxBpm: number | null | undefined): number {
+  return effectiveHrmaxBpm != null
+    ? Math.round(HARD_EFFORT_HRMAX_FRACTION * effectiveHrmaxBpm)
+    : HARD_EFFORT_HR_DEFAULT_BPM;
+}
+
+/** bpm above which a quality session's AVERAGE HR signals a redlined
+ *  (VO2max) effort rather than a controlled threshold/tempo. Personalized
+ *  to 0.90 × HRmax when known; else the population default.
+ *  @research Research/03 §4 */
+export function qualityRedlineHrBpm(effectiveHrmaxBpm: number | null | undefined): number {
+  return effectiveHrmaxBpm != null
+    ? Math.round(QUALITY_REDLINE_HRMAX_FRACTION * effectiveHrmaxBpm)
+    : QUALITY_REDLINE_HR_DEFAULT_BPM;
+}
 
 /* ── 15. Pace targets relative to goal pace ─────────────────────
    Daniels-style training paces expressed as offsets from goal MP.

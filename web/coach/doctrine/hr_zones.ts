@@ -4,16 +4,25 @@
  *
  * Source: Research/03-heart-rate-zones.md
  *
- * The canonical HR-based prescription reference. Engine consumers:
+ * The canonical HR-based prescription reference.
  *
- *   - coach-engine.ts:344  applyConstraints — replaces magic
- *                          `avgHr >= 152` cutoff with research-backed
- *                          threshold (RHR_RECOVERY_DECISION_RULES /
- *                          %HRmax band Z3 boundary).
- *   - coach-state.ts       RHR baseline construction reads
- *                          RHR_BASELINE_PROTOCOL.
- *   - coach.assessReadiness reads HRV_INTERPRETATION_PATTERNS for
- *                          green/yellow/red levels.
+ * WIRED into the engine:
+ *   - HR cutoffs personalize off the runner's effective HRmax via
+ *     HARD_EFFORT_HRMAX_FRACTION (0.80, Z4 floor) and
+ *     QUALITY_REDLINE_HRMAX_FRACTION (0.90, Z4 ceiling). Consumers:
+ *     coach-principles.hardEffortHrThresholdBpm / qualityRedlineHrBpm →
+ *     coach-engine applyConstraints (24h-recovery gate),
+ *     strava-stats effortBalance + scoreQualitySession.
+ *   - resolveEffectiveHrmax (here) resolves HRmax: measured > age-based
+ *     estimate (Tanaka, or Nes/HUNT >50) > null. Fed by coach-state from
+ *     the profile, which also populates recovery.rhrBpm.
+ *
+ * NOT YET WIRED (doctrine present, no engine consumer):
+ *   - RHR_BASELINE_PROTOCOL — 14-day rolling RHR baseline construction.
+ *   - RHR_RECOVERY_DECISION_RULES — RHR-vs-baseline train/easy/rest gate.
+ *   - HRV_INTERPRETATION_PATTERNS — readiness green/yellow/red.
+ *   - FRIEL_LTHR_ZONES / KARVONEN_FORMULA / MAF / decoupling — reference.
+ *   (Several of these await HealthKit RHR/HRV streams — M2.)
  *
  * Daniels HR percentages (E/M/T/I/R) live in pace_zones.ts since
  * they're paired with the Daniels pace prescription.
@@ -97,6 +106,34 @@ export const HRMAX_FORMULA_SELECTION: Cited<Array<{
   ],
 };
 
+export type HrmaxSource = 'measured' | 'nes_hunt' | 'tanaka';
+
+/** Resolve the runner's effective HRmax in bpm for prescription.
+ *  Priority per Research/03 §2 (HRMAX_FORMULA_SELECTION):
+ *    1. Field/lab-measured HRmax — always preferred when present.
+ *    2. Age-based estimate: age >50 → Nes/HUNT (211 - 0.64×age, largest
+ *       older sample); otherwise Tanaka (208 - 0.7×age).
+ *    3. null when there's no measured value and no age — the caller
+ *       falls back to its own population default.
+ *  Note: the research's "women marathoners → Tanaka -5" correction is
+ *  marathon-specific; we do NOT apply it generally here (we can't tell
+ *  marathon focus at state-assembly time, and over-applying would be an
+ *  extrapolation). Deferred until there's a reliable marathon-focus
+ *  signal. */
+export function resolveEffectiveHrmax(input: {
+  measuredHrmax: number | null;
+  age: number | null;
+}): { bpm: number; source: HrmaxSource } | null {
+  if (input.measuredHrmax != null) {
+    return { bpm: input.measuredHrmax, source: 'measured' };
+  }
+  if (input.age == null) return null;
+  if (input.age > 50) {
+    return { bpm: Math.round(211 - 0.64 * input.age), source: 'nes_hunt' };
+  }
+  return { bpm: Math.round(208 - 0.7 * input.age), source: 'tanaka' };
+}
+
 // ── HRmax field-test protocols ─────────────────────────────────────
 
 export const HRMAX_FIELD_TEST_PROTOCOLS: Cited<Array<{
@@ -157,6 +194,18 @@ export const HRMAX_ZONES_5: Cited<Record<HrmaxZone5, {
     cite('§4 5-Zone (ACSM / generic / commercial wearables)', 'Z1 Recovery 50-60% / Z2 Easy 60-70% / Z3 Aerobic-Tempo 70-80% / Z4 Threshold 80-90% / Z5 VO2max 90-100% HRmax', 'research', '03'),
   ],
 };
+
+/** %HRmax anchors for engine prescription thresholds, taken from the
+ *  HRMAX_ZONES_5 threshold band (Z4 = 80-90% HRmax, "LT / race pace").
+ *    - HARD_EFFORT: at/above the Z4 floor (80%) a sustained effort is
+ *      "hard" for the hard-day/easy-day spacing rule.
+ *    - QUALITY_REDLINE: an average above the Z4 ceiling (90%) means the
+ *      session tipped into VO2max (Z5), i.e. redlined rather than a
+ *      controlled threshold/tempo effort.
+ *  These replace the population-default bpm cutoffs once a runner's
+ *  HRmax is known. @research Research/03 §4 (5-zone %HRmax). */
+export const HARD_EFFORT_HRMAX_FRACTION = 0.80;
+export const QUALITY_REDLINE_HRMAX_FRACTION = 0.90;
 
 export type HrmaxZone7 = 'active_recovery' | 'endurance' | 'tempo' | 'sub_threshold' | 'threshold' | 'vo2max' | 'anaerobic';
 

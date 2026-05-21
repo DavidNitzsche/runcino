@@ -45,6 +45,12 @@ export const POWER_LAW_TIME_DISTANCE: Cited<{
 
 // ── Riegel formula ─────────────────────────────────────────────────
 
+/** The Riegel fatigue exponent — the single computational source for
+ *  T2 = T1 × (D2/D1)^b. Import this everywhere a Riegel scaling is
+ *  evaluated rather than re-typing the 1.06 literal (which had drifted
+ *  across coach.ts). @research Research/02 §2.1 */
+export const RIEGEL_EXPONENT = 1.06;
+
 /** Riegel 1981 power-law race-time predictor. Default for predictions
  *  within 1500m–half marathon among trained runners. */
 export const RIEGEL_FORMULA: Cited<{
@@ -55,7 +61,7 @@ export const RIEGEL_FORMULA: Cited<{
 }> = {
   value: {
     expression: 'T2 = T1 × (D2 / D1)^1.06',
-    defaultExponent: 1.06,
+    defaultExponent: RIEGEL_EXPONENT,
     defaultExponentSource: 'Riegel 1977 cross-sport mean (running, swimming, cycling, speed skating WRs)',
     applicableRange: 'Events 3.5–230 minutes (≈ 1500m to marathon). Falls apart at sprints and ultras.',
   },

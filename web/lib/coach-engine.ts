@@ -24,8 +24,9 @@ import { validatePlan, type PlanIssue } from '../coach/plan-validator';
 import {
   type Phase, type RaceSubPhase,
   raceSubPhase, intensityTarget, maxLongRunMi, acwr, ACWR_HIGH,
-  HEAVY_BLOCK_REST_DAYS, HARD_EFFORT_HR_DEFAULT_BPM,
+  HEAVY_BLOCK_REST_DAYS, hardEffortHrThresholdBpm,
 } from './coach-principles';
+import { isHardByName } from './strava-stats';
 const MS_PER_DAY = 86_400_000;
 import {
   type RunWorkoutType, type RunPrescription,
@@ -807,10 +808,16 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
   }
 
   // 2. 24h recovery: yesterday hard → today must be easy.
-  // Threshold from coach/doctrine/hr_zones.ts HRMAX_ZONES_5 — 80% HRmax
-  // is the bottom of the threshold zone. Default 152 bpm ≈ 80% × 190.
+  // "Hard" = name/intent says so (tempo, repeats, intervals…) OR avg HR
+  // reached the threshold floor. Pure-HR alone misses a well-trained
+  // runner's tempo at 145-150 bpm (the miss strava-stats.effortBalance
+  // was rewritten to fix), so we mirror that name-OR-HR logic here. HR
+  // floor is personalized to 0.80×HRmax when known, else 152.
+  // @research Research/03 §4 (Z4 threshold floor).
   const y = state.recovery.yesterday;
-  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= HARD_EFFORT_HR_DEFAULT_BPM;
+  const hardHrFloor = hardEffortHrThresholdBpm(state.profile?.effectiveHrmaxBpm);
+  const yesterdayHard = !!y && y.distMi > 0 &&
+    (isHardByName(y.name) || (y.avgHr != null && y.avgHr >= hardHrFloor));
   if (p.isQuality && yesterdayHard) {
     return generalAerobic(baseEasyMi(state, phase), state);
   }

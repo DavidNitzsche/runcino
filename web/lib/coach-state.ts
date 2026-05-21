@@ -23,6 +23,9 @@ import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './s
 import { todayISO as todayLAISO, todayDate } from './dates';
 import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
 import { getUserPrefs, type PrefsRow } from './prefs-store';
+import { getProfile } from './profile-store';
+import { hardEffortHrThresholdBpm } from './coach-principles';
+import { resolveEffectiveHrmax, type HrmaxSource } from '../coach/doctrine/hr_zones';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -86,6 +89,27 @@ export interface CoachState {
     hardMi14d: number;
     /** 0–1, mile-weighted by HR threshold. */
     easyShare14d: number;
+  };
+
+  /** Runner physiology from the `profile` table. Drives personalized
+   *  HR thresholds — when this block is absent (old state shapes / test
+   *  fixtures) or its fields are null, the engine falls back to
+   *  population-default cutoffs (only correct near age 30). Optional for
+   *  backwards compat, same as `activities` / `bestForVdot`.
+   *  @research Research/03 §2 (HRmax estimation + selection). */
+  profile?: {
+    /** Field/lab-measured HRmax in bpm. null when not entered. */
+    measuredHrmaxBpm: number | null;
+    /** Effective HRmax for prescription: measured when present, else an
+     *  age-based estimate (Tanaka, or Nes/HUNT for >50). null when
+     *  neither a measured value nor age is available — consumers then
+     *  use their own population default. */
+    effectiveHrmaxBpm: number | null;
+    /** How effectiveHrmaxBpm was derived — surfaces in coach voice and
+     *  lets consumers weight confidence (measured > estimate). */
+    hrmaxSource: HrmaxSource | null;
+    age: number | null;
+    sex: string | null;
   };
 
   /** Recovery + readiness. HealthKit fields are null until M2 ships. */
@@ -228,7 +252,7 @@ export async function gatherCoachState(): Promise<CoachState> {
   const today = todayDate();
   const todayISO = todayLAISO();
 
-  const [savedRaces, { activities }, checkinAgg, prefsRow] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg, prefsRow, profileRow] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available — empty races just means no A/B race surfaces.
@@ -240,7 +264,18 @@ export async function gatherCoachState(): Promise<CoachState> {
     // Prefs are optional — when the user_prefs table is unreachable or
     // has no row, parsePrefsRow(null) returns the engine-wide defaults.
     getUserPrefs('me').catch(() => null),
+    // Profile is optional — null when unreachable or unset. Personalized
+    // HR thresholds degrade to population defaults in that case.
+    getProfile('me').catch(() => null),
   ]);
+
+  // ── Runner physiology ─────────────────────────────────────
+  const measuredHrmaxBpm = profileRow?.hrmax ?? null;
+  const profileAge = profileRow?.age ?? null;
+  const hrmax = resolveEffectiveHrmax({ measuredHrmax: measuredHrmaxBpm, age: profileAge });
+  // Profile-entered resting HR is the manual fallback until HealthKit's
+  // 7-day-average RHR lands (M2). Manual entry beats no signal at all.
+  const rhrBpm = profileRow?.rhr ?? null;
 
   // Null `state.checkin` means "no rows in the last 7 days" — the
   // engine treats it as a missing signal, not zeroed-out.
@@ -380,7 +415,9 @@ export async function gatherCoachState(): Promise<CoachState> {
   }
 
   // ── Intensity ─────────────────────────────────────────────
-  const balance = effortBalance(activities, 14);
+  // Hard/easy split uses the runner's personalized HR floor (0.80×HRmax)
+  // when known, else the 152 population default.
+  const balance = effortBalance(activities, 14, hardEffortHrThresholdBpm(hrmax?.bpm));
 
   // ── Recovery ──────────────────────────────────────────────
   const sortedByDate = activities.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
@@ -444,6 +481,13 @@ export async function gatherCoachState(): Promise<CoachState> {
       hardMi14d: balance.hardMi,
       easyShare14d: balance.easyShare,
     },
+    profile: {
+      measuredHrmaxBpm,
+      effectiveHrmaxBpm: hrmax?.bpm ?? null,
+      hrmaxSource: hrmax?.source ?? null,
+      age: profileAge,
+      sex: profileRow?.sex ?? null,
+    },
     recovery: {
       daysSinceLastRun: Number.isFinite(daysSinceLastRun) ? daysSinceLastRun : -1,
       consecutiveRunDays,
@@ -462,7 +506,7 @@ export async function gatherCoachState(): Promise<CoachState> {
         activityId: todayRun.id,
       } : null,
       hrv7dAvgMs: null,
-      rhrBpm: null,
+      rhrBpm,
       sleep7dAvgHrs: null,
       strengthDaysThisWeek: null,
     },
