@@ -233,12 +233,11 @@ struct RecoveryFace: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // CSS .w-mid flex:1
             StatsRow(left: Stat(value: heartRate, unit: "bpm"),
                      right: Stat(value: cadence, unit: "spm"))
-            ProgressRow(fraction: fraction, fill: WP.green) {
-                Text("JOG EASY").font(WF.interBold(10)).tracking(0.6).foregroundStyle(WP.muted)
-            }
-            .padding(.top, 8)
+            Text("JOG EASY").font(WF.interBold(11)).tracking(0.8).foregroundStyle(WP.muted)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 8)
         }
-        .executionFace()
+        .executionFace(bottom: 8)
     }
 }
 
@@ -271,12 +270,11 @@ struct SteadyFace: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)   // CSS .w-mid flex:1
             StatsRow(left: Stat(value: heartRate, unit: "bpm"),
                      right: Stat(value: cadence, unit: "spm"))
-            ProgressRow(fraction: fraction, fill: accent) {
-                Text(timeLeft).font(WF.bebas(18)).monospacedDigit().foregroundStyle(WP.ink)
-            }
-            .padding(.top, 8)
+            Text(timeLeft).font(WF.bebas(22)).monospacedDigit().foregroundStyle(WP.ink)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 8)
         }
-        .executionFace()
+        .executionFace(bottom: 8)
     }
 }
 
@@ -291,8 +289,7 @@ private struct ControlsPage: View {
     var body: some View {
         ControlsFace(paused: engine.isPaused,
                      onPrimary: { if engine.isPaused { engine.resume(); backToFace() } else { engine.pause() } },
-                     onEnd: { confirmEnd = true },
-                     onLock: { WKInterfaceDevice.current().enableWaterLock(); backToFace() })
+                     onEnd: { confirmEnd = true })
         .confirmationDialog("End workout?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("End workout", role: .destructive) { engine.abandon() }
             Button("End this interval") { engine.endCurrentPhase(); backToFace() }
@@ -301,43 +298,45 @@ private struct ControlsPage: View {
     }
 }
 
-/// The three-button control row (deck §D): Pause/Resume (primary, filled),
-/// End, Lock.
+/// The control page (deck §D): full-width stacked bars — big tap targets, not little
+/// circles. Pause/Resume (primary, filled) over End. (Water-lock removed — rarely needed.)
 struct ControlsFace: View {
     var paused: Bool = false
     var onPrimary: () -> Void = {}
     var onEnd: () -> Void = {}
-    var onLock: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Controls").font(WF.oswald(13)).tracking(1).foregroundStyle(WP.muted)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(alignment: .top, spacing: 8) {
-                control(paused ? "play.fill" : "pause.fill", paused ? "Resume" : "Pause",
-                        size: 64, filled: true, tint: paused ? WP.green : WP.amber, action: onPrimary)
-                control("stop.fill", "End", size: 50, filled: false, tint: WP.warn, action: onEnd)
-                control("lock.fill", "Lock", size: 50, filled: false, tint: WP.muted, action: onLock)
+        VStack(spacing: 10) {
+            HStack {
+                Eyebrow(text: "Controls", color: WP.muted)
+                Spacer(minLength: 78)
             }
+            .padding(.leading, 8).padding(.top, 20)
+            Spacer(minLength: 0)
+            bar(paused ? "play.fill" : "pause.fill", paused ? "Resume" : "Pause",
+                tint: paused ? WP.green : WP.amber, filled: true, action: onPrimary)
+            bar("stop.fill", "End", tint: WP.warn, filled: false, action: onEnd)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 12).padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
 
-    private func control(_ icon: String, _ label: String, size: CGFloat, filled: Bool,
-                         tint: Color, action: @escaping () -> Void) -> some View {
+    private func bar(_ icon: String, _ label: String, tint: Color, filled: Bool,
+                     action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: size * 0.34, weight: .bold))
-                    .frame(width: size, height: size)
-                    .foregroundStyle(filled ? Color(red: 0.10, green: 0.07, blue: 0.0) : tint)
-                    .background(filled ? tint : .clear, in: Circle())
-                    .overlay(Circle().stroke(filled ? .clear : tint.opacity(0.6), lineWidth: 1.5))
-                Text(label).font(WF.interSemi(10)).foregroundStyle(WP.muted)
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 17, weight: .bold))
+                Text(label).font(WF.oswald(16)).tracking(1)
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 20).padding(.vertical, 16)
             .frame(maxWidth: .infinity)
+            .foregroundStyle(filled ? Color(red: 0.10, green: 0.07, blue: 0.0) : tint)
+            .background(filled ? tint : tint.opacity(0.16), in: Capsule())
+            .overlay(Capsule().stroke(filled ? .clear : tint.opacity(0.55), lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }
@@ -370,24 +369,27 @@ struct SplitsFace: View {
     let rows: [Row]
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Splits · so far").font(WF.oswald(13)).tracking(0.8).foregroundStyle(WP.muted)
-                .padding(.bottom, 8)
-            ForEach(rows) { r in
-                HStack(spacing: 8) {
-                    Text("\(r.repNo)").font(WF.interBold(11)).foregroundStyle(WP.faint)
-                        .frame(width: 14, alignment: .leading)
-                    Text(r.label).font(WF.interSemi(13)).foregroundStyle(WP.ink)
-                    Spacer()
-                    Text(r.pace).font(WF.bebas(22)).monospacedDigit().foregroundStyle(r.color)
-                }
-                .padding(.vertical, 5)
-                Rectangle().fill(WP.line).frame(height: 1)
+            HStack {
+                Eyebrow(text: "Splits", color: WP.muted)
+                Spacer(minLength: 78)
             }
-            Spacer(minLength: 0)
+            .padding(.leading, 8).padding(.top, 20).padding(.bottom, 2)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
+                if idx > 0 { Rectangle().fill(WP.line).frame(height: 1) }
+                HStack(spacing: 10) {
+                    Text("\(r.repNo)").font(WF.interBold(12)).foregroundStyle(WP.faint)
+                        .frame(width: 16, alignment: .leading)
+                    Text(r.label).font(WF.interSemi(15)).foregroundStyle(WP.ink)
+                    Spacer()
+                    Text(r.pace).font(WF.bebas(26)).monospacedDigit().foregroundStyle(r.color)
+                }
+                .frame(maxHeight: .infinity)
+            }
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -415,24 +417,28 @@ struct SessionMapFace: View {
     let rows: [Row]
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Session").font(WF.oswald(13)).tracking(0.8).foregroundStyle(WP.muted)
-                .padding(.bottom, 8)
-            ForEach(rows) { r in
-                HStack(spacing: 9) {
-                    Circle().fill(dot(r.state)).frame(width: 7, height: 7)
-                    Text(r.label).font(WF.interSemi(13))
+            HStack {
+                Eyebrow(text: "Session", color: WP.muted)
+                Spacer(minLength: 78)
+            }
+            .padding(.leading, 8).padding(.top, 20).padding(.bottom, 2)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
+                if idx > 0 { Rectangle().fill(WP.line).frame(height: 1) }
+                HStack(spacing: 11) {
+                    Circle().fill(dot(r.state)).frame(width: 8, height: 8)
+                    Text(r.label).font(WF.interSemi(15))
                         .foregroundStyle(r.state == .upcoming ? WP.muted : WP.ink).lineLimit(1)
                     Spacer()
-                    Text(r.value).font(WF.interSemi(13)).monospacedDigit().foregroundStyle(WP.muted)
+                    Text(r.value).font(WF.interSemi(15)).monospacedDigit().foregroundStyle(WP.muted)
                 }
-                .padding(.vertical, 5)
+                .frame(maxHeight: .infinity)
                 .opacity(r.state == .upcoming ? 0.7 : 1)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
     private func dot(_ s: SegState) -> Color {
         switch s { case .done: return WP.green; case .current: return WP.orange; case .upcoming: return WP.line }
@@ -447,6 +453,7 @@ struct TransitionFace: View {
     let title: String
     var titleColor: Color = WP.amber
     let sub: String?
+    var next: String? = nil   // what's coming after this beat (e.g. "90s jog") so you can prepare
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: icon).font(.system(size: 34, weight: .bold)).foregroundStyle(titleColor)
@@ -455,6 +462,12 @@ struct TransitionFace: View {
             if let sub {
                 Text(sub).font(WF.interSemi(12)).tracking(0.3)
                     .foregroundStyle(WP.muted).multilineTextAlignment(.center)
+            }
+            if let next {
+                (Text("UP NEXT  ").foregroundStyle(WP.muted)
+                 + Text(next.uppercased()).foregroundStyle(WP.ink))
+                    .font(WF.interBold(12)).tracking(0.6)
+                    .padding(.top, 4)
             }
         }
         .padding(.horizontal, 14)
@@ -480,22 +493,22 @@ private struct PausedVeil: View {
     let onResume: () -> Void
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "pause.circle.fill").font(.system(size: 34)).foregroundStyle(WP.amber)
-            Text("PAUSED").font(WF.bebas(30)).foregroundStyle(WP.ink).tracking(1)
+            Image(systemName: "pause.circle.fill").font(.system(size: 38)).foregroundStyle(WP.amber)
+            Text("PAUSED").font(WF.bebas(34)).foregroundStyle(WP.ink).tracking(1)
             Text(PaceFormat.clock(engine.totalElapsedSec))
                 .font(WF.interSemi(13)).monospacedDigit().foregroundStyle(WP.muted)
             Button {
                 engine.resume(); onResume()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.system(size: 13, weight: .bold))
-                    Text("RESUME").font(WF.oswald(14)).tracking(1.5)
+                HStack(spacing: 8) {
+                    Image(systemName: "play.fill").font(.system(size: 16, weight: .bold))
+                    Text("RESUME").font(WF.oswald(16)).tracking(1.5)
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                .frame(maxWidth: .infinity).padding(.vertical, 15)
                 .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
                 .background(WP.green, in: Capsule())
             }
-            .buttonStyle(.plain).padding(.top, 4).padding(.horizontal, 6)
+            .buttonStyle(.plain).padding(.top, 6)
         }
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

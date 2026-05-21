@@ -63,7 +63,8 @@ enum WF {
 
 // MARK: - Shared components
 
-/// One-line uppercase eyebrow (top-left of the metric faces). Never wraps.
+/// One-line uppercase eyebrow (top-left of the metric faces). Never wraps — a long phase
+/// label scales down, then truncates with an ellipsis rather than wrapping or overflowing.
 struct Eyebrow: View {
     let text: String
     var color: Color = WP.muted
@@ -71,7 +72,7 @@ struct Eyebrow: View {
         Text(text.uppercased())
             .font(WF.interBold(13)).tracking(1.1)
             .foregroundStyle(color)
-            .lineLimit(1).minimumScaleFactor(0.8)
+            .lineLimit(1).minimumScaleFactor(0.7).truncationMode(.tail)
     }
 }
 
@@ -83,9 +84,10 @@ struct FaceHeader: View {
     let label: String
     var color: Color = WP.muted
     var body: some View {
-        HStack {
+        HStack(spacing: 0) {
             Eyebrow(text: label, color: color)
-            Spacer(minLength: 0)
+            Spacer(minLength: 78)    // reserve the top-right zone the OS clock occupies — the
+                                     // eyebrow scales/truncates within the rest, never under the clock
         }
         .padding(.leading, 8)        // clear the rounded top-left corner at the clock's height
         .padding(.top, 20)           // baseline-align the eyebrow with the OS clock
@@ -257,12 +259,11 @@ struct WorkIntervalFace: View {
                 left:  Stat(value: heartRate, unit: "bpm"),   // HEART RATE
                 right: Stat(value: cadence,   unit: "spm")    // CADENCE
             )
-            ProgressRow(fraction: repFraction, fill: WP.orange) {
-                Text(repTimeLeft).font(WF.bebas(18)).monospacedDigit().foregroundStyle(WP.ink)
-            }
-            .padding(.top, 8)
+            Text(repTimeLeft).font(WF.bebas(22)).monospacedDigit().foregroundStyle(WP.ink)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 8)
         }
-        .executionFace()
+        .executionFace(bottom: 8)
     }
 }
 

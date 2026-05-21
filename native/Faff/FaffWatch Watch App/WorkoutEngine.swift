@@ -374,12 +374,12 @@ final class WorkoutEngine: ObservableObject {
         }
 
         // "Almost done" cue · 3s before a WORK interval ends — haptic +
-        // a full-screen heads-up flip ("Ease off") so you don't overrun.
+        // a full-screen heads-up flip ("Almost there") so you don't overrun.
         // (Workout only — a race phase boundary is terrain, not a rep end.)
         if !isRace, phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
             didFireAlmostDone = true
             Haptics.almostDone()
-            flash(.headsUp(title: "Ease off", sub: "\(phaseRemainingSec)s left"), for: 2.6)
+            flash(.headsUp(title: "Almost there", sub: "\(phaseRemainingSec)s left"), for: 2.6)
         }
 
         // Gel cue (race) — fire once as the runner reaches each marker.
@@ -387,7 +387,7 @@ final class WorkoutEngine: ObservableObject {
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
                 Haptics.almostDone()
-                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water · on track"), for: 3)
+                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water"), for: 3)
             }
         }
 

@@ -84,6 +84,8 @@ struct WatchFixtureView: View {
         // ── §D · alt pages ────────────────────────────────────────────────
         case "controls":
             ControlsFace()
+        case "paused":
+            PausedFixture()
         case "splits":
             SplitsFace(rows: [
                 .init(repNo: 1, label: "800", pace: "6:29", color: WP.green),
@@ -106,15 +108,14 @@ struct WatchFixtureView: View {
         case "countdown":
             CountdownFixture()
         case "heads-up-3s":
-            TransitionFace(icon: "clock", title: "Ease off", titleColor: WP.amber, sub: "3 SECONDS LEFT")
+            TransitionFace(icon: "clock", title: "Almost there", titleColor: WP.amber,
+                           sub: "3 SECONDS LEFT", next: "90s jog")
         case "next-rep":
-            TransitionFace(icon: "arrow.right", title: "Go · Int 4", titleColor: WP.green, sub: "TARGET 6:31/MI")
+            PaceCue(eyebrow: "INT 4 / 6", color: WP.green, pace: "6:31", spec: "800M")
         case "phase-change":
-            TransitionFace(icon: "chart.line.uptrend.xyaxis", title: "Hurricane climb",
-                           titleColor: WP.orange, sub: "10:38 TARGET · HOLD EFFORT")
+            PaceCue(eyebrow: "Hurricane climb", color: WP.orange, pace: "10:38", spec: "2.1 MI")
         case "fuel-cue":
-            TransitionFace(icon: "bolt.fill", title: "Gel 3", titleColor: WP.orange,
-                           sub: "+ WATER · 60G/HR, ON TRACK")
+            TransitionFace(icon: "bolt.fill", title: "Gel 3", titleColor: WP.orange, sub: "+ WATER")
 
         // ── §E / §F2 · finish ─────────────────────────────────────────────
         case "summary":
@@ -129,14 +130,14 @@ struct WatchFixtureView: View {
             HomeRestFixture()
         case "pre-run-briefing":
             PreRunBriefingFixture()
+        case "pre-run-detail":
+            WorkoutDetailFixture()
         case "pre-race":
             PreRaceFixture()
 
         // ── §G · on the watch face ────────────────────────────────────────
         case "glance":
             GlanceFixture()
-        case "complication":
-            ComplicationFixture()
 
         default:
             WorkIntervalFace(rep: "Int 3 / 6", elapsed: "24:18", segments: workSegs,
@@ -168,15 +169,64 @@ private struct AODFixture: View {
     }
 }
 
-/// Countdown (deck §B): "Get ready" + the big 3-count.
-private struct CountdownFixture: View {
+/// Pace-led cue flash (rep start / race phase shift) — the target PACE is the hero (the
+/// number you execute on), under a context eyebrow, with a spec line: a distance/value
+/// (`specIsValue`) or a coaching cue like "HOLD EFFORT".
+private struct PaceCue: View {
+    let eyebrow: String
+    var color: Color = WP.green
+    let pace: String
+    let spec: String          // how long the rep/phase is — "800M", "2.1 MI" (the value)
     var body: some View {
-        VStack(spacing: 8) {
-            Text("GET READY").font(WF.interBold(13)).tracking(1.1).foregroundStyle(WP.green)
-            Text("3").font(WF.bebas(130)).foregroundStyle(WP.green)
+        VStack(spacing: 4) {
+            Text(eyebrow).font(WF.interBold(13)).tracking(1.1).foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(pace).font(WF.bebas(100)).foregroundStyle(color)
+                Text("/MI").font(WF.interSemi(16)).foregroundStyle(WP.muted)
+            }
+            .lineLimit(1).minimumScaleFactor(0.5)
+            Text(spec).font(WF.bebas(34)).foregroundStyle(WP.ink)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+    }
+}
+
+/// Paused state (mirrors PausedVeil): the whole screen becomes the paused read with one
+/// big can't-miss Resume bar — so resuming after a traffic light is a single tap.
+private struct PausedFixture: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "pause.circle.fill").font(.system(size: 38)).foregroundStyle(WP.amber)
+            Text("PAUSED").font(WF.bebas(34)).foregroundStyle(WP.ink).tracking(1)
+            Text("24:18").font(WF.interSemi(13)).monospacedDigit().foregroundStyle(WP.muted)
+            HStack(spacing: 8) {
+                Image(systemName: "play.fill").font(.system(size: 16, weight: .bold))
+                Text("RESUME").font(WF.oswald(16)).tracking(1.5)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 15)
+            .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
+            .background(WP.green, in: Capsule())
+            .padding(.top, 6)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(WP.bg)
+    }
+}
+
+/// Countdown (deck §B): "Get ready" + the big 3-count.
+private struct CountdownFixture: View {
+    var body: some View {
+        Text("3")
+            .font(WF.bebas(240))
+            .foregroundStyle(WP.green)
+            .lineLimit(1).minimumScaleFactor(0.3)
+            .offset(y: 10)               // optically center: Bebas's line box rides high (empty descender below)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WP.bg)
+            .ignoresSafeArea()
     }
 }
 
@@ -184,13 +234,16 @@ private struct CountdownFixture: View {
 private struct HomeWorkoutFixture: View {
     var body: some View {
         VStack(spacing: 0) {
+            // FAFF logo lifted level with the OS clock (top-right is the system's).
             HStack {
                 Text("FAFF").font(WF.bebas(15)).italic().tracking(1.5).foregroundStyle(WP.orange)
-                Spacer()
-                Text("7:14").font(WF.interBold(11)).monospacedDigit().foregroundStyle(WP.muted)
+                Spacer(minLength: 0)
             }
+            .padding(.leading, 8).padding(.top, 20)
             ReadyPill(score: "82", word: "Primed").padding(.top, 10)
             Text("6×800").font(WF.bebas(52)).textCase(.uppercase).foregroundStyle(WP.ink)
+                .lineLimit(2).minimumScaleFactor(0.45).multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .padding(.top, 10)
             Text("@ T · 6:31/MI").font(WF.oswald(12)).tracking(0.5).foregroundStyle(WP.orange)
             Text("52 MIN · 6.4 MI").font(WF.interSemi(10.5)).tracking(0.5).foregroundStyle(WP.muted)
@@ -198,9 +251,10 @@ private struct HomeWorkoutFixture: View {
             Spacer()
             StartButton()
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -210,22 +264,23 @@ private struct HomeRestFixture: View {
         VStack(spacing: 0) {
             HStack {
                 Text("FAFF").font(WF.bebas(15)).italic().tracking(1.5).foregroundStyle(WP.orange)
-                Spacer()
-                Text("7:14").font(WF.interBold(11)).monospacedDigit().foregroundStyle(WP.muted)
+                Spacer(minLength: 0)
             }
+            .padding(.leading, 8).padding(.top, 20)
             Spacer()
-            Text("REST DAY").font(WF.interBold(13)).tracking(1.1).foregroundStyle(WP.green)
-            Text("REST").font(WF.bebas(70)).foregroundStyle(WP.green).padding(.top, 4)
+            Text("REST").font(WF.bebas(70)).foregroundStyle(WP.green)
             Text("Recovery is the workout. Easy walk if you want it.")
                 .font(WF.interSemi(12.5)).foregroundStyle(WP.muted)
-                .multilineTextAlignment(.center).frame(maxWidth: 150).padding(.top, 10)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 178).padding(.top, 10)
             Text("HRV 68 · RHR 48").font(WF.interBold(13)).monospacedDigit()
                 .foregroundStyle(WP.muted).padding(.top, 8)
             Spacer()
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -234,11 +289,13 @@ private struct PreRunBriefingFixture: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("TODAY · READY").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(WP.muted)
-                Spacer()
-                Text("7:14").font(WF.interBold(11)).monospacedDigit().foregroundStyle(WP.muted)
+                Text("TODAY").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(WP.muted)
+                Spacer(minLength: 0)
             }
+            .padding(.leading, 8).padding(.top, 20)
             Text("6×800").font(WF.bebas(52)).textCase(.uppercase).foregroundStyle(WP.ink)
+                .lineLimit(2).minimumScaleFactor(0.45).multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .padding(.top, 12)
             Text("@ T · 6:31/MI · 60S REC").font(WF.oswald(12)).tracking(0.5).foregroundStyle(WP.orange)
             Text("EST 52 MIN · 6.4 MI").font(WF.interSemi(10.5)).tracking(0.5).foregroundStyle(WP.muted)
@@ -247,9 +304,10 @@ private struct PreRunBriefingFixture: View {
             Spacer()
             StartButton()
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
     private var briefingDots: [DotsStrip.Dot] {
         var d: [DotsStrip.Dot] = [.init(weight: 1.4, color: Color.white.opacity(0.32))]
@@ -262,31 +320,85 @@ private struct PreRunBriefingFixture: View {
     }
 }
 
+/// Pre-run DETAIL — swipe page 2 of the briefing: the step-by-step plan so you know exactly
+/// what you're about to do. Phases listed top→bottom, repeated blocks collapsed to "5×".
+private struct WorkoutDetailFixture: View {
+    private struct Step: Identifiable {
+        let id = UUID(); let n: String; let title: String; let detail: String; let color: Color
+    }
+    private let steps: [Step] = [
+        .init(n: "1",  title: "Warm up",         detail: "15 min · easy · 8:29/mi",       color: WP.green),
+        .init(n: "5×", title: "Cruise intervals", detail: "7 min @ 7:11/mi · 90s jog",     color: WP.orange),
+        .init(n: "3",  title: "Cool down",        detail: "10 min · easy · 8:29/mi",       color: WP.muted),
+    ]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Eyebrow(text: "The plan", color: WP.orange)
+                Spacer(minLength: 78)
+            }
+            .padding(.leading, 8).padding(.top, 20)
+            Text("7.9 MI · 7:11/MI · ~57 MIN")
+                .font(WF.interSemi(10.5)).tracking(0.3).foregroundStyle(WP.muted)
+                .padding(.top, 3).padding(.leading, 8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(steps.enumerated()), id: \.element.id) { idx, s in
+                        if idx > 0 { Rectangle().fill(WP.line).frame(height: 1) }
+                        HStack(alignment: .firstTextBaseline, spacing: 9) {
+                            Text(s.n).font(WF.bebas(22)).foregroundStyle(s.color)
+                                .frame(width: 30, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(s.title).font(WF.interBold(13)).foregroundStyle(WP.ink).lineLimit(1)
+                                Text(s.detail.uppercased()).font(WF.interSemi(10)).tracking(0.3)
+                                    .foregroundStyle(WP.muted).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 7)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 12).padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
+    }
+}
+
 /// Pre-race (deck §F2): goal, strategy, gels, the course strip, Start.
 private struct PreRaceFixture: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("BIG SUR · READY").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(WP.orange)
-                Spacer()
-                Text("7:28").font(WF.interBold(11)).monospacedDigit().foregroundStyle(WP.muted)
+                Text("BIG SUR").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(WP.orange)
+                Spacer(minLength: 0)
             }
+            .padding(.leading, 8).padding(.top, 20)
             Spacer(minLength: 6)
             Text("3:50").font(WF.bebas(64)).monospacedDigit().foregroundStyle(WP.ink)
             Text("EVEN EFFORT · 8:46 FLAT").font(WF.oswald(12)).tracking(0.5).foregroundStyle(WP.orange)
             Text("26.2 MI · 6 GELS").font(WF.interSemi(10.5)).tracking(0.5).foregroundStyle(WP.muted)
                 .padding(.top, 4)
+            // Course PROFILE by terrain/effort (not progress): climb = warn, descent = green,
+            // rolling/flat = orange. So you can see where the hard parts are before you start.
             DotsStrip(dots: [
-                .init(weight: 5, color: WP.orange), .init(weight: 5, color: WP.orange),
-                .init(weight: 2, color: WP.orange), .init(weight: 2, color: WP.orange),
-                .init(weight: 8, color: WP.orange), .init(weight: 4.2, color: WP.orange),
+                .init(weight: 5, color: WP.orange),   // rolling start
+                .init(weight: 5, color: WP.orange),   // rolling
+                .init(weight: 2, color: WP.warn),     // Hurricane Point climb
+                .init(weight: 2, color: WP.green),    // descent
+                .init(weight: 8, color: WP.orange),   // rolling
+                .init(weight: 4.2, color: WP.orange), // finish
             ]).padding(.top, 12)
             Spacer()
             StartButton()
         }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -298,8 +410,7 @@ private struct SummaryFixture: View {
     ]
     var body: some View {
         VStack(spacing: 0) {
-            CheckRing()
-            Text("COMPLETE").font(WF.bebas(28)).foregroundStyle(WP.ink).padding(.top, 8)
+            Text("COMPLETE").font(WF.bebas(28)).foregroundStyle(WP.ink)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 10) {
                 ForEach(cells, id: \.1) { c in
                     VStack(spacing: 2) {
@@ -323,11 +434,11 @@ private struct SummaryFixture: View {
 private struct RaceFinishFixture: View {
     var body: some View {
         VStack(spacing: 0) {
-            CheckRing()
-            Text("FINISH").font(WF.bebas(28)).foregroundStyle(WP.ink).padding(.top, 8)
+            Text("FINISH").font(WF.bebas(28)).foregroundStyle(WP.ink)
             Text("3:49:12").font(WF.bebas(56)).monospacedDigit().foregroundStyle(WP.green).padding(.top, 8)
             Text("48S UNDER GOAL · NEGATIVE SPLIT").font(WF.oswald(12)).tracking(0.4)
-                .foregroundStyle(WP.green).multilineTextAlignment(.center).padding(.top, 8)
+                .foregroundStyle(WP.green).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             Text("SAVED · SYNCING").font(WF.interSemi(9.5)).tracking(0.3)
                 .foregroundStyle(WP.muted).padding(.top, 12)
         }
@@ -337,52 +448,46 @@ private struct RaceFinishFixture: View {
     }
 }
 
-/// Readiness glance (deck §G): the watch's slice of the phone read.
+/// Readiness glance (deck §G): the watch's slice of the phone's readiness read.
+/// Score + the actionable call (the model's green/yellow/red interpretation) + the REAL
+/// drivers behind it (load / freshness / volume / HR-pace drift) — not HRV/RHR, which the
+/// readiness model doesn't use and aren't integrated yet.
 private struct GlanceFixture: View {
+    private let score = 82
+    private let drivers = ["5 days fresh", "On-plan volume", "Pace trending fit"]
+
+    /// Mirrors readiness-score.ts: 80+ green · 60-79 yellow · <60 red.
+    private var state: (color: Color, call: String) {
+        if score >= 80 { return (WP.green, "Hit today as written") }
+        if score >= 60 { return (WP.amber, "Watch effort today") }
+        return (WP.warn, "Swap for easy")
+    }
+
     var body: some View {
+        let s = state
         VStack(spacing: 0) {
             HStack {
-                Text("READINESS").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(WP.green)
-                Spacer()
-                Text("7:14").font(WF.interBold(11)).monospacedDigit().foregroundStyle(WP.muted)
+                Text("READINESS").font(WF.interBold(12.5)).tracking(1.1).foregroundStyle(s.color)
+                Spacer(minLength: 0)
             }
-            Spacer()
-            Text("RECOVERED").font(WF.interBold(11)).tracking(1.2).foregroundStyle(WP.muted)
-            Text("82").font(WF.bebas(96)).foregroundStyle(WP.green).padding(.top, 15)
-            Text("HRV 68 · RHR 48").font(WF.interSemi(12)).foregroundStyle(WP.muted).padding(.top, 13)
-            Text("CIM · 198 DAYS").font(WF.interSemi(12)).foregroundStyle(WP.muted).padding(.top, 12)
-            Spacer()
-        }
-        .padding(.horizontal, 14).padding(.vertical, 13)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WP.bg)
-    }
-}
-
-/// Complication (deck §G): the time + today's session/readiness chips.
-private struct ComplicationFixture: View {
-    var body: some View {
-        ZStack {
-            Text("7:14").font(WF.bebas(58)).monospacedDigit().foregroundStyle(WP.ink)
-            VStack {
-                Spacer()
-                HStack(spacing: 6) {
-                    chip(orange: "6×800", rest: "today")
-                    chip(orange: "82", rest: "ready")
+            .padding(.leading, 8).padding(.top, 20)
+            Spacer(minLength: 0)
+            Text("\(score)").font(WF.bebas(86)).foregroundStyle(s.color)
+            Text(s.call.uppercased()).font(WF.interBold(12)).tracking(0.7).foregroundStyle(s.color)
+                .lineLimit(1).minimumScaleFactor(0.7).padding(.top, 2)
+            VStack(spacing: 3) {
+                ForEach(drivers, id: \.self) { d in
+                    Text(d.uppercased()).font(WF.interSemi(10)).tracking(0.4).foregroundStyle(WP.muted)
                 }
-                .padding(.bottom, 6)
             }
+            .padding(.top, 12)
+            Spacer(minLength: 0)
+            Text("CIM · 198 DAYS").font(WF.interSemi(10)).tracking(0.5).foregroundStyle(WP.faint)
         }
+        .padding(.horizontal, 14).padding(.bottom, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
-    }
-    private func chip(orange: String, rest: String) -> some View {
-        HStack(spacing: 5) {
-            Text(orange).font(WF.bebas(14)).foregroundStyle(WP.orange)
-            Text(rest).font(WF.interBold(10)).foregroundStyle(WP.ink)
-        }
-        .padding(.horizontal, 9).padding(.vertical, 5)
-        .background(Color.white.opacity(0.10), in: Capsule())
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -410,13 +515,6 @@ private struct StartButton: View {
         .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
         .frame(maxWidth: .infinity).padding(.vertical, 13)
         .background(WP.green, in: Capsule())
-    }
-}
-
-private struct CheckRing: View {
-    var body: some View {
-        Circle().stroke(WP.green, lineWidth: 3).frame(width: 40, height: 40)
-            .overlay(Image(systemName: "checkmark").font(.system(size: 16, weight: .bold)).foregroundStyle(WP.green))
     }
 }
 
