@@ -38,14 +38,14 @@ struct ActiveWorkoutView: View {
             // so its Resume button isn't fighting the TabView's paging
             // gesture for the tap.
             if engine.isPaused {
-                PausedVeil(engine: engine) { page = .face }
+                ResponsiveFace { PausedVeil(engine: engine) { page = .face } }
             } else {
                 TabView(selection: $page) {
-                    ControlsPage(engine: engine) { page = .face }.tag(Page.controls)
-                    faceRouter.tag(Page.face)
-                    LiveInRunStats(engine: engine, tracker: tracker).tag(Page.stats)
-                    SplitsPage(engine: engine).tag(Page.splits)
-                    SessionMapPage(engine: engine).tag(Page.map)
+                    ResponsiveFace { ControlsPage(engine: engine) { page = .face } }.tag(Page.controls)
+                    ResponsiveFace { faceRouter }.tag(Page.face)
+                    ResponsiveFace { LiveInRunStats(engine: engine, tracker: tracker) }.tag(Page.stats)
+                    ResponsiveFace { SplitsPage(engine: engine) }.tag(Page.splits)
+                    ResponsiveFace { SessionMapPage(engine: engine) }.tag(Page.map)
                 }
                 .tabViewStyle(.page)
             }
@@ -53,7 +53,7 @@ struct ActiveWorkoutView: View {
             // Edge-of-rep flips are brief + non-interactive, so they can
             // safely sit above the pages.
             if let cue = engine.transition {
-                TransitionFlip(cue: cue).transition(.opacity)
+                ResponsiveFace { TransitionFlip(cue: cue) }.transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.18), value: engine.transition)

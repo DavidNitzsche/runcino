@@ -102,7 +102,7 @@ struct WorkoutRootView: View {
             // legacy Glance).
             TabView {
                 idleHome.tag(0)
-                ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness).tag(1)
+                ResponsiveFace { ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness) }.tag(1)
             }
             .tabViewStyle(.page)
         }
@@ -151,41 +151,42 @@ struct WorkoutRootView: View {
 private struct NoWorkoutView: View {
     let message: String
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+        ResponsiveFace {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(WatchTheme.C.orange)
+                    Spacer()
+                }
+                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
+                Spacer()
+                // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
+                Text("REST").font(WatchTheme.display(80)).foregroundStyle(WatchTheme.C.green)
+                Text(message)
+                    .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 180).padding(.top, 8)
                 Spacer()
             }
-            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
-            Spacer()
-            // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
-            Text("REST").font(WatchTheme.display(80)).foregroundStyle(WatchTheme.C.green)
-            Text(message)
-                .font(WatchTheme.body(13, .medium)).foregroundStyle(WatchTheme.C.t2)
-                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 180).padding(.top, 8)
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 14).padding(.bottom, 12)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, 14).padding(.bottom, 8)
-        .background(WatchTheme.C.bg.ignoresSafeArea())
-        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
 /// No workout received yet — prompt the user to open the iPhone app.
 private struct WaitingForPhoneView: View {
     var body: some View {
-        VStack(spacing: 10) {
-            ProgressView().tint(WatchTheme.C.orange)
-            Text("Open Faff on your iPhone to load today's workout.")
-                .font(WatchTheme.body(12, .medium))
-                .foregroundStyle(WatchTheme.C.t2)
-                .multilineTextAlignment(.center)
+        ResponsiveFace {
+            VStack(spacing: 10) {
+                ProgressView().tint(WatchTheme.C.orange)
+                Text("Open Faff on your iPhone to load today's workout.")
+                    .font(WatchTheme.body(12, .medium))
+                    .foregroundStyle(WatchTheme.C.t2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WatchTheme.C.bg.ignoresSafeArea())
     }
 }
 

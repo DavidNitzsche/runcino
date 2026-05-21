@@ -18,12 +18,10 @@ struct WatchFixtureView: View {
     let face: String
 
     var body: some View {
-        // Background fills the corners; content respects the safe area so it
-        // sits where the deck's .w-screen padding puts it (and the OS clock
-        // stays in the top inset, not over the face).
-        ZStack {
-            WP.bg.ignoresSafeArea()
-            content   // respect the safe area so text clears the rounded corners + the OS clock
+        // Author each face for the Ultra canvas; ResponsiveFace scales it to the
+        // actual watch (same rule the live faces use).
+        ResponsiveFace {
+            content
         }
     }
 
