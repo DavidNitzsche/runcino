@@ -40,11 +40,7 @@ struct WorkoutDetailView: View {
                 }
 
                 if let steps = dw?.detail?.steps, !steps.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("STRUCTURE").font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
-                            .padding(.bottom, 4)
-                        ForEach(Array(steps.enumerated()), id: \.offset) { _, s in stepView(s) }
-                    }.faffCard()
+                    WorkoutStructureView(steps: steps)
                 } else if let n = dw?.notes, !n.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("THE WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
@@ -89,49 +85,6 @@ struct WorkoutDetailView: View {
         working = true; defer { working = false }
         try? await PlanActionAPI.skip(dateISO: todayISO, type: dw?.label, mi: dw?.distanceMi)
         onReload(); dismiss()
-    }
-
-    // ── Structure rows ────────────────────────────────────────────
-    @ViewBuilder private func stepView(_ s: OStep) -> some View {
-        if s.kind == "loop" {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 2).fill(Faff.C.recovery).frame(width: 4, height: 20)
-                    Text((s.name ?? "").uppercased()).font(Faff.F.oswald(14, .semibold)).tracking(0.5).foregroundStyle(Faff.C.ink)
-                }
-                Text("\(s.times ?? 0) ROUNDS OF").font(Faff.F.oswald(11, .semibold)).tracking(1).foregroundStyle(Faff.C.race)
-                    .padding(.leading, 16)
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array((s.items ?? []).enumerated()), id: \.offset) { _, it in
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("·").foregroundStyle(Faff.C.textDim)
-                            loopItemText(it)
-                        }
-                    }
-                }.padding(.leading, 16)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 7)
-        } else {
-            StructureRow(name: s.name ?? "", sub: simpleSub(s), distance: "",
-                         work: (s.zone ?? "").lowercased().contains("threshold") || (s.zone ?? "").contains("T"))
-        }
-    }
-    private func simpleSub(_ s: OStep) -> String {
-        var parts: [String] = []
-        if let d = s.duration, !d.isEmpty { parts.append(d) }
-        if let p = s.pace, !p.isEmpty { parts.append(p) }
-        if let z = s.zone, !z.isEmpty { parts.append(z) }
-        return parts.joined(separator: " · ")
-    }
-    private func loopItemText(_ it: OLoopItem) -> Text {
-        var t = Text("\(it.verb ?? "") ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
-            + faffMarkdown("**\(it.duration ?? "")**").font(Faff.F.inter(13))
-        if let p = it.pace, !p.isEmpty {
-            t = t + Text(" at ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
-                + faffMarkdown("**\(p)**").font(Faff.F.inter(13))
-        }
-        if let suf = it.suffix, !suf.isEmpty { t = t + Text(" \(suf)").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted) }
-        return t
     }
 
     // ── Action ────────────────────────────────────────────────────
@@ -244,5 +197,65 @@ struct RescheduleSheet: View {
         guard let dt = inF.date(from: String(iso.prefix(10))) else { return iso }
         let out = DateFormatter(); out.dateFormat = "EEEE, MMM d"; out.timeZone = TimeZone(identifier: "UTC")
         return out.string(from: dt)
+    }
+}
+
+// MARK: - Structured workout steps (shared by today's + future-day detail)
+
+/// Renders the describeWorkout step list (warmup / N×reps loop / cooldown with
+/// paces + zones) in a card. Used by WorkoutDetailView (today) and
+/// PlanDayDetailSheet (future days) so both show identical structure.
+struct WorkoutStructureView: View {
+    let steps: [OStep]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("STRUCTURE").font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                .padding(.bottom, 4)
+            ForEach(Array(steps.enumerated()), id: \.offset) { _, s in stepView(s) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+
+    @ViewBuilder private func stepView(_ s: OStep) -> some View {
+        if s.kind == "loop" {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 2).fill(Faff.C.recovery).frame(width: 4, height: 20)
+                    Text((s.name ?? "").uppercased()).font(Faff.F.oswald(14, .semibold)).tracking(0.5).foregroundStyle(Faff.C.ink)
+                }
+                Text("\(s.times ?? 0) ROUNDS OF").font(Faff.F.oswald(11, .semibold)).tracking(1).foregroundStyle(Faff.C.race)
+                    .padding(.leading, 16)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array((s.items ?? []).enumerated()), id: \.offset) { _, it in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("·").foregroundStyle(Faff.C.textDim)
+                            loopItemText(it)
+                        }
+                    }
+                }.padding(.leading, 16)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 7)
+        } else {
+            StructureRow(name: s.name ?? "", sub: simpleSub(s), distance: "",
+                         work: (s.zone ?? "").lowercased().contains("threshold") || (s.zone ?? "").contains("T"))
+        }
+    }
+    private func simpleSub(_ s: OStep) -> String {
+        var parts: [String] = []
+        if let d = s.duration, !d.isEmpty { parts.append(d) }
+        if let p = s.pace, !p.isEmpty { parts.append(p) }
+        if let z = s.zone, !z.isEmpty { parts.append(z) }
+        return parts.joined(separator: " · ")
+    }
+    private func loopItemText(_ it: OLoopItem) -> Text {
+        var t = Text("\(it.verb ?? "") ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+            + faffMarkdown("**\(it.duration ?? "")**").font(Faff.F.inter(13))
+        if let p = it.pace, !p.isEmpty {
+            t = t + Text(" at ").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+                + faffMarkdown("**\(p)**").font(Faff.F.inter(13))
+        }
+        if let suf = it.suffix, !suf.isEmpty { t = t + Text(" \(suf)").font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted) }
+        return t
     }
 }

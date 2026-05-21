@@ -197,6 +197,29 @@ struct OLoopItem: Decodable {
     let hrTarget: String?
 }
 
+/// Structured described workout for a single plan day (GET /api/plan/workout).
+struct PlanWorkoutDetail: Decodable {
+    let label: String?
+    let type: String?
+    let distanceMi: Double?
+    let description: ODescription?
+}
+private struct PlanWorkoutResponse: Decodable { let ok: Bool; let workout: PlanWorkoutDetail? }
+
+@MainActor
+enum WorkoutDayAPI {
+    /// The real describeWorkout for `date` (steps + effort + why + zone), or
+    /// nil for rest days / no plan. Bearer-aware so it resolves to the user.
+    static func fetch(date: String) async throws -> PlanWorkoutDetail? {
+        guard let url = URL(string: "/api/plan/workout?date=\(date)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.timeoutInterval = 20
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try JSONDecoder().decode(PlanWorkoutResponse.self, from: data).workout
+    }
+}
+
 /// One grouped coach adaptation (from /api/overview coachAdaptations).
 struct OCoachAdaptation: Decodable, Identifiable {
     let reason: String

@@ -1655,6 +1655,8 @@ struct PlanDayDetailSheet: View {
     let day: PlanRangeDay
     let phase: String?
     @Environment(\.dismiss) private var dismiss
+    @State private var detail: PlanWorkoutDetail?
+    @State private var loaded = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
@@ -1673,19 +1675,31 @@ struct PlanDayDetailSheet: View {
                     StatPill(value: day.paceDisplay, unit: day.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: day.isQuality ?? false)
                     StatPill(value: day.durationMin.map { "~\($0)" } ?? "—", unit: day.durationMin != nil ? "min" : nil, label: "Time")
                 }
-                if let n = day.description, !n.isEmpty {
+                // Structured steps (real describeWorkout, same as today's
+                // detail) when available; fall back to the prose notes.
+                if let steps = detail?.description?.steps, !steps.isEmpty {
+                    WorkoutStructureView(steps: steps)
+                } else if let n = day.description, !n.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("THE WORKOUT").font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
                         Text(n).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }.faffCard()
                 }
-                CoachVerdict("Focus", effort(day.type), color: Faff.C.milestone)
+                if let why = detail?.description?.why, !why.isEmpty {
+                    CoachVerdict("Why this run", why, color: Faff.C.recovery)
+                }
+                CoachVerdict("Focus", detail?.description?.effort ?? effort(day.type), color: Faff.C.milestone)
                 PrimaryButton(title: "Close", icon: nil) { dismiss() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
         .background(Faff.C.bg.ignoresSafeArea())
+        .task {
+            guard !loaded, !day.isRest, let d = day.date else { return }
+            loaded = true
+            detail = try? await WorkoutDayAPI.fetch(date: d)
+        }
     }
     private var eyebrow: String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
