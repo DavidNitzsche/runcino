@@ -132,7 +132,10 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - Reads → backend sample shape
 
-    /// Pull the last `daysBack` days of the four accepted streams.
+    /// Pull the last `daysBack` days of every ingestable stream — vitals
+    /// (resting/max HR, HRV, VO₂max, sleep, respiration, wrist temp) and
+    /// daily running dynamics (cadence, stride, oscillation, ground
+    /// contact, vertical ratio, power) — for POST /api/health/ingest.
     nonisolated func collectSamples(daysBack: Int) async -> [HealthSample] {
         var out: [HealthSample] = []
         let bpm = HKUnit.count().unitDivided(by: .minute())
@@ -169,7 +172,55 @@ final class HealthKitManager: ObservableObject {
             out.append(HealthSample(type: "sleep_hours", value: (hours * 10).rounded() / 10,
                                     dateISO: day, source: "apple_health"))
         }
+        // Respiration — daily average (breaths/min).
+        let perMin = HKUnit.count().unitDivided(by: .minute())
+        for (date, stat) in await dailyStats(HKQuantityType(.respiratoryRate), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "respiratory_rate", value: (q.doubleValue(for: perMin) * 10).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // Wrist temperature — nightly reading (°C).
+        for (date, stat) in await dailyStats(HKQuantityType(.appleSleepingWristTemperature), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "wrist_temp", value: (q.doubleValue(for: .degreeCelsius()) * 10).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // Running dynamics — one daily average per day that has runs. The
+        // dynamics quantities are only recorded during runs, so a daily
+        // discreteAverage is the day's running form.
+        let strideByDay = await dailyAvgMap(HKQuantityType(.runningStrideLength), unit: .meter(), days: daysBack)
+        let oscByDay    = await dailyAvgMap(HKQuantityType(.runningVerticalOscillation), unit: HKUnit.meterUnit(with: .centi), days: daysBack)
+        let gctByDay    = await dailyAvgMap(HKQuantityType(.runningGroundContactTime), unit: HKUnit.secondUnit(with: .milli), days: daysBack)
+        let powerByDay  = await dailyAvgMap(HKQuantityType(.runningPower), unit: .watt(), days: daysBack)
+        let speedByDay  = await dailyAvgMap(HKQuantityType(.runningSpeed), unit: HKUnit.meter().unitDivided(by: .second()), days: daysBack)
+        for (day, v) in strideByDay { out.append(HealthSample(type: "stride_length", value: (v * 100).rounded() / 100, dateISO: day, source: "apple_health")) }
+        for (day, v) in oscByDay    { out.append(HealthSample(type: "vertical_oscillation", value: (v * 10).rounded() / 10, dateISO: day, source: "apple_health")) }
+        for (day, v) in gctByDay    { out.append(HealthSample(type: "ground_contact_time", value: v.rounded(), dateISO: day, source: "apple_health")) }
+        for (day, v) in powerByDay  { out.append(HealthSample(type: "run_power", value: v.rounded(), dateISO: day, source: "apple_health")) }
+        // Derived per day: cadence = speed·60 ÷ stride; vertical ratio = osc ÷ stride.
+        for (day, stride) in strideByDay where stride > 0 {
+            if let spd = speedByDay[day] {
+                let cad = (spd * 60 / stride).rounded()
+                if cad >= 100, cad <= 230 { out.append(HealthSample(type: "cadence", value: cad, dateISO: day, source: "apple_health")) }
+            }
+            if let osc = oscByDay[day] {
+                let ratio = ((osc / stride) * 10).rounded() / 10
+                if ratio >= 3, ratio <= 20 { out.append(HealthSample(type: "vertical_ratio", value: ratio, dateISO: day, source: "apple_health")) }
+            }
+        }
         return out
+    }
+
+    /// Daily discrete-average of a quantity → [dayISO: value]. Used for the
+    /// running-dynamics ingest (and the speed input to derived cadence).
+    private nonisolated func dailyAvgMap(_ type: HKQuantityType, unit: HKUnit, days: Int) async -> [String: Double] {
+        var m: [String: Double] = [:]
+        for (date, stat) in await dailyStats(type, options: .discreteAverage, days: days) {
+            if let q = stat.averageQuantity() { m[Self.isoDay(date)] = q.doubleValue(for: unit) }
+        }
+        return m
     }
 
     // MARK: - Query wrappers (off-main; HKHealthStore is thread-safe)

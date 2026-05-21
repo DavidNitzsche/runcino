@@ -63,7 +63,8 @@ export default async function HealthPage() {
        FROM health_samples
       WHERE user_id = $1
         AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
-        AND sample_type IN ('resting_hr', 'hrv', 'sleep_hours', 'vo2_max')
+        AND sample_type IN ('resting_hr', 'hrv', 'sleep_hours', 'vo2_max',
+                            'max_hr', 'respiratory_rate', 'wrist_temp')
       GROUP BY sample_type`,
     [auth.id],
   ).catch(() => [] as BioRow[]);
@@ -72,8 +73,35 @@ export default async function HealthPage() {
   const hrv = bio.get('hrv') ?? null;
   const sleep = bio.get('sleep_hours') ?? null;
   const vo2 = bio.get('vo2_max') ?? null;
+  const maxHr = bio.get('max_hr') ?? null;
+  const resp = bio.get('respiratory_rate') ?? null;
+  const wristTemp = bio.get('wrist_temp') ?? null;
   const hasBio = rhr != null || hrv != null || sleep != null || vo2 != null;
   const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+  // ── Running dynamics (health_samples), 30-day averages ──
+  const dynRows = await query<BioRow>(
+    `SELECT sample_type, AVG(value)::float8 AS avg
+       FROM health_samples
+      WHERE user_id = $1
+        AND sample_date >= (CURRENT_DATE - INTERVAL '30 days')
+        AND sample_type IN ('cadence', 'stride_length', 'vertical_oscillation',
+                            'ground_contact_time', 'vertical_ratio', 'run_power')
+      GROUP BY sample_type`,
+    [auth.id],
+  ).catch(() => [] as BioRow[]);
+  const dyn = new Map(dynRows.map((r) => [r.sample_type, Number(r.avg)]));
+  const dynVal = (k: string, dec: number, unit: string) => {
+    const v = dyn.get(k);
+    return v != null ? { value: v.toFixed(dec), unit } : { value: '—', unit: '' };
+  };
+  const cadence    = dynVal('cadence', 0, 'spm');
+  const stride     = dynVal('stride_length', 2, 'm');
+  const vertOsc    = dynVal('vertical_oscillation', 1, 'cm');
+  const groundC    = dynVal('ground_contact_time', 0, 'ms');
+  const vertRatio  = dynVal('vertical_ratio', 1, '%');
+  const runPower   = dynVal('run_power', 0, 'W');
+  const hasDyn = dynRows.length > 0;
 
   const sleepRow = sleep != null
     ? { value: `${sleep.toFixed(1)} h`, tone: (sleep >= 7 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((sleep / 8) * 100) }
@@ -220,15 +248,43 @@ export default async function HealthPage() {
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Recovery Vitals</div>
-              <div className="card-sub">Daily readings from connected wearables</div>
+              <div className="card-sub">Daily readings from Apple Health · 7-day average</div>
             </div>
           </div>
           <div className="vitals-grid">
-            <VitalTile label="Sleep"      value={sleep != null ? sleep.toFixed(1) : '—'} unit={sleep != null ? 'h' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={sleep != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="Resting HR" value={rhr != null ? String(Math.round(rhr)) : '—'} unit={rhr != null ? 'bpm' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={rhr != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="HRV"        value={hrv != null ? String(Math.round(hrv)) : '—'} unit={hrv != null ? 'ms' : ''}    range={['—','—']} markerPct={0} avgPct={0} status={hrv != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="Body Mass"  value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
+            <VitalTile label="Sleep"       value={sleep != null ? sleep.toFixed(1) : '—'} unit={sleep != null ? 'h' : ''}     range={['—','—']} markerPct={0} avgPct={0} status={sleep != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="Resting HR"  value={rhr != null ? String(Math.round(rhr)) : '—'} unit={rhr != null ? 'bpm' : ''} range={['—','—']} markerPct={0} avgPct={0} status={rhr != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="HRV"         value={hrv != null ? String(Math.round(hrv)) : '—'} unit={hrv != null ? 'ms' : ''}  range={['—','—']} markerPct={0} avgPct={0} status={hrv != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="VO₂max"      value={vo2 != null ? vo2.toFixed(1) : '—'} unit=""                                  range={['—','—']} markerPct={0} avgPct={0} status={vo2 != null ? 'latest' : 'No data'} />
+            <VitalTile label="Respiration" value={resp != null ? resp.toFixed(1) : '—'} unit={resp != null ? 'br/m' : ''}      range={['—','—']} markerPct={0} avgPct={0} status={resp != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="Wrist Temp"  value={wristTemp != null ? wristTemp.toFixed(1) : '—'} unit={wristTemp != null ? '°C' : ''} range={['—','—']} markerPct={0} avgPct={0} status={wristTemp != null ? 'sleeping' : 'No data'} />
+            <VitalTile label="Max HR"      value={maxHr != null ? String(Math.round(maxHr)) : '—'} unit={maxHr != null ? 'bpm' : ''} range={['—','—']} markerPct={0} avgPct={0} status={maxHr != null ? '7-day max' : 'No data'} />
+            <VitalTile label="Body Mass"   value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
           </div>
+        </div>
+
+        {/* ── RUNNING DYNAMICS (cumulative) ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Running Dynamics</div>
+              <div className="card-sub">Form metrics from Apple Health · 30-day average across runs</div>
+            </div>
+            <div className="card-meta" style={{ color: 'rgba(13,15,18,.45)' }}>{hasDyn ? '30-day avg' : 'No data'}</div>
+          </div>
+          <div className="vitals-grid">
+            <VitalTile label="Cadence"      value={cadence.value}   unit={cadence.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && cadence.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Stride"       value={stride.value}    unit={stride.unit}    range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && stride.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Vert Osc"     value={vertOsc.value}   unit={vertOsc.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && vertOsc.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Grnd Contact" value={groundC.value}   unit={groundC.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && groundC.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Vert Ratio"   value={vertRatio.value} unit={vertRatio.unit} range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && vertRatio.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Run Power"    value={runPower.value}  unit={runPower.unit}  range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && runPower.value !== '—' ? '30-day avg' : 'No data'} />
+          </div>
+          {!hasDyn && (
+            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              Running dynamics sync from your Apple Watch runs once Apple Health is connected. Per-run form appears on each run recap.
+            </div>
+          )}
         </div>
 
       </div>

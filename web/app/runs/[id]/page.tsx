@@ -41,12 +41,22 @@ interface RichActivity {
   bestEfforts: Array<{ name: string; elapsedS: number; elapsedDisplay: string; distanceMi: number; isPR: boolean; rank: number | null }> | null;
 }
 
+interface RunDynamics {
+  cadence: number | null;
+  stride_length: number | null;
+  vertical_oscillation: number | null;
+  ground_contact_time: number | null;
+  vertical_ratio: number | null;
+  run_power: number | null;
+}
+
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [activity, setActivity] = useState<RichActivity | null | 'loading'>('loading');
   const [error, setError]       = useState<string | null>(null);
   const [shoes, setShoes]       = useState<Shoe[]>([]);
   const [shoeId, setShoeId]     = useState<number | null>(null);
+  const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +77,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         setActivity(actJson.activity);
         setShoes(shoeJson.shoes ?? []);
         setShoeId(assignJson.shoe_id ?? null);
+        // Per-run running form from Apple Health (the day's dynamics).
+        if (actJson.activity?.date) {
+          fetch(`/api/health/run-dynamics?date=${actJson.activity.date}`)
+            .then((r) => r.json() as Promise<{ dynamics?: RunDynamics }>)
+            .then((d) => { if (!cancelled && d.dynamics) setDynamics(d.dynamics); })
+            .catch(() => {});
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -152,6 +169,8 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
+      <RunningFormTile dynamics={dynamics} avgCadence={activity.avgCadence} />
+
       <ShoeTile
         shoes={shoes}
         shoeId={shoeId}
@@ -189,6 +208,11 @@ function RunHero({ activity, pacePerMi, isRace }: { activity: RichActivity; pace
           label="AVG HR"
           value={activity.avgHr ? String(Math.round(activity.avgHr)) : '—'}
           unit={activity.avgHr ? 'BPM' : undefined}
+        />
+        <KpiTile
+          label="CADENCE"
+          value={activity.avgCadence ? String(Math.round(activity.avgCadence)) : '—'}
+          unit={activity.avgCadence ? 'SPM' : undefined}
         />
         <KpiTile
           label="ELEV"
@@ -397,6 +421,46 @@ function SplitsTable({ miles }: { miles: NonNullable<RichActivity['miles']> }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** Per-run running form from Apple Health (the run's day dynamics) + the
+ *  Strava cadence. Renders only when at least one metric is present. */
+function RunningFormTile({ dynamics, avgCadence }: { dynamics: RunDynamics | null; avgCadence: number | null }) {
+  const cadence = avgCadence ?? dynamics?.cadence ?? null;
+  const cells: Array<{ label: string; value: string; unit: string }> = [
+    { label: 'Cadence',      value: cadence != null ? String(Math.round(cadence)) : '—', unit: cadence != null ? 'spm' : '' },
+    { label: 'Stride',       value: dynamics?.stride_length != null ? dynamics.stride_length.toFixed(2) : '—', unit: dynamics?.stride_length != null ? 'm' : '' },
+    { label: 'Vert Osc',     value: dynamics?.vertical_oscillation != null ? dynamics.vertical_oscillation.toFixed(1) : '—', unit: dynamics?.vertical_oscillation != null ? 'cm' : '' },
+    { label: 'Grnd Contact', value: dynamics?.ground_contact_time != null ? String(Math.round(dynamics.ground_contact_time)) : '—', unit: dynamics?.ground_contact_time != null ? 'ms' : '' },
+    { label: 'Vert Ratio',   value: dynamics?.vertical_ratio != null ? dynamics.vertical_ratio.toFixed(1) : '—', unit: dynamics?.vertical_ratio != null ? '%' : '' },
+    { label: 'Run Power',    value: dynamics?.run_power != null ? String(Math.round(dynamics.run_power)) : '—', unit: dynamics?.run_power != null ? 'W' : '' },
+  ];
+  const hasAny = cells.some((c) => c.value !== '—');
+  if (!hasAny) return null;
+
+  return (
+    <div className="tile" style={{ marginBottom: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="tile-h">
+        <div>
+          <div className="tile-sub">Running form</div>
+          <div className="tile-lbl">Dynamics from Apple Health for this run</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
+        {cells.map((c) => (
+          <div key={c.label} style={{
+            display: 'flex', flexDirection: 'column', gap: 4, padding: '12px 14px',
+            background: 'var(--color-l2)', border: '1px solid var(--color-l4)', borderRadius: 8,
+          }}>
+            <span style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700 }}>{c.label}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 22, color: c.value === '—' ? 'var(--color-t3)' : 'var(--color-t0)', letterSpacing: '-.01em' }}>
+              {c.value}{c.unit && <small style={{ fontSize: 11, color: 'var(--color-t3)', marginLeft: 2 }}>{c.unit}</small>}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

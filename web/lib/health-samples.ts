@@ -47,7 +47,17 @@ export type HealthSampleType =
   | 'vo2_max'
   | 'sleep_hours'
   | 'workout_hr_avg'
-  | 'hrv';
+  | 'hrv'
+  // Recovery vitals (daily)
+  | 'respiratory_rate'
+  | 'wrist_temp'
+  // Running dynamics (daily average across the day's runs)
+  | 'cadence'
+  | 'stride_length'
+  | 'vertical_oscillation'
+  | 'ground_contact_time'
+  | 'vertical_ratio'
+  | 'run_power';
 
 export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'resting_hr',
@@ -56,6 +66,14 @@ export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'sleep_hours',
   'workout_hr_avg',
   'hrv',
+  'respiratory_rate',
+  'wrist_temp',
+  'cadence',
+  'stride_length',
+  'vertical_oscillation',
+  'ground_contact_time',
+  'vertical_ratio',
+  'run_power',
 ] as const;
 
 interface ValidationRange {
@@ -72,6 +90,16 @@ const RANGES: Record<HealthSampleType, ValidationRange> = {
   // HRV as SDNN in milliseconds. Plausible adult range spans single
   // digits (high stress / poor recovery) to ~200 ms (very fit, rested).
   hrv:            { min: 5,   max: 250 },
+  // Recovery vitals.
+  respiratory_rate: { min: 4,   max: 40 },    // breaths/min
+  wrist_temp:       { min: 28,  max: 42 },    // °C (sleeping wrist temp)
+  // Running dynamics (daily average over runs).
+  cadence:               { min: 100, max: 230 },  // spm
+  stride_length:         { min: 0.4, max: 2.5 },  // m
+  vertical_oscillation:  { min: 3,   max: 18 },   // cm
+  ground_contact_time:   { min: 120, max: 400 },  // ms
+  vertical_ratio:        { min: 3,   max: 20 },   // %
+  run_power:             { min: 50,  max: 600 },  // W
 };
 
 // ── Input shape · what /api/health/ingest accepts ────────────────
