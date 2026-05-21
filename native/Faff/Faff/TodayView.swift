@@ -197,6 +197,7 @@ struct TodayView: View {
             let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
             if overview.isPlanDayDone(d) { return "\(wd)'s \(dw.label.lowercased()), logged — \(OverviewFormat.distance(actual)) of \(mi) mi." }
             if overview.isPlanDaySkipped(d) { return "\(wd)'s \(dw.label.lowercased()) — skipped. The coach adapts the days around it." }
+            if overview.isPlanDayShort(d) { return "\(wd)'s \(dw.label.lowercased()) — ran \(OverviewFormat.distance(actual)) of \(mi) mi planned. Short, but it counts." }
             return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned, missed (not logged)."
         }
         return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned. Tap Open workout for the structure."
@@ -219,6 +220,10 @@ struct TodayView: View {
         } else if o.isPlanDaySkipped(d) {
             // Deliberately skipped — amber slash (the coach knows; not "missed").
             Image(systemName: "slash.circle").font(.system(size: 7, weight: .bold))
+                .foregroundStyle(onFill ? .white : Faff.C.milestone)
+        } else if o.isPlanDayShort(d) {
+            // Logged, but short of plan — amber check (ran, didn't complete it).
+            Image(systemName: "checkmark").font(.system(size: 7, weight: .black))
                 .foregroundStyle(onFill ? .white : Faff.C.milestone)
         } else if isRest {
             Circle().stroke(Faff.C.textFaint, lineWidth: 1.5).frame(width: 5, height: 5)
@@ -581,15 +586,32 @@ private struct PastDayHero: View {
     var run: RunRecap?
     var onOpenRecap: (String) -> Void
 
+    /// Outcome vs the plan: on-plan (≥60% of planned), short (logged but under),
+    /// or missed (nothing synced).
+    private enum Outcome { case onPlan, short, missed }
+    private var outcome: Outcome {
+        guard let r = run else { return .missed }
+        if let p = plannedMi, p > 0, (r.distanceMi ?? 0) < p * 0.6 { return .short }
+        return .onPlan
+    }
+
     var body: some View {
-        let done = run != nil
+        let logged = run != nil
+        let eyebrowState = outcome == .onPlan ? "DONE" : (outcome == .short ? "SHORT" : "NOT LOGGED")
+        let (badgeText, badgeTone): (String, Badge.Tone) = {
+            switch outcome {
+            case .onPlan: return ("On plan", .green)
+            case .short:  return ("Short", .amber)
+            case .missed: return ("Not logged", .grey)
+            }
+        }()
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("\(eyebrow) · \(isRest ? "REST" : (done ? "DONE" : "NOT LOGGED"))")
+                Text("\(eyebrow) · \(isRest ? "REST" : eyebrowState)")
                     .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
                 if hasStrength { StrengthMark(size: 16) }
                 Spacer()
-                if !isRest { Badge(text: done ? "On plan" : "Not logged", tone: done ? .green : .grey) }
+                if !isRest { Badge(text: badgeText, tone: badgeTone) }
             }
             Text(title.uppercased())
                 .font(Faff.F.display(54)).tracking(-0.5).foregroundStyle(Faff.C.ink)
@@ -597,8 +619,9 @@ private struct PastDayHero: View {
             if !isRest {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(plannedMi), unit: "mi", label: "Planned")
-                    StatPill(value: done ? OverviewFormat.distance(run?.distanceMi) : "—",
-                             unit: done ? "mi" : nil, label: "Ran", accent: done)
+                    StatPill(value: logged ? OverviewFormat.distance(run?.distanceMi) : "—",
+                             unit: logged ? "mi" : nil, label: "Ran",
+                             accent: outcome == .onPlan)
                 }
                 if let r = run {
                     HStack(spacing: Faff.S.inlineGap) {

@@ -225,6 +225,11 @@ struct PlanRangeDay: Decodable, Identifiable {
         guard let mi = distanceMi, mi > 0, let actual = completedMi else { return false }
         return actual >= mi * 0.6
     }
+    /// Logged a run but under 60% of plan — "short", not done, not missed.
+    var isShort: Bool {
+        guard let mi = distanceMi, mi > 0, let actual = completedMi, actual > 0 else { return false }
+        return actual < mi * 0.6
+    }
     var isSkipped: Bool { skipped == true }
 
     /// "8:14–8:44" from the band, or single value, or "Easy" when no gate.
@@ -781,6 +786,13 @@ extension OverviewResponse {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
         let actual = completedByDate?[date] ?? 0
         return actual >= planned * 0.6
+    }
+    /// Logged a run, but under 60% of the planned distance — "short", which is
+    /// neither done/on-plan nor missed (they did run something).
+    func isPlanDayShort(_ d: OPlanDay) -> Bool {
+        guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
+        let actual = completedByDate?[date] ?? 0
+        return actual > 0 && actual < planned * 0.6
     }
     /// The runner deliberately skipped this day (distinct from "missed").
     func isPlanDaySkipped(_ d: OPlanDay) -> Bool {
