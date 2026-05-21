@@ -23,7 +23,7 @@ struct IdleView: View {
                     .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
                 Spacer()
             }
-            .padding(.leading, 8).padding(.top, 20)   // FAFF level with the OS clock
+            .padding(.leading, 8).padding(.top, WatchTheme.brandTopInset)   // FAFF level with the OS clock
             Group {
                 if workout.isRace { raceBody } else { workoutBody }
             }
