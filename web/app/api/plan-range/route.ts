@@ -19,16 +19,26 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { resolvePlanUserId } from '../../../lib/plan-user';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { requireActiveUser } from '../../../lib/auth';
+import { getCompletedMileageByDate } from '../../../lib/completed-runs';
+import { listRecentSkips } from '../../../lib/skip-store';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../../../lib/vdot';
 import type { RunWorkoutType } from '../../../lib/coach-workouts';
 import type { CoachToday } from '../../../lib/coach-engine';
+
+/** A plan day plus its real outcome: miles actually logged + whether the
+ *  runner deliberately skipped it. Lets the /plan grid show done/skipped/
+ *  missed across every week, not just the current one. */
+export type PlanRangeDay = CoachToday['weekShape'][number] & {
+  completedMi: number | null;
+  skipped: boolean;
+};
 
 export interface PlanRangeApiOk {
   ok: true;
   today: string;
   startISO: string;
   endISO: string;
-  days: CoachToday['weekShape'];
+  days: PlanRangeDay[];
 }
 
 export interface PlanRangeApiErr {
@@ -177,13 +187,22 @@ export async function GET(req: Request) {
       }
     }
 
-    // Expand every calendar day in the window.
-    const days: CoachToday['weekShape'] = [];
+    // Real outcomes across the whole window so the grid can mark every
+    // week done/skipped/missed (not just the current week). Completion is
+    // keyed to the user's UUID (strava_activities); skips to the plan user.
+    const completed = await getCompletedMileageByDate(userId ?? null, startISO, endISO).catch(() => new Map<string, number>());
+    const skipSet = new Set(
+      (await listRecentSkips({ userId: await resolvePlanUserId(), sinceISO: startISO, untilISO: endISO }).catch(() => [])).map((s) => s.dateISO),
+    );
+
+    // Expand every calendar day in the window, attaching its outcome.
+    const days: PlanRangeDay[] = [];
     const cursor = new Date(startISO + 'T12:00:00Z');
     const endDate = new Date(endISO + 'T12:00:00Z');
     while (cursor <= endDate) {
       const dateISO = cursor.toISOString().slice(0, 10);
-      days.push(workoutByDate.get(dateISO) ?? restDay(dateISO, today));
+      const base = workoutByDate.get(dateISO) ?? restDay(dateISO, today);
+      days.push({ ...base, completedMi: completed.get(dateISO) ?? null, skipped: skipSet.has(dateISO) });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 

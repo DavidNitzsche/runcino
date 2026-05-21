@@ -38,6 +38,7 @@ import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrativ
 import { dailyBriefing, type DailyBriefing } from '../../../coach/coach-briefing';
 import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { resolvePlanUserId } from '../../../lib/plan-user';
+import { listRecentSkips } from '../../../lib/skip-store';
 import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
@@ -100,6 +101,9 @@ interface OverviewApiOk {
    *  planned), instead of assuming any past day is complete. Empty for
    *  anonymous reads. */
   completedByDate: Record<string, number>;
+  /** Dates the runner deliberately SKIPPED — distinct from "missed/not
+   *  logged" so clients can mark them differently. */
+  skippedDates: string[];
   /** Active (non-disconnected) connector providers for the user, e.g.
    *  ["strava"]. Lets clients show real integration status instead of a
    *  hardcoded "Connect". Empty for anonymous reads. */
@@ -421,6 +425,21 @@ export async function GET(): Promise<Response> {
       }
     } catch { /* leave empty */ }
 
+    // Deliberately-skipped days (this plan week) so clients distinguish a
+    // skip from a missed/unlogged day. Keyed by the plan user ('me').
+    let skippedDates: string[] = [];
+    try {
+      if (planWeekWorkouts && planWeekWorkouts.length > 0) {
+        const dates = planWeekWorkouts.map((w) => w.dateISO).filter(Boolean).sort();
+        const from = dates[0];
+        const to = dates[dates.length - 1];
+        if (from && to) {
+          const skips = await listRecentSkips({ userId: await resolvePlanUserId(), sinceISO: from, untilISO: to });
+          skippedDates = skips.map((s) => s.dateISO);
+        }
+      }
+    } catch { /* leave empty */ }
+
     // Active connectors (Strava etc.) so clients show real integration
     // status. Authenticated only; empty + non-fatal for anonymous reads.
     let connectors: string[] = [];
@@ -490,6 +509,7 @@ export async function GET(): Promise<Response> {
       profileName: profileRow?.full_name?.trim() || null,
       coachLine,
       completedByDate,
+      skippedDates,
       connectors,
       readinessScore,
       readinessState,
