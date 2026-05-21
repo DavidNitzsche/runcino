@@ -41,7 +41,8 @@ final class HealthKitManager: ObservableObject {
     @Published var vo2Max: Double?
     @Published var respiratoryRate: Double?
     @Published var wristTempC: Double?
-    // Running dynamics from the most recent run.
+    // Running dynamics — a 30-day average across runs (cumulative, for the
+    // Health tab). Per-run dynamics for the recap come from runDynamics().
     @Published var cadenceSpm: Double?
     @Published var strideM: Double?
     @Published var vertOscCm: Double?
@@ -283,6 +284,55 @@ final class HealthKitManager: ObservableObject {
         let mps = HKUnit.meter().unitDivided(by: .second())
         if let spd = await avg(HKQuantityType(.runningSpeed), unit: mps, predicate: win), let st = strideM, st > 0 {
             cadenceSpm = (spd * 60 / st).rounded()
+        }
+    }
+
+    /// Per-run running dynamics for the run recap — averaged over the
+    /// running workout on a given calendar day. This is the LAST-RUN read
+    /// (the recap's job); the Health tab shows the cumulative 30-day avg.
+    struct RunDynamics: Equatable {
+        var cadenceSpm: Double?
+        var strideM: Double?
+        var vertOscCm: Double?
+        var groundContactMs: Double?
+        var vertRatioPct: Double?
+        var runPowerW: Double?
+        var hasAny: Bool { [cadenceSpm, strideM, vertOscCm, groundContactMs, vertRatioPct, runPowerW].contains { $0 != nil } }
+    }
+
+    /// Read the dynamics for the run on `dateISO` (yyyy-MM-dd). Returns nil
+    /// when HealthKit is unavailable or no run is found / nothing recorded.
+    func runDynamics(forDateISO dateISO: String) async -> RunDynamics? {
+        guard isAvailable, let run = await runWorkout(onDateISO: dateISO) else { return nil }
+        let pred = HKQuery.predicateForObjects(from: run)
+        var d = RunDynamics()
+        if let stride = await avg(HKQuantityType(.runningStrideLength), unit: .meter(), predicate: pred) { d.strideM = (stride * 100).rounded() / 100 }
+        if let osc = await avg(HKQuantityType(.runningVerticalOscillation), unit: HKUnit.meterUnit(with: .centi), predicate: pred) { d.vertOscCm = (osc * 10).rounded() / 10 }
+        if let gct = await avg(HKQuantityType(.runningGroundContactTime), unit: HKUnit.secondUnit(with: .milli), predicate: pred) { d.groundContactMs = gct.rounded() }
+        if let power = await avg(HKQuantityType(.runningPower), unit: .watt(), predicate: pred) { d.runPowerW = power.rounded() }
+        if let osc = d.vertOscCm, let st = d.strideM, st > 0 { d.vertRatioPct = ((osc / 100) / st * 1000).rounded() / 10 }
+        if let steps = await sum(HKQuantityType(.stepCount), unit: .count(), predicate: pred) {
+            let mins = run.duration / 60
+            if mins > 0 { d.cadenceSpm = (steps / mins).rounded() }
+        }
+        return d.hasAny ? d : nil
+    }
+
+    /// The running workout on a calendar day (UTC day window matches the
+    /// recap's date key) — the latest-ending run that day.
+    private nonisolated func runWorkout(onDateISO dateISO: String) async -> HKWorkout? {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let day = f.date(from: String(dateISO.prefix(10))) else { return nil }
+        let end = day.addingTimeInterval(86_400)
+        return await withCheckedContinuation { cont in
+            let runP = HKQuery.predicateForWorkouts(with: .running)
+            let dayP = HKQuery.predicateForSamples(withStart: day, end: end, options: .strictStartDate)
+            let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [runP, dayP])
+            let sort = [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
+            let q = HKSampleQuery(sampleType: .workoutType(), predicate: pred, limit: 1, sortDescriptors: sort) { _, samples, _ in
+                cont.resume(returning: samples?.first as? HKWorkout)
+            }
+            store.execute(q)
         }
     }
 

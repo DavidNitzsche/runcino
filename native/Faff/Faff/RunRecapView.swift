@@ -16,6 +16,7 @@ struct RunRecapView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var run: RunRecap?
     @State private var loading = true
+    @State private var dynamics: HealthKitManager.RunDynamics?
 
     var body: some View {
         ScrollView {
@@ -40,6 +41,10 @@ struct RunRecapView: View {
     private func load() async {
         defer { loading = false }
         run = (try? await RunByDateAPI.fetch(date: date))?.run
+        // Per-run running dynamics from Apple Health for THIS run (cadence,
+        // stride, oscillation, ground contact, etc.). The Health tab carries
+        // the cumulative 30-day average; the per-run read lives here.
+        dynamics = await HealthKitManager.shared.runDynamics(forDateISO: run?.date ?? date)
     }
 
     // MARK: Populated recap
@@ -75,6 +80,10 @@ struct RunRecapView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }.faffCard()
             }
+        }
+        // Running dynamics for THIS run (Apple Health, per-run).
+        if let dyn = dynamics, dyn.hasAny {
+            dynamicsCard(dyn)
         }
         // Strava description, if the runner wrote one (real, not generated).
         if let d = r.description, !d.isEmpty {
@@ -127,6 +136,29 @@ struct RunRecapView: View {
                 }
             }
         }.faffCard()
+    }
+
+    private struct DynTile: Identifiable { let id = UUID(); let label, value: String; let unit: String? }
+
+    private func dynamicsCard(_ d: HealthKitManager.RunDynamics) -> some View {
+        func f(_ v: Double?, _ dec: Int) -> String {
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "—"
+        }
+        let tiles: [DynTile] = [
+            DynTile(label: "Cadence", value: f(d.cadenceSpm, 0), unit: d.cadenceSpm != nil ? "spm" : nil),
+            DynTile(label: "Stride", value: f(d.strideM, 2), unit: d.strideM != nil ? "m" : nil),
+            DynTile(label: "Vert Osc", value: f(d.vertOscCm, 1), unit: d.vertOscCm != nil ? "cm" : nil),
+            DynTile(label: "Grnd Contact", value: f(d.groundContactMs, 0), unit: d.groundContactMs != nil ? "ms" : nil),
+            DynTile(label: "Vert Ratio", value: f(d.vertRatioPct, 1), unit: d.vertRatioPct != nil ? "%" : nil),
+            DynTile(label: "Run Power", value: f(d.runPowerW, 0), unit: d.runPowerW != nil ? "W" : nil),
+        ]
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("RUNNING DYNAMICS · THIS RUN").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            MetricGrid(items: tiles) { t in
+                MetricTile(label: t.label, value: t.value, unit: t.unit,
+                           delta: t.unit != nil ? "this run" : "No data", deltaTone: .flat)
+            }
+        }
     }
 
     // MARK: Empty state (honest — no fabricated run)
