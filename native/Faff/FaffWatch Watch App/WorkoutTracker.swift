@@ -243,7 +243,10 @@ extension WorkoutTracker: HKLiveWorkoutBuilderDelegate {
                 if let q = stats.sumQuantity() { energy = Int(q.doubleValue(for: .kilocalorie()).rounded()) }
             }
         }
-        Task { @MainActor in self.apply(hr: hr, dist: dist, energy: energy) }
+        // Capture by value — the loop is done mutating these, and capturing the
+        // `var`s directly in the concurrent Task is a Swift 6 error.
+        let hrV = hr, distV = dist, energyV = energy
+        Task { @MainActor in self.apply(hr: hrV, dist: distV, energy: energyV) }
     }
 }
 
