@@ -46,7 +46,14 @@ The HTML is reference, not importable code: read layout/hierarchy/source, then w
 source. That file is the canon.** If a build looks "too small" or off, it's drifting from
 this file, not from something you can't see.
 
-**Run a visual-regression loop (do this, it's the fail-safe):**
+**A runnable harness already exists: `scripts/watch/` (see its README).** `npm install`, then
+`node render-refs.mjs` writes the approved faces to `scripts/watch/refs/` (committed), and
+`node compare.mjs refs/<face>.png build/<face>.png` diffs your simulator screenshot against the
+reference and exits non-zero until it matches. **This is the acceptance gate — use it on every
+face.** Definition of done: the compare passes AND you paste the ref + your build side by side
+(with the %) in your report. "Looks close" is not done.
+
+**The loop:**
 
 1. Render each face from `watch-app.html` in a headless browser, scaled to the target watch
    screen, and save it as the reference set.

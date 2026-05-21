@@ -1,0 +1,16 @@
+{
+  "name": "faff-watch-visual-check",
+  "private": true,
+  "type": "module",
+  "description": "Visual-regression harness: diff the watch build against the approved watch-app.html faces until they match.",
+  "scripts": {
+    "refs": "node render-refs.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.33.0"
+  }
+}
