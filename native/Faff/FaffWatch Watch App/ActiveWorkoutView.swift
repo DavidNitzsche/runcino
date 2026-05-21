@@ -28,7 +28,7 @@ struct ActiveWorkoutView: View {
     /// Default to the face; Controls sit one swipe left, detail to the right.
     @State private var page = Page.face
 
-    private enum Page: Hashable { case controls, face, splits, map }
+    private enum Page: Hashable { case controls, face, stats, splits, map }
 
     var body: some View {
         ZStack {
@@ -43,6 +43,7 @@ struct ActiveWorkoutView: View {
                 TabView(selection: $page) {
                     ControlsPage(engine: engine) { page = .face }.tag(Page.controls)
                     faceRouter.tag(Page.face)
+                    LiveInRunStats(engine: engine, tracker: tracker).tag(Page.stats)
                     SplitsPage(engine: engine).tag(Page.splits)
                     SessionMapPage(engine: engine).tag(Page.map)
                 }
@@ -118,7 +119,9 @@ private struct LiveWorkInterval: View {
             heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             cadence: tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
             repFraction: engine.phaseProgress,
-            repTimeLeft: PaceFormat.clock(engine.phaseRemainingSec))
+            repTimeLeft: phase.repUnit == .distance
+                ? (engine.phaseRemainingMi.map { String(format: "%.2f mi", $0) } ?? "—")
+                : PaceFormat.clock(engine.phaseRemainingSec))
     }
 }
 
@@ -201,6 +204,24 @@ private struct LiveSteady: View {
             cadence: tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
             fraction: engine.phaseProgress,
             timeLeft: PaceFormat.clock(engine.phaseRemainingSec))
+    }
+}
+
+// MARK: - SECONDARY STATS (swipe page · elapsed / distance / avg pace / calories)
+
+private struct LiveInRunStats: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    var body: some View {
+        let mi = tracker.distanceMi
+        let avgSec = mi > 0.02 ? Int(Double(engine.totalElapsedSec) / mi) : 0
+        InRunStatsFace(
+            elapsed: engine.totalElapsedSec >= 3600
+                ? PaceFormat.hms(engine.totalElapsedSec)
+                : PaceFormat.clock(engine.totalElapsedSec),
+            distance: String(format: "%.1f", mi),
+            avgPace: avgSec > 0 ? PaceFormat.mmss(avgSec) : "—:—",
+            calories: tracker.activeEnergyKcal > 0 ? "\(tracker.activeEnergyKcal)" : "—")
     }
 }
 

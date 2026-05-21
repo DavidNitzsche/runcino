@@ -31,7 +31,7 @@ final class WorkoutEngine: ObservableObject {
     /// "Ease off · 3s left" before a work interval ends, "Go · Int 4" when
     /// the next work interval begins (watch-app.html §C3). Self-clearing.
     enum TransitionCue: Equatable {
-        case headsUp(title: String, sub: String)   // amber, before a rep ends
+        case headsUp(title: String, sub: String?)  // amber, before a rep ends
         case go(title: String, sub: String?)       // green, entering a work rep
         case phase(title: String, sub: String?)    // orange, race phase change
         case fuel(title: String, sub: String?)     // orange, gel cue
@@ -73,6 +73,9 @@ final class WorkoutEngine: ObservableObject {
     private var countdownTask: Task<Void, Never>?
     private var transitionClear: Task<Void, Never>?
     private var phaseStart: Date = .now
+    /// Cumulative GPS distance (mi) at the moment the current phase began —
+    /// lets a distance rep measure how far you've run *within* this rep.
+    private var phaseStartMi: Double = 0
     private var workoutStart: Date = .now
     /// When the current pause began (nil when running).
     private var pauseStart: Date?
@@ -119,16 +122,29 @@ final class WorkoutEngine: ObservableObject {
         return workout.phases[n]
     }
 
-    /// 0…1 progress through the current phase (0 if the phase has no
-    /// duration, which shouldn't happen for a valid payload).
+    /// Distance (mi) covered within the current phase — for distance reps.
+    var phaseCoveredMi: Double { max(0, coveredMi - phaseStartMi) }
+
+    /// 0…1 progress through the current phase — by distance for a distance
+    /// rep, otherwise by elapsed time.
     var phaseProgress: Double {
-        guard let p = currentPhase, p.durationSec > 0 else { return 0 }
+        guard let p = currentPhase else { return 0 }
+        if p.repUnit == .distance, let d = p.distanceMi, d > 0 {
+            return min(1, phaseCoveredMi / d)
+        }
+        guard p.durationSec > 0 else { return 0 }
         return min(1, Double(phaseElapsedSec) / Double(p.durationSec))
     }
 
     var phaseRemainingSec: Int {
         guard let p = currentPhase else { return 0 }
         return max(0, p.durationSec - phaseElapsedSec)
+    }
+
+    /// Miles left in the current phase · nil unless this is a distance rep.
+    var phaseRemainingMi: Double? {
+        guard let p = currentPhase, p.repUnit == .distance, let d = p.distanceMi else { return nil }
+        return max(0, d - phaseCoveredMi)
     }
 
     // MARK: Race-derived (watch-app.html §F)
@@ -246,6 +262,7 @@ final class WorkoutEngine: ObservableObject {
         didFireAlmostDone = false
         workoutStart = .now
         phaseStart = .now
+        phaseStartMi = coveredMi
         tracker?.start()
         prepDrift()
         if let p = currentPhase { Haptics.play(p.haptic) }
@@ -373,13 +390,21 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
-        // "Almost done" cue · 3s before a WORK interval ends — haptic +
+        // "Almost done" cue · just before a WORK interval ends — haptic +
         // a full-screen heads-up flip ("Almost there") so you don't overrun.
+        // Trigger by distance (~0.03 mi left) on distance reps, else ~3s left.
         // (Workout only — a race phase boundary is terrain, not a rep end.)
-        if !isRace, phase.type == .work, !didFireAlmostDone, phaseRemainingSec <= 3, phaseRemainingSec > 0 {
+        let nearEnd: Bool
+        if phase.repUnit == .distance {
+            nearEnd = (phaseRemainingMi ?? 1) <= 0.03 && phaseProgress < 1
+        } else {
+            nearEnd = phaseRemainingSec <= 3 && phaseRemainingSec > 0
+        }
+        if !isRace, phase.type == .work, !didFireAlmostDone, nearEnd {
             didFireAlmostDone = true
             Haptics.almostDone()
-            flash(.headsUp(title: "Almost there", sub: "\(phaseRemainingSec)s left"), for: 2.6)
+            let sub = phase.repUnit == .distance ? nil : "\(phaseRemainingSec)s left"
+            flash(.headsUp(title: "Almost there", sub: sub), for: 2.6)
         }
 
         // Gel cue (race) — fire once as the runner reaches each marker.
@@ -391,7 +416,13 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
-        if phaseElapsedSec >= phase.durationSec {
+        let finished: Bool
+        if phase.repUnit == .distance, let d = phase.distanceMi {
+            finished = phaseCoveredMi >= d
+        } else {
+            finished = phaseElapsedSec >= phase.durationSec
+        }
+        if finished {
             advance(completedCurrent: true)
         }
     }
@@ -412,6 +443,7 @@ final class WorkoutEngine: ObservableObject {
 
         currentIndex += 1
         phaseStart = .now
+        phaseStartMi = coveredMi
         phaseElapsedSec = 0
         totalElapsedSec = bankedSec
         didFireAlmostDone = false

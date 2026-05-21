@@ -56,6 +56,13 @@ export interface WatchPhase {
   tolerancePaceSPerMi?: number;
   /** Haptic cue at the START of this phase. */
   haptic: WatchHaptic;
+  /** How the rep is measured.  Omitted == 'time' (the watch defaults to
+   *  time, so older payloads are unaffected).  'distance' reps count down
+   *  by GPS distance, not the clock — e.g. a 6 mi easy run or an 800 m rep. */
+  repUnit?: 'time' | 'distance';
+  /** Fixed rep distance in miles · set only on distance reps. durationSec is
+   *  still carried as a time estimate (totals, fallback). */
+  distanceMi?: number;
 }
 
 export interface WatchWorkout {
@@ -124,6 +131,35 @@ export function parseDurationSec(duration: string, milePaceSec?: number): number
   return 300;
 }
 
+/**
+ * Classify a rep's measure: a time interval ("7 min", "90 sec") or a fixed
+ * distance ("800 m", "1 km", "1 mi").  Distance reps carry distanceMi so the
+ * watch counts down by GPS distance; durationSec is still derived (via pace)
+ * as a time estimate for totals + fallback.  Time is checked first so "15 min"
+ * is never misread as "15 mi".
+ */
+export function parseRepMeasure(
+  duration: string,
+  milePaceSec?: number,
+): { unit: 'time' | 'distance'; durationSec: number; distanceMi?: number } {
+  const t = duration.trim().toLowerCase();
+  if (/^\d+(?:\.\d+)?\s*min/.test(t) || /^\d+\s*sec/.test(t)) {
+    return { unit: 'time', durationSec: parseDurationSec(duration, milePaceSec) };
+  }
+  const distance = (mi: number) => ({
+    unit: 'distance' as const,
+    distanceMi: mi,
+    durationSec: milePaceSec ? Math.round(mi * milePaceSec) : 300,
+  });
+  const km = t.match(/^(\d+(?:\.\d+)?)\s*km\b/);
+  if (km) return distance(parseFloat(km[1]) * 0.621371);
+  const mi = t.match(/^(\d+(?:\.\d+)?)\s*mi/);
+  if (mi) return distance(parseFloat(mi[1]));
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*m\b/);   // "800 m", "800m" — \b excludes "min"
+  if (m) return distance(parseFloat(m[1]) / 1609.344);
+  return { unit: 'time', durationSec: parseDurationSec(duration, milePaceSec) };
+}
+
 // ── Workout-class classifiers ────────────────────────────────────
 
 function isWarmup(label: string): boolean {
@@ -174,6 +210,8 @@ export function buildWatchWorkout(
           targetPaceSPerMi: ePace.target,
           tolerancePaceSPerMi: ePace.tolerance,
           haptic: 'start',
+          repUnit: 'distance',          // an easy run is "go N miles", not a clock
+          distanceMi: day.distanceMi,
         },
       ],
       completionEndpoint: '/api/watch/workouts/complete',
@@ -202,6 +240,8 @@ export function buildWatchWorkout(
           targetPaceSPerMi: paceForZone('E', paces, racePaceBand).target,
           tolerancePaceSPerMi: 30,
           haptic: 'start',
+          repUnit: 'distance',
+          distanceMi: day.distanceMi,
         },
       ],
       completionEndpoint: '/api/watch/workouts/complete',
@@ -252,7 +292,9 @@ export function buildWatchWorkout(
           const zoneRef = item.zoneRef && (item.zoneRef === 'E' || item.zoneRef === 'M' || item.zoneRef === 'T' || item.zoneRef === 'I' || item.zoneRef === 'R' || item.zoneRef === 'race-pace') ? item.zoneRef : null;
           const pace = zoneRef ? paceForZone(zoneRef, paces, racePaceBand) : null;
           const milePaceForDuration = pace?.target;
-          const durationSec = parseDurationSec(item.duration, milePaceForDuration);
+          // Time vs distance rep · current templates are time-based, but a
+          // step authored as "800 m" / "1 mi" comes through as a distance rep.
+          const measure = parseRepMeasure(item.duration, milePaceForDuration);
 
           if (phaseType === 'work' && hasIntervals) intervalNumber += 1;
 
@@ -265,10 +307,12 @@ export function buildWatchWorkout(
           phases.push({
             type: phaseType,
             label,
-            durationSec,
+            durationSec: measure.durationSec,
             targetPaceSPerMi: phaseType === 'work' ? (pace?.target ?? null) : null,
             tolerancePaceSPerMi: phaseType === 'work' ? (pace?.tolerance ?? 10) : undefined,
             haptic: phaseType === 'work' ? 'transition-work' : 'transition-recovery',
+            repUnit: measure.unit,
+            distanceMi: measure.distanceMi,
           });
         }
       }

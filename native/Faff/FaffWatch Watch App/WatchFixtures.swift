@@ -62,6 +62,12 @@ struct WatchFixtureView: View {
             WorkIntervalFace(rep: "Int 3 / 6", elapsed: "24:18", segments: workSegs,
                              currentPace: "6:51", targetPace: "6:31", deltaSeconds: 20,
                              heartRate: "159", cadence: "171", repFraction: 0.5, repTimeLeft: "0:24")
+        case "work-interval-distance":
+            // A DISTANCE rep (e.g. 800m / a mile rep) — the bottom counts down
+            // miles instead of time. Same face, unit-aware value.
+            WorkIntervalFace(rep: "Int 3 / 6", elapsed: "24:18", segments: workSegs,
+                             currentPace: "6:33", targetPace: "6:31", deltaSeconds: 2,
+                             heartRate: "168", cadence: "182", repFraction: 0.4, repTimeLeft: "0.30 mi")
 
         // ── §B · warmup ───────────────────────────────────────────────────
         case "warmup":
@@ -103,6 +109,8 @@ struct WatchFixtureView: View {
             ])
         case "always-on-dimmed":
             AODFixture()
+        case "in-run-stats":
+            InRunStatsFixture()
 
         // ── §B / §C3 / §F2 · transitions + countdown ──────────────────────
         case "countdown":
@@ -317,6 +325,52 @@ private struct PreRunBriefingFixture: View {
         }
         d.append(.init(weight: 1.4, color: Color.white.opacity(0.32)))
         return d
+    }
+}
+
+/// In-run secondary stats — the swipe page off the work face for the "nice but rarely
+/// looked at" metrics: elapsed, distance, avg pace, active calories. A 2×2 grid that fills
+/// the screen. (Elapsed lives here, not the top-right corner the OS clock owns.)
+struct InRunStatsFace: View {
+    let elapsed: String
+    let distance: String      // "3.2"
+    let avgPace: String       // "6:42"
+    let calories: String      // "412"
+    var body: some View {
+        // No header — the metric labels self-describe. The 2×2 grid fills the whole
+        // screen below the clock (safe area respected), each cell centered in its quadrant.
+        VStack(spacing: 0) {
+            row(left: cell(elapsed, nil, "Elapsed"), right: cell(distance, "mi", "Distance"))
+            Rectangle().fill(WP.line).frame(height: 1)
+            row(left: cell(avgPace, "/mi", "Avg pace"), right: cell(calories, nil, "Calories"))
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(WP.bg)
+    }
+    private func row<L: View, R: View>(left: L, right: R) -> some View {
+        HStack(spacing: 6) {
+            left.frame(maxWidth: .infinity)
+            Rectangle().fill(WP.line).frame(width: 1, height: 40)
+            right.frame(maxWidth: .infinity)
+        }
+        .frame(maxHeight: .infinity)
+    }
+    private func cell(_ value: String, _ unit: String?, _ label: String) -> some View {
+        VStack(spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(WF.bebas(42)).monospacedDigit().foregroundStyle(WP.ink)
+                if let unit { Text(unit).font(WF.interSemi(13)).foregroundStyle(WP.muted) }
+            }
+            .lineLimit(1).minimumScaleFactor(0.6)
+            Text(label.uppercased()).font(WF.interBold(9.5)).tracking(0.7).foregroundStyle(WP.muted)
+        }
+    }
+}
+
+private struct InRunStatsFixture: View {
+    var body: some View {
+        InRunStatsFace(elapsed: "24:18", distance: "3.2", avgPace: "6:42", calories: "412")
     }
 }
 

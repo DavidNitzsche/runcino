@@ -33,6 +33,13 @@ enum WatchHaptic: String, Codable {
     case end
 }
 
+/// How a rep is measured — a time interval ("7 min") or a fixed distance
+/// ("800 m" / "1 mi"). Drives whether the engine advances/counts down by
+/// elapsed time or by GPS distance, and how the remaining value reads.
+enum WatchRepUnit: String, Codable {
+    case time, distance
+}
+
 struct WatchPhase: Codable, Identifiable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
@@ -44,13 +51,21 @@ struct WatchPhase: Codable, Identifiable {
     let targetPaceSPerMi: Int?
     let tolerancePaceSPerMi: Int?
     let haptic: WatchHaptic
+    /// How this rep is measured. Defaults to `.time` so older payloads
+    /// (and every non-rep phase) behave exactly as before.
+    let repUnit: WatchRepUnit
+    /// Fixed rep distance in miles · set only on distance reps. (durationSec
+    /// is still carried as a time ESTIMATE for distance reps — used for the
+    /// total-time estimate and as a fallback.)
+    let distanceMi: Double?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
     /// decode via WatchWorkout's custom init so each phase carries its
     /// own position for labels + completion reporting.
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
-         targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic) {
+         targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
+         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -58,10 +73,12 @@ struct WatchPhase: Codable, Identifiable {
         self.targetPaceSPerMi = targetPaceSPerMi
         self.tolerancePaceSPerMi = tolerancePaceSPerMi
         self.haptic = haptic
+        self.repUnit = repUnit
+        self.distanceMi = distanceMi
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -75,6 +92,8 @@ struct WatchPhase: Codable, Identifiable {
         self.targetPaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .targetPaceSPerMi)
         self.tolerancePaceSPerMi = try c.decodeIfPresent(Int.self, forKey: .tolerancePaceSPerMi)
         self.haptic = try c.decode(WatchHaptic.self, forKey: .haptic)
+        self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
+        self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -85,6 +104,8 @@ struct WatchPhase: Codable, Identifiable {
         try c.encodeIfPresent(targetPaceSPerMi, forKey: .targetPaceSPerMi)
         try c.encodeIfPresent(tolerancePaceSPerMi, forKey: .tolerancePaceSPerMi)
         try c.encode(haptic, forKey: .haptic)
+        try c.encode(repUnit, forKey: .repUnit)
+        try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
     }
 }
 
