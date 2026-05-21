@@ -96,13 +96,23 @@ struct WatchWorkout: Codable {
     let phases: [WatchPhase]
     let completionEndpoint: String
     let expiresAt: String
+    // Home-screen glance fields (watch-app.html §A). Optional so an older
+    // payload still decodes; the phone bridge fills them from the plan +
+    // readiness read.
+    let readinessScore: Int?
+    let readinessLabel: String?     // "Primed" / "Hold easy" / "Back off"
+    let distanceMi: Double?
+    let paceLabel: String?          // training-zone tag, e.g. "T", "I", "E"
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
+        case readinessScore, readinessLabel, distanceMi, paceLabel
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
-         phases: [WatchPhase], completionEndpoint: String, expiresAt: String) {
+         phases: [WatchPhase], completionEndpoint: String, expiresAt: String,
+         readinessScore: Int? = nil, readinessLabel: String? = nil,
+         distanceMi: Double? = nil, paceLabel: String? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -110,6 +120,10 @@ struct WatchWorkout: Codable {
         self.phases = phases
         self.completionEndpoint = completionEndpoint
         self.expiresAt = expiresAt
+        self.readinessScore = readinessScore
+        self.readinessLabel = readinessLabel
+        self.distanceMi = distanceMi
+        self.paceLabel = paceLabel
     }
 
     init(from decoder: Decoder) throws {
@@ -120,6 +134,10 @@ struct WatchWorkout: Codable {
         self.totalEstimatedMinutes = try c.decode(Int.self, forKey: .totalEstimatedMinutes)
         self.completionEndpoint = try c.decode(String.self, forKey: .completionEndpoint)
         self.expiresAt = try c.decode(String.self, forKey: .expiresAt)
+        self.readinessScore = try c.decodeIfPresent(Int.self, forKey: .readinessScore)
+        self.readinessLabel = try c.decodeIfPresent(String.self, forKey: .readinessLabel)
+        self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.paceLabel = try c.decodeIfPresent(String.self, forKey: .paceLabel)
         // Re-stamp each phase with its cursor index.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
@@ -182,12 +200,16 @@ extension WatchWorkout {
         let total = phases.reduce(0) { $0 + $1.durationSec }
         return WatchWorkout(
             workoutId: "sample-threshold",
-            name: "Threshold · Cruise Intervals",
+            name: "5×7 Threshold",
             summary: "5×7 min @ 6:31 · 90s rec",
             totalEstimatedMinutes: total / 60,
             phases: phases,
             completionEndpoint: "/api/watch/workouts/complete",
-            expiresAt: "2026-05-21T08:00:00Z"
+            expiresAt: "2026-05-21T08:00:00Z",
+            readinessScore: 82,
+            readinessLabel: "Primed",
+            distanceMi: 6.4,
+            paceLabel: "T"
         )
     }
 }

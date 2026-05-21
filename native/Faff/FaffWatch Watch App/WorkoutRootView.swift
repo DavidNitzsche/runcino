@@ -113,11 +113,8 @@ private struct NoWorkoutView: View {
                 Spacer()
             }
             Spacer(minLength: 4)
-            HStack(spacing: 5) {
-                Circle().fill(WatchTheme.C.green).frame(width: 6, height: 6)
-                Text("Rest day").font(WatchTheme.sub(13, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.green)
-            }
-            Text("REST").font(WatchTheme.display(46)).foregroundStyle(WatchTheme.C.ink)
+            Text("Rest day").font(WatchTheme.sub(13, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.green)
+            Text("REST").font(WatchTheme.display(54)).foregroundStyle(WatchTheme.C.green)
             Text(message)
                 .font(WatchTheme.body(12, .medium)).foregroundStyle(WatchTheme.C.t2)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
