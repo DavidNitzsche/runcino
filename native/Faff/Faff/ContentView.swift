@@ -68,7 +68,10 @@ struct ContentView: View {
     private func refreshSession() async {
         guard TokenStore.shared.isLoggedIn else { return }
         await FaffAPI.shared.refreshAccessToken()
-        if !TokenStore.shared.isLoggedIn { isAuthenticated = false }
+        if !TokenStore.shared.isLoggedIn { isAuthenticated = false; return }
+        // Keep the watch's workout current on every launch + foreground —
+        // automatic, no "send to watch" step (runs on .task and scenePhase .active).
+        await WatchSync.shared.syncTodayToWatch()
     }
 }
 
