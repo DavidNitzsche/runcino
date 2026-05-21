@@ -287,7 +287,10 @@ private struct SteadyFace: View {
             TopStrip(eyebrow: phase.label, eyebrowColor: accent, elapsedSec: engine.totalElapsedSec)
             SegmentBar(engine: engine).padding(.top, 5)
             Spacer(minLength: 4)
-            Text(PaceFormat.clock(engine.phaseRemainingSec))
+            // Canon §B: the hero counts UP toward the phase duration; the
+            // progress bar carries the time REMAINING. Two different numbers,
+            // so no duplication.
+            Text(PaceFormat.clock(engine.phaseElapsedSec))
                 .font(WatchTheme.display(86)).foregroundStyle(accent)
                 .lineLimit(1).minimumScaleFactor(0.45).frame(maxWidth: .infinity)
             if let next = engine.nextPhase {
@@ -299,10 +302,7 @@ private struct SteadyFace: View {
                 Spacer()
                 WStat(value: tracker.cadence, unit: "spm")
             }
-            // Hero is already the countdown — bar shows the phase intent,
-            // not a second copy of the time.
-            CueProgress(progress: engine.phaseProgress,
-                        cue: phase.type == .warmup ? "settle in" : "ease down", fill: accent)
+            RepProgress(progress: engine.phaseProgress, remainingSec: engine.phaseRemainingSec, fill: accent)
                 .padding(.top, 3)
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
