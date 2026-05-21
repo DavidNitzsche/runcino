@@ -34,6 +34,8 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { buildWatchWorkout } from '@/lib/watch-workout';
+import { gatherCoachState } from '@/lib/coach-state';
+import { computeReadinessScore, readinessLabelFor } from '@/lib/readiness-score';
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);
@@ -94,5 +96,22 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(workout);
+  // Readiness · the watch model carries readinessScore/readinessLabel so the
+  // launchpad pill (watch-app.html §A) lights up with the same body-state
+  // read the phone/web ring shows. Same computeReadinessScore source. The
+  // fuller glance + complication payload lives at /api/watch/readiness.
+  let readinessScore: number | null = null;
+  let readinessLabel: string | null = null;
+  try {
+    const state = await gatherCoachState({ userId: user.id });
+    const finding = await computeReadinessScore(
+      user.id, today, null, state.recovery?.rhrBpm ?? null,
+    );
+    if (finding.score != null) {
+      readinessScore = finding.score;
+      readinessLabel = readinessLabelFor(finding.state);
+    }
+  } catch { /* leave null → pill stays hidden */ }
+
+  return NextResponse.json({ ...workout, readinessScore, readinessLabel });
 }

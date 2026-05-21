@@ -108,6 +108,17 @@ function recommendationFor(state: ReadinessFinding['state']): string {
   }
 }
 
+/** One-word body-state label for tight surfaces (watch glance, complication,
+ *  the iPhone readiness pill). Maps the green/yellow/red state to the words
+ *  the watch model documents: "Primed" / "Hold easy" / "Back off". */
+export function readinessLabelFor(state: ReadinessFinding['state']): string {
+  switch (state) {
+    case 'green':  return 'Primed';
+    case 'yellow': return 'Hold easy';
+    case 'red':    return 'Back off';
+  }
+}
+
 /**
  * V7 · resolveCrossRef · earned-not-decorative cross-reference check.
  *
