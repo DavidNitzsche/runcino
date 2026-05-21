@@ -15,7 +15,6 @@ struct WorkoutDetailView: View {
     var overview: OverviewResponse? = nil
     var onReload: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
-    @State private var handedOff = false
     @State private var reschedule: RescheduleTarget?
     @State private var showSkipConfirm = false
     @State private var working = false
@@ -55,7 +54,9 @@ struct WorkoutDetailView: View {
                 CoachVerdict("Focus", dw?.detail?.effort ?? dw?.guidance ?? "Controlled, sustainable work for today's phase.",
                              color: Faff.C.milestone)
 
-                PrimaryButton(title: handedOff ? "Sent to watch" : "Start Run", icon: "figure.run") { startRun() }
+                // No "Start Run" here — the watch is the tracker and already
+                // has today's workout via WatchConnectivity. The phone just
+                // manages the plan: move / skip / swap.
                 HStack(spacing: 8) {
                     GhostButton(title: "Move") { reschedule = RescheduleTarget(action: "move") }
                     GhostButton(title: "Skip") { showSkipConfirm = true }
@@ -85,13 +86,6 @@ struct WorkoutDetailView: View {
         working = true; defer { working = false }
         try? await PlanActionAPI.skip(dateISO: todayISO, type: dw?.label, mi: dw?.distanceMi)
         onReload(); dismiss()
-    }
-
-    // ── Action ────────────────────────────────────────────────────
-    private func startRun() {
-        WatchSync.shared.activate()
-        Task { await WatchSync.shared.syncTodayToWatch() }
-        handedOff = true
     }
 
     // ── Derived ───────────────────────────────────────────────────

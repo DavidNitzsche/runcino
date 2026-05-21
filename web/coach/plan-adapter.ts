@@ -411,18 +411,28 @@ interface MutateArgs {
   persist: boolean;
 }
 
+/** Discretionary, plan-reshaping triggers the runner should sign off on
+ *  before they take effect (cutbacks, suppressing quality, volume drops from
+ *  poor check-ins, race-week reshapes, post-race pace shifts). Everything else
+ *  — safety backoffs (injury/illness/heat/rebuild), calibrations, and the
+ *  small within-cap volume nudge — auto-applies. */
+const APPROVAL_TRIGGERS: ReadonlySet<TriggerKind> = new Set([
+  'checkin-yellow', 'checkin-red', 'volume-crater', 'b-race-in-window', 'bad-race-result',
+]);
+
 async function maybeMutate(args: MutateArgs): Promise<void> {
   const w = args.workout;
   if (!w) return;
   if (!args.shouldFire(w)) return;
 
-  // Idempotency: skip if a mutation with the same trigger already
-  // applied to this workout (compare by trigger + citation).
+  // Idempotency: skip if a mutation with the same trigger already exists on
+  // this workout (any status — so we don't re-propose a declined change).
   const already = w.mutations.find(m =>
     m.trigger === args.trigger && m.citation === args.citation
   );
   if (already) return;
 
+  const requiresApproval = APPROVAL_TRIGGERS.has(args.trigger);
   const changes = args.mutate(w);
   const mutation: PlanMutation = {
     id: newId(),
@@ -432,13 +442,16 @@ async function maybeMutate(args: MutateArgs): Promise<void> {
     trigger: args.trigger,
     signalSnapshot: args.snapshot,
     changedFields: changes,
+    status: requiresApproval ? 'proposed' : 'applied',
   };
-  // Apply changes in place.
-  Object.assign(w, changes);
+  // Auto changes apply in place + persist the workout; PROPOSED changes are
+  // recorded but NOT applied — the workout keeps its current values until the
+  // runner approves (then actOnMutations applies changedFields).
+  if (!requiresApproval) Object.assign(w, changes);
   w.mutations.push(mutation);
   if (args.persist) {
     await insertMutation(w.id, mutation);
-    await updateWorkout(w);
+    if (!requiresApproval) await updateWorkout(w);
   }
 }
 

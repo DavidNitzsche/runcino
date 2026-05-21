@@ -269,6 +269,21 @@ final class FaffAPI {
         return r.checkin
     }
 
+    /// Approve or skip a BIG plan adaptation. `ids` are the proposed
+    /// mutation ids from overview.pendingAdaptations. accept applies the
+    /// change to the plan; decline records it as declined. Bearer auth.
+    @discardableResult
+    func actOnAdaptation(ids: [String], action: String) async throws -> Int {
+        struct Body: Encodable { let ids: [String]; let action: String }
+        struct Result: Decodable { let ok: Bool; let updated: Int? }
+        let r: Result = try await request(
+            method: "POST", path: "/api/plan/adaptations/act",
+            body: Body(ids: ids, action: action),
+            authenticated: true
+        )
+        return r.updated ?? 0
+    }
+
     // MARK: Generic helpers
 
     private func request<Body: Encodable, T: Decodable>(

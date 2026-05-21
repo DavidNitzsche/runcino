@@ -328,9 +328,14 @@ async function bootstrap(): Promise<void> {
         citation          TEXT NOT NULL,
         trigger_kind      TEXT NOT NULL,
         signal_snapshot   JSONB NOT NULL,
-        changed_fields    JSONB NOT NULL
+        changed_fields    JSONB NOT NULL,
+        -- 'applied' (auto), 'proposed' (awaiting runner approval for big
+        -- changes), or 'declined'. See plan-adapter requiresApproval.
+        status            TEXT NOT NULL DEFAULT 'applied'
       );
     `);
+    // Existing tables predate the status column.
+    await client.query(`ALTER TABLE plan_mutations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'applied';`);
     await client.query(`
       CREATE INDEX IF NOT EXISTS plan_mutations_by_ts
         ON plan_mutations (ts DESC);

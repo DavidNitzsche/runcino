@@ -38,6 +38,7 @@ struct TodayView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                PendingAdaptationsCard(overview: overview, onReload: onReload)
                 CoachAdaptationsCard(overview: overview)
                 dateStrip(overview)
                 coachLineView
@@ -260,10 +261,12 @@ struct TodayView: View {
         let hasStrength = o.planWeekWorkouts?.first { $0.dateISO == o.today }?.hasStrength == true
         return Button(action: onOpenWorkout) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 8) {
-                    Text("Today · \(phase)".uppercased())
-                        .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
-                    if hasStrength { StrengthMark(size: 16) }
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text("Today · \(phase)".uppercased())
+                            .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                        if hasStrength { StrengthMark(size: 15) }
+                    }
                     Spacer()
                     WhyChip(action: onWhy)
                 }
@@ -331,10 +334,12 @@ struct TodayView: View {
         let dw = DerivedWorkout(plan: d, fallback: nil)
         let rest = dw.isRest
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("\(eyebrowDate(d.dateISO)) · PLANNED")
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
-                if d.hasStrength == true { StrengthMark(size: 16) }
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("\(eyebrowDate(d.dateISO)) · PLANNED")
+                        .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                    if d.hasStrength == true { StrengthMark(size: 15) }
+                }
                 Spacer()
                 Badge(text: "Upcoming", tone: .grey)
             }
@@ -446,6 +451,73 @@ struct TodayView: View {
 /// reason, with the day(s) touched + the research citation) so a change never
 /// happens silently. Appears only when there's an adaptation newer than the
 /// one this device last dismissed (local seen-tracking via @AppStorage).
+/// BIG plan adaptations the coach proposes but won't apply until the runner
+/// approves — cutbacks, suppressing quality, volume drops, race-week reshapes,
+/// post-race pace shifts. Each card carries Approve / Skip; the change lands on
+/// the plan only on approve. Small/safety adaptations auto-apply (no card).
+private struct PendingAdaptationsCard: View {
+    let overview: OverviewResponse
+    var onReload: () -> Void = {}
+
+    @State private var working: String?     // reason of the group being acted on
+    private var groups: [OPendingAdaptation] { overview.pendingAdaptations ?? [] }
+
+    var body: some View {
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(groups) { g in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wand.and.stars").font(.system(size: 12, weight: .bold)).foregroundStyle(Faff.C.race)
+                            Text("COACH SUGGESTS A CHANGE").font(Faff.F.inter(10, .semibold)).tracking(1.2).foregroundStyle(Faff.C.textDim)
+                            Spacer()
+                        }
+                        Text(g.reason).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+                            .fixedSize(horizontal: false, vertical: true).lineSpacing(2)
+                        HStack(spacing: 6) {
+                            Text(dayList(g.days)).font(Faff.F.inter(11, .semibold)).foregroundStyle(Faff.C.race)
+                            if let c = g.citation, !c.isEmpty {
+                                Text("· \(c)").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim).lineLimit(1)
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            Button { Task { await act(g, "accept") } } label: {
+                                Text("APPROVE").font(Faff.F.oswald(13, .semibold)).tracking(2)
+                                    .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 11)
+                                    .background(Faff.C.race).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            }.buttonStyle(.plain)
+                            Button { Task { await act(g, "decline") } } label: {
+                                Text("SKIP").font(Faff.F.oswald(13, .semibold)).tracking(2)
+                                    .foregroundStyle(Faff.C.ink).frame(maxWidth: .infinity).padding(.vertical, 11)
+                                    .background(Color.clear)
+                                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Faff.C.ink.opacity(0.18), lineWidth: 1))
+                            }.buttonStyle(.plain)
+                        }
+                        .opacity(working == g.reason ? 0.5 : 1)
+                        .disabled(working != nil)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .faffCard()
+        }
+    }
+
+    private func act(_ g: OPendingAdaptation, _ action: String) async {
+        working = g.reason; defer { working = nil }
+        _ = try? await FaffAPI.shared.actOnAdaptation(ids: g.ids, action: action)
+        onReload()
+    }
+
+    private func dayList(_ days: [String]) -> String {
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
+        let names = days.compactMap { inF.date(from: String($0.prefix(10))).map { out.string(from: $0) } }
+        if names.count > 4 { return "\(names.count) days" }
+        return names.joined(separator: ", ")
+    }
+}
+
 private struct CoachAdaptationsCard: View {
     let overview: OverviewResponse
     @AppStorage("faff.coach.adaptSeenTs") private var seenTs = ""
@@ -660,10 +732,12 @@ private struct PastDayHero: View {
             }
         }()
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("\(eyebrow) · \(isRest ? "REST" : eyebrowState)")
-                    .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
-                if hasStrength { StrengthMark(size: 16) }
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("\(eyebrow) · \(isRest ? "REST" : eyebrowState)")
+                        .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
+                    if hasStrength { StrengthMark(size: 15) }
+                }
                 Spacer()
                 if !isRest { Badge(text: badgeText, tone: badgeTone) }
             }

@@ -153,10 +153,23 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Quiet re-sync on launch / foreground — only once the user has
-    /// connected, so it never prompts unprompted. No-ops otherwise.
+    /// Quiet re-sync on launch / foreground. Pushes vitals to the backend so
+    /// readiness can compute (the on-device tiles read HealthKit directly and
+    /// don't need this; the server score does).
+    ///
+    /// Self-healing: if the `connected` flag is unset (reinstall / older build /
+    /// access granted outside our connect flow) but vitals are actually
+    /// readable, adopt it and sync — otherwise a runner with Health authorized
+    /// would never get a readiness score. Never prompts: we only adopt when a
+    /// real read returns data, and we don't call requestAuthorization here.
     func syncIfConnected() async {
-        guard hasConnected, isAvailable else { return }
+        guard isAvailable else { return }
+        if !hasConnected {
+            await refreshDisplayMetrics()
+            let readable = hrvMs != nil || restingHrBpm != nil || sleepHours != nil || vo2Max != nil
+            guard readable else { return }
+            UserDefaults.standard.set(true, forKey: connectedKey)
+        }
         await connectAndSync()
     }
 

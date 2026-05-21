@@ -111,6 +111,18 @@ interface OverviewApiOk {
    *  when there's something newer than the user last dismissed. */
   coachAdaptations: Array<{ reason: string; citation: string | null; count: number; days: string[]; ts: string }>;
   adaptationsLatestTs: string | null;
+  /** BIG adaptations awaiting the runner's approve/skip. These are NOT yet
+   *  applied to the plan — the workout keeps its current values until the
+   *  runner accepts. Each carries the mutation ids to POST to
+   *  /api/plan/adaptations/act. Empty for anon reads. */
+  pendingAdaptations: Array<{
+    ids: string[];
+    reason: string;
+    citation: string | null;
+    trigger: string;
+    days: string[];
+    ts: string;
+  }>;
   /** Active (non-disconnected) connector providers for the user, e.g.
    *  ["strava"]. Lets clients show real integration status instead of a
    *  hardcoded "Connect". Empty for anonymous reads. */
@@ -454,23 +466,44 @@ export async function GET(req: Request): Promise<Response> {
     // it (trigger_kind can be null on legacy rows).
     let coachAdaptations: Array<{ reason: string; citation: string | null; count: number; days: string[]; ts: string }> = [];
     let adaptationsLatestTs: string | null = null;
+    let pendingAdaptations: Array<{ ids: string[]; reason: string; citation: string | null; trigger: string; days: string[]; ts: string }> = [];
     try {
       const plan = planResult.plan;
       if (plan) {
         const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
         const muts = await listMutations(plan.id, since);
         if (muts.length > 0) {
-          adaptationsLatestTs = muts.reduce((mx, m) => (m.ts > mx ? m.ts : mx), muts[0].ts);
-          const byReason = new Map<string, { reason: string; citation: string | null; days: Set<string>; ts: string }>();
-          for (const m of muts) {
-            const g = byReason.get(m.reason) ?? { reason: m.reason, citation: m.citation, days: new Set<string>(), ts: m.ts };
-            g.days.add(m.workoutDateISO);
-            if (m.ts > g.ts) g.ts = m.ts;
-            byReason.set(m.reason, g);
+          // APPLIED adaptations → the informational "Coach updated your plan" card.
+          const applied = muts.filter((m) => (m.status ?? 'applied') === 'applied');
+          if (applied.length > 0) {
+            adaptationsLatestTs = applied.reduce((mx, m) => (m.ts > mx ? m.ts : mx), applied[0].ts);
+            const byReason = new Map<string, { reason: string; citation: string | null; days: Set<string>; ts: string }>();
+            for (const m of applied) {
+              const g = byReason.get(m.reason) ?? { reason: m.reason, citation: m.citation, days: new Set<string>(), ts: m.ts };
+              g.days.add(m.workoutDateISO);
+              if (m.ts > g.ts) g.ts = m.ts;
+              byReason.set(m.reason, g);
+            }
+            coachAdaptations = [...byReason.values()]
+              .map((g) => ({ reason: g.reason, citation: g.citation, count: g.days.size, days: [...g.days].sort(), ts: g.ts }))
+              .sort((a, b) => (a.ts < b.ts ? 1 : -1));
           }
-          coachAdaptations = [...byReason.values()]
-            .map((g) => ({ reason: g.reason, citation: g.citation, count: g.days.size, days: [...g.days].sort(), ts: g.ts }))
-            .sort((a, b) => (a.ts < b.ts ? 1 : -1));
+          // PROPOSED adaptations → the approve/skip card. Grouped by reason so
+          // a multi-day reshape is one card with all its mutation ids.
+          const proposed = muts.filter((m) => m.status === 'proposed');
+          if (proposed.length > 0) {
+            const byReason = new Map<string, { ids: string[]; reason: string; citation: string | null; trigger: string; days: Set<string>; ts: string }>();
+            for (const m of proposed) {
+              const g = byReason.get(m.reason) ?? { ids: [], reason: m.reason, citation: m.citation, trigger: m.trigger, days: new Set<string>(), ts: m.ts };
+              g.ids.push(m.id);
+              g.days.add(m.workoutDateISO);
+              if (m.ts > g.ts) g.ts = m.ts;
+              byReason.set(m.reason, g);
+            }
+            pendingAdaptations = [...byReason.values()]
+              .map((g) => ({ ids: g.ids, reason: g.reason, citation: g.citation, trigger: g.trigger, days: [...g.days].sort(), ts: g.ts }))
+              .sort((a, b) => (a.ts < b.ts ? 1 : -1));
+          }
         }
       }
     } catch { /* leave empty */ }
@@ -547,6 +580,7 @@ export async function GET(req: Request): Promise<Response> {
       skippedDates,
       coachAdaptations,
       adaptationsLatestTs,
+      pendingAdaptations,
       connectors,
       readinessScore,
       readinessState,

@@ -64,6 +64,8 @@ export interface SignalSnapshot {
   vdotDelta?: number;
 }
 
+export type MutationStatus = 'applied' | 'proposed' | 'declined';
+
 export interface PlanMutation {
   id: string;
   ts: string;
@@ -72,6 +74,10 @@ export interface PlanMutation {
   trigger: TriggerKind;
   signalSnapshot: SignalSnapshot;
   changedFields: Partial<PlanWorkout>;
+  /** 'applied' = auto-applied (default). 'proposed' = a big change awaiting
+   *  the runner's approve/skip (the workout is NOT changed until approved).
+   *  'declined' = the runner skipped it. */
+  status?: MutationStatus;
 }
 
 export interface PlanWorkout {

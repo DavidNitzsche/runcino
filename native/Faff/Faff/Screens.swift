@@ -839,7 +839,18 @@ struct RaceDetailView: View {
     /// striping). Monotone interpolation keeps the curve smooth without
     /// overshoot. The ink line rides on top for definition.
     @ViewBuilder
-    private func elevationProfile(_ samples: [RaceCourseSample], phases: [RacePhase]) -> some View {
+    private func elevationProfile(_ rawSamples: [RaceCourseSample], phases: [RacePhase]) -> some View {
+        // Sort by distance + drop duplicate/backwards x. A non-monotonic or
+        // duplicated x makes the AreaMark path self-intersect → white sliver
+        // fragments in the fill. Strictly-increasing x renders a clean band.
+        let samples: [RaceCourseSample] = {
+            var seen = Set<Double>(), out: [RaceCourseSample] = []
+            for s in rawSamples.sorted(by: { $0.d < $1.d }) {
+                let key = (s.d * 100).rounded() / 100
+                if seen.insert(key).inserted { out.append(s) }
+            }
+            return out
+        }()
         let minE = samples.map(\.e).min() ?? 0
         let maxE = samples.map(\.e).max() ?? 1
         let total = max(samples.last?.d ?? 1, 0.0001)
@@ -851,13 +862,13 @@ struct RaceDetailView: View {
                          yStart: .value("base", base),
                          yEnd: .value("Elevation", s.e))
                     .foregroundStyle(Self.phaseColorAt(s.d, phases).opacity(0.24))
-                    .interpolationMethod(.monotone)
+                    .interpolationMethod(.linear)
             }
             ForEach(samples) { s in
                 LineMark(x: .value("Mile", s.d), y: .value("Elevation", s.e))
                     .foregroundStyle(Faff.C.ink.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1.6, lineJoin: .round))
-                    .interpolationMethod(.monotone)
+                    .interpolationMethod(.linear)
             }
         }
         .chartXScale(domain: 0...total)

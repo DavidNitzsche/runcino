@@ -39,6 +39,10 @@ struct OverviewResponse: Decodable {
     /// the card show only when there's something newer than last dismissed.
     let coachAdaptations: [OCoachAdaptation]?
     let adaptationsLatestTs: String?
+    /// BIG adaptations awaiting the runner's approve/skip. NOT yet applied —
+    /// the workout keeps its current values until accepted. Each carries the
+    /// mutation ids to POST to /api/plan/adaptations/act.
+    let pendingAdaptations: [OPendingAdaptation]?
     /// Active connector providers (e.g. ["strava"]). Real integration
     /// status for the More tab. Empty/absent for anonymous reads.
     let connectors: [String]?
@@ -225,6 +229,18 @@ struct OCoachAdaptation: Decodable, Identifiable {
     let reason: String
     let citation: String?
     let count: Int
+    let days: [String]
+    let ts: String
+    var id: String { reason }
+}
+
+/// One grouped BIG adaptation awaiting approve/skip (pendingAdaptations).
+/// `ids` are the mutation ids to POST to /api/plan/adaptations/act.
+struct OPendingAdaptation: Decodable, Identifiable {
+    let ids: [String]
+    let reason: String
+    let citation: String?
+    let trigger: String
     let days: [String]
     let ts: String
     var id: String { reason }

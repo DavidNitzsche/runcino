@@ -86,6 +86,7 @@ interface PlanMutationRow {
   trigger_kind: TriggerKind;
   signal_snapshot: PlanMutation['signalSnapshot'];
   changed_fields: Partial<PlanWorkout>;
+  status?: PlanMutation['status'];
 }
 
 function toNum(v: string | number): number {
@@ -152,9 +153,10 @@ export async function saveActivePlan(plan: Plan): Promise<void> {
           );
           for (const m of w.mutations) {
             await client.query(
-              `INSERT INTO plan_mutations (id, workout_id, ts, reason, citation, trigger_kind, signal_snapshot, changed_fields)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-              [m.id, w.id, m.ts, m.reason, m.citation, m.trigger, JSON.stringify(m.signalSnapshot), JSON.stringify(m.changedFields)],
+              `INSERT INTO plan_mutations (id, workout_id, ts, reason, citation, trigger_kind, signal_snapshot, changed_fields, status)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+              [m.id, w.id, m.ts, m.reason, m.citation, m.trigger, JSON.stringify(m.signalSnapshot), JSON.stringify(m.changedFields), m.status ?? 'applied'],
             );
           }
         }
@@ -200,7 +202,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
   );
   const mutationRows = await query<PlanMutationRow>(
     `SELECT pm.id, pm.workout_id, pm.ts, pm.reason, pm.citation, pm.trigger_kind,
-            pm.signal_snapshot, pm.changed_fields
+            pm.signal_snapshot, pm.changed_fields, pm.status
      FROM plan_mutations pm
      JOIN plan_workouts pw ON pw.id = pm.workout_id
      WHERE pw.plan_id = $1
@@ -219,6 +221,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
       trigger: m.trigger_kind,
       signalSnapshot: m.signal_snapshot,
       changedFields: m.changed_fields,
+      status: m.status ?? 'applied',
     });
     mutationsByWorkout.set(m.workout_id, list);
   }
@@ -297,12 +300,53 @@ export async function archivePlan(planId: string): Promise<void> {
 /** Insert a single mutation row (used by adaptPlan when a trigger fires). */
 export async function insertMutation(workoutId: string, mutation: PlanMutation): Promise<void> {
   await query(
-    `INSERT INTO plan_mutations (id, workout_id, ts, reason, citation, trigger_kind, signal_snapshot, changed_fields)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO plan_mutations (id, workout_id, ts, reason, citation, trigger_kind, signal_snapshot, changed_fields, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (id) DO NOTHING`,
     [mutation.id, workoutId, mutation.ts, mutation.reason, mutation.citation,
-     mutation.trigger, JSON.stringify(mutation.signalSnapshot), JSON.stringify(mutation.changedFields)],
+     mutation.trigger, JSON.stringify(mutation.signalSnapshot), JSON.stringify(mutation.changedFields),
+     mutation.status ?? 'applied'],
   );
+}
+
+/** Accept or decline a set of PROPOSED mutations (the runner's approve/skip).
+ *  Accept → apply each mutation's changedFields to its workout + mark applied.
+ *  Decline → mark declined, leaving the workout at its original values.
+ *  Scoped to the plan user so a client can only act on their own plan. */
+export async function actOnMutations(
+  ids: string[], action: 'accept' | 'decline', userId: string,
+): Promise<{ updated: number }> {
+  if (ids.length === 0) return { updated: 0 };
+  const rows = await query<PlanMutationRow & { plan_user: string }>(
+    `SELECT pm.id, pm.workout_id, pm.changed_fields, pm.status, tp.user_id AS plan_user
+       FROM plan_mutations pm
+       JOIN plan_workouts pw ON pw.id = pm.workout_id
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE pm.id = ANY($1) AND pm.status = 'proposed' AND tp.user_id = $2`,
+    [ids, userId],
+  );
+  let updated = 0;
+  for (const r of rows) {
+    if (action === 'accept') {
+      const cf = r.changed_fields as Record<string, unknown>;
+      const sets: string[] = [], vals: unknown[] = [r.workout_id];
+      const col: Record<string, string> = {
+        distanceMi: 'distance_mi', type: 'type', isQuality: 'is_quality',
+        isLong: 'is_long', notes: 'notes', durationMin: 'duration_min',
+      };
+      for (const [k, v] of Object.entries(cf)) {
+        if (col[k]) { vals.push(v); sets.push(`${col[k]} = $${vals.length}`); }
+      }
+      if (sets.length > 0) {
+        await query(`UPDATE plan_workouts SET ${sets.join(', ')} WHERE id = $1`, vals);
+      }
+      await query(`UPDATE plan_mutations SET status = 'applied' WHERE id = $1`, [r.id]);
+    } else {
+      await query(`UPDATE plan_mutations SET status = 'declined' WHERE id = $1`, [r.id]);
+    }
+    updated++;
+  }
+  return { updated };
 }
 
 /** Update an in-place plan_workout row after a mutation applied. */
@@ -322,7 +366,7 @@ export async function updateWorkout(workout: PlanWorkout): Promise<void> {
 export async function listMutations(planId: string, sinceISO: string): Promise<Array<PlanMutation & { workoutId: string; workoutDateISO: string }>> {
   const rows = await query<PlanMutationRow & { date_iso: string }>(
     `SELECT pm.id, pm.workout_id, pm.ts, pm.reason, pm.citation, pm.trigger_kind,
-            pm.signal_snapshot, pm.changed_fields, pw.date_iso
+            pm.signal_snapshot, pm.changed_fields, pm.status, pw.date_iso
      FROM plan_mutations pm
      JOIN plan_workouts pw ON pw.id = pm.workout_id
      WHERE pw.plan_id = $1 AND pm.ts >= $2
@@ -337,6 +381,7 @@ export async function listMutations(planId: string, sinceISO: string): Promise<A
     trigger: r.trigger_kind,
     signalSnapshot: r.signal_snapshot,
     changedFields: r.changed_fields,
+    status: r.status ?? 'applied',
     workoutId: r.workout_id,
     workoutDateISO: r.date_iso,
   }));
