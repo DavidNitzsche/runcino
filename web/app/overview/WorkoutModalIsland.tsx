@@ -226,6 +226,8 @@ export function WeekStripCells({
         // shows DONE the moment actual ≥ 60% planned.
         const isDone = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
         const isSkipped = !isDone && !d.isRest && skipSet.has(d.date);
+        // A past planned day with no run and no explicit skip = missed.
+        const isMissed = !isDone && !isSkipped && !d.isRest && d.distanceMi > 0 && d.date < today;
         const dateNum = parseInt(d.date.slice(-2), 10);
         return (
           <button
@@ -244,7 +246,8 @@ export function WeekStripCells({
                 <div className="day-distance">{d.distanceMi}<small>mi</small></div>
                 {isDone && <div className="day-status-done">DONE</div>}
                 {isSkipped && <div className="day-status-skipped">SKIPPED</div>}
-                {d.hasStrength && !isDone && !isSkipped && <span className="day-strength" title="Strength training">S</span>}
+                {isMissed && <div className="day-status-missed">MISSED</div>}
+                {d.hasStrength && !isDone && !isSkipped && !isMissed && <span className="day-strength" title="Strength training">S</span>}
               </>
             )}
           </button>
@@ -269,6 +272,12 @@ export function WeekStripCells({
           font-family: 'Inter', sans-serif;
           font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
           text-transform: uppercase; color: rgba(13,15,18,.40);
+        }
+        .day-status-missed {
+          margin-top: 6px;
+          font-family: 'Inter', sans-serif;
+          font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
+          text-transform: uppercase; color: #C97000;
         }
       `}</style>
     </div>
@@ -605,7 +614,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 { label: 'Vert Ratio',   value: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '—', unit: dynamics?.verticalRatio != null ? '%' : '' },
                 { label: 'Run Power',    value: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '—', unit: dynamics?.runPower != null ? 'W' : '' },
               ];
-              if (!cells.some((c) => c.value !== '—')) return null;
+              const anyData = cells.some((c) => c.value !== '—');
               return (
                 <div className="wm-form">
                   <div className="wm-sub-label">Running form · Apple Health</div>
@@ -617,6 +626,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                       </div>
                     ))}
                   </div>
+                  {!anyData && (
+                    <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(13,15,18,.45)' }}>
+                      Syncs from your Apple Watch via Apple Health — connect it in Profile and run-by-run form lands here.
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -1315,6 +1329,130 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         }
         .wm-vs-muted { color: rgba(13,15,18,.45); font-style: normal; font-weight: 500; margin-left: 4px; }
       `}</style>
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────────────────
+ * InlineRecap — the completed-run recap rendered straight into the hero
+ * (no modal hop, no wasted space). Stats + coach take + running form
+ * (with placeholders) inline; "full recap" opens the modal for route +
+ * splits.
+ * ─────────────────────────────────────────────────────────────────── */
+
+export function InlineRecap({ day }: { day: WorkoutDay }) {
+  const { openFor } = useModal();
+  const [actual, setActual] = useState<ActualRun | null | undefined>(undefined);
+  const [recovery, setRecovery] = useState<RecoveryCtx | null>(null);
+  const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
+  const [maxHr, setMaxHr] = useState<number | null>(null);
+  const [maxHrSource, setMaxHrSource] = useState<string | null>(null);
+  const [fitness, setFitness] = useState<unknown>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/runs/by-date?date=${day.date}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        setActual(j.run ?? null);
+        setRecovery(j.recovery ?? null);
+        setDynamics(j.dynamics ?? null);
+        setMaxHr(j.maxHr ?? null);
+        setMaxHrSource(j.maxHrSource ?? null);
+        if (j.fitness) setFitness(j.fitness);
+      })
+      .catch(() => { if (!cancelled) setActual(null); });
+    return () => { cancelled = true; };
+  }, [day.date]);
+
+  if (actual === undefined) {
+    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.45)' }}>Loading your run…</div>;
+  }
+  if (!actual) {
+    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.45)' }}>Run is still syncing from Strava — check back in a minute.</div>;
+  }
+
+  const desc = describeWorkout(day.label, day.type, fitness as Parameters<typeof describeWorkout>[2]);
+  const [paceLow, paceHigh] = parsePaceBounds(desc.paceTarget);
+  const debrief = generateRunDebrief({
+    planLabel: day.label, planType: day.type, planDistanceMi: day.distanceMi,
+    paceLow, paceHigh,
+    actualDistanceMi: actual.distanceMi, actualPaceSPerMi: actual.paceSPerMi, actualAvgHr: actual.avgHr,
+    splits: actual.splits.map((s) => ({ mile: s.mile, paceSPerMi: s.paceSPerMi, avgHr: s.avgHr })),
+    maxHr,
+    recovery: recovery ? {
+      hrvMs: recovery.hrvMs, hrvBaselineMs: recovery.hrvBaselineMs,
+      restingHrBpm: recovery.restingHrBpm, restingHrBaselineBpm: recovery.restingHrBaselineBpm,
+      sleepHours: recovery.sleepHours,
+    } : null,
+  });
+  const maxHrLabel = maxHr
+    ? `Max HR ${maxHr} · ${maxHrSource === 'manual' ? 'manual' : maxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
+    : 'Max HR not set — using generic HR bands. Set yours on /profile.';
+
+  const cad = actual.avgCadence ?? dynamics?.cadence ?? null;
+  const stats: Array<{ v: string; u?: string; l: string }> = [
+    { v: actual.distanceMi.toFixed(1), u: 'mi', l: 'Distance' },
+    { v: fmtTime(actual.movingTimeS), l: 'Time' },
+    { v: fmtPaceMS(actual.paceSPerMi), u: '/mi', l: 'Avg pace' },
+    { v: actual.avgHr ? String(actual.avgHr) : '—', u: actual.avgHr ? 'bpm' : '', l: 'Avg HR' },
+    { v: cad != null ? String(Math.round(cad)) : '—', u: cad != null ? 'spm' : '', l: 'Cadence' },
+  ];
+  const form: Array<{ v: string; u: string; l: string }> = [
+    { l: 'Stride', v: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '—', u: dynamics?.strideLength != null ? 'm' : '' },
+    { l: 'Vert Osc', v: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '—', u: dynamics?.verticalOscillation != null ? 'cm' : '' },
+    { l: 'Grnd Contact', v: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '—', u: dynamics?.groundContactTime != null ? 'ms' : '' },
+    { l: 'Vert Ratio', v: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '—', u: dynamics?.verticalRatio != null ? '%' : '' },
+    { l: 'Run Power', v: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '—', u: dynamics?.runPower != null ? 'W' : '' },
+  ];
+  const hasForm = form.some((c) => c.v !== '—');
+  const hasRecovery = recovery && (recovery.hrvMs != null || recovery.restingHrBpm != null || recovery.sleepHours != null);
+
+  return (
+    <div style={{ marginTop: 18, maxWidth: 760 }}>
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
+        {stats.map((s) => (
+          <div key={s.l} style={{ padding: '12px 14px', background: 'rgba(13,15,18,.03)', border: '1px solid rgba(13,15,18,.06)', borderRadius: 10 }}>
+            <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 28, lineHeight: 1, color: '#0D0F12' }}>
+              {s.v}{s.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: 600, color: 'rgba(13,15,18,.40)', marginLeft: 2 }}>{s.u}</small>}
+            </div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginTop: 5 }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Coach take */}
+      <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(13,15,18,.04)', borderLeft: '3px solid #E85D26', borderRadius: '0 8px 8px 0' }}>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginBottom: 6 }}>Coach take</div>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, lineHeight: 1.55, color: 'rgba(13,15,18,.82)', margin: 0 }}>{debrief}</p>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(13,15,18,.40)', marginTop: 8 }}>{maxHrLabel}</div>
+      </div>
+
+      {/* Running form (always shown — placeholders until Apple Health syncs) */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginBottom: 8 }}>Running form · Apple Health</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
+          {[{ l: 'Cadence', v: cad != null ? String(Math.round(cad)) : '—', u: cad != null ? 'spm' : '' }, ...form].map((c) => (
+            <div key={c.l} style={{ padding: '10px 12px', background: 'rgba(13,15,18,.03)', border: '1px solid rgba(13,15,18,.06)', borderRadius: 8 }}>
+              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, lineHeight: 1, color: c.v === '—' ? 'rgba(13,15,18,.32)' : '#0D0F12' }}>
+                {c.v}{c.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 600, color: 'rgba(13,15,18,.40)', marginLeft: 2 }}>{c.u}</small>}
+              </div>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginTop: 4 }}>{c.l}</div>
+            </div>
+          ))}
+        </div>
+        {(!hasForm || !hasRecovery) && (
+          <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(13,15,18,.45)' }}>
+            {hasForm ? '' : 'Form metrics '}{!hasForm && !hasRecovery ? 'and recovery vitals ' : ''}{hasRecovery ? '' : (hasForm ? 'Recovery vitals ' : '')}sync from your Apple Watch via Apple Health — connect it in Profile and they fill in here per run.
+          </div>
+        )}
+      </div>
+
+      <button type="button" onClick={() => openFor(day)} style={{ marginTop: 16, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontSize: 12.5, fontWeight: 700, letterSpacing: '.04em', color: '#E85D26' }}>
+        View full recap · route + splits →
+      </button>
     </div>
   );
 }

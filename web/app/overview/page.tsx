@@ -35,7 +35,7 @@ import { describeWorkout, describeKeyFromPlan } from '@/lib/workout-descriptions
 import { getCurrentPlan } from '@/coach/plan-lifecycle';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
-import { WorkoutModalProvider, HeroActions, WeekStripCells, type WorkoutDay } from './WorkoutModalIsland';
+import { WorkoutModalProvider, HeroActions, WeekStripCells, InlineRecap, type WorkoutDay } from './WorkoutModalIsland';
 import { buildPreWorkoutBriefing } from '@/lib/pre-workout-briefing';
 import { PreWorkoutBriefingCard } from './PreWorkoutBriefing';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
@@ -374,12 +374,7 @@ export default async function OverviewPage() {
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2CA82F' }} />
                   COMPLETED · {todayActualMi.toFixed(1)} MI LOGGED
                 </div>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, lineHeight: 1.6, color: 'var(--t1)', marginTop: 16, maxWidth: 540 }}>
-                  Today&rsquo;s {(todayDay?.label ?? 'run').toLowerCase()} is done. Open the recap for splits, heart rate, running form, and the coach take on how it landed against the plan.
-                </p>
-                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 20 }}>
-                  <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} completed />
-                </div>
+                <InlineRecap day={todayDay as WorkoutDay} />
               </>
             ) : todaySkipped ? (
               <>
