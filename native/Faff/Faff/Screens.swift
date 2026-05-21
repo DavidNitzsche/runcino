@@ -1501,15 +1501,25 @@ struct MetricDetailSheet: View {
         } else if series.count >= 2 {
             let vals = series.map(\.value)
             let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1)
+            // Bars rise from a floor just below the minimum so day-to-day
+            // variation is visible (a 160–170 spm range isn't flattened by a
+            // zero baseline). Each bar is one recorded day.
+            let pad = max(1, (hi - lo) * 0.18)
+            let floor = lo - pad
             Chart(series) { p in
-                AreaMark(x: .value("Date", p.date), y: .value("Value", p.value))
-                    .foregroundStyle(LinearGradient(colors: [Faff.C.recovery.opacity(0.22), Faff.C.recovery.opacity(0.02)], startPoint: .top, endPoint: .bottom))
-                LineMark(x: .value("Date", p.date), y: .value("Value", p.value))
-                    .foregroundStyle(Faff.C.recovery)
-                    .lineStyle(StrokeStyle(lineWidth: 1.8))
-                    .interpolationMethod(.catmullRom)
+                BarMark(
+                    x: .value("Date", p.date),
+                    yStart: .value("Floor", floor),
+                    yEnd: .value("Value", p.value),
+                    width: .ratio(0.62)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .foregroundStyle(
+                    LinearGradient(colors: [Faff.C.recovery, Faff.C.recovery.opacity(0.55)],
+                                   startPoint: .top, endPoint: .bottom)
+                )
             }
-            .chartYScale(domain: (lo - (hi - lo) * 0.15 - 1)...(hi + (hi - lo) * 0.15 + 1))
+            .chartYScale(domain: floor...(hi + pad))
             .chartXAxis(.hidden)
             .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
                 AxisValueLabel { if let d = v.as(Double.self) { Text("\(Int(d))").font(Faff.F.inter(8)).foregroundStyle(Faff.C.textDim) } }
