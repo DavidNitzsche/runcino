@@ -23,10 +23,10 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await ensureSeed();
   let userId: string | undefined;
-  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  try { userId = (await requireActiveUser(req)).id; } catch { /* anon ok */ }
 
   const today = todayISO();
   const todayMs = Date.parse(today + 'T12:00:00Z');

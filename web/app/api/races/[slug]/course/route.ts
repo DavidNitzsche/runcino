@@ -117,13 +117,13 @@ async function computeProjectionInner(userId: string | null | undefined, distanc
   };
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   await ensureSeed();
   const { slug } = await params;
   if (!slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
 
   let userId: string | undefined;
-  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  try { userId = (await requireActiveUser(req)).id; } catch { /* anon ok */ }
 
   const race = await getRaceDB(slug, userId);
   if (!race) return NextResponse.json({ error: 'Race not found', slug }, { status: 404 });

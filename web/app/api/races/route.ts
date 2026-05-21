@@ -14,10 +14,10 @@ import { ensureSeed } from '../../../lib/seed-server';
 import { requireActiveUser } from '../../../lib/auth';
 import type { SavedRace } from '../../../lib/storage-types';
 
-export async function GET() {
+export async function GET(req: Request) {
   await ensureSeed();
   let userId: string | undefined;
-  try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
+  try { userId = (await requireActiveUser(req)).id; } catch { /* anon ok */ }
   const races = await listRacesDB(userId);
   return Response.json({ races });
 }

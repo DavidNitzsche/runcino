@@ -278,8 +278,11 @@ export async function requireUser(): Promise<AuthUser> {
  * Use this anywhere a logged-in user should see protected content.
  * For the admin panel use requireAdmin() instead.
  */
-export async function requireActiveUser(): Promise<AuthUser> {
-  const u = await getCurrentUser();
+export async function requireActiveUser(req?: { headers: Headers } | Request): Promise<AuthUser> {
+  // Pass `req` from API routes so the native app's Authorization: Bearer
+  // token is honored (getCurrentUser checks Bearer first, then the cookie).
+  // Page server components call this with no arg → cookie-only, as before.
+  const u = await getCurrentUser(req);
   if (!u) redirect('/login');
   if (u.status !== 'active') redirect('/pending');
   return u;
