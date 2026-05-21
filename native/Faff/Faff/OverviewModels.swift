@@ -31,6 +31,9 @@ struct OverviewResponse: Decodable {
     /// Actual miles logged per day this week (dateISO → mi). Drives
     /// honest "done" markers. Empty/absent for anonymous reads.
     let completedByDate: [String: Double]?
+    /// Dates the runner deliberately SKIPPED this week — distinct from a
+    /// missed/unlogged day so the strip + heroes can mark them differently.
+    let skippedDates: [String]?
     /// Active connector providers (e.g. ["strava"]). Real integration
     /// status for the More tab. Empty/absent for anonymous reads.
     let connectors: [String]?
@@ -210,8 +213,19 @@ struct PlanRangeDay: Decodable, Identifiable {
     let isLong: Bool?
     let isToday: Bool?
     let hasStrength: Bool?
+    /// Miles actually logged that day (from the real activity), or nil.
+    let completedMi: Double?
+    /// The runner deliberately skipped this day (distinct from "missed").
+    let skipped: Bool?
     var id: String { date ?? UUID().uuidString }
     var isRest: Bool { (type ?? "rest") == "rest" || (distanceMi ?? 0) <= 0 }
+
+    /// Completed = logged ≥ 60% of the planned distance.
+    var isDone: Bool {
+        guard let mi = distanceMi, mi > 0, let actual = completedMi else { return false }
+        return actual >= mi * 0.6
+    }
+    var isSkipped: Bool { skipped == true }
 
     /// "8:14–8:44" from the band, or single value, or "Easy" when no gate.
     var paceDisplay: String {
@@ -228,7 +242,7 @@ struct PlanRangeDay: Decodable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case date, type, label, distanceMi, description, paceTargetSPerMi, isQuality, isLong, isToday, hasStrength
+        case date, type, label, distanceMi, description, paceTargetSPerMi, isQuality, isLong, isToday, hasStrength, completedMi, skipped
     }
 }
 
@@ -767,6 +781,15 @@ extension OverviewResponse {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
         let actual = completedByDate?[date] ?? 0
         return actual >= planned * 0.6
+    }
+    /// The runner deliberately skipped this day (distinct from "missed").
+    func isPlanDaySkipped(_ d: OPlanDay) -> Bool {
+        guard let date = d.dateISO else { return false }
+        return skippedDates?.contains(date) ?? false
+    }
+    func isPlanDaySkipped(dateISO: String?) -> Bool {
+        guard let date = dateISO else { return false }
+        return skippedDates?.contains(date) ?? false
     }
     var todayWorkout: DerivedWorkout { DerivedWorkout(plan: planToday, fallback: workout?.answer) }
     var raceCountdown: (name: String, days: Int)? {

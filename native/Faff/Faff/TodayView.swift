@@ -196,7 +196,8 @@ struct TodayView: View {
         if isPastSel {
             let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
             if overview.isPlanDayDone(d) { return "\(wd)'s \(dw.label.lowercased()), logged — \(OverviewFormat.distance(actual)) of \(mi) mi." }
-            return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned, not logged."
+            if overview.isPlanDaySkipped(d) { return "\(wd)'s \(dw.label.lowercased()) — skipped. The coach adapts the days around it." }
+            return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned, missed (not logged)."
         }
         return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned. Tap Open workout for the structure."
     }
@@ -212,16 +213,21 @@ struct TodayView: View {
         let isToday = d.dateISO == o.today
         let isPast = (d.dateISO ?? "") < (o.today ?? "")
         if o.isPlanDayDone(d) {
-            // Green check on completed days (white when sitting on the green fill).
+            // Completed — green check (white when sitting on the green fill).
             Image(systemName: "checkmark").font(.system(size: 7, weight: .black))
                 .foregroundStyle(onFill ? .white : Faff.C.recovery)
+        } else if o.isPlanDaySkipped(d) {
+            // Deliberately skipped — amber slash (the coach knows; not "missed").
+            Image(systemName: "slash.circle").font(.system(size: 7, weight: .bold))
+                .foregroundStyle(onFill ? .white : Faff.C.milestone)
         } else if isRest {
             Circle().stroke(Faff.C.textFaint, lineWidth: 1.5).frame(width: 5, height: 5)
         } else if isToday {
             Circle().fill(Faff.C.milestone).frame(width: 5, height: 5)
         } else if isPast {
-            // "Not logged" — neutral grey, not an alarming red.
-            Circle().fill(Faff.C.textFaint).frame(width: 5, height: 5)
+            // Missed — planned, not logged, not skipped. A hollow warn ring so
+            // it's clearly distinct from a deliberate skip and from "to come".
+            Circle().stroke(Faff.C.warn.opacity(0.85), lineWidth: 1.5).frame(width: 5, height: 5)
         } else {
             Circle().fill(Faff.C.textFaint.opacity(0.6)).frame(width: 5, height: 5)
         }
