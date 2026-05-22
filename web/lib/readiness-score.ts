@@ -55,7 +55,6 @@
  */
 
 import { query } from './db';
-import { computeSignal2 } from './adaptive-vdot-signal2';
 import { computeStravaGap } from './strava-gap';
 import { formatCrossReference, type CrossReference } from './coach-voice';
 import type { Z2CoverageFinding } from './z2-coverage';
@@ -288,23 +287,14 @@ export async function computeReadinessScore(
   // as a "missing" input, since that read as a confusing "unavailable" note
   // sitting right next to the mileage bar.
 
-  // ── Signal 2 HR-pace drift ──
-  try {
-    const sig2 = await computeSignal2(userId, new Date(todayIso + 'T12:00:00Z'), userMaxHr, restingHr);
-    if (sig2.deltaSPerMi != null && sig2.enoughVolume) {
-      if (sig2.deltaSPerMi <= -10) {
-        score += 5;
-        inputs.push({ name: 'hr-pace-drift', delta: +5, note: `Z2 pace ${Math.abs(sig2.deltaSPerMi)}s/mi faster at fixed HR` });
-      } else if (sig2.deltaSPerMi >= 10) {
-        score -= 10;
-        inputs.push({ name: 'hr-pace-drift', delta: -10, note: `Z2 pace ${sig2.deltaSPerMi}s/mi slower at fixed HR` });
-      }
-    } else {
-      missing.push('hr-pace-drift (signal 2 below volume gate)');
-    }
-  } catch {
-    missing.push('hr-pace-drift');
-  }
+  // NOTE: Z2 pace-at-fixed-HR drift is intentionally NOT a daily-readiness
+  // input. Signal 2 compares the last 28 days to the 28 days before that —
+  // that's a CHRONIC fitness/efficiency trend (and is sensitive to base
+  // phase, seasonal heat, and a shifting Z2 band), not a read on whether
+  // you're recovered TODAY. Penalizing daily readiness by -10 for a 2-month
+  // trend pinned the score to yellow for runners who were actually fresh.
+  // The drift still drives the fitness/VDOT verdict (adaptive-vdot), which
+  // is the right home for a longitudinal signal.
 
   // ── HealthKit recovery vitals · HRV, resting HR, last-night sleep ──
   //    All cited to Research/03 §9–§10 (HRV/RHR baselines) and Research/00b
@@ -321,29 +311,33 @@ export async function computeReadinessScore(
       [userId],
     );
     const series = (t: string) => hsRows.filter((r) => r.sample_type === t).map((r) => Number(r.value)).filter((n) => isFinite(n));
+    const mean = (arr: number[]) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
 
-    // HRV — latest vs trailing baseline. Research/03 §10: ~20% below
-    // baseline = poor recovery; >1 SD below = reduce intensity.
+    // HRV — a SMOOTHED recent read (mean of the last 3 days) vs an older
+    // baseline. Single-day HRV is very noisy (one bad night swings it 20%+),
+    // so we never penalize on one reading — only a sustained dip. Need ≥5
+    // readings so the baseline isn't itself a single day. Research/03 §10.
     const hrv = series('hrv');
-    if (hrv.length >= 4) {
-      const latest = hrv[0];
-      const base = hrv.slice(1).reduce((s, n) => s + n, 0) / (hrv.length - 1);
-      const dropPct = base > 0 ? (base - latest) / base : 0;
-      if (dropPct >= 0.20) { score -= 12; inputs.push({ name: 'hrv', delta: -12, note: `HRV ${Math.round(latest)}ms is ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline — poor recovery` }); }
-      else if (dropPct >= 0.10) { score -= 6; inputs.push({ name: 'hrv', delta: -6, note: `HRV ${Math.round(latest)}ms dipping below your ${Math.round(base)}ms baseline` }); }
-      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV ${Math.round(latest)}ms above your ${Math.round(base)}ms baseline — well recovered` }); }
+    if (hrv.length >= 5) {
+      const recent = mean(hrv.slice(0, 3));
+      const base = mean(hrv.slice(3));
+      const dropPct = base > 0 ? (base - recent) / base : 0;
+      if (dropPct >= 0.20) { score -= 10; inputs.push({ name: 'hrv', delta: -10, note: `HRV averaging ${Math.round(recent)}ms over 3 days — ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
+      else if (dropPct >= 0.12) { score -= 5; inputs.push({ name: 'hrv', delta: -5, note: `HRV trending ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
+      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV averaging ${Math.round(recent)}ms — above your ${Math.round(base)}ms baseline, well recovered` }); }
     } else { missing.push('hrv (need a few days of baseline)'); }
 
-    // Resting HR — latest vs baseline. Research/03 §9: +7 bpm over baseline
-    // → easy day; ±3–4 bpm is normal noise.
+    // Resting HR — same smoothing: mean of the last 3 days vs an older
+    // baseline. A single +4–6 morning reading is normal noise; only a
+    // sustained elevation should pull the score. Research/03 §9.
     const rhr = series('resting_hr');
-    if (rhr.length >= 4) {
-      const latest = rhr[0];
-      const base = rhr.slice(1).reduce((s, n) => s + n, 0) / (rhr.length - 1);
-      const delta = latest - base;
-      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR ${Math.round(latest)} is +${Math.round(delta)} over your ${Math.round(base)} baseline — back off` }); }
-      else if (delta >= 4) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR ${Math.round(latest)} slightly elevated vs ${Math.round(base)} baseline` }); }
-      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR ${Math.round(latest)} below your ${Math.round(base)} baseline — recovered` }); }
+    if (rhr.length >= 5) {
+      const recent = mean(rhr.slice(0, 3));
+      const base = mean(rhr.slice(3));
+      const delta = recent - base;
+      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR averaging ${Math.round(recent)} over 3 days — +${Math.round(delta)} over your ${Math.round(base)} baseline` }); }
+      else if (delta >= 5) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR averaging ${Math.round(recent)} — slightly elevated vs ${Math.round(base)} baseline` }); }
+      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR averaging ${Math.round(recent)} — below your ${Math.round(base)} baseline, recovered` }); }
     } else { missing.push('resting-hr (need a few days of baseline)'); }
 
     // Sleep — last night. Research/00b §Sleep: <6h significant decrement;
