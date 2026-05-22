@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faff · HR &amp; HealthKit Deep Audit — 2026-05-22</title>
+<style>
+  :root {
+    --bg:#EEECEA; --card:#fff; --ink:#0D0F12; --muted:rgba(13,15,18,.62);
+    --faint:rgba(13,15,18,.42); --race:#E85D26; --green:#1f6a21; --amber:#B3450A; --warn:#B22222;
+    --line:rgba(13,15,18,.10);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; line-height:1.55; }
+  .wrap { max-width:880px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:34px; letter-spacing:-.02em; margin:0 0 4px; }
+  h2 { font-size:21px; margin:40px 0 12px; letter-spacing:-.01em; }
+  h3 { font-size:15px; margin:22px 0 8px; text-transform:uppercase; letter-spacing:1px; color:var(--faint); }
+  .eyebrow { font-size:11px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:var(--race); }
+  .lede { font-size:16px; color:var(--muted); margin:8px 0 0; }
+  .card { background:var(--card); border-radius:16px; padding:20px 22px; margin:14px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint); }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+    background:rgba(13,15,18,.05); padding:1px 5px; border-radius:5px; }
+  .tag { display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.4px; padding:2px 8px;
+    border-radius:999px; text-transform:uppercase; }
+  .t-wired { background:rgba(31,106,33,.14); color:var(--green); }
+  .t-disp  { background:rgba(179,69,10,.14); color:var(--amber); }
+  .t-miss  { background:rgba(178,34,34,.12); color:var(--warn); }
+  .t-done  { background:rgba(31,106,33,.14); color:var(--green); }
+  .t-next  { background:rgba(13,15,18,.06); color:var(--faint); }
+  .kv { color:var(--race); font-weight:700; }
+  ul { margin:6px 0 0; padding-left:20px; } li { margin:4px 0; }
+  .rule { height:1px; background:var(--line); margin:30px 0; border:0; }
+  .foot { color:var(--faint); font-size:12px; margin-top:40px; }
+  .big { font-size:42px; font-weight:800; letter-spacing:-.02em; line-height:1; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:640px){ .grid2{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Faff · Autonomous session</div>
+  <h1>Heart Rate &amp; HealthKit — Deep Audit + Karvonen Migration</h1>
+  <p class="lede">2026-05-22 · Triggered by "why is readiness 50/red — that's insane?". It was insane: the engine
+  was calling easy aerobic runs "hard." This session traced the whole HR + HealthKit pipeline, fixed the
+  root cause across every surface, ingested the metrics we were leaving on the table, and made HR legible.</p>
+
+  <div class="card">
+    <div class="eyebrow">The one-line story</div>
+    <p style="margin:8px 0 0;font-size:15.5px;">Your easy runs average ~145&nbsp;bpm and <em>feel</em> easy. The engine
+    classified anything ≥80% of <strong>max HR</strong> (=145) as a hard effort and tanked readiness for it.
+    With a resting HR of 48, the honest measure — <strong>Karvonen %HRR</strong> — puts 145&nbsp;bpm at
+    <span class="kv">73% reserve = easy aerobic</span>. The fix routes every HR decision through one Karvonen
+    definition. <strong>Your body was right; the math was wrong.</strong></p>
+  </div>
+
+  <h2>Why 50/red happened</h2>
+  <div class="card">
+    <table>
+      <tr><th>Method</th><th>Your 145&nbsp;bpm run</th><th>Verdict</th></tr>
+      <tr><td>% of max HR (old)</td><td>145 ÷ 181 = <strong>80%</strong></td><td><span class="tag t-miss">"Hard" → −15/−10 readiness</span></td></tr>
+      <tr><td>% HRR / Karvonen (new)</td><td>(145−48) ÷ 133 = <strong>73%</strong></td><td><span class="tag t-wired">Easy aerobic — no penalty</span></td></tr>
+    </table>
+    <p style="margin:12px 0 0;color:var(--muted);font-size:13.5px;">%max ignores resting HR, so it overstates intensity
+    for fit runners with a low resting HR. Research/03 §5 says HRR is the more accurate framework for exactly that
+    case. The <code>0.80 × maxHr</code> threshold was an uncited magic number that contradicted the canonical zones.</p>
+  </div>
+
+  <h2>The keystone finding</h2>
+  <div class="card">
+    <p style="margin:0;">Max HR <em>reached the engine</em> via <code>users.max_hr</code> → <code>fitness-resolver</code>
+    (so pace zones / Z2 / VDOT signals used it) — but it <strong>never reached <code>CoachState</code></strong>.
+    So the two surfaces that read CoachState fell back to hardcoded ceilings:</p>
+    <ul>
+      <li><code>coach-engine.ts</code> "yesterday hard → today easy" used a hardcoded <strong>152&nbsp;bpm</strong>.</li>
+      <li><code>coach/coach.ts</code> post-run verdicts ("ran hot", quality-over-ceiling) hardcoded <strong>hrmax = 180</strong>.</li>
+    </ul>
+    <p style="margin:10px 0 0;">Fix: <code>state.recovery.maxHrBpm</code> now lands in CoachState, and both engines compute
+    the Karvonen Threshold floor from the runner's real numbers.</p>
+  </div>
+
+  <h2>HealthKit pipeline audit — every metric</h2>
+  <div class="card">
+    <table>
+      <tr><th>Metric</th><th>Before</th><th>Now</th></tr>
+      <tr><td>Resting HR</td><td><span class="tag t-wired">Wired</span></td><td>Wired — feeds Karvonen zones</td></tr>
+      <tr><td>Max HR</td><td><span class="tag t-disp">Engine-only</span></td><td><span class="tag t-wired">Wired</span> — now in CoachState too</td></tr>
+      <tr><td>HRV</td><td><span class="tag t-disp">Displayed-only</span></td><td>Displayed (coach-wiring is a documented next step)</td></tr>
+      <tr><td>Sleep</td><td><span class="tag t-disp">Displayed-only</span></td><td>Displayed (attenuation path still dead — flagged)</td></tr>
+      <tr><td>VO₂max, respiration, wrist temp, run dynamics</td><td><span class="tag t-disp">Displayed-only</span></td><td>Displayed</td></tr>
+      <tr><td>Body weight / mass</td><td><span class="tag t-miss">Missing</span></td><td><span class="tag t-done">Ingested + shown</span></td></tr>
+      <tr><td>Body fat % / lean mass</td><td><span class="tag t-miss">Missing</span></td><td><span class="tag t-done">Ingested + shown</span></td></tr>
+      <tr><td>HR recovery (1-min)</td><td><span class="tag t-miss">Missing</span></td><td><span class="tag t-done">Ingested + shown</span></td></tr>
+      <tr><td>Active energy</td><td><span class="tag t-miss">Missing</span></td><td><span class="tag t-done">Ingested + shown</span></td></tr>
+      <tr><td>Blood oxygen (SpO₂)</td><td><span class="tag t-miss">Missing</span></td><td><span class="tag t-done">Ingested + shown</span></td></tr>
+    </table>
+  </div>
+
+  <h2>What shipped</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Karvonen everywhere.</strong> One shared <code>hardEffortFloorBpm()</code> + <code>classifyHrZone()</code>
+      in <code>hr-zones.ts</code>; routed readiness, the 24h-recovery plan rule, post-run verdicts, adaptive-VDOT Signal 3,
+      and the run debrief through it. (web — live)</li>
+      <li><strong>Max HR in CoachState</strong> — engines stop hardcoding 152/180. (web — live)</li>
+      <li><strong>6 new Apple Health metrics ingested</strong>: weight, body fat, lean mass, HR recovery, active energy, SpO₂.</li>
+      <li><strong>HR zone scale</strong> — the 5 Karvonen zones with your real bpm ranges, on the Health page and the
+      readiness detail sheet, so "145 = easy" is legible.</li>
+      <li><strong>Body-composition tiles</strong> on the iPhone Health page.</li>
+      <li><strong>Honest web readiness panel</strong> — replaced placeholder Effort/Load/Easy-Pace/Strain rows with the
+      real score inputs + deltas.</li>
+      <li>Earlier in the session: readiness ring fixed (decimal-HR SQL cast), readiness detail sheet + informative copy,
+      web/iPhone score parity, Sombrero "Half" title fix.</li>
+    </ul>
+  </div>
+
+  <h2>Verified</h2>
+  <div class="card">
+    <p style="margin:0;">Live admin diagnostic (runs the real computation as the owner): readiness now
+    <span class="kv">70 / yellow</span> with an honest "1 hard session in last 3 days" (a genuine ≥154&nbsp;bpm Z4 effort) —
+    no longer the false 50/red from mislabeling easy runs. Web <code>tsc</code> clean; iOS <code>BUILD SUCCEEDED</code>.</p>
+  </div>
+
+  <h2>Still open — next session</h2>
+  <div class="card">
+    <table>
+      <tr><th>Item</th><th>Status</th></tr>
+      <tr><td>Editable HR anchors UI (max/resting HR override). Auto-from-Apple already works; the manual override <em>control</em> isn't built.</td><td><span class="tag t-next">Next</span></td></tr>
+      <tr><td>Ground-up Health <em>dashboard</em> redesign (iPhone + web). This session added zones + body-comp + honest breakdowns to the existing structure; the full control-center rebuild remains.</td><td><span class="tag t-next">Next</span></td></tr>
+      <tr><td>Wire HRV (morning baseline deviation) + sleep into readiness — data already flows; the <code>contextMultiplier</code> attenuation path has no production caller.</td><td><span class="tag t-next">Next (research-cited)</span></td></tr>
+      <tr><td>Wire body weight into running-power (W/kg) + fueling (g/kg) where Research-cited.</td><td><span class="tag t-next">Next</span></td></tr>
+    </table>
+  </div>
+
+  <p class="foot">Generated autonomously · web changes deploy continuously via Railway · iOS shipped as one consolidated
+  TestFlight build · all HR rules cited to Research/03 §4–§5.</p>
+</div>
+</body>
+</html>
