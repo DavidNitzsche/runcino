@@ -215,7 +215,7 @@ struct RunRecapContent: View {
 
     private func dynamicsCard(_ d: HealthKitManager.RunDynamics) -> some View {
         func f(_ v: Double?, _ dec: Int) -> String {
-            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? ", "
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "-"
         }
         let tiles: [DynTile] = [
             DynTile(label: "Cadence", value: f(d.cadenceSpm, 0), unit: d.cadenceSpm != nil ? "spm" : nil),

@@ -10,6 +10,15 @@
 
 import SwiftUI
 
+/// Approx workout duration for stat tiles. App-wide rule: switch to H:MM once
+/// it crosses an hour (101 min -> "~1:41") instead of "~101 min". Returns
+/// (value, unit); unit is nil in H:MM form and for the empty placeholder.
+func faffApproxDuration(_ minutes: Int?) -> (value: String, unit: String?) {
+    guard let m = minutes, m > 0 else { return ("-", nil) }
+    if m >= 60 { return ("~\(m / 60):" + String(format: "%02d", m % 60), nil) }
+    return ("~\(m)", "min")
+}
+
 struct TodayView: View {
     let overview: OverviewResponse
     var onWhy: () -> Void = {}
@@ -281,8 +290,8 @@ struct TodayView: View {
                     StatPill(value: OverviewFormat.distance(dw.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil,
                              label: "Pace", accent: dw.isQuality)
-                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? ", ",
-                             unit: dw.durationMin != nil ? "min" : nil, label: "Time")
+                    StatPill(value: faffApproxDuration(dw.durationMin).value,
+                             unit: faffApproxDuration(dw.durationMin).unit, label: "Time")
                 }
                 actionButtons
                     .padding(.top, 12)
@@ -352,7 +361,7 @@ struct TodayView: View {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(dw.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: dw.isQuality)
-                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? ", ", unit: dw.durationMin != nil ? "min" : nil, label: "Time")
+                    StatPill(value: faffApproxDuration(dw.durationMin).value, unit: faffApproxDuration(dw.durationMin).unit, label: "Time")
                 }
                 GhostButton(title: "Open workout") { onOpenWorkout() }.padding(.top, 12)
             }

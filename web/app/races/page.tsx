@@ -500,12 +500,12 @@ export default async function RacesPage() {
                   <>
                     <div className="path-stat">
                       <div className="path-stat-label">Current Fitness</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>-</div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                     <div className="path-stat">
                       <div className="path-stat-label">Gap to Goal</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>-</div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                   </>
@@ -539,7 +539,7 @@ export default async function RacesPage() {
                 ) : (
                   <div className="path-stat">
                     <div className="path-stat-label">Trajectory</div>
-                    <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
+                    <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>-</div>
                     <div className="path-stat-sub">No data</div>
                   </div>
                 )}

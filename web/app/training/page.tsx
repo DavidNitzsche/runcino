@@ -451,7 +451,7 @@ export default async function TrainingPage() {
                           <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
                             {isToday ? 'Rest · Today' : 'Rest'}
                           </span>
-                          <span className="cal-cell-rest-dash">, </span>
+                          <span className="cal-cell-rest-dash">-</span>
                         </>
                       ) : (
                         <>

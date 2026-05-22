@@ -373,7 +373,7 @@ struct HealthView: View {
     var body: some View {
         let r = overview.state?.recovery
         func num(_ v: Double?, _ dec: Int = 0) -> String {
-            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? ", "
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "-"
         }
         func vital(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0, sub: String, type: String? = nil) -> Tile {
             Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
@@ -498,8 +498,8 @@ struct HealthView: View {
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
                 }
                 HStack(spacing: 14) {
-                    anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? ", ", "bpm")
-                    anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? ", ", "bpm")
+                    anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "-", "bpm")
+                    anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "-", "bpm")
                     anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "uses resting HR" : "")
                 }
             }
@@ -624,7 +624,7 @@ struct RacesView: View {
                 Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
             }.padding(.top, 2)
             HStack(spacing: 18) {
-                raceStat("Goal time", r.goalDisplay ?? ", ")
+                raceStat("Goal time", r.goalDisplay ?? "-")
                 if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
                 raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi")
             }.padding(.top, 8)
@@ -653,7 +653,7 @@ struct RacesView: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(r.goalDisplay ?? ", ").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                Text(r.goalDisplay ?? "-").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
                 Text("\(r.daysAway ?? 0)d away").font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.race)
             }
             Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
@@ -771,7 +771,7 @@ struct RaceDetailView: View {
     private var eyebrow: String {
         let pr = (header.priority ?? "A")
         if header.isPast { return "RESULT" }
-        return "\(["A","B","C"].contains(pr) ? "\(pr)-RACE" : "RACE") · GOAL \(header.goalDisplay ?? ", ")"
+        return "\(["A","B","C"].contains(pr) ? "\(pr)-RACE" : "RACE") · GOAL \(header.goalDisplay ?? "-")"
     }
     var body: some View {
         ScrollView {
@@ -792,7 +792,7 @@ struct RaceDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(header.isPast ? "FINISH" : "COUNTDOWN").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
                             if header.isPast {
-                                Text(header.finishDisplay ?? ", ").font(Faff.F.display(46)).foregroundStyle(.white)
+                                Text(header.finishDisplay ?? "-").font(Faff.F.display(46)).foregroundStyle(.white)
                             } else {
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text("\(header.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
@@ -816,7 +816,7 @@ struct RaceDetailView: View {
                     Divider().overlay(Color.white.opacity(0.25))
                     if header.isPast {
                         HStack(spacing: 18) {
-                            rcStat("Goal", header.goalDisplay ?? ", ")
+                            rcStat("Goal", header.goalDisplay ?? "-")
                             rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
                             if let d = header.date { rcStat("Date", RacesView.prettyDate(d)) }
                         }
@@ -824,9 +824,9 @@ struct RaceDetailView: View {
                         readinessBlock(pr, cv: cv)
                     } else {
                         HStack(spacing: 18) {
-                            rcStat("Goal time", header.goalDisplay ?? ", ")
+                            rcStat("Goal time", header.goalDisplay ?? "-")
                             rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
-                            rcStat("Phase", phase ?? ", ")
+                            rcStat("Phase", phase ?? "-")
                         }
                     }
                 }
@@ -995,7 +995,7 @@ struct RaceDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(p.targetPaceDisplay ?? ", ").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                    Text(p.targetPaceDisplay ?? "-").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
                     if let t = p.cumulativeTimeDisplay { Text(t).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textDim) }
                 }
             }
@@ -1188,7 +1188,7 @@ struct RaceDetailView: View {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PROJECTED").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
-                    Text(pr.predictedDisplay ?? ", ").font(Faff.F.display(26)).foregroundStyle(.white)
+                    Text(pr.predictedDisplay ?? "-").font(Faff.F.display(26)).foregroundStyle(.white)
                     Text("at fitness score \(String(format: "%.1f", cv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 4)
@@ -1196,7 +1196,7 @@ struct RaceDetailView: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("GOAL").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
-                    Text(goalT ?? ", ").font(Faff.F.display(26)).foregroundStyle(.white)
+                    Text(goalT ?? "-").font(Faff.F.display(26)).foregroundStyle(.white)
                     if let gv = pr.goalVdot {
                         Text("needs fitness score \(String(format: "%.1f", gv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                     }
@@ -1299,7 +1299,7 @@ struct ProfileView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("TRAINING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             HStack(spacing: Faff.S.inlineGap) {
-                StatPill(value: vdot.map { String(Int($0)) } ?? ", ", unit: vdot != nil ? "score" : nil, label: "Fitness")
+                StatPill(value: vdot.map { String(Int($0)) } ?? "-", unit: vdot != nil ? "score" : nil, label: "Fitness")
                 StatPill(value: OverviewFormat.distance(v?.last7Mi), unit: "mi", label: "Last 7d")
                 StatPill(value: OverviewFormat.distance(v?.weeklyAvg8w), unit: "mi", label: "8wk avg")
             }
@@ -1684,9 +1684,9 @@ struct ReadinessDetailSheet: View {
     @ViewBuilder private var vitalsRow: some View {
         let r = overview.state?.recovery
         let cells: [(String, String, String)] = [
-            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? ", ", "ms · 7d"),
-            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? ", ", "bpm"),
-            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? ", ", "h · 7d"),
+            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "-", "ms · 7d"),
+            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? "-", "bpm"),
+            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "-", "h · 7d"),
         ]
         VStack(alignment: .leading, spacing: 10) {
             Text("VITALS FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
@@ -1994,7 +1994,7 @@ struct PlanDayDetailSheet: View {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(day.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: day.paceDisplay, unit: day.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: day.isQuality ?? false)
-                    StatPill(value: day.durationMin.map { "~\($0)" } ?? ", ", unit: day.durationMin != nil ? "min" : nil, label: "Time")
+                    StatPill(value: faffApproxDuration(day.durationMin).value, unit: faffApproxDuration(day.durationMin).unit, label: "Time")
                 }
                 // Structured steps (real describeWorkout, same as today's
                 // detail) when available; fall back to the prose notes.

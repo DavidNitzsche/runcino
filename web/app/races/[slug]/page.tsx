@@ -663,7 +663,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                     </>
                   ) : (
                     <>
-                      <div className="path-stat-value orange">, </div>
+                      <div className="path-stat-value orange">-</div>
                       <div className="path-stat-sub">No data, set your VDOT</div>
                     </>
                   )}

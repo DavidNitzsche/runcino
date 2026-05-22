@@ -123,7 +123,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   <strong>{loggedMi.toFixed(1)}</strong> / {plannedMi.toFixed(1)} mi
                 </>
               ) : (
-                <span style={{ color: 'rgba(8,8,8,.35)' }}>, </span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>-</span>
               )}
             </Stat>
             <Dot />
@@ -133,7 +133,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   {loggedWorkouts} / {totalWorkouts} workouts
                 </>
               ) : (
-                <span style={{ color: 'rgba(8,8,8,.35)' }}>, </span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>-</span>
               )}
             </Stat>
             {deltaLabel && (

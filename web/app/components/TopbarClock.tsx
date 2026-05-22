@@ -23,7 +23,7 @@ export function TopbarClock() {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  if (!now) return <span style={{ opacity: 0.4 }}>, </span>;
+  if (!now) return <span style={{ opacity: 0.4 }}>-</span>;
   const f = format(now);
   return (
     <>

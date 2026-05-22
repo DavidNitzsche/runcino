@@ -279,7 +279,7 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
           </div>
         )}
         {isRest && (
-          <div style={{ fontFamily: 'var(--f-data)', fontSize: 18, color: 'var(--t3)', lineHeight: 1 }}>, </div>
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 18, color: 'var(--t3)', lineHeight: 1 }}>-</div>
         )}
         {/* pace */}
         {!isRest && day.paceTargetSPerMi && (

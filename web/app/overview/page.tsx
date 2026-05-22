@@ -402,7 +402,7 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayDay?.distanceMi}</span><span className="stat-unit">mi</span></div><div className="stat-label">Distance</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayPace}</span><span className="stat-unit">/mi</span></div><div className="stat-label">Pace</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{approxDuration(durMin).value}</span>{approxDuration(durMin).unit && <span className="stat-unit">{approxDuration(durMin).unit}</span>}</div><div className="stat-label">Duration</div></div>
-                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </span></div><div className="stat-label">Heart Rate</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>-</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
                 {/* One clean, always-present explanation, what this run is
                     for, in plain language. No expander, no stacked blocks. */}
@@ -515,7 +515,7 @@ export default async function OverviewPage() {
                   <div className="readiness-ring-wrap">
                     <svg width="300" height="300" viewBox="0 0 300 300">
                       <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(8,8,8,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
-                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(8,8,8,.32)" textAnchor="middle">, </text>
+                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(8,8,8,.32)" textAnchor="middle">-</text>
                       <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(8,8,8,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
                     </svg>
                   </div>
