@@ -263,12 +263,19 @@ export async function computeReadinessScore(
   const hardLast5 = hardSessions.filter((r) => r.date >= last5StartIso).length;
   const hardLast7 = hardSessions.filter((r) => r.date >= last7StartIso).length;
 
+  // Freshness rewards a genuine easy stretch (+10) and penalizes ACUTE
+  // overload only — back-to-back hard days without recovery between
+  // (≥2 in 3 days). A SINGLE hard session 2–3 days ago is normal training
+  // rhythm: you absorb one quality day within ~48h (Research/00b §In-week
+  // recovery), and the 'yesterday' input already handles the acute case —
+  // so a lone recent quality day no longer double-dings or chronically
+  // pins readiness to yellow.
   if (hardLast5 === 0) {
     score += 10;
-    inputs.push({ name: 'freshness', delta: +10, note: '0 hard sessions in last 5 days' });
-  } else if (hardLast3 >= 1) {
+    inputs.push({ name: 'freshness', delta: +10, note: 'fresh — no hard sessions in 5 days' });
+  } else if (hardLast3 >= 2) {
     score -= 10;
-    inputs.push({ name: 'freshness', delta: -10, note: `${hardLast3} hard session(s) in last 3 days` });
+    inputs.push({ name: 'freshness', delta: -10, note: `${hardLast3} hard days back-to-back in the last 3 — limited recovery between` });
   }
   if (hardLast7 >= 4) {
     score -= 10;
