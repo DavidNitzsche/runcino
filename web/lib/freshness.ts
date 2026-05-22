@@ -275,7 +275,7 @@ function buildVdotAnchor(state: CoachState, nowMs: number): SignalFreshness {
     lastRefreshISO: new Date(raceMs).toISOString(),
     daysSince,
     reason: isStale
-      ? `VDOT anchor is ${daysSince} days old. Research/01-pace-zones-vdot.md §Freshness window: fitness signal expires past 60 days — log a fresh race.`
+      ? `Your fitness estimate is ${daysSince} days old. It goes stale after about 60 days — log a recent race or hard effort to refresh it.`
       : `VDOT anchored on ${snap.source.name} (${ageLabel}).`,
   };
 }

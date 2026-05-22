@@ -385,8 +385,8 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
             <div className="t-eyebrow" style={{ color: 'var(--coach)' }}>▸ WHAT THE COACH USES THIS FOR</div>
             <div className="t-body" style={{ color: 'var(--t1)', marginTop: 8, lineHeight: 1.55 }}>
               Age and Max HR drive the 5-zone HR table. Name + sex populate identity surfaces.
-              Level + day prefs drive the multi-week plan: which template (Research/22) the
-              coach reads, where the long run lands, and when quality vs rest hit.
+              Level + day prefs shape your multi-week plan: which plan template the
+              coach builds from, where your long run lands, and when hard days vs rest hit.
             </div>
           </div>
 

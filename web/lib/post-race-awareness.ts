@@ -134,7 +134,7 @@ function buildGuidance(
   if (stage === 'easy') {
     const remaining = bounds.easyEndDay - daysSinceRace;
     const today = isMarathon
-      ? `Day ${daysSinceRace} post-marathon · easy aerobic zone (no quality). Reduced volume — 30-50% of peak weeks per §13.3. Build mileage gradually. Skip the speed work. Threshold and intervals return after the full ${bounds.easyEndDay}-day window.`
+      ? `Day ${daysSinceRace} after your marathon · easy running only, no hard work. Keep mileage low (about a third to half of your peak weeks) and build back gradually. Skip the speed work — tempo and intervals come back after the full ${bounds.easyEndDay}-day window.`
       : `Day ${daysSinceRace} post-race · easy aerobic only. No quality work yet — let the system fully absorb the race stress before adding sharpening stimulus.`;
     const next = remaining > 0
       ? `${remaining} more day${remaining === 1 ? '' : 's'} of easy-only. After that, normal plan resumes — threshold + intervals + long runs.`

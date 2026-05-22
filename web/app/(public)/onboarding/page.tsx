@@ -210,7 +210,7 @@ export default function OnboardingPage() {
                     </div>
                   ))}
                 </div>
-                <div className="faff-onb-help">Level caps weekly volume and long-run length. From the Research/00a-distance-running-training doctrine.</div>
+                <div className="faff-onb-help">Your level sets how far you run each week and how long your long run goes.</div>
               </div>
 
               <div className="faff-form-row" style={{ marginTop: 8 }}>
