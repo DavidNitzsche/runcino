@@ -20,6 +20,7 @@
 import Foundation
 import Combine
 import HealthKit
+import CoreLocation
 
 @MainActor
 final class HealthKitManager: ObservableObject {
@@ -84,6 +85,7 @@ final class HealthKitManager: ObservableObject {
         HKQuantityType(.oxygenSaturation),
         HKCategoryType(.sleepAnalysis),
         HKObjectType.workoutType(),
+        HKSeriesType.workoutRoute(),   // GPS route → map + splits for watch-only runs
     ]
 
     /// Set once the user has granted (or been prompted for) Health access,
@@ -156,6 +158,9 @@ final class HealthKitManager: ObservableObject {
                 let result = try await FaffAPI.shared.ingestHealthSamples(slice)
                 ingested += result.ingested
             }
+            // GPS routes (map + per-mile splits) for watch-only runs — best
+            // effort, never blocks or fails the vitals sync.
+            await collectAndUploadRoutes(daysBack: window)
             UserDefaults.standard.set(true, forKey: backfilledKey)
             status = .done
             lastMessage = isBackfill
@@ -546,5 +551,138 @@ final class HealthKitManager: ObservableObject {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: date)
+    }
+}
+
+// MARK: - GPS routes (HKWorkoutRoute → map + per-mile splits)
+
+private struct RouteSplitUpload: Encodable {
+    let mile: Int; let paceSPerMi: Int; let avgHr: Int?; let elevDeltaFt: Int?
+}
+private struct RouteUpload: Encodable {
+    let startedAt: String; let routeDate: String
+    let distanceMi: Double?; let durationSec: Int?
+    let polyline: String
+    let startLat: Double?; let startLng: Double?; let endLat: Double?; let endLng: Double?
+    let splits: [RouteSplitUpload]
+}
+
+/// Accumulates the HKWorkoutRouteQuery's batched callbacks. HealthKit calls
+/// the handler serially, so the unchecked Sendable is safe.
+private final class RouteBox: @unchecked Sendable { var locs: [CLLocation] = []; var done = false }
+
+extension HealthKitManager {
+    /// Read recent running workouts' GPS routes from Apple Health, encode each
+    /// as a polyline + compute per-mile splits, and upload to /api/watch/route.
+    /// Best-effort: every failure is swallowed so it never disrupts the vitals
+    /// sync. Gives watch-only runs (not on Strava) a recap map + splits.
+    nonisolated func collectAndUploadRoutes(daysBack: Int) async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let store = HKHealthStore()
+        let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+        let datePred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let runPred = HKQuery.predicateForWorkouts(with: .running)
+        let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [datePred, runPred])
+        let workouts: [HKWorkout] = await withCheckedContinuation { cont in
+            let q = HKSampleQuery(sampleType: .workoutType(), predicate: pred,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKWorkout]) ?? [])
+            }
+            store.execute(q)
+        }
+        for w in workouts {
+            guard let locs = await routeLocations(for: w, store: store), locs.count >= 2 else { continue }
+            guard let payload = Self.buildRoutePayload(workout: w, locations: locs),
+                  let data = try? JSONEncoder().encode(payload) else { continue }
+            _ = try? await FaffAPI.shared.postWatchRoute(data)
+        }
+    }
+
+    /// Stream the CLLocations for a workout's route (nil if it has none).
+    nonisolated func routeLocations(for workout: HKWorkout, store: HKHealthStore) async -> [CLLocation]? {
+        let routes: [HKWorkoutRoute] = await withCheckedContinuation { cont in
+            let q = HKSampleQuery(sampleType: HKSeriesType.workoutRoute(),
+                                  predicate: HKQuery.predicateForObjects(from: workout),
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKWorkoutRoute]) ?? [])
+            }
+            store.execute(q)
+        }
+        guard let route = routes.first else { return nil }
+        let box = RouteBox()
+        return await withCheckedContinuation { (cont: CheckedContinuation<[CLLocation]?, Never>) in
+            let rq = HKWorkoutRouteQuery(route: route) { _, locations, finished, _ in
+                if let locations { box.locs.append(contentsOf: locations) }
+                if finished && !box.done { box.done = true; cont.resume(returning: box.locs.isEmpty ? nil : box.locs) }
+            }
+            store.execute(rq)
+        }
+    }
+
+    /// Downsampled polyline + per-mile splits from a route's locations.
+    nonisolated fileprivate static func buildRoutePayload(workout: HKWorkout, locations rawLocs: [CLLocation]) -> RouteUpload? {
+        let locs = rawLocs
+            .filter { $0.horizontalAccuracy >= 0 && $0.horizontalAccuracy <= 50 }
+            .sorted { $0.timestamp < $1.timestamp }
+        guard locs.count >= 2 else { return nil }
+
+        // Per-mile splits — walk the path accumulating distance + time.
+        let mileMeters = 1609.344
+        var splits: [RouteSplitUpload] = []
+        var distSoFar = 0.0, lastMileMark = 0.0
+        var mileStartTime = locs[0].timestamp, mileStartElev = locs[0].altitude
+        var mileNo = 1
+        for i in 1..<locs.count {
+            distSoFar += locs[i].distance(from: locs[i - 1])
+            while distSoFar >= lastMileMark + mileMeters {
+                lastMileMark += mileMeters
+                let pace = Int(locs[i].timestamp.timeIntervalSince(mileStartTime).rounded())
+                if pace >= 120 && pace <= 3600 {
+                    let elevFt = Int(((locs[i].altitude - mileStartElev) * 3.28084).rounded())
+                    splits.append(RouteSplitUpload(mile: mileNo, paceSPerMi: pace, avgHr: nil, elevDeltaFt: elevFt))
+                }
+                mileNo += 1
+                mileStartTime = locs[i].timestamp
+                mileStartElev = locs[i].altitude
+            }
+        }
+
+        // Downsample so the payload stays small (~600 points is plenty for a map).
+        var coords: [(Double, Double)] = []
+        let step = max(1, locs.count / 600)
+        var idx = 0
+        while idx < locs.count { coords.append((locs[idx].coordinate.latitude, locs[idx].coordinate.longitude)); idx += step }
+        if let last = locs.last { coords.append((last.coordinate.latitude, last.coordinate.longitude)) }
+
+        let distMi = workout.totalDistance?.doubleValue(for: .mile()) ?? (distSoFar / mileMeters)
+        return RouteUpload(
+            startedAt: ISO8601DateFormatter().string(from: workout.startDate),
+            routeDate: HealthKitManager.isoDay(workout.startDate),
+            distanceMi: (distMi * 100).rounded() / 100,
+            durationSec: Int(workout.duration.rounded()),
+            polyline: encodePolyline(coords),
+            startLat: locs.first?.coordinate.latitude, startLng: locs.first?.coordinate.longitude,
+            endLat: locs.last?.coordinate.latitude, endLng: locs.last?.coordinate.longitude,
+            splits: splits)
+    }
+
+    /// Google polyline encoder (precision 5).
+    nonisolated static func encodePolyline(_ coords: [(Double, Double)]) -> String {
+        var result = ""
+        var prevLat = 0, prevLng = 0
+        func enc(_ v: Int) {
+            var value = v < 0 ? ~(v << 1) : (v << 1)
+            while value >= 0x20 {
+                result.append(Character(UnicodeScalar(UInt8((0x20 | (value & 0x1f)) + 63))))
+                value >>= 5
+            }
+            result.append(Character(UnicodeScalar(UInt8(value + 63))))
+        }
+        for (lat, lng) in coords {
+            let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
+            enc(iLat - prevLat); enc(iLng - prevLng)
+            prevLat = iLat; prevLng = iLng
+        }
+        return result
     }
 }

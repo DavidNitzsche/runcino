@@ -15,6 +15,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { getActivityDetail } from '@/lib/sync-strava-user';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
+import { getRouteForDate } from '@/lib/watch-route';
 
 interface ActivityRow {
   id: string;
@@ -67,6 +68,16 @@ export async function GET(req: NextRequest) {
     const dist = Number(c.total_distance_mi) || 0;
     const dur = Number(c.total_duration_sec) || 0;
     const maxHrEff = await resolveEffectiveMaxHr(uid).catch(() => ({ value: null as number | null }));
+    // Map + per-mile splits from the Apple-Health route (if the iPhone has
+    // uploaded one for this date) — gives watch-only runs a recap map.
+    const route = user?.id ? await getRouteForDate(user.id, date).catch(() => null) : null;
+    const splits = (route?.splits ?? []).map((s) => {
+      const m = Math.floor(s.paceSPerMi / 60), sec = s.paceSPerMi % 60;
+      return { mile: s.mile, paceSPerMi: s.paceSPerMi, paceDisplay: `${m}:${String(sec).padStart(2, '0')}`,
+               avgHr: s.avgHr, elevDeltaFt: s.elevDeltaFt ?? 0 };
+    });
+    const startLatLng = route?.startLat != null && route?.startLng != null ? [route.startLat, route.startLng] : null;
+    const endLatLng = route?.endLat != null && route?.endLng != null ? [route.endLat, route.endLng] : null;
     return NextResponse.json({
       ok: true,
       maxHr: maxHrEff.value ?? null,
@@ -83,10 +94,10 @@ export async function GET(req: NextRequest) {
         avgCadence: null,
         elevGainFt: 0,
         type: null,
-        splits: [],
-        summaryPolyline: null,
-        startLatLng: null,
-        endLatLng: null,
+        splits,
+        summaryPolyline: route?.polyline ?? null,
+        startLatLng,
+        endLatLng,
       },
     });
   }

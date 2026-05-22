@@ -240,6 +240,18 @@ final class FaffAPI {
         )
     }
 
+    /// Upload a watch run's GPS route + per-mile splits (read from Apple
+    /// Health on the phone) so watch-only runs get a recap map.
+    func postWatchRoute(_ jsonBody: Data) async throws {
+        let _: EmptyResponse = try await perform(
+            method: "POST",
+            path: "/api/watch/route",
+            body: jsonBody,
+            authenticated: true,
+            as: EmptyResponse.self
+        )
+    }
+
     // MARK: HealthKit ingest
 
     /// Batch-upload HealthKit samples to POST /api/health/ingest. Bearer

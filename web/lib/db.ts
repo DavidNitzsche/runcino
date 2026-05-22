@@ -638,6 +638,32 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_workout_completions_user_date ON workout_completions (user_id, completed_at DESC);`);
 
+    // workout_routes — GPS route + per-mile splits read from an Apple Health
+    // HKWorkoutRoute (watch-only runs that never reach Strava). The iPhone
+    // POSTs to /api/watch/route; /api/runs/by-date serves the polyline + splits
+    // so the recap shows a map for watch-only runs. Keyed by start time to
+    // dedupe re-uploads; route_date is the local run day for date lookups.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workout_routes (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        route_date    DATE NOT NULL,
+        started_at    TIMESTAMPTZ NOT NULL,
+        distance_mi   NUMERIC,
+        duration_sec  INTEGER,
+        polyline      TEXT NOT NULL,
+        start_lat     DOUBLE PRECISION,
+        start_lng     DOUBLE PRECISION,
+        end_lat       DOUBLE PRECISION,
+        end_lng       DOUBLE PRECISION,
+        splits        JSONB NOT NULL DEFAULT '[]',
+        source        TEXT NOT NULL DEFAULT 'apple_health',
+        recorded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, started_at)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_workout_routes_user_date ON workout_routes (user_id, route_date DESC);`);
+
     // Auto-promote the legacy owner to admin + active on every boot so
     // we can never lock the founder out of the admin panel.
     const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
