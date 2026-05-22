@@ -392,8 +392,8 @@ export default async function OverviewPage() {
             <div className="hero-eyebrow">TODAY · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}</div>
             <div className="hero-title" data-len={titleBucket}>
               {titleLabel}
-              {why && <WhyTooltip why={why} />}
             </div>
+            {why && <WhyTooltip why={why} />}
 
             {isRest ? (
               <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, lineHeight: 1.6, color: 'var(--t1)', marginTop: 24, maxWidth: 540 }}>

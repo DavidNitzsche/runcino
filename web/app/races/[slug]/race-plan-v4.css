@@ -100,8 +100,13 @@
   height: 100% !important;
 }
 /* Stacked path-stats: 1 column inside the narrower left column.
-   The base .path-stats grid below is overridden by this class. */
-.race-plan-v4-page .path-stats-stacked {
+   The base .path-stats grid below is overridden by this class.
+   Scoped as `.path-stats.path-stats-stacked` so it reliably wins
+   over `.path-stats` regardless of source order — otherwise the
+   later-defined `repeat(3, 1fr)` forces three tiles into the narrow
+   column and they overlap/clip into each other. */
+.race-plan-v4-page .path-stats.path-stats-stacked {
+  display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
 }

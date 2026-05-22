@@ -46,13 +46,13 @@
 .races-v4-page .vdot-anchor-num { font-family: 'Bebas Neue', sans-serif; font-size: 96px; line-height: 0.86; color: var(--green); letter-spacing: -2px; }
 .races-v4-page .vdot-anchor-fresh {
   margin-top: 18px;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: flex-start; gap: 8px;
   padding: 8px 12px;
   background: rgba(44,168,47,.10);
   border-radius: 8px;
 }
-.races-v4-page .vdot-anchor-fresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.races-v4-page .vdot-anchor-fresh-text { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--green); font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
+.races-v4-page .vdot-anchor-fresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; margin-top: 4px; }
+.races-v4-page .vdot-anchor-fresh-text { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--green); font-weight: 600; letter-spacing: 0.3px; min-width: 0; overflow-wrap: break-word; line-height: 1.4; }
 .races-v4-page .vdot-anchor-fresh-text strong { font-weight: 700; }
 
 /* ── A-race hero ────────────────────────────────────────── */
