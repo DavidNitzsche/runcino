@@ -602,6 +602,7 @@ private struct CheckInCard: View {
     @State private var soreness: Double = 3
     @State private var stress: Double = 3
     @State private var logged = false
+    @State private var editing = false
     @State private var loaded = false
     @State private var saving = false
 
@@ -610,16 +611,62 @@ private struct CheckInCard: View {
     private let stressColor   = Color(hex: 0xCBA23C)
 
     var body: some View {
+        Group {
+            if logged && !editing {
+                confirmedView
+            } else {
+                editorView
+            }
+        }
+        .task { await load() }
+    }
+
+    // Confirmed — solid green card with a checkmark + the logged stats.
+    private var confirmedView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                Text("CHECKED IN FOR TODAY")
+                    .font(Faff.F.oswald(13, .semibold)).tracking(1).foregroundStyle(.white)
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                confirmedStat("Energy", Int(energy.rounded()))
+                confirmedStat("Soreness", Int(soreness.rounded()))
+                confirmedStat("Stress", Int(stress.rounded()))
+            }
+            Button { editing = true } label: {
+                Text("EDIT").font(Faff.F.oswald(11, .semibold)).tracking(1.5)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    .background(Color.white.opacity(0.16))
+                    .overlay(RoundedRectangle(cornerRadius: 999, style: .continuous)
+                        .stroke(Color.white.opacity(0.28), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Faff.C.recovery)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func confirmedStat(_ label: String, _ val: Int) -> some View {
+        VStack(spacing: 4) {
+            Text("\(val)").font(Faff.F.display(22)).foregroundStyle(.white)
+            Text(label.uppercased()).font(Faff.F.inter(9, .semibold)).tracking(1)
+                .foregroundStyle(.white.opacity(0.82))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var editorView: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 5) {
-                Text((logged ? "Today's Check-in · Logged" : "Today's Check-in").uppercased())
+                Text("Today's Check-in".uppercased())
                     .font(Faff.F.inter(10, .semibold)).tracking(1.2).foregroundStyle(Faff.C.textDim)
-                if logged {
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Faff.C.recovery)
-                } else {
-                    Text("· not yet").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint)
-                }
+                Text("· not yet").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint)
                 Spacer()
             }
             CheckInRow(label: "Energy",   value: $energy,   color: energyColor)
@@ -639,7 +686,6 @@ private struct CheckInCard: View {
             }
         }
         .faffCard()
-        .task { await load() }
     }
 
     private func load() async {
@@ -658,7 +704,7 @@ private struct CheckInCard: View {
         let e = min(10, max(1, Int(energy.rounded())))
         let s = min(10, max(1, Int(soreness.rounded())))
         let st = min(10, max(1, Int(stress.rounded())))
-        if (try? await FaffAPI.shared.postCheckin(energy: e, soreness: s, stress: st)) != nil { logged = true }
+        if (try? await FaffAPI.shared.postCheckin(energy: e, soreness: s, stress: st)) != nil { logged = true; editing = false }
     }
 }
 

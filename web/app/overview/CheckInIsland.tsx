@@ -16,6 +16,7 @@ export function CheckInIsland({ today }: { today: string }) {
   const [stress, setStress] = useState(2);
   const [busy, setBusy] = useState(false);
   const [logged, setLogged] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   // Load existing check-in for today (if any)
   useEffect(() => {
@@ -37,15 +38,68 @@ export function CheckInIsland({ today }: { today: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: today, energy, soreness, stress }),
       });
-      if (res.ok) setLogged(true);
+      if (res.ok) { setLogged(true); setEditing(false); }
     } finally {
       setBusy(false);
     }
   }
 
+  // Confirmed state — solid green card with a checkmark + the logged stats.
+  if (logged && !editing) {
+    const stat = (label: string, val: number) => (
+      <div style={{ textAlign: 'center', flex: 1 }}>
+        <div style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 22, color: '#fff', lineHeight: 1 }}>{val}</div>
+        <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9.5, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,.82)', marginTop: 5 }}>{label}</div>
+      </div>
+    );
+    return (
+      <div className="coach-right">
+        <div
+          style={{
+            background: 'var(--recovery, #2CA82F)',
+            borderRadius: 12,
+            padding: '18px 20px',
+            color: '#fff',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 22, height: 22, borderRadius: 999,
+                background: 'rgba(255,255,255,.22)', color: '#fff', fontSize: 13, fontWeight: 700,
+              }}
+            >✓</span>
+            <span style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+              Checked in for today
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            {stat('Energy', energy)}
+            {stat('Soreness', soreness)}
+            {stat('Stress', stress)}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              marginTop: 16, width: '100%',
+              background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.28)',
+              borderRadius: 999, padding: '8px 0', cursor: 'pointer',
+              fontFamily: 'Oswald, sans-serif', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700, color: '#fff',
+            }}
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="coach-right">
-      <div className="checkin-label">Today&apos;s Check-In{logged ? ' · logged ✓' : ''}</div>
+      <div className="checkin-label">Today&apos;s Check-In</div>
       <div className="checkin-sliders">
         <div className="checkin-slider-row">
           <span className="checkin-slider-label">Energy</span>
