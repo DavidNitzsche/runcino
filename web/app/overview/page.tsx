@@ -54,6 +54,16 @@ import './overview-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+/** Human labels for the readiness score inputs (from computeReadinessScore).
+ *  Replaces the old placeholder factor names (Effort/Load/Easy Pace/Strain)
+ *  that never matched what actually moved the score. */
+const READINESS_INPUT_LABELS: Record<string, string> = {
+  yesterday: 'Yesterday',
+  freshness: 'Freshness',
+  'load-7d': '7-day load',
+  'hr-pace-drift': 'HR / pace drift',
+};
+
 interface IntensityCfg { pos: number; label: string; color: string; copy: string; }
 const INTENSITY_CFG: Record<string, IntensityCfg> = {
   // Easy bucket covers everything that used to be "recovery" too —
@@ -570,7 +580,9 @@ export default async function OverviewPage() {
               )}
             </div>
 
-            {/* Mileage is the one trend we CAN compute — actual vs planned this week. */}
+            {/* What actually moved the score — the real readiness inputs (not
+                placeholder factor names). Mileage stays as a separate real
+                trend. Honest: shows the signals the engine used + their deltas. */}
             <div className="trend-rows">
               <TrendRow
                 label="Mileage"
@@ -578,10 +590,15 @@ export default async function OverviewPage() {
                 tone={thisWeekSoFar.totalMi >= currentWeek.plannedMi * 0.7 ? 'green' : 'amber'}
                 width={Math.min(100, Math.round((thisWeekSoFar.totalMi / Math.max(1, currentWeek.plannedMi)) * 100))}
               />
-              <TrendRow label="Effort"    value="No data" tone="amber" width={0} />
-              <TrendRow label="Load"      value="No data" tone="amber" width={0} />
-              <TrendRow label="Easy Pace" value="No data" tone="amber" width={0} />
-              <TrendRow label="Strain"    value="No data" tone="amber" width={0} />
+              {(readiness?.inputs ?? []).map((inp) => (
+                <TrendRow
+                  key={`${inp.name}-${inp.note}`}
+                  label={READINESS_INPUT_LABELS[inp.name] ?? inp.name}
+                  value={`${inp.delta >= 0 ? '+' : ''}${inp.delta}`}
+                  tone={inp.delta >= 0 ? 'green' : 'amber'}
+                  width={Math.min(100, Math.abs(inp.delta) * 6)}
+                />
+              ))}
             </div>
 
             {/* Today's Intensity — rest-day variant hides gradient bar */}
