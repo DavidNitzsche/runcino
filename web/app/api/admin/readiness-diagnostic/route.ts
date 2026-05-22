@@ -55,6 +55,29 @@ export async function GET(req: Request) {
     out.stravaGapError = e instanceof Error ? e.message : String(e);
   }
 
+  // Last-7-day runs with HR + workout type — to see exactly what gets
+  // flagged "hard" and why (HR >= Z4 floor, or Strava workout-type 3).
+  try {
+    const runs = await query<{ date: string; avg_hr: string | null; wt: string | null; dist: string }>(
+      `SELECT data->>'date' AS date,
+              (data->>'avgHr')::text AS avg_hr,
+              (data->>'workoutType')::text AS wt,
+              (data->>'distanceMi')::text AS dist
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND (data->>'distanceMi')::NUMERIC > 0
+          AND (data->>'date') >= (CURRENT_DATE - INTERVAL '7 days')::text
+        ORDER BY data->>'date' DESC`,
+      [admin.id],
+    );
+    out.recentRuns = runs.map((r) => ({
+      date: r.date, avgHr: r.avg_hr ? Math.round(Number(r.avg_hr)) : null,
+      workoutType: r.wt, distanceMi: r.dist ? Number(r.dist) : null,
+    }));
+  } catch (e) {
+    out.recentRunsError = e instanceof Error ? e.message : String(e);
+  }
+
   // Recovery vitals as the engine sees them server-side.
   try {
     const state = await gatherCoachState({ userId: admin.id });
