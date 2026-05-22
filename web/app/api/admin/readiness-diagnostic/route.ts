@@ -14,6 +14,8 @@ import { requireAdminOrOpToken } from '@/lib/auth';
 import { computeReadinessScore } from '@/lib/readiness-score';
 import { computeStravaGap } from '@/lib/strava-gap';
 import { gatherCoachState } from '@/lib/coach-state';
+import { resolveFitness } from '@/lib/fitness-resolver';
+import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { query } from '@/lib/db';
 
 export async function GET(req: Request) {
@@ -61,10 +63,20 @@ export async function GET(req: Request) {
     out.recoveryError = e instanceof Error ? e.message : String(e);
   }
 
-  // The actual finding — score, state, recommendation, inputs, suppressReason.
+  // Two findings, to confirm web/iPhone parity:
+  //   findingNoHr  — old /api/overview behaviour (maxHr=null) → inflated
+  //   finding      — NEW behaviour, matching the web ring (real maxHr + Z2)
   try {
-    const finding = await computeReadinessScore(admin.id, today, null, null);
-    out.finding = finding;
+    out.findingNoHr = await computeReadinessScore(admin.id, today, null, null);
+  } catch (e) {
+    out.findingNoHrError = e instanceof Error ? e.message : String(e);
+  }
+  try {
+    const fit = await resolveFitness(admin.id, today);
+    out.maxHr = fit.maxHr.value;
+    out.restingHr = fit.restingHr.value;
+    const z2 = await computeZ2CoverageFinding(admin.id, today, fit.maxHr.value, fit.restingHr.value, fit.vdot.value).catch(() => null);
+    out.finding = await computeReadinessScore(admin.id, today, fit.maxHr.value, fit.restingHr.value, z2);
   } catch (e) {
     out.findingError = e instanceof Error ? e.message : String(e);
     out.findingStack = e instanceof Error ? e.stack : undefined;

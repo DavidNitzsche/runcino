@@ -45,6 +45,8 @@ import { getProfile } from '../../../lib/profile-store';
 import { greeting } from '../../../lib/dates';
 import { vdotSnapshot } from '../../../lib/vdot';
 import type { ResolvedFitness } from '../../../lib/fitness-types';
+import { resolveFitness } from '../../../lib/fitness-resolver';
+import { computeZ2CoverageFinding } from '../../../lib/z2-coverage';
 import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
 import { generateBriefing } from '../../../lib/coach-briefing';
 import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
@@ -540,7 +542,17 @@ export async function GET(req: Request): Promise<Response> {
     let readinessMissing: string[] = [];
     try {
       if (userId) {
-        const r = await computeReadinessScore(userId, today, null, state.recovery?.rhrBpm ?? null);
+        // Parity with the web /overview ring: pass the SAME max HR + resting HR
+        // + Z2 cross-reference. Without max HR the score can't detect hard
+        // efforts by heart rate, which previously inflated the iPhone score
+        // (90/green) vs the web (50/red) for the identical day.
+        const fit = await resolveFitness(userId, today).catch(() => null);
+        const z2 = fit
+          ? await computeZ2CoverageFinding(userId, today, fit.maxHr.value, fit.restingHr.value, fit.vdot.value).catch(() => null)
+          : null;
+        const r = await computeReadinessScore(
+          userId, today, fit?.maxHr.value ?? null, fit?.restingHr.value ?? state.recovery?.rhrBpm ?? null, z2,
+        );
         readinessScore = r.score;
         readinessState = r.score != null ? r.state : null;
         readinessRecommendation = r.score != null && r.recommendation ? r.recommendation : null;
